@@ -25,6 +25,7 @@ import gunbc.serving.turn_admission {
   InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
   AdmissibilityUnread, serving_group_admission,
 }
+import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted,
   HarnessBackendUnreachable, HarnessBackendUnreadable,
@@ -167,7 +168,11 @@ fn w_ready(standing: HarnessBackendStanding) -> Bool {
 }
 
 test fn a_route_that_does_not_answer_is_never_ready_and_one_that_answers_wrongly_is_not_either() -> Bool {
-  w_ready(standing: HarnessBackendServing { model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm })
+  w_ready(standing: HarnessBackendServing {
+    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+    unit: DeepseekV4FlashOnVllm,
+    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr },
+  })
     && !w_ready(standing: HarnessBackendUnreachable { url: "http://192.168.1.236:30000/v1/models" })
     && !w_ready(standing: HarnessBackendUnreadable { cause: "unexpected token" })
     && !w_ready(standing: HarnessBackendModelNotAdmitted { advertised: "tinyllama-1.1b" })

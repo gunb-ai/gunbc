@@ -1,6 +1,15 @@
 module gunbc.spark.vllm_observed
 
 import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import extdeps.languages.json.parse {
+  JsonValue, JsonString, JsonArray,
+  JsonMemberFound, json_object_unique_member,
+}
+import extdeps.languages.json.number {
+  JsonNumberExact, JsonNumberOutsideExactFragment,
+  JsonNumberValueRead, JsonValueIsNotANumber, read_json_number_value,
+}
 import product.placement_supply { HostIdentity }
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
 import gunbc.fleet_intent_network { operator_host_srv6 }
@@ -361,4 +370,151 @@ fn vllm_served_id_is_not_derivable_from_configured_path(
 ) -> Bool {
   contains(readback.served_model_id as String, "iq3s")
     && !contains(readback.configured_model_path as String, "iq3s")
+}
+
+// ── DECODING THE /v1/models DOCUMENT, WHICH IS WHERE THIS MODULE'S OWN NOTE SAID TO PUT IT ────
+//
+// The carriers above were authored from a hand transcription and their annotation named the
+// successor: 'the measure is the fact, and when a parser exists it can produce it from a capture
+// rather than beside one.' A parser exists -- the harness GETs this exact document on every
+// dashboard dispatch through gunbc.harness.harness_backend, and has been reading the advertised ids
+// out of it and discarding the rest of the entry. So the decode lives here, beside the carrier whose
+// fields it fills, and the harness passes the parsed document in rather than growing a second idea
+// of what a vLLM entry contains.
+//
+// NOTHING ABOUT WHAT THE FIELDS MEAN CHANGES, AND THAT IS THE POINT OF REUSING THE CARRIER. A live
+// reading of configured_model_path is the same kind of fact as a transcribed one: the path the
+// server was CONFIGURED with, strong evidence about intent and no evidence about bytes. Making the
+// producer live raises the freshness of the reading, not its grade.
+
+// THE THREE OUTCOMES ARE SEPARATE BECAUSE THEY ARE DIFFERENT THINGS TO GO AND DO. An entry that is
+// absent from the document is a route that did not advertise the model at all; a field the entry
+// does not carry is an upstream surface that changed shape; a field that is present and cannot be
+// read exactly is a value this substrate's number fragment declines. Collapsing them would report
+// 'no readback' for three causes with three different remedies -- and the middle one is the one that
+// must be loud, because a silently missing field is how a carrier starts being filled with defaults.
+type VllmModelsRouteReadbackStanding
+  = ModelsRouteRead { readback: VllmModelsRouteReadback }
+  | ModelsRouteEntryAbsent { served_model_id: NonEmptyStr }
+  | ModelsRouteFieldAbsent { served_model_id: NonEmptyStr, field: NonEmptyStr }
+  | ModelsRouteFieldUnreadable { served_model_id: NonEmptyStr, field: NonEmptyStr, cause: NonEmptyStr }
+
+fn vllm_models_route_standing_wire(s: VllmModelsRouteReadbackStanding) -> String {
+  match s {
+    ModelsRouteRead { readback: r } => join(["read: ", r.configured_model_path as String], "")
+    ModelsRouteEntryAbsent { served_model_id: i } =>
+      join(["the /v1/models document carries no entry for ", i as String], "")
+    ModelsRouteFieldAbsent { served_model_id: i, field: f } =>
+      join(["the /v1/models entry for ", i as String, " carries no ", f as String, " member"], "")
+    ModelsRouteFieldUnreadable { served_model_id: i, field: f, cause: c } =>
+      join(["the /v1/models entry for ", i as String, " carries a ", f as String, " that cannot be read exactly: ", c as String], "")
+  }
+}
+
+// A CONTEXT LENGTH IS A COUNT OF TOKENS AND MUST ARRIVE AS ONE. The document's number is a lexeme,
+// and this repository's exact fragment reads it into an ExactDecimal rather than into an integer, so
+// two things are refused here rather than coerced: a value carrying fraction digits, which is not a
+// token count, and a negative one, which no context length is. Neither can be repaired by rounding,
+// and a rounded context length would be a fabricated bound on every turn this route serves.
+// THE VALUE'S KIND IS ASKED BY THE MODULE THAT OWNS THE ANSWER. read_json_number_value already
+// separates 'this is not a number' from 'this numeral is outside the exact fragment', which are a
+// defect in the document and a limit of this substrate respectively; re-deriving that split here
+// would be a second authority for one question, and the quoted-"30" case is exactly where the two
+// copies would drift.
+fn vllm_models_route_token_count(v: JsonValue) -> TokenCount? {
+  match read_json_number_value(v: v) {
+    JsonValueIsNotANumber => none
+    JsonNumberValueRead { reading: r } =>
+      match r {
+        JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } => none
+        JsonNumberExact { value: d } =>
+          if d.fraction_digits == 0 && d.units >= 0 {
+            Present { value: token_count(count: d.units) }
+          } else {
+            none
+          }
+      }
+  }
+}
+
+// THE ENTRY IS SELECTED BY THE ID THE CALLER ADMITTED, NOT BY POSITION. A route may advertise more
+// than one model, and taking the first entry would bind a readback about model A to a turn admitted
+// for model B -- the pricing-offer-A-with-offer-B's-inputs failure, one layer down, where every
+// value is real and the join is nonsense.
+fn vllm_models_entry_named(doc: JsonValue, served_model_id: NonEmptyStr) -> List<JsonValue> {
+  match json_object_unique_member(v: doc, key: "data") {
+    JsonMemberFound { value: d } =>
+      match d {
+        JsonArray { elements: els } =>
+          filter(els, e =>
+            match json_object_unique_member(v: e, key: "id") {
+              JsonMemberFound { value: idv } =>
+                match idv {
+                  JsonString { value: s } => s == (served_model_id as String)
+                  _ => false
+                }
+              _ => false
+            })
+        _ => []
+      }
+    _ => []
+  }
+}
+
+// ONE MATCH PER FIELD AND NO SEED. Each member is looked up once and its absence is its own arm, so
+// there is nowhere to substitute a default: an entry missing root does not become an empty path, and
+// a max_model_len this substrate cannot read exactly does not become a zero context.
+fn vllm_models_route_standing_from_entry(entry: JsonValue, served_model_id: NonEmptyStr) -> VllmModelsRouteReadbackStanding {
+  match json_object_unique_member(v: entry, key: "root") {
+    JsonMemberFound { value: rootv } =>
+      match rootv {
+        JsonString { value: root } =>
+          match json_object_unique_member(v: entry, key: "max_model_len") {
+            JsonMemberFound { value: lenv } =>
+              match vllm_models_route_token_count(v: lenv) {
+                Present { value: len } =>
+                  ModelsRouteRead {
+                    readback: vllm_models_route_readback(
+                      served_model_id: served_model_id,
+                      configured_model_path: root as NonEmptyStr,
+                      max_model_len: len),
+                  }
+                Absent =>
+                  ModelsRouteFieldUnreadable {
+                    served_model_id: served_model_id,
+                    field: "max_model_len" as NonEmptyStr,
+                    cause: "the member is not a number this substrate reads exactly as a whole non-negative count" as NonEmptyStr,
+                  }
+              }
+            _ => ModelsRouteFieldAbsent { served_model_id: served_model_id, field: "max_model_len" as NonEmptyStr }
+          }
+        _ =>
+          ModelsRouteFieldUnreadable {
+            served_model_id: served_model_id,
+            field: "root" as NonEmptyStr,
+            cause: "the member is present but is not a JSON string" as NonEmptyStr,
+          }
+      }
+    _ => ModelsRouteFieldAbsent { served_model_id: served_model_id, field: "root" as NonEmptyStr }
+  }
+}
+
+// THE DOCUMENT-LEVEL ENTRY POINT. A document advertising the admitted id twice is not read as one
+// entry: fold over the matches would pick a winner by list order, and two entries for one id is a
+// route contradicting itself rather than a route to read a path off. It is reported as absent-shaped
+// through the field arm rather than silently resolved.
+fn vllm_models_route_standing(doc: JsonValue, served_model_id: NonEmptyStr) -> VllmModelsRouteReadbackStanding {
+  let hits = vllm_models_entry_named(doc: doc, served_model_id: served_model_id)
+  if count(hits) == 1 {
+    fold(hits, init: ModelsRouteEntryAbsent { served_model_id: served_model_id },
+      f: (acc, e) => vllm_models_route_standing_from_entry(entry: e, served_model_id: served_model_id))
+  } else if count(hits) == 0 {
+    ModelsRouteEntryAbsent { served_model_id: served_model_id }
+  } else {
+    ModelsRouteFieldUnreadable {
+      served_model_id: served_model_id,
+      field: "id" as NonEmptyStr,
+      cause: "the /v1/models document advertises this id more than once, so no single entry describes it" as NonEmptyStr,
+    }
+  }
 }

@@ -2,6 +2,9 @@ module test.claim.spark.spark_vllm_observed_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
+import extdeps.languages.json.parse {
+  JsonValue, JsonNull, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document,
+}
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.vllm_observed {
@@ -31,6 +34,8 @@ import gunbc.spark.vllm_observed {
   vllm_served_id_is_not_derivable_from_configured_path,
   vllm_version_route_2026_09_03,
   vllm_readback_2026_09_03,
+  VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteEntryAbsent,
+  ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, vllm_models_route_standing,
 }
 import extdeps.vllm.server {
   VllmRoute,
@@ -333,4 +338,102 @@ test fn w_the_numeric_readbacks_are_measures_that_can_be_compared() -> Bool {
   token_count_value(vllm_readback_2026_09_03.models_route.max_model_len) == 262144
     && basis_point_count(vllm_readback_2026_09_03.cache_config_gauge.gpu_memory_utilization)
          < basis_point_unity_count()
+}
+
+// ── THE LIVE DECODE OF /v1/models, EXECUTED ON REAL DOCUMENT SHAPES ───────────────────────────
+//
+// The readback carriers above were authored from a hand transcription. These rows exercise the
+// producer that now fills them from the document the harness already fetches, and they are written
+// against the shape the live route actually returns -- the fixture body below is the group A
+// response with its long fields trimmed, not an invented object.
+//
+// EVERY ROW BUT THE FIRST IS A RED, and that is the point: a decode that answers with a readback for
+// a malformed entry is worse than no decode, because it fills a carrier whose annotation says the
+// path it holds is evidence about intent. The positive control is what stops the reds from being
+// satisfied by a producer that refuses everything.
+fn w_models_doc(body: String) -> JsonValue {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: v } => v
+    JsonDocumentUnreadable { gap: _ } => JsonNull
+  }
+}
+
+data w_live_models_body: String = "\{\"object\":\"list\",\"data\":[\{\"id\":\"deepseek-v4-flash:iq3s-split\",\"object\":\"model\",\"owned_by\":\"vllm\",\"root\":\"/weights/models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1\",\"parent\":null,\"max_model_len\":1048576\}]\}"
+
+// POSITIVE CONTROL, AND IT ASSERTS BOTH FIELDS RATHER THAN THE ARM. A decode that returned
+// ModelsRouteRead while dropping the path on the floor would satisfy "it read" and leave the carrier
+// holding nothing worth having.
+test fn the_live_models_document_decodes_to_its_path_and_context() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: w_live_models_body),
+    served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+  ) {
+    ModelsRouteRead { readback: r } =>
+      (r.configured_model_path as String) == "/weights/models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1"
+        && token_count_value(r.max_model_len) == 1048576
+        && (r.served_model_id as String) == "deepseek-v4-flash:iq3s-split"
+    _ => false
+  }
+}
+
+// RED -- AN ID THE DOCUMENT DOES NOT ADVERTISE IS ABSENT, NOT A READBACK ABOUT SOMEBODY ELSE. This
+// is the join the selector exists for: a route advertising one model must not hand back a path for
+// a turn admitted against another.
+test fn an_unadvertised_id_is_entry_absent() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: w_live_models_body),
+    served_model_id: "some-other-model" as NonEmptyStr,
+  ) {
+    ModelsRouteEntryAbsent { served_model_id: i } => (i as String) == "some-other-model"
+    _ => false
+  }
+}
+
+// RED -- A MISSING root IS NAMED, NOT DEFAULTED. An upstream that stops carrying the member must
+// make this loud: an empty configured path would be a carrier filled with nothing, asserting that
+// the server was configured with "".
+test fn an_entry_without_root_names_the_field() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"max_model_len\":8\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldAbsent { served_model_id: _, field: f } => (f as String) == "root"
+    _ => false
+  }
+}
+
+// RED -- A QUOTED NUMBER IS NOT A CONTEXT LENGTH. It is the case extdeps.languages.json.number
+// separates from an unreadable numeral, and the one a lenient decode would coerce.
+test fn a_quoted_context_length_refuses() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":\"8\"\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: f, cause: _ } => (f as String) == "max_model_len"
+    _ => false
+  }
+}
+
+// RED -- A FRACTIONAL CONTEXT LENGTH REFUSES RATHER THAN ROUNDING. A rounded bound would be a
+// fabricated limit on every turn the route serves.
+test fn a_fractional_context_length_refuses() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8.5\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: f, cause: _ } => (f as String) == "max_model_len"
+    _ => false
+  }
+}
+
+// RED -- ONE ID ADVERTISED TWICE IS A ROUTE CONTRADICTING ITSELF. Folding the matches would pick a
+// winner by list order, which is the silent-wrong-answer shape rather than a refusal.
+test fn a_duplicated_id_refuses_rather_than_picking() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/a\",\"max_model_len\":8\},\{\"id\":\"m\",\"root\":\"/b\",\"max_model_len\":8\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: f, cause: _ } => (f as String) == "id"
+    _ => false
+  }
 }
