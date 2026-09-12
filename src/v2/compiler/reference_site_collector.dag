@@ -1,8 +1,9 @@
 module v2.compiler.reference_site_collector
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, is_empty, list_snoc_item }
+import v2.std.algebra { fold_list, is_empty, length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -81,6 +82,42 @@ import v2.extdeps.languages.dag {
 // not. The two rules agree wherever a binding and a mention coincide and differ only where the
 // index deliberately stops walking, which is the difference between the two questions rather than
 // a divergence between two answers to one question.
+// THE O(1) GUARD THAT KEEPS THIS WALK LINEAR.
+//
+// qualified_name_from_node FOLDS THE ENTIRE SUBTREE before it can answer, and this walk then
+// descends into that same subtree -- so calling it on every Conj made the traversal quadratic in
+// the depth of nested conjunctions: each level re-folded everything beneath it, and everything
+// beneath it was then walked again. DESIGN section 6 rules a proven cost-shape defect is ALWAYS
+// fixed regardless of the realised n, because "n is small here" is not a time-stable fact.
+//
+// A genuine authored qualified spelling is the fold-list shape: a Conj with exactly two children,
+// labelled head and tail. Both are O(1) to check, and they are the SAME two labels
+// v2.std.qualified_name's own fold recognises, so this is a cheap precondition on that authority
+// rather than a second, weaker spelling of it. Nodes that fail it cannot be qualified names, so
+// the expensive fold never runs on them; nodes that pass it are emitted as ONE site and never
+// descended into, so no subtree is ever both folded and walked.
+fn edge_is_qualified_name_spine_label(edge: Edge) -> Bool {
+  match edge.label {
+    Named { name: sym } =>
+      (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
+    Positional => false
+  }
+}
+
+fn node_has_qualified_name_shape(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) == 2 {
+        fold(node.children, init: true, f: fn(acc, edge) {
+          acc && edge_is_qualified_name_spine_label(edge: edge)
+        })
+      } else {
+        false
+      }
+    _ => false
+  }
+}
+
 fn reference_sites_in_edge(
   acc: FreeMonoid<ReferenceSite>,
   position: QualifiedName,
@@ -129,32 +166,36 @@ fn reference_sites_in_node(
   position: QualifiedName,
   node: Node
 ) -> FreeMonoid<ReferenceSite> {
-  match qualified_name_from_node(root: node) {
-    Accepted { value: qn, diagnostics: _ } =>
-      if is_empty(xs: qn) {
+  if node_has_qualified_name_shape(node: node) {
+    match qualified_name_from_node(root: node) {
+      Accepted { value: qn, diagnostics: _ } =>
+        if is_empty(xs: qn) {
+          reference_sites_in_children(acc: acc, position: position, node: node)
+        } else {
+          list_snoc_item(
+            xs: acc,
+            item: ReferenceSite { position: position, spelling: qn }
+          )
+        }
+      Rejected { diagnostics: _ } =>
         reference_sites_in_children(acc: acc, position: position, node: node)
-      } else {
-        list_snoc_item(
-          xs: acc,
-          item: ReferenceSite { position: position, spelling: qn }
-        )
-      }
-    Rejected { diagnostics: _ } =>
-      match node.kind {
-        TypeNode { connective: Atom { identity: sym } } =>
-          if dag_node_is_int_literal_atom(node: node) {
-            acc
-          } else {
-            list_snoc_item(
-              xs: acc,
-              item: ReferenceSite {
-                position: position,
-                spelling: Cons { head: sym, tail: Empty }
-              }
-            )
-          }
-        _ => reference_sites_in_children(acc: acc, position: position, node: node)
-      }
+    }
+  } else {
+    match node.kind {
+      TypeNode { connective: Atom { identity: sym } } =>
+        if dag_node_is_int_literal_atom(node: node) {
+          acc
+        } else {
+          list_snoc_item(
+            xs: acc,
+            item: ReferenceSite {
+              position: position,
+              spelling: Cons { head: sym, tail: Empty }
+            }
+          )
+        }
+      _ => reference_sites_in_children(acc: acc, position: position, node: node)
+    }
   }
 }
 
@@ -197,10 +238,33 @@ fn reference_site_collection_is_total(collection: ReferenceSiteCollection) -> Bo
   is_empty(xs: collection.unreadable_roots)
 }
 
-fn module_spine_unwrapped(root: Node) -> Node {
-  match namespace_graft_spine_segment_edge_optional(node: root) {
-    Present { value: spine_edge } => spine_edge.target
-    Absent => root
+// THE SPINE IS ONE WRAPPER PER SEGMENT, SO ONE UNWRAP WAS WRONG BY length(module_qn) - 1.
+//
+// v2.compiler.namespace_graft namespace_graft_fold_spine folds the module's qualified name and
+// wraps ONCE PER SEGMENT. Unwrapping a single level left the remaining wrappers standing, and the
+// generic named-edge rule below then walked them as ordinary containment -- re-appending those very
+// segments to a position that already carried them, so a mention in `a.b.c` was recorded at
+// `a.b.c.b.c`. A mislocated mention is a fabricated plausible answer (DESIGN section 5), and it
+// changes which lexical scope the resolver walks, so it is worse than an absent one.
+//
+// THE COUNT IS DERIVED, NOT GUESSED. It is the length of the module qualified name this same walk
+// already resolved from the header -- the identical value the spine was folded from -- rather than
+// "keep unwrapping while the shape matches". That distinction is load-bearing:
+// namespace_graft_spine_segment_edge_optional recognises ANY single named edge targeting a Conj, so
+// a shape-driven loop would happily eat a genuine one-declaration module body. Consuming the count
+// makes over-unwrapping unwritable rather than merely unlikely.
+fn module_spine_unwrapped(root: Node, segments_remaining: Int) -> Node {
+  if segments_remaining <= 0 {
+    root
+  } else {
+    match namespace_graft_spine_segment_edge_optional(node: root) {
+      Present { value: spine_edge } =>
+        module_spine_unwrapped(
+          root: spine_edge.target,
+          segments_remaining: segments_remaining - 1
+        )
+      Absent => root
+    }
   }
 }
 
@@ -214,7 +278,10 @@ fn module_reference_sites(
         sites: reference_sites_in_node(
           acc: acc.sites,
           position: module_qn,
-          node: module_spine_unwrapped(root: root)
+          node: module_spine_unwrapped(
+          root: root,
+          segments_remaining: length(xs: module_qn)
+        )
         ),
         unreadable_roots: acc.unreadable_roots
       }

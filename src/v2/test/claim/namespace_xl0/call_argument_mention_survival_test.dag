@@ -57,7 +57,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the only difference between them is whether that reference sits inside a call. So a green on the
 // first with a red on the second isolates call erasure and nothing else, while a red on BOTH says
 // the collector is blind to this tree generally and the probe is uninformative.
-data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n"
+data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport v2.std.logic { Bool }\n\ndata xl0_provided_value: Bool = true\n"
+
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
+
+fn xl0_provider_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: xl0_provider_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^xl0_provider_fixture_read,
+      file_path: "src/v2/test/fixture/namespace_xl0/provider_fixture.dag"
+    },
+    compilation_unit: ^xl0_provider_fixture_cu,
+    source_root: DagTree
+  }
+}
 
 fn call_argument_fixture_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -73,8 +88,8 @@ fn call_argument_fixture_read() -> DagSourceReadWitness {
 }
 
 data call_argument_fixture_ingest: SourceRootIngest = Cons {
-  head: call_argument_fixture_read(),
-  tail: Empty
+  head: xl0_provider_read(),
+  tail: Cons { head: call_argument_fixture_read(), tail: Empty }
 }
 
 fn fixture_ingest_accepted() -> Bool {
@@ -128,8 +143,25 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // than silently widening a denominator nobody re-measured. DESIGN section 4b(4) keeps a class's
 // discriminating evidence enrolled after the climb; this is the same discipline applied before it.
 //
-// THE POPULATION THAT SURVIVES: a value reference outside any call, and a parameter reference.
-// THE POPULATION THAT DOES NOT: a call argument, a callee name, and a type-position name.
+// THE POPULATION THAT SURVIVES IS NARROWER THAN THIS FILE FIRST CLAIMED, AND THE CORRECTION IS THE
+// MOST IMPORTANT ROW IN IT.
+//
+//   SURVIVES:      a BARE, SAME-MODULE value reference outside any call; a parameter reference
+//   DOES NOT:      a QUALIFIED CROSS-MODULE reference, with or without a call
+//                  a call argument; a callee name; a type-position name
+//
+// The first revision of these rows measured a bare same-module name and reported "a value
+// reference outside any call is found", which read as though cross-module references survived. They
+// do not. warm-ibex-518 measured a qualified cross-module reference on the XL-4 side and found
+// nothing, which is what forced the discriminator now enrolled below -- two claims had been
+// conflated, and the weaker one was stated as if it covered the stronger.
+//
+// WHY THE DISTINCTION IS THE WHOLE STORY RATHER THAN A REFINEMENT: a bare same-module name resolves
+// to a declaration in its OWN module, so it yields no dependency edge and contributes nothing to an
+// import-to-containment denominator, which is by definition about references that CROSS a module
+// boundary. The surviving population is therefore the part neither XL-0 nor XL-4 has any use for.
+// Stated plainly so no reader mistakes a non-empty site list for a working instrument: over the
+// production route this collector currently sees nothing that either stage needs.
 // RESTORATION TRIGGER for every red-stated row below: the v2 body-lowering repair that stops
 // normalize erasing call expressions (XL-2's finding, gunbc#11207, owned by eager-raven-113). Until
 // it lands, XL-0's denominator is incomplete by exactly these classes and gunbc.namespace_cut_stage
@@ -139,8 +171,8 @@ test fn the_call_argument_fixture_ingests_holds() -> Bool {
   fixture_ingest_accepted()
 }
 
-test fn the_call_argument_fixture_yields_one_module_root_holds() -> Bool {
-  fixture_root_count() == 1
+test fn the_call_argument_fixture_yields_two_module_roots_holds() -> Bool {
+  fixture_root_count() == 2
 }
 
 // THE CONTROL THAT MAKES EVERY ROW BELOW MEAN SOMETHING: a mention outside any call, found by the
@@ -192,4 +224,18 @@ test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
       )
     Rejected { diagnostics: _ } => false
   }
+}
+
+// BARE VERSUS QUALIFIED, THE DISCRIMINATOR XL-4'S RESULT FORCED. I reported "a value reference
+// outside any call IS found" on the strength of a BARE same-module name. warm-ibex-518 measured a
+// QUALIFIED cross-module value reference outside any call and found no edge. Those are two
+// different claims and I had conflated them, which matters because a denominator and a dependency
+// graph both care about the CROSS-MODULE case and almost not at all about the bare local one.
+// `v2.test.xl0_provider.xl0_provided_value` is referenced exactly once, in a body, outside any
+// call, and nothing else in either fixture module can produce that spelling.
+test fn a_qualified_cross_module_reference_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(
+    sites: fixture_sites(),
+    spelling: "v2.test.xl0_provider.xl0_provided_value"
+  )
 }
