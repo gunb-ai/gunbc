@@ -2,7 +2,17 @@ module extdeps.ocp.mt_jade.platform
 
 import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
-import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
+import std.measure {
+  Hertz,
+  MegatransfersPerSecond,
+  Microsecond,
+  Micrometer,
+  hertz,
+  megatransfers_per_second,
+  microsecond,
+  micrometer,
+  micrometer_count,
+}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.ocp.mt_jade.subject {
@@ -37,6 +47,12 @@ data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherb
   processor_socket_count: 2,
   ddr4_dimms_total: 32,
 }
+
+// SECTION 7.1 FEATURE LIST, DIMM SPEED LINE, VERBATIM GRAIN: "DDR4-3200 (2DPC)". This is the
+// Ampere-contributed OCP reference platform's published 2DPC capability ceiling, not a
+// rank-dependent operating-rate table. It corroborates the processor datasheet: 2DPC is stated
+// at 3200 as a maximum, not at 2933 or 2400. It does not admit every 1R/2R/4R fill at 3200.
+data mt_jade_dimm_speed_at_two_dpc: MegatransfersPerSecond = megatransfers_per_second(count: 3200)
 
 // THE SOCKET ROLES ARE NAMED IN THE SPEC'S POWER-ON NARRATIVE. Socket 0 is the master socket
 // whose firmware must start first; socket 1 is the slave socket whose reset release is gated

@@ -38,6 +38,7 @@ import v1.compiler.parse {
   parse_with_table,
   parse_with_table_in_occurrence_scope,
   ParseResult,
+  census_heads_body_stand_in,
 }
 import std.occurrence_identity {
   OccurrenceSynthetic,
@@ -925,11 +926,20 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
     "}")
 }
 
+// THE KEY LISTS ARE ORDERED AT THE KEY, WHICH IS WHY BOTH SITES READ `sorted_map_keys` AND
+// NOTHING SORTS THE EMITTED TEXT. `item_registry` is a host-ordered map; feeding `map_keys` of it
+// into the artifact made `dag-artifact.json` run-to-run unstable -- same graph, same `$ref`s, the
+// same key SET in a different order on every run (measured on main, gunbc#11072). An artifact
+// whose identity moves without its input moving makes every byte-equality oracle over it -- regen
+// fixed points, drift observers, emitted-closure identity -- unable to tell changed from
+// reordered. `sorted_map_keys` carries `CanonicalOrder` in `std.primitive_identity`; `map_keys`
+// carries `HostUnspecifiedOrder`, and that fact is the choice between them at any site whose
+// result reaches an emitted byte.
 fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"module\": ", serialize_node_ref(node: module.module, key_to_id: key_to_id),
     ", \"items\": ", json_list(items: module.items |> map(item => serialize_node_ref(node: item, key_to_id: key_to_id))),
-    ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => json_quote(s: k))),
+    ", \"item_registry_keys\": ", json_list(items: sorted_map_keys(module.item_registry) |> map(k => json_quote(s: k))),
     "}")
 }
 
@@ -969,7 +979,7 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
   let modules_json = typed.modules |> map(m => serialize_typed_module(module: m, key_to_id: key_to_id)) |> join(separator: ", ")
   let diagnostics_json = typed.diagnostics |> map(d => serialize_diagnostic(diagnostic: d)) |> join(separator: ", ")
-  let item_registry_json = map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
+  let item_registry_json = sorted_map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
   let json = concat(
     "{\n  \"version\": \"0.2.0\",\n  \"nodes\": {", nodes_json,
     "},\n  \"modules\": [", modules_json,
@@ -1157,12 +1167,84 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   }
 }
 
+// A census head is the declaration projection of an already parsed Node. Signature
+// subtrees and declaration identity survive; executable expressions and uses do not.
+// A function keeps the parser's refusing body stand-in: body presence is the existing
+// function-kind discriminator used by local_binding_for_item, not executable content.
+fn census_heads_item_is_fn_decl(item: Node) -> Bool {
+  item.connective == NoConnective && item.body != none && item.transport == none
+}
+
+fn census_heads_node(node: Node, children: List<Node>, body: Node?) -> Node {
+  Node {
+    occurrence_identity: node.occurrence_identity,
+    name: node.name,
+    ident: node.ident,
+    span: node.span,
+    ident_span: node.ident_span,
+    children: children,
+    connective: node.connective,
+    params: node.params,
+    inferred: node.inferred,
+    return_cardinality: node.return_cardinality,
+    uses: [],
+    body: body,
+    transport: node.transport,
+    properties: node.properties,
+    type_annotation: node.type_annotation,
+    is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: none,
+    module_item_kind: node.module_item_kind,
+    expr_data: NoExprData,
+  }
+}
+
+fn census_heads_module_item(item: Node) -> Node {
+  census_heads_node(
+    node: item,
+    children: item.children |> map(child => census_heads_module_item(item: child)),
+    body: if census_heads_item_is_fn_decl(item: item) {
+      Present { value: census_heads_body_stand_in() }
+    } else { none }
+  )
+}
+
+fn census_heads_module_node(module: Node) -> Node {
+  census_heads_node(
+    node: module,
+    children: module_items(n: module) |> map(item => census_heads_module_item(item: item)),
+    body: none
+  )
+}
+
 type CensusFillParse {
   modules: List<Node>,
   newline_indices: List<NewlineIndex>,
   diagnostics: List<ErrorNode>
   occurrence_transport: OccurrenceTransport
   annotations: SourceAnnotationGraph
+}
+
+type CensusModuleRetention
+  = RetainParsedModules
+  | RetainDeclarationHeads
+
+fn census_retain_module(module: Node, retention: CensusModuleRetention) -> Node {
+  match retention {
+    RetainParsedModules => module
+    RetainDeclarationHeads => census_heads_module_node(module: module)
+  }
+}
+
+fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetention) -> ParseResult {
+  ParseResult {
+    module: match result.module {
+      Present { value: module_node } => Present { value: census_retain_module(module: module_node, retention: retention) }
+      Absent => none
+    },
+    error: result.error
+  }
 }
 
 // Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
@@ -1200,14 +1282,18 @@ type CensusFillParse {
 // heads-only module index and is caught HERE and nowhere else. The discriminating RED is a
 // planted `fn body_probe(x: Int) -> Int { let = = = 9 }` in a module outside the entry's
 // closure: it must keep refusing with `expected name, found Eq`.
-// THE ENVIRONMENT-EXPLICIT CENSUS FOLD. Reading one revision's sources means reading them under
-// THAT revision's grammar; this form takes the environment so a base-side caller can supply the
-// base's own. The wrapper below keeps every ordinary head caller unchanged, and is the ONLY place
-// `dag_parse_environment` is named on this path -- a base-reading caller that reached the wrapper
-// would be reading base text under head rules, which is the defect
+// ONE CENSUS FOLD, TWO AXES. Main parameterized this fold on RETENTION while this branch
+// parameterized it on the parse ENVIRONMENT; keeping both variants would fork one fold into two
+// bodies that drift (section 3), so the axes meet in a single core and the named wrappers delegate
+// to it. A caller says only what it means to vary.
+//
+// THE ENVIRONMENT AXIS EXISTS because reading one revision's sources means reading them under THAT
+// revision's grammar. `dag_parse_environment` is named in the wrappers and nowhere in the core, so a
+// base-reading caller cannot pick up head rules by omission -- the defect
 // gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change names.
-fn parse_census_fill_sources_with_environment(
+fn parse_census_fill_sources_with(
   sources: List<SourceFile>,
+  retention: CensusModuleRetention,
   environment: ParseEnvironment
 ) -> CensusFillParse {
   let parsed = sources |> fold(init: FrontendAccum {
@@ -1242,9 +1328,10 @@ fn parse_census_fill_sources_with_environment(
       captures: p.annotations,
       source_length: p.source_length
     )
+    let retained_result = census_retain_parse_result(result: parsed.result, retention: retention)
     FrontendAccum {
-      parse_results: list_push(acc.parse_results, parsed.result),
-      module_inputs: match parsed.result.module {
+      parse_results: list_push(acc.parse_results, retained_result),
+      module_inputs: match retained_result.module {
         Present { value: parsed_module } =>
           list_push(acc.module_inputs, module_occurrence_input(
             module: parsed_module,
@@ -1279,15 +1366,39 @@ fn parse_census_fill_sources_with_environment(
   }
 }
 
-// THE HEAD-GRAMMAR WRAPPER. Every ordinary consumer parses the running binary's own corpus, so
-// naming the environment at each site would be noise; this is the single place that names
-// `dag_parse_environment` on the census path. A caller reading ANOTHER revision must call the
-// explicit form above -- reaching this wrapper with base-side sources is precisely the silent
-// head-rules read the parameter exists to prevent.
+// THE THREE WRAPPERS, each varying ONE axis and defaulting the other. Every ordinary consumer
+// parses the running binary's own corpus at full retention, so naming both axes at every call site
+// would be noise; these are the only places `dag_parse_environment` is named on the census path. A
+// caller reading ANOTHER revision must reach the environment form -- arriving here with base-side
+// sources is precisely the silent head-rules read the parameter exists to prevent.
 fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
-  parse_census_fill_sources_with_environment(
+  parse_census_fill_sources_with(
     sources: sources,
+    retention: RetainParsedModules,
     environment: dag_parse_environment
+  )
+}
+
+// Singleton occurrence and namespace consumers select their module-retention projection; the
+// grammar is the running binary's.
+fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention: CensusModuleRetention) -> CensusFillParse {
+  parse_census_fill_sources_with(
+    sources: sources,
+    retention: retention,
+    environment: dag_parse_environment
+  )
+}
+
+// Base-side readers select the grammar and keep full retention, because a baseline compared against
+// the head must carry the same declaration detail the head side carries.
+fn parse_census_fill_sources_with_environment(
+  sources: List<SourceFile>,
+  environment: ParseEnvironment
+) -> CensusFillParse {
+  parse_census_fill_sources_with(
+    sources: sources,
+    retention: RetainParsedModules,
+    environment: environment
   )
 }
 
@@ -1404,7 +1515,10 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let fill = parse_census_fill_sources(sources: options.census_only_sources)
+      let fill = parse_census_fill_sources_with_retention(
+        sources: options.census_only_sources,
+        retention: RetainDeclarationHeads
+      )
       let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
       let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
       let _ = trace_mark("compile.reconcile.done")

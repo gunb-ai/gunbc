@@ -167,7 +167,6 @@ module gunbc.recurring_failure_mode
 
 import std.types { String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
-import v2.std.algebra { fold_list }
 
 type RecurringFailureMode {
   identity: NonEmptyStr
@@ -176,9 +175,12 @@ type RecurringFailureMode {
 }
 
 // THE RECEIPTS ARE THE ROW'S PARTS AND THE JOIN IS RENDERING, WHICH IS WHY THIS FOLD LIVES HERE.
-// Concatenation with no separator is exact: each receipt carries its own trailing space, so this
-// reproduces the single string it replaced BYTE FOR BYTE, and that identity is the oracle the
-// decomposition was checked against rather than a claim about it.
+// Join with a single space is the separator. A trailing-space-on-every-receipt convention is
+// deleted: it was a migration-time oracle against the one string the list replaced, and it is
+// not a wall — an author dropping the space glued two receipts with nothing between them and
+// nothing in the corpus refused. After the split the consumer is the projection; the check is
+// that rendered projection bytes match for every row that already carried a separator, and a
+// row whose rendering changes was already missing one.
 fn authored(r: RecurringFailureMode) -> String {
-  fold_list(xs: r.receipts, empty: "", cons: fn(acc, receipt) { concat(acc, receipt) })
+  join(r.receipts, " ")
 }

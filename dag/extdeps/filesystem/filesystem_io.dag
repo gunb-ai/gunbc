@@ -34,7 +34,123 @@ fn filesystem_read_outcome(
   }
 }
 
-data filesystem_read_outcome_adoption_standing: String = "RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba: 92 unconverted consumption sites across 48 .dag files. REMAINDER after the first conversion: 91 unconverted consumption sites across 47 files. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
+// THE HOST'S OWN FAILURE CLASSIFICATION, AS A CHANNEL RATHER THAN AS TEXT. The file transport
+// answers `error_kind` beside `error`: the realization projects the host error's kind
+// (std::io::ErrorKind on the Rust realizations) into one of the four closed names below, and
+// answers the empty string when the operation succeeded. It is the next-rung trigger the
+// WriteCreateNew annotation names -- "a modeled already-exists channel on the file transport" --
+// and it discharges it without the heuristic that annotation refused: nothing here reads the error
+// TEXT. The host distinguished NotFound from PermissionDenied when the syscall failed; the channel
+// carries that distinction instead of discarding it at the transport.
+//
+// THE ADMISSION REFUSES AN UNRECOGNIZED NAME rather than mapping it to Other. A realization that
+// answers a name outside this roster has a different vocabulary from this interface, and folding
+// that into the catch-all would hide the divergence (the absorbing fallback, section 5).
+type FilesystemFailureKind
+  = FilesystemNotFound
+  | FilesystemAlreadyExists
+  | FilesystemPermissionDenied
+  | FilesystemOtherFailure
+
+type FilesystemFailureKindAdmission
+  = FilesystemFailureKindAdmitted { kind: FilesystemFailureKind }
+  | FilesystemFailureKindUnrecognized { observed: String }
+
+fn admit_filesystem_failure_kind(observed: String) -> FilesystemFailureKindAdmission {
+  if observed == "not_found" {
+    FilesystemFailureKindAdmitted { kind: FilesystemNotFound }
+  } else if observed == "already_exists" {
+    FilesystemFailureKindAdmitted { kind: FilesystemAlreadyExists }
+  } else if observed == "permission_denied" {
+    FilesystemFailureKindAdmitted { kind: FilesystemPermissionDenied }
+  } else if observed == "other" {
+    FilesystemFailureKindAdmitted { kind: FilesystemOtherFailure }
+  } else {
+    FilesystemFailureKindUnrecognized { observed: observed }
+  }
+}
+
+fn filesystem_failure_kind_name(kind: FilesystemFailureKind) -> String {
+  match kind {
+    FilesystemNotFound => "not_found"
+    FilesystemAlreadyExists => "already_exists"
+    FilesystemPermissionDenied => "permission_denied"
+    FilesystemOtherFailure => "other"
+  }
+}
+
+// A READ WHOSE FAILURE IS TYPED BY THE HOST. `FilesystemExactPathAbsent` is the one arm that
+// concludes absence, and it concludes it only for THE EXACT PATH READ and only because the host
+// answered NotFound for that path -- which is true both when the final component is missing and when
+// an ANCESTOR directory is. A consumer that needs "the directory exists and this entry does not"
+// must establish the directory separately (a successful read of a known member of it does); this arm
+// does not claim it. Every other failure is `FilesystemExactPathUnreadable` carrying the host's
+// kind: present-but-unreadable, permission, I/O -- the worlds the Bool `success` channel conflated
+// with absence, and the reason the listing rule above exists for consumers that have only that Bool.
+type FilesystemExactRead
+  = FilesystemExactPathRead { path: String, content: String }
+  | FilesystemExactPathAbsent { path: String }
+  | FilesystemExactPathUnreadable { path: String, kind: FilesystemFailureKind, error: String }
+  | FilesystemExactPathKindUnrecognized { path: String, observed: String, error: String }
+
+fn filesystem_exact_read(
+  path: String,
+  content: String,
+  success: Bool,
+  error: String,
+  error_kind: String,
+) -> FilesystemExactRead {
+  if success {
+    FilesystemExactPathRead { path: path, content: content }
+  } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindUnrecognized { observed: o } =>
+        FilesystemExactPathKindUnrecognized { path: path, observed: o, error: error }
+      FilesystemFailureKindAdmitted { kind: k } =>
+        match k {
+          FilesystemNotFound => FilesystemExactPathAbsent { path: path }
+          FilesystemAlreadyExists => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
+          FilesystemPermissionDenied => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
+          FilesystemOtherFailure => FilesystemExactPathUnreadable { path: path, kind: k, error: error }
+        }
+    }
+  }
+}
+
+// A CREATE-NEW WHOSE REFUSAL IS TYPED BY THE HOST. `FilesystemCreateTargetOccupied` is the arm a
+// put-if-absent protocol needs: the target existed at the instant of publication, so another writer
+// (or an earlier run) holds the name, and the caller's next move is to read what is there -- never
+// to overwrite it. Every other refusal is the host's and carries its kind.
+type FilesystemCreateNew
+  = FilesystemCreated { path: String }
+  | FilesystemCreateTargetOccupied { path: String }
+  | FilesystemCreateRefused { path: String, kind: FilesystemFailureKind, error: String }
+  | FilesystemCreateKindUnrecognized { path: String, observed: String, error: String }
+
+fn filesystem_create_new(
+  path: String,
+  success: Bool,
+  error: String,
+  error_kind: String,
+) -> FilesystemCreateNew {
+  if success {
+    FilesystemCreated { path: path }
+  } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindUnrecognized { observed: o } =>
+        FilesystemCreateKindUnrecognized { path: path, observed: o, error: error }
+      FilesystemFailureKindAdmitted { kind: k } =>
+        match k {
+          FilesystemAlreadyExists => FilesystemCreateTargetOccupied { path: path }
+          FilesystemNotFound => FilesystemCreateRefused { path: path, kind: k, error: error }
+          FilesystemPermissionDenied => FilesystemCreateRefused { path: path, kind: k, error: error }
+          FilesystemOtherFailure => FilesystemCreateRefused { path: path, kind: k, error: error }
+        }
+    }
+  }
+}
+
+data filesystem_read_outcome_adoption_standing: String ="RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba: 92 unconverted consumption sites across 48 .dag files. REMAINDER after the first conversion: 91 unconverted consumption sites across 47 files. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
 
 // ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ. `Read` answers
 // success=false both for a path that does not exist and for one that exists and cannot be read, and
@@ -534,14 +650,15 @@ data filesystem_absence_establishment_adoption_standing: String = "RUNG: structu
 // THE CREATION the same syscall, so the race has no window rather than a narrow one. Construction
 // over validation (section 5) at a boundary where validation cannot win.
 //
-// THE REFUSAL DOES NOT CLASSIFY ITSELF, ON PURPOSE. `error` carries the host's message verbatim and
-// the operation does NOT report whether the refusal was "already existed" or "permission denied":
-// the channels available here cannot separate them, and deciding it by matching on the error TEXT
-// would be a heuristic standing in for an observation -- the smuggled-confidence shape section 5
-// names. A caller learns that the create did not happen and why the host said so, which is what it
-// needs in order to refuse; it does not learn a classification nothing measured.
-// NEXT-RUNG TRIGGER: a modeled already-exists channel on the file transport, at which point the race
-// and the permission failure become separate arms and this paragraph is deleted.
+// THE REFUSAL IS CLASSIFIED BY THE HOST, NEVER BY ITS TEXT. `error` carries the host's message
+// verbatim; `error_kind` carries the kind the host's error already had (see FilesystemFailureKind),
+// so "already existed" and "permission denied" are separate arms of filesystem_create_new without
+// anything matching on the message. Deciding it from the TEXT would have been a heuristic standing in
+// for an observation -- the smuggled-confidence shape section 5 names -- which is why this annotation
+// used to leave the refusal unclassified and named the channel as its next-rung trigger. The channel
+// is declared on the two operations that have a consumer for it (Read and WriteCreateNew, both
+// consumed by extdeps.realization.materialization_store_local); an operation gains it when a
+// consumer needs it, since the transport answers it for every verb.
 service Filesystem {
 
   operation Write {
@@ -573,6 +690,7 @@ service Filesystem {
       bytes_written: Int from "bytes_written"
       path: String from "path"
       error: String from "error"
+      error_kind: String from "error_kind"
     }
     transport file { path: "{path}", verb: "write_create_new" }
   }
@@ -583,6 +701,7 @@ service Filesystem {
       content: String from "content"
       success: Bool from "read_success"
       error: String from "error"
+      error_kind: String from "error_kind"
     }
     readonly
     transport file { path: "{path}" }

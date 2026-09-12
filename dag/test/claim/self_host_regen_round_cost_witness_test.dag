@@ -51,6 +51,7 @@ fn a_receipt(marks: List<TraceMark>) -> RegenRoundCostReceipt {
     changed_paths: ["v1_rt.rs", "v1_compiler_runtime_rust.rs"],
     convergence_stage_receipt_ids: ["stage-1", "stage-2"],
     installed_mirrors: ["v1_rt.rs"],
+    host_shell_modules: [],
     rebuild_packages: ["v1-stage0-runtime", "v1-compiler"],
     executable_digest: "exedigest",
     second_generation_candidate_digest: "gen2digest"

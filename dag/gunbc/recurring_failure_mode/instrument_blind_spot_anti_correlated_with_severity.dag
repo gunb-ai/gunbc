@@ -7,77 +7,77 @@ data instrument_blind_spot_anti_correlated_with_severity: RecurringFailureMode =
   identity: "instrument_blind_spot_anti_correlated_with_severity" as NonEmptyStr,
 
   receipts: [
-    "**an instrument loses its subject precisely as that subject becomes severe enough to act on, so the evidence required to justify a repair is destroyed by the condition the repair would fix** (INVALID STATE: an instrument accumulates observations and publishes them at a completion boundary; a subject that exceeds a limit never reaches that boundary; so the observation is dropped, and the instrument reports the subject as ABSENT rather than as LOST. ",
+    "**an instrument loses its subject precisely as that subject becomes severe enough to act on, so the evidence required to justify a repair is destroyed by the condition the repair would fix** (INVALID STATE: an instrument accumulates observations and publishes them at a completion boundary; a subject that exceeds a limit never reaches that boundary; so the observation is dropped, and the instrument reports the subject as ABSENT rather than as LOST.",
 
-    "The omission is not random -- it is a monotone function of severity, so the instrument is quietest about exactly the population it exists to surface. ",
+    "The omission is not random -- it is a monotone function of severity, so the instrument is quietest about exactly the population it exists to surface.",
 
-    "MECHANISM, in the instance measured: the required floor's cross-claim demand census absorbs a claim's producer demands when the claim RETURNS. ",
+    "MECHANISM, in the instance measured: the required floor's cross-claim demand census absorbs a claim's producer demands when the claim RETURNS.",
 
-    "A claim preempted by the per-claim deadline never returns. ",
+    "A claim preempted by the per-claim deadline never returns.",
 
-    "So the producer whose cost CAUSED the preemption contributes no row, and a reader asking `which producers does this run re-derive across claims` is answered without it. ",
+    "So the producer whose cost CAUSED the preemption contributes no row, and a reader asking `which producers does this run re-derive across claims` is answered without it.",
 
-    "MEASURED on main run 34085084808: the census summary reports `claim_cpu_censored_rows_excluded=4`, and that run had exactly four interrupted claims -- the three `outside_modeled_guarantee_witness_test` rows and one determinism row. ",
+    "MEASURED on main run 34085084808: the census summary reports `claim_cpu_censored_rows_excluded=4`, and that run had exactly four interrupted claims -- the three `outside_modeled_guarantee_witness_test` rows and one determinism row.",
 
-    "No row is printed for `v2.std.decl_index.decl_facts`, for `v2.lens.module_graph.module_declaration_facts_live`, or for the nullary producer that reads them, which are the producers those three claims were preempted by. ",
+    "No row is printed for `v2.std.decl_index.decl_facts`, for `v2.lens.module_graph.module_declaration_facts_live`, or for the nullary producer that reads them, which are the producers those three claims were preempted by.",
 
-    "The same summary declares `omitted_under_floor` counters bounding what no artifact retains, so the census is a lower bound with a declared blind spot even before this class applies. ",
+    "The same summary declares `omitted_under_floor` counters bounding what no artifact retains, so the census is a lower bound with a declared blind spot even before this class applies.",
 
-    "HARM: an enrolment proposal evidenced from that census would have been evidenced from an artifact structurally unable to contain its subject, and the shape of the failure is the one DESIGN section 5 ranks worst -- not an error but a well-formed answer to the wrong population. ",
+    "HARM: an enrolment proposal evidenced from that census would have been evidenced from an artifact structurally unable to contain its subject, and the shape of the failure is the one DESIGN section 5 ranks worst -- not an error but a well-formed answer to the wrong population.",
 
-    "A reader cannot tell `this producer is not re-derived` from `this producer's demands were lost with a preempted claim`, and the two prescribe opposite actions: leave it alone, or enrol it. ",
+    "A reader cannot tell `this producer is not re-derived` from `this producer's demands were lost with a preempted claim`, and the two prescribe opposite actions: leave it alone, or enrol it.",
 
-    "THE CHEAP RECOGNITION RULE, and it costs one line of a summary: compare the censored-row count to the interrupted-claim count, then check whether the instrument prints a row for the producer those claims were preempted by. ",
+    "THE CHEAP RECOGNITION RULE, and it costs one line of a summary: compare the censored-row count to the interrupted-claim count, then check whether the instrument prints a row for the producer those claims were preempted by.",
 
-    "Equal counts with no such row is this class. ",
+    "Equal counts with no such row is this class.",
 
-    "WHY IT IS NOT A GATE DEFECT, which is why it sits unnoticed: the census gates nothing and enrols nothing by its own declaration -- its code says so in the same breath as naming the roster it feeds. ",
+    "WHY IT IS NOT A GATE DEFECT, which is why it sits unnoticed: the census gates nothing and enrols nothing by its own declaration -- its code says so in the same breath as naming the roster it feeds.",
 
-    "Nothing refuses, nothing is blocked, and no verdict is wrong today. ",
+    "Nothing refuses, nothing is blocked, and no verdict is wrong today.",
 
-    "It is an EVIDENCE-AVAILABILITY defect: it silently bounds what anyone can ever prove about the population it drops, and a bound on provability produces no symptom until someone tries to prove the thing. ",
+    "It is an EVIDENCE-AVAILABILITY defect: it silently bounds what anyone can ever prove about the population it drops, and a bound on provability produces no symptom until someone tries to prove the thing.",
 
-    "**SECOND INSTRUMENT, SAME CLASS, AND IT IS THE WORST OF THE THREE BECAUSE OF WHERE IT SITS.** The floor's `[over-cost]` ranking -- which announces itself as the run's most expensive claims -- excluded, in control run 34088506991, every one of the three claims that actually BLOCKED that run. ",
+    "**SECOND INSTRUMENT, SAME CLASS, AND IT IS THE WORST OF THE THREE BECAUSE OF WHERE IT SITS.** The floor's `[over-cost]` ranking -- which announces itself as the run's most expensive claims -- excluded, in control run 34088506991, every one of the three claims that actually BLOCKED that run.",
 
-    "Its top row is a determinism witness at `observed_cpu_ms=447`, UNDER the line, while three claims sat at tens of seconds and are absent, because a claim that never completes is right-censored out of the ranking. ",
+    "Its top row is a determinism witness at `observed_cpu_ms=447`, UNDER the line, while three claims sat at tens of seconds and are absent, because a claim that never completes is right-censored out of the ranking.",
 
-    "A report of the most expensive claims that structurally excludes every claim too expensive to finish is this class at the exact place a reader would MOST expect to find them, which is what makes this the worst instance rather than merely a third one. ",
+    "A report of the most expensive claims that structurally excludes every claim too expensive to finish is this class at the exact place a reader would MOST expect to find them, which is what makes this the worst instance rather than merely a third one.",
 
-    "**THIRD INSTANCE, AND IT WEARS THE READER RATHER THAN THE INSTRUMENT, which is why it belongs on this row and not on a tooling one.** Reading that same control log, a search for `Interrupted` returned zero and was briefly believed -- the log spells the disposition `interrupted_before_verdict`, lowercase. ",
+    "**THIRD INSTANCE, AND IT WEARS THE READER RATHER THAN THE INSTRUMENT, which is why it belongs on this row and not on a tooling one.** Reading that same control log, a search for `Interrupted` returned zero and was briefly believed -- the log spells the disposition `interrupted_before_verdict`, lowercase.",
 
-    "A false negative from a wrong pattern, in the FLATTERING direction, on a run that had in fact refused three claims. ",
+    "A false negative from a wrong pattern, in the FLATTERING direction, on a run that had in fact refused three claims.",
 
-    "The class is identical: an absent observation reading as `the thing did not happen` rather than as `I did not observe it`, and the asymmetry is the same one -- the reassuring reading is the one that requires no further work, so it is the one that survives. ",
+    "The class is identical: an absent observation reading as `the thing did not happen` rather than as `I did not observe it`, and the asymmetry is the same one -- the reassuring reading is the one that requires no further work, so it is the one that survives.",
 
-    "The only thing that caught it was a POSITIVE CONTROL in the same artifact: the two producers whose warm rows printed `disposition=Stored` in BOTH arms, which established that the log does report dispositions and therefore that a silence about a third producer was informative. ",
+    "The only thing that caught it was a POSITIVE CONTROL in the same artifact: the two producers whose warm rows printed `disposition=Stored` in BOTH arms, which established that the log does report dispositions and therefore that a silence about a third producer was informative.",
 
-    "A negative result is trustworthy only beside a positive that fires. ",
+    "A negative result is trustworthy only beside a positive that fires.",
 
-    "WHY IT IS NOT `absorbing_fallback`: that class substitutes a superset when a precise answer is unavailable, and its tell is a widening failure arm. ",
+    "WHY IT IS NOT `absorbing_fallback`: that class substitutes a superset when a precise answer is unavailable, and its tell is a widening failure arm.",
 
-    "Here nothing widens and nothing is substituted -- the arm simply never runs, and the count of what it skipped is published honestly. ",
+    "Here nothing widens and nothing is substituted -- the arm simply never runs, and the count of what it skipped is published honestly.",
 
-    "The defect is that the published count is never JOINED to the identities it skipped, so an honest aggregate stands in for a missing per-subject fact. ",
+    "The defect is that the published count is never JOINED to the identities it skipped, so an honest aggregate stands in for a missing per-subject fact.",
 
-    "WHY IT IS NOT `salience_instrument_blind_to_the_record_it_sizes`, which is the nearest neighbour and also an instrument-blindness class: there the instrument reports a NUMBER that is wrong for one representation, and the harm is misallocated attention on a record everyone can see. ",
+    "WHY IT IS NOT `salience_instrument_blind_to_the_record_it_sizes`, which is the nearest neighbour and also an instrument-blindness class: there the instrument reports a NUMBER that is wrong for one representation, and the harm is misallocated attention on a record everyone can see.",
 
-    "Here the record is not misreported, it is ABSENT, and its absence is indistinguishable from the subject never having occurred. ",
+    "Here the record is not misreported, it is ABSENT, and its absence is indistinguishable from the subject never having occurred.",
 
-    "The two also differ in direction of dependence: diff size is wrong as a function of REPRESENTATION and is equally wrong for a trivial and a substantive edit, while this blindness is a function of SEVERITY and is zero until the subject crosses a limit. ",
+    "The two also differ in direction of dependence: diff size is wrong as a function of REPRESENTATION and is equally wrong for a trivial and a substantive edit, while this blindness is a function of SEVERITY and is zero until the subject crosses a limit.",
 
-    "That monotonicity is the whole class and is what makes it worth a row of its own. ",
+    "That monotonicity is the whole class and is what makes it worth a row of its own.",
 
-    "RUNG FOUND AT: 1, mitigatable. ",
+    "RUNG FOUND AT: 1, mitigatable.",
 
-    "The censored count IS emitted, so a reader who thinks to compare it against the interrupted-claim count can detect the condition; safety depends entirely on that comparison occurring to someone. ",
+    "The censored count IS emitted, so a reader who thinks to compare it against the interrupted-claim count can detect the condition; safety depends entirely on that comparison occurring to someone.",
 
-    "CEILING: 3, structurally guaranteed. ",
+    "CEILING: 3, structurally guaranteed.",
 
-    "Which producers a preempted claim had demanded is known to the instrument at preemption time -- the demands are accumulated as evaluation proceeds and only the ABSORPTION is deferred to return -- so a typed censored-demand row naming the claim and the identities lost with it is derivable rather than requiring a new measurement. ",
+    "Which producers a preempted claim had demanded is known to the instrument at preemption time -- the demands are accumulated as evaluation proceeds and only the ABSORPTION is deferred to return -- so a typed censored-demand row naming the claim and the identities lost with it is derivable rather than requiring a new measurement.",
 
-    "It cannot reach 4: the claim really is preempted and its demand set really is partial, so `partial` is a state the model must be able to represent rather than one it can make unwritable. ",
+    "It cannot reach 4: the claim really is preempted and its demand set really is partial, so `partial` is a state the model must be able to represent rather than one it can make unwritable.",
 
-    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **the demand census emits, for every preempted claim, the producer identities whose demands were unabsorbed, as rows typed distinctly from ordinary demand rows** -- sufficient for a consumer reading the artifact alone to distinguish `not demanded` from `demanded and lost`, demonstrated by a discriminating red on a fixture run carrying one interrupted claim whose producer appears in neither population. ",
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **the demand census emits, for every preempted claim, the producer identities whose demands were unabsorbed, as rows typed distinctly from ordinary demand rows** -- sufficient for a consumer reading the artifact alone to distinguish `not demanded` from `demanded and lost`, demonstrated by a discriminating red on a fixture run carrying one interrupted claim whose producer appears in neither population.",
 
     "Raising the per-claim limit does NOT discharge this: it moves which claims are censored without making any censored claim's demands visible, and it changes the thing being measured, which is the remedy DESIGN section 5 would call a widen rather than a repair.)",
   ],
