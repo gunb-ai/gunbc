@@ -1,0 +1,8 @@
+module test.fixture.decl_facts_authored_string_channel.specimens
+
+import std.types { String }
+
+// Tiny pool for the channel-separation witness. The reflection support pool is
+// too large to first-touch on a newly enrolled identity (run 34690964764:
+// 520ms marginal vs 38ms for sibling contains-walks on a warm memo).
+data planted_constructor_spelling_string_specimen: String = "SingleAuthority"
