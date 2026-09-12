@@ -191,7 +191,7 @@ fn fx_derived(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>)
       finish_lines: [], fronts: [],
       remaining: RemainingShape {
         sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
-        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
+        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, undispatchable: 0 - 1,
       },
       proposed: ProposedCarrierAbsent,
     }
@@ -212,7 +212,7 @@ test fn witness_fixture_shape_exact_populations() -> Bool {
         && lv.remaining.in_flight == 0
         && lv.remaining.dependency_held == 3
         && lv.remaining.contract_held == 1
-        && lv.remaining.unsized == 1
+        && lv.remaining.undispatchable == 1
         && !lv.accepted
         && count(lv.contributing_fronts) == 2
   }

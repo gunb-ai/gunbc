@@ -42,7 +42,7 @@ fn fixture_view() -> V1DeletionProgramView {
       in_flight: 0,
       dependency_held: 0,
       contract_held: 0,
-      unsized: 0,
+      undispatchable: 0,
     },
     proposed: ProposedCarrierAbsent,
   }
