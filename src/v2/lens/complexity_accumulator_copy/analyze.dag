@@ -117,11 +117,26 @@ fn collect_value_identifiers(n: Node) -> List<Symbol> {
 // so the bare-name arm below was unreachable for every call in a corpus where named arguments are
 // the ordinary spelling, and a copied accumulator classified as ^copied_port_computed_argument: a
 // refusal standing exactly where a proof was available, which is why the lens minted no suspect on
-// the textbook fold/list_append specimen. The value subtree is the node arg_value_symbol already
-// reads through, so the identifier census and the symbol read now ask ONE authority what the
-// argument IS rather than disagreeing about it. The no-value-capture arm keeps reading the whole
-// capture: the census stays an over-approximation there, so the reading degrades toward the
-// refusal arms and never toward clean.
+// the textbook fold/list_append specimen.
+//
+// THE LABEL IS STRIPPED BY NAVIGATION, NOT BY SEARCH, AND THAT DISTINCTION IS THE WHOLE CORRECTNESS
+// ARGUMENT. The first repair here searched for the argument's first ^dag_surface_primary_expr.
+// v2.extdeps.languages.dag parse_subtree_find_production_captured is a FIRST-MATCH DFS that
+// short-circuits on ParseSubtreeFound, and dag_surface_binary_expr / dag_surface_unary_expr sit
+// ABOVE primary_expr in the grammar - so a compound argument returned only its leftmost primary
+// expression and the census became an UNDER-approximation of the identifiers the argument names.
+// `left: seed + acc` read as mentions [seed]: one identifier, so the bare-name arm fired, a
+// BindsFresh `seed` resolved it to PortPureLiteral, and a copied accumulator classified CLEAN with
+// the carrier invisible to any_port_carries_carrier as well. That is the failure arm widening into
+// silence that DESIGN section 5 forbids, and the same class this lens's own roster files as
+// fold_shape_visible_to_no_lens - introduced by the repair, caught in review, and recorded here so
+// the shape is not re-derived by search a third time.
+//
+// So the value is reached by walking the `name : value` spine, and EVERY deviation from that exact
+// shape falls back to the whole capture. A positional argument has no label to strip; a sequence
+// whose second element is an operator rather than ^dag_token_colon is not a labelled argument at
+// all. Both keep the whole-capture census, which over-approximates the mention set, so the reading
+// degrades toward the refusal arms and never toward clean.
 fn arg_value_capture_optional(arg_capture: Node) -> Optional<Node> {
   find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr)
 }
@@ -133,11 +148,39 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
   }
 }
 
-fn arg_value_mentions(arg_capture: Node) -> List<Symbol> {
-  match arg_value_capture_optional(arg_capture: arg_capture) {
-    Present { value: value_expr } => collect_value_identifiers(n: value_expr)
-    Absent => collect_value_identifiers(n: arg_capture)
+fn arg_value_node(arg_capture: Node) -> Node {
+  match sequence_left_node(cap: arg_capture) {
+    Absent => arg_capture
+    Present { value: name_node } =>
+      match v2.std.grammar.node_atom_identity_optional(node: name_node) {
+        Absent => arg_capture
+        Present { value: _label } =>
+          match sequence_right_node(cap: arg_capture) {
+            Absent => arg_capture
+            Present { value: after_name } =>
+              match sequence_left_node(cap: after_name) {
+                Absent => arg_capture
+                Present { value: separator } =>
+                  match v2.std.grammar.node_atom_identity_optional(node: separator) {
+                    Absent => arg_capture
+                    Present { value: sep } =>
+                      if sep == ^dag_token_colon {
+                        match sequence_right_node(cap: after_name) {
+                          Absent => arg_capture
+                          Present { value: value_node } => value_node
+                        }
+                      } else {
+                        arg_capture
+                      }
+                  }
+              }
+          }
+      }
   }
+}
+
+fn arg_value_mentions(arg_capture: Node) -> List<Symbol> {
+  collect_value_identifiers(n: arg_value_node(arg_capture: arg_capture))
 }
 
 fn port_reading(arg_capture: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
