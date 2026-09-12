@@ -361,6 +361,13 @@ type MergeQueueEntryCount = Measure<Count, One, Nat>
 // same axis. Added 2026-09-04.
 type PowerCordCount = Measure<Count, One, Nat>
 
+// A count of memory controllers an EDAC driver has registered. Same axis, same reason as its
+// siblings above: extdeps.linux.edac counts controllers, and a module whose whole point is that ONE
+// controller beside sixteen DIMMs means something specific is exactly where a bare Nat stops
+// distinguishing a controller count from a DIMM count, a channel count or a slot number. Added
+// 2026-09-11.
+type MemoryControllerCount = Measure<Count, One, Nat>
+
 type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
@@ -1130,6 +1137,14 @@ fn power_cord_count(count: Nat) -> PowerCordCount {
 }
 
 fn power_cord_count_value(c: PowerCordCount) -> Nat {
+  measure_count(c)
+}
+
+fn memory_controller_count(count: Nat) -> MemoryControllerCount {
+  Measure { count: count }
+}
+
+fn memory_controller_count_value(c: MemoryControllerCount) -> Nat {
   measure_count(c)
 }
 

@@ -41,7 +41,8 @@ import gunbc.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
 }
-import gunbc.roadmap_page { roadmap_page_for_authority_launch, roadmap_daily_workspace_page_for_authority_observed, roadmap_fleet_page }
+import gunbc.roadmap_page { roadmap_page_for_projection_launch, roadmap_fleet_page }
+import gunbc.roadmap_authority { RoadmapAuthorityProjection, roadmap_authority_projection }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -56,11 +57,18 @@ import gunbc.roadmap_instrument_tuner { instrument_tuner_page }
 import gunbc.roadmap_instrument_motion { instrument_motion_page }
 import gunbc.roadmap_repo_atlas_sandbox { repo_atlas_page }
 import gunbc.roadmap_static_site {
-  roadmap_site_roadmap_md_body,
-  roadmap_site_dispatch_json_body,
+  roadmap_site_roadmap_md_body_over,
+  roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
-import gunbc.roadmap_site_surface_render { page_render_refusal_body }
+import gunbc.roadmap_site_surface_render {
+  page_render_refusal_body,
+  roadmap_site_health_path,
+  roadmap_site_roadmap_url_path,
+  roadmap_site_dispatch_url_path,
+  roadmap_site_daily_url_path,
+  roadmap_site_full_url_path,
+}
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   served_observation_surface_response_for_instance,
@@ -68,8 +76,8 @@ import gunbc.roadmap_served_observation {
 }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
-  belt_spawn_outcome_json, belt_launch_host_standing_for_page,
-  belt_dispatch_node, belt_dispatch_node_for_instance,
+  belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
+  belt_dispatch_node, belt_dispatch_node_for_instance_over,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
@@ -223,14 +231,43 @@ type RoadmapServeTableBuild
 // what is being decided and nothing else; the button on that page POSTs to the same path, and
 // that request is the only one that commits. Same capability in both, different consequence, and
 // the split is what keeps "opened the link" distinguishable from "decided".
+// THE SERVED PATH IS ONE FACT. gunbc.roadmap_site_surface_render already declared each of these
+// paths as data -- the static site, the surface-observation bundle and the deploy witnesses all
+// cite those constants -- while these rows carried a second spelling of the same string. Two copies
+// of a path agree until one moves, and the one that moves silently is the one nothing reads back:
+// a witness spelling "/roadmap.md" reaches a 404 and asserts nothing (review 63317, and the
+// operator's live check against the running instance). The rows now consume the declaration, so a
+// renamed route moves the routing table, the static artifact and every witness together.
+// THE ONE FACT THE SERVING PROCESS CANNOT OBSERVE, DECLARED SO IT CAN REFUSE.
+//
+// Route / is served from a body the BELT TICK rendered, under whatever plan that process held. The
+// stored body carries no identity of the authority it came from, so a serving process handed a
+// plan cannot check whether the body agrees with it -- the class is filed as
+// gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source.
+//
+// That made this entry's plan parameter a constructor for silent wrongness: before the parameter
+// existed no caller COULD diverge, and DESIGN 4b puts silent wrongness outside the ladder and
+// forbids it outright rather than admitting it at a low rung. A note saying so is not a refusal
+// (4c), so the honest arm available today is the one 5 names: refuse, never widen.
+//
+// The agreement is therefore a DECLARED fact of the call rather than something inferred. A caller
+// whose own tick renders the daily body under the same plan says so and is served; a caller that
+// cannot say so gets a located refusal on that ONE route, and every other route still answers from
+// its plan. This is 4b's "outside the modeled guarantee" column handled at a declared boundary --
+// observed, refused, or mitigated, never fabricated -- not a fifth rung and not a proof.
+
+type ServedDailyBodyAuthority
+  = DailyBodyRenderedUnderThisPlan
+  | DailyBodyAuthorityUnknown
+
 fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
   [
-    RoadmapServeRouteSpec { method: GET, raw: "/", handler: RoadmapDailyPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/roadmap", handler: RoadmapFullPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: roadmap_site_health_path as String, handler: HealthzHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/provider.json", handler: ProviderReadinessHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sessions.json", handler: SessionsJsonHandler },
@@ -403,8 +440,9 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
 // backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN
 // 5: an unreachable arm refuses, never fabricates).
 
-fn serve_dispatch_handler_response_for_instance(
+fn serve_dispatch_handler_response_over(
   instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
@@ -416,9 +454,20 @@ fn serve_dispatch_handler_response_for_instance(
     )
   } else {
     belt_dispatch_response(
-      r: belt_dispatch_node_for_instance(instance: instance, node_id: node_id),
+      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
     )
   }
+}
+
+fn serve_dispatch_handler_response_for_instance(
+  instance: HostDashboardInstance,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  serve_dispatch_handler_response_over(
+    instance: instance,
+    plan: roadmap_authority_projection(),
+    params: params,
+  )
 }
 
 // POST /publish/NODE_ID is the publication producer's live trigger, and it exists because belt_tick
@@ -587,19 +636,62 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
 // formerly accepted at the seam and dropped before invoke, so a body-reading POST handler would
 // have silently seen the empty string — a latent widen).
 
-fn roadmap_serve_invoke_for_instance(
+// THE PLAN TRAVELS WITH THE REQUEST, exactly as the instance already does. Which plan a process
+// serves is fixed by its serve entry function -- `gunbc serve` binds --entry/--function and carries
+// no per-request argument -- so an entry declared elsewhere supplies its own projected plan by
+// CALLING this fold, and nothing here enumerates or registers callers. The handlers that consult a
+// roadmap read the parameter instead of the public carrier, so one response cannot mix two plans.
+//
+// WHICH HANDLERS IGNORE IT, AND THE ONE THAT ONLY LOOKS LIKE IT DOES. Assets, the sandbox echo and
+// the approval routes consult no roadmap at all. The sessions, attempts, workflow and observation
+// surfaces read bodies the belt tick already wrote, and none of them is a roadmap render.
+//
+// RoadmapDailyPageHandler IS a roadmap render and must not be filed with them (review 63341, which
+// caught this note grouping it there). Its plan is bound EARLIER, at the tick that rendered the
+// body, by gunbc.roadmap_served_observation served_observation_observe_and_write_over -- so the
+// daily page is parameterized, on the other entry. The consequence a caller has to know: supplying
+// a plan HERE does not reach `/`. A process serving its own plan must supply it at BOTH entries,
+// the serve entry and the tick entry; supply it at only this one and `/` answers from whatever plan
+// the tick that wrote the body was given, with no refusal, because a pre-rendered body carries no
+// record of the plan it came from. That is a real seam between two processes, not a gap inside this
+// fold, and it is stated rather than papered over: nothing here can detect the mismatch.
+fn roadmap_serve_invoke_over(
   instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match handler {
-    RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
-    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority_launch(launch: belt_launch_host_standing_for_page(instance: instance)))
+    RoadmapDailyPageHandler =>
+      match daily_body {
+        DailyBodyRenderedUnderThisPlan => serve_daily_page_response_for_instance(instance: instance)
+        DailyBodyAuthorityUnknown =>
+          serve_text_response(
+            status: 503,
+            content_type: text_plain_utf8,
+            body: join([
+              "the daily workspace is served from a body this process did not render: the belt tick ",
+              "wrote it under the plan THAT process held, and a stored body carries no identity of ",
+              "the authority it came from, so agreement with the plan this entry was given cannot ",
+              "be decided here. Refusing rather than answering from an unknown authority ",
+              "(gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source). ",
+              "Bind the same plan at the tick entry, gunbc.roadmap_served_observation ",
+              "served_observation_observe_and_write_over, and declare it with ",
+              "DailyBodyRenderedUnderThisPlan.\n",
+            ], ""),
+          )
+      }
+    RoadmapFullPageHandler =>
+      serve_page_response(page: roadmap_page_for_projection_launch(
+        proj: plan,
+        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan),
+      ))
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
-    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
+    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan))
+    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
       serve_text_response(
@@ -614,7 +706,7 @@ fn roadmap_serve_invoke_for_instance(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_for_instance(instance: instance, params: params)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     SandboxPageHandler => serve_page_response(page: sandbox_page())
     InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
@@ -634,6 +726,24 @@ fn roadmap_serve_invoke_for_instance(
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
   }
+}
+
+fn roadmap_serve_invoke_for_instance(
+  instance: HostDashboardInstance,
+  handler: RoadmapServeHandler,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest,
+  release_revision: CommitSha,
+) -> ServeHttpResponse {
+  roadmap_serve_invoke_over(
+    instance: instance,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    handler: handler,
+    params: params,
+    request: request,
+    release_revision: release_revision,
+  )
 }
 
 fn roadmap_serve_invoke(
@@ -786,16 +896,20 @@ fn http_method_label_join(methods: List<HttpMethod>) -> String {
   }), ", ")
 }
 
-fn roadmap_serve_selection_response_for_instance(
+fn roadmap_serve_selection_response_over(
   instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
-      roadmap_serve_invoke_for_instance(
+      roadmap_serve_invoke_over(
         instance: instance,
+        plan: plan,
+        daily_body: daily_body,
         handler: h,
         params: ps,
         request: request,
@@ -814,6 +928,22 @@ fn roadmap_serve_selection_response_for_instance(
   }
 }
 
+fn roadmap_serve_selection_response_for_instance(
+  instance: HostDashboardInstance,
+  sel: RouteSelection<RoadmapServeHandler>,
+  request: ServeHttpRequest,
+  release_revision: CommitSha,
+) -> ServeHttpResponse {
+  roadmap_serve_selection_response_over(
+    instance: instance,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    sel: sel,
+    request: request,
+    release_revision: release_revision,
+  )
+}
+
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
   request: ServeHttpRequest,
@@ -827,8 +957,10 @@ fn roadmap_serve_selection_response(
   )
 }
 
-fn roadmap_serve_respond_for_instance(
+fn roadmap_serve_respond_over(
   instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   method_label: String,
   path: String,
   body: String,
@@ -856,8 +988,10 @@ fn roadmap_serve_respond_for_instance(
             ], ""),
           )
         RoadmapServeTable { table: t } =>
-          roadmap_serve_selection_response_for_instance(
+          roadmap_serve_selection_response_over(
             instance: instance,
+            plan: plan,
+            daily_body: daily_body,
             sel: serve_select_route(table: t, method: m, path: path),
             request: ServeHttpRequest {
               method: m,
@@ -869,6 +1003,26 @@ fn roadmap_serve_respond_for_instance(
           )
       }
   }
+}
+
+fn roadmap_serve_respond_for_instance(
+  instance: HostDashboardInstance,
+  method_label: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  release_revision: CommitSha,
+) -> ServeHttpResponse {
+  roadmap_serve_respond_over(
+    instance: instance,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method_label: method_label,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    release_revision: release_revision,
+  )
 }
 
 fn roadmap_serve_respond(
@@ -899,15 +1053,37 @@ fn roadmap_serve_respond(
 // It is threaded through the entry rather than read at the handler because there is exactly one
 // entry, and a fact every route may need to consult belongs on the request that reaches them all.
 // Handlers that do not need it ignore it; the approval routes refuse without it.
-fn roadmap_serve_handle(
+//
+// THE PLAN AUTHORITY IS THE PARAMETER, AND A SERVE ENTRY IS THE WHOLE INTEGRATION.
+//
+// Instance selection is already by serve entry function, because `gunbc serve` binds --entry and
+// --function once for the process's life and carries no per-request argument. The plan a process
+// serves is the same KIND of fact -- fixed at launch, constant for every request -- so it arrives
+// the same way: an entry function declared in whatever module owns that plan calls this fold with
+// its own projection.
+//
+// What is passed is the PROJECTED PLAN, not a path or a source root. A plan that failed to project
+// arrives as RoadmapAuthorityProjectionRefused and every consumer below refuses in its own
+// vocabulary; handing over a location instead would have made an unreadable plan indistinguishable
+// from an empty one at the surfaces that render it.
+//
+// It is deliberately NOT a registry. Nothing here enumerates plans, and no table is filled in from
+// elsewhere: the direction of the dependency is that the caller reaches this fold, so this module
+// stays unaware of who calls it and needs no edit when another one does.
+fn roadmap_serve_handle_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  daily_body: ServedDailyBodyAuthority,
   method: String,
   path: String,
   body: String,
   tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
+  serve_wire_response(r: roadmap_serve_respond_over(
+    instance: instance,
+    plan: plan,
+    daily_body: daily_body,
     method_label: method,
     path: path,
     body: body,
@@ -916,13 +1092,32 @@ fn roadmap_serve_handle(
   ))
 }
 
-// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function -- the shape
-// gunbc.roadmap_dashboard_instance declares and srv1_lab already follows -- so serving the
-// workspace from the development checkout is one row here rather than a resolver that reads the
-// process's own working directory. The alternative was tempting and worse: observing the repo root
-// at request time would make the served identity depend on where the binary happened to be
-// launched, which is an ambient fact, and it would re-answer per request a question that is fixed
-// for a process's whole life.
+fn roadmap_serve_handle(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_live_dashboard_instance(),
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    release_revision: release_revision,
+  )
+}
+
+// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function. That is a
+// constraint of `gunbc serve`, not a dual: the Serve verb binds method/path/body from the socket
+// and has no `--arg` (handle_serve; Serve flags are function/host/port/release-revision only).
+// `gunbc run --arg name=value` exists for ProcessExit entries and does not apply here. Observing
+// the repo root at request time would make the served identity depend on where the binary happened
+// to be launched, which is an ambient fact, and it would re-answer per request a question that is
+// fixed for a process's whole life.
 fn roadmap_serve_handle_macbook_local(
   method: String,
   path: String,
@@ -930,14 +1125,16 @@ fn roadmap_serve_handle_macbook_local(
   tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
+  roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
-    method_label: method,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
-  ))
+  )
 }
 
 fn roadmap_serve_handle_srv1_lab(
@@ -947,14 +1144,16 @@ fn roadmap_serve_handle_srv1_lab(
   tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
+  roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
-    method_label: method,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
-  ))
+  )
 }
 
 fn roadmap_serve_handle_srv2_preview(
@@ -964,14 +1163,16 @@ fn roadmap_serve_handle_srv2_preview(
   tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
+  roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
-    method_label: method,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
-  ))
+  )
 }
 
 // THE srv2 DEPLOYMENT'S ENTRY. Same selection-by-entry-function shape the rest of this family
@@ -984,14 +1185,16 @@ fn roadmap_serve_handle_srv2_deploy(
   tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
+  roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
-    method_label: method,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
-  ))
+  )
 }
 
 fn roadmap_serve_handle_srv2_lab(
@@ -1001,12 +1204,14 @@ fn roadmap_serve_handle_srv2_lab(
   tailscale_identity: String,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_for_instance(
+  roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
-    method_label: method,
+    plan: roadmap_authority_projection(),
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
     release_revision: release_revision,
-  ))
+  )
 }

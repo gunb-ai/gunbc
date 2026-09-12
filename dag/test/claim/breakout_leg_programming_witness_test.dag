@@ -1,0 +1,155 @@
+module test.claim.breakout_leg_programming_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.algebra { Ordering, Less, Equal, Greater }
+import std.human_intervention {
+  ProvisioningHumanBurden, FleetOnce, DeviceOnce, EveryProvision,
+  human_intervention_count_at, compare_routine_human_burden,
+}
+import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
+import extdeps.external_authority { ExternalAuthority, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+import extdeps.transceiver.fs_145681 { FsBreakoutCablePart, fs_145681 }
+import product.cable_order_admission { CableLinkRequirement, cable_link_requirement }
+import product.breakout_leg_programming {
+  LegProgrammingProcedure, VendorAssertedLegCoding, BreakoutCableSourcing,
+  SourcedDualCompatible, SourcedGenericForReprogramming,
+  BreakoutProgrammingPlan, ProgrammingBurden, ReprogrammingTargetDoesNotAttest,
+  fs_box_v4_leg_programming, fs_nvidia_eth_leg_coding,
+  leg_programming_instruction, vendor_coding_attests, breakout_programming_plan,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// GREEN BY EXECUTION FOR THE ARGUMENT THE DUAL-COMPATIBILITY SKU EXISTS TO WIN: a plant of generic
+// breakouts owes a per-leg hand re-flash, a plant of SKU 145681 owes nothing, and std's own burden
+// comparison ranks the first strictly worse. Each positive case has a control that flips it.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fs_generic_listing: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "fs.com/products/139217.html" }
+}
+
+data spark_rail_requirement: CableLinkRequirement = cable_link_requirement(
+  required_mode: ieee_100gbase_cr2,
+  purpose: "Spark fabric rail leg, CRS812 QSFP-DD breakout to ConnectX-7" as NonEmptyStr)
+
+data generic_reprogrammed: BreakoutCableSourcing = SourcedGenericForReprogramming {
+  listing: fs_generic_listing, target: fs_nvidia_eth_leg_coding }
+
+// The coding the generic legs SHIPPED with (0x0B, read off the delivered legs). Re-flashing TO it
+// is the dead end the plan must refuse.
+data shipped_coding: VendorAssertedLegCoding = VendorAssertedLegCoding {
+  coding_profile: "Generic" as NonEmptyStr,
+  extended_compliance_code: 11,
+  standing: TranscribedUncited { read_obligation: "synthetic control" as NonEmptyStr },
+}
+
+fn burden_of(plan: BreakoutProgrammingPlan) -> ProvisioningHumanBurden {
+  match plan {
+    ProgrammingBurden { burden: b } => b
+    ReprogrammingTargetDoesNotAttest { required: r, target: t } =>
+      ProvisioningHumanBurden { interventions: [] }
+  }
+}
+
+// ---------------- the vendor's byte, read by our decoder ----------------
+
+// FS's 0x40 attests 100GBASE-CR2 under sff_8636's own table, so the re-flash lifts the 50G ceiling.
+test fn the_nvidia_eth_coding_attests_the_rail_mode() -> Bool {
+  vendor_coding_attests(coding: fs_nvidia_eth_leg_coding, required: ieee_100gbase_cr2)
+}
+
+// CONTROL: the shipped 0x0B does not, which is the whole incident.
+test fn the_shipped_generic_coding_does_not_attest_the_rail_mode() -> Bool {
+  vendor_coding_attests(coding: shipped_coding, required: ieee_100gbase_cr2) == false
+}
+
+// A plan to re-flash to a coding that cannot carry the mode refuses rather than pricing a burden.
+test fn reprogramming_to_a_non_attesting_coding_refuses() -> Bool {
+  match breakout_programming_plan(
+    plant: [SourcedGenericForReprogramming { listing: fs_generic_listing, target: shipped_coding }],
+    requirement: spark_rail_requirement,
+    procedure: fs_box_v4_leg_programming) {
+    ReprogrammingTargetDoesNotAttest { required: r, target: t } => true
+    ProgrammingBurden { burden: b } => false
+  }
+}
+
+// ---------------- the burden and its frequency ----------------
+
+// A generic plant owes exactly one intervention, at DeviceOnce -- the leg is the device -- and
+// nothing at FleetOnce or EveryProvision. A FleetOnce row would price every leg of every cable as
+// one step, which is the cheap frequency that would hide the reason to buy SKU 145681.
+test fn a_generic_plant_owes_a_per_leg_reflash() -> Bool {
+  let b = burden_of(plan: breakout_programming_plan(
+    plant: [generic_reprogrammed, generic_reprogrammed],
+    requirement: spark_rail_requirement,
+    procedure: fs_box_v4_leg_programming))
+  human_intervention_count_at(burden: b, frequency: DeviceOnce) == 1
+    && human_intervention_count_at(burden: b, frequency: FleetOnce) == 0
+    && human_intervention_count_at(burden: b, frequency: EveryProvision) == 0
+}
+
+test fn a_dual_compatibility_plant_owes_nothing() -> Bool {
+  match breakout_programming_plan(
+    plant: [SourcedDualCompatible { part: fs_145681 }, SourcedDualCompatible { part: fs_145681 }],
+    requirement: spark_rail_requirement,
+    procedure: fs_box_v4_leg_programming) {
+    ProgrammingBurden { burden: b } => human_intervention_count_at(burden: b, frequency: DeviceOnce) == 0
+    ReprogrammingTargetDoesNotAttest { required: r, target: t } => false
+  }
+}
+
+// THE ARGUMENT, IN STD'S OWN ORDERING: the generic plant carries strictly more routine burden.
+test fn buying_sku_145681_retires_a_routine_burden() -> Bool {
+  let generic = burden_of(plan: breakout_programming_plan(
+    plant: [generic_reprogrammed],
+    requirement: spark_rail_requirement,
+    procedure: fs_box_v4_leg_programming))
+  let dual = burden_of(plan: breakout_programming_plan(
+    plant: [SourcedDualCompatible { part: fs_145681 }],
+    requirement: spark_rail_requirement,
+    procedure: fs_box_v4_leg_programming))
+  match compare_routine_human_burden(a: generic, b: dual) {
+    Greater => true
+    Equal => false
+    Less => false
+  }
+}
+
+// CONTROL: the part's factory-coding field is what retires the burden, not the arm it sits in. A
+// part row that did not arrive coded for both ends owes the re-flash like a generic one.
+test fn a_part_not_factory_coded_still_owes_the_reflash() -> Bool {
+  let uncoded = FsBreakoutCablePart {
+    sku: fs_145681.sku,
+    title: fs_145681.title,
+    length: fs_145681.length,
+    leg_count: fs_145681.leg_count,
+    end_a: fs_145681.end_a,
+    end_b: fs_145681.end_b,
+    factory_coded_for_both_ends: false,
+    standing: fs_145681.standing,
+  }
+  let b = burden_of(plan: breakout_programming_plan(
+    plant: [SourcedDualCompatible { part: uncoded }],
+    requirement: spark_rail_requirement,
+    procedure: fs_box_v4_leg_programming))
+  human_intervention_count_at(burden: b, frequency: DeviceOnce) == 1
+}
+
+// ---------------- the procedure's properties reach the instruction ----------------
+
+// Recoverability is carried because it changes what a person must do on failure; if it did not
+// change the instruction it would be decoration.
+test fn recoverability_changes_the_instruction() -> Bool {
+  let unrecoverable = LegProgrammingProcedure {
+    tool: fs_box_v4_leg_programming.tool,
+    legs_programmable_individually: fs_box_v4_leg_programming.legs_programmable_individually,
+    requires_disconnect_from_both_ends: fs_box_v4_leg_programming.requires_disconnect_from_both_ends,
+    interrupted_write_recoverable: false,
+    duration_per_leg: fs_box_v4_leg_programming.duration_per_leg,
+    standing: fs_box_v4_leg_programming.standing,
+  }
+  leg_programming_instruction(procedure: fs_box_v4_leg_programming)
+    != leg_programming_instruction(procedure: unrecoverable)
+}

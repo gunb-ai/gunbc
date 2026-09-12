@@ -280,14 +280,6 @@ fn github_run_id_expr() -> Expression { ContextAccess { context: Github, path: [
 fn github_pr_number_expr() -> Expression { ContextAccess { context: Github, path: ["event", "pull_request", "number"] } }
 fn github_dispatch_input_expr(name: String) -> Expression { ContextAccess { context: Github, path: ["event", "inputs", name] } }
 
-fn gha_and(left: Expression, right: Expression) -> Expression {
-  LogicalAnd { left: left, right: right }
-}
-
-fn gha_or(left: Expression, right: Expression) -> Expression {
-  LogicalOr { left: left, right: right }
-}
-
 type WitnessFloorGroupBranch
   = ShaAfterEvent { event: String, prefix: String }
   | NonemptyInputAfterEvent { event: String, input: String, prefix: String }
@@ -295,30 +287,26 @@ type WitnessFloorGroupBranch
   | RefAfterEvent { event: String }
   | RunIdFallback { prefix: String }
 
-fn gha_not_equals(left: Expression, right: Expression) -> Expression {
-  NotEquals { left: left, right: right }
-}
-
 fn nonempty_input_after_event_expr(event: String, input: String, prefix: String) -> Expression {
-  gha_and(
+  LogicalAnd {
     left: github_event_name_equals(event: event),
-    right: gha_and(
-      left: gha_not_equals(left: github_dispatch_input_expr(name: input), right: StringLiteral { value: "" }),
+    right: LogicalAnd {
+      left: NotEquals { left: github_dispatch_input_expr(name: input), right: StringLiteral { value: "" } },
       right: gha_format_prefix(prefix: prefix, arg: github_dispatch_input_expr(name: input))
-    )
-  )
+    }
+  }
 }
 
 fn group_branch_expr(branch: WitnessFloorGroupBranch) -> Expression {
   match branch {
     ShaAfterEvent { event: e, prefix: p } =>
-      gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr()))
+      LogicalAnd { left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr()) }
     NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
       nonempty_input_after_event_expr(event: e, input: i, prefix: p)
     PrNumberAfterEvent { event: e, prefix: p } =>
-      gha_and(left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr()))
+      LogicalAnd { left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr()) }
     RefAfterEvent { event: e } =>
-      gha_and(left: github_event_name_equals(event: e), right: github_ref_expr())
+      LogicalAnd { left: github_event_name_equals(event: e), right: github_ref_expr() }
     RunIdFallback { prefix: p } =>
       gha_format_prefix(prefix: p, arg: github_run_id_expr())
   }
@@ -331,7 +319,7 @@ fn witness_floor_group_expression() -> Expression {
       fold_list(
         xs: skip(xs: witness_floor_group_branches(), n: 1),
         empty: group_branch_expr(branch: first),
-        cons: fn(acc, b) { gha_or(left: acc, right: group_branch_expr(branch: b)) }
+        cons: fn(acc, b) { LogicalOr { left: acc, right: group_branch_expr(branch: b) } }
       )
   }
 }
@@ -538,15 +526,11 @@ data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witn
 
 data witness_floor_pending_replacement_policy: PendingReplacementPolicy = witness_floor_concurrency_policy.pending
 
-fn supersession_event_expression(event: String) -> String {
-  concat(concat("${{ github.event_name == '", event), "' }}")
-}
-
 fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
   match policy {
     NeverSupersedeRunning => CancelInProgressBool { value: false }
     SupersedeRunningForEvent { event: e } =>
-      CancelInProgressExpression { expression: supersession_event_expression(event: e) }
+      CancelInProgressExpression { expression: interpolate(expression: github_event_name_equals(event: e)) }
   }
 }
 
@@ -566,7 +550,7 @@ fn queue_max_cancel_of_policy(policy: RunningSupersessionPolicy) -> CancelInProg
   match policy {
     NeverSupersedeRunning => QueueMaxCancelInProgressFalse
     SupersedeRunningForEvent { event: e } =>
-      QueueMaxCancelInProgressExpression { expression: supersession_event_expression(event: e) }
+      QueueMaxCancelInProgressExpression { expression: interpolate(expression: github_event_name_equals(event: e)) }
   }
 }
 
