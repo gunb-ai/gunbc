@@ -36,6 +36,8 @@ test fn w_four_real_captures_retain_statement_inventory_and_missing_receipts() -
   }
 }
 
+// A synthetic acquisition receipt exercises the absence consumer against real
+// bytes; it does not claim the historical collector had that receipt.
 test fn w_truncated_configuration_cannot_support_absence() -> Bool {
   match pre_os_archive_specs() {
     ObservationRefused { cause: _ } => false
@@ -46,8 +48,6 @@ test fn w_truncated_configuration_cannot_support_absence() -> Bool {
           let incomplete = join(filter(split(s: payload, delimiter: "\n"), line => !contains(line, "DRAM populated DIMMs:") && !contains(line, "RDIMM[")), "\n")
           let positive = pre_os_archive_classify(spec: spec, payload: payload)
           let negative = pre_os_archive_classify(spec: spec, payload: incomplete)
-          // A synthetic acquisition receipt exercises the absence consumer against
-          // real bytes. It does NOT claim the historical collector had that receipt.
           let source = SourceBytesObserved { digest: content_hash_of_value(value: payload) }
           let question = pre_os_archive_inventory_question(spec: spec)
           let diagnostic = "Non-identical DIMM mixture NOT supported!"
