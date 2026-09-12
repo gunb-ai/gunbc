@@ -28,8 +28,10 @@ import gunbc.diff_baseline {
   DiffBaselineKind,
   diff_baseline_kind
 }
-import std.types { String, NonEmptyStr, GitRef, FilePath }
+import std.types { String, NonEmptyStr, GitRef, FilePath, Map }
 import std.logic { Bool }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
 import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 import extdeps.git
 import extdeps.git.inspect
@@ -443,18 +445,25 @@ type FloorBaseTestDeclCensus
   = BaseTestDeclCensus { rows: List<FloorBasePathTestDecls> }
   | BaseTestDeclCensusRefused { reason: String }
 
-fn floor_nul_blob_contains_path(paths_nul: String, path: String) -> Bool {
+fn floor_base_paths_present(paths_nul: String) -> Map<String, Bool> {
   fold(
     split(s: paths_nul, delimiter: git_diff_name_status_field_separator),
-    init: false,
+    init: empty_map(),
     f: fn(acc, p) {
-      if acc {
-        true
+      if p == "" {
+        acc
       } else {
-        p == path
+        map_insert(m: acc, key: p, value: true)
       }
     }
   )
+}
+
+fn floor_base_path_listed(paths_present: Map<String, Bool>, path: String) -> Bool {
+  match map_lookup(m: paths_present, key: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn floor_base_census_acc_append(
@@ -475,14 +484,14 @@ fn floor_base_census_acc_append(
 fn floor_base_census_step(
   acc: FloorBaseTestDeclCensus,
   base: String,
-  paths_nul: String,
+  paths_present: Map<String, Bool>,
   path: String
 ) -> FloorBaseTestDeclCensus {
   match acc {
     BaseTestDeclCensusRefused { reason: reason } =>
       BaseTestDeclCensusRefused { reason: reason }
     BaseTestDeclCensus { rows: _ } =>
-      if !floor_nul_blob_contains_path(paths_nul: paths_nul, path: path) {
+      if !floor_base_path_listed(paths_present: paths_present, path: path) {
         floor_base_census_acc_append(acc: acc, path: path, names: [])
       } else {
         let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
@@ -526,39 +535,16 @@ fn floor_run_base_test_decl_census(base: String, paths: List<String>) -> FloorBa
         ], "")
       }
     } else {
+      let paths_present = floor_base_paths_present(paths_nul: listed.paths_nul)
       fold(paths, init: BaseTestDeclCensus { rows: [] }, f: fn(acc, path) {
         floor_base_census_step(
           acc: acc,
           base: base,
-          paths_nul: listed.paths_nul,
+          paths_present: paths_present,
           path: path
         )
       })
     }
-  }
-}
-
-fn floor_observe_base_test_decl_census(
-  policy: DiffPolicy,
-  paths: List<String>
-) -> FloorBaseTestDeclCensus {
-  match floor_resolve_baseline(policy: policy) {
-    BaselineRefused { reason: reason } => BaseTestDeclCensusRefused { reason: reason }
-    BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
-      BaseTestDeclCensusRefused {
-        reason: join([
-          "baseline source conflict — ",
-          detail,
-          " while GUNBC_CI_DIFF_BASE is set to ",
-          override_ref,
-          "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
-        ], ""),
-      }
-    BaselineSelected { baseline: baseline } =>
-      floor_run_base_test_decl_census(
-        base: diff_baseline_diff_base(b: baseline),
-        paths: paths
-      )
   }
 }
 
