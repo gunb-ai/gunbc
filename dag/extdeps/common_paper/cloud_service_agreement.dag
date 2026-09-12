@@ -37,25 +37,50 @@ import extdeps.uri { Uri, Https }
 // version identity: a new version is a new row with a new anchor, never an edit to this one, and
 // a consumer citing common_paper_csa_v2_1 cites the same text on every future read.
 //
-// READ 2026-09-12 by this session, without credentials: the anchor answered HTTP 200 with 119746
-// bytes of HTML whose visible text carries the full Standard Terms and the two versioning
-// statements above; the index page answered HTTP 200 and states the CC BY 4.0 licence, the Cover
-// Page plus incorporated Standard Terms structure, the optional Pilot Period, and that 2.1 is the
-// current version. The fetch receipt with the content digest is a gunbc-layer observation and
-// lives in gunbc.specification_citation_read_provenance, not on this record.
+// READ 2026-09-12 by this session, without credentials: all three cited locators - the anchor,
+// the index page, and the version-history page - answered HTTP 200. One typed read receipt per
+// locator, each with its byte count and content digest, is a gunbc-layer observation and lives in
+// gunbc.specification_citation_read_provenance, not on this record. The release date carried here
+// is the v2.1 page's self-declaration; the version-history page dates it one day earlier, and that
+// discrepancy is recorded on its receipt rather than resolved here.
 //
-// WHY THE CREDIBLE ALTERNATIVE, THE BONTERMS CLOUD TERMS, LOST. Both are CC BY 4.0 cover-page-plus-
-// standard-terms forms for a cloud service. The discriminator is CITABILITY OF THE STANDARD TERMS
-// AT A STABLE VERSIONED LOCATOR, which is the property a DeclarationRef-based sanction needs.
-// Observed 2026-09-12 by this session: bonterms.com/forms/cloud-terms/ (the locator under which
-// the Cloud Terms were previously published) answers HTTP 404; bonterms.com/download-center/
-// cloud-terms answers 200 but serves a download page (Standard Agreement, Cover Page Example,
-// Playbook, Order Form Example, Release Notes) whose visible text carries no version label and no
-// hosted terms text; and the support article "How to Use the Bonterms Cloud Terms" answers 403
-// unauthenticated. Those are observations of what the locators served on that date, not claims
-// about the Bonterms terms themselves, which this session did not read. A standard whose current
-// text and version this repository cannot read at a public locator cannot be cited to a version
-// here; Common Paper's, at a page the publisher itself declares immutable, can.
+// WHY THE CREDIBLE ALTERNATIVE, extdeps.bonterms.cloud_terms bonterms_cloud_terms_v1_0, LOST.
+// Both texts were read by this session on 2026-09-12 (receipts in
+// gunbc.specification_citation_read_provenance), and on the brief's structural criteria they tie:
+// both are CC BY 4.0, both are a signed Cover Page incorporating hosted standard terms by
+// reference, both carry their version in the document's own title and definitions. The
+// discriminators are three things the two TEXTS say differently:
+//
+// 1. WHERE THE PILOT TERMS LIVE. Common Paper's Cover Page carries an optional Pilot Period as a
+//    Variable - its length, a Fee for Pilot Period, and a section for modifications that apply
+//    only to the Pilot Period - in addition to the Subscription Period, which starts automatically
+//    when the pilot ends. Bonterms Section 21 (Trials and Betas) fixes the pilot terms inside the
+//    Standard Terms: evaluation-only use for a period designated on the Order or 30 days, no
+//    warranty, indemnity, SLA or Support, and liability not to exceed US$1,000, with trials and
+//    betas governed as one clause. Every pilot term this fabric will need to set - fee, cap, which
+//    warranties apply - is a commercial position the operator takes on the Cover Page (see above).
+//    Under Common Paper that position is a Cover Page entry; under Bonterms it is an Additional
+//    Term amending Section 21, which is exactly the accepted-deviation class the compliance spine
+//    must escalate rather than author. The standard whose pilot is a Variable fits the layer split.
+//
+// 2. WHETHER THE POSTED TEXT DECLARES ITSELF FIXED. The Common Paper v2.1 page states that these
+//    Version 2.1 Standard Terms remain hosted on that page and any future change is issued under a
+//    new version number on a different page; the index page adds that new versions do not affect
+//    agreements incorporating prior versions. The Bonterms v1.0 page carries its version in its
+//    title and definitions but no statement about whether the text at its locator stays fixed.
+//    That is a statement about what the page says, not a claim that Bonterms would alter a posted
+//    version; a DeclarationRef citing a locator is only as stable as what the publisher commits to,
+//    and one publisher commits in the text and the other does not.
+//
+// 3. WHETHER TRAINING USE OF CUSTOMER DATA IS ADDRESSED. Common Paper Section 1.6 (Machine
+//    Learning) governs use of Usage Data and Customer Content to develop, train or enhance models,
+//    with aggregation and de-identification conditions. The Bonterms v1.0 text contains no
+//    provision on the use of Customer Data for model training (its only use of "training" is in
+//    the definition of professional services). The routes provider_admission gates carry inference
+//    work, so a standard that is silent on that question leaves the term to be authored downstream.
+//
+// Version currency (2.1 released 2024 against 1.0 with a 2022 copyright) is a fact about the two
+// documents and is not itself one of the reasons.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
