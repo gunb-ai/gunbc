@@ -1,0 +1,211 @@
+module tools.reference_derived_graph
+
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.types { Bool, List, String }
+import extdeps.filesystem.filesystem_io
+import v2.std.algebra { any, fold_list }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.lens.module_graph {
+  ImportResolutionFact,
+  ModuleDependencyEdge,
+  dependency_edges_from_import_facts,
+  import_resolution_facts_live,
+  reference_derived_resolution_facts_flagged_pending_reference_producer,
+}
+
+// XL-4 instrument: the reference-derived graph (swap body of v2.lens.module_graph) and its
+// typed difference against the import-derived graph, over a named source root.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/reference_derived_graph.dag --function main
+//
+// Discriminating run is the fixture root below. It does not swap
+// dependency_resolution_facts_live (NAMESPACE-XL STAGE XL-6).
+
+data instrument_source_roots: List<String> = ["dag/test/fixture/reference_derived_graph"]
+
+data instrument_exclude: List<String> = []
+
+data provider_module: String = "test.fixture.reference_derived_graph.provider"
+
+data consumer_reference_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_reference_only.dag"
+
+data consumer_import_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_import_only.dag"
+
+data consumer_both_path: String = "dag/test/fixture/reference_derived_graph/consumer_both.dag"
+
+type ReferenceImportEdgeDiff
+  = SharedEdge { path: String, target_module: String }
+  | ReferenceOnlyEdge { path: String, target_module: String }
+  | ImportOnlyEdge { path: String, target_module: String }
+
+type ReferenceDerivedGraphReport {
+  source_roots: List<String>
+  reference_edges: List<ModuleDependencyEdge>
+  import_edges: List<ModuleDependencyEdge>
+  diffs: List<ReferenceImportEdgeDiff>
+}
+
+fn edge_identity_eq(a: ModuleDependencyEdge, b: ModuleDependencyEdge) -> Bool {
+  a.path == b.path && a.target_module == b.target_module
+}
+
+fn has_identity(edges: List<ModuleDependencyEdge>, path: String, target_module: String) -> Bool {
+  any(xs: edges, predicate: fn(e) { e.path == path && e.target_module == target_module })
+}
+
+fn diff_against_import(
+  reference_edges: List<ModuleDependencyEdge>,
+  import_edges: List<ModuleDependencyEdge>
+) -> List<ReferenceImportEdgeDiff> {
+  let from_reference = fold_list(
+    xs: reference_edges,
+    empty: [],
+    cons: fn(acc, edge) {
+      concat(acc, [
+        if has_identity(edges: import_edges, path: edge.path, target_module: edge.target_module) {
+          SharedEdge { path: edge.path, target_module: edge.target_module }
+        } else {
+          ReferenceOnlyEdge { path: edge.path, target_module: edge.target_module }
+        }
+      ])
+    }
+  )
+  fold_list(
+    xs: import_edges,
+    empty: from_reference,
+    cons: fn(acc, edge) {
+      if has_identity(edges: reference_edges, path: edge.path, target_module: edge.target_module) {
+        acc
+      } else {
+        concat(acc, [ImportOnlyEdge { path: edge.path, target_module: edge.target_module }])
+      }
+    }
+  )
+}
+
+fn report(source_roots: List<String>) -> Outcome<ReferenceDerivedGraphReport> {
+  match reference_derived_resolution_facts_flagged_pending_reference_producer(
+    pool_roots: source_roots,
+    importer_roots: source_roots,
+    exclude_substrings: instrument_exclude
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: reference_edges, diagnostics: pending } =>
+      Accepted {
+        value: ReferenceDerivedGraphReport {
+          source_roots: source_roots,
+          reference_edges: reference_edges,
+          import_edges: dependency_edges_from_import_facts(
+            edges: import_resolution_facts_live(
+              pool_roots: source_roots,
+              importer_roots: source_roots,
+              exclude_substrings: instrument_exclude
+            )
+          ),
+          diffs: diff_against_import(
+            reference_edges: reference_edges,
+            import_edges: dependency_edges_from_import_facts(
+              edges: import_resolution_facts_live(
+                pool_roots: source_roots,
+                importer_roots: source_roots,
+                exclude_substrings: instrument_exclude
+              )
+            )
+          )
+        },
+        diagnostics: pending
+      }
+  }
+}
+
+fn fixture_report() -> Outcome<ReferenceDerivedGraphReport> {
+  report(source_roots: instrument_source_roots)
+}
+
+fn diffs_include_reference_only(diffs: List<ReferenceImportEdgeDiff>, path: String, target: String) -> Bool {
+  any(xs: diffs, predicate: fn(d) {
+    match d {
+      ReferenceOnlyEdge { path: p, target_module: t } => p == path && t == target
+      SharedEdge { path: _, target_module: _ } => false
+      ImportOnlyEdge { path: _, target_module: _ } => false
+    }
+  })
+}
+
+fn diffs_include_import_only(diffs: List<ReferenceImportEdgeDiff>, path: String, target: String) -> Bool {
+  any(xs: diffs, predicate: fn(d) {
+    match d {
+      ImportOnlyEdge { path: p, target_module: t } => p == path && t == target
+      SharedEdge { path: _, target_module: _ } => false
+      ReferenceOnlyEdge { path: _, target_module: _ } => false
+    }
+  })
+}
+
+fn diffs_include_shared(diffs: List<ReferenceImportEdgeDiff>, path: String, target: String) -> Bool {
+  any(xs: diffs, predicate: fn(d) {
+    match d {
+      SharedEdge { path: p, target_module: t } => p == path && t == target
+      ReferenceOnlyEdge { path: _, target_module: _ } => false
+      ImportOnlyEdge { path: _, target_module: _ } => false
+    }
+  })
+}
+
+fn main() -> ProcessExit {
+  match fixture_report() {
+    Rejected { diagnostics: _ } =>
+      exit_failure(
+        reason: "tools.reference_derived_graph.report refused over the fixture source root"
+      )
+    Accepted { value: r, diagnostics: _ } =>
+      if !diffs_include_reference_only(
+        diffs: r.diffs,
+        path: consumer_reference_only_path,
+        target: provider_module
+      ) {
+        exit_failure(
+          reason: "a fixture module referencing another with no import did not produce a reference-derived edge"
+        )
+      } else if diffs_include_import_only(
+        diffs: r.diffs,
+        path: consumer_reference_only_path,
+        target: provider_module
+      ) {
+        exit_failure(
+          reason: "the reference-only fixture was classified as import-only, so the instrument is reading import syntax"
+        )
+      } else if !diffs_include_import_only(
+        diffs: r.diffs,
+        path: consumer_import_only_path,
+        target: provider_module
+      ) {
+        exit_failure(
+          reason: "an import with no reference produced a reference-derived edge or dropped the import-only difference"
+        )
+      } else if diffs_include_reference_only(
+        diffs: r.diffs,
+        path: consumer_import_only_path,
+        target: provider_module
+      ) || diffs_include_shared(
+        diffs: r.diffs,
+        path: consumer_import_only_path,
+        target: provider_module
+      ) {
+        exit_failure(
+          reason: "an unused import minted a reference-derived edge"
+        )
+      } else if !diffs_include_shared(
+        diffs: r.diffs,
+        path: consumer_both_path,
+        target: provider_module
+      ) {
+        exit_failure(
+          reason: "the positive control (import and qualified reference of the same target) is missing from SharedEdge"
+        )
+      } else {
+        ExitSuccess
+      }
+  }
+}

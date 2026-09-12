@@ -1,12 +1,13 @@
 module v2.lens.module_graph
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.filesystem.filesystem_io
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { any, contains, fold_list, list_append, list_reverse, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, is_prefix_of, length, list_append, list_reverse, list_snoc_item }
 import v2.std.collection {
   List,
   Map,
@@ -17,11 +18,46 @@ import v2.std.collection {
 import v2.std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent,
+  optional_present
 }
-import v2.std.diagnostic { Outcome, outcome_accepted }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  outcome_accepted
+}
 import v2.std.logic { Bool }
+import v2.std.node { Edge, Node, Symbol }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_to_dotted_string
+}
+import v2.std.symbol_index {
+  SymbolIndex,
+  empty_symbol_index,
+  symbol_index_lookup
+}
 import v2.std.text { String }
+import v2.compiler.parse { parse_module }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_qualified_name_segments_from_capture,
+  qualified_name_from_module_node,
+  qualified_name_from_symbol_segments
+}
 
 type ModuleDeclarationFact {
   module: String
@@ -65,7 +101,7 @@ data reference_derived_edge_source_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_derived_edge_source_dissolution_note: String = "Scaffold producer for namespace terminal step (docs/plans/namespace-resolution-design.md §8 step 5): module-graph dependency edges derived from parsed-tree container.member qualified-name use sites (v2.lens.reference_deps.reference_resolution_facts_from_parsed_corpus census today; symbol_index_fill projection at steady state). Not wired into dependency_resolution_facts_live until the import grammar is deleted — dependency_resolution_facts_live already unions strict-tier host reference_resolution_facts with import_resolution_facts_live; this scaffold is the import-only stand-in for the terminal reference-only swap. Name suffix _pending_reference_producer marks that the body is still import-backed (interim stand-in), not parsed-tree reference-derived yet. On the import-only corpus the reference census matches import facts at module-prefix grain (reference_closure_b2_safety_wall_holds); this scaffold maps import facts through ModuleDependencyEdge until the swap repoints dependency_resolution_facts_live here without changing closure consumers."
+data reference_derived_edge_source_dissolution_note: String = "XL-4 swap-body producer: ModuleDependencyEdge rows derived from resolved qualified-name use sites via v2.std.symbol_index filled by v2.compiler.symbol_index_fill, never from import syntax. Import-decl subtrees are skipped so an unused import cannot mint a reference edge. Not wired into dependency_resolution_facts_live (NAMESPACE-XL STAGE XL-6). Name suffix _pending_reference_producer marks that the live edge source has not swapped; the body is no longer the import-backed stand-in."
 
 fn import_resolution_facts_live(
   pool_roots: List<String>,
@@ -181,19 +217,354 @@ fn dependency_resolution_facts_live(
   )
 }
 
+data reference_derived_ingest_anchor: Symbol = ^reference_derived_ingest_anchor
+
+data reference_derived_qn_capture_missing: Symbol = ^reference_derived_qn_capture_missing
+
+data no_reference_derived_edges: List<ModuleDependencyEdge> = []
+
+data no_qn_sites: List<QualifiedName> = []
+
+type ReferenceDerivedPool {
+  index: SymbolIndex
+  trees: Map<String, Node>
+}
+
+fn reference_derived_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
+  any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, sub: sub) })
+}
+
+fn reference_derived_path_under_roots(path: String, roots: List<String>) -> Bool {
+  any(xs: roots, predicate: fn(root) { starts_with(s: path, prefix: concat(root, "/")) })
+}
+
+fn reference_derived_symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn ingest_module_root(rel_path: String) -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(
+      text: filesystem_read(path: rel_path).content,
+      file: reference_derived_ingest_anchor,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse_module(tokens: token_stream, grammar: lm.grammar),
+        f: fn(artifact) {
+          outcome_accepted(value: artifact.tree)
+        }
+      )
+    }
+  )
+}
+
+fn qn_from_qualified_name_production(production_node: Node, module_root: Node) -> Outcome<QualifiedName> {
+  match parse_production_captured_child_optional(node: production_node) {
+    Absent =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: reference_derived_qn_capture_missing,
+            at: node_locus(node: production_node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+    Present { value: capture } =>
+      match parse_qualified_name_segments_from_capture(qn_capture: capture, root: module_root) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: segments, diagnostics: _ } =>
+          qualified_name_from_symbol_segments(segments: segments, root: module_root)
+      }
+  }
+}
+
+fn collect_non_import_qn_sites_from_edges(
+  edges: List<Edge>,
+  module_root: Node,
+  module_qn: QualifiedName,
+  acc: List<QualifiedName>
+) -> Outcome<List<QualifiedName>> {
+  match edges |> first {
+    Absent => outcome_accepted(value: acc)
+    Present { value: edge } =>
+      match collect_non_import_qn_sites_from_node(
+        node: edge.target,
+        module_root: module_root,
+        module_qn: module_qn,
+        acc: acc
+      ) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: next_acc, diagnostics: _ } =>
+          collect_non_import_qn_sites_from_edges(
+            edges: edges |> skip(1),
+            module_root: module_root,
+            module_qn: module_qn,
+            acc: next_acc
+          )
+      }
+  }
+}
+
+fn collect_non_import_qn_sites_from_node(
+  node: Node,
+  module_root: Node,
+  module_qn: QualifiedName,
+  acc: List<QualifiedName>
+) -> Outcome<List<QualifiedName>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        outcome_accepted(value: acc)
+      } else if id == ^dag_surface_qualified_name {
+        match qn_from_qualified_name_production(production_node: node, module_root: module_root) {
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Accepted { value: site_qn, diagnostics: _ } =>
+            collect_non_import_qn_sites_from_edges(
+              edges: node.children,
+              module_root: module_root,
+              module_qn: module_qn,
+              acc: if site_qn == module_qn {
+                acc
+              } else {
+                list_snoc_item(xs: acc, item: site_qn)
+              }
+            )
+        }
+      } else {
+        collect_non_import_qn_sites_from_edges(
+          edges: node.children,
+          module_root: module_root,
+          module_qn: module_qn,
+          acc: acc
+        )
+      }
+    Absent =>
+      collect_non_import_qn_sites_from_edges(
+        edges: node.children,
+        module_root: module_root,
+        module_qn: module_qn,
+        acc: acc
+      )
+  }
+}
+
+fn collect_non_import_qn_sites(module_root: Node) -> Outcome<List<QualifiedName>> {
+  match qualified_name_from_module_node(root: module_root) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: module_qn, diagnostics: _ } =>
+      collect_non_import_qn_sites_from_node(
+        node: module_root,
+        module_root: module_root,
+        module_qn: module_qn,
+        acc: no_qn_sites
+      )
+  }
+}
+
+fn prefer_longer_module(acc: Optional<String>, candidate: String) -> Optional<String> {
+  match acc {
+    Absent => optional_present(value: candidate)
+    Present { value: current } =>
+      if string_length(s: candidate) > string_length(s: current) {
+        optional_present(value: candidate)
+      } else {
+        optional_present(value: current)
+      }
+  }
+}
+
+fn longest_declared_module_prefix(
+  path: QualifiedName,
+  declared: List<ModuleDeclarationFact>
+) -> Optional<String> {
+  fold_list(
+    xs: declared,
+    empty: optional_absent(),
+    cons: fn(acc, fact) {
+      let decl_qn = qualified_name_from_dotted_string(dotted: fact.module)
+      if length(xs: decl_qn) == 0 {
+        acc
+      } else if is_prefix_of(prefix: decl_qn, xs: path, eq: reference_derived_symbol_eq) {
+        prefer_longer_module(acc: acc, candidate: fact.module)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn resolved_target_module(
+  index: SymbolIndex,
+  site_qn: QualifiedName,
+  declared: List<ModuleDeclarationFact>
+) -> Optional<String> {
+  match symbol_index_lookup(index: index, qualified_path: site_qn) {
+    Present { value: _ } => longest_declared_module_prefix(path: site_qn, declared: declared)
+    Absent => longest_declared_module_prefix(path: site_qn, declared: declared)
+  }
+}
+
+fn snoc_reference_edge_unique(
+  acc: List<ModuleDependencyEdge>,
+  edge: ModuleDependencyEdge
+) -> List<ModuleDependencyEdge> {
+  if any(xs: acc, predicate: fn(existing) {
+    string_eq(a: existing.path, b: edge.path) && string_eq(a: existing.target_module, b: edge.target_module)
+  }) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: edge)
+  }
+}
+
+fn edges_from_qn_sites(
+  rel_path: String,
+  self_module: String,
+  sites: List<QualifiedName>,
+  index: SymbolIndex,
+  declared: List<ModuleDeclarationFact>
+) -> List<ModuleDependencyEdge> {
+  fold_list(
+    xs: sites,
+    empty: no_reference_derived_edges,
+    cons: fn(acc, site_qn) {
+      match resolved_target_module(index: index, site_qn: site_qn, declared: declared) {
+        Absent => acc
+        Present { value: target } =>
+          if string_eq(a: target, b: self_module) {
+            acc
+          } else {
+            snoc_reference_edge_unique(
+              acc: acc,
+              edge: ModuleDependencyEdge {
+                path: rel_path,
+                target_module: target,
+                target_declared: true
+              }
+            )
+          }
+      }
+    }
+  )
+}
+
+fn absorb_pool_file(
+  acc: Outcome<ReferenceDerivedPool>,
+  fact: ModuleDeclarationFact
+) -> Outcome<ReferenceDerivedPool> {
+  bind_outcome(
+    o: acc,
+    f: fn(pool) {
+      bind_outcome(
+        o: ingest_module_root(rel_path: fact.path),
+        f: fn(root) {
+          outcome_accepted(
+            value: ReferenceDerivedPool {
+              index: symbol_index_fill_module_root(index: pool.index, root: root),
+              trees: map_insert(m: pool.trees, key: fact.path, value: root)
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn empty_reference_derived_pool() -> ReferenceDerivedPool {
+  ReferenceDerivedPool {
+    index: empty_symbol_index(),
+    trees: empty_map()
+  }
+}
+
+fn load_reference_derived_pool(
+  declared: List<ModuleDeclarationFact>
+) -> Outcome<ReferenceDerivedPool> {
+  fold_list(
+    xs: declared,
+    empty: outcome_accepted(value: empty_reference_derived_pool()),
+    cons: fn(acc, fact) { absorb_pool_file(acc: acc, fact: fact) }
+  )
+}
+
+fn emit_reference_edges_for_importer(
+  fact: ModuleDeclarationFact,
+  pool: ReferenceDerivedPool,
+  declared: List<ModuleDeclarationFact>
+) -> Outcome<List<ModuleDependencyEdge>> {
+  match map_lookup_where_rejected_unreachable(m: pool.trees, key: fact.path) {
+    Absent => outcome_accepted(value: no_reference_derived_edges)
+    Present { value: root } =>
+      match collect_non_import_qn_sites(module_root: root) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: sites, diagnostics: _ } =>
+          outcome_accepted(
+            value: edges_from_qn_sites(
+              rel_path: fact.path,
+              self_module: fact.module,
+              sites: sites,
+              index: pool.index,
+              declared: declared
+            )
+          )
+      }
+  }
+}
+
+fn append_outcome_edges(
+  acc: Outcome<List<ModuleDependencyEdge>>,
+  more: Outcome<List<ModuleDependencyEdge>>
+) -> Outcome<List<ModuleDependencyEdge>> {
+  bind_outcome(
+    o: acc,
+    f: fn(acc_edges) {
+      bind_outcome(
+        o: more,
+        f: fn(more_edges) {
+          outcome_accepted(value: list_append(left: acc_edges, right: more_edges))
+        }
+      )
+    }
+  )
+}
+
+fn reference_derived_edges_from_resolved_targets(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> Outcome<List<ModuleDependencyEdge>> {
+  let declared = module_declaration_facts_live(pool_roots: pool_roots)
+    |> filter(fact => !reference_derived_path_excluded(path: fact.path, exclude_substrings: exclude_substrings))
+  bind_outcome(
+    o: load_reference_derived_pool(declared: declared),
+    f: fn(pool) {
+      fold_list(
+        xs: declared |> filter(fact => reference_derived_path_under_roots(path: fact.path, roots: importer_roots)),
+        empty: outcome_accepted(value: no_reference_derived_edges),
+        cons: fn(acc, fact) {
+          append_outcome_edges(
+            acc: acc,
+            more: emit_reference_edges_for_importer(fact: fact, pool: pool, declared: declared)
+          )
+        }
+      )
+    }
+  )
+}
+
 fn reference_derived_resolution_facts_flagged_pending_reference_producer(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
 ) -> Outcome<List<ModuleDependencyEdge>> {
-  outcome_accepted(
-    value: dependency_edges_from_import_facts(
-      edges: import_resolution_facts_live(
-        pool_roots: pool_roots,
-        importer_roots: importer_roots,
-        exclude_substrings: exclude_substrings
-      )
-    )
+  reference_derived_edges_from_resolved_targets(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
   )
 }
 
@@ -492,4 +863,4 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data reference_derived_edge_source_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the namespace terminal step (namespace-resolution-design section 8 step 5) makes container.member references the derived dependency authority, at which point this scaffold producer over parsed-tree use sites deletes")
+data reference_derived_edge_source_dissolve_on: DissolutionCondition = unbound_dissolution(description: "NAMESPACE-XL STAGE XL-6 swaps dependency_resolution_facts_live onto this producer; until then the live edge source stays the import/reference union and this body stays the unused swap target")

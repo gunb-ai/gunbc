@@ -163,9 +163,15 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
   ReferenceGraphInstrumentDelivered,
 ]
 
-// Empty by construction today: neither instrument exists. A row lands here when the stage that
-// owes it delivers it.
-data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
+// Empty of rehearsal delivery: XL-2's instrument is not yet delivered. XL-4's row lands when
+// the reference-graph instrument is discriminated.
+data held_stage_delivery_receipts: List<StageDeliveryReceipt> = [
+  StageDeliveryReceipt {
+    kind: ReferenceGraphInstrumentDelivered,
+    producer: "tools.reference_derived_graph.report" as NonEmptyStr,
+    discriminated_by: "test.claim.reference_derived_graph_witness.reference_only_module_has_edge_and_unused_import_does_not" as NonEmptyStr,
+  }
+]
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
   required_stage_delivery_evidence_kinds
