@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { List, String }
 import std.materialization_ladder { string_list_contains }
 import gunbc.ci_spec { DiffMergeBase }
+import v2.std.collection { empty_map, map_insert }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
@@ -14,11 +15,12 @@ import v2.workflow.floor_diff_observe {
   FloorBaseTestDeclCensus,
   BaseTestDeclCensus,
   BaseTestDeclCensusRefused,
+  FloorShowObservation,
   floor_run_git_diff_unified,
   floor_run_git_diff_name_status,
   floor_observe_git_diff_unified_for_ci,
   floor_observe_git_diff_name_status_for_ci,
-  floor_run_base_test_decl_census,
+  floor_base_test_decl_census_from_listing,
   floor_base_test_decl_names_for_path
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -57,29 +59,37 @@ data base_census_present_path: String = "src/v2/test/claim/execution/floor_diff_
 data base_census_absent_path: String = "__gunbc_absent_declaration_census__.dag"
 data base_census_known_test_fn: String = "witness_present_path_yields_declared_test_fn_names"
 data base_census_unknown_test_fn: String = "witness_this_name_is_not_declared_in_this_file"
+data base_census_present_path_content: String = "test fn witness_present_path_yields_declared_test_fn_names() -> Bool {"
 
-fn census_at_head(paths: List<String>) -> FloorBaseTestDeclCensus {
-  floor_run_base_test_decl_census(base: "HEAD", paths: paths)
-}
+// The three census controls exercise `floor_base_test_decl_census_from_listing`, the same
+// fold production uses after git returns. They do not call `ListTreePathsAtRevision` or
+// `Show` — those operations declare no hermetic `mock_response`, and a changed witness
+// that stops there never reaches a verdict. Production (`floor_run_base_test_decl_census`)
+// remains the git caller.
 
-// Invalid ref: the listing fails, so the census REFUSES. If Show-failure were treated as
-// empty names, this control would still pass (listing fails first). The ABSENT-PATH control
-// below is the one that would go green under that defect; this one is the other direction.
 test fn witness_invalid_base_declaration_census_fails_closed() -> Bool {
-  match floor_run_base_test_decl_census(
+  match floor_base_test_decl_census_from_listing(
     base: "__gunbc_invalid_diff_base__",
-    paths: [base_census_present_path]
+    paths: [base_census_present_path],
+    listing_success: false,
+    listing_stderr: "fatal: invalid object",
+    paths_nul: "",
+    shows: empty_map()
   ) {
     BaseTestDeclCensusRefused { reason: _ } => true
     BaseTestDeclCensus { rows: _ } => false
   }
 }
 
-// A path the valid base tree does not carry is EMPTY NAMES, never a refusal. If the census
-// used only `git show` and mapped every 128 to refusal, this control would fail. Together
-// with the invalid-base control it proves the two 128s were not collapsed.
 test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
-  let census = census_at_head(paths: [base_census_absent_path])
+  let census = floor_base_test_decl_census_from_listing(
+    base: "HEAD",
+    paths: [base_census_absent_path],
+    listing_success: true,
+    listing_stderr: "",
+    paths_nul: "",
+    shows: empty_map()
+  )
   match census {
     BaseTestDeclCensusRefused { reason: _ } => false
     BaseTestDeclCensus { rows: _ } =>
@@ -90,12 +100,23 @@ test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
   }
 }
 
-// Positive control AND its mutation in one function: a path this file itself occupies at
-// HEAD must yield THIS function's name, and must not yield a name the file does not declare.
-// If the scanner returned every token, the unknown-name conjunct fails; if it returned
-// nothing, the known-name conjunct fails.
 test fn witness_present_path_yields_declared_test_fn_names() -> Bool {
-  let census = census_at_head(paths: [base_census_present_path])
+  let census = floor_base_test_decl_census_from_listing(
+    base: "HEAD",
+    paths: [base_census_present_path],
+    listing_success: true,
+    listing_stderr: "",
+    paths_nul: base_census_present_path,
+    shows: map_insert(
+      m: empty_map(),
+      key: base_census_present_path,
+      value: FloorShowObservation {
+        success: true,
+        content: base_census_present_path_content,
+        stderr: ""
+      }
+    )
+  )
   match census {
     BaseTestDeclCensusRefused { reason: _ } => false
     BaseTestDeclCensus { rows: _ } =>
