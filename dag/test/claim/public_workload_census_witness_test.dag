@@ -23,7 +23,9 @@ import gunbc.public_workload_census {
   DeclaredProviderKnown, DeclaredProviderUnresolved,
   candidate_declared_architecture, candidate_baseline,
   candidate_declared_provider, candidate_observed_provider,
-  candidate_effects_are_sound, candidate_warm_cache_count,
+  candidate_warm_cache_count,
+  effect_disposition, CoverageUpload, WorkflowArtifactUpload,
+  RemovedFromBothRealizations, RetainedAndTimed,
   workload_census, selected_workloads, correctness_admitted_workloads,
   rejected_candidates, unresolved_candidates,
   candidate_biome_test, candidate_pdns_dnsdist_arm, candidate_openobserve_arm_build,
@@ -164,8 +166,14 @@ test fn witness_unobserved_cache_is_never_warm() -> Bool {
   count(filter(workload_census, c => candidate_warm_cache_count(c: c) > 0)) == 0
 }
 
-test fn witness_external_effect_dispositions_are_sound() -> Bool {
-  count(filter(workload_census, c => candidate_effects_are_sound(c: c) == false)) == 0
+test fn witness_effect_disposition_is_derived_from_kind() -> Bool {
+  match effect_disposition(kind: CoverageUpload { service: "Coveralls" }) {
+    RemovedFromBothRealizations { cause } => match effect_disposition(kind: WorkflowArtifactUpload { artifact: "dnsdist binaries" }) {
+      RetainedAndTimed { cause } => true
+      RemovedFromBothRealizations { cause } => false
+    }
+    RetainedAndTimed { cause } => false
+  }
 }
 
 test fn witness_admitted_baseline_carries_the_observed_run_attempt() -> Bool {
@@ -197,7 +205,7 @@ fn all_claims_hold() -> Bool {
     && witness_openobserve_amd64_is_catalog_x64_and_rejected()
     && witness_observed_labels_and_attempt_are_read_from_the_job_resource()
     && witness_unobserved_cache_is_never_warm()
-    && witness_external_effect_dispositions_are_sound()
+    && witness_effect_disposition_is_derived_from_kind()
     && witness_admitted_baseline_carries_the_observed_run_attempt()
     && witness_a_green_job_without_tests_is_not_a_baseline()
 }

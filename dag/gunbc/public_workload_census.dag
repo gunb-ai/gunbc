@@ -248,13 +248,10 @@ fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
   match o {
     NoRunObserved { obligation } => NoRunObservedForLabel { obligation: obligation }
     JobRunObserved { job, head_sha, correctness } =>
-      fold(observed_job_labels(job: job), init: JobResourceCarriedNoLabels { job_id: job.id }, f: fn(acc, l) {
-        match acc {
-          JobResourceCarriedNoLabels { job_id } => ObservedLabel { label: l }
-          ObservedLabel { label } => acc
-          NoRunObservedForLabel { obligation } => acc
-        }
-      })
+      match observed_job_labels(job: job).first() {
+        Absent => JobResourceCarriedNoLabels { job_id: job.id }
+        Present { value: l } => ObservedLabel { label: l }
+      }
   }
 }
 
@@ -408,7 +405,23 @@ type EffectDisposition
 type ExternalEffect {
   kind: ExternalEffectKind
   step: NonEmptyStr
-  disposition: EffectDisposition
+}
+
+fn effect_disposition(kind: ExternalEffectKind) -> EffectDisposition {
+  match kind {
+    RegistryPush { registry } => RemovedFromBothRealizations {
+      cause: "publishing mutates a third-party registry",
+    }
+    CloudRoleAssumption { role } => RemovedFromBothRealizations {
+      cause: "assuming a third party's cloud role is neither possible nor permissible for replay",
+    }
+    CoverageUpload { service } => RemovedFromBothRealizations {
+      cause: "a third-party coverage upload mutates an external service",
+    }
+    WorkflowArtifactUpload { artifact } => RetainedAndTimed {
+      cause: "an artifact upload inside the same run is required work and is timed as its own stage",
+    }
+  }
 }
 
 type ReplayAdmission
@@ -481,27 +494,6 @@ fn candidate_observed_provider(c: WorkloadCandidate) -> ProviderReading {
 
 fn candidate_baseline(c: WorkloadCandidate) -> BaselineAdmission {
   baseline_admission(o: c.observed)
-}
-
-fn candidate_effects_are_sound(c: WorkloadCandidate) -> Bool {
-  all(c.external_effects, e => match e.kind {
-    RegistryPush { registry } => match e.disposition {
-      RemovedFromBothRealizations { cause } => true
-      RetainedAndTimed { cause } => false
-    }
-    CloudRoleAssumption { role } => match e.disposition {
-      RemovedFromBothRealizations { cause } => true
-      RetainedAndTimed { cause } => false
-    }
-    CoverageUpload { service } => match e.disposition {
-      RemovedFromBothRealizations { cause } => true
-      RetainedAndTimed { cause } => false
-    }
-    WorkflowArtifactUpload { artifact } => match e.disposition {
-      RetainedAndTimed { cause } => true
-      RemovedFromBothRealizations { cause } => false
-    }
-  })
 }
 
 fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
@@ -647,16 +639,10 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
     ExternalEffect {
       kind: CoverageUpload { service: "Coveralls" },
       step: "Coveralls Parallel dnsdist unit",
-      disposition: RemovedFromBothRealizations {
-        cause: "a third-party coverage upload mutates an external service",
-      },
     },
     ExternalEffect {
       kind: WorkflowArtifactUpload { artifact: "dnsdist binaries" },
       step: "Store the binaries",
-      disposition: RetainedAndTimed {
-        cause: "an artifact upload inside the same run is required work and is timed as its own stage",
-      },
     },
   ],
   replay: ReplayAdmitted { note: replay_derivation_note },
@@ -720,16 +706,10 @@ data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
     ExternalEffect {
       kind: CloudRoleAssumption { role: "arn:aws:iam::058694856476:role/GitHubActionsRole" },
       step: "Configure AWS Credentials",
-      disposition: RemovedFromBothRealizations {
-        cause: "assuming a third party's cloud role is neither possible nor permissible for replay",
-      },
     },
     ExternalEffect {
       kind: RegistryPush { registry: "public.ecr.aws/zinclabs/openobserve-dev" },
       step: "Build and push",
-      disposition: RemovedFromBothRealizations {
-        cause: "publishing an image mutates a third-party registry; removed from both realizations",
-      },
     },
   ],
   replay: ReplayAdmitted { note: replay_derivation_note },
@@ -780,9 +760,6 @@ data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
     ExternalEffect {
       kind: RegistryPush { registry: "public.ecr.aws/zinclabs/openobserve-dev" },
       step: "Build and push",
-      disposition: RemovedFromBothRealizations {
-        cause: "registry push is an external mutation",
-      },
     },
   ],
   replay: ReplayRefusedArchitecture {
@@ -832,9 +809,6 @@ data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
     ExternalEffect {
       kind: RegistryPush { registry: "public.ecr.aws/zinclabs/openobserve-dev" },
       step: "docker-manifest-create",
-      disposition: RemovedFromBothRealizations {
-        cause: "manifest publish mutates a registry",
-      },
     },
   ],
   replay: ReplayRefusedWorkload {
