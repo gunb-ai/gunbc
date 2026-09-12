@@ -1,0 +1,160 @@
+module v2.test.claim.declaring_identity_spelling.verdict_fold
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.declaring_identity_spelling {
+  DeclaringIdentityCensusCoverage,
+  DeclaringIdentitySpelling,
+  IdentityUnbound,
+  IdentityAmbiguous,
+  IdentityOwnerless,
+  InvisibleUntilCallExpressionRetained,
+  InvisibleUntilProductionIngestYieldsSites,
+  ObservedOnNormalizedTree,
+  ResolvedAuthoredNotOnCanonicalPath,
+  ResolvedSpelling,
+  SpelledCanonically,
+  SpelledShorter,
+  UnresolvableSpelling,
+  declaring_identity_spelling_resolved,
+  declaring_identity_spelling_unresolvable,
+  resolved_path_verdict,
+  resolved_spelling_needs_requalification
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HAND-BUILT INPUTS FOR THE VERDICT FOLD ONLY. These QualifiedName values are not
+// collector output and are not production evidence. File fixtures under
+// src/v2/test/fixture/declaring_identity_spelling/ are the subjects of the held
+// ingest path; they must not be substituted here to green an empty collector.
+
+data fold_fixture_module: String = "v2.test.fixture.declaring_identity_spelling.shorter"
+
+fn fold_canonical_marker() -> QualifiedName {
+  qualified_name_from_dotted_string(
+    dotted: "v2.test.fixture.declaring_identity_spelling.shorter.Marker"
+  )
+}
+
+fn fold_bare_marker() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "Marker")
+}
+
+fn fold_partial_marker() -> QualifiedName {
+  qualified_name_from_dotted_string(
+    dotted: "declaring_identity_spelling.shorter.Marker"
+  )
+}
+
+fn fold_off_path() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "other.Marker")
+}
+
+fn fold_declaring() -> DeclarationRef {
+  decl_ref(
+    module_path: fold_fixture_module,
+    decl_name: "Marker"
+  )
+}
+
+fn fold_resolved(
+  authored: QualifiedName
+) -> DeclaringIdentitySpelling {
+  declaring_identity_spelling_resolved(
+    authored: authored,
+    declaring: fold_declaring(),
+    canonical: fold_canonical_marker()
+  )
+}
+
+test fn bare_authored_is_spelled_shorter_holds() -> Bool {
+  let row = fold_resolved(authored: fold_bare_marker())
+  match row {
+    ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: verdict } =>
+      match verdict {
+        SpelledShorter => resolved_spelling_needs_requalification(row: row)
+        SpelledCanonically => false
+        ResolvedAuthoredNotOnCanonicalPath => false
+      }
+    UnresolvableSpelling { authored: _, cause: _ } => false
+  }
+}
+
+test fn full_path_is_spelled_canonically_holds() -> Bool {
+  let row = fold_resolved(authored: fold_canonical_marker())
+  match row {
+    ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: verdict } =>
+      match verdict {
+        SpelledCanonically => !resolved_spelling_needs_requalification(row: row)
+        SpelledShorter => false
+        ResolvedAuthoredNotOnCanonicalPath => false
+      }
+    UnresolvableSpelling { authored: _, cause: _ } => false
+  }
+}
+
+test fn partial_qualification_is_spelled_shorter_holds() -> Bool {
+  match resolved_path_verdict(
+    authored: fold_partial_marker(),
+    canonical: fold_canonical_marker()
+  ) {
+    SpelledShorter => true
+    SpelledCanonically => false
+    ResolvedAuthoredNotOnCanonicalPath => false
+  }
+}
+
+test fn resolved_off_canonical_path_is_its_own_arm_holds() -> Bool {
+  match resolved_path_verdict(
+    authored: fold_off_path(),
+    canonical: fold_canonical_marker()
+  ) {
+    ResolvedAuthoredNotOnCanonicalPath => true
+    SpelledCanonically => false
+    SpelledShorter => false
+  }
+}
+
+test fn unbound_is_unresolvable_and_not_requalification_work_holds() -> Bool {
+  let row = declaring_identity_spelling_unresolvable(
+    authored: qualified_name_from_dotted_string(dotted: "ThisNameIsNotDeclaredInThisFixture"),
+    cause: IdentityUnbound
+  )
+  match row {
+    UnresolvableSpelling { authored: _, cause: cause } =>
+      match cause {
+        IdentityUnbound => !resolved_spelling_needs_requalification(row: row)
+        IdentityAmbiguous => false
+        IdentityOwnerless => false
+      }
+    ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: _ } => false
+  }
+}
+
+data held_file_ingest_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilProductionIngestYieldsSites
+
+data held_call_erasure_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilCallExpressionRetained
+
+data shorter_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/shorter.dag"
+
+data canonical_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/canonical.dag"
+
+data unresolvable_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/unresolvable.dag"
+
+data call_only_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/call_only.dag"
+
+test fn coverage_frontiers_are_not_observed_tree_holds() -> Bool {
+  match held_file_ingest_coverage {
+    InvisibleUntilProductionIngestYieldsSites =>
+      match held_call_erasure_coverage {
+        InvisibleUntilCallExpressionRetained => true
+        ObservedOnNormalizedTree => false
+        InvisibleUntilProductionIngestYieldsSites => false
+      }
+    ObservedOnNormalizedTree => false
+    InvisibleUntilCallExpressionRetained => false
+  }
+}
