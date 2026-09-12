@@ -1,0 +1,92 @@
+module extdeps.ampere.mt_collins_getting_started_guide.dimm_layout
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority, mt_collins_gsg_model_scope }
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_gsg_authority
+data extdeps_model_scope: ExternalModelScope = mt_collins_gsg_model_scope
+
+// All figures below belong to the subject's Issue 1.05, AMP 2021-00511. Figure labels
+// and drawing colours are not a transcription of board silkscreen or moulded plastic.
+// Consumer: gunbc.mt_collins_dimm_physical_identity joins these figure coordinates
+// to memory_population's existing connector pairs; it refuses unresolved identities.
+type MtCollinsDimmFigure {
+  number: Nat
+  page: Nat
+}
+
+data memory_topology_legend_figure: MtCollinsDimmFigure = MtCollinsDimmFigure { number: 8, page: 10 }
+data memory_connector_layout_figure: MtCollinsDimmFigure = MtCollinsDimmFigure { number: 9, page: 11 }
+data chassis_orientation_figure: MtCollinsDimmFigure = MtCollinsDimmFigure { number: 10, page: 13 }
+data motherboard_revision_photo_figure: MtCollinsDimmFigure = MtCollinsDimmFigure { number: 12, page: 36 }
+
+type MtCollinsDimmBankSide = LeftOfProcessor | RightOfProcessor
+
+type MtCollinsDimmFigureBank {
+  figure: MtCollinsDimmFigure
+  processor_socket: Nat
+  processor_figure_label: NonEmptyStr
+  side: MtCollinsDimmBankSide
+  connectors_left_to_right: List<Nat>
+}
+
+// The new fact is spatial order in Figure 9, not a new channel or population table.
+// J-number keys resolve against memory_population; no MCU assignment is copied here.
+data dimm_figure_connector_label_prefix: NonEmptyStr = "J"
+
+data dimm_figure_banks: List<MtCollinsDimmFigureBank> = [
+  MtCollinsDimmFigureBank { figure: memory_connector_layout_figure, processor_socket: 0, processor_figure_label: "CPU0", side: LeftOfProcessor, connectors_left_to_right: [1, 2, 3, 4, 5, 6, 7, 8] },
+  MtCollinsDimmFigureBank { figure: memory_connector_layout_figure, processor_socket: 0, processor_figure_label: "CPU0", side: RightOfProcessor, connectors_left_to_right: [16, 15, 14, 13, 12, 11, 10, 9] },
+  MtCollinsDimmFigureBank { figure: memory_connector_layout_figure, processor_socket: 1, processor_figure_label: "CPU1", side: LeftOfProcessor, connectors_left_to_right: [17, 18, 19, 20, 21, 22, 23, 24] },
+  MtCollinsDimmFigureBank { figure: memory_connector_layout_figure, processor_socket: 1, processor_figure_label: "CPU1", side: RightOfProcessor, connectors_left_to_right: [32, 31, 30, 29, 28, 27, 26, 25] },
+]
+
+type MtCollinsDimmDiagramLegend {
+  figure: MtCollinsDimmFigure
+  slot_number: Nat
+  drawing_colour: NonEmptyStr
+}
+
+// Figure 8 names slot#0 and slot#1; these are diagram slot roles, not temporal
+// installation instructions. Its MCU leader lines are NOT used to override Tables 12-13.
+data one_dpc_diagram_legend: MtCollinsDimmDiagramLegend = MtCollinsDimmDiagramLegend {
+  figure: memory_topology_legend_figure,
+  slot_number: 0,
+  drawing_colour: "yellow",
+}
+
+data additional_two_dpc_diagram_legend: MtCollinsDimmDiagramLegend = MtCollinsDimmDiagramLegend {
+  figure: memory_topology_legend_figure,
+  slot_number: 1,
+  drawing_colour: "blue",
+}
+
+type MtCollinsChassisFigureOrientation {
+  figure: MtCollinsDimmFigure
+  top_landmark: NonEmptyStr
+  bottom_landmark: NonEmptyStr
+  left_processor_socket: Nat
+  right_processor_socket: Nat
+}
+
+data chassis_figure_orientation: MtCollinsChassisFigureOrientation = MtCollinsChassisFigureOrientation {
+  figure: chassis_orientation_figure,
+  top_landmark: "NVMe backplane and six fans (front)",
+  bottom_landmark: "PCIe risers (rear)",
+  left_processor_socket: 0,
+  right_processor_socket: 1,
+}
+
+// This is a bounded photographic fact, not a physical colour-to-J-number mapping.
+// The photograph is cropped through one heatsink and does not identify every DIMM.
+type MtCollinsDimmPhotographColours {
+  figure: MtCollinsDimmFigure
+  visible_connector_colours: List<NonEmptyStr>
+}
+
+data motherboard_photo_colours: MtCollinsDimmPhotographColours = MtCollinsDimmPhotographColours {
+  figure: motherboard_revision_photo_figure,
+  visible_connector_colours: ["blue", "black"],
+}

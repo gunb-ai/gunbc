@@ -1,0 +1,482 @@
+module test.claim.ci_workflow_source_read_witness_test
+
+import std.logic { Bool }
+import std.types { CommitSha, Int, String, Secret }
+import std.measure { byte_size }
+import extdeps.github.code_search {
+  CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
+  hermetic_code_search_repository, hermetic_code_search_path, hermetic_code_search_name,
+  hermetic_code_search_blob_sha, hermetic_code_search_total_count,
+}
+import extdeps.github.repository_contents {
+  RepositoryFileContent, contents_base64_encoding, contents_absent_encoding,
+  hermetic_repository_file_blob_sha, hermetic_repository_file_path, hermetic_repository_file_size,
+}
+import gunbc.ci_workflow_source_read {
+  CodeSearchPageRead, CodeSearchPageComplete, CodeSearchPageTruncated, CodeSearchPageRefused,
+  perform_code_search_page,
+  WorkflowSourceRead, WorkflowSourceObserved, WorkflowSourceTooLargeForContentsApi,
+  WorkflowSourceEncodingUnrecognized, WorkflowSourceRefused,
+  perform_workflow_source_read, classify_workflow_source, classify_code_search_page,
+  HitCanonicalization, HitCanonicalized, HitFileUnreadable, HitSubjectsDisagree, HitRefNotExact,
+  HitReadRefused, canonicalize_hit,
+  SubjectDisagreement, RepositoryDiffersFromHit, RequestedPathDiffersFromHit, ResponsePathDiffersFromRequest,
+  WorkflowSourceRequest, request_repository_full_name,
+  WorkflowSourceIdentity,
+}
+import extdeps.transports.rest {
+  RestOk, RestStatusRefused, RestTransportRefused,
+  classify_rest_outcome, RestReadExchange,
+  RestExchangeStatusRefused, RestExchangeUnreached,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_token: Secret = "hermetic-fixture-token" as Secret
+
+// -------------------------------------------------------------------------------------
+// THE PAGE READ, BOUND TO THE HERMETIC FIXTURE. The green here is the published mock shape, not a
+// live GitHub search - and the fixture's own numbers are what the claim asserts, so a live page
+// substituted for it would go red rather than pass quietly.
+// -------------------------------------------------------------------------------------
+
+test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool {
+  match perform_code_search_page(auth_token: fixture_token, q: "\"depot-ubuntu-24.04-arm\" path:.github/workflows", per_page: 100, page: 1) {
+    CodeSearchPageComplete { page, hits_read } =>
+      hits_read == 1
+        && count(page.items) == 1
+        && first(page.items).sha == hermetic_code_search_blob_sha
+        && first(page.items).path == hermetic_code_search_path
+        && first(page.items).repository.full_name == hermetic_code_search_repository.full_name
+    CodeSearchPageTruncated { page, hits_read, cause } => false
+    CodeSearchPageRefused { performance } => false
+  }
+}
+
+// NO CLAIM ABOUT THE CROSS-PAGE ANOMALY LIVES HERE, AND THE ABSENCE IS DELIBERATE.
+//
+// Two revisions of this witness tried to assert it and both were green for the wrong reason. The
+// first compared total_count to the hits on ONE page - true of every paginated response ever
+// returned, since a first page of 100 out of a genuine 250 satisfies it. The second replaced that
+// with a transcribed [100, 100, 91], summed it, and compared the sum to 291 and to 250: every
+// conjunct a literal against the sum of literals, executing no production code at all. Automating
+// those literals collapses the assertion to measure() == measure(), which is section 5's own tell
+// for a change detector.
+//
+// THE ANOMALY IS A PROPERTY OF A WALK AND THIS MODULE DOES NOT WALK. It classifies ONE page; the
+// pagination is the caller's, and the receipt that records how many pages were read and how many
+// hits each delivered belongs to the scan that performed them. A claim here could only ever
+// re-type numbers produced somewhere else. So the reading is asserted where its carrier is, over
+// page receipts a production fold sums, and this witness asserts what it can actually drive: that
+// a page upstream marked incomplete is not a complete one, and that an ordinary page is.
+
+// -------------------------------------------------------------------------------------
+// THE FILE READ, AND THE TWO ARMS THAT EXIST BECAUSE 200 IS NOT ALWAYS AN ANSWER.
+// -------------------------------------------------------------------------------------
+
+test fn a_workflow_source_read_binds_the_hermetic_blob_identity() -> Bool {
+  match perform_workflow_source_read(
+    auth_token: fixture_token, owner: "biomejs", repo: "biome",
+    path: ".github/workflows/main.yml", ref: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  ) {
+    WorkflowSourceObserved { file } =>
+      file.sha == hermetic_repository_file_blob_sha
+        && file.path == hermetic_repository_file_path
+        && file.size == hermetic_repository_file_size
+        && file.encoding == contents_base64_encoding
+    other => false
+  }
+}
+
+// THE OVERSIZED ARM, WHICH IS THE ONE THAT WOULD OTHERWISE FABRICATE. Above its size ceiling the
+// contents endpoint answers 200 with encoding "none" and no content; a reader that decoded
+// unconditionally would record a repository as having an empty workflow and therefore no jobs.
+// This claim constructs that response shape directly, because the mock publishes only one result
+// and the arm still has to be shown to refuse.
+data oversized_response: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "0000000000000000000000000000000000000000",
+  size: 1200000,
+  encoding: "none",
+  content: "",
+}
+
+data unknown_encoding_response: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "1111111111111111111111111111111111111111",
+  size: 10,
+  encoding: "utf-16",
+  content: "??",
+}
+
+
+
+// -------------------------------------------------------------------------------------
+// A HIT IS NOT AN OBSERVATION. Canonicalization must be reachable only through a read at a named
+// ref, and it must refuse when the read did not produce bytes - otherwise a scan promotes an
+// index entry into an identity and records a blob sha nobody fetched.
+// -------------------------------------------------------------------------------------
+
+data fixture_hit: CodeSearchHit = CodeSearchHit {
+  name: hermetic_code_search_name,
+  path: hermetic_code_search_path,
+  sha: hermetic_code_search_blob_sha,
+  repository: hermetic_code_search_repository,
+}
+
+data fixture_ref: CommitSha = "47d7383d049b36ff8eaba50912176928143dd9e9"
+
+// THE REQUEST THAT AGREES WITH THE HIT. fixture_hit is llvm/llvm-project at
+// .github/workflows/premerge.yaml, so a coherent read is one made against THAT repository and THAT
+// path. An earlier revision of this witness paired the LLVM hit with a read of Biome's main.yml and
+// asserted the resulting hybrid was correct - a positive claim that REQUIRED the defect, so
+// repairing the code would have turned this witness red. That is worse than having no witness.
+data coherent_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "llvm",
+  repo: "llvm-project",
+  path: ".github/workflows/premerge.yaml",
+  ref: fixture_ref,
+}
+
+data foreign_repo_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "biomejs",
+  repo: "biome",
+  path: ".github/workflows/premerge.yaml",
+  ref: fixture_ref,
+}
+
+// TO REACH RequestedPathDiffersFromHit THE RESPONSE MUST AGREE WITH THE REQUEST. canonicalize_hit
+// checks response-against-request BEFORE request-against-hit, so a fixture whose response also
+// differs from the request never reaches the later arm - it is caught by the earlier one and the
+// claim passes on the wrong refusal. The response below therefore carries the REQUESTED path, and
+// only the hit disagrees.
+data foreign_path_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "llvm",
+  repo: "llvm-project",
+  path: ".github/workflows/main.yml",
+  ref: fixture_ref,
+}
+
+data response_agreeing_with_foreign_path_request: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  size: 5172,
+  encoding: "base64",
+  content: "ZmFrZQ==",
+}
+
+data observed_file: RepositoryFileContent = RepositoryFileContent {
+  name: "premerge.yaml",
+  path: ".github/workflows/premerge.yaml",
+  sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  size: 5172,
+  encoding: "base64",
+  content: "ZmFrZQ==",
+}
+
+test fn a_read_file_canonicalizes_to_an_identity_carrying_the_ref_and_blob() -> Bool {
+  match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: observed_file)) {
+    HitCanonicalized { identity } =>
+      identity.ref == fixture_ref
+        && identity.blob_sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
+        && identity.workflow_path == ".github/workflows/premerge.yaml"
+        && identity.repository_full_name == "llvm/llvm-project"
+        && identity.repository_full_name == request_repository_full_name(r: coherent_request)
+        && identity.workflow_path == coherent_request.path
+        && identity.repository_is_fork == false
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE PROMOTION: an unread file must NOT become an identity, however
+// complete the hit that pointed at it was. Both non-reading arms are exercised, because a scan
+// that refused only the oversized one would still fabricate on an unrecognized encoding.
+test fn an_unread_file_never_becomes_an_identity() -> Bool {
+  let oversized_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: oversized_response)) {
+    HitCanonicalized { identity } => false
+    HitFileUnreadable { repository_full_name, path, cause } => repository_full_name == "llvm/llvm-project"
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  let unknown_encoding_refused = match canonicalize_hit(hit: fixture_hit, read: classify_workflow_source(request: coherent_request, file: unknown_encoding_response)) {
+    HitFileUnreadable { repository_full_name, path, cause } =>
+      repository_full_name == "llvm/llvm-project"
+    HitCanonicalized { identity } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  oversized_refused && unknown_encoding_refused
+}
+
+// -------------------------------------------------------------------------------------
+// THE TWO ARMS THIS MODULE EXISTS FOR, DRIVEN THROUGH THE PRODUCTION CLASSIFIER.
+//
+// An earlier revision of this witness carried a hand-copied twin of the encoding decision,
+// because the published mock is a single base64 200 and the refusing arms were unreachable
+// through the effectful function. A copy cannot go red when the original is wrong, which is
+// exactly the state DESIGN section 5 calls specification-without-execution: the arms looked
+// covered and nothing was executing them. The classifier is now a separate total function that
+// the effectful read calls, so these claims drive the same code the production path runs.
+// -------------------------------------------------------------------------------------
+
+test fn the_oversized_response_is_refused_by_the_production_classifier() -> Bool {
+  match classify_workflow_source(request: coherent_request, file: oversized_response) {
+    WorkflowSourceTooLargeForContentsApi { file, cause } =>
+      file.encoding == contents_absent_encoding && string_contains(s: cause as String, pattern: "was NOT read")
+    WorkflowSourceObserved { file } => false
+    WorkflowSourceEncodingUnrecognized { file, cause } => false
+    WorkflowSourceRefused { performance } => false
+  }
+}
+
+test fn an_unrecognized_encoding_is_refused_by_the_production_classifier() -> Bool {
+  match classify_workflow_source(request: coherent_request, file: unknown_encoding_response) {
+    WorkflowSourceEncodingUnrecognized { file, cause } => file.encoding == "utf-16"
+    WorkflowSourceObserved { file } => false
+    WorkflowSourceTooLargeForContentsApi { file, cause } => false
+    WorkflowSourceRefused { performance } => false
+  }
+}
+
+// The positive control on the same function, so the two claims above are not green because the
+// classifier refuses everything.
+test fn a_base64_response_is_observed_by_the_production_classifier() -> Bool {
+  match classify_workflow_source(request: coherent_request, file: observed_file) {
+    WorkflowSourceObserved { file } => file.sha == "99f1255bbfa20a11197716a8fdb4c4e3359a588b"
+    other => false
+  }
+}
+
+// THE SAME GAP EXISTED ON THE SEARCH SIDE AND WAS NOT FLAGGED: the mock publishes
+// incomplete_results false, so the truncated arm had no execution either. Upstream saying it gave
+// up is the one signal that separates a small population from an abandoned query, and a scan that
+// never exercises that arm cannot claim to honour it.
+data truncated_page: CodeSearchPage = CodeSearchPage {
+  total_count: 250,
+  incomplete_results: true,
+  items: [],
+}
+
+test fn an_upstream_truncated_page_is_not_a_complete_one() -> Bool {
+  let truncated = match classify_code_search_page(page: truncated_page) {
+    CodeSearchPageTruncated { page, hits_read, cause } =>
+      hits_read == 0 && string_contains(s: cause as String, pattern: "incomplete_results")
+    CodeSearchPageComplete { page, hits_read } => false
+    CodeSearchPageRefused { performance } => false
+  }
+  let complete = match classify_code_search_page(page: CodeSearchPage {
+    total_count: hermetic_code_search_total_count,
+    incomplete_results: false,
+    items: [fixture_hit],
+  }) {
+    CodeSearchPageComplete { page, hits_read } => hits_read == 1
+    other => false
+  }
+  truncated && complete
+}
+
+// -------------------------------------------------------------------------------------
+// A REFUSAL THAT ARRIVES AS A REFUSAL, AND KEEPS ITS STATUS. An earlier revision of
+// canonicalize_hit bound the RestExchangePerformance and discarded it, so a 404 on a deleted path,
+// a 403 rate limit and a 500 all left as one identical sentence - the collapse this module's
+// opening note says it exists to prevent, reintroduced at its own boundary. The arm also had no
+// claim, so the collapse was unobserved as well as unmodeled.
+//
+// The two statuses below are the pair that MATTERS to a scan and that the old shape made
+// indistinguishable: 404 shrinks the population legitimately, 403 shrinks it because we ran out of
+// budget. A scan that treats the second as the first reports a smaller world and never learns it
+// was rate limited.
+// -------------------------------------------------------------------------------------
+
+fn refusal_of(status: Int, body: String) -> WorkflowSourceRead {
+  WorkflowSourceRefused {
+    performance: classify_rest_outcome(standing: RestReadExchange {
+      rest: RestStatusRefused { status: status, body: body },
+    }),
+  }
+}
+
+fn refused_status(read: WorkflowSourceRead) -> Int {
+  match canonicalize_hit(hit: fixture_hit, read: read) {
+    HitReadRefused { repository_full_name, path, performance } =>
+      match performance {
+        RestExchangeStatusRefused { status, body } => status
+        other => 0
+      }
+    HitCanonicalized { identity } => 0
+    HitFileUnreadable { repository_full_name, path, cause } => 0
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => 0
+    HitRefNotExact { repository_full_name, path, ref, cause } => 0
+  }
+}
+
+test fn a_read_refusal_reaches_canonicalization_carrying_its_status() -> Bool {
+  refused_status(read: refusal_of(status: 404, body: "Not Found")) == 404
+    && refused_status(read: refusal_of(status: 403, body: "rate limit exceeded")) == 403
+    && refused_status(read: refusal_of(status: 500, body: "boom")) == 500
+}
+
+// AND A TRANSPORT LOSS IS NOT A STATUS, which is the arm that would otherwise be flattened into a
+// zero by a reader expecting one. It reaches the same refusal arm and keeps its own disposition.
+test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
+  let read = WorkflowSourceRefused {
+    performance: classify_rest_outcome(standing: RestReadExchange {
+      rest: RestTransportRefused { cause: "timeout" },
+    }),
+  }
+  match canonicalize_hit(hit: fixture_hit, read: read) {
+    HitReadRefused { repository_full_name, path, performance } =>
+      match performance {
+        RestExchangeUnreached { cause } => repository_full_name == "llvm/llvm-project"
+        other => false
+      }
+    HitCanonicalized { identity } => false
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// AN IDENTITY MAY NOT BE ASSEMBLED FROM TWO DIFFERENT SUBJECTS.
+//
+// This is the claim whose ABSENCE was worse than a gap: the positive witness above used to pair the
+// LLVM hit with a read of Biome's main.yml and assert the hybrid was correct. It did not merely
+// fail to catch the defect - it REQUIRED it, so repairing canonicalize_hit would have turned the
+// witness red and the repair would have looked like a regression.
+//
+// Both directions of the mismatch are claimed, because refusing only the repository case would
+// still admit a blob from a different FILE in the right repository - which is the subtler of the
+// two and the one a scan would actually hit, since one repository holds many workflows.
+test fn an_identity_is_never_assembled_from_two_different_subjects() -> Bool {
+  let foreign_repo_refused = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: foreign_repo_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
+      match disagreement {
+        RepositoryDiffersFromHit { hit_repository, read_repository } => read_repository == "biomejs/biome"
+        other => false
+      }
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  let foreign_path_refused = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved {
+      request: foreign_path_request,
+      file: response_agreeing_with_foreign_path_request,
+    },
+  ) {
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
+      match disagreement {
+        RequestedPathDiffersFromHit { hit_path, requested_path } =>
+          hit_path == ".github/workflows/premerge.yaml"
+            && requested_path == ".github/workflows/main.yml"
+        other => false
+      }
+    HitCanonicalized { identity } => false
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  let coherent_admitted = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: coherent_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => identity.repository_full_name == "llvm/llvm-project"
+    other => false
+  }
+  foreign_repo_refused && foreign_path_refused && coherent_admitted
+}
+
+// THE REF COMES FROM THE READ, NOT FROM THE CALLER, so an identity cannot be labelled with a ref
+// the fetch did not use. It is a CommitSha because "main" is not an exact ref - a branch name names
+// whatever it points at today, and an observation keyed by one cannot be returned to.
+test fn the_identitys_ref_is_the_one_the_read_was_made_with() -> Bool {
+  let other_ref_request = WorkflowSourceRequest {
+    owner: "llvm", repo: "llvm-project",
+    path: ".github/workflows/premerge.yaml",
+    ref: "1111111111111111111111111111111111111111",
+  }
+  match canonicalize_hit(hit: fixture_hit, read: WorkflowSourceObserved { request: other_ref_request, file: observed_file }) {
+    HitCanonicalized { identity } =>
+      identity.ref == "1111111111111111111111111111111111111111" && identity.ref != fixture_ref
+    other => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THREE SUBJECTS HAVE TO AGREE, NOT TWO. The join checked the hit against the REQUEST and then
+// built identity.workflow_path from the RESPONSE - so a coherent request could still return a
+// record naming a different file and the hybrid was minted anyway, one field further along than
+// the version this witness already guards. Checking two of three subjects leaves the third free.
+data response_naming_another_file: RepositoryFileContent = RepositoryFileContent {
+  name: "main.yml",
+  path: ".github/workflows/main.yml",
+  sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  size: 5172,
+  encoding: "base64",
+  content: "ZmFrZQ==",
+}
+
+test fn a_response_naming_another_file_never_becomes_an_identity() -> Bool {
+  match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: coherent_request, file: response_naming_another_file },
+  ) {
+    HitCanonicalized { identity } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } =>
+      match disagreement {
+        ResponsePathDiffersFromRequest { requested_path, response_path } =>
+          response_path == ".github/workflows/main.yml"
+        other => false
+      }
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+}
+
+// AND A BRANCH NAME IS NOT AN EXACT REF, WHICH THE TYPE DOES NOT ENFORCE. CommitSha is an
+// unvalidated String alias on this tree, so declaring the field CommitSha renamed the obligation
+// without creating a wall - "main" satisfies it. An identity keyed to a branch names whatever that
+// branch points at today and cannot be returned to, which is the whole reason the ref is carried.
+data branch_ref_request: WorkflowSourceRequest = WorkflowSourceRequest {
+  owner: "llvm",
+  repo: "llvm-project",
+  path: ".github/workflows/premerge.yaml",
+  ref: "main",
+}
+
+test fn a_branch_name_is_refused_as_a_ref() -> Bool {
+  let branch_refused = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: branch_ref_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => false
+    HitRefNotExact { repository_full_name, path, ref, cause } => ref == "main"
+    HitFileUnreadable { repository_full_name, path, cause } => false
+    HitSubjectsDisagree { repository_full_name, path, disagreement, cause } => false
+    HitReadRefused { repository_full_name, path, performance } => false
+  }
+  let sha_admitted = match canonicalize_hit(
+    hit: fixture_hit,
+    read: WorkflowSourceObserved { request: coherent_request, file: observed_file },
+  ) {
+    HitCanonicalized { identity } => true
+    other => false
+  }
+  branch_refused && sha_admitted
+}

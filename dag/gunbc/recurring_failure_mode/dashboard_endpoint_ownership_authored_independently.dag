@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.dashboard_endpoint_ownership_authored_independently
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data dashboard_endpoint_ownership_authored_independently: RecurringFailureMode = RecurringFailureMode {
+  identity: "dashboard_endpoint_ownership_authored_independently" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: dashboard instances independently author host_identity and listen_port; two distinct instances can claim the same endpoint while their ids, repository roots, host-lookup subjects and owned paths satisfy the population law. HARM: the declared roster admits a port collision, and a launch-time port override can serve one instance's page under another instance's identity. RECOGNITION RULE: a resource-ownership law over a complete roster must cover the resource being exclusively claimed, not only the owners' names and paths.",
+    "SPECIMEN: gunbc#10980 merged with srv2-lab-v1-deletion and srv2-deploy both declaring srv2:18082. The existing population witness omitted the endpoint axis entirely. RUNG FOUND AT: outside the ladder for endpoint collisions. The endpoint uniqueness conjunct and enrolled same-host/same-port refusal control make this mechanically preventable at the declared-roster witness boundary; they do not establish runtime ownership or prevent independently authored constructors.",
+    "OPERATOR DIRECTION, 2026-09-11, relayed by bright-eagle-728: 'srv2:18082 is like a dev instance, i'm not sure who/what is using it, i wouldn't worry too much, except in the future we need this to be implicit (i.e. ownership is implicit in creation)'. Moving the lab declaration to 18083 resolves the roster collision without determining who currently serves 18082. No runtime ownership observation is claimed.",
+    "CEILING: rung 4, structurally impossible. NEXT-RUNG TRIGGER: a dashboard instance's host/port (and its ownership) is allocated at the moment of creation by the roster, not authored per instance, so two instances claiming one endpoint has no constructor. Allocation must cover every instance creation path, including caller-supplied instances, rather than only assigning different numbers to today's built-ins. Keep the discriminating collision refusal and both coordinate-separating positive controls enrolled at the allocator's input boundary when this capability lands.",
+  ],
+  evidence: [
+    DeclarationRef {
+      module_path: "gunbc.roadmap_dashboard_instance" as NonEmptyStr,
+      decl_name: "dashboard_declared_instances_listen_endpoints_are_unique" as NonEmptyStr,
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "test.claim.roadmap_dashboard_instance_witness" as NonEmptyStr,
+      decl_name: "a_same_host_same_port_roster_is_refused" as NonEmptyStr,
+      field: WholeDeclaration
+    },
+  ],
+}

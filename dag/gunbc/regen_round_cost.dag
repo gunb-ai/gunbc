@@ -115,6 +115,7 @@ type RegenRoundCostReceipt {
   changed_paths: List<String>
   convergence_stage_receipt_ids: List<String>
   installed_mirrors: List<String>
+  host_shell_modules: List<String>
   rebuild_packages: List<String>
   executable_digest: String
   second_generation_candidate_digest: String
@@ -267,7 +268,8 @@ fn regen_round_partition_rebuild_line(receipt: RegenRoundCostReceipt) -> String 
   stage0_partition_rebuild_decision_line(
     decision: stage0_partition_rebuild_decision_today(
       changed_mirrors: receipt.installed_mirrors,
-      unlocatable: []
+      unlocatable: [],
+      host_shell_modules: receipt.host_shell_modules
     )
   )
 }

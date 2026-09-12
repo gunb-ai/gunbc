@@ -1,0 +1,311 @@
+module gunbc.ci_workflow_source_read
+
+import std.types { Bool, CommitSha, commit_sha_text_holds, Int, List, NonEmptyStr, String, Secret }
+import std.resources { Network }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import extdeps.transports.rest {
+  classify_rest_outcome,
+  RestExchangeSucceeded, RestExchangePerformance,
+  RestReadExchange,
+}
+import extdeps.github.code_search {
+  CodeSearchPage, CodeSearchHit, CodeSearchRepository, code_search_hits_read,
+}
+import extdeps.github.repository_contents {
+  RepositoryFileContent, contents_base64_encoding, contents_absent_encoding,
+  contents_api_inline_ceiling, contents_api_supported_ceiling,
+}
+import std.measure { byte_size_count }
+
+// THE READ HALF OF A PUBLIC CI-WORKFLOW SCAN, AND NOTHING ELSE.
+//
+// Two reads: a bounded page of code search, and one file at one exact ref. No contact of any
+// kind is reachable from here, no third-party code is executed, and nothing below constructs an
+// outreach admission or a trial authorization - those are refused structurally in the acquisition
+// authority and this module never touches them. What it produces is evidence about a workflow
+// file, which is the only thing a public repository can be asked for without asking anybody.
+//
+// EACH READ RETURNS A TYPED OUTCOME RATHER THAN A VALUE-OR-EMPTY. A scan that cannot tell a
+// rate-limit refusal from a repository with no matching workflow will fold both into "no
+// candidate here", and the deficit that shrank the population never ranks for fixing.
+
+// DECLARED FRONTIER (DESIGN section 3c), AS A FrontierRow AND NOT A BARE CONDITION. The reason the
+// scan producer is absent rather than forgotten: the reads and their refusal arms are one change
+// and the page walk that consumes them is another, and landing the walk here would mean landing a
+// bounded-scan policy - how many pages, under what budget, retained how - inside the change that
+// models the endpoints it calls.
+//
+// AN EARLIER REVISION AUTHORED THIS AS A STANDALONE DissolutionCondition, which put the module's
+// whole declared-frontier state in a shape no fold can read: gunbc.census_closure_frontier folds
+// List<FrontierRow>, there is no List<DissolutionCondition> anywhere in the corpus, and the row
+// was therefore invisible to gunbc.dissolution_census. A trigger stated only in prose is not
+// stated to the machine, which is the same defect as a data row no fold reads - and it was written
+// in the same change that used FrontierRow correctly one file over.
+data ci_workflow_scan_producer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.ci_workflow_source_read", decl_name: "perform_code_search_page"),
+    reason: "the reads and their refusal arms land here; the scan producer that consumes them does not. Nothing outside test.claim walks the search pages or canonicalizes their survivors, so perform_code_search_page, perform_workflow_source_read and canonicalize_hit have no production caller in this change. The classifiers ARE consumed by execution - the claims drive the same functions the effectful reads call - so what is declared here is the walk, not the decisions",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a scan producer that pages perform_code_search_page under a declared bound, reads each survivor through perform_workflow_source_read at an exact ref, and canonicalizes them against a run receipt. TRIGGER: a production func outside test.claim calls perform_code_search_page in a page walk and canonicalize_hit on its results. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing these functions, nor by a caller that reads a single page - the obligation is the page walk and its receipt, which is where a bounded scan becomes a declared population rather than a sample nobody sized"),
+  )
+]
+
+// -------------------------------------------------------------------------------------
+// A PAGE OF CODE SEARCH IS THREE OUTCOMES, NOT TWO, BECAUSE UPSTREAM SAYS SO. GitHub returns
+// incomplete_results: true when its own search timed out and it is handing back what it had.
+// That is neither a successful page nor a transport failure: the request succeeded and the
+// ANSWER is short by an unknown amount. Folding it into the success arm turns an abandoned query
+// into a small population, which is the one error a discovery scan cannot detect later.
+// -------------------------------------------------------------------------------------
+
+type CodeSearchPageRead
+  = CodeSearchPageComplete { page: CodeSearchPage, hits_read: Int }
+  | CodeSearchPageTruncated { page: CodeSearchPage, hits_read: Int, cause: NonEmptyStr }
+  | CodeSearchPageRefused { performance: RestExchangePerformance }
+
+data code_search_truncation_cause: NonEmptyStr = "GitHub returned incomplete_results: true for this page, meaning its own search timed out and returned what it had. The number of hits NOT returned is not reported and cannot be derived, so any population counted from this page is a lower bound of unknown tightness and may not be described as a census."
+
+// THE CLASSIFICATION IS SEPARATE FROM THE EFFECT, AND THAT SPLIT IS WHAT MAKES IT TESTABLE.
+// Fetching a page is an effect; deciding what the page that came back MEANS is a total function
+// over its content, and the two were fused in an earlier revision of this module. The cost was
+// not abstract: the mock publishes exactly one result, so the truncated arm was unreachable
+// through the effectful function, and the claim that exercised it had to carry a hand-copied twin
+// of this decision - which cannot go red when this decision is wrong (DESIGN section 5) and is a
+// forked implementation of one rule (section 2). Split, the claims drive the REAL arms.
+fn classify_code_search_page(page: CodeSearchPage) -> CodeSearchPageRead {
+  if page.incomplete_results {
+    CodeSearchPageTruncated {
+      page: page,
+      hits_read: code_search_hits_read(page: page),
+      cause: code_search_truncation_cause,
+    }
+  } else {
+    CodeSearchPageComplete { page: page, hits_read: code_search_hits_read(page: page) }
+  }
+}
+
+fn perform_code_search_page(
+  auth_token: Secret,
+  q: String,
+  per_page: Int,
+  page: Int,
+) -> CodeSearchPageRead uses net: Network {
+  let got = github.CodeSearch.SearchCode(auth_token: auth_token, q: q, per_page: per_page, page: page)
+  match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
+    RestExchangeSucceeded => classify_code_search_page(page: got.page)
+    other => CodeSearchPageRefused { performance: other }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// ONE WORKFLOW FILE AT ONE EXACT REF. The oversized arm is the reason this is not a two-way
+// answer: above one megabyte the contents endpoint returns HTTP 200 with an empty content string
+// and encoding "none", so a consumer that decoded unconditionally would get an empty file, find
+// no jobs in it, and record a repository as having no CI - a fabricated observation that arrives
+// through the success path with no error anywhere.
+// -------------------------------------------------------------------------------------
+
+// WHAT WAS ASKED FOR, CARRIED BESIDE WHAT CAME BACK, AND THE DEFECT THAT MADE IT NECESSARY.
+//
+// RepositoryFileContent carries name, path, sha, size, encoding and content - and NO repository.
+// So a file record cannot say which repository it came from, and a consumer holding one has no way
+// to check that it is the file it asked for. An earlier revision of canonicalize_hit took the hit
+// and the read as INDEPENDENT arguments and combined them without comparison, which admitted a
+// fabricated hybrid: LLVM's repository identity carrying Biome's path and blob, asserted as one
+// observation of a file that has never existed. The positive witness EXPECTED that combination,
+// so the guard did not merely miss the defect - it required it, and fixing the code would have
+// turned the witness red.
+//
+// The read now returns the REQUEST beside the response. An identity is then a join of two things
+// that agree rather than a concatenation of two things that happen to be in scope.
+type WorkflowSourceRequest {
+  owner: String
+  repo: String
+  path: String
+  ref: CommitSha
+}
+
+fn request_repository_full_name(r: WorkflowSourceRequest) -> String {
+  join([r.owner, "/", r.repo], "")
+}
+
+type WorkflowSourceRead
+  = WorkflowSourceObserved { request: WorkflowSourceRequest, file: RepositoryFileContent }
+  | WorkflowSourceTooLargeForContentsApi { file: RepositoryFileContent, cause: NonEmptyStr }
+  | WorkflowSourceEncodingUnrecognized { file: RepositoryFileContent, cause: NonEmptyStr }
+  | WorkflowSourceRefused { performance: RestExchangePerformance }
+
+fn workflow_source_too_large_cause() -> NonEmptyStr {
+  join(["the contents endpoint answered 200 with encoding 'none' and an empty content string, which is what it does for a file above the ",
+    to_string(byte_size_count(b: contents_api_inline_ceiling)),
+    "-byte band it will inline. The file was NOT read, and this is not a repository without a workflow. Re-read it through the git blob endpoint before recording anything about its jobs - and note that above ",
+    to_string(byte_size_count(b: contents_api_supported_ceiling)),
+    " bytes this endpoint serves nothing at all, which arrives as a REST refusal rather than through this arm."], "")
+}
+
+data workflow_source_unknown_encoding_cause: NonEmptyStr = "the contents endpoint answered 200 with an encoding this reader does not model; the bytes were not decoded and nothing may be concluded about the file's contents."
+
+// The same split, and here it is load-bearing rather than tidy: the two arms this module exists
+// for are precisely the ones the single published mock cannot reach, so fusing them into the
+// effectful function put them permanently beyond execution. This is the classifier both the
+// production read and the claims call.
+fn classify_workflow_source(request: WorkflowSourceRequest, file: RepositoryFileContent) -> WorkflowSourceRead {
+  if file.encoding == contents_base64_encoding {
+    WorkflowSourceObserved { request: request, file: file }
+  } else if file.encoding == contents_absent_encoding {
+    WorkflowSourceTooLargeForContentsApi { file: file, cause: workflow_source_too_large_cause() }
+  } else {
+    WorkflowSourceEncodingUnrecognized { file: file, cause: workflow_source_unknown_encoding_cause }
+  }
+}
+
+fn perform_workflow_source_read(
+  auth_token: Secret,
+  owner: String,
+  repo: String,
+  path: String,
+  ref: CommitSha,
+) -> WorkflowSourceRead uses net: Network {
+  let request = WorkflowSourceRequest { owner: owner, repo: repo, path: path, ref: ref }
+  let got = github.RepositoryContents.GetContent(
+    auth_token: auth_token, owner: owner, repo: repo, path: path, ref: ref)
+  match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
+    RestExchangeSucceeded => classify_workflow_source(request: request, file: got.file)
+    other => WorkflowSourceRefused { performance: other }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// A HIT IS NOT AN OBSERVATION, AND THE TYPE SAYS SO. A code-search item names a repository, a
+// path and a blob sha at whatever revision GitHub's index held; the ref is not recorded and the
+// index moves. Promoting a hit to a workflow-source observation means going back to the file at
+// an exact ref, which is the read above. This function is the only bridge, and it takes the ref
+// as an argument precisely so that no caller can promote a hint without naming one.
+// -------------------------------------------------------------------------------------
+
+type WorkflowSourceIdentity {
+  repository_full_name: String
+  repository_id: Int
+  repository_is_fork: Bool
+  ref: CommitSha
+  workflow_path: String
+  blob_sha: String
+}
+
+// THE REFUSAL ARM CARRIES THE REFUSAL, and an earlier revision of this function did not - it bound
+// the RestExchangePerformance and threw it away, so a 404 on a deleted path, a 403 rate limit and a
+// 500 all left here as the same constant sentence. That is the collapse this module's own opening
+// note says it exists to prevent, reintroduced at its own boundary one screen further down: a scan
+// that cannot tell a rate limit from a repository with no matching workflow folds both into "no
+// candidate here", and the deficit that shrank the population never ranks for fixing.
+//
+// It is a SEPARATE ARM rather than an extra field on the existing one, because the two states are
+// not the same kind of thing. The non-refusal arms all mean the bytes arrived and could not be used -
+// a fact about the file, already carrying its own located cause from the classifier. HitReadRefused
+// means the bytes never arrived, and what a caller needs then is the performance, which is where
+// the status and the transport disposition live. Merging them would put an optional refusal on a
+// row that usually has none, which is the shape that gets defaulted away.
+// WHICH SUBJECTS DISAGREED, CARRIED ON THE VALUE. An identity is a join of three subjects - the
+// search hit, the request the read was made with, and the response that came back - and there are
+// three distinct ways for them to fail to agree. They share an owner (a caller paired the wrong
+// things) but not a repair: a repository mismatch means the wrong read was paired with the hit, a
+// requested-path mismatch means the wrong path was asked for, and a response-path mismatch means
+// the endpoint answered about a different file than the one requested.
+type SubjectDisagreement
+  = RepositoryDiffersFromHit { hit_repository: String, read_repository: String }
+  | RequestedPathDiffersFromHit { hit_path: String, requested_path: String }
+  | ResponsePathDiffersFromRequest { requested_path: String, response_path: String }
+
+// FIVE WAYS NOT TO MINT AN IDENTITY, AND THEY WERE ALL ONE ARM. HitNotCanonicalized carried a file
+// that could not be read, an unrecognized encoding, three kinds of subject disagreement and a ref
+// that was not a commit sha - six materially different contracts distinguished only by English, so
+// a consumer could not route them and the witnesses reached into the cause with string_contains to
+// tell them apart. Same meaning fork DESIGN section 3 names, found in the sibling module and
+// applied here rather than waiting to be told twice.
+//
+// The arms below split by REPAIR. Unusable bytes are re-read through a different endpoint; a
+// subject disagreement is a caller pairing the wrong things and carries WHICH pair disagreed; a
+// non-exact ref is a caller supplying a branch name; a refusal never reached the bytes at all.
+type HitCanonicalization
+  = HitCanonicalized { identity: WorkflowSourceIdentity }
+  | HitFileUnreadable { repository_full_name: String, path: String, cause: NonEmptyStr }
+  | HitSubjectsDisagree { repository_full_name: String, path: String, disagreement: SubjectDisagreement, cause: NonEmptyStr }
+  | HitRefNotExact { repository_full_name: String, path: String, ref: CommitSha, cause: NonEmptyStr }
+  | HitReadRefused { repository_full_name: String, path: String, performance: RestExchangePerformance }
+
+// THE JOIN, AND IT REFUSES. The hit says which repository and path the index pointed at; the read
+// says which repository and path were actually fetched. An identity may only be minted when those
+// AGREE - otherwise the row asserts that a repository contains a blob nobody read from it.
+//
+// THE REF IS NO LONGER A CALLER ARGUMENT. It comes from the request the read was made with, so
+// there is no way to label an identity with a ref the fetch did not use.
+//
+// AND THE TYPE DOES NOT ENFORCE THAT IT IS EXACT - an earlier revision of this note claimed it did.
+// CommitSha is an unvalidated String alias on this tree, so declaring the field CommitSha renamed
+// the obligation without creating a wall: "main" satisfies it, and an identity keyed to a branch
+// names whatever that branch points at today. std.types.commit_sha_text_holds is the validating
+// CHECK the alias does not provide, and it is run below. It dissolves when CommitSha gains a
+// validating constructor, at which point the invalid state stops being writable and the check goes.
+fn canonicalize_hit(hit: CodeSearchHit, read: WorkflowSourceRead) -> HitCanonicalization {
+  match read {
+    WorkflowSourceObserved { request, file } =>
+      if request_repository_full_name(r: request) != hit.repository.full_name {
+        HitSubjectsDisagree {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          disagreement: RepositoryDiffersFromHit {
+            hit_repository: hit.repository.full_name,
+            read_repository: request_repository_full_name(r: request),
+          },
+          cause: join(["the search hit is in ", hit.repository.full_name,
+            " and the file was read from ", request_repository_full_name(r: request),
+            ". Minting an identity from these would assert that one repository contains a blob read out of another."], ""),
+        }
+      } else if file.path != request.path {
+        HitSubjectsDisagree {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          disagreement: ResponsePathDiffersFromRequest {
+            requested_path: request.path, response_path: file.path,
+          },
+          cause: join(["the file was requested at ", request.path, " and the response reports ", file.path,
+            "; the identity's workflow_path is built from the RESPONSE, so minting it would key an observation to a file the request did not ask for. Three subjects have to agree - the hit, the request, and the response - and checking only the first two leaves the third free to differ."], ""),
+        }
+      } else if commit_sha_text_holds(head: request.ref as String) == false {
+        HitRefNotExact {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          ref: request.ref,
+          cause: join(["the read was made at ref '", request.ref,
+            "', which is not a 40-character lowercase hex commit sha. CommitSha is an unvalidated String alias on this tree, so the TYPE does not make a branch name unwritable - 'main' satisfies it - and an identity keyed to a moving ref cannot be returned to. This check is the wall the alias does not provide; it dissolves when CommitSha gains a validating constructor."], ""),
+        }
+      } else if request.path != hit.path {
+        HitSubjectsDisagree {
+          repository_full_name: hit.repository.full_name, path: hit.path,
+          disagreement: RequestedPathDiffersFromHit {
+            hit_path: hit.path, requested_path: request.path,
+          },
+          cause: join(["the search hit names ", hit.path, " and the file was read from ", request.path,
+            " in the same repository; the identity would carry a blob from a different file than the one the hit found"], ""),
+        }
+      } else {
+        HitCanonicalized {
+          identity: WorkflowSourceIdentity {
+            repository_full_name: hit.repository.full_name,
+            repository_id: hit.repository.id,
+            repository_is_fork: hit.repository.fork,
+            ref: request.ref,
+            workflow_path: file.path,
+            blob_sha: file.sha,
+          },
+        }
+      }
+    WorkflowSourceTooLargeForContentsApi { file, cause } => HitFileUnreadable {
+      repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
+    }
+    WorkflowSourceEncodingUnrecognized { file, cause } => HitFileUnreadable {
+      repository_full_name: hit.repository.full_name, path: hit.path, cause: cause,
+    }
+    WorkflowSourceRefused { performance } => HitReadRefused {
+      repository_full_name: hit.repository.full_name, path: hit.path, performance: performance,
+    }
+  }
+}
