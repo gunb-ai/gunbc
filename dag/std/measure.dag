@@ -756,6 +756,61 @@ fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
 }
 
+// MASS: kilogram is the SI coherent unit (Scale One); gram is Milli of that, so 0.2 kg is
+// gram(200) with no rounding. These Quantity Mass rows were empty of named carriers until a
+// cited product sheet demanded them; the types live here, not in the product module.
+type Kilogram = Measure<Mass, One, Nat>
+
+type Gram = Measure<Mass, Milli, Nat>
+
+fn kilogram(count: Nat) -> Kilogram {
+  Measure { count: count }
+}
+
+fn kilogram_count(k: Kilogram) -> Nat {
+  measure_count(k)
+}
+
+fn gram(count: Nat) -> Gram {
+  Measure { count: count }
+}
+
+fn gram_count(g: Gram) -> Nat {
+  measure_count(g)
+}
+
+fn gram_to_kilogram_floor(g: Gram) -> Kilogram {
+  kilogram(count: gram_count(g: g) / milli_per_unit())
+}
+
+// ELECTRIC CHARGE as published battery capacity. Ampere-hour is the unit those sheets use;
+// MilliampereHour is Milli of that (3200 mAh = milliampere_hour(3200)). Coulomb conversion
+// (3600 C per A·h) is a later exact integer factor when a Coulomb carrier exists; it is not
+// required to store the published milliampere-hour count.
+type AmpereHour = Measure<ElectricCharge, One, Nat>
+
+type MilliampereHour = Measure<ElectricCharge, Milli, Nat>
+
+fn ampere_hour(count: Nat) -> AmpereHour {
+  Measure { count: count }
+}
+
+fn ampere_hour_count(q: AmpereHour) -> Nat {
+  measure_count(q)
+}
+
+fn milliampere_hour(count: Nat) -> MilliampereHour {
+  Measure { count: count }
+}
+
+fn milliampere_hour_count(q: MilliampereHour) -> Nat {
+  measure_count(q)
+}
+
+fn milliampere_hour_to_ampere_hour_floor(q: MilliampereHour) -> AmpereHour {
+  ampere_hour(count: milliampere_hour_count(q: q) / milli_per_unit())
+}
+
 fn nanometer(count: Nat) -> Nanometer {
   Measure { count: count }
 }
