@@ -17,7 +17,7 @@ import gunbc.machine_intake_mtcollins1_dimm_connector_observation {
   UnitColourEvidence, NoColourObservationForUnit,
   PhysicalColourDiffersFromDiagramRole, ColourMeaningComparisonUnresolved,
 }
-import std.types { list_length }
+import std.types { NonEmptyStr, list_length }
 import std.nat { Nat }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
@@ -39,6 +39,10 @@ import gunbc.mt_collins_dimm_physical_identity {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A declared test subject, never a real chassis or a second operator observation.
+// DeclarationRef fixtures must resolve even when testing an unknown unit.
+data synthetic_other_unit: NonEmptyStr = "Synthetic unit with no physical-colour observation"
 
 fn refuses(connector: Nat, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>, cause: MtCollinsDimmIdentityRefusalCause) -> Bool {
   match resolve_dimm_diagram_identity(connector: connector, banks: banks, pairs: pairs) {
