@@ -9,12 +9,7 @@ import product.inventory {
   inventory_lot_identity_eq,
 }
 import gunbc.fleet_physical_inventory {
-  dimm_lot_64gib_32x,
-  dimm_lot_64gib_32x_ledger,
   dgx_spark_micro_center_lot,
-  dgx_spark_micro_center_lot_ledger,
-  dgx_spark_ebay_pair_lot,
-  dgx_spark_ebay_pair_lot_ledger,
 }
 import gunbc.fleet_acquisition_census {
   fleet_acquisition_ledgers,
@@ -23,6 +18,7 @@ import gunbc.fleet_acquisition_census {
   CensusFloor,
   CensusClosed,
   mt_collins_twenty_lot,
+  mt_collins_lot_identity,
   q80_processor_lot,
   altrad8ud_board_lot,
 }
@@ -56,13 +52,8 @@ fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: 
   }
 }
 
-data without_mt_collins: List<InventoryLotEvidence> = concat(
-  [
-    InventoryLotEvidence { lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger },
-    InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
-    InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
-  ],
-  fleet_acquisition_ledgers.skip(n: 4),
+data without_mt_collins: List<InventoryLotEvidence> = fleet_acquisition_ledgers.filter(
+  e => !inventory_lot_identity_eq(left: e.lot.identity, right: mt_collins_lot_identity)
 )
 
 // Quantities are summed from the named lots, not transcribed as a census-size literal.

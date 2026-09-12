@@ -1,31 +1,15 @@
 module std.list
 
 import std.types { List, Bool }
-import std.nat { Nat }
 
-// Membership and mutual cover under a caller-supplied equality, and the predicate-keyed
-// count/select folds. One concept: a list fold parameterized by eq or by a Bool predicate.
-// Product modules must not re-mint these.
-
-fn list_any<T>(xs: List<T>, p: fn(T) -> Bool) -> Bool {
-  fold(xs, init: false, f: fn(acc, x) { acc || p(x) })
-}
+// Membership and mutual cover under a caller-supplied equality. Predicate any/filter/count
+// stay the substrate methods; this module does not nickname them.
 
 fn list_member<T>(xs: List<T>, x: T, eq: fn(T, T) -> Bool) -> Bool {
-  list_any(xs: xs, p: fn(y) { eq(y, x) })
+  xs.any(y => eq(y, x))
 }
 
 fn list_cover<T>(held: List<T>, expected: List<T>, eq: fn(T, T) -> Bool) -> Bool {
-  fold(expected, init: true, f: fn(acc, e) { acc && list_member(xs: held, x: e, eq: eq) })
-    && fold(held, init: true, f: fn(acc, h) { acc && list_member(xs: expected, x: h, eq: eq) })
-}
-
-fn list_count_by<T>(xs: List<T>, p: fn(T) -> Bool) -> Nat {
-  fold(xs, init: 0, f: fn(acc, x) { if p(x) { acc + 1 } else { acc } })
-}
-
-fn list_select_by<T>(xs: List<T>, p: fn(T) -> Bool) -> List<T> {
-  fold(xs, init: [], f: fn(acc, x) {
-    if p(x) { list_push(acc, x) } else { acc }
-  })
+  expected.all(e => list_member(xs: held, x: e, eq: eq))
+    && held.all(h => list_member(xs: expected, x: h, eq: eq))
 }

@@ -2,7 +2,7 @@ module product.lot_sales_tax
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.list { list_any, list_member, list_cover, list_count_by, list_select_by }
+import std.list { list_member, list_cover }
 import std.measure { PartsPerMillion }
 import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 
@@ -143,15 +143,15 @@ fn lot_eq(a: InventoryLotIdentity, b: InventoryLotIdentity) -> Bool {
 }
 
 fn residual_owed_lot_count(rows: List<LotTaxEvidence>) -> Nat {
-  list_count_by(xs: rows, p: fn(row) { lot_tax_residual_is_owed(standing: row.standing) })
+  rows.filter(row => lot_tax_residual_is_owed(standing: row.standing)).length()
 }
 
 fn attested_lot_count(rows: List<LotTaxEvidence>) -> Nat {
-  list_count_by(xs: rows, p: fn(row) { lot_tax_is_attested_not_read(standing: row.standing) })
+  rows.filter(row => lot_tax_is_attested_not_read(standing: row.standing)).length()
 }
 
 fn unread_or_unrecorded_lot_count(rows: List<LotTaxEvidence>) -> Nat {
-  list_count_by(xs: rows, p: fn(row) { lot_tax_jurisdiction_is_unread(standing: row.standing) })
+  rows.filter(row => lot_tax_jurisdiction_is_unread(standing: row.standing)).length()
 }
 
 fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
@@ -163,19 +163,19 @@ fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<Invento
 }
 
 fn residual_owed_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
-  map(list_select_by(xs: rows, p: fn(row) { lot_tax_residual_is_owed(standing: row.standing) }), r => r.lot)
+  map(rows.filter(row => lot_tax_residual_is_owed(standing: row.standing)), r => r.lot)
 }
 
 fn attested_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
-  map(list_select_by(xs: rows, p: fn(row) { lot_tax_is_attested_not_read(standing: row.standing) }), r => r.lot)
+  map(rows.filter(row => lot_tax_is_attested_not_read(standing: row.standing)), r => r.lot)
 }
 
 fn unread_or_unrecorded_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
-  map(list_select_by(xs: rows, p: fn(row) { lot_tax_jurisdiction_is_unread(standing: row.standing) }), r => r.lot)
+  map(rows.filter(row => lot_tax_jurisdiction_is_unread(standing: row.standing)), r => r.lot)
 }
 
 fn tax_covers_lot(rows: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Bool {
-  list_any(xs: rows, p: fn(row) { lot_eq(a: row.lot, b: lot) })
+  rows.any(row => lot_eq(a: row.lot, b: lot))
 }
 
 type LotTaxJoin

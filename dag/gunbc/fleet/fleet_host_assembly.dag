@@ -1,7 +1,7 @@
 module gunbc.fleet_host_assembly
 
 import std.types { List, NonEmptyStr, Bool }
-import std.list { list_any, list_cover }
+import std.list { list_cover }
 import product.placement_supply {
   HostIdentity,
   PhysicalAssetIdentity,
@@ -259,22 +259,20 @@ fn recorded_component_lot_is_admitted(lot: InventoryLotIdentity) -> Bool {
 }
 
 fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {
-  fold(rows, init: true, f: fn(acc, row) {
-    acc && match row.acquisition {
-      ComponentAcquiredFromLot { lot: lot } => recorded_component_lot_is_admitted(lot: lot)
-      ComponentAcquisitionUnrecorded { read_obligation: _ } => true
-    }
+  rows.all(row => match row.acquisition {
+    ComponentAcquiredFromLot { lot: lot } => recorded_component_lot_is_admitted(lot: lot)
+    ComponentAcquisitionUnrecorded { read_obligation: _ } => true
   })
 }
 
 fn component_acquired_from_lot(rows: List<AssembledComponent>, component: PhysicalAssetIdentity, lot: InventoryLotIdentity) -> Bool {
-  list_any(xs: rows, p: fn(row) {
+  rows.any(row =>
     physical_asset_identity_eq(a: row.component, b: component)
       && match row.acquisition {
         ComponentAcquiredFromLot { lot: bound } => inventory_lot_identity_eq(left: lot, right: bound)
         ComponentAcquisitionUnrecorded { read_obligation: _ } => false
       }
-  })
+  )
 }
 
 fn every_board_component_is_from_the_four_board_lot(rows: List<AssembledComponent>) -> Bool {
@@ -308,7 +306,7 @@ fn is_cooler_asset(id: PhysicalAssetIdentity) -> Bool {
 }
 
 fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: PhysicalAssetIdentity, host: HostIdentity) -> Bool {
-  list_any(xs: containments, p: fn(c) {
+  containments.any(c =>
     match c {
       ChassisContainsHost { chassis: ch, host: h } =>
         physical_asset_identity_eq(a: ch, b: chassis) && host_identity_eq(a: h, b: host)
@@ -317,11 +315,11 @@ fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: Phy
       RoomContainsRack { room: _, rack: _ } => false
       RackContainsPlacement { rack: _, asset: _ } => false
     }
-  })
+  )
 }
 
 fn containment_has_component(containments: List<PhysicalContainment>, host: HostIdentity, component: PhysicalAssetIdentity) -> Bool {
-  list_any(xs: containments, p: fn(c) {
+  containments.any(c =>
     match c {
       HostContainsComponent { host: h, component: comp } =>
         host_identity_eq(a: h, b: host) && physical_asset_identity_eq(a: comp, b: component)
@@ -330,7 +328,7 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
       RoomContainsRack { room: _, rack: _ } => false
       RackContainsPlacement { rack: _, asset: _ } => false
     }
-  })
+  )
 }
 
 fn assembly_containments_join(rows: List<AssembledComponent>, containments: List<PhysicalContainment>) -> Bool {
@@ -353,10 +351,10 @@ fn assembly_containments_join(rows: List<AssembledComponent>, containments: List
             || (physical_asset_identity_eq(a: ch, b: chassis_srv4) && host_identity_eq(a: h, b: operator_host_srv4))
         HostContainsComponent { host: h, component: comp } =>
           !is_cooler_asset(id: comp)
-            && list_any(xs: rows, p: fn(row) {
+            && rows.any(row =>
               host_identity_eq(a: row.host, b: h)
                 && physical_asset_identity_eq(a: row.component, b: comp)
-            })
+            )
         SiteContainsRoom { site: _, room: _ } => false
         RoomContainsRack { room: _, rack: _ } => false
         RackContainsPlacement { rack: _, asset: _ } => false
