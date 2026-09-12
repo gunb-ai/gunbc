@@ -2,7 +2,12 @@ module v2.test.claim.namespace_xl0.call_argument_mention_survival
 
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
-import v2.compiler.reference_site_collector { collect_module_reference_sites }
+import v2.compiler.reference_site_collector {
+  ReferenceSiteCollection,
+  collect_reference_sites,
+  empty_reference_site_collection,
+  reference_site_collection_is_total
+}
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
@@ -102,6 +107,16 @@ fn fixture_ingest_accepted() -> Bool {
   }
 }
 
+fn fixture_roots_for_count() -> FreeMonoid<Node> {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => normalized_tree_roots_to_nodes(roots: roots)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
 fn fixture_root_count() -> Int {
   match module_roots_from_source_root_ingest(
     ingest: call_argument_fixture_ingest,
@@ -112,19 +127,19 @@ fn fixture_root_count() -> Int {
   }
 }
 
-fn fixture_sites() -> FreeMonoid<ReferenceSite> {
+fn fixture_collection() -> ReferenceSiteCollection {
   match module_roots_from_source_root_ingest(
     ingest: call_argument_fixture_ingest,
     lm: dag_language_model()
   ) {
     Accepted { value: roots, diagnostics: _ } =>
-      fold_list(
-        xs: normalized_tree_roots_to_nodes(roots: roots),
-        empty: Empty,
-        cons: fn(acc, root) { collect_module_reference_sites(root: root).sites }
-      )
-    Rejected { diagnostics: _ } => Empty
+      collect_reference_sites(roots: normalized_tree_roots_to_nodes(roots: roots))
+    Rejected { diagnostics: _ } => empty_reference_site_collection()
   }
+}
+
+fn fixture_sites() -> FreeMonoid<ReferenceSite> {
+  fixture_collection().sites
 }
 
 fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
@@ -146,9 +161,10 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // THE POPULATION THAT SURVIVES IS NARROWER THAN THIS FILE FIRST CLAIMED, AND THE CORRECTION IS THE
 // MOST IMPORTANT ROW IN IT.
 //
-//   SURVIVES:      a BARE, SAME-MODULE value reference outside any call; a parameter reference
+//   SURVIVES:      a BARE, SAME-MODULE value reference outside any call; a parameter reference;
+//                  a TYPE-POSITION name
 //   DOES NOT:      a QUALIFIED CROSS-MODULE reference, with or without a call
-//                  a call argument; a callee name; a type-position name
+//                  a call argument; a callee name
 //
 // The first revision of these rows measured a bare same-module name and reported "a value
 // reference outside any call is found", which read as though cross-module references survived. They
@@ -198,14 +214,28 @@ test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
   !sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
 }
 
-// MEASURED DEFICIENCY 3, AND THE ONE THAT WIDENS THE CLAIM BEYOND CALLS: a TYPE-POSITION name does
-// not reach the collector. This is the class the XL-0 denominator most needs, because an
-// import-to-containment repair is largely about type references, so its absence is why XL-0 cannot
-// claim a denominator at all yet rather than merely a smaller one.
-test fn a_type_position_name_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites(), spelling: "Bool")
+// A TYPE-POSITION NAME *DOES* REACH THE COLLECTOR, AND THE ROW THAT SAID OTHERWISE WAS THE
+// TRUNCATED CENSUS TALKING.
+//
+// This assertion was authored as "is absent" and passed, and it was WRONG: fixture_sites folded the
+// roots while discarding the accumulator, so it answered over the LAST root only. `Bool` is
+// mentioned in both fixture modules, the provider's sites were the ones dropped, and the absence
+// was manufactured by the fold rather than observed in the tree. Over the full population the name
+// is present, and it is asserted that way here.
+//
+// THE COST OF THE WRONG VERSION WAS NOT LOCAL. It was reported to the XL-3 and XL-4 lanes as a
+// measured deficiency; XL-3 was holding type-position census fixtures red on it, and XL-4 carried a
+// type-position row on its declared frontier. A negative claim measured over a silently truncated
+// population is exactly the fabricated plausible output DESIGN section 5 forbids, and it travelled
+// further than the file it lived in.
+test fn a_type_position_name_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "Bool")
 }
 
+// EVERY root, not the last one. This fold dropped `acc` too -- the same defect the review found in
+// fixture_sites, in the same file, one screen below it. Answering for the last root while reading
+// as though it answered for all of them is the identical silent truncation, so it is fixed the
+// same way: the fold conjoins, and the empty case is the identity rather than a verdict.
 test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
   match module_roots_from_source_root_ingest(
     ingest: call_argument_fixture_ingest,
@@ -214,9 +244,9 @@ test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
     Accepted { value: roots, diagnostics: _ } =>
       fold_list(
         xs: normalized_tree_roots_to_nodes(roots: roots),
-        empty: false,
+        empty: true,
         cons: fn(acc, root) {
-          match qualified_name_from_module_node(root: root) {
+          acc && match qualified_name_from_module_node(root: root) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
@@ -238,4 +268,32 @@ test fn a_qualified_cross_module_reference_is_absent_from_the_denominator_today(
     sites: fixture_sites(),
     spelling: "v2.test.xl0_provider.xl0_provided_value"
   )
+}
+
+// THE WALL THAT WOULD HAVE CAUGHT THE DEFECT THAT INVALIDATED EVERY NEGATIVE ROW ABOVE.
+//
+// fixture_sites used to fold the roots with `cons: fn(acc, root) { collect_module_reference_sites(
+// root: root).sites }` -- DISCARDING acc. It therefore returned only the LAST root's sites, and
+// threw away .unreadable_roots at the same time. Every "is absent" row in this file is a NEGATIVE
+// claim, and a negative claim is satisfied for free by a population that never contained the root
+// in question: the census was truthful about a corpus of one module while reporting as though it
+// covered two. The control was green by INGEST ORDERING, not by the walk -- reorder the reads and
+// the whole census changes with no test naming why.
+//
+// TWO THINGS MADE IT INVISIBLE AND BOTH ARE THE SAME LESSON. It hand-rolled a traversal beside
+// collect_reference_sites, which already threads the accumulator AND carries both halves -- the
+// section 3 fork, in the one file whose job is measuring that collector. And it discarded the
+// typed, counted refusal THIS PR ADDS precisely so a lost root cannot be mistaken for an empty
+// one, at the only production-route call site in the PR.
+//
+// These two rows make the population itself a subject. The first pins the root count the census
+// speaks for, so a fold that silently covers fewer reds instead of quietly agreeing. The second
+// requires the collection to be total, so a root that could not be read can never be the reason an
+// "is absent" row is green.
+test fn the_census_population_covers_every_ingested_root_holds() -> Bool {
+  length(xs: fixture_roots_for_count()) == 2 && fixture_root_count() == 2
+}
+
+test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
+  reference_site_collection_is_total(collection: fixture_collection())
 }
