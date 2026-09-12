@@ -11,11 +11,13 @@ import v2.compiler.self_host.generation {
   generation_identity_mismatched_axes
 }
 import v2.compiler.compile {
+  CompileLens,
   RequiredLensCoverage,
   RequiredLensCoverageClosed,
   RequiredLensCoverageRefused,
   RequiredLensCoverageRow,
-  required_lens_join_cause_reason
+  required_lens_join_cause_reason,
+  required_lens_roster_digest_of
 }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key, declaration_ref_eq }
 import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
@@ -126,8 +128,21 @@ type GenerationProvenanceReceipt {
 // would be worse: the required set would then move with the tree this admission executes in rather
 // than with the generation it judges, so a roster that lost a row would retroactively make old
 // candidates admissible. The required set is therefore carried, FIXED, beside the observation.
+//
+// AND IT CARRIES THE REGISTRATIONS RATHER THAN THEIR IDENTITIES, WHICH IS THE DIFFERENCE BETWEEN A
+// JOIN AND A PAIR OF PEERS. An earlier revision of this type carried `List<DeclarationRef>` beside
+// an observation whose `RequiredLensCoverageClosed` arm already contains `roster_digest` -- the
+// identity OF the roster the join ran against, produced by `required_lens_roster_digest_of` over the
+// registration sequence. That is a value beside a summary of it with no arm relating them, and
+// `gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters` enumerates this
+// exact construction -- `roster_identities` beside `roster_digest` -- as one of its invalid states.
+// Its prescribed repair is to DERIVE the digest from the value rather than accept it as a peer, so
+// `required` now carries the `CompileLens` rows the digest is computed over and
+// `lens_coverage_digest_causes` re-derives it and refuses on disagreement. The digest authority is
+// unchanged and unforked: this calls `required_lens_roster_digest_of`, the same function the door
+// calls.
 type GenerationLensCoverage {
-  required: List<DeclarationRef>
+  required: List<CompileLens>
   observed: RequiredLensCoverage
 }
 
@@ -216,6 +231,7 @@ type PromotionRefusalCause
   | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
   | RequiredLensCoverageNotClosed { receipt: Symbol, cause: Symbol }
   | RequiredLensObligationNotCovered { receipt: Symbol, lens: String }
+  | RequiredLensRosterDigestMismatch { receipt: Symbol, required: String, observed: String }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -452,13 +468,14 @@ fn concat_causes(
 // leaving them to guess what it failed to cover.
 fn lens_coverage_uncovered_causes(
   receipt: Symbol,
-  required: List<DeclarationRef>,
+  required: List<CompileLens>,
   rows: List<RequiredLensCoverageRow>
 ) -> List<PromotionRefusalCause> {
   fold_list(
     xs: required,
     empty: freemonoid_empty(),
-    cons: fn(acc, id) {
+    cons: fn(acc, reg) {
+      let id = reg.identity
       if fold_list(
         xs: rows,
         empty: false,
@@ -476,6 +493,35 @@ fn lens_coverage_uncovered_causes(
       }
     }
   )
+}
+
+// THE JOIN THE EARLIER REVISION DID NOT COMPUTE. `required` is the registration sequence and
+// `roster_digest` is a summary of one; deriving the summary from the value is what makes the
+// observation's roster and the generation's obligations the SAME roster rather than two lists that
+// happen to sit in one record. It fires only on the closed arm because a refused join carries no
+// digest -- there is nothing to disagree with, and the refusal is already reported by its own arm.
+fn lens_coverage_digest_causes(
+  receipt: Symbol,
+  coverage: GenerationLensCoverage
+) -> List<PromotionRefusalCause> {
+  match coverage.observed {
+    RequiredLensCoverageRefused { cause: _ } => freemonoid_empty()
+    RequiredLensCoverageClosed { roster_digest: digest, rows: _ } => {
+      let derived = required_lens_roster_digest_of(lenses: coverage.required)
+      if derived == digest {
+        freemonoid_empty()
+      } else {
+        list_snoc_item(
+          xs: freemonoid_empty(),
+          item: RequiredLensRosterDigestMismatch {
+            receipt: receipt,
+            required: derived,
+            observed: digest
+          }
+        )
+      }
+    }
+  }
 }
 
 fn lens_coverage_causes(
@@ -496,7 +542,16 @@ fn lens_coverage_causes(
         }
       )
     RequiredLensCoverageClosed { roster_digest: _, rows: rows } =>
-      lens_coverage_uncovered_causes(receipt: receipt, required: coverage.required, rows: rows)
+      concat_causes(
+        parts: [
+          lens_coverage_digest_causes(receipt: receipt, coverage: coverage),
+          lens_coverage_uncovered_causes(
+            receipt: receipt,
+            required: coverage.required,
+            rows: rows
+          )
+        ]
+      )
   }
 }
 
@@ -633,6 +688,8 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_required_lens_coverage_not_closed
     RequiredLensObligationNotCovered { receipt: _, lens: _ } =>
       ^refusal_required_lens_obligation_not_covered
+    RequiredLensRosterDigestMismatch { receipt: _, required: _, observed: _ } =>
+      ^refusal_required_lens_roster_digest_mismatch
   }
 }
 
