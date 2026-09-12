@@ -547,13 +547,6 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: native_route_required_lane_outstanding(drop: v2_native_route_off_the_merge_path)
         )
       )
-    // COMPLETION IS A MEASURABLE FACT, SO THIS IS NOT DerivableOnlyViaPrerequisites (review 64771 on
-    // gunbc#11200). While seed retirement was a sink, "derivable only via prerequisites" cost nothing.
-    // Once the namespace cutover requires it, that arm would hold the cutover's startability
-    // NotDerivable by construction, forever. Whether the seed is deleted is observable from the tree,
-    // so the honest answer is that the observation instrument is unbuilt. Authorization stays where
-    // it was: startability still requires the prerequisites. The hand-written seed rosters are NOT
-    // that instrument, because an authored roster emptied is not an absent seed.
     SelfHostSeedRetirement =>
       NotDerivable {
         why: "the irreversible step. Its completion -- the v1 seed families absent from the tree -- is observable, but no instrument observes it; the hand-written seed rosters are necessary and not sufficient, since emptying an authored roster would read Clear while the seed stood. Authorization is separate and stays with its prerequisites. Derivable once the seed-deletion observation exists." as NonEmptyStr,
