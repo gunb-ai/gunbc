@@ -20,9 +20,20 @@ The candidate socket field (bit 3 of payload byte 3) tracks the socket holding t
 population, across two controlled interventions whose direction was declared in advance. That
 is a second controlled confirmation of the socket-selector reading.
 
-Separately and independently: the TAIL is `1102` in both rounds, unchanged while byte 3
-flipped. The socket therefore lives in byte 3 and the tail encodes something else. This was
-obtained from a controlled change, not inferred from a pattern.
+Separately: the TAIL is `1102` in both rounds, unchanged while byte 3 flipped. That is an
+OBSERVATION, and the inference drawn from it is bounded accordingly.
+
+WHAT IS OBSERVED: byte 3 changed between the two rounds; the tail did not.
+WHAT IS INFERRED, AND ONLY INFERRED: that byte 3 carries the socket and the tail carries
+something else. This does NOT follow deductively, because the companion modules changed
+together with the socket (see below) -- so the bit may be tracking some other property that
+moved with the intervention rather than the socket itself. A restriction attached to the
+quartet, a channel-group index, or a first-failing-controller identity would each produce the
+same movement.
+
+Calling this "the socket lives in byte 3" would assert as deduced what is only inferred
+(DESIGN section 4d). It is a SUPPORTED HYPOTHESIS with two consistent controlled crossovers,
+and it must not become the next session's premise.
 
 ## What it did NOT distinguish — the correction that matters
 

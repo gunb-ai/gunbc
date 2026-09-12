@@ -57,9 +57,15 @@ is the same module that carries the purchasing fail-open found tonight.
 
 ## What the OEM payload has earned, and only this
 
-Byte 3 bit 3 tracks the socket holding the intervened population, across two controlled
-crossovers whose direction was declared in advance. The tail was `1102` on BOTH sides of that
-swap, so the socket lives in byte 3 and the tail encodes something else.
+OBSERVED: byte 3 bit 3 changed in step with which socket held the intervened population,
+across two controlled crossovers whose direction was declared in advance. The tail was `1102`
+on BOTH sides of that swap.
+
+INFERRED, NOT DEDUCED: that the bit encodes the socket and the tail encodes something else.
+The companion modules moved with the quartet, so the bit may track a correlated property -- a
+restriction carried by the group, a channel-group index, a first-failing-controller identity --
+rather than the socket. Two consistent crossovers support the reading; they do not establish
+it, and it may not be used as a premise.
 
 Stage, status and tail interpretations have NO controlled support. No vendor mapping from
 payload bytes to physical slots exists. This may not be used to name a DIMM.
