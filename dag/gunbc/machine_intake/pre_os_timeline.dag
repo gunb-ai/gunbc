@@ -10,8 +10,8 @@ import std.algebra { FreeSemigroup, Empty }
 import gunbc.memory_observation { read_verified_memory_capture }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope }
-import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, range_end, chunk_is_locally_committed }
-import gunbc.machine_intake_pre_os_replay { pre_os_same_source_generation, pre_os_envelope_binding_consistent, pre_os_continuity_covers_chunk, pre_os_occurrence_conflicts, pre_os_same_occurrence_content, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
+import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, range_end }
+import gunbc.machine_intake_pre_os_replay { pre_os_commit_binds_chunk, pre_os_same_source_generation, pre_os_envelope_binding_consistent, pre_os_continuity_covers_chunk, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
 
 // Parser selection is an observation request, not a success goal. A platform
@@ -72,7 +72,7 @@ fn pre_os_console_span(previous: PreOsConsoleSpan?, current: PreOsReplayObservat
           && current.envelope.chunk.occurrence.receive_sequence == last.envelope.chunk.occurrence.receive_sequence + 1
           && range_end(range: last.envelope.chunk.range) == current.envelope.chunk.range.first_offset
           && pre_os_continuity_covers_chunk(envelope: last.envelope) && pre_os_continuity_covers_chunk(envelope: current.envelope)
-          && chunk_is_locally_committed(standing: last.envelope.local_commit) && chunk_is_locally_committed(standing: current.envelope.local_commit)
+          && pre_os_commit_binds_chunk(envelope: last.envelope) && pre_os_commit_binds_chunk(envelope: current.envelope)
           && pre_os_envelope_binding_consistent(envelope: last.envelope) && pre_os_envelope_binding_consistent(envelope: current.envelope)
           && match current.payload { ObservationEstablished { observed: _ } => true _ => false } {
           PreOsConsoleSpan { chunks: concat(before.chunks, [current]), payload: concat(before.payload, text) }
@@ -126,7 +126,7 @@ type PreOsTimelineFold { rows: List<PreOsTimelineRow>, cursors: List<PreOsSelCur
 fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let envelopes = map(observations, o => o.envelope)
   let result = fold(observations, init: PreOsTimelineFold { rows: [], cursors: [], console_spans: [] }, f: (acc, o) => {
-    if any(acc.rows, row => pre_os_same_occurrence_content(a: row.observation.envelope, b: o.envelope)) { acc } else {
+    if any(acc.rows, row => pre_os_same_envelope(a: row.observation.envelope, b: o.envelope)) { acc } else {
     let association = if o.envelope.binding.enrolled_machine != machine || !pre_os_envelope_binding_consistent(envelope: o.envelope) {
       ObservationRefused { cause: "observation source/owner binding does not establish this machine" }
     } else if pre_os_occurrence_conflicts(envelopes: envelopes, subject: o.envelope) {

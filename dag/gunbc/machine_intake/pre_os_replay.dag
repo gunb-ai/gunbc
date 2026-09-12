@@ -8,8 +8,7 @@ import gunbc.fleet_observation_observation_envelope {
   ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, NoNativeCursor,
 }
 import gunbc.fleet_observation_capture_chunk {
-  StreamContinuity, ContinuityEstablished, ContinuityGap, ContinuityUnknown,
-  chunk_occurrence_eq, range_end, chunk_is_locally_committed,
+  chunk_occurrence_eq, range_end, continuity_reaches, commit_attests_chunk, CommitAttestsThisChunk,
 }
 import gunbc.machine_intake_sel_stimulus_listener {
   SelWatermark, sel_read, sel_after, sel_record_id, sel_field, sel_rendered_record,
@@ -59,10 +58,13 @@ fn pre_os_same_source_generation(a: ObservationEnvelope, b: ObservationEnvelope)
 
 // This is a range question, not merely a match on the continuity variant.
 fn pre_os_continuity_covers_chunk(envelope: ObservationEnvelope) -> Bool {
-  match envelope.continuity {
-    ContinuityEstablished { verified_through } => verified_through >= range_end(range: envelope.chunk.range)
-    ContinuityGap { gap: _, cause: _ } => false
-    ContinuityUnknown { detail: _ } => false
+  continuity_reaches(continuity: envelope.continuity, through: range_end(range: envelope.chunk.range))
+}
+
+fn pre_os_commit_binds_chunk(envelope: ObservationEnvelope) -> Bool {
+  match commit_attests_chunk(standing: envelope.local_commit, chunk: envelope.chunk) {
+    CommitAttestsThisChunk => true
+    _ => false
   }
 }
 
@@ -79,7 +81,7 @@ fn pre_os_sel_native_id(envelope: ObservationEnvelope) -> String {
 // The native cursor must describe the final row in this snapshot. Caller wall
 // and monotonic receive instants remain on the retained envelope, unread here.
 fn pre_os_sel_cursor(envelope: ObservationEnvelope, payload: String) -> ObservationAttempt<PreOsSelCursor, NonEmptyStr> {
-  if !pre_os_envelope_binding_consistent(envelope: envelope) || !chunk_is_locally_committed(standing: envelope.local_commit) {
+  if !pre_os_envelope_binding_consistent(envelope: envelope) || !pre_os_commit_binds_chunk(envelope: envelope) {
     ObservationRefused { cause: "source/owner/receiver binding or local durable commit unavailable" }
   } else { match envelope.source_generation {
     SourceGenerationUnavailable { reason } => ObservationRefused { cause: reason }
@@ -144,8 +146,20 @@ fn pre_os_occurrence_conflicts(envelopes: List<ObservationEnvelope>, subject: Ob
     && !pre_os_same_occurrence_content(a: e, b: subject))
 }
 
+// Delivery and continuity receipts can advance for the same occurrence. Keep
+// those observations visible; only an unchanged envelope is an idempotent retry.
+fn pre_os_same_envelope(a: ObservationEnvelope, b: ObservationEnvelope) -> Bool {
+  pre_os_same_occurrence_content(a: a, b: b)
+    && a.ownership == b.ownership
+    && a.producer_timestamp == b.producer_timestamp
+    && a.received == b.received
+    && a.local_commit == b.local_commit
+    && a.downstream == b.downstream
+    && a.continuity == b.continuity
+}
+
 fn pre_os_unique_occurrences(envelopes: List<ObservationEnvelope>) -> List<ObservationEnvelope> {
   fold(envelopes, init: [], f: (retained, e) =>
-    if any(retained, before => pre_os_same_occurrence_content(a: before, b: e)) { retained }
+    if any(retained, before => pre_os_same_envelope(a: before, b: e)) { retained }
     else { concat(retained, [e]) })
 }

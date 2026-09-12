@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor }
 import gunbc.fleet_observation_capture_chunk { ContinuityEstablished, DownstreamNotOffered }
-import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_committed }
+import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for }
 import gunbc.machine_intake_pre_os_replay { pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
 import gunbc.machine_intake_pre_os_timeline { PreOsReplayObservation, PreOsConsoleText, pre_os_machine_timeline, pre_os_timeline_view }
@@ -13,7 +13,7 @@ import test.claim.pre_os_observer_witness { observer_test_boot_payload }
 
 fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> ObservationEnvelope {
   let base = t_envelope(ownership: t_owner(fencing: t_unfenced), chunk: t_chunk(seq: seq, generation: 4, payload: "identical-payload", first: 0, len: 100),
-    local_commit: t_committed, continuity: ContinuityEstablished { verified_through: 100 }, downstream: DownstreamNotOffered)
+    local_commit: t_commit_for(payload: "identical-payload"), continuity: ContinuityEstablished { verified_through: 100 }, downstream: DownstreamNotOffered)
   ObservationEnvelope { binding: base.binding, source_generation: SourceGenerationObserved { generation: generation }, native_cursor: NativeCursor { record_identity: record },
     ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received, local_commit: base.local_commit,
     downstream: base.downstream, continuity: base.continuity }
