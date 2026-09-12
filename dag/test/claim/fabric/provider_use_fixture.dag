@@ -11,6 +11,7 @@ import product.fabric.provider_route {
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  ProviderUsePermit, ProviderUseAdmitted, ProviderUseDenied,
   DispositionStanding, DispositionCleared, admit_provider_use,
 }
 
@@ -199,6 +200,26 @@ fn fx_scope(
 // The roster is built FOR the route being asked about, so this returns an admitted use for any
 // route a caller names. That is deliberate for a fixture whose subject is not admission: it keeps
 // the callers' reds about ranking rather than about whether the fixture happened to cover them.
+fn fixture_posture_revision() -> ContentHash {
+  fx_hash(seed: "fixture-posture-r1")
+}
+
+fn fixture_route_facts_revision() -> ContentHash {
+  fx_hash(seed: "fixture-facts-r1")
+}
+
+fn fixture_permit_for(
+  route: ProviderRoute,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+) -> ProviderUsePermit<NonEmptyStr>? {
+  match fixture_admitted_use(route: route, offer: offer, demand: demand, work: work) {
+    ProviderUseAdmitted { permit: p } => Present { value: p }
+    ProviderUseDenied { decision: _, cause: _ } => none
+  }
+}
+
 fn fixture_admitted_use(
   route: ProviderRoute,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,

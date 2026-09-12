@@ -3,7 +3,9 @@ module test.claim.fabric_grant_issuance_witness
 import product.fabric.provider_route { ProviderRoute }
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_use, fixture_unadmitted_use, fixture_route, fixture_route_sibling_region,
+  fixture_posture_revision, fixture_route_facts_revision,
 }
+import product.fabric.provider_route { provider_route_eq }
 import product.fabric.provider_admission { ProviderUsePermit, ProviderUseAdmitted, ProviderUseDenied }
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { Count, One, MoneyRate, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
@@ -12,7 +14,7 @@ import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
-import product.fabric.identity { FabricIdentity, GrantKey }
+import product.fabric.identity { FabricIdentity, GrantKey, DemandKey, WorkKey }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.work {
@@ -24,6 +26,7 @@ import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
 import product.fabric.execution {
   Attempt, InitialAttempt, ExecutionGrant, LeaseIdentity, FabricGrantEvidence,
+  grant_admitting_posture_revision, grant_admitting_route_facts_revision, grant_admitting_route,
 }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
 import product.fabric.grant_issue {
@@ -826,4 +829,25 @@ test fn w_a_permit_for_another_demand_refuses_at_issuance() -> Bool {
         offer: admitted_offer, permit: p, account: funded_account)) == "permit-names-another-demand"
     },
   )
+}
+
+// THE GRANT NAMES ITS OWN ADMISSION. The projections are read off the committed grant, not off
+// the permit issue_grant was handed and not off any candidate: an auditor holding only the grant
+// can re-derive the posture revision, the route-facts revision and the route. The expected
+// revisions are the fixture's independently named hashes, so a grant that merely stored a
+// different permit about the same offer would still go red.
+test fn w_a_committed_grant_names_its_admitting_posture_and_route() -> Bool {
+  let issued = committed_grants_of(os: issue(
+    work: subject_work,
+    attempt: first_attempt,
+    offer: admitted_offer,
+    outstanding: [],
+    account: funded_account,
+    ledger: thread_appropriation,
+  ))
+  issued.length() == 1 && (issued |> all(g =>
+    provider_route_eq(a: grant_admitting_route(g: g), b: fixture_route())
+      && grant_admitting_posture_revision(g: g) == fixture_posture_revision()
+      && grant_admitting_route_facts_revision(g: g) == fixture_route_facts_revision()
+  ))
 }
