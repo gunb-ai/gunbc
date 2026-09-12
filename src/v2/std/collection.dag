@@ -63,9 +63,11 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
   map_insert_primitive_delegate(m: m, key: key, value: value)
 }
 
-// Enrolled inversion of the insert-seam refusal: true iff the carrier is not a native HAMT.
-// `map_insert` itself TypeErrors on that shape (a throw is not a Bool verdict). This predicate
-// is the same `Value::Map` match `free_call.map_insert` uses.
+// Enrolled inversion of the insert-seam TypeError: true iff `map_insert`'s grounding
+// refuses this carrier. The production path still TypeErrors; a throw is RuntimeErrored
+// on the floor and cannot stay enrolled as a Bool. Next-rung trigger: an expecting-error
+// harness that matches InterpError::TypeError as a typed verdict (ExpectTypedPreVerdictRefusal
+// today has no eval-TypeError cause, and ExpectedRedArm refuses to hold RuntimeErrored).
 fn map_insert_non_native_carrier_is_refused<K, V>(m: Map<K, V>, key: K, value: V) -> Bool {
   map_insert_non_native_carrier_is_refused(m: m, key: key, value: value)
 }

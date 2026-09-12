@@ -37,9 +37,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // `native_map_reaches_map_insert` is the positive control. `record_shaped_map_reaches_map_insert`
 // is inverted: it feeds a record-shaped Map into `map_insert_non_native_carrier_is_refused`,
-// the same `Value::Map` match that makes insert TypeError. A throw is RuntimeErrored and cannot
-// stay enrolled as a Bool, so the predicate is the enrolled inversion. The HostRealizedSeam
-// tests below are roster agreement only. `first_inserted_key_is_found_after_many_inserts` is the
+// which runs `map_insert`'s grounding and treats TypeError as true. HostRealizedSeam tests
+// below are roster agreement only. `first_inserted_key_is_found_after_many_inserts` is the
 // executing cost witness (green on the delegate HAMT). Paired wall-clock at two sizes is an
 // instrument, not a merge-blocking literal.
 
