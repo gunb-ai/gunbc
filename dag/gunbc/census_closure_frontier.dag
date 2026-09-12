@@ -1,5 +1,6 @@
 module gunbc.census_closure_frontier
 
+import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -80,6 +81,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_permission_group_observation_frontier_rows,
     http_status_where_clause_names_declaration_frontier_rows,
     colo_types_frontier_rows,
+    runner_canary_executed_evidence_frontier,
   ]
 }
 

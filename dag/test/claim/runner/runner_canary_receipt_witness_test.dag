@@ -37,11 +37,23 @@ import gunbc.runner.runner_teardown_receipt {
   TeardownObservationOrderRefused, produce_runner_teardown_receipt,
 }
 
-import std.roster_frontier { frontier_rows_well_formed }
+import std.roster_frontier { FrontierSubject, DeclSubject, frontier_subject_eq, frontier_rows_well_formed }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 
 test fn evidence_frontier_is_well_formed() -> Bool {
-  frontier_rows_well_formed(rows: runner_canary_executed_evidence_frontier)
+  let expected: List<FrontierSubject> = [
+    DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "MeteredVcpuMinutes") },
+    DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "produce_runner_usage_receipt") },
+    DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_teardown_receipt", decl_name: "produce_runner_teardown_receipt") },
+  ]
+  let census = census_closure_frontier_rows()
+  frontier_rows_well_formed(rows: runner_canary_executed_evidence_frontier) &&
+    expected |> all(want =>
+      (runner_canary_executed_evidence_frontier |> filter(row => frontier_subject_eq(a: row.subject, b: want)) |> count) == 1 &&
+      (census |> filter(row => frontier_subject_eq(a: row.subject, b: want)) |> count) == 1) &&
+    runner_canary_executed_evidence_frontier |> all(row =>
+      expected |> any(want => frontier_subject_eq(a: row.subject, b: want)))
 }
 
 // Controlled inputs only. No fixture data below is a host capture, and no live receipt is minted.
