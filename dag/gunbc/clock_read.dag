@@ -2,6 +2,7 @@ module gunbc.clock_read
 
 import std.types { String, NonEmptyStr }
 import extdeps.clock { Clock }
+import v2.std.optional { Present }
 
 fn clock_now_probed_at() -> NonEmptyStr? {
   let result = Clock.Now()

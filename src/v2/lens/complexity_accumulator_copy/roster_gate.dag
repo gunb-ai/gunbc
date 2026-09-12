@@ -19,6 +19,7 @@ import v2.lens.common.source_analysis_standing {
   SourceTokenizationRejected,
   SourceUnreadable
 }
+import std.types { List }
 
 // Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row
 // claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not

@@ -1561,214 +1561,70 @@ pub struct TransitionAdmission {
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
 
-/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
-/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
-/// next roster-touching change, which is this one.
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11156). The `gunbc#11137 extdeps.tools.sha256sum
+/// names Filesystem instead of reaching it` row is deleted. #11137 merged, so its narrowed import
+/// is at the base, the delta it admitted stopped being producible, and a row matching no delta
+/// reports STALE and blocks the phase. Its own recorded trigger was "this row goes when #11137
+/// merges", and this change is a roster touch on which that came due.
 ///
-/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
-/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
-/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
-/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
-/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
-/// and both consumers, `test.claim.cable_leg_coding_witness` and
-/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
-/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
-/// reading rather than an author error.
+/// gunbc#11138 pays the same debt on its own branch. Whichever merges second will conflict here
+/// and should keep the surviving cohort rather than restore the row: the deletion is owed once.
 ///
-/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
-/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
-/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
+/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
+/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
+/// BARE now name `{ Filesystem }` / `{ Clock }`. The required floor on this head enumerated eight
+/// deltas; six were a defect and are repaired in the source rather than admitted here (see below),
+/// and these two are the real transitions.
 ///
-///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
-///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
-///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
-///   as an import from the fixture (and as uses inside `mb_scene` and
-///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
-///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
-///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
-///   the correct reading for all nine.
+/// ROW ONE -- `extdeps.provisioning.ubuntu_seeded_install_media_remaster`. A bare module import
+/// drags the whole module into the candidate set for EVERY name it declares, so
+/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
+/// per-module convention row some 315 modules each author -- was a candidate at this site. Naming
+/// `{ Filesystem }` drops it. NO RESOLUTION CHANGES: this module authors its own anchor, and a
+/// module's own declaration wins inside the authored region, so the removed candidate could not
+/// have won either way. What narrowed is the SET.
 ///
-/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
-/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
-/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
-/// permissions standing over nothing.
+/// ROW TWO -- `gunbc.srv3_boot_once_cd`, and this one moves in the GOOD direction, which is why it
+/// is `AuthoredReferenceResolution` rather than `TargetChanged`: base `{}` -> head
+/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
+/// declaring module under no spelling at all, so the name resolved to NOTHING the author had
+/// named and reached its declaration only through pool membership. It now names it. The file
+/// already carried a modeled `DeclarationRef { module_path:
+/// "extdeps.filesystem.filesystem_io", decl_name: "Filesystem" }`; the import states in the import
+/// graph what that row already asserted.
 ///
-/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
-/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
-/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
-/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
+/// WHAT WAS NOT ADMITTED, because admitting it would have been the wrong answer. Six of the eight
+/// deltas were `NewUnresolvedness` -- `Present` (from `v2.std.optional`) in `gunbc.clock_read` and
+/// `gunbc.fabric_event_log_host`, and `List` (from `std.types`) in the two `roster_gate` modules --
+/// names going from resolved to UNRESOLVED. A bare import propagates reach beyond the importing
+/// module's own declarations, so narrowing one can strand names belonging to modules the file
+/// never mentions. Those are repaired with explicit imports naming the declaring module. An
+/// admission row records an intended transition; a name losing its declaration is not one.
 ///
-/// THE gunbc#10688 ROWS DISSOLVE HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
-/// THEY NAMED. The two `call_semantics_target` re-home rows reported CONSUMED on required run
-/// 34262728404 (PR #10856), which is the roster-touching change their trigger named.
-///
-/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, on each row's
-/// own (module, in_declaration, spelling, target) tuple against main. On main,
-/// `src/v1/00_core.dag` opens `module v1.std.core` and declares
-/// `fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity`;
-/// `src/v1/05_emit_rust.dag` DECLARES no such function and imports the spelling, and both named
-/// declarations still spell it -- `emit_rust_expr_call` and `emit_rust_tco_non_self_call` each
-/// call `call_semantics_target(cs: cs)`. So base and head bind the spelling to the same declarer,
-/// no run can produce either `TargetChanged` delta, and CONSUMED is the correct reading rather
-/// than an author error.
-///
-/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
-/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
-/// touch. Adjudicate that deletion by joining each row against main on its own
-/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
-///
-/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
-/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
-/// owed here.
-///
-/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
-/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
-/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
-/// both as already satisfied at the base -- consumed by its own merge.
-///
-/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
-/// `cumulative_metric_read_as_per_event`, is added as its own file under
-/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
-/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
-/// the head side that name newly resolves into the class's own module, which is
-/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
-/// the membership rule the directory IS, not by anyone rebinding an existing name.
-///
-/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
-/// one file per class precisely so that two lanes appending different classes never rewrite one
-/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
-/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
-/// is the same motion whether it was intended or accidental, and only the author can say which.
-///
-/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
-/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
-/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
-/// trusting this sentence.
-/// THE gunbc#10813 ROW DISSOLVES HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
-/// NAMED, AND THE DEFECT IT WAS ADMITTING IS REPAIRED IN THE SAME CHANGE. Two separate facts, and
-/// the row would go on either one alone.
-///
-/// FIRST, THE TRIGGER FIRED. gunbc#10813 is on main, so the class file
-/// `dag/gunbc/recurring_failure_mode/cumulative_metric_read_as_per_event.dag` and the roster naming
-/// it are present on BOTH sides. Adjudicated by the join the row demanded rather than by its
-/// sentence: on main that file opens
-/// `module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` and the roster names
-/// the spelling, so base and head resolve it into the same module, no run can produce the delta,
-/// and CONSUMED is the correct reading. Its label goes with it, leaving the roster an EMPTY
-/// enumeration.
-///
-/// SECOND, AND THIS IS WHY NO SUCCESSOR ROW REPLACES IT: the delta that row admitted was not the
-/// ledger's growth shape. It was an artifact of the BASELINE, repaired by this same change.
-/// `run_required_wave_admission` rebuilt the base index by carrying forward every head record the
-/// diff did not touch; `dag/gunbc/recurring_failure_mode/roster.dag` is gitignored and written on
-/// the read path, so it can never appear in `git diff --name-status`, and the HEAD's generated
-/// roster was therefore carried in as the BASE's. Both symptoms follow: the binding key existed on
-/// both sides so it read `base {} -> head {row}`, and the authorship discriminator compared the
-/// roster's base and head source, which were THE SAME BYTES, so an ordinary append read as not
-/// locally authored and classified `NewPoolCoincidenceResolution`. With the roster's base side
-/// DERIVED from the base tree's row membership, the roster module's source genuinely differs across
-/// the sides and an append classifies `AuthoredReferenceResolution`, which is auto-admitted.
-///
-/// THE EVIDENCE IS EXECUTED, NOT ARGUED: the required run on this change's own previous head
-/// (34271585163) added a failure-mode class with NO admission row for it and reported
-/// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
-/// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
-/// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-///
-/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
-/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
-/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
-/// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
-/// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
-/// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
-/// by this sentence.
-///
-/// TWENTIETH DISSOLUTION (2026-09-10). That trigger fired and the wall said so rather than this
-/// paragraph: #10945 merged, and the required floor on gunbc#10951 (run 34517633122) reported the
-/// row as `CONSUMED ADMISSION ... already satisfied at the base — consumed by its own merge` and
-/// then refused adjudication with `1 consumed admission(s) due for deletion on this roster-touching
-/// change`. This change edits `evaluate_wave_admission`, so it is the toucher the rule charges, and
-/// the deletion is paid here rather than deferred to a follow-up nobody owes.
-///
-/// THE RECEIPT IS THE DISPOSITION, NOT THE SIDE — which is the correction the eighteenth and
-/// nineteenth dissolutions above were both written to record. This row arrived from main through a
-/// merge and was never authored on this branch; that is not evidence of anything, and the reason it
-/// goes is that the wall computed its transition as merged and printed it.
-///
-/// THE RESTING STATE WAS EMPTY AND THIS CHANGE AUTHORS ONE ROW BACK INTO IT, which is the ordinary
-/// motion and not a regression of the dissolution above: the twentieth dissolution retired a row
-/// whose delta had stopped being producible, and the row below admits a different delta that this
-/// change produces. Empty is not permissive and non-empty is not permission - a run with any delta
-/// no row names still refuses it as UNADJUDICATED.
-///
-/// TWENTY-FIRST DISSOLUTION (2026-09-11). #10956 merged, and the required floor on gunbc#11071
-/// (run 34627055157) reported its row as `CONSUMED ADMISSION ... already satisfied at the base —
-/// consumed by its own merge`. This change edits the roster, so it is the toucher the rule charges
-/// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
-/// empty was the resting state and one change authoring rows back into it is the ordinary motion.
-///
-/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
-/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
-/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
-/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
-/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
-/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
-/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
-///
-/// gunbc#11137 sha256sum names Filesystem instead of reaching it (2026-09-12). The row below is a
-/// DIFFERENT delta that this change produces, not that one restored: empty is the resting state
-/// and one change authoring a row back into it is the ordinary motion.
-///
-/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
-/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
-/// module into the candidate set for every name it declares, so filesystem_io's copy of
-/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
-/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
-///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
-/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
-/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. NO RESOLUTION CHANGES.
-/// `extdeps.tools.sha256sum` authors its own `extdeps_external_authority_anchor`, and a module's
-/// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
-/// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
-/// either way. What narrowed is the SET, from three modules to two, which is the qualification's
-/// whole purpose: the resolution stopped depending on a module the author never named. That no
-/// consumer changed behaviour is the required floor's verdict on this head, re-derived by
-/// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
-/// and read off its own `required-floor:` verdict line -- named rather than transcribed, because a
-/// copied count rots without anyone touching either end (DESIGN §6).
-///
-/// WHY THE `String` REQUALIFICATION IN THE SAME CHANGE NEEDS NO ROW, which is a fair question to
-/// ask of a diff that moves ten import lines onto `std.string_type`. It is not this adjudication's
-/// assertion; it is the wave phase's own measurement. That phase compares the binding table on both
-/// sides, and on this head it reported exactly ONE `TargetChanged binding` delta -- the row below --
-/// and none for `String`. The ten `String` sites appear instead as
-/// `ExplicitlyEvaluatedZeroDelta membership <module> -> std.string_type ... reached by a name this
-/// module authors`: explicitly evaluated, zero delta. The reason is that `std.types` declares no
-/// `String` at all, so `import std.types { String }` bound nothing and the read fell through to the
-/// shared slot, where scope precedence already answered `std.string_type`. Naming that module
-/// changes the read's AUTHORIZATION -- from an accident of precedence to something the author
-/// wrote -- without changing which declaration answers it. A delta row adjudicates a changed
-/// binding; there is no changed binding here to adjudicate.
-///
-/// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
-/// stops being producible, and CONSUMED comes due on the roster's next touch.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-    // The rationale, the safety adjudication and the trigger are in the doc comment on this
-    // const rather than repeated here. In one line: the bare `import
-    // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-    // spelling's candidate set without changing what it resolves to.
-    subject: AdmissionSubject::Binding {
-        module: "extdeps.tools.sha256sum",
-        in_declaration: "extdeps_external_authority_anchor",
-        spelling: "extdeps_external_authority_anchor",
-        target: "extdeps.tools.sha256sum",
+/// TRIGGER: these rows go when #11156 merges. The base then carries the named imports, the deltas
+/// stop being producible, and CONSUMED comes due on the roster's next touch.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#11156 Filesystem and Clock service bindings",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
+            in_declaration: "extdeps_external_authority_anchor",
+            spelling: "extdeps_external_authority_anchor",
+            target: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
     },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+    TransitionAdmission {
+        label: "gunbc#11156 Filesystem and Clock service bindings",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.srv3_boot_once_cd",
+            in_declaration: "srv3_boot_once_cd_resolved",
+            spelling: "Filesystem",
+            target: "extdeps.filesystem.filesystem_io",
+        },
+        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

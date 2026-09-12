@@ -15,6 +15,7 @@ import v2.lens.common.source_analysis_standing {
   SourceParseRejected,
   SourceUnreadable
 }
+import std.types { List }
 
 // The fast inline-source controls are required-floor witnesses at
 // src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag. The five file_gate corpus
