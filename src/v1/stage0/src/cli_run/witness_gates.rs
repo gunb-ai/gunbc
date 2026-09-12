@@ -836,11 +836,38 @@ pub(crate) fn roster_entry_registry(roots: &[String], entry: &str) -> RosterEntr
     // So there is NO path resolution on this arm at all. The roster's own repo-relative spelling is
     // the identity, `by_entry_path` is keyed by it, and a miss is `OutsidePreparedSubject` — a
     // statement about the SUBJECT, which is decided, not about the disk, which is irrelevant here.
-    if floor_prepared_authority_active() {
+    // WHAT A MISS MEANS IS THE MODEL'S ANSWER, DECODED AT PREPARATION AND READ HERE.
+    //
+    // An earlier revision hard-coded the refusal and, beside it, evaluated two model predicates
+    // against a literal `true`. That reads as governance and is not: the model's answer was
+    // discarded in favour of a constant the host already held, so a host that grew a disk-reading
+    // fallback would have passed the check unchanged. The test of consumption is what the host
+    // would DO differently if the answer changed — and now it refuses to run at all, because
+    // `floor_decode_prepared_product_law` maps the outcome VARIANT to behaviour and refuses any
+    // arm this lookup does not implement.
+    if let Some(law) = floor_prepared_product_law() {
         return match floor_prepared_source_for_entry_path(entry) {
             Some(source) => roster_entry_registry_from_prepared_source(entry, &source),
-            None => RosterEntryRegistryCache::OutsidePreparedSubject {
-                detail: format!("the prepared subject does not hold {entry}"),
+            None => match law.miss {
+                PreparedProductDisposition::Refuse => {
+                    RosterEntryRegistryCache::OutsidePreparedSubject {
+                        detail: format!("the prepared subject does not hold {entry}"),
+                    }
+                }
+                // THERE IS NO SERVE-ON-MISS PATH, AND THIS ARM IS WHY THAT IS CHECKABLE. The model
+                // has no reconstruct arm, so this is unreachable today; if one is ever added it
+                // decodes to `Serve` and lands here, where there is nothing to serve. Refusing by
+                // name is the honest answer — inventing a disk read would be the host deciding a
+                // question the model was asked.
+                PreparedProductDisposition::Serve => {
+                    RosterEntryRegistryCache::OutsidePreparedSubject {
+                        detail: format!(
+                            "the prepared subject does not hold {entry}, and the handoff law says \
+                             SERVE for a miss — there is no product to serve, so the law and this \
+                             lookup disagree about what a miss is"
+                        ),
+                    }
+                }
             },
         };
     }

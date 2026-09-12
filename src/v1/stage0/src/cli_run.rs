@@ -39218,9 +39218,32 @@ thread_local! {
         std::cell::RefCell::new(None);
 }
 
+/// What the model says a consumer may do about one prepared product. Decoded from
+/// `PreparedProductOutcome`'s VARIANT during preparation, never assumed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparedProductDisposition {
+    Serve,
+    Refuse,
+}
+
+/// The decoded handoff law, carried with the prepared authority so the real lookup consumes it.
+///
+/// WHY IT IS CARRIED RATHER THAN RE-ASKED: the lookup runs inside claim evaluation, so calling
+/// back into the interpreter per lookup would be re-entrant. Decoding once at preparation and
+/// carrying the answer gets the model's governance without that — the host cannot act on a
+/// disposition the model did not give it, and cannot reach a disposition the model did not decode.
+#[derive(Debug, Clone, Copy)]
+pub struct PreparedProductLaw {
+    pub hit: PreparedProductDisposition,
+    pub miss: PreparedProductDisposition,
+}
+
 struct FloorPreparedAuthority {
     inventory: Vec<PreparedSourceView>,
     inventory_digest: String,
+    /// The decoded law. `roster_entry_registry` reads `miss` to decide what a lookup that found
+    /// nothing MEANS; it is not free to decide that for itself.
+    law: PreparedProductLaw,
     /// EXACT IDENTITY, ESTABLISHED HERE AND NOT RE-DERIVED BY LOOKUP.
     ///
     /// Keyed by `workspace_relative_entry_path` of the prepared source's own path — the same
@@ -39247,7 +39270,7 @@ impl Drop for FloorPreparedAuthorityGuard {
 
 /// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
 /// Drop always clears the thread-locals and compile memo.
-fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
+fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>, law: PreparedProductLaw) {
     crate::coproduct_reflection::register_decl_census_memo();
     let inventory_digest = floor_inventory_content_digest(&inventory);
     let by_entry_path: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = inventory
@@ -39263,6 +39286,7 @@ fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
         *cell.borrow_mut() = Some(FloorPreparedAuthority {
             inventory,
             inventory_digest,
+            law,
             by_entry_path,
         });
     });
@@ -39335,7 +39359,16 @@ pub fn run_floor_prepared_toll_receipt() {
         languages_disk_ms, languages_inventory_ms, item4_reclaimed
     );
 
-    let _floor_prepared_guard = register_floor_prepared_authority_guard(inventory);
+    // The toll receipt is a measurement harness, not the floor: it registers the inventory to time
+    // inventory-backed parsing and never reaches the roster gate. It supplies the law the model
+    // declares so the carrier is never half-built, and takes no position of its own on it.
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(
+        inventory,
+        PreparedProductLaw {
+            hit: PreparedProductDisposition::Serve,
+            miss: PreparedProductDisposition::Refuse,
+        },
+    );
 
     let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
     let file_path = "src/cuartifact_ok.rs";
@@ -39361,14 +39394,22 @@ pub fn run_floor_prepared_toll_receipt() {
 
 fn register_floor_prepared_authority_guard(
     inventory: Vec<PreparedSourceView>,
+    law: PreparedProductLaw,
 ) -> FloorPreparedAuthorityGuard {
-    register_floor_prepared_authority(inventory);
+    register_floor_prepared_authority(inventory, law);
     FloorPreparedAuthorityGuard
 }
 
 #[cfg(test)]
 mod prepared_source_identity_test {
     use super::*;
+
+    fn declared_law() -> PreparedProductLaw {
+        PreparedProductLaw {
+            hit: PreparedProductDisposition::Serve,
+            miss: PreparedProductDisposition::Refuse,
+        }
+    }
 
     fn view(path: &str, content: &str) -> PreparedSourceView {
         PreparedSourceView {
@@ -39391,10 +39432,13 @@ mod prepared_source_identity_test {
     /// `test/claim/x.dag` resolves to one of the two rather than to neither.
     #[test]
     fn prepared_lookup_is_exact_not_suffix() {
-        let _guard = register_floor_prepared_authority_guard(vec![
-            view("dag/test/claim/x.dag", "module dag_x"),
-            view("src/v2/test/claim/x.dag", "module v2_x"),
-        ]);
+        let _guard = register_floor_prepared_authority_guard(
+            vec![
+                view("dag/test/claim/x.dag", "module dag_x"),
+                view("src/v2/test/claim/x.dag", "module v2_x"),
+            ],
+            declared_law(),
+        );
 
         let under_dag =
             crate::cli_run::floor_prepared_source_for_entry_path("dag/test/claim/x.dag")
@@ -39422,10 +39466,13 @@ mod prepared_source_identity_test {
     /// with `EntryMissing`, because the file is not there to be found.
     #[test]
     fn a_held_entry_serves_even_though_no_such_file_exists() {
-        let _guard = register_floor_prepared_authority_guard(vec![view(
-            "dag/test/claim/deleted_after_preparation.dag",
-            "module gone\n\nfn still_declared() -> Bool { true }\n",
-        )]);
+        let _guard = register_floor_prepared_authority_guard(
+            vec![view(
+                "dag/test/claim/deleted_after_preparation.dag",
+                "module gone\n\nfn still_declared() -> Bool { true }\n",
+            )],
+            declared_law(),
+        );
 
         let roots = vec!["dag".to_string(), "src/v2".to_string()];
         assert!(
@@ -39451,10 +39498,10 @@ mod prepared_source_identity_test {
     /// is "fix the subject" rather than the one whose remedy is "fix the roster row".
     #[test]
     fn an_unheld_entry_refuses_as_outside_the_subject() {
-        let _guard = register_floor_prepared_authority_guard(vec![view(
-            "dag/test/claim/held.dag",
-            "module h",
-        )]);
+        let _guard = register_floor_prepared_authority_guard(
+            vec![view("dag/test/claim/held.dag", "module h")],
+            declared_law(),
+        );
         let roots = vec!["dag".to_string(), "src/v2".to_string()];
         match crate::cli_run::witness_gates::roster_entry_registry(
             &roots,
@@ -39464,6 +39511,72 @@ mod prepared_source_identity_test {
                 assert!(detail.contains("dag/test/claim/not_held.dag"), "{detail}");
             }
             other => panic!("expected OutsidePreparedSubject, got {other:?}"),
+        }
+    }
+
+    /// THE FIXTURE THAT ACTUALLY CATCHES A DISK FALLBACK, and the reason the one above does not.
+    ///
+    /// `an_unheld_entry_refuses_as_outside_the_subject` names a path that is ALSO absent from the
+    /// tree, so a host that quietly fell back to reading the file would still have refused — for
+    /// the wrong reason, invisibly. The distinction only becomes observable when the unheld entry
+    /// EXISTS ON DISK AND PARSES: then "refuse" and "read it anyway" give different answers, and
+    /// only the first is the prepared subject being the authority.
+    ///
+    /// The subject is this repository's own `dag/std/logic.dag` — a real, committed, parseable
+    /// module deliberately left out of the registered inventory.
+    ///
+    /// DISCRIMINATING: add any `std::fs::read_to_string` fallback to the floor arm of
+    /// `roster_entry_registry` and this goes RED, because the file is there and its declarations
+    /// would be served.
+    #[test]
+    fn an_unheld_entry_that_exists_on_disk_still_refuses() {
+        // THE FILE IS AUTHORED HERE RATHER THAN NAMED IN THE TREE, and the first draft of this
+        // test is why. It pointed at `dag/std/logic.dag`, which is real — but `cargo test` runs
+        // from the crate directory, so the path resolved under `src/v1/stage0/` and did not exist.
+        // The precondition caught it; without one the test would have passed for the wrong reason,
+        // proving nothing, which is exactly the failure it exists to detect one layer down.
+        let mut on_disk = std::env::temp_dir();
+        on_disk.push(format!(
+            "gunbc_unheld_but_readable_{}_{}.dag",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(
+            &on_disk,
+            "module unheld_but_readable\n\nfn readable_from_disk() -> Bool { true }\n",
+        )
+        .expect("fixture writes its own subject");
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(on_disk.clone());
+        let on_disk = on_disk.to_string_lossy().into_owned();
+
+        assert!(
+            std::path::Path::new(&on_disk).is_file(),
+            "fixture precondition: {on_disk} must be readable, or this test cannot tell a refusal \
+             from an absence"
+        );
+
+        let _guard = register_floor_prepared_authority_guard(
+            vec![view("dag/test/claim/held.dag", "module h")],
+            declared_law(),
+        );
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        match crate::cli_run::witness_gates::roster_entry_registry(&roots, &on_disk) {
+            RosterEntryRegistryCache::OutsidePreparedSubject { detail } => {
+                assert!(detail.contains(&on_disk), "{detail}");
+            }
+            other => panic!(
+                "a file the prepared subject does not hold must refuse even though it is readable \
+                 on disk and declares `readable_from_disk`; got {other:?}"
+            ),
         }
     }
 }

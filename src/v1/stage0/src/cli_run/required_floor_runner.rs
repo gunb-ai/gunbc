@@ -3212,6 +3212,15 @@ pub(crate) fn floor_prepared_source_for_entry_path(
     })
 }
 
+/// The decoded handoff law for the live prepared authority, or `None` outside the floor.
+///
+/// `roster_entry_registry` reads this to learn what a MISS means. It is deliberately not a
+/// convenience accessor over a constant: the value came out of the model during preparation, so a
+/// host reading it is a host being governed rather than a host agreeing.
+pub(crate) fn floor_prepared_product_law() -> Option<PreparedProductLaw> {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.law))
+}
+
 pub(crate) fn floor_prepared_inventory_digest() -> Option<String> {
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         cell.borrow()
@@ -3640,43 +3649,61 @@ pub(crate) fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str
 /// FAIL-CLOSED AT EVERY ARM, like every other authority decode on this path: a subject that cannot
 /// frame the module, a probe that will not evaluate, and a probe returning a non-`Bool` each refuse
 /// by name. A skipped conformance check would leave the host's arms unlicensed while CI reads green.
-pub(crate) fn floor_required_prepared_product_law(
+pub(crate) fn floor_decode_prepared_product_law(
     prepared: &PreparedRepository,
-) -> Result<(), String> {
+) -> Result<PreparedProductLaw, String> {
     const MODULE: &str = "v2.workflow.floor2_prepared_subject";
     let ctx = floor_authority_frame(prepared, MODULE).map_err(|e| {
         format!("REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnframeable module={MODULE} — {e}")
     })?;
-    for (func, expected) in [
-        ("prepared_product_held_serves", true),
-        ("prepared_product_outside_subject_refuses", true),
-    ] {
-        let qualified = format!("{MODULE}.{func}");
-        match v1_interpreter::run_in_context(&ctx, &qualified, false) {
-            Ok(v1_interpreter::Value::Bool(b)) if b == expected => {}
-            Ok(v1_interpreter::Value::Bool(b)) => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawDiverged {qualified} answered \
-                     {b}, but `roster_entry_registry` is written to the answer {expected}. The \
-                     model and the host disagree about the prepared-product handoff; the host's \
-                     arms are not licensed by the law they claim to implement."
-                ));
-            }
-            Ok(other) => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawNotBool {qualified}: expected \
-                     a Bool, got {}",
-                    floor_value_shape(Some(&other))
-                ));
-            }
-            Err(e) => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnevaluable {qualified} — {e}"
-                ));
+    let hit = floor_decode_prepared_product_disposition(
+        &ctx,
+        MODULE,
+        "prepared_product_outcome_for_roster_gate_hit",
+    )?;
+    let miss = floor_decode_prepared_product_disposition(
+        &ctx,
+        MODULE,
+        "prepared_product_outcome_for_roster_gate_miss",
+    )?;
+    Ok(PreparedProductLaw { hit, miss })
+}
+
+/// Decode ONE `PreparedProductOutcome` into the disposition the host will act on.
+///
+/// THE VARIANT IS THE ANSWER, which is the whole difference from the predicate form this replaced.
+/// A `Bool` compared against a literal tells the host nothing it did not already assume; a variant
+/// name it must map to behaviour means an arm the host does not implement cannot be ignored. The
+/// unknown arm is therefore a REFUSAL that names the variant, not a default — if
+/// `PreparedProductOutcome` ever gains a reconstruct arm, this is where the run stops.
+fn floor_decode_prepared_product_disposition(
+    ctx: &v1_interpreter::InterpContext,
+    module: &str,
+    func: &str,
+) -> Result<PreparedProductDisposition, String> {
+    let qualified = format!("{module}.{func}");
+    match v1_interpreter::run_in_context(ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            match ctx.resolve(variant_name).as_str() {
+                "PreparedProductServed" => Ok(PreparedProductDisposition::Serve),
+                "PreparedProductRefused" => Ok(PreparedProductDisposition::Refuse),
+                unknown => Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductDispositionUnimplemented \
+                     {qualified} answered `{unknown}`, which this host has no behaviour for. The \
+                     model has grown an arm the prepared-product lookup does not implement; \
+                     acting on the arms it does know would silently ignore the new one."
+                )),
             }
         }
+        Ok(other) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawNotAnOutcome {qualified}: expected a \
+             PreparedProductOutcome variant, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnevaluable {qualified} — {e}"
+        )),
     }
-    Ok(())
 }
 
 pub(crate) fn floor_authority_frame(
@@ -4456,7 +4483,7 @@ pub fn run_required_floor(
     // answers out of the prepared authority registered a few lines below, so the model that
     // licenses its two arms is evaluated here, first, and a divergence refuses the run rather than
     // being discovered by a reader comparing two files.
-    floor_required_prepared_product_law(&prepared)?;
+    let prepared_product_law = floor_decode_prepared_product_law(&prepared)?;
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize
@@ -4476,7 +4503,8 @@ pub fn run_required_floor(
     // the release (review 57430).
     let discovery_exclusions = std::mem::take(&mut prepared.discovery_exclusions);
     let full_inventory = std::mem::take(&mut prepared.full_inventory);
-    let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
+    let _floor_prepared_guard =
+        register_floor_prepared_authority_guard(prepared_sources, prepared_product_law);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
     // `compile_dag_rust_emit_check` (the emit witnesses' host arm) calls

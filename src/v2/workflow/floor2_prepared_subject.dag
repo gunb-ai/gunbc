@@ -259,41 +259,40 @@ fn prepared_product_outcome_refuses(outcome: PreparedProductOutcome) -> Bool {
   }
 }
 
-// ── THE TWO NULLARY PROBES THE RUNNING FLOOR EVALUATES ────────────────────────────────────────
+// ── THE TWO DISPOSITIONS THE RUNNING HOST CONSUMES ────────────────────────────────────────────
 //
-// A RULE NOTHING CONSUMES IS A DECORATION, and this section would have been one. The declarations
-// above are consumed by a witness, which fixes the MODEL's answer and says nothing about the host;
-// the host makes its own decision in `roster_entry_registry`, so the missing `Reconstructed` arm
-// constrained the `.dag` and left Rust free. That is the inert-carrier tier `v2.lens.inert_carrier`
-// already catalogues, and naming the arm's absence as a guarantee while nothing read it would be
-// the rung inflation DESIGN section 4b calls worse than sitting low.
+// A RULE NOTHING CONSUMES IS A DECORATION, and this section has now been one twice, in two
+// different ways worth recording because the second looked like the repair for the first.
 //
-// These two are evaluated by `run_required_floor` through `floor_authority_frame` over this
-// module's own scope, every required run, and a disagreement STOPS THE LINE. The host's two arms
-// are therefore licensed by this model on the run that uses them rather than merely resembling it.
+// FIRST SHAPE: the declarations above were read only by a witness. That fixes the MODEL's answer
+// and says nothing about the host, so the missing `Reconstructed` arm constrained the `.dag` and
+// left Rust free — the inert-carrier tier `v2.lens.inert_carrier` catalogues.
 //
-// THE RUNG IS *MECHANICALLY PREVENTABLE* AND NOT STRUCTURAL, stated here rather than left to be
-// inferred from the word "law" above. The host still holds its own `match`; what this closes is
-// the SILENT divergence, not the possibility of one. NEXT-RUNG TRIGGER: the host reaching its
-// disposition BY EVALUATING `prepared_product_outcome` per lookup instead of consulting these two
-// constants once — which needs a non-re-entrant way to call a `.dag` fn from inside a builtin,
-// since this lookup runs during claim evaluation. Until that exists, this is the strongest honest
-// join, and it is strictly stronger than the hand-mirrored comparison
-// `floor_preparation_host_mirror_dissolve_on` records for the preparation limits.
-fn prepared_product_held_serves() -> Bool {
-  !prepared_product_outcome_refuses(
-    outcome: prepared_product_outcome(
-      consumer: CommitWitnessRosterGate,
-      availability: PreparedProductHeld
-    )
+// SECOND SHAPE, AND IT IS THE SUBTLE ONE: the host then EVALUATED two `Bool` probes and compared
+// them to a literal `true`. That is not consumption, it is a tautology check — the model's answer
+// was read and then discarded in favour of a constant the host already held, so a host that grew a
+// disk-reading fallback arm would have gone on passing it. Evaluating a model is not the same as
+// being governed by one, and the distinction is invisible unless you ask what the host would DO
+// differently if the answer changed.
+//
+// SO THE PROBES RETURN THE OUTCOME ITSELF, NOT A PREDICATE OVER IT. `run_required_floor` decodes
+// these two VARIANTS once during preparation and carries them on the prepared authority;
+// `roster_entry_registry` then consults the carried disposition instead of hard-coding what a miss
+// means. A `Reconstructed` arm added to `PreparedProductOutcome` would decode to a disposition the
+// host does not implement and STOP THE RUN by name, rather than being silently ignored.
+//
+// Decoded once, consumed per lookup: no interpreter call inside a builtin, so nothing here is
+// re-entrant.
+fn prepared_product_outcome_for_roster_gate_hit() -> PreparedProductOutcome {
+  prepared_product_outcome(
+    consumer: CommitWitnessRosterGate,
+    availability: PreparedProductHeld
   )
 }
 
-fn prepared_product_outside_subject_refuses() -> Bool {
-  prepared_product_outcome_refuses(
-    outcome: prepared_product_outcome(
-      consumer: CommitWitnessRosterGate,
-      availability: PreparedProductOutsideSubject { detail: ^floor_conformance_probe }
-    )
+fn prepared_product_outcome_for_roster_gate_miss() -> PreparedProductOutcome {
+  prepared_product_outcome(
+    consumer: CommitWitnessRosterGate,
+    availability: PreparedProductOutsideSubject { detail: ^floor_conformance_probe }
   )
 }
