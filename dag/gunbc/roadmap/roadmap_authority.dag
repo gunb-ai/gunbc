@@ -61,7 +61,7 @@ import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified,
   PathsUnrestricted,
   PublicWorktreeLayout,
-  contract_has_closing_validation,
+  contract_awaits_closing_validation_authoring,
   closing_contract_authoring_contract,
 }
 import gunbc.roadmap_focus {
@@ -3309,10 +3309,12 @@ fn node_is_startable_for_accepted(n: RoadmapNode, accepted: List<RoadmapNodeId>)
 // any ExecutionContract counted as bound here, while an empty validation list counted as UNBOUND in
 // gunbc.roadmap_verify and refused in gunbc.roadmap_dispatch_environment. It now reads the single
 // authority, so a node bound to a contract that closes nothing keeps its acceptance task instead of
-// vanishing from the frontier while remaining unverifiable.
+// vanishing from the frontier while remaining unverifiable. Non-agent modes are not missing a
+// contract: they are declared refusals of agent work, so they do not mint a closing-contract task
+// whose brief would wrap the parent in gunbc_claim_execution_contract.
 
 fn node_lacks_closing_validation(n: RoadmapNode) -> Bool {
-  !contract_has_closing_validation(contract: n.execution)
+  contract_awaits_closing_validation_authoring(contract: n.execution)
 }
 
 fn ticket_headline_of(n: RoadmapNode) -> String {

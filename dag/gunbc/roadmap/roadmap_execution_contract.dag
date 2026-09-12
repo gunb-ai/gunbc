@@ -213,7 +213,11 @@ fn execution_contract_required_capabilities(
 // rather than a Bool because the two unclosed states have different remedies — author a contract,
 // versus fix the contract you authored — and dispatch_environment's located diagnostics depend on
 // telling them apart. contract_has_closing_validation is the Bool projection for the callers that
-// genuinely only need the predicate. No consumer re-derives either from the coproduct's
+// genuinely only need whether an agent closing validation exists. Non-agent modes are false on that
+// predicate because they do not close by validation; they are not therefore missing a contract.
+// Task derivation reads contract_awaits_closing_validation_authoring, which is false for
+// ContractNotAgentWork so a sized operator-exclusive node does not mint a task whose brief
+// replaces that mode with an agent contract. No consumer re-derives either from the coproduct's
 // shape.\n\nNo behaviour changes on today's corpus: all four bound nodes route through
 // gunbc_claim_execution_contract, which always emits exactly one validation. The de-fork is what
 // keeps that true when the fifth binding is written by hand.
@@ -258,6 +262,15 @@ fn contract_has_closing_validation(contract: WorkItemExecutionContract) -> Bool 
     ContractClosesNothing => false
     ContractDeclaresNoValidation => false
     ContractNotAgentWork { mode: _ } => false
+  }
+}
+
+fn contract_awaits_closing_validation_authoring(contract: WorkItemExecutionContract) -> Bool {
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation => true
+    ContractClosesNothing => true
+    ContractNotAgentWork { mode: _ } => false
+    ContractCloses { validations: _ } => false
   }
 }
 

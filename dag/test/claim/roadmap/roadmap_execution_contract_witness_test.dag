@@ -25,6 +25,7 @@ import gunbc.roadmap_execution_contract {
   dispatch_required_capabilities,
   gunbc_claim_execution_contract,
   validation_operation_command,
+  contract_awaits_closing_validation_authoring,
 }
 
 fn claim_runner_environment() -> DispatchHostEnvironment {
@@ -164,6 +165,27 @@ test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
   }
 }
 
+test fn non_agent_work_does_not_await_closing_validation_authoring() -> Bool {
+  contract_awaits_closing_validation_authoring(contract: ExecutionContractUnspecified)
+    && contract_awaits_closing_validation_authoring(
+      contract: ExecutionContract {
+        validations: [],
+        extra_capabilities: [],
+        path_scope: PathsUnrestricted,
+        source_roots: PublicWorktreeLayout,
+      },
+    )
+    && !contract_awaits_closing_validation_authoring(contract: OperatorExclusive)
+    && !contract_awaits_closing_validation_authoring(contract: ExternalLead)
+    && !contract_awaits_closing_validation_authoring(contract: CalendarObservation)
+    && !contract_awaits_closing_validation_authoring(
+      contract: gunbc_claim_execution_contract(
+        entry: "dag/test/claim/example_test.dag" as FilePath,
+        function: "example_holds" as NonEmptyStr,
+      ),
+    )
+}
+
 test fn roadmap_execution_contract_keystone_holds() -> Bool {
   dag_claim_derives_only_the_claim_runner()
     && cargo_test_derives_cargo_and_rustc_once()
@@ -171,4 +193,5 @@ test fn roadmap_execution_contract_keystone_holds() -> Bool {
     && dispatch_platform_capabilities_join_at_admission_only()
     && claim_validation_projects_exact_typed_argv()
     && claim_contract_declares_exactly_one_claim_validation()
+    && non_agent_work_does_not_await_closing_validation_authoring()
 }
