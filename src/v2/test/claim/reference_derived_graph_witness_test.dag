@@ -7,6 +7,7 @@ import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
 import v2.lens.module_graph {
   LocatedModuleRoot,
   ModuleDependencyEdge,
+  reference_derived_edge_fold_is_total,
   reference_derived_edges_from_located_roots,
 }
 import v2.std.algebra { fold_list, fold_list_node, length }
@@ -170,14 +171,14 @@ fn rd_production_edges() -> List<ModuleDependencyEdge> {
   reference_derived_edges_from_located_roots(
     items: rd_located_roots,
     include_import_syntax: false
-  )
+  ).edges
 }
 
 fn rd_mutant_re_admitting_import_decl_edges() -> List<ModuleDependencyEdge> {
   reference_derived_edges_from_located_roots(
     items: rd_located_roots,
     include_import_syntax: true
-  )
+  ).edges
 }
 
 test fn reference_only_module_has_edge_and_unused_import_does_not() -> Bool {
@@ -208,4 +209,31 @@ test fn mutant_re_admitting_import_decl_makes_import_only_property_red() -> Bool
     path: rd_import_only_path,
     target_module: rd_provider_module
   ) != 0
+}
+
+test fn readable_fixture_fold_is_total() -> Bool {
+  reference_derived_edge_fold_is_total(
+    fold: reference_derived_edges_from_located_roots(
+      items: rd_located_roots,
+      include_import_syntax: false
+    )
+  )
+}
+
+fn rd_unreadable_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^rd_unreadable_root_atom } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn unreadable_root_is_counted_not_a_silent_leaf() -> Bool {
+  let fold = reference_derived_edges_from_located_roots(
+    items: [LocatedModuleRoot { path: "unreadable.dag", root: rd_unreadable_root() }],
+    include_import_syntax: false
+  )
+  !reference_derived_edge_fold_is_total(fold: fold)
+    && length(xs: fold.unreadable_roots) == 1
+    && length(xs: fold.edges) == 0
 }

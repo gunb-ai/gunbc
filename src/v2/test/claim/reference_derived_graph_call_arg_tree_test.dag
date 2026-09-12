@@ -109,7 +109,7 @@ fn ca_edges_from_pair(
       LocatedModuleRoot { path: consumer_path, root: consumer_root }
     ],
     include_import_syntax: false
-  )
+  ).edges
 }
 
 data ca_ingest_refused_count: Int = -1

@@ -6,7 +6,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { any, contains, fold_list, list_append, list_reverse, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, is_empty, list_append, list_reverse, list_snoc_item }
 import v2.std.collection {
   List,
   Map,
@@ -21,10 +21,14 @@ import v2.std.optional {
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
   Outcome,
   Rejected,
+  Unavailable,
   bind_outcome,
-  outcome_accepted
+  outcome_accepted,
+  outcome_rejected
 }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
@@ -38,7 +42,11 @@ import v2.std.symbol_index {
 }
 import v2.std.text { String }
 import v2.compiler.parse { parse_module }
-import v2.compiler.reference_site_collector { collect_module_reference_sites }
+import v2.compiler.reference_site_collector {
+  ReferenceSiteCollection,
+  UnreadableModuleRoot,
+  collect_module_reference_sites
+}
 import v2.compiler.resolution_provenance {
   FileDependencyProvenance,
   ReferenceSite,
@@ -93,7 +101,7 @@ data reference_derived_edge_source_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_derived_edge_source_dissolution_note: String = "XL-4 swap-body producer: ModuleDependencyEdge rows from v2.compiler.reference_site_collector collect_module_reference_sites plus v2.compiler.resolution_provenance module_dependencies_from_sites. Import-syntax mentions are dropped in the EDGE fold. File ingest is parse_module. A call-argument-only mention is missing on that parse tree and on the normalized tree; declared frontier, trigger eager-raven-113 body-lowering repair then ingest of the repaired tree. Not wired into dependency_resolution_facts_live (NAMESPACE-XL STAGE XL-6)."
+data reference_derived_edge_source_dissolution_note: String = "XL-4 swap-body producer: ModuleDependencyEdge rows from v2.compiler.reference_site_collector collect_module_reference_sites.sites plus v2.compiler.resolution_provenance module_dependencies_from_sites. Unreadable roots travel with the fold (ReferenceDerivedEdgeFold.unreadable_roots); the production Outcome refuses unless reference_derived_edge_fold_is_total, so an unreadable module cannot look like a leaf. Import-syntax mentions are dropped in the EDGE fold. File ingest is parse_module. Call-argument, callee, type-position, and qualified cross-module mentions are missing on that production tree; declared undercount, trigger eager-raven-113 lowering then ingest of the repaired tree. Not wired into dependency_resolution_facts_live (NAMESPACE-XL STAGE XL-6)."
 
 fn import_resolution_facts_live(
   pool_roots: List<String>,
@@ -224,6 +232,20 @@ type ReferenceDerivedPool {
 type LocatedModuleRoot {
   path: String
   root: Node
+}
+
+type ReferenceDerivedEdgeFold {
+  edges: List<ModuleDependencyEdge>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+data empty_reference_derived_edge_fold: ReferenceDerivedEdgeFold = ReferenceDerivedEdgeFold {
+  edges: [],
+  unreadable_roots: Empty
+}
+
+fn reference_derived_edge_fold_is_total(fold: ReferenceDerivedEdgeFold) -> Bool {
+  is_empty(xs: fold.unreadable_roots)
 }
 
 fn reference_derived_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
@@ -365,12 +387,15 @@ fn load_reference_derived_pool(
 fn sites_for_reference_edge_fold(
   root: Node,
   include_import_syntax: Bool
-) -> FreeMonoid<ReferenceSite> {
-  let sites = collect_module_reference_sites(root: root)
-  if include_import_syntax {
-    sites
-  } else {
-    reference_sites_excluding_import_syntax(sites: sites)
+) -> ReferenceSiteCollection {
+  let collected = collect_module_reference_sites(root: root)
+  ReferenceSiteCollection {
+    sites: if include_import_syntax {
+      collected.sites
+    } else {
+      reference_sites_excluding_import_syntax(sites: collected.sites)
+    },
+    unreadable_roots: collected.unreadable_roots
   }
 }
 
@@ -378,22 +403,30 @@ fn emit_reference_edges_for_located_root(
   item: LocatedModuleRoot,
   pool: ReferenceDerivedPool,
   include_import_syntax: Bool
-) -> List<ModuleDependencyEdge> {
+) -> ReferenceDerivedEdgeFold {
+  let collected = sites_for_reference_edge_fold(
+    root: item.root,
+    include_import_syntax: include_import_syntax
+  )
   match qualified_name_from_module_node(root: item.root) {
-    Rejected { diagnostics: _ } => no_reference_derived_edges
+    Rejected { diagnostics: _ } =>
+      ReferenceDerivedEdgeFold {
+        edges: no_reference_derived_edges,
+        unreadable_roots: collected.unreadable_roots
+      }
     Accepted { value: module_qn, diagnostics: _ } =>
-      edges_from_provenance_owners(
-        rel_path: item.path,
-        provenance: module_dependencies_from_sites(
-          index: pool.index,
-          roster: pool.roster,
-          module_qn: module_qn,
-          sites: sites_for_reference_edge_fold(
-            root: item.root,
-            include_import_syntax: include_import_syntax
+      ReferenceDerivedEdgeFold {
+        edges: edges_from_provenance_owners(
+          rel_path: item.path,
+          provenance: module_dependencies_from_sites(
+            index: pool.index,
+            roster: pool.roster,
+            module_qn: module_qn,
+            sites: collected.sites
           )
-        )
-      )
+        ),
+        unreadable_roots: collected.unreadable_roots
+      }
   }
 }
 
@@ -421,20 +454,21 @@ fn reference_derived_pool_from_located_roots(
 fn reference_derived_edges_from_located_roots(
   items: List<LocatedModuleRoot>,
   include_import_syntax: Bool
-) -> List<ModuleDependencyEdge> {
+) -> ReferenceDerivedEdgeFold {
   let pool = reference_derived_pool_from_located_roots(items: items)
   fold_list(
     xs: items,
-    empty: no_reference_derived_edges,
+    empty: empty_reference_derived_edge_fold,
     cons: fn(acc, item) {
-      list_append(
-        left: acc,
-        right: emit_reference_edges_for_located_root(
-          item: item,
-          pool: pool,
-          include_import_syntax: include_import_syntax
-        )
+      let piece = emit_reference_edges_for_located_root(
+        item: item,
+        pool: pool,
+        include_import_syntax: include_import_syntax
       )
+      ReferenceDerivedEdgeFold {
+        edges: list_append(left: acc.edges, right: piece.edges),
+        unreadable_roots: list_append(left: acc.unreadable_roots, right: piece.unreadable_roots)
+      }
     }
   )
 }
@@ -442,9 +476,9 @@ fn reference_derived_edges_from_located_roots(
 fn emit_reference_edges_for_importer(
   fact: ModuleDeclarationFact,
   pool: ReferenceDerivedPool
-) -> Outcome<List<ModuleDependencyEdge>> {
+) -> Outcome<ReferenceDerivedEdgeFold> {
   match map_lookup_where_rejected_unreachable(m: pool.trees, key: fact.path) {
-    Absent => outcome_accepted(value: no_reference_derived_edges)
+    Absent => outcome_accepted(value: empty_reference_derived_edge_fold)
     Present { value: root } =>
       outcome_accepted(
         value: emit_reference_edges_for_located_root(
@@ -456,21 +490,49 @@ fn emit_reference_edges_for_importer(
   }
 }
 
-fn append_outcome_edges(
-  acc: Outcome<List<ModuleDependencyEdge>>,
-  more: Outcome<List<ModuleDependencyEdge>>
-) -> Outcome<List<ModuleDependencyEdge>> {
+fn append_outcome_edge_folds(
+  acc: Outcome<ReferenceDerivedEdgeFold>,
+  more: Outcome<ReferenceDerivedEdgeFold>
+) -> Outcome<ReferenceDerivedEdgeFold> {
   bind_outcome(
     o: acc,
-    f: fn(acc_edges) {
+    f: fn(acc_fold) {
       bind_outcome(
         o: more,
-        f: fn(more_edges) {
-          outcome_accepted(value: list_append(left: acc_edges, right: more_edges))
+        f: fn(more_fold) {
+          outcome_accepted(
+            value: ReferenceDerivedEdgeFold {
+              edges: list_append(left: acc_fold.edges, right: more_fold.edges),
+              unreadable_roots: list_append(
+                left: acc_fold.unreadable_roots,
+                right: more_fold.unreadable_roots
+              )
+            }
+          )
         }
       )
     }
   )
+}
+
+fn outcome_from_reference_derived_edge_fold(
+  fold: ReferenceDerivedEdgeFold
+) -> Outcome<List<ModuleDependencyEdge>> {
+  if reference_derived_edge_fold_is_total(fold: fold) {
+    outcome_accepted(value: fold.edges)
+  } else {
+    match fold.unreadable_roots |> first {
+      Absent => outcome_accepted(value: fold.edges)
+      Present { value: unreadable } =>
+        outcome_rejected(
+          d: Diagnostic {
+            reason: ^reference_derived_graph_unreadable_roots,
+            at: unreadable.locus,
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+    }
+  }
 }
 
 fn reference_derived_edges_from_resolved_targets(
@@ -483,14 +545,19 @@ fn reference_derived_edges_from_resolved_targets(
   bind_outcome(
     o: load_reference_derived_pool(declared: declared),
     f: fn(pool) {
-      fold_list(
-        xs: declared |> filter(fact => reference_derived_path_under_roots(path: fact.path, roots: importer_roots)),
-        empty: outcome_accepted(value: no_reference_derived_edges),
-        cons: fn(acc, fact) {
-          append_outcome_edges(
-            acc: acc,
-            more: emit_reference_edges_for_importer(fact: fact, pool: pool)
-          )
+      bind_outcome(
+        o: fold_list(
+          xs: declared |> filter(fact => reference_derived_path_under_roots(path: fact.path, roots: importer_roots)),
+          empty: outcome_accepted(value: empty_reference_derived_edge_fold),
+          cons: fn(acc, fact) {
+            append_outcome_edge_folds(
+              acc: acc,
+              more: emit_reference_edges_for_importer(fact: fact, pool: pool)
+            )
+          }
+        ),
+        f: fn(fold) {
+          outcome_from_reference_derived_edge_fold(fold: fold)
         }
       )
     }
