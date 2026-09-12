@@ -506,7 +506,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/google/workspace.dag",
   "dag/extdeps/google/sheets.dag",
   "dag/extdeps/common_paper/cloud_service_agreement.dag",
-  "dag/extdeps/bonterms/cloud_terms.dag"
+  "dag/extdeps/bonterms/cloud_terms.dag",
+  "dag/extdeps/moonshot/kimi_code.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
