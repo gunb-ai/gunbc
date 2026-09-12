@@ -660,6 +660,15 @@ test fn an_unrecognized_error_statement_is_undetermined_not_a_training_refusal()
   }
 }
 
+// LOCUS LINES WITH NO RECOGNISED STATEMENT ARE STILL AN ERROR THE FIRMWARE STATED (review 64514):
+// the two exact line shapes of the cited capture, alone, must not read as "said nothing".
+test fn locus_lines_without_a_recognised_statement_are_an_unrecognised_error_not_nothing() -> Bool {
+  match firmware_console_report(lines: ["ERROR:   SK[0]: 00110010", "ERROR:     MC[4]: 00f10081"]) {
+    FirmwareErrorStatementUnrecognized { statement: st } => st == "ERROR:   SK[0]: 00110010"
+    _ => false
+  }
+}
+
 test fn a_statement_without_locus_lines_carries_an_absent_locus() -> Bool {
   match firmware_console_report(lines: ["ERROR:   Non-identical DIMM mixture NOT supported!"]) {
     TrainingRefusedByFirmware { statement: _, locus: l } =>

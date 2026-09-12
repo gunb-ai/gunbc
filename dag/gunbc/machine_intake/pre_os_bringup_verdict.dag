@@ -164,58 +164,65 @@ fn line_carries_marker(line: String, marker: NonEmptyStr) -> Bool {
   line |> contains(marker as String)
 }
 
+// `first_error_line` is EVERY `ERROR:` line's witness, locus lines included, so an error the
+// firmware stated with only a socket or controller marker and no recognised statement is still
+// reported as an unrecognised error rather than as nothing (review 64514).
 type FirmwareReportFold {
   statement: NonEmptyStr?
   socket: Int?
   memory_controller: Int?
-  unrecognized: NonEmptyStr?
+  first_error_line: NonEmptyStr?
 }
 
 fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReportFold {
   if is_firmware_error_line(line: line) == false {
     acc
-  } else if line_carries_marker(line: line, marker: firmware_socket_marker) {
-    FirmwareReportFold {
-      statement: acc.statement,
-      socket: match acc.socket { Present { value: _ } => acc.socket  Absent => bracketed_index_after(line: line, marker: firmware_socket_marker) },
-      memory_controller: acc.memory_controller,
-      unrecognized: acc.unrecognized,
-    }
-  } else if line_carries_marker(line: line, marker: firmware_memory_controller_marker) {
-    FirmwareReportFold {
-      statement: acc.statement,
-      socket: acc.socket,
-      memory_controller: match acc.memory_controller { Present { value: _ } => acc.memory_controller  Absent => bracketed_index_after(line: line, marker: firmware_memory_controller_marker) },
-      unrecognized: acc.unrecognized,
-    }
-  } else if is_training_refusal_statement(line: line) {
-    FirmwareReportFold {
-      statement: match acc.statement { Present { value: _ } => acc.statement  Absent => Present { value: trim(line) as NonEmptyStr } },
-      socket: acc.socket,
-      memory_controller: acc.memory_controller,
-      unrecognized: acc.unrecognized,
-    }
   } else {
-    FirmwareReportFold {
-      statement: acc.statement,
-      socket: acc.socket,
-      memory_controller: acc.memory_controller,
-      unrecognized: match acc.unrecognized { Present { value: _ } => acc.unrecognized  Absent => Present { value: trim(line) as NonEmptyStr } },
+    let seen = match acc.first_error_line { Present { value: _ } => acc.first_error_line  Absent => Present { value: trim(line) as NonEmptyStr } }
+    if line_carries_marker(line: line, marker: firmware_socket_marker) {
+      FirmwareReportFold {
+        statement: acc.statement,
+        socket: match acc.socket { Present { value: _ } => acc.socket  Absent => bracketed_index_after(line: line, marker: firmware_socket_marker) },
+        memory_controller: acc.memory_controller,
+        first_error_line: seen,
+      }
+    } else if line_carries_marker(line: line, marker: firmware_memory_controller_marker) {
+      FirmwareReportFold {
+        statement: acc.statement,
+        socket: acc.socket,
+        memory_controller: match acc.memory_controller { Present { value: _ } => acc.memory_controller  Absent => bracketed_index_after(line: line, marker: firmware_memory_controller_marker) },
+        first_error_line: seen,
+      }
+    } else if is_training_refusal_statement(line: line) {
+      FirmwareReportFold {
+        statement: match acc.statement { Present { value: _ } => acc.statement  Absent => Present { value: trim(line) as NonEmptyStr } },
+        socket: acc.socket,
+        memory_controller: acc.memory_controller,
+        first_error_line: seen,
+      }
+    } else {
+      FirmwareReportFold {
+        statement: acc.statement,
+        socket: acc.socket,
+        memory_controller: acc.memory_controller,
+        first_error_line: seen,
+      }
     }
   }
 }
 
-// THE FIRST RECOGNISED REFUSAL WINS, with the first socket and controller the firmware named; an
-// unrecognised `ERROR:` statement outranks bare `ERR:` codes and is carried verbatim; a capture
+// THE FIRST RECOGNISED REFUSAL WINS, with the first socket and controller the firmware named; any
+// other `ERROR:` line -- locus lines included -- outranks bare `ERR:` codes and the first is
+// carried verbatim as an unrecognised error; a capture
 // with neither reports no terminal, however many `ERR:` code lines it carries -- those are
 // undecoded hex and are treated exactly as the OEM payload is.
 fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
-  let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none, unrecognized: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
+  let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none, first_error_line: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
   let err_lines = list_length(items: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
   match done.statement {
     Present { value: st } => TrainingRefusedByFirmware { statement: st, locus: FirmwareStatedLocus { socket: done.socket, memory_controller: done.memory_controller } }
     Absent =>
-      match done.unrecognized {
+      match done.first_error_line {
         Present { value: u } => FirmwareErrorStatementUnrecognized { statement: u }
         Absent => if err_lines > 0 { UndecodedErrorCodesOnly { err_lines: err_lines } } else { NoTerminalStated }
       }
