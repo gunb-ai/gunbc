@@ -150,12 +150,18 @@ fn artifact_component(
   ArtifactComponent { identity: identity, label: label, footprint: footprint, placement: placement }
 }
 
+// `upstream_total` IS THE FIGURE THIS DECOMPOSITION CLAIMS TO REPRODUCE, and it is the only thing that
+// makes the agreement a CHECK rather than a restatement. Once the whole footprint is derived from the
+// components, comparing whole against sum is an identity for that artifact -- so the load-bearing
+// comparison is against an INDEPENDENT upstream figure, and it has to be carried to be compared.
+// A first cut derived the footprint and then declared the agreement as a Bool nobody read.
 type ModelArtifact {
   identity: DeclarationRef
   label: NonEmptyStr
   footprint: ArtifactFootprint
   weight_treatment: WeightTreatment
   components: List<ArtifactComponent>
+  upstream_total: ByteSize?
 }
 
 fn footprint_bytes(f: ArtifactFootprint) -> ByteSize? {
@@ -223,6 +229,43 @@ fn sum_component_footprints(cps: List<ArtifactComponent>) -> ArtifactFootprint {
 // rounding difference. It means one of the two figures is about a different population, and the
 // screen below would then divide a quantity nobody can name.
 fn artifact_decomposition_defect(art: ModelArtifact) -> NonEmptyStr? {
+  match artifact_upstream_agreement_defect(art: art) {
+    Present { value: d } => Present { value: d }
+    Absent => artifact_whole_versus_parts_defect(art: art)
+  }
+}
+
+// THE INDEPENDENT COMPARISON. The component sum is this repository's derivation; `upstream_total` is
+// the publisher's own figure for the same population. Their agreement is evidence about the partition,
+// and a disagreement means one of the two describes a different set of tensors -- so it refuses at the
+// field rather than being recorded as a Bool.
+fn artifact_upstream_agreement_defect(art: ModelArtifact) -> NonEmptyStr? {
+  if count(art.components) == 0 {
+    none
+  } else {
+    match art.upstream_total {
+      Absent => none
+      Present { value: upstream } =>
+        match footprint_bytes(f: sum_component_footprints(cps: art.components)) {
+          Absent => none
+          Present { value: parts } =>
+            if byte_size_count(b: parts) == byte_size_count(b: upstream) {
+              none
+            } else {
+              Present { value: join([
+                "artifact ", declaration_ref_display_key(ref: art.identity),
+                " derives ", to_string(byte_size_count(b: parts)),
+                " bytes from its components and cites an upstream total of ",
+                to_string(byte_size_count(b: upstream)),
+                "; the two describe different tensor populations, so the decomposition is not a partition of the cited checkpoint",
+              ], "") as NonEmptyStr }
+            }
+        }
+    }
+  }
+}
+
+fn artifact_whole_versus_parts_defect(art: ModelArtifact) -> NonEmptyStr? {
   if count(art.components) == 0 {
     none
   } else {
@@ -326,48 +369,28 @@ data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
   },
   weight_treatment: PublishedNativeWeights,
   components: legacy_undecomposed_artifact,
+  upstream_total: none,
 }
 
 // THE WHOLE FOOTPRINT IS PRODUCED BY THE DECOMPOSITION. A first cut carried the index total here and
 // merely CHECKED the component sum against it, which is a cross-check rather than the derivation the
 // section claims: the scalar was still independently supplied, so the two could be edited apart and
 // only the check would notice. Now the components produce it, and the upstream index total stays as a
-// separate agreement fact -- `v4_1_upstream_total_agrees_with_components` -- which is what a check
-// should be.
+// independent upstream figure it is compared against, carried on the artifact as `upstream_total` so
+// the comparison runs at field establishment. The publisher's partition figures and the Hub tree file
+// size are different quantities again, and none of them is a Spark reading.
 data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
   label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
   footprint: sum_component_footprints(cps: v4_1_artifact_components),
   weight_treatment: PublishedNativeWeights,
   components: v4_1_artifact_components,
+  upstream_total: Present { value: deepseek_v4_1_flash_safetensors_index_total_size },
 }
 
 // THE UPSTREAM TOTAL, KEPT AS AN INDEPENDENT AGREEMENT RATHER THAN AS THE FIGURE. The index's
 // metadata.total_size is a different source from the per-tensor spans; that the two agree is evidence
 // about the partition, and it is stated as such instead of one standing in for the other.
-data v4_1_upstream_total_agrees_with_components: Bool = match footprint_bytes(f: sum_component_footprints(cps: v4_1_artifact_components)) {
-    Absent => false
-    Present { value: parts } =>
-      byte_size_count(b: parts) == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
-  }
-
-// WHAT THE UPSTREAM PARTITION SAYS, kept beside the agreement so a reader can see both sources.
-data v4_1_upstream_partition_note: NonEmptyStr = join([
-  "extdeps.deepseek.deepseek_v4_1_flash CitedToAuthority index metadata.total_size=",
-  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)),
-  " partitioned by name prefix as backbone ",
-  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.backbone_bytes)),
-  ", Engram ",
-  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes)),
-  ", vision ",
-  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.vision_bytes)),
-  ", draft ",
-  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.draft_bytes)),
-  "; Hub tree file size ",
-  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)),
-  " is a different quantity again. Publisher figures, not a Spark reading",
-], "") as NonEmptyStr
-
 data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
   label: "GLM 5.3 Flash, native checkpoint" as NonEmptyStr,
@@ -376,6 +399,7 @@ data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   },
   weight_treatment: PublishedNativeWeights,
   components: legacy_undecomposed_artifact,
+  upstream_total: none,
 }
 
 data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
@@ -389,6 +413,7 @@ data artifact_glm_53_flash_2bit: ModelArtifact = ModelArtifact {
     distinction: "requantised to 2.05 bits per weight, a DIFFERENT SET OF WEIGHTS from the native checkpoint" as NonEmptyStr,
   },
   components: legacy_undecomposed_artifact,
+  upstream_total: none,
 }
 
 // ── THE FLEET AS A SNAPSHOT ───────────────────────────────────────────────────────────────────
@@ -2017,26 +2042,36 @@ fn placement_is_settled(st: ComponentRouteStanding) -> Bool {
 // it claims to detect actually reds it.
 data route_obligation_marker: NonEmptyStr = "component-route-obligation" as NonEmptyStr
 
-fn route_obligation_cause(component: DeclarationRef, context: RouteSubjectKey, cause: NonEmptyStr) -> NonEmptyStr {
+// THE PREFIX IS BUILT ONCE PER STANDING, NOT ONCE PER CAUSE. Component and context are fixed for a
+// given standing while its causes are many -- the V4.1 field is roughly sixty candidates and each
+// route decision contributes tens of needs -- so computing two declaration keys and a subject-key
+// rendering inside the per-cause map was the copied-accumulator shape DESIGN section 6 says is always
+// fixed regardless of the realized n. Same output, one prefix per standing.
+fn route_obligation_prefix(component: DeclarationRef, context: RouteSubjectKey) -> String {
   join([
     route_obligation_marker as String,
     "[", declaration_ref_display_key(ref: component),
     "@", route_subject_key_render(k: context),
-    "] ", cause as String,
-  ], "") as NonEmptyStr
+    "] ",
+  ], "")
+}
+
+fn route_obligation_cause(component: DeclarationRef, context: RouteSubjectKey, cause: NonEmptyStr) -> NonEmptyStr {
+  join([route_obligation_prefix(component: component, context: context), cause as String], "") as NonEmptyStr
 }
 
 fn component_route_gap_over(standings: List<ComponentRouteStanding>) -> List<AxisGap> {
-  flat_map(standings, st =>
+  flat_map(standings, st => {
+    let prefix = route_obligation_prefix(
+      component: component_route_standing_component(s: st),
+      context: component_route_standing_context(s: st))
     map(
       component_route_causes(s: st),
       cz => AxisGap {
         axis: ax_component_route,
-        cause: route_obligation_cause(
-          component: component_route_standing_component(s: st),
-          context: component_route_standing_context(s: st),
-          cause: cz),
-      }))
+        cause: join([prefix, cz as String], "") as NonEmptyStr,
+      })
+  })
 }
 
 // A DEFECTIVE CHILD SELECTION IS A DEFECT HERE TOO, not an evidence gap. `std.decision` separates a

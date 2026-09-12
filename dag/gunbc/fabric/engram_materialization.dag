@@ -1137,7 +1137,13 @@ data id_route_term_serving_cost: DeclarationRef = decl_ref(module_path: "gunbc.f
 data id_route_region: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_region")
 data id_route_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_constraints")
 data id_route_policy: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_policy")
-data id_resident_memory_unestablished: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ResidentMemoryUnestablished")
+
+// THE POLICY AUTHORITY FOR THIS SUBJECT, declared so the citation above resolves. There is no tie-break
+// rule here yet, and that is the point: a front of two fully-measured routes must reach
+// SelectionNeedsPolicy rather than be separated by an invented preference. When a policy is decided it
+// is stated on this row.
+data component_route_policy: NonEmptyStr = "no tie-break policy is declared for component routes: a front of non-dominated fully-measured routes reaches SelectionNeedsPolicy, and separating it requires an operator ruling recorded here rather than a preference invented in the fold" as NonEmptyStr
+data id_resident_memory_unestablished: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "route_resident_authority")
 
 data ax_route_faithful_realization: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_faithful_realization")
 data ax_route_well_formed: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_well_formed")
@@ -1908,9 +1914,12 @@ data engram_process_frame: Frame = Frame { name: "spark-serving-process", kind: 
 // wall: there is no way to write a route whose head is a serving host.
 data engram_origin_provider_id: String = "fabric-m0-origin"
 
+// CITE THE DECLARATION, NOT THE MODULE. `read_origin_staged_file` is the fold that derives a digest
+// over a named staged file and returns it bound to that subject in an `OriginReading`; the module name
+// is not a declaration and citing it resolved to nothing.
 data engram_m0_origin_authority: DeclarationRef = decl_ref(
   module_path: "gunbc.fabric_m0_origin_readback",
-  decl_name: "fabric_m0_origin_readback")
+  decl_name: "read_origin_staged_file")
 
 data engram_origin_provider: CacheProvider = provider_row(
   id: engram_origin_provider_id,

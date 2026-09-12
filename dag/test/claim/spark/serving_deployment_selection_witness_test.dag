@@ -71,6 +71,7 @@ import gunbc.spark.serving_deployment_selection {
   ArtifactComponent, artifact_component, ArtifactComponentPlacement, ComponentResident, ComponentPlacedByRoute,
   v4_1_artifact_components, legacy_undecomposed_artifact,
   artifact_decomposition_defect, candidate_resident_footprint, sum_component_footprints,
+  artifact_upstream_agreement_defect,
   footprint_bytes, component_route_reading,
   route_obligation_marker, route_obligation_cause, id_route_consumer,
   FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
@@ -80,6 +81,7 @@ import gunbc.spark.serving_deployment_selection {
   v4_1_selection_frontier, kv_layout_wire,
 }
 import gunbc.fabric.engram_materialization { engram_component_identity }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_safetensors_index_total_size }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
   v41_sm12_kv_cache_dtype_admitted,
@@ -1032,13 +1034,20 @@ fn needs_name_axis(needs: List<SelectionEvidenceNeed>, axis: DeclarationRef) -> 
 // marker, the component SUBJECT the route authority decided about, and the consumer that derived the
 // serving context. Each is computed from the same declaration production uses, so this oracle carries
 // no transcribed string that could drift away from what the code emits.
+// THE THREE DISCRIMINATORS ARE COMPUTED ONCE, not once per need. The needs list for the live V4.1
+// decision runs to hundreds, and recomputing two declaration keys inside the scan was the same
+// copied-accumulator shape the production fold had -- in a control whose whole problem is that it must
+// afford to render a verdict.
+data expected_route_component_key: String = declaration_ref_display_key(ref: engram_component_identity)
+data expected_route_consumer_key: String = declaration_ref_display_key(ref: id_route_consumer)
+
 fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr> {
   flat_map(needs, n => match n {
     UnfundedAxis { gap: g } =>
       if declaration_ref_eq(a: g.axis, b: ax_component_route)
         && string_contains(s: g.cause as String, pattern: route_obligation_marker as String)
-        && string_contains(s: g.cause as String, pattern: declaration_ref_display_key(ref: engram_component_identity))
-        && string_contains(s: g.cause as String, pattern: declaration_ref_display_key(ref: id_route_consumer)) {
+        && string_contains(s: g.cause as String, pattern: expected_route_component_key)
+        && string_contains(s: g.cause as String, pattern: expected_route_consumer_key) {
         [g.cause]
       } else { [] }
     CandidateStandingIncomplete { candidate: _, cause: _ } => []
@@ -1095,21 +1104,53 @@ test fn the_component_route_axis_and_constraint_are_v4_1_only() -> Bool {
     && count(artifact_deepseek_v4_1_flash_native.components) == 4
 }
 
-// THE WHOLE-ARTIFACT FOOTPRINT IS THE DERIVED TOTAL OF THE PARTS. The four V4.1 components are the
-// shard headers' name partition, and their sum is the figure the artifact already carried -- so the
-// decomposition refines that number rather than replacing it.
-test fn the_v4_1_component_bytes_sum_to_the_whole_artifact_footprint() -> Bool {
-  match footprint_bytes(f: sum_component_footprints(cps: v4_1_artifact_components)) {
+// THE DECOMPOSITION AGREES WITH AN INDEPENDENT UPSTREAM FIGURE, and that is the only version of this
+// check worth running. A first cut compared the component sum against the artifact's own footprint --
+// which IS that sum, so the assertion was an identity -- and pinned it to a transcribed literal
+// 510286023000 beside it. Both halves were wrong in the way DESIGN section 6 names: the oracle has to
+// be an independent referent, and it is named rather than copied.
+test fn the_v4_1_decomposition_agrees_with_the_cited_upstream_total() -> Bool {
+  match artifact_deepseek_v4_1_flash_native.upstream_total {
     Absent => false
-    Present { value: parts } => match footprint_bytes(f: artifact_deepseek_v4_1_flash_native.footprint) {
-      Absent => false
-      Present { value: whole } =>
-        byte_size_count(b: parts) == byte_size_count(b: whole)
-          && byte_size_count(b: parts) == 510286023000
-    }
+    Present { value: upstream } =>
+      byte_size_count(b: upstream) == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
+        && match footprint_bytes(f: sum_component_footprints(cps: v4_1_artifact_components)) {
+          Absent => false
+          Present { value: parts } => byte_size_count(b: parts) == byte_size_count(b: upstream)
+        }
   } && match artifact_decomposition_defect(art: artifact_deepseek_v4_1_flash_native) {
     Absent => true
     Present { value: _ } => false
+  } && count(v4_1_artifact_components) == 4
+}
+
+// AND A DECOMPOSITION THAT DISAGREES WITH ITS CITED UPSTREAM TOTAL REFUSES. This is the red the
+// identity-comparison could never produce: the components sum correctly to the artifact's own derived
+// footprint and still contradict the publisher's figure for the same population.
+fn artifact_with_wrong_upstream_total() -> ModelArtifact {
+  ModelArtifact {
+    identity: artifact_deepseek_v4_1_flash_native.identity,
+    label: artifact_deepseek_v4_1_flash_native.label,
+    footprint: sum_component_footprints(cps: v4_1_artifact_components),
+    weight_treatment: PublishedNativeWeights,
+    components: v4_1_artifact_components,
+    upstream_total: Present { value: byte_size(count: 1 + byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)) },
+  }
+}
+
+test fn a_decomposition_disagreeing_with_its_upstream_total_refuses() -> Bool {
+  match artifact_decomposition_defect(art: artifact_with_wrong_upstream_total()) {
+    Present { value: d } => string_contains(s: d as String, pattern: "different tensor populations")
+    Absent => false
+  } && match establish_serving_candidate_field(field: serving_candidate_field(
+    identity: fixture_upstream_mismatch_field_id(),
+    domain: serving_deployment_domain(
+      artifacts: [artifact_with_wrong_upstream_total()],
+      topologies: [topology_shape(tensor_parallel_degree: 8, replica_count: 1)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "upstream_mismatch", art: artifact_with_wrong_upstream_total(), t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))])) {
+    ServingFieldUnestablished { causes: cs } => count(cs) > 0
+    ServingFieldEstablished => false
   }
 }
 
@@ -1124,7 +1165,7 @@ fn mismatched_artifact() -> ModelArtifact {
     weight_treatment: PublishedNativeWeights,
     components: [
       artifact_component(
-        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_part"),
+        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_artifact"),
         label: "fixture part" as NonEmptyStr,
         footprint: FootprintObservedOnFleet { bytes: byte_size(count: 999), how: "fixture" as NonEmptyStr },
         placement: ComponentResident),
@@ -1137,7 +1178,7 @@ test fn a_decomposition_that_does_not_sum_refuses_at_the_product_root() -> Bool 
     Present { value: _ } => true
     Absent => false
   } && match establish_serving_candidate_field(field: serving_candidate_field(
-    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_field"),
+    identity: fixture_mismatched_sum_field_id(),
     domain: serving_deployment_domain(
       artifacts: [mismatched_artifact()],
       topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
@@ -1188,4 +1229,14 @@ test fn a_routed_component_leaves_the_resident_footprint_unread_rather_than_zero
     WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => false
     WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => false
   }
+}
+
+// FIXTURE FIELD IDENTITIES CITE A DECLARATION THAT EXISTS -- a decl_ref naming nothing is a §3
+// citation defect the floor's declarations phase reports as CITED-DECLARATION-ABSENT.
+fn fixture_upstream_mismatch_field_id() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_upstream_mismatch_field_id")
+}
+
+fn fixture_mismatched_sum_field_id() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_mismatched_sum_field_id")
 }

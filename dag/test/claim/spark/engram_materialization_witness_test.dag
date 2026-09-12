@@ -148,8 +148,8 @@ data fixture_authority: ExternalAuthority = ExternalAuthority {
 
 data fixture_term_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_term")
 data fixture_subject_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_subject_id")
-data fixture_var_route_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_var_route")
-data fixture_var_context_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_var_context")
+data fixture_var_route_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_var_route_id")
+data fixture_var_context_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_var_context_id")
 data fixture_region_id: DeclarationRef = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_region")
 
 data fixture_term: ObjectiveTerm = ObjectiveTerm {
@@ -167,12 +167,12 @@ fn settled_fixture_assessment() -> DecisionAssessment {
       parameters: [],
       constraints: [],
       objective: ObjectiveMeasure {
-        identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_objective"),
+        identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "settled_fixture_assessment"),
         goal: LowerIsBetter,
         terms: [fixture_term],
       },
       choice_domain: ChoiceDomain {
-        identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_choice_domain"),
+        identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "settled_fixture_assessment"),
         variables: [
           DecisionVariable { identity: fixture_var_route_id },
           DecisionVariable { identity: fixture_var_context_id },
@@ -591,7 +591,7 @@ test fn the_four_declared_routes_are_well_formed() -> Bool {
 fn malformed(hops: List<RouteHop>, verify: RouteRole) -> Bool {
   match route_structural_standing(
     r: materialization_route(
-      identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_route"),
+      identity: fixture_route_identity(),
       label: "fixture route" as NonEmptyStr,
       hops: hops,
       digest_verified_at: verify),
@@ -672,7 +672,7 @@ test fn cas_tier_alone_does_not_establish_content_addressed_integrity() -> Bool 
 test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addressed() -> Bool {
   all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r)))
     && match route_integrity_standing(r: materialization_route(
-      identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_nfs_verified_route"),
+      identity: fixture_route_verified_at_nfs_token_time(),
       label: "fixture: verified only where the runtime reads over NFS" as NonEmptyStr,
       hops: [
         route_hop(provider: engram_origin_provider, role: DurableOrigin),
@@ -684,7 +684,7 @@ test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addresse
       IntegrityVerificationPointAbsent { role: _ } => false
     }
     && match route_integrity_standing(r: materialization_route(
-      identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_unverified_route"),
+      identity: fixture_route_naming_an_absent_verification_role(),
       label: "fixture: names a verification role it has no hop in" as NonEmptyStr,
       hops: [
         route_hop(provider: engram_origin_provider, role: DurableOrigin),
@@ -920,7 +920,7 @@ test fn an_undecided_route_contributes_an_obligation_and_never_zero_bytes() -> B
     ComponentResidentBoundedAbove { upper_bound: _, authority: _, route: _ } => false
     ComponentNotDecomposedHere => false
   } && match engram_route_standing(
-    component: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "some_other_component"),
+    component: fixture_foreign_component_subject(),
     context: context_a()) {
     ComponentRouteNotThisSubject => true
     ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => false
@@ -1035,7 +1035,7 @@ test fn an_open_route_question_is_absent_rather_than_scoring_not_yet_excluded() 
     ComponentPlacementNotThisSubject => false
     ComponentPlacementExcluded { causes: _ } => false
   } && match component_route_placement_standing(s: engram_route_standing(
-    component: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "unrelated_component"),
+    component: fixture_foreign_component_subject(),
     context: context_a())) {
     ComponentPlacementNotThisSubject => true
     ComponentPlacementSettled { selected: _, receipt: _ } => false
@@ -1365,7 +1365,7 @@ test fn a_launch_receipt_for_another_route_or_provider_does_not_satisfy_this_one
 // It is now open with a DEFECT remedy, and its resident share is an obligation rather than the
 // component's whole declared footprint.
 test fn a_routed_subject_no_authority_covers_is_open_and_defective() -> Bool {
-  let unknown = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "unknown_component_subject")
+  let unknown = fixture_uncovered_component_subject()
   let st = engram_route_standing(component: unknown, context: context_a())
   match st {
     ComponentRouteSubjectHasNoAuthority { component: c, context: _ } => declaration_ref_eq(a: c, b: unknown)
@@ -1390,3 +1390,31 @@ fn repacked_encoding() -> PhysicalEncoding {
   RepackedRowStore { layout: "gather-ordered row store" as NonEmptyStr, record_stride_established: false }
 }
 
+
+// ── FIXTURE IDENTITIES CITE A DECLARATION THAT EXISTS ──────────────────────────────────────────
+//
+// A `decl_ref` naming something no module declares is a §3 citation defect, and the floor's
+// declarations phase reports it as CITED-DECLARATION-ABSENT. These helpers each self-cite, so every
+// fixture identity resolves to real consumed code rather than to a name that only ever appeared inside
+// the reference. They are deliberately NOT one shared identity: a component this subject does not
+// cover and a component no authority covers at all are different fixtures, and collapsing them would
+// erase the distinction the controls below turn on.
+fn fixture_foreign_component_subject() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_foreign_component_subject")
+}
+
+fn fixture_uncovered_component_subject() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_uncovered_component_subject")
+}
+
+fn fixture_route_identity() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_route_identity")
+}
+
+fn fixture_route_verified_at_nfs_token_time() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_route_verified_at_nfs_token_time")
+}
+
+fn fixture_route_naming_an_absent_verification_role() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_route_naming_an_absent_verification_role")
+}
