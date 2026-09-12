@@ -5,29 +5,31 @@ import v2.std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
 
-data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
+data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 
 data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
 
-data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: Cons { head: r, tail: Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
+data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: Cons { head: r, tail: Empty }, right: acc)\n    } else {\n      acc\n    }\n  })\n}\n"
 
-data let_alias_snippet: String = "module alias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = acc\n    list_append(left: grown, right: x)\n  })\n}\n"
+data let_alias_snippet: String = "module alias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = acc\n    list_append(left: x, right: grown)\n  })\n}\n"
 
-data nested_call_snippet: String = "module nested\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: reverse(acc), right: x) })\n}\n"
+data nested_call_snippet: String = "module nested\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: reverse(acc)) })\n}\n"
 
 data unregistered_combiner_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { mystery_op(a: acc, b: x) })\n}\n"
+
+data compound_copied_port_snippet: String = "module compound\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: x + acc) })\n}\n"
 
 data out_of_iteration_snippet: String = "module once\n\nfn f(xs: List<Int>, ys: List<Int>) -> Int {\n  list_append(left: xs, right: ys)\n}\n"
 
 data named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
 
-data let_unknown_alias_snippet: String = "module unknownalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = mystery\n    list_append(left: grown, right: x)\n  })\n}\n"
+data let_unknown_alias_snippet: String = "module unknownalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = mystery\n    list_append(left: x, right: grown)\n  })\n}\n"
 
-data let_fresh_snippet: String = "module freshlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let seed = 0\n    list_append(left: seed, right: x)\n  })\n}\n"
+data let_fresh_snippet: String = "module freshlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let seed = 0\n    list_append(left: x, right: seed)\n  })\n}\n"
 
-data let_transitive_alias_snippet: String = "module transalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let g = acc\n    let h = g\n    list_append(left: h, right: x)\n  })\n}\n"
+data let_transitive_alias_snippet: String = "module transalias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let g = acc\n    let h = g\n    list_append(left: x, right: h)\n  })\n}\n"
 
 data carrier_in_computed_arg_snippet: String = "module hiddencarrier\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery(box: Wrapped { inner: acc })\n  })\n}\n"
 
@@ -49,7 +51,7 @@ fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
         Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: _ } => Absent
-            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+            Accepted { value: normalized, diagnostics: _ } => Present { value: normalized.root }
           }
       }
   }
@@ -132,12 +134,38 @@ test fn let_unknown_alias_still_refuses_may_alias() -> Bool {
   }
 }
 
+// THE DISCRIMINATING RED FOR THE ARGUMENT-VALUE CENSUS, carried by the witness that already owns
+// this subject rather than by a new identity. Both cells assert the same law -- a copied port
+// holding a COMPUTED expression must not read as a bare name -- and the second is the one no
+// fixture in this suite could express before: a compound value, `seed + acc`, where a FRESH binder
+// and the CARRIER share one port.
+//
+// WHY THE SECOND CELL IS NOT REDUNDANT WITH THE FIRST, AND WHY IT ASSERTS BOTH A PRESENCE AND AN
+// ABSENCE. Under the search-based census this repair replaced -- first-match
+// `^dag_surface_primary_expr`, which stops at the leftmost operand because dag_surface_binary_expr
+// sits ABOVE primary_expr -- `right: x + acc` censuses as ONE identifier and the bare-name arm
+// fires on `x`, which is not a carrier, so the port refuses ^copied_port_name_may_alias. Under the
+// spine walk it censuses BOTH operands and refuses ^copied_port_computed_argument. The two readings
+// therefore disagree on WHICH CAUSE, not on whether anything refuses, which is why asserting the
+// presence alone would not discriminate: measured, the first draft of this cell used a `let seed =
+// 0` binder and PASSED UNDER BOTH READINGS, because another site in that snippet contributes
+// ^copied_port_computed_argument anyway and the assertion could not see the port it was about
+// (review 64460 asked for the red; the mutation control is what showed the first attempt was
+// decoration). Every other fixture here is a single-identifier or single-call value -- the shapes
+// where search and the spine walk AGREE -- so without this cell, reverting arg_value_mentions to
+// search leaves this whole file green and the silent fail-open restored.
 test fn nested_call_head_cannot_masquerade_as_bare_name() -> Bool {
   match findings_of(source_text: nested_call_snippet, file: ^nested_file) {
     Absent => false
     Present { value: fs } =>
       v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_computed_argument)
   }
+    && match findings_of(source_text: compound_copied_port_snippet, file: ^compound_file) {
+      Absent => false
+      Present { value: fs } =>
+        v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_computed_argument)
+        && !v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^copied_port_name_may_alias)
+    }
 }
 
 test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {

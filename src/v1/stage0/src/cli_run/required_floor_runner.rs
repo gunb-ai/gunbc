@@ -3549,7 +3549,7 @@ pub(crate) fn floor_cgroup_dir() -> String {
     .clone()
 }
 
-/// One entry's enrolled witness names, exactly as `v2.workflow.floor_discovery_producer`
+/// One entry's enrolled witness names, exactly as `v2.workflow.floor_discovery_source_authority`
 /// answered them; the site-projection loop's unit.
 struct FloorDiscoveryFile {
     path: String,
@@ -3560,7 +3560,7 @@ struct FloorDiscoveryFile {
 /// The `.dag` module whose per-file fold IS the required floor's roster. Evaluated by qualified
 /// name in its own exact scope, like every other floor authority; a closure seed of the
 /// gate-bounded prepared subject (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`).
-const FLOOR_DISCOVERY_AUTHORITY_MODULE: &str = "v2.workflow.floor_discovery_producer";
+const FLOOR_DISCOVERY_AUTHORITY_MODULE: &str = "v2.workflow.floor_discovery_source_authority";
 
 pub fn floor_seam(name: &str) {
     if let Ok(mut g) = FLOOR_SEAM.lock() {
@@ -4628,7 +4628,8 @@ pub fn run_required_floor(
     // ── SHARED-BUILD ATTRIBUTION: the bare-reference edge index ───────────────────────────
     //
     // THIRD WARM, SAME REPAIR AS THE TWO ABOVE. The bare-reference edge index
-    // (`both_closure_edge_index`, and through it `tree_bare_census_for_root` per root) is a fact
+    // (`whole_pool_closure_edge_index`, explicitly demanded by `warm_bare_reference_edge_index`,
+    // which also warms `tree_bare_census_for_root` for reconciliation) is a fact
     // of the SUBJECT, not of any claim: memoized once per index — the census trace reports two
     // misses over two source roots against ONE index address, `edge_index_construction {
     // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED
@@ -5125,7 +5126,7 @@ pub fn run_required_floor(
         ];
         let outcome = v1_interpreter::run_in_context_with_args(
             &producer_frame,
-            "v2.workflow.floor_discovery_producer.discover_floor_rows_for_source",
+            "v2.workflow.floor_discovery_source_authority.discover_floor_rows_for_source",
             &args,
             false,
         )
@@ -5140,7 +5141,7 @@ pub fn run_required_floor(
     }
     let finalized = v1_interpreter::run_in_context_with_args(
         &producer_frame,
-        "v2.workflow.floor_discovery_producer.floor_discovery_finalize_source_outcomes",
+        "v2.workflow.floor_discovery_source_authority.floor_discovery_finalize_source_outcomes",
         &[(
             Some("outcomes".to_string()),
             list_value_from_vec(discovery_outcomes),

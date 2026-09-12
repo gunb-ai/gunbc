@@ -260,18 +260,42 @@ fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> Origin
   }
 }
 
+// WHAT BECAME OF THE WRITE CREDENTIAL, CARRIED BESIDE THE STORE'S ANSWER AND NEVER FOLDED INTO
+// IT. An earlier shape demoted a stored object to OriginPutRefused when the credential's private
+// directory could not be removed, with the leak named only in the cause string. That lost a true
+// fact (the store DID store it) and hid another inside prose: a caller that then fetched the object
+// and found it confirmed had every typed reason to publish success, and the leaked credential went
+// unreported -- laundered through durability (gunbc#11157 review 64512). Two facts, two carriers.
+type WriteCredentialCustody
+  = WriteCredentialShredded
+  | WriteCredentialResidueRemains { cause: NonEmptyStr }
+
+// THE WRITE'S WHOLE ANSWER: what the store said, and whether the credential it was said with is
+// gone. A consumer that wants durability reads verdict; one that decides whether the process may
+// exit clean reads both.
+type OriginPut {
+  verdict: OriginPutOutcome
+  credential: WriteCredentialCustody
+}
+
+fn put_without_credential_exposure(verdict: OriginPutOutcome) -> OriginPut {
+  OriginPut { verdict: verdict, credential: WriteCredentialShredded }
+}
+
+data credential_residue_cause: NonEmptyStr = "the write credential's private directory could not be removed; credential material may remain and requires cleanup"
+
 // THE WRITE. local_path is the bytes to store and key is where; the credential is the origin's
 // WRITE token, which the reader never holds.
 fn put_origin_object(
   local_path: FilePath,
   key: NonEmptyStr,
   token_source: AccessTokenSource,
-) -> OriginPutOutcome uses net: Network {
+) -> OriginPut uses net: Network {
   match origin_transport_present() {
-    OriginTransportAbsent { cause: cause } => OriginPutRefused { key: key, cause: cause }
+    OriginTransportAbsent { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
     OriginTransportPresent =>
   match resolve_origin_target(direction: OriginWrite, key: key) {
-    OriginTargetRefused { cause: cause } => OriginPutRefused { key: key, cause: cause }
+    OriginTargetRefused { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
     OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } =>
       match place_r2_s3_netrc(
         host: r2_s3_endpoint_host(endpoint: locator.endpoint) as NonEmptyStr,
@@ -279,8 +303,9 @@ fn put_origin_object(
         token_value: token_value,
         token_source: token_source,
       ) {
-        R2S3NetrcRefused { cause: cause } => OriginPutRefused { key: key, cause: cause }
-        R2S3NetrcRefusedResidueRemains { cause: cause } => OriginPutRefused { key: key, cause: cause }
+        R2S3NetrcRefused { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
+        R2S3NetrcRefusedResidueRemains { cause: cause } =>
+          OriginPut { verdict: OriginPutRefused { key: key, cause: cause }, credential: WriteCredentialResidueRemains { cause: cause } }
         R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
           let observed = run_shell_command_observe(
             command: curl_sigv4_s3_upload_command(
@@ -293,11 +318,9 @@ fn put_origin_object(
             transport: LocalExec,
           )
           let shredded = shred_r2_s3_netrc(workspace: workspace)
-          let verdict = classify_origin_put(key: key, answer: classify_s3_transfer(observation: observed), stderr: observed.stderr)
-          if shredded {
-            verdict
-          } else {
-            put_with_credential_residue(verdict: verdict)
+          OriginPut {
+            verdict: classify_origin_put(key: key, answer: classify_s3_transfer(observation: observed), stderr: observed.stderr),
+            credential: if shredded { WriteCredentialShredded } else { WriteCredentialResidueRemains { cause: credential_residue_cause } },
           }
         }
       }
@@ -305,20 +328,14 @@ fn put_origin_object(
   }
 }
 
-// A CREDENTIAL LEFT ON DISK IS REPORTED ON EVERY ARM, INCLUDING SUCCESS. A stored object under a
-// credential that could not be shredded is not a clean success, and saying so on the stored arm is
-// the only way the caller learns it; the object's durability is unchanged and is re-established by
-// the fetch, so the demotion loses nothing true.
-fn put_with_credential_residue(verdict: OriginPutOutcome) -> OriginPutOutcome {
-  match verdict {
-    OriginObjectStored { key: key } =>
-      OriginPutRefused { key: key, cause: "the object was stored but the write credential's private directory could not be removed; credential material may remain and requires cleanup" }
-    OriginObjectAlreadyPresent { key: key } =>
-      OriginPutRefused { key: key, cause: "the object was already present but the write credential's private directory could not be removed; credential material may remain and requires cleanup" }
-    OriginPutRefused { key: key, cause: cause } =>
-      OriginPutRefused { key: key, cause: concat(cause as String, "; AND the write credential's private directory could not be removed, credential material may remain") as NonEmptyStr }
-    OriginPutOutcomeUnknown { key: key, cause: cause } =>
-      OriginPutOutcomeUnknown { key: key, cause: concat(cause as String, "; AND the write credential's private directory could not be removed, credential material may remain") as NonEmptyStr }
+// A CREDENTIAL LEFT ON DISK IS REPORTED ON EVERY ARM, INCLUDING SUCCESS -- as its own field, not
+// as a demotion of the store's verdict. The verdict stays what the store said; the custody says
+// whether the process may call itself clean. A pure predicate over the pair so every consumer asks
+// one question the same way.
+fn put_is_clean(put: OriginPut) -> Bool {
+  match put.credential {
+    WriteCredentialShredded => true
+    WriteCredentialResidueRemains { cause: _ } => false
   }
 }
 
