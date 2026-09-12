@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.emitted_field_carrier_diverges_from_the_dag_type_authored_against
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data emitted_field_carrier_diverges_from_the_dag_type_authored_against: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitted_field_carrier_diverges_from_the_dag_type_authored_against" as NonEmptyStr,
+
+  receipts: [
+    "**hand-authored target text binds an emitted field whose carrier the .dag declaration does not reveal** INVALID STATE: target-language text authored INSIDE an emitter template reads a field of a carrier type declared in `.dag`, and the field's emitted Rust carrier is decided by a whole-corpus analysis that is not reachable from the declaration the author is reading.",
+
+    "The `.dag` side is accepted with zero diagnostics, the EMISSION of that declaration is correct, and the only thing wrong is the hand-authored text that binds it -- so nothing in the substrate refuses and the target compiler is the only wall.",
+
+    "HARM: section 5 silent wrongness at the emitter's own authoring boundary, and it is paid in WALL TIME rather than in a wrong answer. The refusal is real and typed once rustc sees it, but rustc sees it only after the seed emits the whole closure and cargo builds it -- measured at roughly fifteen minutes on `--v2-native-route` before the first diagnostic -- so the feedback loop for a one-token mistake is an emit-and-build cycle.",
+
+    "THE DISTINGUISHING FACT, and the reason this is not `accepted_source_emits_uncompilable_target`: THERE THE EMISSION IS WRONG, here the emission is RIGHT and the hand-authored consumer of it is wrong. That class files a `.dag` construction whose emitted form rustc refuses (a coproduct unit variant in a non-applied type position); this class files correct `.dag`, correct emission, and a template that guessed the carrier. A repair to the emitter's type lowering fixes that class and does nothing for this one.",
+
+    "THE RULE THE AUTHOR CANNOT SEE, stated because the obvious summary of it is WRONG. `v1.compiler.emit_rust` `needs_box_wrapping` boxes a field whose type is in `recursive_types`, and an OPTIONAL-cardinality field inherits that decision from its inner type by recursing with required cardinality; `rust_field_carrier_final_type` then renders `Box<T>`. So it is NOT 'an Optional field boxes' -- whether it boxes depends on whether its inner type rides a recursion cycle, which is a property of the WHOLE CORPUS and not of the declaration. Two fields spelled with the same cardinality in the same record can take different carriers, and neither spelling says so.",
+
+    "SPECIMEN, gunbc PR 11206 (perf item C instrument, draft), 2026-09-12. A new carrier `v2.compiler.compile` `NativeTestFrontEnd` carries `residue: Diagnostics`, where `v2.std.diagnostic` `Diagnostics` is `Optional<NonEmptyDiagnostics>` and `NonEmptyDiagnostics` is recursive. The field emitted as `Box<Option<Rc<NonEmptyDiagnostics>>>` while `v2.compiler.program_assembly` `program_assembly_phase_parse` takes `residue` by value, so the emitter template's `front_end.residue.clone()` cloned the Box: `error[E0308]: expected Option<Rc<NonEmptyDiagnostics>>, found Box<Option<Rc<NonEmptyDiagnostics>>>` at `src/main.rs:407`, help `consider unboxing the value`. The sibling fields on the same carrier -- `lm: LanguageModel`, `prepared: PreparedGrammar` -- took `Rc<..>` and their `.clone()` was correct, which is exactly the per-field divergence this row names. Repair: `(*front_end.residue).clone()`.",
+
+    "WHAT DID NOT CATCH IT, each checked rather than assumed: `gunbc run` typechecked both changed modules under the whole `dag` + `src/v2` closure and was green; `cargo fmt --all --check` passed; `claim_executor --required-regen` regenerated the emitter's own projection and adjudicated it, reaching `first_generation_equal` on the file CONTAINING the defective template text, because regen compares emitted BYTES against the authority and never compiles the program those bytes describe.",
+
+    "RUNG FOUND AT: mitigatable. The failure is contained -- a typed, located rustc diagnostic naming file, line and the expected and found types -- and `--v2-native-route` refuses with `EmittedCompilerBuildFailed` rather than proceeding. Nothing is silently wrong at runtime. What is NOT contained is the cost of finding out, and nothing at the authoring boundary is typed or countable about the divergence.",
+
+    "ATTAINABLE CEILING: structurally impossible, 4, and the reason is that both facts are already modelled and decidable. The field's `.dag` type is a declaration; the emitted carrier is a pure function of that declaration and the recursive-type set (`needs_box_wrapping`); so the carrier a template must write is DERIVABLE and the template should not be authoring a guess at it. A template that names the field and lets the emitter render the access has no constructor for the wrong carrier. No undecidable predicate is involved, so this is a wall after grounding rather than a ratchet.",
+
+    "NEXT-RUNG TRIGGER, naming the CAPABILITY: emitter templates reference an emitted carrier's field through a producer that renders the access FROM the field's resolved type and the recursive-type set -- the same join `rust_field_carrier_final_type` already performs when it emits the struct -- sufficient that no hand-authored template can spell a field access whose carrier disagrees with the declaration. A trigger naming a lint over template text, a comment beside the field, or a one-off repair of this call site does NOT discharge it: those are artifacts that would contribute to the capability, and the population is every hand-authored field access in every emitter template, not this one.",
+
+    "UNCERTAINTY CARRIED RATHER THAN ROUNDED OFF: one specimen, on one carrier, in one template, found by compiling rather than by a census. The size of the exposed population -- how many field accesses in `v1.compiler.emit_rust`'s rendered templates bind a field whose carrier is decided by `needs_box_wrapping` -- has NOT been counted, so this row does not claim a frequency.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "needs_box_wrapping", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_field_carrier_final_type", field: WholeDeclaration },
+  ],
+}
