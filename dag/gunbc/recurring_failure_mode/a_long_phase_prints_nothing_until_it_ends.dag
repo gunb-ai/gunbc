@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_long_phase_prints_nothing_until_it_ends
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_long_phase_prints_nothing_until_it_ends: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_long_phase_prints_nothing_until_it_ends" as NonEmptyStr,
+
+  receipts: [
+    "**a long phase prints nothing until it ends** (a process announces that it is entering a phase, then emits its next line only when the phase TERMINATES. For the whole span in between, a healthy run and a hung run produce byte-identical output: nothing. The receipt is complete and correct once it arrives, so nothing is missing at the end -- the defect is entirely in the middle, where the log cannot answer the one question anybody asks of a long run.)",
+
+    "INVALID STATE: a receipt surface on which liveness and death share a representation. Silence is emitted by both the working process and the dead one, so no reader -- human or automated -- can distinguish them from the surface the process itself publishes.",
+
+    "WHY IT SURVIVES REVIEW: every line the process prints is correct, none is missing, and the terminal receipt is complete. The phase boundary IS announced, which is what makes it feel covered: a reviewer reads 'adjudicating through the emitted compiler' and sees a process that reports its phases. Nothing in the diff looks like a gap, because the gap is a duration rather than a line.",
+
+    "SPECIMEN (gunbc#10940, 2026-09-12, the required-v2-native route at 36e6ad91ea). The SourceRootEvalDriver printed `v2-native-route: adjudicating through the emitted compiler` at 07:04:59 and then nothing. At 08:25 the operator asked whether the run had reached adjudication and what the partition reported. The log could not answer, and neither could the absence of an answer be read as failure: the run was alive and healthy. This is not hypothetical rot -- it cost a real exchange, and it was about to cost a queue slot ordering on a run whose state nobody could name.",
+
+    "WHAT DISCRIMINATED IT WAS OUT OF BAND, WHICH IS THE POINT. Liveness was established by reading the process's own CPU accounting -- 99.7 percent of one core, single-threaded, CPU time equal to wall time to within thirteen seconds, RSS steady -- via ps and /proc on the host. That is an instrument the PROCESS does not publish and the LOG does not carry: it is available only to a reader with a shell on the machine the run happens to be on, so a CI reader, a dashboard, or anyone reading a captured log has no equivalent and is left with the ambiguity intact.",
+
+    "THE TEMPTING NON-FIX IS A TIMEOUT, and it is the absorbing fallback of DESIGN section 5 wearing an operations hat: a deadline converts 'I cannot tell whether this is alive' into 'I declare it dead', which fabricates a verdict from ignorance rather than measuring the thing. It also has to be tuned against a phase whose true duration is unknown, which is the same missing measurement, now load-bearing on a constant.",
+
+    "RUNG: found at 1, mitigatable. The ambiguity is contained only by an out-of-band reader who knows to look at /proc, which is to say it is contained by operator expertise rather than by anything the program does.",
+
+    "CEILING 2, mechanically preventable, and the reason it is not higher is worth stating rather than eliding: no type can make a process emit a line, so this cannot be constructed away. What CAN be built is a phase carrier that is obligated to report progress at a declared grain -- an identity count, a frontier size -- so that a phase which publishes nothing for longer than its own declared grain is itself a typed refusal rather than a silence.",
+
+    "NEXT-RUNG TRIGGER (a CAPABILITY, not an artifact): a long-phase carrier whose entry declares the progress grain it will report at, so that emitting nothing is a refusable state rather than the default. A single progress line added to one driver satisfies none of this -- it fixes one specimen and leaves every other long phase in the corpus with the same surface, which is exactly the artifact-for-capability substitution DESIGN section 4b(3) forbids in a restoration trigger.",
+
+    "REVIEW TELL: a phase announcement with no companion progress obligation -- a log line of the form 'starting X' whose next sibling in the source is the line that reports X finished. Ask what the surface looks like at the midpoint, and whether anyone reading it could tell a live run from a dead one.",
+  ],
+
+  evidence: [],
+}
