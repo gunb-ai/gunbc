@@ -236,3 +236,95 @@ fn resolved_rust_fn_lookup(
 fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_name: String) -> Bool {
   signature.ordered_parameter_names |> any(n => n == parameter_name)
 }
+
+// BUILDING A CLAIM SCOPE OVER THE SAME MANIFEST, which is a different question from compiling it.
+//
+// `compile_fixture` above stops at `compile_to_resolved`. The bare-name-ambiguity refusal lives
+// in `claim_scope_for` -- the scope builder the required floor calls once per claim module, and
+// the same call whose `ambiguous_reads` vector the floor's census lines are printed from. So a
+// control written over `compile_fixture` cannot see that refusal at all, and the refusal's
+// discriminating RED is not authorable in the CORPUS either: a module carrying a deliberately
+// ambiguous read would refuse the whole floor rather than sit in it as a probe. DESIGN section 4b
+// answers exactly that shape -- a state unrepresentable in the accepted corpus may still be
+// representable as source handed to the compiler by a fixture, and declining to enrol it there is
+// specification-without-execution.
+//
+// ONE DETECTOR, NOT TWO. The host builtin behind this runs `claim_scope_for_without_memos`
+// itself. It does not re-derive the ambiguity population, so the refusal a control observes IS
+// the refusal the corpus floor raises, from one computation. A second copy here -- even a
+// faithful one -- would be the second authority the census exists to prevent, and would be free
+// to drift from it silently.
+//
+// THE ENTRY IS A MODULE PATH, not a file path, because that is what `claim_scope_for` is keyed on.
+type ClaimScopeFixtureOutcome
+  = ClaimScopeInstrumentRefused { cause: String }
+  | ClaimScopeCompileRefused { blocking_count: Int, diagnostics: List<CompileDiagnosticCensusRow> }
+  | ClaimScopeRefused { cause: String }
+  | ClaimScopeAccepted { module_count: Int }
+
+fn claim_scope_fixture(fixture: MultiModuleCompileFixture, entry_module_path: String) -> ClaimScopeFixtureOutcome {
+  claim_scope_dag_multi_module_fixture(
+    fixture.sources |> map(s => s.path as String),
+    fixture.sources |> map(s => s.content),
+    entry_module_path
+  )
+}
+
+// PURE READS OVER THE OUTCOME BY MATCHING, never by an accessor, for the reason the fixture's own
+// readers give above: `ClaimScopeInstrumentRefused` and `ClaimScopeCompileRefused` are the arms
+// that say the HARNESS or the MANIFEST broke rather than the subject, and both must read as false
+// on BOTH polarities. A ragged manifest then fails the positive control and the negative one
+// together, which is the signature of a broken probe -- rather than silently satisfying whichever
+// one happened to be phrased as an absence.
+fn claim_scope_was_refused(o: ClaimScopeFixtureOutcome) -> Bool {
+  match o {
+    ClaimScopeRefused { cause: c } => true
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+// AND WHICH REFUSAL IT WAS. `claim_scope_was_refused` says only that the scope builder refused,
+// which is not the same claim as "it refused for the reason under test": a probe satisfied by ANY
+// refusal goes green the day an unrelated one starts firing first, and would then be cited as
+// coverage for a cause it never observed. This reader matches the arm AND requires the cause to
+// name the expected refusal, so a red has to be the red the caller meant.
+//
+// The containment predicate is `string_contains` from `std.methods`, the corpus's single authority
+// for this question. An earlier spelling hand-rolled it as `(split(s, marker) |> count) > 1` and
+// defended that as the corpus idiom on a sample of one; it is a second answer to a question
+// `std.methods` already answers (DESIGN section 2).
+fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) -> Bool {
+  match o {
+    ClaimScopeRefused { cause: c } => string_contains(s: c, pattern: cause_marker)
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+// WHY A FIXTURE FAILED TO COMPILE, readable from `.dag` rather than only from a hand-run compile.
+// `ClaimScopeCompileRefused` carries the diagnostic rows, so a control that expects a scope verdict
+// and gets a compile refusal can name the class instead of reporting a bare non-acceptance. This
+// exists because its absence cost a wrong diagnosis: a manifest was refused with `undefined
+// variable`, the instrument could report only that it was not accepted, and the cause was supplied
+// by inference from prose rather than read -- the same arm-for-cause conflation this outcome type
+// was split to prevent.
+fn claim_scope_compile_refusal_has_class(o: ClaimScopeFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => fixture_has_class(rows: d, wanted: wanted)
+    ClaimScopeRefused { cause: c } => false
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
+fn claim_scope_was_accepted(o: ClaimScopeFixtureOutcome) -> Bool {
+  match o {
+    ClaimScopeAccepted { module_count: n } => true
+    ClaimScopeRefused { cause: c } => false
+    ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
