@@ -24,6 +24,20 @@ type RunnerEnvironmentInventory {
   firewall_table: NonEmptyStr
 }
 
+type RunnerResourceClass
+  = RunnerVmm
+  | RunnerCgroup
+  | RunnerJail
+  | RunnerJailMount
+  | RunnerJitDrive
+  | RunnerWorkspace
+  | RunnerTap
+  | RunnerFirewallTable
+
+data runner_resource_classes: List<RunnerResourceClass> = [
+  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
+]
+
 type RunnerResourceReading
   = RunnerResourcePresent
   | RunnerResourceAbsent
@@ -70,9 +84,9 @@ type RunnerTeardownRefusal
   | TeardownInstrumentChanged
   | TeardownBootMismatch
   | TeardownObservationOrderRefused { diagnostic: RunnerInstantOrderRefusal }
-  | TeardownPositiveControlMissing { resource: NonEmptyStr }
-  | TeardownResourceSurvived { resource: NonEmptyStr }
-  | TeardownResourceUnreadable { resource: NonEmptyStr, cause: NonEmptyStr }
+  | TeardownPositiveControlMissing { resource: RunnerResourceClass }
+  | TeardownResourceSurvived { resource: RunnerResourceClass }
+  | TeardownResourceUnreadable { resource: RunnerResourceClass, cause: NonEmptyStr }
 
 // This is observation of the named inventory, not a containment assertion about the entire host.
 // The observer transport must be independent of the destroyer and preserve its own capture. Merely
@@ -98,22 +112,30 @@ fn runner_environment_inventory_eq(a: RunnerEnvironmentInventory, b: RunnerEnvir
 }
 
 type RunnerResourceTransition {
-  resource: NonEmptyStr
+  resource: RunnerResourceClass
   before: RunnerResourceReading
   after: RunnerResourceReading
 }
 
+fn readback_reading(class: RunnerResourceClass, readback: RunnerEnvironmentReadback) -> RunnerResourceReading {
+  match class {
+    RunnerVmm => readback.vmm
+    RunnerCgroup => readback.cgroup
+    RunnerJail => readback.jail
+    RunnerJailMount => readback.jail_mount
+    RunnerJitDrive => readback.jit_drive
+    RunnerWorkspace => readback.workspace
+    RunnerTap => readback.tap
+    RunnerFirewallTable => readback.firewall_table
+  }
+}
+
 fn runner_resource_transitions(before: RunnerEnvironmentReadback, after: RunnerEnvironmentReadback) -> List<RunnerResourceTransition> {
-  [
-    RunnerResourceTransition { resource: "vmm", before: before.vmm, after: after.vmm },
-    RunnerResourceTransition { resource: "cgroup", before: before.cgroup, after: after.cgroup },
-    RunnerResourceTransition { resource: "jail", before: before.jail, after: after.jail },
-    RunnerResourceTransition { resource: "jail_mount", before: before.jail_mount, after: after.jail_mount },
-    RunnerResourceTransition { resource: "jit_drive", before: before.jit_drive, after: after.jit_drive },
-    RunnerResourceTransition { resource: "workspace", before: before.workspace, after: after.workspace },
-    RunnerResourceTransition { resource: "tap", before: before.tap, after: after.tap },
-    RunnerResourceTransition { resource: "firewall_table", before: before.firewall_table, after: after.firewall_table },
-  ]
+  runner_resource_classes |> map(class => RunnerResourceTransition {
+    resource: class,
+    before: readback_reading(class: class, readback: before),
+    after: readback_reading(class: class, readback: after),
+  })
 }
 
 fn runner_resource_transition_refusal(row: RunnerResourceTransition) -> Optional<RunnerTeardownRefusal> {

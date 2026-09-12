@@ -24,6 +24,9 @@ import gunbc.runner.runner_usage_receipt {
   UsageIntervalOrderRefused, RunnerInstantsIncomparable, RunnerInstantsReversed, metered_vcpu_minutes_fraction,
 }
 import gunbc.runner.runner_teardown_receipt {
+  RunnerResourceClass, runner_resource_classes,
+  RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
+  TeardownObserverInsideEnvironment, TeardownInstrumentChanged,
   RunnerEnvironmentInventory, RunnerResourceReading, RunnerResourcePresent,
   RunnerResourceAbsent, RunnerResourceUnreadable, RunnerEnvironmentReadback,
   RunnerEnvironmentObservation, RunnerEnvironmentObserved, RunnerEnvironmentUnobserved,
@@ -241,6 +244,69 @@ test fn destroyer_cannot_attest_its_own_teardown() -> Bool {
   }
 }
 
+test fn vmm_cannot_observe_its_own_teardown() -> Bool {
+  match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent),
+    before: fixture_readback(value: RunnerResourcePresent), observer: 10) {
+    RunnerTeardownRefused { cause: TeardownObserverInsideEnvironment } => true
+    _ => false
+  }
+}
+
+test fn changing_observation_instrument_refuses() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let inventory = fixture_inventory(tap: "tap-a")
+  let source = fixture_source()
+  let after = RunnerEnvironmentObservation {
+    subject: subject, observer: fixture_process(pid: 30), inventory: inventory,
+    at: fixture_at(ns: 30), readback: fixture_readback(value: RunnerResourceAbsent),
+    evidence: RunnerEvidenceSource {
+      producer: decl_ref(module_path: "test.claim.runner.runner_canary_receipt_witness_test", decl_name: "changing_observation_instrument_refuses"),
+      artifact: source.artifact, digest: source.digest,
+    },
+  }
+  match produce_runner_teardown_receipt(
+    request: RunnerTeardownRequest { subject: subject, inventory: inventory,
+      destroyer: fixture_process(pid: 20), issued_at: fixture_at(ns: 20) },
+    before: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject,
+      observer: fixture_process(pid: 30), inventory: inventory, at: fixture_at(ns: 10),
+      readback: fixture_readback(value: RunnerResourcePresent)) },
+    after: RunnerEnvironmentObserved { observation: after }) {
+    RunnerTeardownRefused { cause: TeardownInstrumentChanged } => true
+    _ => false
+  }
+}
+
+test fn cross_boot_processes_refuse() -> Bool {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let original = fixture_inventory(tap: "tap-a")
+  ["vmm", "destroyer", "observer"] |> all(axis => {
+    let inventory = RunnerEnvironmentInventory {
+      vmm: ProcessIdentity { boot_id: if axis == "vmm" { "other-boot" } else { "fixture-boot" }, pid: 10, start_time: "100" },
+      cgroup: original.cgroup, jail: original.jail, jail_mount: original.jail_mount,
+      jit_drive: original.jit_drive, workspace: original.workspace,
+      tap: original.tap, firewall_table: original.firewall_table,
+    }
+    let destroyer = ProcessIdentity {
+      boot_id: if axis == "destroyer" { "other-boot" } else { "fixture-boot" }, pid: 20, start_time: "100",
+    }
+    let observer = ProcessIdentity {
+      boot_id: if axis == "observer" { "other-boot" } else { "fixture-boot" }, pid: 30, start_time: "100",
+    }
+    match produce_runner_teardown_receipt(
+      request: RunnerTeardownRequest { subject: subject, inventory: inventory,
+        destroyer: destroyer, issued_at: fixture_at(ns: 20) },
+      before: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject,
+        observer: observer, inventory: inventory, at: fixture_at(ns: 10),
+        readback: fixture_readback(value: RunnerResourcePresent)) },
+      after: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject,
+        observer: observer, inventory: inventory, at: fixture_at(ns: 30),
+        readback: fixture_readback(value: RunnerResourceAbsent)) }) {
+      RunnerTeardownRefused { cause: TeardownBootMismatch } => true
+      _ => false
+    }
+  })
+}
+
 test fn an_always_absent_instrument_refuses() -> Bool {
   match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent), before: fixture_readback(value: RunnerResourceAbsent), observer: 30) {
     RunnerTeardownRefused { cause: TeardownPositiveControlMissing { resource: _ } } => true
@@ -249,21 +315,21 @@ test fn an_always_absent_instrument_refuses() -> Bool {
 }
 
 // Each single surviving resource must independently make an otherwise-clean observation red.
-fn fixture_single_residue(resource: NonEmptyStr, value: RunnerResourceReading) -> RunnerEnvironmentReadback {
+fn fixture_single_residue(resource: RunnerResourceClass, value: RunnerResourceReading) -> RunnerEnvironmentReadback {
   RunnerEnvironmentReadback {
-    vmm: if resource == "vmm" { value } else { RunnerResourceAbsent },
-    cgroup: if resource == "cgroup" { value } else { RunnerResourceAbsent },
-    jail: if resource == "jail" { value } else { RunnerResourceAbsent },
-    jail_mount: if resource == "jail_mount" { value } else { RunnerResourceAbsent },
-    jit_drive: if resource == "jit_drive" { value } else { RunnerResourceAbsent },
-    workspace: if resource == "workspace" { value } else { RunnerResourceAbsent },
-    tap: if resource == "tap" { value } else { RunnerResourceAbsent },
-    firewall_table: if resource == "firewall_table" { value } else { RunnerResourceAbsent },
+    vmm: if resource == RunnerVmm { value } else { RunnerResourceAbsent },
+    cgroup: if resource == RunnerCgroup { value } else { RunnerResourceAbsent },
+    jail: if resource == RunnerJail { value } else { RunnerResourceAbsent },
+    jail_mount: if resource == RunnerJailMount { value } else { RunnerResourceAbsent },
+    jit_drive: if resource == RunnerJitDrive { value } else { RunnerResourceAbsent },
+    workspace: if resource == RunnerWorkspace { value } else { RunnerResourceAbsent },
+    tap: if resource == RunnerTap { value } else { RunnerResourceAbsent },
+    firewall_table: if resource == RunnerFirewallTable { value } else { RunnerResourceAbsent },
   }
 }
 
 test fn every_residue_and_unreadable_resource_refuses() -> Bool {
-  ["vmm", "cgroup", "jail", "jail_mount", "jit_drive", "workspace", "tap", "firewall_table"]
+  runner_resource_classes
     |> all(resource => {
       let survived = match fixture_teardown(after: fixture_single_residue(resource: resource, value: RunnerResourcePresent),
         before: fixture_readback(value: RunnerResourcePresent), observer: 30) {
@@ -325,7 +391,8 @@ test fn stale_or_wrong_teardown_subjects_refuse() -> Bool {
 }
 
 fn main() -> Bool {
-  evidence_frontier_is_well_formed() &&
+  vmm_cannot_observe_its_own_teardown() && changing_observation_instrument_refuses() &&
+  cross_boot_processes_refuse() && evidence_frontier_is_well_formed() &&
   fractional_minutes_preserve_meter_and_exclude_staging() &&
   missing_meter_and_initiator_refuse() &&
   different_tenant_or_attempt_cannot_supply_usage_or_initiator() &&
