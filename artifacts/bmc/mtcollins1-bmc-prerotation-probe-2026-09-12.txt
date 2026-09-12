@@ -1,0 +1,19 @@
+GUNBC-BMC-PREROTATION-PROBE mtcollins1 host_utc=2026-09-12T17:46:13Z
+subject: BMC 192.168.1.228, credential under test = AMI MegaRAC published factory default (admin/admin)
+--- argv: ipmitool -I lanplus -H <bmc> -U admin -P <published-factory-default> mc info
+Device ID                 : 32
+Device Revision           : 1
+Firmware Revision         : 0.32
+IPMI Version              : 2.0
+Manufacturer ID           : 0
+Manufacturer Name         : Unknown
+rc=0
+--- argv: ... user list 1 (full)
+ID  Name	     Callin  Link Auth	IPMI Msg   Channel Priv Limit
+1                    false   false      false      NO ACCESS
+2   admin            false   false      true       ADMINISTRATOR
+3   gunbc            true    false      false      NO ACCESS
+4                    true    false      false      NO ACCESS
+5                    true    false      false      NO ACCESS
+rc=0
+exit=0
