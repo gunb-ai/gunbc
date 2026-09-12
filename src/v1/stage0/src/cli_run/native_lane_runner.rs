@@ -848,7 +848,8 @@ mod tests {
     /// the parse must refuse it.
     #[test]
     fn a_missing_terminal_marker_refuses() {
-        let stdout = "{\"identity\":{\"module\":\"v2.test.a\",\"declaration\":\"t\"}}\n";
+        let stdout =
+            "{\"identity\":{\"module\":\"v2.test.a\",\"declaration\":\"t\"},\"verdict\":\"NativeTestPassed\"}\n";
         assert!(parse_native_run_output(stdout).is_err());
     }
 }

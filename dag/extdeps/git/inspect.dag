@@ -1,6 +1,7 @@
 module extdeps.git.inspect
 
-import std.types { Bool, CommitSha, FilePath, GitRef, Int, String }
+import std.types { Bool, CommitSha, FilePath, GitRef, Int, Unit }
+import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

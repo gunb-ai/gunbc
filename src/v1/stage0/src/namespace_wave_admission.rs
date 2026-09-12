@@ -1707,16 +1707,35 @@ pub struct TransitionAdmission {
 /// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
 /// empty was the resting state and one change authoring rows back into it is the ordinary motion.
 ///
-/// TWENTY-SECOND DISSOLUTION (2026-09-11). #11071 authored three rows for the
-/// `LinuxKernelRelease` rehome out of `gunbc.served_surface_browser_observation` into the new
-/// `extdeps.linux.kernel`, with the trigger "these rows go when #11071 merges". It merged as
-/// 9243870e38, so the base now authors the spelling in `extdeps.linux.kernel` and no longer in
-/// the receipt module, the delta is no longer producible, and the rows are CONSUMED. The merge
-/// that brought them here is the same change that consumed them, and this change touches the
-/// roster, so it is the toucher the rule charges: the three rows are deleted here rather than
-/// carried forward for the wall to name as due. Required floor run 34654011524 named them --
-/// "3 consumed admission(s) due for deletion on this roster-touching change" -- which is what
-/// the declaring-module join adjudicates, not this sentence.
+/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
+/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
+/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
+/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
+/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
+/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
+/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
+///
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11137). The `gunbc#11137
+/// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
+/// description that stood above it goes with it. Its trigger, authored as "this row goes when
+/// #11137 merges", FIRED: #11137 merged as 34d2a8db32 ("Qualify the extdeps.tools bare-name reads
+/// by their declaring module"), so the base carries the named import, the delta stopped being
+/// producible, and the row became CONSUMED.
+///
+/// THE DISTINCTION IS WORTH WRITING DOWN BECAUSE IT NEARLY WENT THE OTHER WAY. The row was
+/// reported as matching no delta on any open PR, and the required floor refused
+/// `namespace-wave-admission` on every branch carrying it, which makes DELETING IT look like
+/// roster hygiene -- an unmatched entry swept up by whoever the wall stopped. That is a different
+/// disposition from the one recorded here, and DESIGN section 4b(3) turns on exactly that
+/// difference: a declared row is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a deletion
+/// performed for the convenience of a green wall, written up as a trigger firing, would launder an
+/// unpaid debt into a discharged one and leave the next such row unprotected. The merge was
+/// checked by identity (`git log --oneline 34d2a8db32`) before this paragraph was written, not
+/// inferred from the refusal. Had #11137 still been open, the honest record here would have said
+/// the row was deleted unmatched, and the debt would have stayed visible.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
 ///
 /// THE v2-NATIVE ROUTE'S MODULE SPLITS, 2026-09-11. Four facts moved to modules below their
 /// readers so the route could carry its own admission and its own discovery authority without a
