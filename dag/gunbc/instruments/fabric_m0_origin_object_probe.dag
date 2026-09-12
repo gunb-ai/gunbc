@@ -27,9 +27,13 @@ import gunbc.fabric_m0_completion {
   ComputationSucceeded, CommittedOutput, ManifestMember, OriginObservation, ObligationSubject,
 }
 import gunbc.fabric_m0_commit { CommitNamespace, commit_slot_key }
-import gunbc.fabric_m0_origin_commit { OriginCommitObservation, commit_manifest_to_origin, commit_object_to_origin }
-import gunbc.fabric_m0_job_ending { end_required_job, process_exit_of_job_ending }
+import gunbc.fabric_m0_origin_commit { OriginCommitObservation, OriginObjectCommit, commit_manifest_to_origin, commit_object_to_origin, process_exit_with_credential_custody }
+import gunbc.fabric_m0_job_ending { end_required_job }
 import gunbc.cloudflare.r2_origin_object {
+  OriginPut,
+  WriteCredentialShredded,
+  WriteCredentialResidueRemains,
+  put_is_clean,
   OriginPutOutcome,
   OriginObjectStored,
   OriginObjectAlreadyPresent,
@@ -108,21 +112,28 @@ func fetch_absent() -> ProcessExit uses net: Network {
   }
 }
 
-fn put_admitted(outcome: OriginPutOutcome) -> Bool {
-  match outcome {
+// A PUT IS ADMITTED ONLY WHEN THE STORE HOLDS THE OBJECT AND THE CREDENTIAL IS GONE. The two are
+// separate fields of OriginPut and both are asked; a stored object under a leaked token is refused
+// here with the leak named, never read as clean.
+fn put_admitted(put: OriginPut) -> Bool {
+  put_is_clean(put: put) && (match put.verdict {
     OriginObjectStored { key: _ } => true
     OriginObjectAlreadyPresent { key: _ } => true
     OriginPutRefused { key: _, cause: _ } => false
     OriginPutOutcomeUnknown { key: _, cause: _ } => false
-  }
+  })
 }
 
-fn put_cause(outcome: OriginPutOutcome) -> String {
-  match outcome {
+fn put_cause(put: OriginPut) -> String {
+  let verdict = match put.verdict {
     OriginObjectStored { key: _ } => "stored"
     OriginObjectAlreadyPresent { key: _ } => "already present"
     OriginPutRefused { key: _, cause: cause } => concat("PUT REFUSED: ", cause as String)
     OriginPutOutcomeUnknown { key: _, cause: cause } => concat("PUT OUTCOME UNKNOWN: ", cause as String)
+  }
+  match put.credential {
+    WriteCredentialShredded => verdict
+    WriteCredentialResidueRemains { cause: cause } => concat(verdict, concat("; AND CREDENTIAL RESIDUE: ", cause as String))
   }
 }
 
@@ -131,12 +142,12 @@ func roundtrip() -> ProcessExit uses net: Network {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
       let put = put_origin_object(local_path: probe_fixture_path as FilePath, key: probe_key, token_source: source)
-      if put_admitted(outcome: put) == false {
-        exit_failure(reason: put_cause(outcome: put))
+      if put_admitted(put: put) == false {
+        exit_failure(reason: put_cause(put: put))
       } else {
         match fetch_origin_object(key: probe_key, token_source: source) {
           OriginObjectAbsent { key: _ } =>
-            exit_failure(reason: concat("THE PUT WAS ", concat(put_cause(outcome: put), " AND THE FETCH FOUND NOTHING AT THE KEY")))
+            exit_failure(reason: concat("THE PUT WAS ", concat(put_cause(put: put), " AND THE FETCH FOUND NOTHING AT THE KEY")))
           OriginFetchUnavailable { key: _, cause: cause } =>
             exit_failure(reason: concat("THE FETCH DID NOT REACH A VERDICT: ", cause as String))
           OriginObjectStaged { key: _, reading: r } =>
@@ -160,7 +171,9 @@ func roundtrip() -> ProcessExit uses net: Network {
 // phases' exit code: the manifest is PUT at the slot derived from the attempt, fetched back through
 // the self-staging read, the required object is committed and fetched the same way, and
 // gunbc.fabric_m0_job_ending end_required_job decides the conclusion from the JobPublication the
-// completion authority returns. process_exit_of_job_ending is the whole exit -- there is no
+// completion authority returns. process_exit_with_credential_custody is the whole exit: on a clean
+// run it IS process_exit_of_job_ending, and a run that left write-credential material on disk
+// exits non-zero naming the leak beside what the publication decided. There is no
 // try-the-gate-then-return-old-success arm, and pending exits non-zero naming the reconciliation.
 //
 // PRECONDITIONS ARE roundtrip's: the WRITE credential must be pinned, or both PUTs refuse at
@@ -173,6 +186,11 @@ func roundtrip() -> ProcessExit uses net: Network {
 // 5xx-as-refused arm gunbc.cloudflare.r2_origin_object already classifies as OUTCOME UNKNOWN.
 // gunbc.fabric_m0_origin_commit commit_object_to_origin folds PUT and fetch together, exactly as
 // the manifest transport does one line below.
+//
+// A LEAKED WRITE CREDENTIAL IS NOT ERASED BY A CONFIRMED FETCH. Both commits carry the token's
+// custody beside their durability verdict, and process_exit_with_credential_custody refuses to exit
+// zero while any residue remains -- naming the leak and what the publication decided, so neither
+// fact is lost (review 64512 on this PR).
 //
 // THE COMPUTATION IS DECLARED SUCCEEDED because the canary's computation IS the fixture: the two
 // committed files are what the job produced. A real job substitutes its build verdict there and
@@ -220,7 +238,7 @@ func canary_ending() -> ProcessExit uses net: Network {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
       let attempt = canary_attempt as AttemptIdentity
-      let object_readback = commit_object_to_origin(local_path: probe_fixture_path as FilePath, key: canary_object_key(), token_source: source)
+      let object = commit_object_to_origin(local_path: probe_fixture_path as FilePath, key: canary_object_key(), token_source: source)
       let commit = commit_manifest_to_origin(
         namespace: canary_namespace as CommitNamespace,
         attempt: attempt,
@@ -228,13 +246,14 @@ func canary_ending() -> ProcessExit uses net: Network {
         manifest_digest: expected_manifest_digest(),
         token_source: source,
       )
-      process_exit_of_job_ending(
+      process_exit_with_credential_custody(
+        custodies: [object.credential, commit.credential],
         ending: end_required_job(
           work: canary_work(),
           attempt: attempt,
           computation: ComputationSucceeded,
           committed: [CommittedOutput { obligation: canary_object(), attempt: attempt, recorded_digest: expected_fixture_digest() }],
-          observations: [OriginObservation { subject: ObligationSubject { obligation: canary_object() }, readback: object_readback }],
+          observations: [OriginObservation { subject: ObligationSubject { obligation: canary_object() }, readback: object.readback }],
           namespace: canary_namespace as CommitNamespace,
           manifest_digest: expected_manifest_digest(),
           members: [ManifestMember { obligation: canary_object(), content: expected_fixture_digest() }],

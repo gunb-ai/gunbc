@@ -1,7 +1,8 @@
 module gunbc.fabric_m0_origin_commit
 
-import std.types { NonEmptyStr, FilePath }
+import std.types { NonEmptyStr, FilePath, List, Bool, String }
 import std.resources { Network }
+import std.process { ProcessExit, exit_failure }
 import std.content_hash { Sha256Digest, ContentHash, Sha256Hash }
 import std.scoped_authorization { AttemptIdentity }
 import std.durable_compare_and_set {
@@ -22,7 +23,12 @@ import gunbc.fabric_m0_origin_readback {
   OriginFetchUnavailable,
   origin_reading_digest,
 }
+import gunbc.fabric_m0_job_ending { JobEnding, process_exit_of_job_ending, publication_exit_reason }
 import gunbc.cloudflare.r2_origin_object {
+  OriginPut,
+  WriteCredentialCustody,
+  WriteCredentialShredded,
+  WriteCredentialResidueRemains,
   OriginPutOutcome,
   OriginObjectStored,
   OriginObjectAlreadyPresent,
@@ -105,10 +111,16 @@ fn first_version(digest: Sha256Digest) -> CasSlotVersion<Sha256Digest> {
 // THE PAIR THE COMPLETION AUTHORITY CONSUMES, SEALED. Both halves are about the one slot this
 // module derived, and only commit_manifest_to_origin can produce the value, so a transport about
 // slot A cannot be handed in beside a readback of slot B.
+//
+// THE CREDENTIAL'S CUSTODY RIDES BESIDE, NOT INSIDE. Durability is decided from transport and
+// observed; whether the write token is still on disk is a separate fact the completion authority
+// does not judge and this value must not lose, so it is carried out to the ending as its own field
+// (gunbc#11157 review 64512: an earlier cut let a confirmed fetch erase a leaked credential).
 type OriginCommitObservation sole_constructor {
   slot: NonEmptyStr
   transport: CommitTransportOutcome
   observed: ManifestReadbackObservation
+  credential: WriteCredentialCustody
 }
 
 // ONE PUT, ONE FETCH, ONE SLOT. The manifest file is the caller's (what was owed is a claim the
@@ -131,8 +143,9 @@ func commit_manifest_to_origin(
   let fetch = fetch_origin_object(key: slot, token_source: token_source)
   OriginCommitObservation {
     slot: slot,
-    transport: transport_of_origin_put(slot: slot, manifest_digest: manifest_digest, put: put, fetch: fetch),
+    transport: transport_of_origin_put(slot: slot, manifest_digest: manifest_digest, put: put.verdict, fetch: fetch),
     observed: manifest_read_of_origin_fetch(fetch: fetch),
+    credential: put.credential,
   }
 }
 
@@ -166,8 +179,43 @@ fn object_readback_of_origin_put(put: OriginPutOutcome, fetch: OriginFetchOutcom
 //
 // CONSUMERS (DESIGN 3c): tools.fabric_m0_origin_object_probe canary_ending; the fold above is
 // exercised by test.claim.fabric_m0_origin_commit_witness.
-func commit_object_to_origin(local_path: FilePath, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginReadback uses net: Network {
+type OriginObjectCommit sole_constructor {
+  readback: OriginReadback
+  credential: WriteCredentialCustody
+}
+
+func commit_object_to_origin(local_path: FilePath, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {
   let put = put_origin_object(local_path: local_path, key: key, token_source: token_source)
   let fetch = fetch_origin_object(key: key, token_source: token_source)
-  object_readback_of_origin_put(put: put, fetch: fetch)
+  OriginObjectCommit {
+    readback: object_readback_of_origin_put(put: put.verdict, fetch: fetch),
+    credential: put.credential,
+  }
+}
+
+// THE EXIT, WITH CUSTODY IN IT. The publication decides the conclusion and, on a clean run, the
+// exit follows it unchanged. A run that left write-credential material on disk may NOT exit zero
+// whatever it published: that is a typed, located refusal naming the leak AND what the publication
+// decided, so nothing true is discarded in either direction -- the reader learns both that the
+// object is durable and that cleanup is owed. It is not a fallback: there is no arm here that
+// answers success for anything but a clean publication of success.
+fn residue_cause_text(c: WriteCredentialCustody) -> String {
+  match c {
+    WriteCredentialShredded => ""
+    WriteCredentialResidueRemains { cause: r } => r as String
+  }
+}
+
+fn credential_residue_causes(custodies: List<WriteCredentialCustody>) -> List<String> {
+  custodies |> map(c => residue_cause_text(c: c)) |> filter(t => (t == "") == false)
+}
+
+fn process_exit_with_credential_custody(ending: JobEnding, custodies: List<WriteCredentialCustody>) -> ProcessExit {
+  let residue = credential_residue_causes(custodies: custodies)
+  if residue.count() == 0 {
+    process_exit_of_job_ending(ending: ending)
+  } else {
+    let joined = fold(residue, init: "", f: (acc, r) => if acc == "" { r } else { acc + "; " + r })
+    exit_failure(reason: "write credential material may remain and requires cleanup (" + joined + "); publication: " + publication_exit_reason(publication: ending.publication))
+  }
 }

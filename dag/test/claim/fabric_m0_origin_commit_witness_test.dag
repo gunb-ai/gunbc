@@ -14,6 +14,7 @@ import std.durable_compare_and_set {
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.fabric_m0_origin_readback {
+  OriginReading,
   OriginFetchOutcome,
   OriginObjectStaged,
   OriginObjectAbsent,
@@ -32,7 +33,20 @@ import gunbc.cloudflare.r2_origin_object {
 }
 import gunbc.fabric_m0_commit { CommitTransportOutcome, StoreAnswered, StoreDidNotAnswer }
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
-import gunbc.fabric_m0_origin_commit { transport_of_origin_put, object_readback_of_origin_put }
+import std.process { exit_ok }
+import std.measure { hardware_thread_count }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, work_for, DeclaredOutputObligations,
+}
+import gunbc.fabric_m0_completion { ComputationSucceeded }
+import gunbc.fabric_m0_commit { CommitNamespace, ManifestRead }
+import gunbc.fabric_m0_job_ending { JobEnding, end_required_job }
+import gunbc.cloudflare.r2_origin_object { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains }
+import gunbc.fabric_m0_origin_commit { transport_of_origin_put, object_readback_of_origin_put, process_exit_with_credential_custody }
 
 // READS THE LIVE TREE: the staged arm's reading is taken through read_origin_staged_file over a
 // committed fixture, since OriginReading is sole_constructor and cannot be written here.
@@ -165,4 +179,55 @@ test fn a_404_after_an_unknown_or_contradicted_put_is_unknown_not_absent() -> Bo
   is_unknown(r: readback_for(put: OriginPutOutcomeUnknown { key: the_slot, cause: "curl exit 000" }, fetch: OriginObjectAbsent { key: the_slot }))
     && is_unknown(r: readback_for(put: OriginObjectStored { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
     && is_unknown(r: readback_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
+}
+
+// THE CUSTODY EXIT. A publication of SUCCESS with every credential shredded exits zero; the SAME
+// publication with one residue does not. The discriminating input is the custody alone, which is
+// the fact review 64512 found a confirmed fetch erasing.
+fn a_successful_ending(r: OriginReading) -> JobEnding {
+      end_required_job(
+        work: work_for(
+          principal: "gunbc" as NonEmptyStr,
+          contract: WorkContract {
+            program: "gunbc.fabric-m0.custody-witness:1",
+            steps: [WorkStep { step_id: "custody", resumability: ReceiptSatisfiable }],
+            source: "source:1", inputs: "inputs:1", runtime_closure: "runtime:1",
+            effect_contract: "effects:1", output_contract: "outputs:1",
+            output_obligations: DeclaredOutputObligations { required: [] },
+          },
+          requirements: ExecutionRequirements {
+            capacity_class: ControlPlaneCapacity,
+            shape: Shape { hard: HardRequirements { threads: hardware_thread_count(8) }, envelope: unstated_envelope() },
+            capabilities: "linux-arm64", trust_domain: "fleet-owned", isolation: shared_kernel_sandbox_profile(),
+          },
+        ),
+        attempt: "attempt-1" as AttemptIdentity,
+        computation: ComputationSucceeded,
+        committed: [],
+        observations: [],
+        namespace: "fabric-m0/v1/commit" as CommitNamespace,
+        manifest_digest: origin_reading_digest(reading: r),
+        members: [],
+        transport: transport_for(put: OriginObjectStored { key: the_slot }, fetch: staged_fetch()),
+        observed: ManifestRead { reading: r },
+      )
+}
+
+test fn a_clean_successful_ending_exits_zero() -> Bool {
+  match staged_fetch() {
+    OriginObjectStaged { key: _, reading: r } =>
+      exit_ok(e: process_exit_with_credential_custody(ending: a_successful_ending(r: r), custodies: [WriteCredentialShredded, WriteCredentialShredded]))
+    other => false
+  }
+}
+
+test fn a_successful_ending_with_credential_residue_does_not_exit_zero() -> Bool {
+  match staged_fetch() {
+    OriginObjectStaged { key: _, reading: r } =>
+      exit_ok(e: process_exit_with_credential_custody(
+        ending: a_successful_ending(r: r),
+        custodies: [WriteCredentialShredded, WriteCredentialResidueRemains { cause: "left on disk" }]
+      )) == false
+    other => false
+  }
 }
