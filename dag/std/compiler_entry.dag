@@ -49,12 +49,14 @@ import std.measure {
 // executes; its contract is that every universe member reaches exactly one terminal observation,
 // never a silent remainder. The process re-derives its own exclusive wall partition on stderr
 // as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: exclusive
-// load / context / prepare / eval over parent_span_nanos) plus one `[native-prepare]` line per
-// unique module and one `[native-prepare-split]` line that partitions prepare into resolve vs
-// infer (the two halves native_test_resolve_module / native_test_infer_resolved). The
+// load / context / prepare / eval over parent_span_nanos) plus one `[native-prepare-split]`
+// line per unique module that partitions prepare into resolve vs infer (the two halves
+// native_test_resolve_module / native_test_infer_resolved) and carries decls=. The
 // `[native-cost-partition]` verdict is native_driver_cost_account over NativeDriverExclusiveRows,
-// not a second copy of the reconcile law. Re-run the emitted binary over a universe file to
-// re-derive the numbers.
+// not a second copy of the reconcile law: remainder_nanos is that fold's residual, and
+// OverAttributed carries no remainder field (underflow is not a number). A non-Reconciled
+// arm is a process refusal, not a printed string with exit 0. Re-run the emitted binary over
+// a universe file to re-derive the numbers.
 
 type CompilerEntryDriver
   = RetainedHostCliKernel
@@ -116,5 +118,42 @@ fn native_driver_cost_account(
         tolerance: tolerance
       }
     }
+  }
+}
+
+// DECLARED FRONTIER (DESIGN §3c) — not a live bind on this head.
+// native_driver_cost_row_standing has no executing consumer here: planted witnesses
+// prove the fold; they do not exercise the spawn. Consumer: native_lane_runner
+// run_native_binary. Route: after the child exits, that spawn reads the relayed
+// stderr into NativeDriverChildExited and folds native_driver_cost_row_standing,
+// refusing NativeDriverCostRowsUnobserved. Trigger (DESIGN §4b(3) capability, not
+// an artifact): the host relays the child's stderr on successful exit
+// (native_lane_runner run_native_binary as changed by #10940). Kill condition: if
+// that relay lands and this standing is still unread, the row is dangling. Until
+// the capability holds, this PR stays off native_lane_runner (deep-cat-655 owns
+// it). Observed is [native-cost-partition] after exit; Unobserved is exited
+// without that tag; Pending is the child still running. On main, Command::output
+// drops the pipe on success (eager-raven-113 #11060 universe receipt: 15508s
+// admitted, 3536 verdict rows, zero partition tags in host-captured stderr). The
+// relay is exit-gated, not streamed.
+
+type NativeDriverChildStanding
+  = NativeDriverChildExited { stderr: String }
+  | NativeDriverChildStillRunning
+
+type NativeDriverCostRowStanding
+  = NativeDriverCostRowsObserved
+  | NativeDriverCostRowsUnobserved
+  | NativeDriverCostRowsPending
+
+fn native_driver_cost_row_standing(child: NativeDriverChildStanding) -> NativeDriverCostRowStanding {
+  match child {
+    NativeDriverChildStillRunning => NativeDriverCostRowsPending
+    NativeDriverChildExited { stderr } =>
+      if string_contains(s: stderr, pattern: "[native-cost-partition] ") {
+        NativeDriverCostRowsObserved
+      } else {
+        NativeDriverCostRowsUnobserved
+      }
   }
 }
