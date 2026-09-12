@@ -14,14 +14,13 @@ import std.repair_input_origin {
   SourceDeclarationCarrier,
   SourceDeclarationCarrierIdentity
 }
-import v2.std.algebra { fold_list, is_empty, length, list_snoc_item, skip }
+import v2.std.algebra { fold_list, length, list_snoc_item, skip }
 import v2.std.node { Node }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_to_dotted_string
 }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.compiler.reference_site_collector { collect_reference_sites }
 import v2.compiler.resolution_provenance {
@@ -214,10 +213,4 @@ fn repair_input_origin_denominator_digest_lines(
   repair_input_origin_roster_digest_lines(
     roster: repair_input_origin_roster_over_roots(roots: roots)
   )
-}
-
-fn repair_input_origin_roster_is_empty(
-  roster: FreeMonoid<RepairInputOriginCandidate>
-) -> Bool {
-  is_empty(xs: roster)
 }
