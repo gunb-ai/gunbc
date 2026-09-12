@@ -930,11 +930,6 @@ data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunSt
   function: "converge",
 }
 
-data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/ci_heal_dispatch.dag",
-  function: "main",
-}
-
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
 // why targets are declared here rather than inline: a new call site that re-inlines a literal pair
 // is outside the join.
@@ -996,8 +991,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
-    gunbc_ci_heal_repo_local_git_config_target,
-    gunbc_ci_heal_dispatch_target
+    gunbc_ci_heal_repo_local_git_config_target
   ]
 }
 
@@ -2114,26 +2108,6 @@ fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   )
 }
 
-fn gunbc_ci_heal_dispatch_invoke() -> String {
-  gunbc_run_invocation_script_with_env(
-    env: [
-      EnvSet { name: "GUNBC_HEALED_HEAD", value: "\"$HEALED_HEAD\"" },
-      EnvSet { name: "GUNBC_HEAL_BRANCH_REF", value: "\"$\{{ github.head_ref || github.ref_name \}}\"" }
-    ],
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_dispatch_target.entry,
-    function: gunbc_ci_heal_dispatch_target.function,
-    claim_run: false
-  )
-}
-
-// PAST TENSE FOR THE HEAL JOB. This helper used to be spliced into
-// gunbc_ci_heal_commit_push_script after a successful push. That invoke is deleted: a dispatched
-// run cannot approve the gated pull_request run and shadows it under the same check names
-// (gunbc.rung_drop.floor_cut_heal). The helper remains so a *named manual* dispatch can still bind
-// GUNBC_HEALED_HEAD and GUNBC_HEAL_BRANCH_REF separately and call tools.ci_heal_dispatch. Heal does
-// not call it. A transport refusal of that manual path is still a nonzero gunbc exit; there is
-// no fallback to the ordinary push event and no silent retry.
 // RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard this note describes is DELETED and no
 // function implements it. What follows is the incident record that produced it, kept because the
 // receipt outlives the mechanism; read it in the past tense. THE PAIRING THE HEAL JOB NEVER MODELED
@@ -2334,24 +2308,16 @@ fn ci_heal_shell_lines() -> List<String> {
 }
 
 // AUTO-DISPATCH OF THE HEALED HEAD IS DELETED FROM THIS ARM. A bot-pushed head still creates a
-// pull_request run that GitHub HOLDS (action_required, zero jobs). tools.ci_heal_dispatch was
-// wired here because a workflow_dispatch on the same SHA is the only route that EXECUTES without
-// a human -- measured on gunbc.rung_drop.floor_cut_heal. That second run cannot APPROVE the gated
-// one (the sanctioned release is POST /actions/runs/<id>/approve on THAT held run), and it
-// lands check-runs under the SAME names on the SAME commit. GitHub's PR rollup is name-keyed
-// and resolves to the gated entries (empty conclusion, mergeStateStatus BLOCKED) while the
-// commit's check-runs API shows the dispatched SUCCESS. Live receipts: #10994 head
-// b884668e8e and #11014 head 5e8c27e597. The dispatch therefore buys a whole extra required
-// run AND a shadow the merge gate cannot see through. Heal does not approve its own run.
-// tools.ci_heal_dispatch and gunbc.witness_floor_workflow ci_heal_expected_healed_sha_input
-// remain for a named manual dispatch; they are not invoked from this job.
+// pull_request run that GitHub HOLDS (action_required, zero jobs). Auto-dispatch was the only
+// route that executed without a human (gunbc.rung_drop.floor_cut_heal) and is deleted because it
+// cannot APPROVE that gated run and shadows GitHub's name-keyed PR rollup. The named loss is
+// gunbc.rung_drop.heal_healed_head_executed_verdict_without_human, not this annotation. The class
+// of same-named check-runs is gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_compares.
+// gunbc.witness_floor_workflow ci_heal_expected_healed_sha_input remains for GitHub UI dispatch.
 //
 // THE NONZERO EXIT STAYS. This run judged PRIOR_HEAD; it has no standing to speak for H1. So
-// SupersededByHealedHead still prints and this job still fails. THE LOSS IS NAMED, NOT LEFT
-// SILENT: before removal a dispatched run could leave commit check-runs SUCCESS while the PR
-// rollup stayed BLOCKED; after it there is no executed verdict until a human approves the gated
-// pull_request run. The notice below names that remedy and where to find the run (the id is not
-// known here; this job does not list Actions runs and must not approve itself).
+// SupersededByHealedHead still prints and this job still fails. There is no executed verdict until
+// a human approves the gated pull_request run. The notice below names that remedy.
 fn gunbc_ci_heal_commit_push_script() -> String {
   join(
     [

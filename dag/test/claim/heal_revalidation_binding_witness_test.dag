@@ -19,7 +19,7 @@ import gunbc.witness_floor_workflow {
   witness_floor_lane_jobs,
   witness_floor_triggers
 }
-import gunbc.ci_spec { gunbc_ci_heal_commit_push_script, gunbc_ci_heal_dispatch_invoke }
+import gunbc.ci_spec { gunbc_ci_heal_commit_push_script }
 import gunbc.heal_revalidation {
   superseded_by_author_head_token,
   heal_push_refused_token,
@@ -28,8 +28,6 @@ import gunbc.heal_revalidation {
 }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_root_stamp_script }
 import gunbc.ci_heal_credential { ci_heal_job_permissions }
-import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_name }
-import tools.ci_heal_dispatch { ci_heal_dispatch_workflow_id }
 
 // THE SUBJECT IS THE BINDING FOR A NAMED DISPATCH, NOT AN AUTO-DISPATCH FROM HEAL. A heal
 // that repairs a branch pushes a new head; GitHub creates a GATED pull_request run on that
@@ -225,8 +223,7 @@ test fn the_ordinary_checkout_selects_the_expected_head_when_one_is_named() -> B
 
 // THE HEAL TERMINAL MUST NOT AUTO-DISPATCH. A workflow_dispatch on the healed SHA lands
 // same-named check-runs beside the gated pull_request run; GitHub's PR rollup is name-keyed
-// and stays BLOCKED on the empty gated entries. The invoke helper still exists for a named
-// manual dispatch; this row forbids splicing it into the produced-a-heal arm.
+// and stays BLOCKED on the empty gated entries.
 //
 // THE ROOT STAMP ARM IS HERE BECAUSE IT ALREADY FAILED ONCE, in this cut, on the first emission:
 // $ROOT is a per-step variable and this step never stamped it, so the composed invocation resolved
@@ -234,7 +231,7 @@ test fn the_ordinary_checkout_selects_the_expected_head_when_one_is_named() -> B
 // plausible, which is exactly the shape a witness is for.
 test fn the_heal_terminal_does_not_dispatch_the_healed_head() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  !string_contains(s: script, pattern: gunbc_ci_heal_dispatch_invoke())
+  !string_contains(s: script, pattern: "ci_heal_dispatch.dag")
     && string_contains(s: script, pattern: "  echo \"SupersededByHealedHead")
     && string_contains(
       s: script,
@@ -246,28 +243,6 @@ test fn the_heal_terminal_does_not_dispatch_the_healed_head() -> Bool {
     && string_contains(s: script, pattern: "POST /actions/runs/<id>/approve")
     && string_contains(s: script, pattern: "  exit 1\nfi\n")
     && string_contains(s: script, pattern: concat(gunbc_invoke_root_stamp_script(), "git config user.name"))
-}
-
-// The helper still exists for a named manual dispatch; this row asserts its inputs stay
-// separate. Heal does not splice it into the produced-a-heal arm (the row above).
-test fn the_heal_dispatch_binds_the_healed_head_and_the_branch_ref_separately() -> Bool {
-  let invoke = gunbc_ci_heal_dispatch_invoke()
-  string_contains(s: invoke, pattern: "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\"")
-    && string_contains(s: invoke, pattern: "GUNBC_HEAL_BRANCH_REF=")
-    && string_contains(
-      s: invoke,
-      pattern: "--entry dag/gunbc/instruments/ci_heal_dispatch.dag --function main"
-    )
-}
-
-// THE WORKFLOW IS NAMED BY ITS ARTIFACT VARIANT. The literal this replaces read "ci.yml" for a
-// fortnight after that workflow was deleted, because a string cannot go stale loudly. The negative
-// clause carries the content: an equality against the variant would also hold if someone re-typed
-// the same spelling as a literal, so the row that a DELETED name has not come back is asserted too.
-test fn the_dispatcher_names_the_emission_that_carries_the_heal_job() -> Bool {
-  ci_heal_dispatch_workflow_id == artifact_name(a: WitnessFloorYamlArtifact)
-    && ci_heal_dispatch_workflow_id == "witnesses.yml"
-    && ci_heal_dispatch_workflow_id != "ci.yml"
 }
 
 // The grant is spent, not held. Auto-dispatch is gone, so `actions` is PermNone rather than a

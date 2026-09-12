@@ -84,8 +84,8 @@ type WorkflowDispatchPreflight
 // A produced heal publishes H1 and requires a verdict on H1. That verdict is a human APPROVE of
 // the gated pull_request run GitHub creates on the bot push (POST /actions/runs/<id>/approve), not
 // a workflow_dispatch this job issues. Auto-dispatch was deleted because it landed same-named
-// check-runs a name-keyed PR rollup cannot tell apart from the held run (gunbc.rung_drop.floor_cut_heal).
-// tools.ci_heal_dispatch remains for a named manual dispatch; it is not this fold's producer.
+// check-runs a name-keyed PR rollup cannot tell apart from the held run
+// (gunbc.rung_drop.floor_cut_heal; gunbc.rung_drop.heal_healed_head_executed_verdict_without_human).
 // The external dashboard readout that historically treated an absent run as ok, and its separate
 // aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository
 // and are not fixed or claimed fixed here.

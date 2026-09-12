@@ -607,9 +607,11 @@ data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 
 // THE HEAL REVALIDATION INPUT. A heal that repairs a branch pushes a new head H1 with the Actions
 // job credential, and H1 must be judged on its own tree rather than inherit H0's receipts, which
-// describe a tree that no longer exists. tools.ci_heal_dispatch closes that by dispatching this
-// workflow, and a dispatch that cannot say WHICH head it got would report a verdict about a head
-// it cannot name: a fabricated revalidation, worse than the honest gap.
+// describe a tree that no longer exists. Auto-dispatch via tools.ci_heal_dispatch is deleted
+// (gunbc.rung_drop.heal_healed_head_executed_verdict_without_human): it could not clear the merge
+// gate and shadowed a name-keyed PR rollup. This input remains so a GitHub UI workflow_dispatch
+// can still name the head it claims. A dispatch that cannot say WHICH head it got would report a
+// verdict about a head it cannot name: a fabricated revalidation, worse than the honest gap.
 //
 // CREATED-AND-HELD IS NOT NEVER-CREATED, AND THAT DISTINCTION IS AT TOP BILLING BECAUSE EVERY
 // WORDING ERROR THIS CARRIER WENT THROUGH -- IN BOTH DIRECTIONS -- FOLLOWED FROM NOT HAVING THE TWO
@@ -618,10 +620,8 @@ data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
 // the dispatch route that cannot say which state it is in cannot say what the dispatch buys.
 //
 // GITHUB WITHHOLDS EXECUTION, NOT CREATION, AND THE HOLD KEYS ON THE EVENT. A `pull_request` run IS
-// created for the healed head and executes nothing; the dispatched run on the same head executes.
-// So nothing judges H1 automatically by the ordinary route, and the dispatch is the DECLARED path
-// because it is the only route to a healed head that runs without a human -- not because no run
-// appears. THE MEASURED POPULATIONS LIVE ONCE, IN gunbc.rung_drop floor_cut_heal, whose subject is
+// created for the healed head and executes nothing. A workflow_dispatch on the same head used to
+// execute; that was the only no-human route and is deleted. THE MEASURED POPULATIONS LIVE ONCE, IN gunbc.rung_drop floor_cut_heal, whose subject is
 // this actuation boundary; they are cited here and deliberately not restated, so one count has one
 // authority.
 //
