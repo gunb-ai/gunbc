@@ -257,10 +257,15 @@ fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_
 // floor's call is the memo arguments, which is a caching decision rather than a semantic one.
 //
 // THE ENTRY IS A MODULE PATH, not a file path, because that is what `claim_scope_for` is keyed on.
+// `cause` is `NonEmptyStr`, matching `MultiModuleCompileFixtureOutcome`'s arm one screen up
+// rather than weakening to bare `String` for the same fact. Every producer builds a non-empty
+// literal, so the brand costs nothing and makes an empty cause unwritable instead of merely
+// unwritten -- §5's construction over validation, applied to a refusal whose whole value is the
+// text it carries.
 type ClaimScopeFixtureOutcome
-  = ClaimScopeInstrumentRefused { cause: String }
+  = ClaimScopeInstrumentRefused { cause: NonEmptyStr }
   | ClaimScopeCompileRefused { blocking_count: Int }
-  | ClaimScopeRefused { cause: String }
+  | ClaimScopeRefused { cause: NonEmptyStr }
   | ClaimScopeAccepted { module_count: Int }
 
 fn claim_scope_fixture(fixture: MultiModuleCompileFixture, entry_module_path: String) -> ClaimScopeFixtureOutcome {
@@ -283,10 +288,13 @@ fn claim_scope_fixture(fixture: MultiModuleCompileFixture, entry_module_path: St
 // to be the red the caller meant.
 //
 // Substring scan via the ambient split, the idiom the corpus already uses for this: a marker is
-// contained when splitting on it yields more than one piece.
+// contained when splitting on it yields more than one piece. `cause` is coerced to `String` at the
+// call because `split` is declared over `String` and the `NonEmptyStr` brand establishes no method
+// surface of its own -- the brand is worth keeping on the FIELD, where it makes an empty cause
+// unwritable, and costs one ascription at the one place that reads it.
 fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) -> Bool {
   match o {
-    ClaimScopeRefused { cause: c } => (split(s: c, delimiter: cause_marker) |> count) > 1
+    ClaimScopeRefused { cause: c } => (split(s: c as String, delimiter: cause_marker) |> count) > 1
     ClaimScopeAccepted { module_count: n } => false
     ClaimScopeCompileRefused { blocking_count: n } => false
     ClaimScopeInstrumentRefused { cause: c } => false
