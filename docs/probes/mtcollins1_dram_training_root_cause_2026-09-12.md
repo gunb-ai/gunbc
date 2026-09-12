@@ -3,9 +3,38 @@
 The console was never silent. The collector was broken for a week, and when repaired it printed
 the answer on the first failing boot.
 
-Artifact: `artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt`, sha256
-`e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c`, 3764 bytes, captured over
-IPMI SOL across the failing boot of 2026-09-12T02:37:23Z.
+## The four captures, and what each one grounds
+
+Review 64333 found that two of these were landed with nothing in this account reading them, which
+is DESIGN section 3c's tell for an artifact as much as for a data row, and section 2's redundant
+work. Each now states what it grounds, or it should not be here.
+
+- **`artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt`**, sha256
+  `e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c`, 3764 bytes, captured over
+  IPMI SOL across the failing boot of 2026-09-12T02:37:23Z. **Grounds the entire finding**: the
+  firmware's own statement of the rule, the compared byte-6 values, and the 16-row per-DIMM
+  population table.
+
+- **`artifacts/bmc/mtcollins1-sel-full-2026-09-12T0355Z.txt`**, sha256
+  `142ff5e254f50d138b3f744f844cfc6138ff75e2ee17d12556ae590ed5a5d31f`. **Grounds two things**: the
+  controller's four-hour clock offset, readable from its first three lines; and the OEM payload
+  records bracketing the SOL session, at records `518`, `51e` and `51f`.
+
+- **`artifacts/bmc/mtcollins1-sel-full-2026-09-12.txt`**, sha256
+  `8d93cb24349549ef4fefb884a56dbe9f72cc03b0530fa559afdca089b5250f89`. **Grounds the payload-family
+  census** — the counts and co-emission structure that supported the socket-bit reading before the
+  firmware stated it directly, including the same-second `0fde7033ff10`/`0fde703bff10` pair. It is
+  also the capture that ENDS BEFORE the SOL boot, which is what made the first version of the
+  co-timing claim in this document ungrounded; it is retained because that is a receipt, not an
+  embarrassment to hide.
+
+- **`artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt`**, sha256
+  `dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c`. **Grounds unit identity** —
+  that every reading in this document is about `mtcollins1` and not some other Mt. Collins. It
+  carries the controller's IPMI FRU board serial `02030A800TEXFT02L` and product serial
+  `MXX2080619`, which the host reads independently from its own SMBIOS. Two transports, two agents,
+  the same two serials; either alone identifies a reading rather than a unit. Its argv is on its
+  first lines and `exit=0` on its last, so a missing read is distinguishable from a zero one.
 
 ## What the firmware says
 
