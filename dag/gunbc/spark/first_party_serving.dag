@@ -534,7 +534,7 @@ data spark_serving_usage_stats_unobserved_hosts_obligation: NonEmptyStr = "gunbc
 fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> VllmUsageStatsLaunchStanding {
   match spark_realization_identity(realization: realization) {
     RealizationUnidentified { cause: why } => UsageStatsLaunchUnread { obligation: why }
-    RealizationIsPairServing { configured_model_path: _ } => {
+    RealizationIsPairServing { configured_model_path: identified_by } => {
       let missing = spark_realization_hosts_without_lanes(realization: realization)
       let lanes = spark_realization_lanes(realization: realization)
       if count(realization.hosts) == 0 {
@@ -547,7 +547,11 @@ fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> V
         }
       } else {
         UsageStatsEnabledByDefault {
-          basis: "the deployment that answered is identified as the pair-serving launch by the model path the running engine itself reported, every one of its hosts has an observed lane, and at least one of those lanes satisfies none of extdeps.vllm.usage_stats disable_terms in the container environment declared for it, so usage reporting is on by upstream default for this route",
+          basis: join([
+            "the deployment that answered is identified as the pair-serving launch by the model path the running engine itself reported (",
+            identified_by as String,
+            "), every one of its hosts has an observed lane, and at least one of those lanes satisfies none of extdeps.vllm.usage_stats disable_terms in the container environment declared for it, so usage reporting is on by upstream default for this route",
+          ], "") as NonEmptyStr,
         }
       }
     }

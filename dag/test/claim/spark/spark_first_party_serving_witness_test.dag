@@ -74,7 +74,7 @@ fn t_third_party_scope() -> ProviderUseScope<NonEmptyStr> {
 // THE REALIZATION THAT ANSWERED IS NOW PART OF EVERY SUBJECT, because the route facts are about the
 // deployment being offered rather than about a declaration. The pair-serving fixture is the one the
 // site allocation covers and whose container environment this module models; the foreign one differs
-// in the single field that decides attribution -- the port that answered.
+// in the single field that decides attribution -- the model path the running engine reported.
 fn t_readback(path: String) -> VllmModelsRouteReadbackStanding {
   ModelsRouteRead {
     readback: vllm_models_route_readback(
@@ -212,9 +212,15 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
 // IT IS NOT A CHANGE DETECTOR: it asserts the arm the fold selects, and the fold reads a declaration
 // in another module, so what goes red is a real divergence between the launch and the drop roster
 // rather than a number someone has to keep in step by hand.
+//
+// AND IT ASSERTS THE PATH THE IDENTITY JOIN MATCHED ON, not merely the arm. The arm alone says a
+// deployment was identified; naming the path says WHICH ONE, which is what an auditor reading the
+// standing needs and what makes the identity payload load-bearing rather than carried (review
+// 64492). The expected value comes from the same producer the module compares against, so this
+// cannot drift into agreeing with itself.
 test fn the_launch_leaves_usage_reporting_on_which_is_what_the_drop_is_declared_against() -> Bool {
   match spark_serving_usage_stats_standing(realization: t_pair_realization()) {
-    UsageStatsEnabledByDefault { basis: _ } => true
+    UsageStatsEnabledByDefault { basis: b } => string_contains(s: b as String, pattern: t_declared_path())
     UsageStatsDisabledByLaunch { mechanism: _ } => false
     UsageStatsLaunchUnread { obligation: _ } => false
   }
@@ -222,10 +228,11 @@ test fn the_launch_leaves_usage_reporting_on_which_is_what_the_drop_is_declared_
 
 
 // RED -- A DEPLOYMENT THIS MODULE HAS NO ENVIRONMENT MODEL FOR DOES NOT INHERIT PAIR-SERVING'S
-// ANSWER. Same hosts, same site coverage, one different port: before this repair the telemetry fold
-// read gunbc.spark.pair_serving_realization's container environment over the global lane roster and
-// would have handed this launch the pair route's answer, so a native GLM engine would have been
-// admitted on route facts describing a different container. It is unread now, which refuses.
+// ANSWER. Same hosts, same site coverage, and the one thing that differs is the model path the
+// engine itself reported: before this repair the telemetry fold read
+// gunbc.spark.pair_serving_realization's container environment over the global lane roster and would
+// have handed this launch the pair route's answer, so a native GLM engine would have been admitted
+// on route facts describing a different container. It is unread now, which refuses.
 test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool {
   match spark_serving_usage_stats_standing(realization: t_foreign_realization()) {
     UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no environment model for the deployment that answered")

@@ -30,10 +30,12 @@ import gunbc.spark.serving_offer {
 // offer did not bind" would be satisfied by a binder that never binds for any reason at all, and
 // the refusal row would assert nothing about the route.
 
-// THE STANDING'S SUBJECT IS THE REALIZATION THAT ANSWERED. These rows vary its HOSTS, which is what
-// the site-coverage fold reads; the endpoint is held constant at the pair route's so the coverage
-// question is the only thing under test here. Whose container environment may be attributed is the
-// endpoint's question and is exercised in the first-party witness instead.
+// THE STANDING'S SUBJECT IS THE REALIZATION THAT ANSWERED. These rows vary its HOSTS, which is the
+// only field the route standing reads -- site coverage is the whole question here. The readback is
+// held at an unresolved value on purpose: this standing never consults it, and a fixture that
+// supplied a resolvable one would invite a reader to think it did. Which declared launch the process
+// is, and therefore whose container environment may be attributed to it, is the readback's question
+// and is exercised in the first-party witness instead.
 fn t_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
   SparkServingRealization {
     hosts: hosts,
