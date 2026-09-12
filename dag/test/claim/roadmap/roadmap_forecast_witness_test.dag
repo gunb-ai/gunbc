@@ -492,7 +492,11 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // re-derive the population from a second authority). The enrolled name keeps "live_graph" because
 // that identity is already on the floor; the body is the smallest discriminating fixture.
 // Goes red the day the deriver answers, which is gunbc.rung_drop.roadmap_sizing_authored_to_derived
-// retiring.
+// retiring. Re-derive: make gunbc.roadmap_sizing derive_task_sizing return SizingDerived for
+// subject fixture-stub-unsized-a and run this function with `gunbc run --source-root dag
+// --source-root src/v2 --entry dag/test/claim/roadmap/roadmap_forecast_witness_test.dag
+// --function witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
+// --claim-run`.
 test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
   let a = fixture_node(id: "stub-unsized-a")
   let b = fixture_node(id: "stub-unsized-b")

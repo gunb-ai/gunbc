@@ -50,7 +50,13 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
 // hands derived_node_sizings a two-node fixture and refuses NodeUnsized over that identity join --
 // it goes red the day the deriver answers a cell, which is either this drop retiring or a
-// regression that would otherwise be silent. The history
+// regression that would otherwise be silent. RECEIPT: on this tree, temporarily making
+// gunbc.roadmap_sizing derive_task_sizing return SizingDerived for subject fixture-stub-unsized-a
+// (the identity of fixture_node(id: "stub-unsized-a")) turns
+// test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
+// FAIL under `gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/roadmap/roadmap_forecast_witness_test.dag --function witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub --claim-run`;
+// the committed stub leaves that same invocation PASS. Re-derive by repeating the mutation, not by
+// reading this sentence. The history
 // join keeps its own live control for the same reason:
 // test.claim.roadmap_forecast_witness.witness_cited_acceptance_pr_history_refuses_every_link_as_unsized
 // asserts that EVERY cited acceptance/pull link refuses as HistoryNodeUnsized, so the loss is
