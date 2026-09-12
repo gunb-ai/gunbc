@@ -620,7 +620,7 @@ const AUTHORED_STRING_LITERAL_EDGE: &str = "authored_string_literal";
 /// atom walks skip that label; lexeme-keyed discovery still reads the target atoms.
 /// Not `DataInitDecl.literal_fp`: that is one SOURCE fingerprint of a top-level
 /// literal. This walk exists until the typechecked projection itself carries LitStr atoms.
-pub fn with_authored_string_literals(
+pub(crate) fn with_authored_string_literals(
     ctx: &InterpContext,
     item: &Rc<Node>,
     projection: Value,

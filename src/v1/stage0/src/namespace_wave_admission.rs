@@ -1741,45 +1741,11 @@ pub struct TransitionAdmission {
 ///
 /// TWENTY-SECOND DISSOLUTION (2026-09-12). Required floor on gunbc#11082 (run 34661122479)
 /// reported those three #11071 rows as `CONSUMED ADMISSION ... already satisfied at the base`.
-/// This change edits the roster, so the deletion is paid here. The rows below admit a
-/// DIFFERENT delta this head produces, not those restored.
-///
-/// gunbc#11082 DataItem LitStr channel (2026-09-12). `test.claim.decl_facts_initializer_projection_witness_test`
-/// now imports `v2.std.decl_facts_skeleton` so it can query authored-string vs constructor-spelling
-/// channels. That import makes `std.types` `List` a coincidence for return types in
-/// `test.claim.decl_facts_reflection_witness_support` that already spelled `List` without
-/// importing it: binding `List` goes `base {} -> head {std.types}` and classifies
-/// `NewPoolCoincidenceResolution`. Auto-admitted on this run: membership of the initializer
-/// witness onto the skeleton, and skeleton dropping `v2.std.node_query` as a
-/// `SameDeclarationIdentityRebind`.
-///
-/// WHAT MAKES IT SAFE TO ADMIT. The support module's return types were already `List<DeclFact>`;
-/// the head does not change which declaration those functions compute. `List` newly *resolves*
-/// rather than remaining an empty pool. TRIGGER: these rows go when #11082 merges, at which
-/// point both sides resolve `List` to `std.types` in those declarations and CONSUMED comes due
-/// on the roster's next touch.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11082 DataItem LitStr authored-string channel",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.decl_facts_reflection_witness_support",
-            in_declaration: "decl_fact_projection_node_for_qualified_name",
-            spelling: "List",
-            target: "std.types",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-    TransitionAdmission {
-        label: "gunbc#11082 DataItem LitStr authored-string channel",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.decl_facts_reflection_witness_support",
-            in_declaration: "decl_facts_reflection_witness_support_facts",
-            spelling: "List",
-            target: "std.types",
-        },
-        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
-    },
-];
+/// This change edits the roster, so the deletion is paid here. The List coincidence those
+/// rows would have admitted is not produced: `test.claim.decl_facts_reflection_witness_support`
+/// now imports `std.types` `List` as a structural authority, so the binding is authored rather
+/// than a new pool coincidence.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
