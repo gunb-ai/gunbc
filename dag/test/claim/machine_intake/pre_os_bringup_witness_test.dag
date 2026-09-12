@@ -69,6 +69,8 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   SelStandardDecodeUnavailable,
   NothingObservedBeyondActivation,
   SolBytesUnattributedToHost,
+  SolCaptureUnreadable,
+  ConsoleCaptureUnreadable,
   SolHostBytesObserved,
   ConsoleBytesUnattributedToHost,
   sol_capture_reading,
@@ -599,6 +601,18 @@ test fn unattributed_console_bytes_beside_an_empty_window_are_their_own_undeterm
     profile: mtcollins1_pre_os_capabilities,
   ) {
     BringupUndetermined { cause: ConsoleBytesUnattributedToHost } => true
+    _ => false
+  }
+}
+
+// AN UNREADABLE CAPTURE IS ITS OWN CAUSE, never "no restart" (review 64498).
+test fn an_unreadable_console_capture_is_its_own_undetermined_cause() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: SolCaptureUnreadable { capture_path: "x.log" },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: ConsoleCaptureUnreadable { capture_path: p } } => p == "x.log"
     _ => false
   }
 }

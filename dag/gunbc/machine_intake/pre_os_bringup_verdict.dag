@@ -351,7 +351,8 @@ fn remediation_localization(profile: PreOsObservationCapabilities) -> Remediatio
 }
 
 type BringupUndeterminedCause
-  = SelStandardDecodeUnavailable
+  = ConsoleCaptureUnreadable { capture_path: NonEmptyStr }
+  | SelStandardDecodeUnavailable
   | FirmwareStatedUnrecognizedError { statement: NonEmptyStr }
   | ConsoleBytesUnattributedToHost
   | FirmwareEmittedUndecodedErrorCodes { err_lines: Int }
@@ -393,13 +394,23 @@ fn pre_os_bringup_verdict(
   console: SolCaptureReading,
   profile: PreOsObservationCapabilities,
 ) -> PreOsBringupVerdict {
-  let stated = match console {
-    SolHostBytesObserved { capture_path: _, bytes: _, report: r } => r
-    SolBannerOnly { capture_path: _, bytes: _ } => NoTerminalStated
-    SolBytesUnattributedToHost { capture_path: _, bytes: _ } => NoTerminalStated
-    SolCaptureUnreadable { capture_path: _ } => NoTerminalStated
+  match console {
+    SolCaptureUnreadable { capture_path: p } => BringupUndetermined { cause: ConsoleCaptureUnreadable { capture_path: p } }
+    SolHostBytesObserved { capture_path: _, bytes: _, report: r } => verdict_after_console_report(report: r, window: window, console: console, profile: profile)
+    SolBannerOnly { capture_path: _, bytes: _ } => sel_window_verdict(window: window, console: console, profile: profile)
+    SolBytesUnattributedToHost { capture_path: _, bytes: _ } => sel_window_verdict(window: window, console: console, profile: profile)
   }
-  match stated {
+}
+
+// A CAPTURE WHOSE DIGEST COULD NOT EVEN BE COMPARED is the strongest ignorance state of the four
+// console readings and gets its own cause (review 64498); it is never folded into "said nothing".
+fn verdict_after_console_report(
+  report: FirmwareConsoleReport,
+  window: List<SelWindowEvent>,
+  console: SolCaptureReading,
+  profile: PreOsObservationCapabilities,
+) -> PreOsBringupVerdict {
+  match report {
     TrainingRefusedByFirmware { statement: st, locus: l } =>
       TrainingRefusedByFirmwareStatement { statement: st, localization: StatedByFirmware { locus: l } }
     FirmwareErrorStatementUnrecognized { statement: st } => BringupUndetermined { cause: FirmwareStatedUnrecognizedError { statement: st } }
@@ -448,9 +459,9 @@ fn decoded_sel_window_verdict(
           UndecodedErrorCodesOnly { err_lines: n } => BringupUndetermined { cause: FirmwareEmittedUndecodedErrorCodes { err_lines: n } }
           FirmwareErrorStatementUnrecognized { statement: st } => BringupUndetermined { cause: FirmwareStatedUnrecognizedError { statement: st } }
           NoTerminalStated => BringupUndetermined { cause: NoRestartInWindow }
-          TrainingRefusedByFirmware { statement: _, locus: _ } => BringupUndetermined { cause: NoRestartInWindow }
+          TrainingRefusedByFirmware { statement: st, locus: l } => TrainingRefusedByFirmwareStatement { statement: st, localization: StatedByFirmware { locus: l } }
         }
-      SolCaptureUnreadable { capture_path: _ } => BringupUndetermined { cause: NoRestartInWindow }
+      SolCaptureUnreadable { capture_path: p } => BringupUndetermined { cause: ConsoleCaptureUnreadable { capture_path: p } }
     }
   }
 }
