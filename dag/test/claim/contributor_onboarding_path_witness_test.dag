@@ -46,7 +46,6 @@ import tools.docs_projection_gate {
   committed_docs_located_artifacts
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.nat { Nat }
 import std.types { String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -69,7 +68,7 @@ test fn the_declared_path_is_a_gapless_total_order() -> Bool {
 // well-ordered, one with a duplicate, one with a gap. Deriving them from onboarding_steps would
 // make the RED depend on what the live roster happens to contain, which is the input the roster
 // is free to change.
-fn fixture_step(ordinal: Nat, id: String) -> OnboardingStep {
+fn fixture_step(ordinal: Int, id: String) -> OnboardingStep {
   OnboardingStep {
     ordinal: ordinal,
     id: id as NonEmptyStr,

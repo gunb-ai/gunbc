@@ -69,8 +69,8 @@ module gunbc.design_ledgers
 // break anywhere in it, and are rendered here as one list item each. Nothing is added and nothing is dropped; the separator becomes a line break, which is the
 // difference between a roster a reader can scan and a wall a reader skips.
 
-import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
+import std.markdown { MarkdownDocument, MarkdownBlock }
+import gunbc.plans.md_helpers { h1, h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.recurring_failure_mode { authored }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
@@ -86,7 +86,6 @@ import gunbc.self_host_compile_phase_frontier {
   render_phase_board,
 }
 
-fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
 fn failure_mode_preamble_blocks() -> List<MarkdownBlock> {
   [

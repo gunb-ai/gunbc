@@ -1,10 +1,9 @@
 module gunbc.contributor_onboarding_path
 
 import std.types { String, List, NonEmptyStr }
-import std.nat { Nat }
-import v2.std.integer { integer_nat_to_decimal_string }
-import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, hr }
+import v2.std.integer { integer_int_to_decimal_string }
+import std.markdown { MarkdownDocument, MarkdownBlock }
+import gunbc.plans.md_helpers { h1, h2, h3, p, li, ul, ol, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import extdeps.exec.command { argv_words }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
@@ -41,8 +40,17 @@ type OnboardingBlocker
   | NeedsOperatorDecision { decision: NonEmptyStr }
   | NeedsMachine { resource: NonEmptyStr }
 
+// THE ORDINAL IS AN Int, AND THAT IS A CORRECTION RATHER THAN A PREFERENCE (review 64609).
+// It was first declared `std.nat` `Nat` -- `CommutativeSemiring<Magnitude>` -- and rendered with
+// `integer_nat_to_decimal_string`, whose parameter is `v2.std.nat.Nat`, the Peano `Zero | Succ`
+// coproduct. Two materially different types sharing one spelling is the DESIGN section 3 meaning
+// fork, and this instance is invisible exactly where it is authored: under the interpreter's
+// numeric grounding the projection rendered 1 through 10 correctly, while the emitted closure
+// refuses it. `v2.std.integer` `integer_int_to_decimal_string` records that same class as already
+// repaired for two Int-valued callers, so re-introducing it would have been a silent regression of
+// that fix. Every other `dag/gunbc` caller consumes the Int renderer; this one now does too.
 type OnboardingStep {
-  ordinal: Nat
+  ordinal: Int
   id: NonEmptyStr
   goal: NonEmptyStr
   command: String
@@ -437,7 +445,7 @@ fn self_serve_steps_missing_verification() -> List<OnboardingStep> {
 }
 
 fn step_blocks(s: OnboardingStep) -> List<MarkdownBlock> {
-  let head = h3(text: join([integer_nat_to_decimal_string(value: s.ordinal), ". ", (s.id as String)], ""))
+  let head = h3(text: join([integer_int_to_decimal_string(value: s.ordinal), ". ", (s.id as String)], ""))
   let goal = p(text: (s.goal as String))
   let who = p(text: join(["Who is needed: ", blocker_rendered(b: s.blocker)], ""))
   let verify = p(text: join(["Done when: ", (s.verification as String)], ""))
@@ -468,7 +476,6 @@ fn reading_item_text(r: DesignReading) -> String {
   join(["**", (r.section as String), " — ", priority_rendered(pr: r.priority), ".** ", (r.why as String)], "")
 }
 
-fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
 fn onboarding_preamble_blocks() -> List<MarkdownBlock> {
   [
@@ -505,7 +512,7 @@ fn onboarding_bus_factor_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Where the path still needs somebody else"),
     p(text: "Stated as a census rather than as reassurance. These are the steps and obstacles a document cannot discharge, and they are the standing bus-factor risks in this path."),
-    ul(items: map(steps_blocked_on_others(), s => li(text: join(["Step ", integer_nat_to_decimal_string(value: s.ordinal), ", ", (s.id as String), ": ", blocker_rendered(b: s.blocker)], "")))),
+    ul(items: map(steps_blocked_on_others(), s => li(text: join(["Step ", integer_int_to_decimal_string(value: s.ordinal), ", ", (s.id as String), ": ", blocker_rendered(b: s.blocker)], "")))),
     p(text: "Obstacles whose only honest disposition is that somebody else must act:"),
     ul(items: map(operator_gated_obstacles(), o => li(text: join([(o.step_id as String), ": ", disposition_rendered(d: o.disposition)], "")))),
   ]
