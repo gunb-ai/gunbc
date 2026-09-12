@@ -1,0 +1,233 @@
+module test.claim.fabric_m0_origin_commit_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
+import std.durable_compare_and_set {
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+  CasReadablePresent,
+  CasReadableAbsent,
+  ExpectSlotAbsent,
+  ExpectSlotGeneration,
+  cas_generation_first,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.fabric_m0_origin_readback {
+  OriginReading,
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  origin_reading_digest,
+  read_origin_staged_file,
+}
+import gunbc.cloudflare.r2_origin_object {
+  OriginPutOutcome,
+  OriginObjectStored,
+  OriginObjectAlreadyPresent,
+  OriginPutRefused,
+  OriginPutOutcomeUnknown,
+}
+import gunbc.fabric_m0_commit { CommitTransportOutcome, StoreAnswered, StoreDidNotAnswer }
+import gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed, ReadbackAbsent, ReadbackUnknown }
+import std.process { exit_ok }
+import std.measure { hardware_thread_count }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, work_for, DeclaredOutputObligations,
+}
+import gunbc.fabric_m0_completion { ComputationSucceeded }
+import gunbc.fabric_m0_commit { CommitNamespace, ManifestRead }
+import gunbc.fabric_m0_job_ending { JobEnding, end_required_job }
+import gunbc.cloudflare.r2_origin_object { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains }
+import gunbc.fabric_m0_origin_commit { transport_of_origin_put, object_readback_of_origin_put, process_exit_with_credential_custody }
+
+// READS THE LIVE TREE: the staged arm's reading is taken through read_origin_staged_file over a
+// committed fixture, since OriginReading is sole_constructor and cannot be written here.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE PURE FOLD OVER PUT x FETCH. What is established: each PUT arm reaches the transport arm
+// its store answer means, the 412 arm consults the fetch and only a staged reading yields an
+// occupant, and no arm reaches CasCommitted or CasPreconditionFailed by any route other than the
+// one it names. What is NOT established: that any PUT or fetch happened -- the live chain is
+// tools.fabric_m0_origin_object_probe.
+data fixture_staged_manifest: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
+
+data the_slot: NonEmptyStr = "fabric-m0/v1/commit/attempt-1"
+
+fn recorded() -> Sha256Digest {
+  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
+}
+
+fn staged_fetch() -> OriginFetchOutcome {
+  match read_origin_staged_file(staged_path: fixture_staged_manifest) {
+    OriginReadingTaken { reading: r } => OriginObjectStaged { key: the_slot, reading: r }
+    OriginReadingUnavailable { staged_path: _, cause: c } => OriginFetchUnavailable { key: the_slot, cause: c }
+  }
+}
+
+fn transport_for(put: OriginPutOutcome, fetch: OriginFetchOutcome) -> CommitTransportOutcome {
+  transport_of_origin_put(slot: the_slot, manifest_digest: recorded(), put: put, fetch: fetch)
+}
+
+fn answered_committed_at_first_generation(t: CommitTransportOutcome) -> Bool {
+  match t {
+    StoreAnswered { slot: s, outcome: o } =>
+      (s == the_slot) && (match o {
+        CasCommitted { committed: v } =>
+          (v.generation == cas_generation_first()) && content_hash_eq_cryptographic(left: v.value, right: recorded())
+        other => false
+      })
+    StoreDidNotAnswer { slot: _, cause: _ } => false
+  }
+}
+
+fn did_not_answer(t: CommitTransportOutcome) -> Bool {
+  match t {
+    StoreDidNotAnswer { slot: s, cause: _ } => s == the_slot
+    StoreAnswered { slot: _, outcome: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: a stored manifest is a first-generation commit of the recorded digest.
+test fn a_stored_put_is_a_first_generation_commit() -> Bool {
+  answered_committed_at_first_generation(t: transport_for(put: OriginObjectStored { key: the_slot }, fetch: staged_fetch()))
+}
+
+// A refused PUT is a store answer -- refused -- so a fruitless read afterwards establishes absence
+// one layer up rather than parking the job.
+test fn a_refused_put_is_an_answered_refusal() -> Bool {
+  match transport_for(put: OriginPutRefused { key: the_slot, cause: "403" }, fetch: OriginObjectAbsent { key: the_slot }) {
+    StoreAnswered { slot: _, outcome: o } => match o { CasStoreRefused { cause: _ } => true  other => false }
+    StoreDidNotAnswer { slot: _, cause: _ } => false
+  }
+}
+
+// Discriminating RED: an unknown PUT outcome is NOT a store answer, whatever the fetch found.
+test fn an_unknown_put_outcome_is_not_an_answer() -> Bool {
+  did_not_answer(t: transport_for(put: OriginPutOutcomeUnknown { key: the_slot, cause: "curl exit 000" }, fetch: staged_fetch()))
+}
+
+// THE 412 ARM WITH THE OCCUPANT OBSERVED: precondition-failed against absence, and the occupant
+// is the FETCHED reading, not the recorded digest -- which is what lets a foreign occupant be
+// caught by the readback comparison one layer up.
+test fn a_412_with_a_staged_fetch_carries_the_fetched_occupant() -> Bool {
+  match staged_fetch() {
+    OriginFetchUnavailable { key: _, cause: _ } => false
+    OriginObjectAbsent { key: _ } => false
+    OriginObjectStaged { key: _, reading: r } =>
+      match transport_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: staged_fetch()) {
+        StoreDidNotAnswer { slot: _, cause: _ } => false
+        StoreAnswered { slot: _, outcome: o } =>
+          match o {
+            CasPreconditionFailed { expected: e, observed: obs } =>
+              (match e { ExpectSlotAbsent => true  ExpectSlotGeneration { generation: _ } => false })
+                && (match obs {
+                  CasReadablePresent { version: v } =>
+                    (v.generation == cas_generation_first())
+                      && content_hash_eq_cryptographic(left: v.value, right: origin_reading_digest(reading: r))
+                  CasReadableAbsent => false
+                })
+            other => false
+          }
+      }
+  }
+}
+
+// Discriminating RED: a 412 whose fetch found nothing, or could not be taken, observed no occupant
+// and must not mint one. Both are "no store verdict about this slot".
+test fn a_412_without_an_observed_occupant_is_not_an_answer() -> Bool {
+  did_not_answer(t: transport_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
+    && did_not_answer(t: transport_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: OriginFetchUnavailable { key: the_slot, cause: "curl exit 000" }))
+}
+
+fn readback_for(put: OriginPutOutcome, fetch: OriginFetchOutcome) -> OriginReadback {
+  object_readback_of_origin_put(put: put, fetch: fetch)
+}
+
+fn is_absent(r: OriginReadback) -> Bool {
+  match r { ReadbackAbsent => true  ReadbackConfirmed { reading: _ } => false  ReadbackUnknown { cause: _ } => false }
+}
+
+fn is_unknown(r: OriginReadback) -> Bool {
+  match r { ReadbackUnknown { cause: _ } => true  ReadbackConfirmed { reading: _ } => false  ReadbackAbsent => false }
+}
+
+// POSITIVE CONTROL: a staged fetch confirms, whatever the PUT said.
+test fn a_staged_object_fetch_confirms() -> Bool {
+  match readback_for(put: OriginObjectStored { key: the_slot }, fetch: staged_fetch()) {
+    ReadbackConfirmed { reading: _ } => true
+    other => false
+  }
+}
+
+// A 404 after a REFUSED PUT is a decided absence: the store answered, and nothing is there.
+test fn a_404_after_a_refused_put_is_absent() -> Bool {
+  is_absent(r: readback_for(put: OriginPutRefused { key: the_slot, cause: "403" }, fetch: OriginObjectAbsent { key: the_slot }))
+}
+
+// Discriminating RED, the arm the canary used to get wrong: a 404 after an UNKNOWN PUT is not
+// absence -- the write may land after the read -- and a 404 after the store said stored or present
+// is a contradiction, also unknown.
+test fn a_404_after_an_unknown_or_contradicted_put_is_unknown_not_absent() -> Bool {
+  is_unknown(r: readback_for(put: OriginPutOutcomeUnknown { key: the_slot, cause: "curl exit 000" }, fetch: OriginObjectAbsent { key: the_slot }))
+    && is_unknown(r: readback_for(put: OriginObjectStored { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
+    && is_unknown(r: readback_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
+}
+
+// THE CUSTODY EXIT. A publication of SUCCESS with every credential shredded exits zero; the SAME
+// publication with one residue does not. The discriminating input is the custody alone, which is
+// the fact review 64512 found a confirmed fetch erasing.
+fn a_successful_ending(r: OriginReading) -> JobEnding {
+      end_required_job(
+        work: work_for(
+          principal: "gunbc" as NonEmptyStr,
+          contract: WorkContract {
+            program: "gunbc.fabric-m0.custody-witness:1",
+            steps: [WorkStep { step_id: "custody", resumability: ReceiptSatisfiable }],
+            source: "source:1", inputs: "inputs:1", runtime_closure: "runtime:1",
+            effect_contract: "effects:1", output_contract: "outputs:1",
+            output_obligations: DeclaredOutputObligations { required: [] },
+          },
+          requirements: ExecutionRequirements {
+            capacity_class: ControlPlaneCapacity,
+            shape: Shape { hard: HardRequirements { threads: hardware_thread_count(8) }, envelope: unstated_envelope() },
+            capabilities: "linux-arm64", trust_domain: "fleet-owned", isolation: shared_kernel_sandbox_profile(),
+          },
+        ),
+        attempt: "attempt-1" as AttemptIdentity,
+        computation: ComputationSucceeded,
+        committed: [],
+        observations: [],
+        namespace: "fabric-m0/v1/commit" as CommitNamespace,
+        manifest_digest: origin_reading_digest(reading: r),
+        members: [],
+        transport: transport_for(put: OriginObjectStored { key: the_slot }, fetch: staged_fetch()),
+        observed: ManifestRead { reading: r },
+      )
+}
+
+test fn a_clean_successful_ending_exits_zero() -> Bool {
+  match staged_fetch() {
+    OriginObjectStaged { key: _, reading: r } =>
+      exit_ok(e: process_exit_with_credential_custody(ending: a_successful_ending(r: r), custodies: [WriteCredentialShredded, WriteCredentialShredded]))
+    other => false
+  }
+}
+
+test fn a_successful_ending_with_credential_residue_does_not_exit_zero() -> Bool {
+  match staged_fetch() {
+    OriginObjectStaged { key: _, reading: r } =>
+      exit_ok(e: process_exit_with_credential_custody(
+        ending: a_successful_ending(r: r),
+        custodies: [WriteCredentialShredded, WriteCredentialResidueRemains { cause: "left on disk" }]
+      )) == false
+    other => false
+  }
+}

@@ -1,0 +1,47 @@
+module fixture.closure.rustc_empty_map_data_turbofish_probe
+
+import std.types { String }
+
+// map_insert IS IMPORTED AND empty_map IS DELIBERATELY NOT. That asymmetry is the fixture: the
+// defect needs v2.std.collection in the closure, because that is where the `empty_map<K, V>() ->
+// Map<K, V>` DECLARATION lives and resolving the call to it is what hands the emitter the
+// declaration's own formals as the resolved return type. A module that imports empty_map, or one
+// whose closure does not reach that module at all, resolves to something concrete and never carries
+// the shape -- measured: with no import of this module the emission was already
+// `rc_empty_map::<String, String>()`. extdeps.rust.cargo_build, where this was found, imports
+// neither and reaches the module transitively; this import reproduces that reach at one symbol.
+import v2.std.collection { map_insert }
+
+// THE EMPTY-MAP TURBOFISH, POSED TO RUSTC RATHER THAN TO A SUBSTRING ORACLE. The subject is
+// v1.compiler.emit_rust rust_empty_map_init_expr: a `Map<K, V>` literal built by empty_map() must be
+// instantiated from the type the author declared, and where the resolved return type arrived as the
+// Map DECLARATION's own parametric shape -- which is what this module gets, because it resolves Map
+// by namespace alone rather than importing it -- the key and value types must be deferred to the
+// target's own inference. Before that decision the emission wrote the declaration's formals
+// straight out, producing `v1_rt::rc_empty_map::<K, V>()` inside a non-generic module: rustc E0425,
+// `cannot find type K in this scope`. Measured on extdeps.rust.cargo_build cargo_compile_env, which
+// is this exact shape.
+//
+// WHY A SPELLING ORACLE CANNOT BE THE SUBJECT HERE. The defective and the repaired emissions differ
+// only in the two identifiers inside one turbofish, and asserting the PRESENCE of either `String,
+// String` or `_, _` pins one of two renderings that are both correct depending on whether the map
+// type resolved concretely. What has to hold is that the emitted turbofish NAMES SOMETHING THAT
+// EXISTS at the point it is written, which is a scoping question and therefore rustc's.
+//
+// THE THREE DECLARATIONS ARE THREE POSITIONS, NOT VARIETY. A module-scope `data` initializer has no
+// enclosing generic scope at all, so a formal written there can never bind; a non-generic fn body is
+// the same loss one level in; and the fold accumulator is the position that already carried this
+// repair, kept here as the arm that must not regress while the other two are fixed beside it.
+data module_scope_env: Map<String, String> = empty_map()
+
+fn fn_body_env() -> Map<String, String> {
+  empty_map()
+}
+
+fn folded_env(keys: List<String>) -> Map<String, String> {
+  fold(keys, init: empty_map(), f: (acc, k) => map_insert(acc, k, k))
+}
+
+fn env_word_count(keys: List<String>) -> Int {
+  count(map_keys(module_scope_env)) + count(map_keys(fn_body_env())) + count(map_keys(folded_env(keys: keys)))
+}
