@@ -139,6 +139,33 @@ data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RE
 // run and its verdict is decided by whether the working set happens to drift back under, which is
 // not a CI system.
 //
+// ── srv2 IS NOT SAFE AT THIS ROW AND THE HELD ARM HIDES IT ────────────────────────────────────
+//
+// THIS IS A DECLARED HAZARD IN THIS DIFF, NOT A RESOLVED ONE. The per-slot row is FLEET-UNIFORM, so
+// raising it raises srv2 too -- and srv2's five HELD slots at 26 GiB demand 130 GiB against a
+// measured 125.09 GiB of usable RAM (`gunbc.ci_floor_measurement` `gunbc_ci_srv2_memtotal_measured`,
+// 134314512384 bytes), BEFORE any overhead or session charge. At 16 GiB the same five demanded
+// 80 GiB and fit with room; the hazard is created by this row, not inherited.
+//
+// WHY NO WALL CAUGHT IT, which is the part worth keeping. srv2's width comes from the HELD arm,
+// which exists precisely because its session denominator is unestablished -- so there is no
+// envelope to divide and the conservation checks have no denominator to test against. The held
+// value is a DESCRIPTION of what the host currently runs, and a description does not stop being
+// reported when the declaration moves underneath it. `runner_slot_allocation_wall_holds` and
+// `runner_slot_allocation_oversubscription_boundary_exact` both pass, correctly, because neither
+// can reach a host whose envelope is unestablished. The note beside `host_held_runner_width`
+// already records that a held arm must not outrank a zero-memory refusal; this is the same class
+// one step out, and the arm outranks this one too.
+//
+// CONSEQUENCE FOR THE HEADLINE NUMBER: 41 is NOT a safe uniform target. It counts srv2 at five
+// slots it cannot hold at this size. srv2 needs its own derivation -- or exclusion from the raise,
+// which the fleet-uniform row cannot currently express -- before any total including it is quoted.
+//
+// AND 41 IS NOT THE CI-SERVING NUMBER EITHER. `host_github_slot_count` is the committed width MINUS
+// `host_fabric_slot_count`, so some committed slots are fabric execution members rather than GitHub
+// runners. Every total in this note is an ALLOCATION count; the serving count is lower and is the
+// one a capacity conversation actually wants.
+//
 // dissolve-on: the floor's demand falls below this line. The prepared-product and dependency
 // lifetime reductions have a measured exchange rate now -- roughly one slot per GiB removed on
 // srv1 -- so this row is sized to a workload under active reduction and is expected to fall.

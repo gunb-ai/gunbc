@@ -274,7 +274,7 @@ test fn witness_srv2_03_observation_drifts_until_the_fleet_is_converged() -> Boo
         && byte_size_count(b: max) == byte_size_count(b: byte_size(17179869184))
         && byte_size_count(b: high) == byte_size_count(b: byte_size(16106127360))
         && runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
-        && !runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
+        && runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
     _ => false
   }
 }
