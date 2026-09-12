@@ -18,7 +18,7 @@ import gunbc.public_workload_census {
   ObservedExecution, NoRunObserved, JobRunObserved, TestsExecuted, NoTestsExecuted,
   observed_job_labels, observed_job_run_attempt, observed_label_standing,
   ObservedLabel, NoRunObservedForLabel, JobResourceCarriedNoLabels,
-  baseline_admission, baseline_is_admitted, baseline_attempt_matches_observed_job,
+  baseline_admission, BaselineAdmitted, BaselineRefused, baseline_attempt_matches_observed_job,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   DeclaredProviderKnown, DeclaredProviderUnresolved,
   candidate_declared_architecture, candidate_baseline,
@@ -88,9 +88,19 @@ test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
 }
 
 test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
-  baseline_is_admitted(b: candidate_baseline(c: candidate_biome_test))
-    && baseline_is_admitted(b: candidate_baseline(c: candidate_pdns_dnsdist_arm))
-    && baseline_is_admitted(b: candidate_baseline(c: candidate_openobserve_arm_build)) == false
+  let biome = match candidate_baseline(c: candidate_biome_test) {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
+    BaselineRefused { cause } => false
+  }
+  let pdns = match candidate_baseline(c: candidate_pdns_dnsdist_arm) {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
+    BaselineRefused { cause } => false
+  }
+  let openobserve = match candidate_baseline(c: candidate_openobserve_arm_build) {
+    BaselineRefused { cause } => true
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+  }
+  biome && pdns && openobserve
 }
 
 test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm() -> Bool {
@@ -165,7 +175,10 @@ test fn witness_admitted_baseline_carries_the_observed_run_attempt() -> Bool {
 test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
   match candidate_openobserve_arm_build.observed {
     JobRunObserved { job, head_sha, correctness } => match correctness {
-      NoTestsExecuted { note } => baseline_is_admitted(b: baseline_admission(o: candidate_openobserve_arm_build.observed)) == false
+      NoTestsExecuted { note } => match baseline_admission(o: candidate_openobserve_arm_build.observed) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
       TestsExecuted { step } => false
     }
     NoRunObserved { obligation } => false
