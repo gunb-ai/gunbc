@@ -233,7 +233,7 @@ fn canary_object_key() -> NonEmptyStr {
   commit_slot_key(namespace: (canary_namespace + "/objects") as CommitNamespace, attempt: canary_attempt as AttemptIdentity)
 }
 
-func canary_ending() -> ProcessExit uses net: Network {
+fn canary_ending() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {

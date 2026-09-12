@@ -131,7 +131,7 @@ type OriginCommitObservation sole_constructor {
 // CONSUMERS (DESIGN 3c): tools.fabric_m0_origin_object_probe canary_ending, the identified canary
 // whose process conclusion follows the JobEnding built over this observation. The pure fold above
 // is exercised by test.claim.fabric_m0_origin_commit_witness across every PUT x fetch arm.
-func commit_manifest_to_origin(
+fn commit_manifest_to_origin(
   namespace: CommitNamespace,
   attempt: AttemptIdentity,
   manifest_path: FilePath,
@@ -184,7 +184,7 @@ type OriginObjectCommit sole_constructor {
   credential: WriteCredentialCustody
 }
 
-func commit_object_to_origin(local_path: FilePath, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {
+fn commit_object_to_origin(local_path: FilePath, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {
   let put = put_origin_object(local_path: local_path, key: key, token_source: token_source)
   let fetch = fetch_origin_object(key: key, token_source: token_source)
   OriginObjectCommit {
