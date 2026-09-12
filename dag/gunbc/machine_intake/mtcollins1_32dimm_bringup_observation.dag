@@ -361,6 +361,27 @@ data mtcollins1_web_event_log_decode: WebEventLogDecodeObservation = WebEventLog
   oem_sel_data_empty: true,
 }
 
+// ── the sensor data repository, for the memory-power axis ──────────────────────────────────────
+
+// THE SDR AS READ ON 2026-09-11 (06-sdr.txt, digest in the operator's 99-digests.txt as well).
+// The controller exposes a per-socket memory POWER sensor -- CPU0_MEM_Pwr at 46h and CPU1_MEM_Pwr
+// at 57h, in Watts -- beside the DIMM VRD temperatures and VDDQ rails, which are not power and
+// establish nothing about it. The readings at capture (0 W and 0.80 W) are what a host stuck
+// before memory training draws; they are the sensor's existence, not a qualification figure.
+type SdrCapture {
+  artifact_path: NonEmptyStr
+  byte_count: ByteSize
+  digest: ContentHash
+  memory_power_sensor_names: List<NonEmptyStr>
+}
+
+data mtcollins1_sdr_capture: SdrCapture = SdrCapture {
+  artifact_path: "artifacts/bmc/mtcollins1-32dimm/06-sdr.txt",
+  byte_count: byte_size(count: 7899),
+  digest: Sha256Hash(Sha256Digest { hex: "dd13ac14b069bad9e810ca47dd7709cce3fcc220bf6fa3de8fe8759e23a051e2" }),
+  memory_power_sensor_names: ["CPU0_MEM_Pwr", "CPU1_MEM_Pwr"],
+}
+
 // ── the capability profile, as measured today ──────────────────────────────────────────────────
 
 // SOL present and EMITTING under a held session (mtcollins1_dram_training_capture; the four
@@ -370,8 +391,8 @@ data mtcollins1_web_event_log_decode: WebEventLogDecodeObservation = WebEventLog
 // event log yes (it answered 500 records); per-DIMM localization exposed BY THE FIRMWARE CONSOLE
 // -- the SEL carries no slot-addressed record and the census module established that EDAC under
 // firmware-first exposes no channel topology, but the training firmware prints SK/MC/S-addressed
-// rows and names a socket and controller when it refuses; aggregate memory power yes (CPU0/CPU1
-// DIMM VRD temperatures and VDDQ rails in 06-sdr.txt); managed AC no (the AC cycle was performed
+// rows and names a socket and controller when it refuses; aggregate memory power yes
+// (CPU0_MEM_Pwr / CPU1_MEM_Pwr in Watts, mtcollins1_sdr_capture); managed AC no (the AC cycle was performed
 // by hand, 10-ac-meta.txt); host callback intended, not demonstrated.
 data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObservationCapabilities {
   baseboard: AmpereMtCollins,
@@ -385,7 +406,10 @@ data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObserva
   dimm_localization: PerSlotLocalizationExposed {
     source: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
   },
-  memory_power: AggregateMemoryPowerExposed,
+  memory_power: AggregateMemoryPowerExposed {
+    sensor_names: mtcollins1_sdr_capture.memory_power_sensor_names,
+    established_by: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_sdr_capture", field: WholeDeclaration },
+  },
   managed_ac: NoManagedAcActuator,
   host_callback: HostCallbackIntendedNotDemonstrated,
 }

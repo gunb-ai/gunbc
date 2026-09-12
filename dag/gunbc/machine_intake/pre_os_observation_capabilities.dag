@@ -1,6 +1,6 @@
 module gunbc.machine_intake_pre_os_observation_capabilities
 
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.content_hash { ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef }
@@ -107,8 +107,12 @@ type DimmLocalizationCapability
   = LocalizationUnavailableFromExposedTelemetry
   | PerSlotLocalizationExposed { source: DeclarationRef }
 
+// AGGREGATE MEMORY POWER, WITH THE SENSOR ROWS THAT ESTABLISHED IT. The Exposed arm names the
+// controller's sensor spellings for the per-socket memory power figure and the digest-bound
+// capture they were read from; a profile with no such capture to point at cannot claim the arm
+// (review 64494). Temperatures and rail voltages are not a power figure and do not establish it.
 type MemoryPowerTelemetryCapability
-  = AggregateMemoryPowerExposed
+  = AggregateMemoryPowerExposed { sensor_names: List<NonEmptyStr>, established_by: DeclarationRef }
   | MemoryPowerNotExposed
 
 // MANAGED AC CARRIES NO OUTLET. This fleet has no managed PDU, and authoring an arm that names an
