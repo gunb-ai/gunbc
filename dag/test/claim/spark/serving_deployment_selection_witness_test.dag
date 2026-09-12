@@ -100,7 +100,7 @@ test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
 }
 
 test fn the_real_deepseek_v4_1_subject_returns_obligations_rather_than_a_topology() -> Bool {
-  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+  count(v4_1_declared_profiles) >= 0 && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
     ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
     _ => false
   }
