@@ -68,7 +68,12 @@ type CollectorKind
 // window. The banner therefore proves SESSION ACTIVATION ACKNOWLEDGED and nothing about the
 // interval after it. The proof this arm demands is the client still alive at an instant AFTER
 // activation, under an explicit deadline that will terminate it -- because a correctly held
-// client never exits on its own, and a collector that only waits on it never returns.
+// client never exits on its own, and a collector that only waits on it never returns. THIS PROOF
+// IS A SUMMARY OF AN ATTEMPT OBSERVATION: the per-attempt carrier (activation, coverage,
+// termination, host payload) is gunbc.machine_intake_sol_collector_observation on gunbc#11127, and
+// deriving this arm from a SolCollectorObservation whose activation is acknowledged and whose
+// termination is not yet decided is the declared join between the two, in whichever change lands
+// second.
 type CollectorRunningProof
   = ConsoleSessionHeldPastActivation { capture_path: NonEmptyStr, activation_bytes: ByteSize, client_alive_at: EpochMs, terminate_deadline: EpochMs }
   | SelCursorRecorded { last_record_id: Int, recorded_at: EpochMs }
