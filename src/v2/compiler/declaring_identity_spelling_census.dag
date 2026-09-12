@@ -1,0 +1,131 @@
+module v2.compiler.declaring_identity_spelling_census
+
+import std.algebra { Empty, FreeMonoid }
+import std.declaring_identity_spelling {
+  DeclaringIdentitySpelling,
+  IdentityAmbiguous,
+  IdentityOwnerless,
+  IdentityUnbound,
+  declaring_identity_spelling_resolved,
+  declaring_identity_spelling_unresolvable
+}
+import v2.std.algebra { fold_list, is_empty, length, list_snoc_item }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
+import v2.std.language_model { LanguageModel }
+import v2.std.node { Node }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.reference_site_collector {
+  UnreadableModuleRoot,
+  collect_reference_sites
+}
+import v2.compiler.repair_input_origin_roster { carrier_declaration_ref }
+import v2.compiler.resolution_provenance {
+  ProvenanceAmbiguous,
+  ProvenanceOwnerless,
+  ProvenanceResolved,
+  ProvenanceUnbound,
+  ResolutionProvenance,
+  module_roster_from_roots,
+  resolve_reference_sites
+}
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.logic { Bool }
+
+// XL-3 PRODUCER: one mention, one spelling row, over the production ingest route.
+//
+// Route: v2.compiler.program_assembly module_roots_from_source_root_ingest
+//   -> v2.compiler.normalized_tree normalized_tree_roots_to_nodes
+//   -> v2.compiler.reference_site_collector collect_reference_sites
+//   -> v2.compiler.resolution_provenance resolve_reference_sites
+//   -> std.declaring_identity_spelling
+//
+// Consume ReferenceSiteCollection as a whole: .sites for the fold, .unreadable_roots
+// carried through. Completeness is reference_site_collection_is_total, never inferred
+// from a short row list.
+//
+// WHAT THIS ROUTE CANNOT SEE is measured, not speculated:
+// v2.test.claim.namespace_xl0.call_argument_mention_survival and
+// v2.test.claim.declaring_identity_spelling.production_ingest. Kernel type-position names,
+// callees and call arguments are absent until eager-raven-113's lowering repair (gunbc#11207,
+// scope widened to type positions). User type-position names and value mentions outside
+// calls can reach. Empty rows on the absent classes is today's loss, RED when the repair
+// lands. A parse-tree walker is not a workaround.
+
+type DeclaringIdentitySpellingCensus {
+  rows: FreeMonoid<DeclaringIdentitySpelling>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+fn spelling_census_is_total(census: DeclaringIdentitySpellingCensus) -> Bool {
+  is_empty(xs: census.unreadable_roots)
+}
+
+fn spelling_from_answer(answer: ResolutionProvenance) -> DeclaringIdentitySpelling {
+  match answer {
+    ProvenanceResolved { site: site, target: target, owner: owner } =>
+      if length(xs: target) > length(xs: owner) {
+        declaring_identity_spelling_resolved(
+          authored: site.spelling,
+          declaring: carrier_declaration_ref(owner: owner, target: target),
+          canonical: target
+        )
+      } else {
+        declaring_identity_spelling_unresolvable(
+          authored: site.spelling,
+          cause: IdentityOwnerless
+        )
+      }
+    ProvenanceOwnerless { site: site, target: _ } =>
+      declaring_identity_spelling_unresolvable(
+        authored: site.spelling,
+        cause: IdentityOwnerless
+      )
+    ProvenanceAmbiguous { site: site } =>
+      declaring_identity_spelling_unresolvable(
+        authored: site.spelling,
+        cause: IdentityAmbiguous
+      )
+    ProvenanceUnbound { site: site } =>
+      declaring_identity_spelling_unresolvable(
+        authored: site.spelling,
+        cause: IdentityUnbound
+      )
+  }
+}
+
+fn spelling_census_over_roots(roots: FreeMonoid<Node>) -> DeclaringIdentitySpellingCensus {
+  let collected = collect_reference_sites(roots: roots)
+  DeclaringIdentitySpellingCensus {
+    rows: fold_list(
+      xs: resolve_reference_sites(
+        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots),
+        roster: module_roster_from_roots(roots: roots),
+        sites: collected.sites
+      ),
+      empty: Empty,
+      cons: fn(acc, answer) {
+        list_snoc_item(xs: acc, item: spelling_from_answer(answer: answer))
+      }
+    ),
+    unreadable_roots: collected.unreadable_roots
+  }
+}
+
+fn spelling_census_from_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<DeclaringIdentitySpellingCensus> {
+  bind_outcome(
+    o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm),
+    f: fn(normalized) {
+      outcome_accepted(
+        value: spelling_census_over_roots(
+          roots: normalized_tree_roots_to_nodes(roots: normalized)
+        )
+      )
+    }
+  )
+}
