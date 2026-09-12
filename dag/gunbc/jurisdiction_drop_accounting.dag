@@ -60,7 +60,8 @@ type EnrollmentAccountingStanding
 fn enrollment_accounting(
   enrollment: JurisdictionDropEnrollment,
 ) -> EnrollmentAccountingStanding {
-  if count(filter(standing_rung_drops(), d => d.identity == enrollment.drop.decl_name)) > 0 {
+  let rostered = filter(standing_rung_drops(), d => d.identity == enrollment.drop.decl_name)
+  if count(rostered) > 0 {
     EnrollmentAccounted { drop: enrollment.drop }
   } else {
     EnrollmentDropUnrostered { drop: enrollment.drop }
@@ -87,10 +88,7 @@ fn unaccounted_enrollments(
 
 // THE POSTURE-LEVEL QUESTION, which is what a gate asks: does every suppression this posture carries
 // name a standing accounting row? An empty list is the admitting answer.
-fn posture_unaccounted_enrollments(posture: CompliancePostureRevision) -> List<DeclarationRef> {
-  unaccounted_enrollments(enrollments: posture.jurisdiction_drop_enrollments)
-}
-
+//
 // WHICH OF THE THREE HOLES THIS CLOSES, STATED SO A GREEN IS NOT READ AS MORE THAN IT IS. Review
 // 64697 named three ways an enrollment could stand a wall down silently. Closed here: a drop
 // reference naming no rostered row at all, and one naming a row that has been RETIRED. Open: an
@@ -109,3 +107,6 @@ fn posture_unaccounted_enrollments(posture: CompliancePostureRevision) -> List<D
 // population, and sufficient for this module's join to compare references rather than a name. A
 // population sentence mentioning a path does NOT discharge it: that is the artifact, not the
 // capability, and it would leave the next enrollment in the same position.
+fn posture_unaccounted_enrollments(posture: CompliancePostureRevision) -> List<DeclarationRef> {
+  unaccounted_enrollments(enrollments: posture.jurisdiction_drop_enrollments)
+}

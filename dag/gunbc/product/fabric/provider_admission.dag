@@ -410,6 +410,13 @@ fn jurisdiction_subject_refusal(
   }
 }
 
+// The membership test is its own declaration rather than a filter inside the branch condition. That
+// is not style: a filter in a branch condition has no total projection, so a module carrying one
+// cannot be published to a target at all (gunbc.compile_clean_diagnostic_policy refuses the emit).
+fn jurisdiction_is_permitted(permitted: List<DeclarationRef>, jurisdiction: DeclarationRef) -> Bool {
+  count(filter(permitted, j => declaration_ref_eq(a: j, b: jurisdiction))) > 0
+}
+
 // ONE MATCH OF ProviderPathStanding, AND THE REFUSAL IS BUILT INSIDE THE ARM THAT CAUSED IT. The
 // tempting shape -- project the offending path out, then match it again to build the refusal -- is
 // the second walk this module keeps refusing: the second match would have Absent and Unread arms
@@ -445,7 +452,7 @@ fn nonpermitted_jurisdiction_refusals(
       } else {
         match p {
           ProviderPathLocated { operator, jurisdiction, evidence } =>
-            if count(filter(permitted, j => declaration_ref_eq(a: j, b: jurisdiction))) > 0
+            if jurisdiction_is_permitted(permitted: permitted, jurisdiction: jurisdiction)
               || jurisdiction_drop_enrolled(
                    enrollments: enrollments, path_evidence: evidence, jurisdiction: jurisdiction) {
               acc
