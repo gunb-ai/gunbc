@@ -22,10 +22,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // MEASUREMENTS OF TODAY'S XL-4 ROUTE: module_roots_from_source_root_ingest then
 // normalized_tree_roots_to_nodes (via located_roots_from_source_root_ingest), then the one
-// collector. Not a second parse_module ingest. Type-position with no call anywhere is its own
-// missing class, independent of call-argument / callee erasure. Trigger: eager-raven-113
-// lowering widened to type positions (parent escalation to fierce-lark/eager-raven), then
-// this same ingest of the repaired tree.
+// collector. Not a second parse_module ingest. A qualified cross-module mention is missing
+// with or without a call; a type-position name with no call is missing independently. A bare
+// same-module name yields no dependency edge, so a non-empty site list is not a usable graph.
+// Trigger: eager-raven-113 lowering widened to type positions (parent escalation to
+// fierce-lark/eager-raven), then this same ingest of the repaired tree.
 
 data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
 
