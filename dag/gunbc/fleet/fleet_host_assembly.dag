@@ -1,0 +1,363 @@
+module gunbc.fleet_host_assembly
+
+import std.types { List, NonEmptyStr, Bool }
+import std.list { list_cover }
+import product.placement_supply {
+  HostIdentity,
+  PhysicalAssetIdentity,
+  PhysicalContainment,
+  HostContainsComponent,
+  ChassisContainsHost,
+  SiteContainsRoom,
+  RoomContainsRack,
+  RackContainsPlacement,
+  physical_asset_identity_eq,
+  host_identity_eq,
+}
+import product.inventory {
+  InventoryLotIdentity,
+  LotCatalogIdentity,
+  CatalogRowExact,
+  CatalogRowUnread,
+  inventory_lot_identity_eq,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+import gunbc.fleet_asset_identity {
+  chassis_srv1,
+  chassis_srv2,
+  chassis_srv3,
+  chassis_srv4,
+  cooler_srv3,
+  cooler_srv4,
+}
+import gunbc.fleet_acquisition_census {
+  altrad8ud_board_lot_identity,
+  cooler_srv3_lot_identity,
+  cooler_srv4_lot_identity,
+}
+
+// SRV1 THROUGH SRV4 ARE ASSEMBLIES, NOT ACQUISITIONS. There is no single lot and no receipt
+// to cite for the host identity. Component-grain identities and an assembly relation bind
+// parts to the host they were built into. Component PURCHASES are not fabricated: an unknown
+// acquisition is an obligation naming the read, not an omitted row.
+
+type ComponentAcquisition
+  = ComponentAcquiredFromLot { lot: InventoryLotIdentity }
+  | ComponentAcquisitionUnrecorded { read_obligation: NonEmptyStr }
+
+type AssembledComponent {
+  host: HostIdentity
+  component: PhysicalAssetIdentity
+  catalog: LotCatalogIdentity
+  acquisition: ComponentAcquisition
+}
+
+data board_srv1: PhysicalAssetIdentity = "board-srv1" as PhysicalAssetIdentity
+data board_srv2: PhysicalAssetIdentity = "board-srv2" as PhysicalAssetIdentity
+data board_srv3: PhysicalAssetIdentity = "board-srv3" as PhysicalAssetIdentity
+data board_srv4: PhysicalAssetIdentity = "board-srv4" as PhysicalAssetIdentity
+
+data processor_srv1: PhysicalAssetIdentity = "processor-srv1" as PhysicalAssetIdentity
+data processor_srv2: PhysicalAssetIdentity = "processor-srv2" as PhysicalAssetIdentity
+data processor_srv3: PhysicalAssetIdentity = "processor-srv3" as PhysicalAssetIdentity
+data processor_srv4: PhysicalAssetIdentity = "processor-srv4" as PhysicalAssetIdentity
+
+data psu_srv1: PhysicalAssetIdentity = "psu-srv1" as PhysicalAssetIdentity
+data psu_srv2: PhysicalAssetIdentity = "psu-srv2" as PhysicalAssetIdentity
+data psu_srv3: PhysicalAssetIdentity = "psu-srv3" as PhysicalAssetIdentity
+data psu_srv4: PhysicalAssetIdentity = "psu-srv4" as PhysicalAssetIdentity
+
+data drive_srv1: PhysicalAssetIdentity = "drive-srv1" as PhysicalAssetIdentity
+data drive_srv2: PhysicalAssetIdentity = "drive-srv2" as PhysicalAssetIdentity
+data drive_srv3: PhysicalAssetIdentity = "drive-srv3" as PhysicalAssetIdentity
+data drive_srv4: PhysicalAssetIdentity = "drive-srv4" as PhysicalAssetIdentity
+
+data memory_population_srv1: PhysicalAssetIdentity = "memory-population-srv1" as PhysicalAssetIdentity
+data memory_population_srv2: PhysicalAssetIdentity = "memory-population-srv2" as PhysicalAssetIdentity
+data memory_population_srv3: PhysicalAssetIdentity = "memory-population-srv3" as PhysicalAssetIdentity
+data memory_population_srv4: PhysicalAssetIdentity = "memory-population-srv4" as PhysicalAssetIdentity
+
+data receipts_must_be_dredged: NonEmptyStr = "Operator states component receipts would have to be dredged up; no component purchase is recorded in the public corpus. Do not invent a lot."
+
+data asrock_altrad8ud_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.boards.asrock_rack",
+  decl_name: "asrock_altrad8ud_1l2t_catalog",
+  field: WholeDeclaration,
+}
+
+data altra_max_m12830_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cpu.ampere",
+  decl_name: "altra_max_m12830_catalog",
+  field: WholeDeclaration,
+}
+
+data rosewill_r4000u_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.chassis.rosewill",
+  decl_name: "rosewill_rsv_r4000u_catalog",
+  field: WholeDeclaration,
+}
+
+data rosewill_z2600u_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.chassis.rosewill",
+  decl_name: "rosewill_rsv_z2600u_catalog",
+  field: WholeDeclaration,
+}
+
+data dynatron_w1_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cooling.dynatron",
+  decl_name: "dynatron_w1_catalog",
+  field: WholeDeclaration,
+}
+
+fn lot_component(
+  host: HostIdentity,
+  component: PhysicalAssetIdentity,
+  catalog: LotCatalogIdentity,
+  lot: InventoryLotIdentity,
+) -> AssembledComponent {
+  AssembledComponent {
+    host: host,
+    component: component,
+    catalog: catalog,
+    acquisition: ComponentAcquiredFromLot { lot: lot },
+  }
+}
+
+fn unrecorded_component(
+  host: HostIdentity,
+  component: PhysicalAssetIdentity,
+  catalog: LotCatalogIdentity,
+) -> AssembledComponent {
+  AssembledComponent {
+    host: host,
+    component: component,
+    catalog: catalog,
+    acquisition: ComponentAcquisitionUnrecorded { read_obligation: receipts_must_be_dredged },
+  }
+}
+
+fn unread_family(family: NonEmptyStr, obligation: NonEmptyStr) -> LotCatalogIdentity {
+  CatalogRowUnread { observed_family: family, read_obligation: obligation }
+}
+
+data srv_assembly_components: List<AssembledComponent> = [
+  unrecorded_component(host: operator_host_srv1, component: chassis_srv1, catalog: CatalogRowExact { row: rosewill_r4000u_catalog_ref }),
+  unrecorded_component(host: operator_host_srv2, component: chassis_srv2, catalog: CatalogRowExact { row: rosewill_r4000u_catalog_ref }),
+  unrecorded_component(host: operator_host_srv3, component: chassis_srv3, catalog: CatalogRowExact { row: rosewill_z2600u_catalog_ref }),
+  unrecorded_component(host: operator_host_srv4, component: chassis_srv4, catalog: CatalogRowExact { row: rosewill_z2600u_catalog_ref }),
+  lot_component(host: operator_host_srv1, component: board_srv1, catalog: CatalogRowExact { row: asrock_altrad8ud_catalog_ref }, lot: altrad8ud_board_lot_identity),
+  lot_component(host: operator_host_srv2, component: board_srv2, catalog: CatalogRowExact { row: asrock_altrad8ud_catalog_ref }, lot: altrad8ud_board_lot_identity),
+  lot_component(host: operator_host_srv3, component: board_srv3, catalog: CatalogRowExact { row: asrock_altrad8ud_catalog_ref }, lot: altrad8ud_board_lot_identity),
+  lot_component(host: operator_host_srv4, component: board_srv4, catalog: CatalogRowExact { row: asrock_altrad8ud_catalog_ref }, lot: altrad8ud_board_lot_identity),
+  unrecorded_component(host: operator_host_srv1, component: processor_srv1, catalog: CatalogRowExact { row: altra_max_m12830_catalog_ref }),
+  unrecorded_component(host: operator_host_srv2, component: processor_srv2, catalog: CatalogRowExact { row: altra_max_m12830_catalog_ref }),
+  unrecorded_component(host: operator_host_srv3, component: processor_srv3, catalog: CatalogRowExact { row: altra_max_m12830_catalog_ref }),
+  unrecorded_component(host: operator_host_srv4, component: processor_srv4, catalog: CatalogRowExact { row: altra_max_m12830_catalog_ref }),
+  unrecorded_component(
+    host: operator_host_srv1,
+    component: memory_population_srv1,
+    catalog: unread_family(family: "installed DIMM population" as NonEmptyStr, obligation: "dredge the original memory purchase; eight Samsung 64 GiB sticks are an expectation, not a source-lot binding" as NonEmptyStr),
+  ),
+  unrecorded_component(
+    host: operator_host_srv2,
+    component: memory_population_srv2,
+    catalog: unread_family(family: "installed DIMM population" as NonEmptyStr, obligation: "dredge the original memory purchase; srv2 still expects SK Hynix after the 64 GiB uplift failed training" as NonEmptyStr),
+  ),
+  unrecorded_component(
+    host: operator_host_srv3,
+    component: memory_population_srv3,
+    catalog: unread_family(family: "installed DIMM population" as NonEmptyStr, obligation: "dredge the original memory purchase; eight Samsung 64 GiB sticks are an expectation, not a source-lot binding" as NonEmptyStr),
+  ),
+  unrecorded_component(
+    host: operator_host_srv4,
+    component: memory_population_srv4,
+    catalog: unread_family(family: "installed DIMM population" as NonEmptyStr, obligation: "dredge the original memory purchase; eight Samsung 64 GiB sticks are an expectation, not a source-lot binding" as NonEmptyStr),
+  ),
+  unrecorded_component(
+    host: operator_host_srv1,
+    component: psu_srv1,
+    catalog: unread_family(family: "host power supply" as NonEmptyStr, obligation: receipts_must_be_dredged),
+  ),
+  unrecorded_component(
+    host: operator_host_srv2,
+    component: psu_srv2,
+    catalog: unread_family(family: "host power supply" as NonEmptyStr, obligation: receipts_must_be_dredged),
+  ),
+  unrecorded_component(
+    host: operator_host_srv3,
+    component: psu_srv3,
+    catalog: unread_family(family: "host power supply" as NonEmptyStr, obligation: receipts_must_be_dredged),
+  ),
+  unrecorded_component(
+    host: operator_host_srv4,
+    component: psu_srv4,
+    catalog: unread_family(family: "host power supply" as NonEmptyStr, obligation: receipts_must_be_dredged),
+  ),
+  unrecorded_component(
+    host: operator_host_srv1,
+    component: drive_srv1,
+    catalog: unread_family(family: "host NVMe" as NonEmptyStr, obligation: "WD Black SN850X 2 TB is fleet intent, not a source-lot; dredge the purchase" as NonEmptyStr),
+  ),
+  unrecorded_component(
+    host: operator_host_srv2,
+    component: drive_srv2,
+    catalog: unread_family(family: "host NVMe" as NonEmptyStr, obligation: "WD Black SN850X 2 TB is fleet intent, not a source-lot; dredge the purchase" as NonEmptyStr),
+  ),
+  unrecorded_component(
+    host: operator_host_srv3,
+    component: drive_srv3,
+    catalog: unread_family(family: "host NVMe" as NonEmptyStr, obligation: "Samsung 970 EVO Plus 2 TB is fleet intent, not a source-lot; dredge the purchase" as NonEmptyStr),
+  ),
+  unrecorded_component(
+    host: operator_host_srv4,
+    component: drive_srv4,
+    catalog: unread_family(family: "host NVMe" as NonEmptyStr, obligation: "Samsung 970 EVO 500 GB is fleet intent, not a source-lot; dredge the purchase" as NonEmptyStr),
+  ),
+  lot_component(host: operator_host_srv3, component: cooler_srv3, catalog: CatalogRowExact { row: dynatron_w1_catalog_ref }, lot: cooler_srv3_lot_identity),
+  lot_component(host: operator_host_srv4, component: cooler_srv4, catalog: CatalogRowExact { row: dynatron_w1_catalog_ref }, lot: cooler_srv4_lot_identity),
+]
+
+// Cooler-to-host containments for srv3/srv4 already live in gunbc.fleet_physical_inventory
+// installed_cooler_containments. They are not restated here.
+data srv_assembly_containments: List<PhysicalContainment> = [
+  ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv1 },
+  ChassisContainsHost { chassis: chassis_srv2, host: operator_host_srv2 },
+  ChassisContainsHost { chassis: chassis_srv3, host: operator_host_srv3 },
+  ChassisContainsHost { chassis: chassis_srv4, host: operator_host_srv4 },
+  HostContainsComponent { host: operator_host_srv1, component: board_srv1 },
+  HostContainsComponent { host: operator_host_srv2, component: board_srv2 },
+  HostContainsComponent { host: operator_host_srv3, component: board_srv3 },
+  HostContainsComponent { host: operator_host_srv4, component: board_srv4 },
+  HostContainsComponent { host: operator_host_srv1, component: processor_srv1 },
+  HostContainsComponent { host: operator_host_srv2, component: processor_srv2 },
+  HostContainsComponent { host: operator_host_srv3, component: processor_srv3 },
+  HostContainsComponent { host: operator_host_srv4, component: processor_srv4 },
+  HostContainsComponent { host: operator_host_srv1, component: memory_population_srv1 },
+  HostContainsComponent { host: operator_host_srv2, component: memory_population_srv2 },
+  HostContainsComponent { host: operator_host_srv3, component: memory_population_srv3 },
+  HostContainsComponent { host: operator_host_srv4, component: memory_population_srv4 },
+  HostContainsComponent { host: operator_host_srv1, component: psu_srv1 },
+  HostContainsComponent { host: operator_host_srv2, component: psu_srv2 },
+  HostContainsComponent { host: operator_host_srv3, component: psu_srv3 },
+  HostContainsComponent { host: operator_host_srv4, component: psu_srv4 },
+  HostContainsComponent { host: operator_host_srv1, component: drive_srv1 },
+  HostContainsComponent { host: operator_host_srv2, component: drive_srv2 },
+  HostContainsComponent { host: operator_host_srv3, component: drive_srv3 },
+  HostContainsComponent { host: operator_host_srv4, component: drive_srv4 },
+]
+
+fn recorded_component_lot_is_admitted(lot: InventoryLotIdentity) -> Bool {
+  inventory_lot_identity_eq(left: lot, right: altrad8ud_board_lot_identity)
+    || inventory_lot_identity_eq(left: lot, right: cooler_srv3_lot_identity)
+    || inventory_lot_identity_eq(left: lot, right: cooler_srv4_lot_identity)
+}
+
+fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {
+  rows.all(row => match row.acquisition {
+    ComponentAcquiredFromLot { lot: lot } => recorded_component_lot_is_admitted(lot: lot)
+    ComponentAcquisitionUnrecorded { read_obligation: _ } => true
+  })
+}
+
+fn component_acquired_from_lot(rows: List<AssembledComponent>, component: PhysicalAssetIdentity, lot: InventoryLotIdentity) -> Bool {
+  rows.any(row =>
+    physical_asset_identity_eq(a: row.component, b: component)
+      && match row.acquisition {
+        ComponentAcquiredFromLot { lot: bound } => inventory_lot_identity_eq(left: lot, right: bound)
+        ComponentAcquisitionUnrecorded { read_obligation: _ } => false
+      }
+  )
+}
+
+fn every_board_component_is_from_the_four_board_lot(rows: List<AssembledComponent>) -> Bool {
+  component_acquired_from_lot(rows: rows, component: board_srv1, lot: altrad8ud_board_lot_identity)
+    && component_acquired_from_lot(rows: rows, component: board_srv2, lot: altrad8ud_board_lot_identity)
+    && component_acquired_from_lot(rows: rows, component: board_srv3, lot: altrad8ud_board_lot_identity)
+    && component_acquired_from_lot(rows: rows, component: board_srv4, lot: altrad8ud_board_lot_identity)
+}
+
+fn every_cooler_component_is_from_its_lot(rows: List<AssembledComponent>) -> Bool {
+  component_acquired_from_lot(rows: rows, component: cooler_srv3, lot: cooler_srv3_lot_identity)
+    && component_acquired_from_lot(rows: rows, component: cooler_srv4, lot: cooler_srv4_lot_identity)
+}
+
+fn assembly_covers_component_roster(rows: List<AssembledComponent>) -> Bool {
+  list_cover(held: map(rows, r => r.component), expected: srv_assembly_component_roster, eq: physical_asset_identity_eq)
+}
+
+data srv_assembly_component_roster: List<PhysicalAssetIdentity> = [
+  chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4,
+  board_srv1, board_srv2, board_srv3, board_srv4,
+  processor_srv1, processor_srv2, processor_srv3, processor_srv4,
+  memory_population_srv1, memory_population_srv2, memory_population_srv3, memory_population_srv4,
+  psu_srv1, psu_srv2, psu_srv3, psu_srv4,
+  drive_srv1, drive_srv2, drive_srv3, drive_srv4,
+  cooler_srv3, cooler_srv4,
+]
+
+fn is_cooler_asset(id: PhysicalAssetIdentity) -> Bool {
+  physical_asset_identity_eq(a: id, b: cooler_srv3) || physical_asset_identity_eq(a: id, b: cooler_srv4)
+}
+
+fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: PhysicalAssetIdentity, host: HostIdentity) -> Bool {
+  containments.any(c =>
+    match c {
+      ChassisContainsHost { chassis: ch, host: h } =>
+        physical_asset_identity_eq(a: ch, b: chassis) && host_identity_eq(a: h, b: host)
+      HostContainsComponent { host: _, component: _ } => false
+      SiteContainsRoom { site: _, room: _ } => false
+      RoomContainsRack { room: _, rack: _ } => false
+      RackContainsPlacement { rack: _, asset: _ } => false
+    }
+  )
+}
+
+fn containment_has_component(containments: List<PhysicalContainment>, host: HostIdentity, component: PhysicalAssetIdentity) -> Bool {
+  containments.any(c =>
+    match c {
+      HostContainsComponent { host: h, component: comp } =>
+        host_identity_eq(a: h, b: host) && physical_asset_identity_eq(a: comp, b: component)
+      ChassisContainsHost { chassis: _, host: _ } => false
+      SiteContainsRoom { site: _, room: _ } => false
+      RoomContainsRack { room: _, rack: _ } => false
+      RackContainsPlacement { rack: _, asset: _ } => false
+    }
+  )
+}
+
+fn assembly_containments_join(rows: List<AssembledComponent>, containments: List<PhysicalContainment>) -> Bool {
+  containment_has_chassis(containments: containments, chassis: chassis_srv1, host: operator_host_srv1)
+    && containment_has_chassis(containments: containments, chassis: chassis_srv2, host: operator_host_srv2)
+    && containment_has_chassis(containments: containments, chassis: chassis_srv3, host: operator_host_srv3)
+    && containment_has_chassis(containments: containments, chassis: chassis_srv4, host: operator_host_srv4)
+    && fold(rows, init: true, f: fn(acc, row) {
+      acc && (
+        is_cooler_asset(id: row.component)
+          || containment_has_component(containments: containments, host: row.host, component: row.component)
+      )
+    })
+    && fold(containments, init: true, f: fn(acc, c) {
+      acc && match c {
+        ChassisContainsHost { chassis: ch, host: h } =>
+          (physical_asset_identity_eq(a: ch, b: chassis_srv1) && host_identity_eq(a: h, b: operator_host_srv1))
+            || (physical_asset_identity_eq(a: ch, b: chassis_srv2) && host_identity_eq(a: h, b: operator_host_srv2))
+            || (physical_asset_identity_eq(a: ch, b: chassis_srv3) && host_identity_eq(a: h, b: operator_host_srv3))
+            || (physical_asset_identity_eq(a: ch, b: chassis_srv4) && host_identity_eq(a: h, b: operator_host_srv4))
+        HostContainsComponent { host: h, component: comp } =>
+          !is_cooler_asset(id: comp)
+            && rows.any(row =>
+              host_identity_eq(a: row.host, b: h)
+                && physical_asset_identity_eq(a: row.component, b: comp)
+            )
+        SiteContainsRoom { site: _, room: _ } => false
+        RoomContainsRack { room: _, rack: _ } => false
+        RackContainsPlacement { rack: _, asset: _ } => false
+      }
+    })
+}

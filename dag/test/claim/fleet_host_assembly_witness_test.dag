@@ -1,0 +1,64 @@
+module test.claim.fleet_host_assembly_witness
+
+import std.types { Bool, String }
+import product.placement_supply {
+  ChassisContainsHost,
+  HostContainsComponent,
+  PhysicalContainment,
+  RackContainsPlacement,
+  RoomContainsRack,
+  SiteContainsRoom,
+  physical_asset_identity_eq,
+}
+import gunbc.fleet_host_assembly {
+  srv_assembly_components,
+  srv_assembly_containments,
+  board_srv1,
+  processor_srv1,
+  ComponentAcquiredFromLot,
+  ComponentAcquisitionUnrecorded,
+  every_board_component_is_from_the_four_board_lot,
+  every_cooler_component_is_from_its_lot,
+  every_recorded_component_lot_is_admitted,
+  assembly_covers_component_roster,
+  assembly_containments_join,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn first_containment_is_chassis(c: PhysicalContainment) -> Bool {
+  match c {
+    ChassisContainsHost { chassis: _, host: _ } => true
+    SiteContainsRoom { site: _, room: _ } => false
+    RoomContainsRack { room: _, rack: _ } => false
+    RackContainsPlacement { rack: _, asset: _ } => false
+    HostContainsComponent { host: _, component: _ } => false
+  }
+}
+
+test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
+  every_recorded_component_lot_is_admitted(rows: srv_assembly_components)
+    && every_board_component_is_from_the_four_board_lot(rows: srv_assembly_components)
+    && every_cooler_component_is_from_its_lot(rows: srv_assembly_components)
+    && assembly_covers_component_roster(rows: srv_assembly_components)
+    && assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
+    && match srv_assembly_containments.first() {
+      Absent => false
+      Present { value: c } => first_containment_is_chassis(c: c)
+    }
+}
+
+test fn w_omitting_a_rostered_component_refuses_cover() -> Bool {
+  assembly_covers_component_roster(rows: srv_assembly_components)
+    && !assembly_covers_component_roster(rows: srv_assembly_components.skip(n: 1))
+}
+
+test fn w_boards_and_processors_are_present() -> Bool {
+  srv_assembly_components.any(row => physical_asset_identity_eq(a: row.component, b: board_srv1))
+    && srv_assembly_components.any(row => physical_asset_identity_eq(a: row.component, b: processor_srv1))
+    && srv_assembly_components.all(row => match row.acquisition {
+      ComponentAcquiredFromLot { lot: _ } => true
+      ComponentAcquisitionUnrecorded { read_obligation: o } => (o as String).length() > 0
+    })
+}

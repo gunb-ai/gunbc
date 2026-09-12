@@ -1,0 +1,221 @@
+module product.lot_sales_tax
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.list { list_member, list_cover }
+import std.measure { PartsPerMillion }
+import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
+
+// SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
+// census exists to carry: whether tax was collected, at which jurisdiction and rate, and
+// whether a New York use-tax residual remains. It is NOT a Bool and it is NOT an amount.
+// "Tax was included" without a jurisdiction cannot answer whether a residual is owed.
+//
+// Amounts stay private. Jurisdiction and rate are public. If a consumer needs a dollar
+// residual it must apply these rates to a privately held base; this module has no money field
+// and no reader that could publish one.
+//
+// Epistemic arms are the point. A rate transcribed from a named receipt line, a rate derived
+// by dividing a tax line by a base, an operator attestation with no tax line, an unverified
+// marketplace collection, and an unrecorded treatment are different states with different
+// next reads. Collapsing them is the defect this type exists to make unwritable as a Bool.
+
+type CollectedTaxRateStanding
+  = RateTranscribedFromNamedReceiptLine {
+      jurisdiction: NonEmptyStr
+      rate: PartsPerMillion
+      receipt_line_label: NonEmptyStr
+    }
+  | RateDerivedFromReceiptBaseAndTax {
+      jurisdiction: NonEmptyStr
+      rate: PartsPerMillion
+    }
+
+type UseTaxResidualStanding
+  = ResidualUseTaxOwed {
+      destination_jurisdiction: NonEmptyStr
+      destination_combined_rate: PartsPerMillion
+    }
+  | ResidualUseTaxNone
+  | ResidualUseTaxUnread { read_obligation: NonEmptyStr }
+
+type LotSalesTaxStanding
+  = SalesTaxCollected {
+      collection: CollectedTaxRateStanding
+      residual: UseTaxResidualStanding
+    }
+  | SalesTaxAttestedIncluded {
+      jurisdiction: NonEmptyStr
+      residual: UseTaxResidualStanding
+      attestation: NonEmptyStr
+    }
+  | SalesTaxIncludedJurisdictionUnread {
+      read_obligation: NonEmptyStr
+    }
+  | SalesTaxTreatmentUnrecorded {
+      read_obligation: NonEmptyStr
+    }
+
+type LotTaxEvidence {
+  lot: InventoryLotIdentity
+  standing: LotSalesTaxStanding
+}
+
+fn lot_tax_residual_is_owed(standing: LotSalesTaxStanding) -> Bool {
+  match standing {
+    SalesTaxCollected { collection: _, residual: r } => residual_is_owed(residual: r)
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: r, attestation: _ } => residual_is_owed(residual: r)
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => false
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => false
+  }
+}
+
+fn residual_is_owed(residual: UseTaxResidualStanding) -> Bool {
+  match residual {
+    ResidualUseTaxOwed { destination_jurisdiction: _, destination_combined_rate: _ } => true
+    ResidualUseTaxNone => false
+    ResidualUseTaxUnread { read_obligation: _ } => false
+  }
+}
+
+fn lot_tax_jurisdiction_is_unread(standing: LotSalesTaxStanding) -> Bool {
+  match standing {
+    SalesTaxCollected { collection: _, residual: _ } => false
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => false
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => true
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => true
+  }
+}
+
+fn lot_tax_is_attested_not_read(standing: LotSalesTaxStanding) -> Bool {
+  match standing {
+    SalesTaxAttestedIncluded { jurisdiction: _, residual: _, attestation: _ } => true
+    SalesTaxCollected { collection: _, residual: _ } => false
+    SalesTaxIncludedJurisdictionUnread { read_obligation: _ } => false
+    SalesTaxTreatmentUnrecorded { read_obligation: _ } => false
+  }
+}
+
+type LotTaxPopulation
+  = LotTaxPopulationComplete { rows: List<LotTaxEvidence> }
+  | LotTaxPopulationRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
+
+type LotTaxOrdinalScan {
+  next_ordinal: Nat
+  hit: Nat?
+}
+
+fn first_seen_ordinal(seen: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Nat? {
+  fold(seen, init: LotTaxOrdinalScan { next_ordinal: 0, hit: none }, f: fn(acc, prior) {
+    match acc.hit {
+      Present { value: p } => LotTaxOrdinalScan { next_ordinal: acc.next_ordinal + 1, hit: Present { value: p } }
+      Absent =>
+        if inventory_lot_identity_eq(left: prior.lot, right: lot) {
+          LotTaxOrdinalScan { next_ordinal: acc.next_ordinal + 1, hit: Present { value: acc.next_ordinal } }
+        } else {
+          LotTaxOrdinalScan { next_ordinal: acc.next_ordinal + 1, hit: none }
+        }
+    }
+  }).hit
+}
+
+fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
+  fold(rows, init: LotTaxPopulationComplete { rows: [] }, f: fn(acc, row) {
+    match acc {
+      LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b } =>
+        LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b }
+      LotTaxPopulationComplete { rows: seen } =>
+        match first_seen_ordinal(seen: seen, lot: row.lot) {
+          Present { value: first } =>
+            LotTaxPopulationRepeatedLot {
+              lot: row.lot,
+              first_ordinal: first,
+              ledger_ordinal: seen.length(),
+            }
+          Absent => LotTaxPopulationComplete { rows: list_push(seen, row) }
+        }
+    }
+  })
+}
+
+fn lot_eq(a: InventoryLotIdentity, b: InventoryLotIdentity) -> Bool {
+  inventory_lot_identity_eq(left: a, right: b)
+}
+
+fn residual_owed_lot_count(rows: List<LotTaxEvidence>) -> Nat {
+  rows.filter(row => lot_tax_residual_is_owed(standing: row.standing)).length()
+}
+
+fn attested_lot_count(rows: List<LotTaxEvidence>) -> Nat {
+  rows.filter(row => lot_tax_is_attested_not_read(standing: row.standing)).length()
+}
+
+fn unread_or_unrecorded_lot_count(rows: List<LotTaxEvidence>) -> Nat {
+  rows.filter(row => lot_tax_jurisdiction_is_unread(standing: row.standing)).length()
+}
+
+fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
+  list_member(xs: lots, x: lot, eq: lot_eq)
+}
+
+fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<InventoryLotIdentity>) -> Bool {
+  list_cover(held: held, expected: expected, eq: lot_eq)
+}
+
+fn residual_owed_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  map(rows.filter(row => lot_tax_residual_is_owed(standing: row.standing)), r => r.lot)
+}
+
+fn attested_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  map(rows.filter(row => lot_tax_is_attested_not_read(standing: row.standing)), r => r.lot)
+}
+
+fn unread_or_unrecorded_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  map(rows.filter(row => lot_tax_jurisdiction_is_unread(standing: row.standing)), r => r.lot)
+}
+
+fn tax_covers_lot(rows: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Bool {
+  rows.any(row => lot_eq(a: row.lot, b: lot))
+}
+
+type LotTaxJoin
+  = LotTaxJoinCovered { rows: List<LotTaxEvidence> }
+  | LedgerMissingTax { lot: InventoryLotIdentity }
+  | TaxWithoutLedger { lot: InventoryLotIdentity }
+  | LotTaxJoinRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
+
+fn first_uncovered_ledger(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
+  fold(lots, init: none, f: fn(hit, id) {
+    match hit {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        if tax_covers_lot(rows: tax, lot: id) { none } else { Present { value: id } }
+    }
+  })
+}
+
+fn first_orphaned_tax(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
+  fold(tax, init: none, f: fn(hit, row) {
+    match hit {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        if identities_contain(lots: lots, lot: row.lot) { none } else { Present { value: row.lot } }
+    }
+  })
+}
+
+fn lot_tax_covers_ledgers(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> LotTaxJoin {
+  match admit_lot_tax_population(rows: tax) {
+    LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b } =>
+      LotTaxJoinRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b }
+    LotTaxPopulationComplete { rows: rows } =>
+      match first_uncovered_ledger(lots: lots, tax: rows) {
+        Present { value: lot } => LedgerMissingTax { lot: lot }
+        Absent =>
+          match first_orphaned_tax(lots: lots, tax: rows) {
+            Present { value: lot } => TaxWithoutLedger { lot: lot }
+            Absent => LotTaxJoinCovered { rows: rows }
+          }
+      }
+  }
+}
