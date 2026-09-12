@@ -1757,6 +1757,26 @@ pub struct TransitionAdmission {
 /// The EMPTY DOES NOT MEAN PERMISSIVE rule above makes this shrink fail-closed. This is the
 /// same instance deletion carried by the other cleanup PRs; the landing-incidence repair
 /// must itself discharge the roster debt it now enforces.
+///
+/// #10994's seventeen rows: HOW THEIR `expected_candidates` SETS WERE ESTABLISHED, and why each
+/// is a singleton. The sets are NOT transcribed from a run's `found candidates` -- copying found
+/// into expected makes the equality a tautology and turns the admission into permission for
+/// whatever the change happened to do. They are derived from `declaring_candidates`, which maps
+/// every exposing import through `declarer_of`, so a candidate set is over DECLARING modules and
+/// never over the import paths that reach them. That makes set size decidable from source: each
+/// moved spelling is declared in EXACTLY ONE module on each side --
+///
+///   base: `Intricacy*`/`Volume*` in `gunbc.roadmap_model`, `node_title` in `gunbc.roadmap_spawner`
+///   head: `Intricacy*`/`Volume*` in `gunbc.roadmap_sizing`, `node_title` in `gunbc.roadmap_status`
+///
+/// so each site's set is a singleton by structure rather than by compile convenience, and a second
+/// declarer appearing anywhere would widen the set and refuse here rather than pass quietly.
+///
+/// WHY ALL SEVENTEEN ARE STILL REQUIRED, rather than seventeen being carried over as a target: a
+/// row is needed only where this branch still produces a delta. Every one of the seventeen sites
+/// references its spelling on BOTH sides -- the reference survives the unbundling and only the
+/// declarer moves -- which is precisely `TargetChanged`. No site lost its reference, so no row is
+/// stale and none was re-authored to preserve a count.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
