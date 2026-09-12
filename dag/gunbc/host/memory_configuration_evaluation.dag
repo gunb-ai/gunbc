@@ -13,7 +13,7 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
 import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationEstablished, ObservationRefused }
 import gunbc.memory_configuration {
-  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, memory_module_capacity,
+  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_capacity,
   MemoryConfiguration, MemoryChangeProposal, MemoryPosition, PositionedMemoryModule,
   MemoryOperatingObligation, MemoryPlacement, MemorySocketCapacity, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
   MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
@@ -305,25 +305,31 @@ fn memory_standing_facts(obligation: MemoryOperatingObligation, standing: HostMe
 fn memory_qualification_facts(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence, obligation: MemoryOperatingObligation) -> MemoryCheckFacts {
   let receipts = filter(evidence.qualifications, r => (configuration == r.configuration))
   fold(configuration.population, init: memory_empty_facts, f: (acc, dimm) => {
-    let matched = fold(receipts, init: false, f: (seen, r) => seen ||
-      any(r.standings, s => s.host == configuration.platform.host && s.part_number == memory_module_label(dimm: dimm)
-        && any(s.population, slot => slot == dimm.position.connector)))
-    if !matched {
-      memory_facts_join(a: acc, b: memory_unknown(fact: MemoryStandingMissing { position: dimm.position, obligation: obligation }))
-    } else {
-      fold(receipts, init: acc, f: (a, r) => match memory_collector_refusal(c: r.collector) {
-        Present { value: cause } => memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable { cause: cause }))
-        Absent => if !memory_capture_covers_population(configuration: configuration, collector: r.collector) {
-          memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable {
-            cause: "qualification capture does not cover its claimed positioned inventory and catalog bindings",
-          }))
-        } else { fold(r.standings, init: a, f: (a2, s) =>
-          if s.host == configuration.platform.host && s.part_number == memory_module_label(dimm: dimm)
-            && any(s.population, slot => slot == dimm.position.connector) {
-            memory_facts_join(a: a2, b: memory_standing_facts(obligation: obligation, standing: s))
-          } else { a2 }
-        ) }
-      })
+    match dimm.identity {
+      ObservedMemoryModule { printed_part: _, capacity: _, source: _, missing_catalog_binding: _ } =>
+        memory_facts_join(a: acc, b: memory_unknown(fact: MemoryCatalogBindingUnresolved { dimm: dimm }))
+      CatalogMemoryModule { catalog } => {
+        let matched = fold(receipts, init: false, f: (seen, r) => seen ||
+          any(r.standings, s => s.host == configuration.platform.host && s.part_number == catalog.part_number
+            && any(s.population, slot => slot == dimm.position.connector)))
+        if !matched {
+          memory_facts_join(a: acc, b: memory_unknown(fact: MemoryStandingMissing { position: dimm.position, obligation: obligation }))
+        } else {
+          fold(receipts, init: acc, f: (a, r) => match memory_collector_refusal(c: r.collector) {
+            Present { value: cause } => memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable { cause: cause }))
+            Absent => if !memory_capture_covers_population(configuration: configuration, collector: r.collector) {
+              memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable {
+                cause: "qualification capture does not cover its claimed positioned inventory and catalog bindings",
+              }))
+            } else { fold(r.standings, init: a, f: (a2, s) =>
+              if s.host == configuration.platform.host && s.part_number == catalog.part_number
+                && any(s.population, slot => slot == dimm.position.connector) {
+                memory_facts_join(a: a2, b: memory_standing_facts(obligation: obligation, standing: s))
+              } else { a2 }
+            ) }
+          })
+        }
+      }
     }
   })
 }

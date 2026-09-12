@@ -11,10 +11,10 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
 import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
 import gunbc.memory_configuration {
   MemoryConfiguration, MemoryPlatform, PositionedMemoryModule, MemoryDeliveryVariant, MemoryPackageEvidence, ObservedMemoryModule,
-  MemoryOperatingObligation, MemoryPackageMixture, MemoryCatalogBinding, MemorySocketCapacity, MemoryBoot, MemoryFirmwareScopeCoverage,
+  MemoryOperatingObligation, MemoryPackageMixture, MemoryCatalogBinding, MemorySocketCapacity, MemoryBoot, MemoryClassSupport, MemorySpecificPartQualification, MemoryTraining, MemoryFirmwareScopeCoverage,
   memory_module_label,
 }
-import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding }
+import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, ConfigurationQualificationReceipt }
 import gunbc.memory_configuration_evaluation {
   MemoryConfigurationAssessment, evaluate_memory_configuration, memory_read_mixture_findings,
   MemoryCapturedMixtureConflict, MemoryProcurementCondition,
@@ -25,6 +25,10 @@ import gunbc.mtcollins_3ds_memory_change {
 }
 import test.claim.memory_change_evaluation_witness { memory_test_payload, memory_test_has_unknown, memory_test_recipe, memory_test_market }
 import product.build_fulfillment { SupplyRow, CompatibilityRefutedForPlatform, memory_screened_rows, NodeRecipe, resolve_build, LineRefused, MemoryProposalNotAdmitted }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, File }
+import gunbc.host_memory_qualification { HostMemoryStanding, ClassSupportedByBoard, ListedInVendorAvl, TrainingOperational, BootReachedOperatingSystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -343,6 +347,36 @@ test fn w_unknown_catalog_binding_preserves_an_existing_supplier_refusal() -> Bo
         CompatibilityRefutedForPlatform { reason } => reason == "independent supplier/platform refusal"
         _ => false
       })
+    }
+  }
+}
+
+// A printed-token standing is deliberately tempting but cannot establish a catalog-bound axis.
+test fn w_printed_token_standings_cannot_qualify_unbound_modules() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let configuration = mtcollins_3ds_configuration(roles: roles)
+      let cycle = multiple_test_cycle(configuration: configuration)
+      let evidence = multiple_test_evidence(roles: roles)
+      let changed = MemoryEvaluationEvidence { revision: "controlled printed-token qualification",
+        mixtures: evidence.mixtures, training_failures: [],
+        qualifications: [ConfigurationQualificationReceipt { configuration: configuration,
+          collector: mtcollins_3ds_collector(configuration: configuration, payload: concat(cycle, cycle)),
+          standings: map(configuration.population, dimm => HostMemoryStanding {
+            host: configuration.platform.host, part_number: memory_module_label(dimm: dimm), population: [dimm.position.connector],
+            class_support: ClassSupportedByBoard,
+            part_qualification: ListedInVendorAvl {
+              avl_authority: ExternalAuthority { uri: Uri { scheme: File, locator: "dag/test/claim/host/memory_multiple_findings_witness_test.dag" } },
+              avl_issue: "controlled printed-token claim",
+            },
+            training: TrainingOperational { dimm_mask: "controlled" }, boot: BootReachedOperatingSystem, observed_at: 0,
+          }),
+        }] }
+      let assessed = evaluate_memory_configuration(configuration: configuration, evidence: changed, additional: [])
+      fold([MemoryClassSupport, MemorySpecificPartQualification, MemoryTraining, MemoryBoot], init: true,
+        f: (ok, obligation) => ok && memory_test_has_unknown(a: assessed, obligation: obligation)
+          && !multiple_test_satisfies(a: assessed, obligation: obligation))
     }
   }
 }
