@@ -1,6 +1,5 @@
 module v2.test.claim.reference_derived_graph_call_arg_tree
 
-import std.algebra { Empty }
 import std.types { Int }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
@@ -35,7 +34,15 @@ data ca_provider_path: String = "dag/test/fixture/reference_derived_graph/provid
 
 data ca_call_arg_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
 
+data ca_type_pos_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_only.dag"
+
+data ca_body_value_path: String = "dag/test/fixture/reference_derived_graph/consumer_body_value.dag"
+
 data ca_provider_module: String = "test.fixture.reference_derived_graph.provider"
+
+data ca_type_pos_text: String = "module test.fixture.reference_derived_graph.consumer_type_only\nimport std.types { Int }\nfn uses(x: test.fixture.reference_derived_graph.provider.ProvidedMarker) -> Int { 1 }\n"
+
+data ca_body_value_text: String = "module test.fixture.reference_derived_graph.consumer_body_value\nimport std.types { Int }\nfn uses() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
 
 fn ca_parse_root(text: String, file: Symbol) -> Outcome<Node> {
   let lm = dag_language_model()
@@ -70,46 +77,92 @@ fn ca_edge_count(edges: List<ModuleDependencyEdge>, path: String, target: String
   length(xs: edges |> filter(e => e.path == path && e.target_module == target))
 }
 
-fn ca_edges_from_roots(provider_root: Node, call_root: Node) -> List<ModuleDependencyEdge> {
+fn ca_edges_from_pair(
+  provider_root: Node,
+  consumer_path: String,
+  consumer_root: Node
+) -> List<ModuleDependencyEdge> {
   reference_derived_edges_from_located_roots(
     items: [
       LocatedModuleRoot { path: ca_provider_path, root: provider_root },
-      LocatedModuleRoot { path: ca_call_arg_path, root: call_root }
+      LocatedModuleRoot { path: consumer_path, root: consumer_root }
     ],
     include_import_syntax: false
   )
 }
 
-fn ca_parse_call_arg_edge_count() -> Int {
-  match ca_parse_root(text: ca_provider_text, file: ^ca_provider_parse) {
-    Rejected { diagnostics: _ } => 0
-    Accepted { value: provider_root, diagnostics: _ } =>
-      match ca_parse_root(text: ca_call_arg_text, file: ^ca_call_arg_parse) {
-        Rejected { diagnostics: _ } => 0
-        Accepted { value: call_root, diagnostics: _ } =>
+data ca_ingest_refused_count: Int = -1
+
+fn ca_pair_edge_count(
+  provider_root: Outcome<Node>,
+  consumer_root: Outcome<Node>,
+  consumer_path: String
+) -> Int {
+  match provider_root {
+    Rejected { diagnostics: _ } => ca_ingest_refused_count
+    Accepted { value: p, diagnostics: _ } =>
+      match consumer_root {
+        Rejected { diagnostics: _ } => ca_ingest_refused_count
+        Accepted { value: c, diagnostics: _ } =>
           ca_edge_count(
-            edges: ca_edges_from_roots(provider_root: provider_root, call_root: call_root),
-            path: ca_call_arg_path,
+            edges: ca_edges_from_pair(
+              provider_root: p,
+              consumer_path: consumer_path,
+              consumer_root: c
+            ),
+            path: consumer_path,
             target: ca_provider_module
           )
       }
   }
 }
 
+fn ca_parse_call_arg_edge_count() -> Int {
+  ca_pair_edge_count(
+    provider_root: ca_parse_root(text: ca_provider_text, file: ^ca_provider_parse),
+    consumer_root: ca_parse_root(text: ca_call_arg_text, file: ^ca_call_arg_parse),
+    consumer_path: ca_call_arg_path
+  )
+}
+
 fn ca_normalized_call_arg_edge_count() -> Int {
-  match ca_normalized_root(text: ca_provider_text, file: ^ca_provider_norm) {
-    Rejected { diagnostics: _ } => 0
-    Accepted { value: provider_root, diagnostics: _ } =>
-      match ca_normalized_root(text: ca_call_arg_text, file: ^ca_call_arg_norm) {
-        Rejected { diagnostics: _ } => 0
-        Accepted { value: call_root, diagnostics: _ } =>
-          ca_edge_count(
-            edges: ca_edges_from_roots(provider_root: provider_root, call_root: call_root),
-            path: ca_call_arg_path,
-            target: ca_provider_module
-          )
-      }
-  }
+  ca_pair_edge_count(
+    provider_root: ca_normalized_root(text: ca_provider_text, file: ^ca_provider_norm),
+    consumer_root: ca_normalized_root(text: ca_call_arg_text, file: ^ca_call_arg_norm),
+    consumer_path: ca_call_arg_path
+  )
+}
+
+fn ca_parse_type_pos_edge_count() -> Int {
+  ca_pair_edge_count(
+    provider_root: ca_parse_root(text: ca_provider_text, file: ^ca_provider_type_parse),
+    consumer_root: ca_parse_root(text: ca_type_pos_text, file: ^ca_type_pos_parse),
+    consumer_path: ca_type_pos_path
+  )
+}
+
+fn ca_normalized_type_pos_edge_count() -> Int {
+  ca_pair_edge_count(
+    provider_root: ca_normalized_root(text: ca_provider_text, file: ^ca_provider_type_norm),
+    consumer_root: ca_normalized_root(text: ca_type_pos_text, file: ^ca_type_pos_norm),
+    consumer_path: ca_type_pos_path
+  )
+}
+
+fn ca_parse_body_value_edge_count() -> Int {
+  ca_pair_edge_count(
+    provider_root: ca_parse_root(text: ca_provider_text, file: ^ca_provider_body_parse),
+    consumer_root: ca_parse_root(text: ca_body_value_text, file: ^ca_body_value_parse),
+    consumer_path: ca_body_value_path
+  )
+}
+
+fn ca_normalized_body_value_edge_count() -> Int {
+  ca_pair_edge_count(
+    provider_root: ca_normalized_root(text: ca_provider_text, file: ^ca_provider_body_norm),
+    consumer_root: ca_normalized_root(text: ca_body_value_text, file: ^ca_body_value_norm),
+    consumer_path: ca_body_value_path
+  )
 }
 
 test fn call_argument_only_reference_is_missing_from_parse_tree_today_holds() -> Bool {
@@ -118,4 +171,20 @@ test fn call_argument_only_reference_is_missing_from_parse_tree_today_holds() ->
 
 test fn call_argument_only_reference_is_missing_from_normalized_tree_today_holds() -> Bool {
   ca_normalized_call_arg_edge_count() == 0
+}
+
+test fn type_position_only_is_missing_from_parse_tree_today_holds() -> Bool {
+  ca_parse_type_pos_edge_count() == 0
+}
+
+test fn type_position_only_is_missing_from_normalized_tree_today_holds() -> Bool {
+  ca_normalized_type_pos_edge_count() == 0
+}
+
+test fn body_value_outside_call_is_missing_from_parse_tree_today_holds() -> Bool {
+  ca_parse_body_value_edge_count() == 0
+}
+
+test fn body_value_outside_call_is_missing_from_normalized_tree_today_holds() -> Bool {
+  ca_normalized_body_value_edge_count() == 0
 }
