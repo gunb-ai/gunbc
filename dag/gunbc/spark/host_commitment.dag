@@ -209,21 +209,36 @@ fn spark_host_commitments_in(
   }
 }
 
-// THE PER-HOST STANDING PRODUCER IS ROSTER-BOUNDED, AND THAT IS THE WHOLE REPAIR.
+// A STANDING HAS EXACTLY ONE CONSTRUCTION SITE AND IT IS INSIDE THE MEMBERSHIP CHECK.
 //
-// THE SHAPE THIS REPLACES took a host and four commitment lists and answered a STANDING. Handed a
-// machine that is not a DGX Spark unit at all -- or any string -- it found no cause in any list and
-// answered `SparkHostUncommitted`, which reads as "the fleet has looked and nothing has claimed it".
-// The fleet had not looked; the host was not in its universe. That is absence-as-fact in the one
-// module written to refuse it, and the public admission seam having its own roster check did not fix
-// it, because this helper was reachable on its own and produced the same value type.
+// THIS IS THE SECOND CUT AT THE SAME DEFECT, and the first one is worth stating because it is the
+// instructive failure. The original producer took a host and four commitment lists and answered a
+// STANDING; handed a machine that is not a DGX Spark unit it found no cause and said
+// `SparkHostUncommitted`, which reads as "the fleet looked and nothing has claimed it" when the fleet
+// had not looked. The repair added the unit population and an Absent arm here -- and moved the
+// destructure into a `spark_standing_from_causes(host, causes)` helper, which was the SAME
+// UNRESTRICTED MINT one level down: no population, no membership, and an Empty arm handing back an
+// uncommitted standing for any host at all. Naming a helper "the mint" does not give it module
+// privacy; `.dag` has no visibility modifier, so an unchecked constructor is a public constructor.
 //
-// So there is no unchecked per-host standing producer any more. This one takes the unit population,
-// answers Absent for anything outside it, and the roster fold below destructures the causes itself
-// rather than routing through a per-host answer. `spark_host_commitments_in` stays public and stays
-// unchecked ON PURPOSE: it answers which of the lists you handed it name this host, which is a
-// question about the lists rather than a claim about the fleet, and it cannot be mistaken for one
-// because its result is a cause monoid rather than a standing.
+// SO THE HELPER IS DELETED RATHER THAN WRAPPED. A third checked wrapper over it would have reproduced
+// exactly the rejected shape one level deeper, which is the delete-first reading DESIGN section 3
+// asks for: uproot the unrestricted root, then fix what refuses. The destructure now lives INSIDE the
+// membership-checked branch, so there is no reachable path from a host to a standing that skips the
+// roster, and the discriminating control reaches THIS boundary because there is no longer a lower one
+// for it to miss.
+//
+// THE COST THIS DELIBERATELY ACCEPTS, stated so nobody optimises it back into a hole: the roster fold
+// calls this checked constructor per unit, so membership is scanned once per host -- quadratic in the
+// fleet roster, where the scan is a TAUTOLOGY because the fold is walking that very population. The
+// obvious removal is to let the fold construct directly, which is precisely the unchecked mint this
+// paragraph exists to prevent from coming back. DESIGN section 6's bare-minimum-cost rule is about a
+// defect; this is the price of one construction authority over an eight-row roster, and if it ever
+// needs to be cheap the answer is a membership proof carried in the value, never a second path.
+//
+// `spark_host_commitments_in` stays public and stays unchecked ON PURPOSE: it answers which of the
+// lists you handed it name this host, which is a question about the lists rather than a claim about
+// the fleet, and it returns a cause monoid rather than a standing, so it cannot be mistaken for one.
 fn spark_host_standing_in(
   units: List<HostIdentity>,
   assignments: List<SparkCellRoleAssignment>,
@@ -235,28 +250,17 @@ fn spark_host_standing_in(
   if !any(units, u => host_identity_eq(a: u, b: host)) {
     none
   } else {
-    Present {
-      value: spark_standing_from_causes(
-        host: host,
-        causes: spark_host_commitments_in(
-          assignments: assignments,
-          claimed_serving_hosts: claimed_serving_hosts,
-          arm_claims: arm_claims,
-          held_reservation_hosts: held_reservation_hosts,
-          host: host,
-        ),
-      ),
+    match spark_host_commitments_in(
+      assignments: assignments,
+      claimed_serving_hosts: claimed_serving_hosts,
+      arm_claims: arm_claims,
+      held_reservation_hosts: held_reservation_hosts,
+      host: host,
+    ) {
+      Empty => Present { value: SparkHostUncommitted { host: host } }
+      Cons { head: first, tail: rest } =>
+        Present { value: SparkHostCommitted { host: host, commitments: FreeSemigroup { head: first, tail: rest } } }
     }
-  }
-}
-
-// THE MINT, AND IT IS THE ONLY PLACE A STANDING IS CONSTRUCTED. Agreement and commitment are decided
-// by the same destructure that supplies the payload, so an empty commitment has no constructor.
-fn spark_standing_from_causes(host: HostIdentity, causes: FreeMonoid<SparkHostCommitment>) -> SparkHostStanding {
-  match causes {
-    Empty => SparkHostUncommitted { host: host }
-    Cons { head: first, tail: rest } =>
-      SparkHostCommitted { host: host, commitments: FreeSemigroup { head: first, tail: rest } }
   }
 }
 
@@ -267,16 +271,17 @@ fn spark_host_standings_in(
   arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
 ) -> List<SparkHostStanding> {
-  map(units, h => spark_standing_from_causes(
+  flat_map(units, h => match spark_host_standing_in(
+    units: units,
+    assignments: assignments,
+    claimed_serving_hosts: claimed_serving_hosts,
+    arm_claims: arm_claims,
+    held_reservation_hosts: held_reservation_hosts,
     host: h,
-    causes: spark_host_commitments_in(
-      assignments: assignments,
-      claimed_serving_hosts: claimed_serving_hosts,
-      arm_claims: arm_claims,
-      held_reservation_hosts: held_reservation_hosts,
-      host: h,
-    ),
-  ))
+  ) {
+    Absent => []
+    Present { value: standing } => [standing]
+  })
 }
 
 // THE SET, AS IDENTITIES, AND IT IS A PROJECTION OF THE STANDINGS RATHER THAN A SECOND DERIVATION.
