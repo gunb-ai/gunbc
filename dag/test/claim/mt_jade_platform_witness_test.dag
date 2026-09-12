@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.measure { hertz_count, microsecond_count, micrometer_count, megatransfers_per_second_count }
 import gunbc.specification_citation_read_provenance {
+  DocumentMirrorLocatorFetchedAndTextIngested,
   DocumentLocatorFetchRefused,
   OperatorSuppliedDocumentText,
   mt_jade_publisher_citation_read_receipt,
@@ -184,6 +185,7 @@ test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool 
     PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
     OperatorSuppliedDocumentText {} => false
     DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => false
+    DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: _, detail: _ } => false
   }
 }
 
@@ -195,6 +197,7 @@ test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
     DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => false
     PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
     DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => false
+    DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: _, detail: _ } => false
   }
     && (mt_jade_ingested_citation_read_receipt.subject.module_path as String) == "extdeps.ocp.mt_jade.subject"
     && (mt_jade_ingested_citation_read_receipt.subject.decl_name as String) == "mt_jade_reference_platform"

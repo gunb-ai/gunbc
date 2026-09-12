@@ -20,15 +20,23 @@ import std.content_hash {
 import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
 import std.cache_identity {
   ArtifactKindId,
+  CacheInterfaceId,
   parse_source_artifact_kind,
   typed_module_artifact_kind,
-  resolved_graph_artifact_kind
+  resolved_graph_artifact_kind,
+  native_compiler_artifact_kind,
+  native_test_universe_artifact_kind,
+  native_module_verdict_bundle_artifact_kind
 }
 import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown,
   IdentityUnknownCause, MissingConcept, MissingEnforcement
 }
 import std.artifact_store { ArtifactStore, store_put, store_put_fold }
+import v2.compiler.self_host.generation {
+  PreMaterializationIdentity,
+  pre_materialization_digest,
+}
 import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size }
 
@@ -55,6 +63,13 @@ import std.measure { ByteSize, byte_size }
 data materialization_provider_derivation_invariant: String = "THE GOVERNING INVARIANT OF THIS CONTRACT, stated once so it is not rediscovered instance by instance: NO CORRECTNESS-RELEVANT INPUT MAY BE CALLER-ASSERTED. Every one is derived from exactly one of three sources — (1) the request COPRODUCT, whose variant fixes kind, declared inputs, and the required-output roster; (2) a FOLD OVER THE CARRIED PARTS, which is how the content digest and the artifact size are obtained; or (3) a REALIZATION READ-BACK, which is observed_digest and nothing else. Anything a future variant or field adds must say which of the three it is, and if it is none of them it does not belong in this contract. Widening the carve-out below to a second item is the change this invariant exists to make visible.
 
 THE ONE CARVE-OUT, AND ITS HONEST CLASS (parent ruling on codex review 44286): source (3), the read-back, is today an ASSERTION — that the transport computed observed_digest from the stored parts by this same derivation. Classifying that as a permanent residual trust boundary would be the section 5 'never' trap: a permanent-sounding residue carries no trigger, so its frequency is zero by construction and it never ranks for fixing. It is not permanent. It is a WALL AFTER GROUNDING, and the grounding is decidable — just not INSIDE this module, which never receives bytes. It is decidable at the TRANSPORT: if the only way to obtain a ProviderProbe is to have called the realization's modeled read operation, the provenance is structural rather than asserted. Note what that does NOT mean — the grounding is not a brand on the digest value, because a brand is freely constructible here and would be forgeable theater (the same argument the 44265 custody token lost); it is that the PROBE is produced by the read rather than hand-built. What blocks it today is that ProbeFound stays freely constructible from any module — the same constructor-confinement gap DESIGN recorded for TransportScript. That precedent has since RESOLVED in the direction this carve-out needs: TransportScript is a sole_constructor record whose single mint is admit_callers-sealed to named production decls, and the cast form of sole_constructor was closed in 04_infer sole_constructor_construction_diags, so 'freely constructible from any module' is no longer the language's fate for a carrier — it is a property of ProbeFound's own declaration, which this module has not yet changed. DISSOLUTION TRIGGER: this carve-out grounds when ProviderProbe is minted only by the modeled read operation (extdeps.realization.artifact_store_fs is the concrete site — a function taking an ArtifactFsLookup and computing the digest itself makes a hand-built ProbeFound impossible at the seam that matters) and constructor confinement lands; tracked against the node/subtree visibility-grants lane, whose Reference verb gates whether the reference edge may be formed at all. Until then this is counted debt, not accepted permanence. WHY IT IS STATED RATHER THAN PATCHED (parent ruling, DESIGN section 6 root-cause-do-not-patch-the-sites): four review findings — 44175 caller-supplied required_outputs, 44265 caller-supplied ComputationIdentity, 44278 caller-authored carried_outputs beside a caller-authored content_digest, and artifact_bytes, found by the parent by reading the three together — were ONE defect found four times, each an accepted assertion where a derivation was available. The fourth was the sharpest because it was load-bearing on a wall built for it: provider_admit_bound branches the budget check on the size and hands that same size to store_put as the stored size, so an understated value did not merely walk past ProviderBudgetExhausted once, it corrupted store_bytes_used and therefore every subsequent LRU eviction decision. The symmetric fix was chosen over carrying the size in the probe precisely BECAUSE of this invariant: a probe field would have been honest but would have added a second item to the trust boundary, whereas a fold over the parts makes the roster the preimage of BOTH the digest and the size — one construction, one argument, no new trust."
+
+// PROGRESS ON THE CARVE-OUT ABOVE, stated narrowly so it is not read as the dissolution: the
+// persistent-store realization (std.materialization_object store_lookup_decide) now mints its
+// ProbeFound from the stored BYTES -- payload_part derives every part digest and size from the
+// payload, and store_observed_digest folds them -- so on that route observed_digest is computed,
+// not asserted. The carve-out still stands for every other caller, because ProbeFound remains
+// freely constructible; its trigger (constructor confinement of ProviderProbe) is unchanged.
 
 // Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread):
 // the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the
@@ -114,6 +129,12 @@ data output_typecheck_diagnostics: ArtifactOutputId = "typecheck_diagnostics"
 data output_resolved_graph: ArtifactOutputId = "resolved_graph"
 data output_source_indices: ArtifactOutputId = "source_indices"
 data output_compile_clean_diagnostic_union: ArtifactOutputId = "compile_clean_diagnostic_union"
+data output_native_compiler_executable: ArtifactOutputId = "native_compiler_executable"
+data output_native_compiler_build_diagnostics: ArtifactOutputId = "native_compiler_build_diagnostics"
+data output_universe_test_identity_population: ArtifactOutputId = "universe_test_identity_population"
+data output_universe_module_import_closures: ArtifactOutputId = "universe_module_import_closures"
+data output_module_test_verdicts: ArtifactOutputId = "module_test_verdicts"
+data output_module_preparation_diagnostics: ArtifactOutputId = "module_preparation_diagnostics"
 
 type DeclaredInput {
   ref: NonEmptyStr
@@ -138,19 +159,113 @@ type ArtifactRequest
       compiler: DeclaredInput
     }
   | ResolveClosureRequest { closure_digest: Fnv1a64Structural, compiler: DeclaredInput }
+  | NativeCompilerArtifactRequest { generation: PreMaterializationIdentity }
+  | UniverseArtifactRequest { tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput }
+  | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
+
+// THE NATIVE ROUTE'S THREE REQUEST FAMILIES (operator rulings 2026-09-11: the replacement native CI
+// job is a materialization). Each is a VARIANT for the reason the header gives: kind, declared
+// inputs and required outputs are derived, so none of them can be under-specified by a caller.
+//
+// Every field is an IDENTITY DIGEST, never a location. A path, mount, object name, bucket, rename
+// or permission appears in no request and no artifact -- those are facts of one realization (the
+// local persistent store names a file; a GCS realization names an object), and putting one here
+// would make the computation key depend on where the bytes live. Provider identity is likewise
+// absent from every key: it lives in the RealizationReceipt below, so the same request keys the
+// same artifact in every realization, which is what lets a later realization serve what an
+// earlier one committed without re-keying.
+//
+// NativeCompilerArtifactRequest: the executable built from the seed-prepared emitted closure. Its
+// identity is NOT re-invented here. v2.compiler.self_host.generation is the sole authority for what
+// identifies a compiler generation, and this request carries that module's PRE-MATERIALIZATION
+// projection -- the five CAUSAL axes (producer compiler, source closure, target model, toolchain,
+// build configuration) -- with the key derived by its own pre_materialization_digest. An earlier
+// shape keyed on {emitted closure, toolchain, target platform}, which dropped the producer compiler
+// and the build configuration: two generations differing only in those read as ONE computation, and
+// the differing artifact then reads as a same-key content CONFLICT rather than as a changed input.
+// That is the section 3 fork this lane was told not to create, and it is closed by consumption
+// rather than by a check. The sixth axis, materialized_artifact, is deliberately absent: it is
+// EARNED from verified stored bytes (a committed artifact read back and verified) and joined back to
+// GenerationIdentity afterwards, so it can never be caller-authored into a pre-build lookup.
+// Requires the executable AND the build diagnostics: a build whose warnings were dropped is not the
+// build that ran.
+//
+// THE IMPORT DIRECTION IS A STATED DEPARTURE, not an oversight. This is the only std module that
+// imports a v2 COMPILER module (other std modules import v2.std.*). The alternative was to restate
+// the five axes here, which is precisely the fork this change exists to close, and DESIGN section 3
+// puts a fact's home in its LAYER rather than its folder, with acyclicity as the import graph's only
+// structural law -- v2.compiler.self_host.generation imports nothing from this module, so the edge is
+// acyclic. If the axes ever need a home below the compiler, the move is generation's to make and this
+// consumer follows it; duplicating them here would not be that move.
+//
+// UniverseArtifactRequest: the derived test universe of one tested tree under one route binary --
+// the ordered test-identity population and the per-module import closures the route ingests.
+// Subject = the tested tree identity; declared input = the route binary that derived it.
+//
+// NativeModuleVerdictBundleRequest: one module's verdicts. Its five facts are carried as one
+// subject record because every one of them is load-bearing on the verdicts and none is the single
+// "thing transformed": the route binary that adjudicates, the module, its canonical import
+// closure (a dependency's change must key apart), the ORDERED test-identity population (a test
+// added, removed or reordered is a different bundle -- order is part of the identity, as for
+// declared inputs above), and the evaluation-interpretation identity (the evaluator semantics
+// the verdicts were produced under). Requires the verdicts AND the preparation diagnostics: a
+// bundle that dropped the diagnostics of a module that failed to prepare would read as a module
+// with no tests, which is the fabricated-plausible-output arm section 5 forbids.
+//
+// DECLARED FRONTIER (DESIGN section 3c). These three families are consumed today only by the store
+// semantics (std.materialization_object, extdeps.realization.materialization_store_local) and their
+// executed controls. Their production consumer is the EMITTED NATIVE ROUTE (the successor of
+// gunbc.witness.v2_native_route's operator-invoked instrument), which lands in a later lane.
+// TRIGGER: the emitted native route constructs these requests from its own receipt identities and
+// serves or commits them through the local store instead of re-preparing every module per run.
+type NativeModuleVerdictBundleSubject {
+  route_binary_identity: Fnv1a64Structural
+  module_identity: Fnv1a64Structural
+  canonical_module_import_closure_identity: Fnv1a64Structural
+  ordered_test_identity_population: Fnv1a64Structural
+  eval_interpretation_identity: Fnv1a64Structural
+}
 
 fn request_fold<T>(
   req: ArtifactRequest,
   parse_module: fn(Fnv1a64Structural, DeclaredInput) -> T,
   typecheck_module: fn(Fnv1a64Structural, List<InterfaceHash>, DeclaredInput) -> T,
-  resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T
+  resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T,
+  native_compiler: fn(PreMaterializationIdentity) -> T,
+  universe: fn(Fnv1a64Structural, DeclaredInput) -> T,
+  module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T
 ) -> T {
   match req {
     ParseModuleRequest { source_digest: sd, compiler: c } => parse_module(sd, c)
     TypecheckModuleRequest { source_digest: sd, direct_import_interfaces: ii, compiler: c } =>
       typecheck_module(sd, ii, c)
     ResolveClosureRequest { closure_digest: cd, compiler: c } => resolve_closure(cd, c)
+    NativeCompilerArtifactRequest { generation: g } => native_compiler(g)
+    UniverseArtifactRequest { tested_tree_identity: tt, route_binary: rb } => universe(tt, rb)
+    NativeModuleVerdictBundleRequest(subject) => module_verdict_bundle(subject)
   }
+}
+
+// The verdict bundle's subject digest folds its five identities in DECLARED field order under a
+// tag of its own, so two bundles agree on the subject only when all five agree; the tag keeps it
+// from colliding with any other family's subject over the same digests.
+fn module_verdict_bundle_subject_digest(subject: NativeModuleVerdictBundleSubject) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "materialization_provider.native_module_verdict_bundle",
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_combine_structural(
+          left: content_hash_combine_structural(
+            left: subject.route_binary_identity,
+            right: subject.module_identity
+          ),
+          right: subject.canonical_module_import_closure_identity
+        ),
+        right: subject.ordered_test_identity_population
+      ),
+      right: subject.eval_interpretation_identity
+    )
+  )
 }
 
 fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
@@ -158,7 +273,10 @@ fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
     req: req,
     parse_module: (sd, c) => parse_source_artifact_kind,
     typecheck_module: (sd, ii, c) => typed_module_artifact_kind,
-    resolve_closure: (cd, c) => resolved_graph_artifact_kind
+    resolve_closure: (cd, c) => resolved_graph_artifact_kind,
+    native_compiler: g => native_compiler_artifact_kind,
+    universe: (tt, rb) => native_test_universe_artifact_kind,
+    module_verdict_bundle: subject => native_module_verdict_bundle_artifact_kind
   )
 }
 
@@ -167,7 +285,10 @@ fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
     req: req,
     parse_module: (sd, c) => sd,
     typecheck_module: (sd, ii, c) => sd,
-    resolve_closure: (cd, c) => cd
+    resolve_closure: (cd, c) => cd,
+    native_compiler: g => pre_materialization_digest(pre: g),
+    universe: (tt, rb) => tt,
+    module_verdict_bundle: subject => module_verdict_bundle_subject_digest(subject: subject)
   )
 }
 
@@ -177,7 +298,16 @@ fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
     parse_module: (sd, c) => [c],
     typecheck_module: (sd, ii, c) =>
       concat(ii |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }), [c]),
-    resolve_closure: (cd, c) => [c]
+    resolve_closure: (cd, c) => [c],
+    native_compiler: g => [
+      DeclaredInput { ref: "generation.producer_compiler", digest: g.producer_compiler },
+      DeclaredInput { ref: "generation.source_closure", digest: g.source_closure },
+      DeclaredInput { ref: "generation.target_model", digest: g.target_model },
+      DeclaredInput { ref: "generation.toolchain", digest: g.toolchain },
+      DeclaredInput { ref: "generation.build_configuration", digest: g.build_configuration }
+    ],
+    universe: (tt, rb) => [rb],
+    module_verdict_bundle: subject => []
   )
 }
 
@@ -187,7 +317,13 @@ fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
     parse_module: (sd, c) => [output_parse_tree, output_parse_diagnostics],
     typecheck_module: (sd, ii, c) => [output_typed_module_interface, output_typecheck_diagnostics],
     resolve_closure: (cd, c) =>
-      [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union]
+      [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
+    native_compiler: g =>
+      [output_native_compiler_executable, output_native_compiler_build_diagnostics],
+    universe: (tt, rb) =>
+      [output_universe_test_identity_population, output_universe_module_import_closures],
+    module_verdict_bundle: subject =>
+      [output_module_test_verdicts, output_module_preparation_diagnostics]
   )
 }
 
@@ -253,7 +389,10 @@ fn request_key(req: ArtifactRequest) -> ContentHash {
         interface_key: module_key(source_hash: sd, direct_import_interface_hashes: ii),
         compiler_identity: c.digest
       ),
-    resolve_closure: (cd, c) => local_request_key(req: req)
+    resolve_closure: (cd, c) => local_request_key(req: req),
+    native_compiler: g => local_request_key(req: req),
+    universe: (tt, rb) => local_request_key(req: req),
+    module_verdict_bundle: subject => local_request_key(req: req)
   )
 }
 
@@ -371,6 +510,21 @@ type MaterializedArtifact
       source_indices: ArtifactPart,
       compile_clean_diagnostic_union: ArtifactPart
     }
+  | NativeCompilerArtifact {
+      request_key: ContentHash,
+      executable: ArtifactPart,
+      build_diagnostics: ArtifactPart
+    }
+  | UniverseArtifact {
+      request_key: ContentHash,
+      test_identity_population: ArtifactPart,
+      module_import_closures: ArtifactPart
+    }
+  | ModuleVerdictBundleArtifact {
+      request_key: ContentHash,
+      test_verdicts: ArtifactPart,
+      preparation_diagnostics: ArtifactPart
+    }
   | LegacyIncompleteArtifact {
       kind: ArtifactKindId,
       request_key: ContentHash,
@@ -382,6 +536,9 @@ fn artifact_fold<T>(
   parsed: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   typed_module: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   resolved_graph: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart) -> T,
+  native_compiler: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  universe: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  module_verdict_bundle: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
 ) -> T {
   match artifact {
@@ -394,6 +551,12 @@ fn artifact_fold<T>(
       source_indices: s,
       compile_clean_diagnostic_union: u
     } => resolved_graph(k, g, s, u)
+    NativeCompilerArtifact { request_key: k, executable: e, build_diagnostics: d } =>
+      native_compiler(k, e, d)
+    UniverseArtifact { request_key: k, test_identity_population: p, module_import_closures: c } =>
+      universe(k, p, c)
+    ModuleVerdictBundleArtifact { request_key: k, test_verdicts: v, preparation_diagnostics: d } =>
+      module_verdict_bundle(k, v, d)
     LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
       legacy_incomplete(kd, k, cs)
   }
@@ -405,6 +568,9 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
     parsed: (k, t, d) => parse_source_artifact_kind,
     typed_module: (k, i, d) => typed_module_artifact_kind,
     resolved_graph: (k, g, s, u) => resolved_graph_artifact_kind,
+    native_compiler: (k, e, d) => native_compiler_artifact_kind,
+    universe: (k, p, c) => native_test_universe_artifact_kind,
+    module_verdict_bundle: (k, v, d) => native_module_verdict_bundle_artifact_kind,
     legacy_incomplete: (kd, k, cs) => kd
   )
 }
@@ -415,6 +581,9 @@ fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
     parsed: (k, t, d) => k,
     typed_module: (k, i, d) => k,
     resolved_graph: (k, g, s, u) => k,
+    native_compiler: (k, e, d) => k,
+    universe: (k, p, c) => k,
+    module_verdict_bundle: (k, v, d) => k,
     legacy_incomplete: (kd, k, cs) => k
   )
 }
@@ -435,6 +604,18 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
       positioned_part(id: output_source_indices, part: s),
       positioned_part(id: output_compile_clean_diagnostic_union, part: u)
     ],
+    native_compiler: (k, e, d) => [
+      positioned_part(id: output_native_compiler_executable, part: e),
+      positioned_part(id: output_native_compiler_build_diagnostics, part: d)
+    ],
+    universe: (k, p, c) => [
+      positioned_part(id: output_universe_test_identity_population, part: p),
+      positioned_part(id: output_universe_module_import_closures, part: c)
+    ],
+    module_verdict_bundle: (k, v, d) => [
+      positioned_part(id: output_module_test_verdicts, part: v),
+      positioned_part(id: output_module_preparation_diagnostics, part: d)
+    ],
     legacy_incomplete: (kd, k, cs) => cs
   )
 }
@@ -449,6 +630,168 @@ fn carried_outputs_bytes(outputs: List<CarriedOutput>) -> ByteSize {
 
 fn artifact_bytes(artifact: MaterializedArtifact) -> ByteSize {
   carried_outputs_bytes(outputs: artifact_carried_outputs(artifact: artifact))
+}
+
+// EVERY ARTIFACT KIND CARRIES A MANIFEST, AND THE MANIFEST IS A PROJECTION, NOT A SECOND RECORD.
+// A realization stores bytes somewhere this contract never sees, so it must also store WHAT THOSE
+// BYTES CLAIM TO BE: the kind, the request key they were produced for, and every part's (id,
+// digest, size) in the variant's positional order. artifact_manifest derives that from the
+// artifact, and artifact_from_manifest is its inverse -- the ONE place a stored claim becomes a
+// MaterializedArtifact again. The two are the contract's own vocabulary read in both directions,
+// so a realization that stores manifests cannot invent a kind mapping of its own (section 3).
+type ArtifactManifest {
+  kind: ArtifactKindId
+  request_key: ContentHash
+  parts: List<CarriedOutput>
+}
+
+fn artifact_manifest(artifact: MaterializedArtifact) -> ArtifactManifest {
+  ArtifactManifest {
+    kind: artifact_kind(artifact: artifact),
+    request_key: artifact_request_key(artifact: artifact),
+    parts: artifact_carried_outputs(artifact: artifact)
+  }
+}
+
+// THE DECODE IS TOTAL AND REFUSES WHAT IT CANNOT NAME. A manifest whose kind this contract does not
+// declare, or that names a part its kind does not position, or names one part twice, is not an
+// incomplete artifact and not a miss: it is a stored claim this contract cannot interpret, and it
+// refuses as such. A manifest MISSING a part its kind requires decodes to the named incompleteness
+// variant, so the door's completeness check -- the one authority for it -- is what refuses it, on
+// the same arm a request-derived obligation would.
+type ManifestDecode
+  = ManifestDecoded { artifact: MaterializedArtifact }
+  | ManifestKindUndeclared { kind: ArtifactKindId }
+  | ManifestPartUndeclared { kind: ArtifactKindId, part: ArtifactOutputId }
+  | ManifestPartRepeated { kind: ArtifactKindId, part: ArtifactOutputId }
+
+fn manifest_part(parts: List<CarriedOutput>, id: ArtifactOutputId) -> ArtifactPart? {
+  match parts |> filter(o => o.id == id) |> first() {
+    Present { value: o } => Present { value: ArtifactPart { digest: o.digest, bytes: o.bytes } }
+    Absent => none
+  }
+}
+
+fn manifest_part_occurrences(parts: List<CarriedOutput>, id: ArtifactOutputId) -> Int {
+  parts |> filter(o => o.id == id) |> count()
+}
+
+fn manifest_first_undeclared(parts: List<CarriedOutput>, roster: List<ArtifactOutputId>) -> ArtifactOutputId? {
+  match parts |> filter(o => !output_list_contains(xs: roster, wanted: o.id)) |> first() {
+    Present { value: o } => Present { value: o.id }
+    Absent => none
+  }
+}
+
+fn manifest_first_repeated(parts: List<CarriedOutput>) -> ArtifactOutputId? {
+  match parts |> filter(o => manifest_part_occurrences(parts: parts, id: o.id) > 1) |> first() {
+    Present { value: o } => Present { value: o.id }
+    Absent => none
+  }
+}
+
+fn manifest_two_part(
+  m: ArtifactManifest,
+  first: ArtifactOutputId,
+  second: ArtifactOutputId,
+  build: fn(ArtifactPart, ArtifactPart) -> MaterializedArtifact
+) -> ManifestDecode {
+  match manifest_first_undeclared(parts: m.parts, roster: [first, second]) {
+    Present { value: p } => ManifestPartUndeclared { kind: m.kind, part: p }
+    Absent =>
+      match manifest_first_repeated(parts: m.parts) {
+        Present { value: p } => ManifestPartRepeated { kind: m.kind, part: p }
+        Absent =>
+          match manifest_part(parts: m.parts, id: first) {
+            Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+            Present { value: a } =>
+              match manifest_part(parts: m.parts, id: second) {
+                Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+                Present { value: b } => ManifestDecoded { artifact: build(a, b) }
+              }
+          }
+      }
+  }
+}
+
+fn manifest_three_part(
+  m: ArtifactManifest,
+  first: ArtifactOutputId,
+  second: ArtifactOutputId,
+  third: ArtifactOutputId,
+  build: fn(ArtifactPart, ArtifactPart, ArtifactPart) -> MaterializedArtifact
+) -> ManifestDecode {
+  match manifest_first_undeclared(parts: m.parts, roster: [first, second, third]) {
+    Present { value: p } => ManifestPartUndeclared { kind: m.kind, part: p }
+    Absent =>
+      match manifest_first_repeated(parts: m.parts) {
+        Present { value: p } => ManifestPartRepeated { kind: m.kind, part: p }
+        Absent =>
+          match manifest_part(parts: m.parts, id: first) {
+            Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+            Present { value: a } =>
+              match manifest_part(parts: m.parts, id: second) {
+                Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+                Present { value: b } =>
+                  match manifest_part(parts: m.parts, id: third) {
+                    Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+                    Present { value: c } => ManifestDecoded { artifact: build(a, b, c) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn artifact_from_manifest(m: ArtifactManifest) -> ManifestDecode {
+  let k = m.request_key
+  if m.kind == parse_source_artifact_kind {
+    manifest_two_part(m: m, first: output_parse_tree, second: output_parse_diagnostics,
+      build: (a, b) => ParsedArtifact { request_key: k, parse_tree: a, parse_diagnostics: b })
+  } else if m.kind == typed_module_artifact_kind {
+    manifest_two_part(m: m, first: output_typed_module_interface, second: output_typecheck_diagnostics,
+      build: (a, b) => TypedModuleArtifact { request_key: k, typed_module_interface: a, typecheck_diagnostics: b })
+  } else if m.kind == resolved_graph_artifact_kind {
+    manifest_three_part(m: m, first: output_resolved_graph, second: output_source_indices, third: output_compile_clean_diagnostic_union,
+      build: (a, b, c) => ResolvedGraphArtifact { request_key: k, resolved_graph: a, source_indices: b, compile_clean_diagnostic_union: c })
+  } else if m.kind == native_compiler_artifact_kind {
+    manifest_two_part(m: m, first: output_native_compiler_executable, second: output_native_compiler_build_diagnostics,
+      build: (a, b) => NativeCompilerArtifact { request_key: k, executable: a, build_diagnostics: b })
+  } else if m.kind == native_test_universe_artifact_kind {
+    manifest_two_part(m: m, first: output_universe_test_identity_population, second: output_universe_module_import_closures,
+      build: (a, b) => UniverseArtifact { request_key: k, test_identity_population: a, module_import_closures: b })
+  } else if m.kind == native_module_verdict_bundle_artifact_kind {
+    manifest_two_part(m: m, first: output_module_test_verdicts, second: output_module_preparation_diagnostics,
+      build: (a, b) => ModuleVerdictBundleArtifact { request_key: k, test_verdicts: a, preparation_diagnostics: b })
+  } else {
+    ManifestKindUndeclared { kind: m.kind }
+  }
+}
+
+// PROVIDER IDENTITY LIVES HERE AND NOWHERE ELSE. The request key names WHAT was computed; the
+// receipt names WHO realized it and WHERE: the realization's cache-interface identity (a cited
+// std.cache_identity CacheInterfaceId row -- the local persistent store, and later GCS or NFS, each
+// its own row in its own extdeps module) plus the identity of the store INSTANCE it used. Two
+// realizations answering one request therefore produce two receipts over ONE key and ONE content
+// digest, which is exactly the comparison a later cross-realization check needs; were the provider
+// in the key, the same artifact would have as many identities as it has homes.
+//
+// The disposition says how the artifact came to be available: served from an existing commit,
+// committed by this writer, or found already committed -- with identical verified content -- by a
+// concurrent or earlier writer. The last is a SUCCESS, not a race to report: under put-if-absent,
+// losing the publication is the protocol working.
+type RealizationDisposition
+  = RealizationServed
+  | RealizationCommitted
+  | RealizationConvergedOnPriorCommit
+
+type RealizationReceipt {
+  request_key: ContentHash
+  kind: ArtifactKindId
+  content_digest: ContentHash
+  provider: CacheInterfaceId
+  store_instance: ContentHash
+  disposition: RealizationDisposition
 }
 
 type ArtifactCompleteness

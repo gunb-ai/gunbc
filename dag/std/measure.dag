@@ -244,6 +244,21 @@ fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q,
   Measure { count: a.count + b.count }
 }
 
+// Truncated subtraction is not the default. Naturals are not closed under subtraction; the
+// Peano form is v2.std.nat nat_sub (NatDifference | NatSubtrahendExceedsMinuend). A floor at
+// zero would fabricate a difference of equal measures.
+type MeasureSubtraction<Q, S>
+  = MeasureDifference { value: Measure<Q, S, Nat> }
+  | MeasureSubtrahendExceedsMinuend
+
+fn measure_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> MeasureSubtraction<Q, S> {
+  if a.count < b.count {
+    MeasureSubtrahendExceedsMinuend
+  } else {
+    MeasureDifference { value: Measure { count: a.count - b.count } }
+  }
+}
+
 fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }
