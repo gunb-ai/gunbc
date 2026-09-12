@@ -30,4 +30,10 @@ data typed_module_artifact_kind: ArtifactKindId = "typed_module"
 
 data hermetic_fixture_artifact_kind: ArtifactKindId = "hermetic_fixture"
 
+data native_compiler_artifact_kind: ArtifactKindId = "native_compiler"
+
+data native_test_universe_artifact_kind: ArtifactKindId = "native_test_universe"
+
+data native_module_verdict_bundle_artifact_kind: ArtifactKindId = "native_module_verdict_bundle"
+
 data cache_interface_product_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.cache_identity.CacheInterfaceProduct — deleted closed enum fork; sole cache-backend identity authority is CacheInterfaceId (extdeps/cache/*.dag cited rows keyed by id).")
