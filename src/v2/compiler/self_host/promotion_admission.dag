@@ -21,7 +21,7 @@ import v2.compiler.compile {
   required_lens_join_cause_reason,
   required_lens_roster_digest_of
 }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key, declaration_ref_eq }
+import std.decl_ref { declaration_ref_display_key }
 import std.content_hash { content_hash_of_value }
 import std.types { NonEmptyStr }
 import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
@@ -537,8 +537,8 @@ fn lens_coverage_uncovered_causes(
   )
 }
 
-fn contract_axis_of_material(lenses: List<CompileLens>) -> Hash {
-  content_hash_of_value(value: required_lens_roster_digest_of(lenses: lenses) as NonEmptyStr)
+fn contract_axis_of_roster_digest(digest: String) -> Hash {
+  content_hash_of_value(value: digest as NonEmptyStr)
 }
 
 // THE BINDING, AND IT IS CHECKED AGAINST THE GENERATION RATHER THAN AGAINST THE RECEIPT. The
@@ -557,7 +557,7 @@ fn lens_contract_binding_cause(
   expected: GenerationIdentity
 ) -> List<PromotionRefusalCause> {
   let derived = required_lens_roster_digest_of(lenses: coverage.contract_material)
-  if contract_axis_of_material(lenses: coverage.contract_material) == expected.required_lens_contract {
+  if contract_axis_of_roster_digest(digest: derived) == expected.required_lens_contract {
     freemonoid_empty()
   } else {
     list_snoc_item(

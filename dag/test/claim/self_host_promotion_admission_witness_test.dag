@@ -12,6 +12,7 @@ import v2.compiler.self_host.generation {
 }
 import v2.compiler.self_host.promotion_admission {
   GenerationLensCoverage,
+  contract_axis_of_roster_digest,
   BehaviorAgrees,
   BehaviorDiverges,
   BehavioralComparisonObservation,
@@ -59,7 +60,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, symbol_identity_digest }
 import v2.std.optional { Absent, Present }
-import std.content_hash { content_hash_of_value, sha512_hex_digest }
+import std.content_hash { sha512_hex_digest }
 import std.types { NonEmptyStr }
 
 // Test-side projection. The authority carrier deliberately exposes no is_* Bool over
@@ -283,7 +284,9 @@ fn pa_contract_material() -> List<CompileLens> {
 // authority promotion uses. Authoring a literal here would make the binding check compare two
 // values this file chose, which is the defect the check exists to catch.
 fn pa_contract_axis() -> Hash {
-  content_hash_of_value(value: required_lens_roster_digest_of(lenses: pa_contract_material()) as NonEmptyStr)
+  contract_axis_of_roster_digest(
+    digest: required_lens_roster_digest_of(lenses: pa_contract_material())
+  )
 }
 
 // A SUBTREE-GRAIN REGISTRATION, AND AN IDENTITY THAT COMMITS TO IT. The grain witness cannot simply
@@ -307,7 +310,9 @@ fn pa_subtree_material() -> List<CompileLens> {
 }
 
 fn pa_subtree_contract_axis() -> Hash {
-  content_hash_of_value(value: required_lens_roster_digest_of(lenses: pa_subtree_material()) as NonEmptyStr)
+  contract_axis_of_roster_digest(
+    digest: required_lens_roster_digest_of(lenses: pa_subtree_material())
+  )
 }
 
 fn pa_candidate_identity_subtree() -> GenerationIdentity {
@@ -507,8 +512,8 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
       ),
       candidate_provenance: pa_provenance(subject: ident, producer: ident),
       successor_provenance: pa_provenance(subject: ident, producer: ident),
-      candidate_lens_coverage: pa_coverage_closed(),
-      successor_lens_coverage: pa_coverage_closed()
+      candidate_lens_coverage: pa_coverage_closed_for(subject: ident),
+      successor_lens_coverage: pa_coverage_closed_for(subject: ident)
     }
   )
   !pa_admitted(o: o)
@@ -902,7 +907,7 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
         producer: unbuilt_identity
       ),
       candidate_lens_coverage: pa_coverage_closed(),
-      successor_lens_coverage: pa_coverage_closed()
+      successor_lens_coverage: pa_coverage_closed_for(subject: pa_successor_identity())
     }
   )
   !pa_admitted(o: o)
@@ -960,7 +965,7 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
         producer: other_candidate.identity
       ),
       candidate_lens_coverage: pa_coverage_closed(),
-      successor_lens_coverage: pa_coverage_closed()
+      successor_lens_coverage: pa_coverage_closed_for(subject: pa_successor_identity())
     }
   )
   !pa_admitted(o: o)
@@ -1074,7 +1079,7 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
         producer: pa_candidate_identity()
       ),
       candidate_lens_coverage: pa_coverage_closed(),
-      successor_lens_coverage: pa_coverage_closed()
+      successor_lens_coverage: pa_coverage_closed_for(subject: pa_successor_identity())
     }
   )
   !pa_admitted(o: o)
@@ -1448,7 +1453,7 @@ fn pa_with_coverage(
 test fn refused_candidate_coverage_refuses_promotion_by_name() -> Bool {
   let o = admit_promotion(c: pa_with_coverage(
     candidate_cov: pa_coverage_refused(),
-    successor_cov: pa_coverage_closed()
+    successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
   ))
   promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_not_closed)
     && promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
@@ -1460,7 +1465,7 @@ test fn refused_candidate_coverage_refuses_promotion_by_name() -> Bool {
 test fn closed_but_short_candidate_coverage_refuses_promotion() -> Bool {
   let o = admit_promotion(c: pa_with_coverage(
     candidate_cov: pa_coverage_missing_beta(),
-    successor_cov: pa_coverage_closed()
+    successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
   ))
   promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
     && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_not_closed)
