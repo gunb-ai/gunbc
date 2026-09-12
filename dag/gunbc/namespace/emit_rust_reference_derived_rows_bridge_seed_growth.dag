@@ -1,0 +1,35 @@
+module gunbc.emit_rust_reference_derived_rows_bridge_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data emit_rust_reference_derived_rows_bridge_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "reference_derived_candidate_rows_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "reference_derived_candidate_disposition_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "occurrence_transport_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "xl1_primary_root_tap_value",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY A HOST BRIDGE RATHER THAN A .dag CONSUMER CALLING THE PRODUCER DIRECTLY. The rows are produced by v1.compiler.emit_rust emit_rust_reference_derived_rows over a ResolvedGraph. The required floor and every dag/src/v2 workflow resolve --source-root dag --source-root src/v2 only. Measured: no module under those roots imports a v1 module, so a consumer there cannot name that function. Adding --source-root src/v1 lets the spelling resolve; calling it from the interpreter still needs a ResolvedGraph, and compile_to_resolved over an authored source vector hits the Node.ident wall (no default for an omitted optional field).\n\nWHY PRIMARYROOT, MEASURED. gunbc run / claim_executor compile_to_resolved only the entry's reference-derived closure (resolve_entry_with_index). The one existing path that compile_to_resolved every indexed module under a root is gunbc compile without --entry (CompileSubject::PrimaryRoot). That transaction emits bytes and never called this arm. compile_dag_reference_occurrence_binding_census compiles a caller-supplied (paths, contents) vector and does not encode OccurrenceTransport (no containment, declarations, or index entries), so ValidatedOccurrenceTransport cannot mint from it. This widening keeps ONE arm and ONE encoding: PrimaryRoot(source_roots[0]) with the rest as pool, then encode repair rows AND the seed-observed OccurrenceTransport (per-module sidecars concatenated as stored; never reconstructed on the v2 side). Binding rows over that same transport travel in the same encoding. If occurrence_transport_validate cannot mint, capture refuses LegacyBaselineObservedTransportRefused rather than fabricating containment.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE (fierce-lark-661, PrimaryRoot widening 2026-09-12). The v1 oracle is the differential referent for the XL-6 qualification sweep. HAND-ITEM DELTA: encoders named above. The dispatch arm is ExistingSeedItemModified inside eval_builtin_inner. v1_interpreter_dispatch_generated.rs is generated from gunbc.v1_interpreter_primitive_surface.",
+  owning_dissolution_lane: "v1-interpreter-delete" as RoadmapNodeId,
+  trigger: "Delete this arm with v1.compiler.emit_rust and the interpreter. A producer existing is not the dissolve; the arm is listed in that deletion population from the day it lands.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs free_call.emit_rust_reference_derived_rows_bridge arm and its encoders (repair rows, seed-observed OccurrenceTransport, binding rows over that transport); dag/gunbc/v1/v1_interpreter_primitive_surface.dag roster row; src/v1/04_method.dag builtin signature; dag/std/primitives.dag spelling roster; sole consumer v2.workflow.legacy_repair_tap"
+}

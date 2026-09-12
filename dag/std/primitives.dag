@@ -621,6 +621,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "compile_dag_rust_emit_check",
     "parsed_import_statements",
     "namespace_structural_observation_admissions",
+    "emit_rust_reference_derived_rows_bridge",
     "witness_layer_roots_compile_clean_check",
     "witness_layer_roots_compile_clean_emit_check",
     "install_or_consume_floor_compile_clean_gate_receipt",

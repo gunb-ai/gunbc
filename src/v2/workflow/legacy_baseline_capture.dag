@@ -2,7 +2,14 @@ module v2.workflow.legacy_baseline_capture
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
-import std.occurrence_identity { ValidatedOccurrenceTransport }
+import std.occurrence_identity {
+  ValidatedOccurrenceTransport,
+  OccurrenceTransport,
+  OccurrenceTransportRefusal,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  occurrence_transport_validate
+}
 import extdeps.git.object_store { GitObjectId, git_object_id_eq }
 import v2.workflow.legacy_repair_observation {
   CompleteLegacyRepairObservation,
@@ -17,7 +24,11 @@ import v2.workflow.legacy_repair_observation {
   admit_complete_repair_observation,
   RepairObservationAdmitted,
   RepairObservationSubjectDiverged,
-  RepairObservationRefused
+  RepairObservationRefused,
+  LegacyRepairSubjectField,
+  RepairSemanticSourceDigestField,
+  RepairSourceSetDigestField,
+  RepairCompilerArtifactDigestField
 }
 import std.observation_completeness { ObservationCompleteness }
 import v2.workflow.legacy_binding_observation {
@@ -162,12 +173,13 @@ type LegacyBaselineCaptureOutcome<O, R>
       subject_digest: Fnv1a64Structural,
       roster_digest: Fnv1a64Structural
     }
-  | LegacyBaselineRepairSubjectDiverged { field: String }
+  | LegacyBaselineRepairSubjectDiverged { field: LegacyRepairSubjectField }
   | LegacyBaselineRepairIncomplete { completeness: ObservationCompleteness<RepairSite> }
   | LegacyBaselineExecutionRefused {
       phase: LegacyBaselineCapturePhase,
       cause: LegacyBaselineCaptureRefusal
     }
+  | LegacyBaselineObservedTransportRefused { refusal: OccurrenceTransportRefusal }
 
 // THE SUBJECT THE MATERIALIZED TREE ENTITLES A CAPTURE TO CLAIM. Condition 4 asks that the digests
 // were DERIVED from that tree -- a fact about the run, not about any value reachable here -- so the
@@ -214,13 +226,13 @@ fn first_subject_disagreement(
 fn first_repair_base_disagreement(
   tree: LegacyBindingObservationSubject,
   repair: LegacyRepairObservationSubject
-) -> String? {
+) -> LegacyRepairSubjectField? {
   if !(tree.semantic_source_digest == repair.semantic_source_digest) {
-    Present { value: "semantic_source_digest" }
+    Present { value: RepairSemanticSourceDigestField }
   } else if !(tree.source_set_digest == repair.source_set_digest) {
-    Present { value: "source_set_digest" }
+    Present { value: RepairSourceSetDigestField }
   } else if !(tree.compiler_artifact_digest == repair.compiler_artifact_digest) {
-    Present { value: "compiler_artifact_digest" }
+    Present { value: RepairCompilerArtifactDigestField }
   } else {
     none
   }
@@ -237,6 +249,29 @@ fn first_repair_base_disagreement(
 // BEFORE the next comparison and before any promotion. Head before worktree, worktree before
 // subject, subject before admission, admission before the repair census -- so a dirty worktree can
 // never be reported as a subject disagreement, nor an incomplete observation as a repair gap.
+fn capture_legacy_baseline_from_observed_transport<O, R>(
+  materialization: CheckoutMaterialization,
+  tree_subject: TreeDerivedSubjectReceipt,
+  observation: LegacyBindingObservation<O>,
+  observed_transport: OccurrenceTransport,
+  repair_observation: LegacyRepairObservation<R>,
+  repair_roster: RepairSiteRoster
+) -> LegacyBaselineCaptureOutcome<O, R> {
+  match occurrence_transport_validate(transport: observed_transport) {
+    OccurrenceTransportRefused { refusal: r } =>
+      LegacyBaselineObservedTransportRefused { refusal: r }
+    OccurrenceTransportValidated { transport: t } =>
+      capture_legacy_baseline(
+        materialization: materialization,
+        tree_subject: tree_subject,
+        observation: observation,
+        transport: t,
+        repair_observation: repair_observation,
+        repair_roster: repair_roster
+      )
+  }
+}
+
 fn capture_legacy_baseline<O, R>(
   materialization: CheckoutMaterialization,
   tree_subject: TreeDerivedSubjectReceipt,

@@ -1,0 +1,34 @@
+module test.claim.legacy_repair_tap_live_bridge_witness
+
+import std.types { String, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.workflow.legacy_repair_tap {
+  Xl1PrimaryRootObserved,
+  Xl1PrimaryRootRefused,
+  xl1_live_repair_tap_census,
+  Xl1LiveRepairTapRows,
+  Xl1LiveRepairTapUnavailable
+}
+
+// Discriminating RED for the PrimaryRoot tap (review 64801): empty source_roots must refuse
+// inside the seed arm, not mint an Observed encoding. Executes emit_rust_reference_derived_rows_bridge.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
+  match emit_rust_reference_derived_rows_bridge([]) {
+    Xl1PrimaryRootRefused { cause: c } => string_contains(s: c, pattern: "empty")
+    Xl1PrimaryRootObserved {
+      primary_root: _,
+      repair_rows: _,
+      occurrence_transport: _,
+      binding_rows: _
+    } => false
+  }
+}
+
+test fn empty_source_roots_do_not_tally_as_zero_rows() -> Bool {
+  match xl1_live_repair_tap_census([]) {
+    Xl1LiveRepairTapUnavailable { cause: c } => string_contains(s: c, pattern: "empty")
+    Xl1LiveRepairTapRows { count: _ } => false
+  }
+}

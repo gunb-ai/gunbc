@@ -1,14 +1,6 @@
 module v1.tests.claim.reference_derived_disposition_census_witness_test
 
 import v1.compiler.emit_rust {
-  ReferenceDerivedCandidateDisposition,
-  CandidateSurvived,
-  CandidateOwnModule,
-  CandidateRegistryAbsent,
-  CandidateExportProofFailed,
-  CandidateVariantDelegatedToParent,
-  CandidateVariantParentUnresolved,
-  ReferenceDerivedCandidateRow,
   reference_derived_row_diagnostics,
   ReferenceDerivedCensus,
   reference_derived_candidate_disposition,
@@ -17,6 +9,16 @@ import v1.compiler.emit_rust {
   emit_rust_reference_derived_rows,
   emit_rust_reference_derived_census,
   build_module_index
+}
+import gunbc.reference_derived_candidate {
+  ReferenceDerivedCandidateDisposition,
+  CandidateSurvived,
+  CandidateOwnModule,
+  CandidateRegistryAbsent,
+  CandidateExportProofFailed,
+  CandidateVariantDelegatedToParent,
+  CandidateVariantParentUnresolved,
+  ReferenceDerivedCandidateRow
 }
 import v1.compiler.infer_items { ItemInfo, FnItem }
 import v1.std.core {

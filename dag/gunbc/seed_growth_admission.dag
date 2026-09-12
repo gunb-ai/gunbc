@@ -16,12 +16,14 @@ import gunbc.declaration_lookup_index_seed_growth { declaration_lookup_index_see
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
 import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
 import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
+import gunbc.emit_rust_reference_derived_rows_bridge_seed_growth { emit_rust_reference_derived_rows_bridge_seed_growth_justification }
 import gunbc.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.namespace_wave_admission { namespace_wave_admission_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
 import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
+import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.bootstrap_operation_seed_growth {
@@ -233,6 +235,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_batch_function_preflight_seed_growth_justification,
     claim_batch_entry_closure_preflight_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
+    source_root_eval_driver_seed_growth_justification,
     census_memo_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
@@ -240,6 +243,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     emitted_closure_compile_seed_growth_justification,
     evaluation_budget_falsifier_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
+    emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     parsed_import_statement_bridge_seed_growth_justification,
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,

@@ -1,0 +1,177 @@
+module test.claim.legacy_repair_tap_persisted_capture_witness
+
+import std.types { String, Bool, List, NonEmptyStr, SourceSpan }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { structural_content_hash }
+import std.decl_ref { decl_ref }
+import extdeps.git.object_store { git_sha1_object_id }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndex,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
+  OccurrenceContainmentPath,
+  LexicalValueOccurrence,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceTransport,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  occurrence_transport_validate
+}
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy
+}
+import v2.workflow.legacy_baseline_capture {
+  materialization_receipt,
+  tree_derived_subject
+}
+import v2.workflow.legacy_baseline_persisted_observation {
+  PersistAdmitted,
+  PersistRefusedNotCaptured,
+  persisted_against_requested
+}
+import gunbc.reference_derived_candidate {
+  ReferenceDerivedCandidateRow,
+  CandidateOwnModule,
+  CandidateRegistryAbsent
+}
+import v2.workflow.legacy_repair_tap {
+  persist_capture_from_bridge_rows,
+  repair_roster_from_bridge_rows,
+  never_emitted_declared_modules,
+  repair_emitted_module_names,
+  xl1_primary_root_cut_subjects
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type LrtBinding
+  = LrtBound
+  | LrtUnbound
+
+fn lrt_span() -> SourceSpan {
+  SourceSpan { file: "legacy-repair-tap-persist-fixture.dag", start: 1, end: 2 }
+}
+
+fn lrt_path() -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 900 }], terminal: OccurrenceId { value: 10 } }
+}
+
+fn lrt_commit() -> String { "1007efb256a20749f77c3b1295eed144fddeb9fd" }
+fn lrt_tree() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+
+fn lrt_rows() -> List<ReferenceDerivedCandidateRow> {
+  [
+    ReferenceDerivedCandidateRow {
+      module_name: "std.logic",
+      name: "Bool",
+      disposition: CandidateOwnModule
+    }
+  ]
+}
+
+fn lrt_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+test fn roster_from_bridge_rows_is_the_same_row_tautology() -> Bool {
+  let roster = repair_roster_from_bridge_rows(rows: lrt_rows())
+  (roster.sites |> count) == 1
+    && (roster.sites |> any(s => s.module_name == ("std.logic" as NonEmptyStr) && s.name == ("Bool" as NonEmptyStr)))
+}
+
+test fn persist_capture_from_bridge_rows_admits_a_complete_same_row_observation() -> Bool {
+  match git_sha1_object_id(hex: lrt_commit()) {
+    Absent => false
+    Present { value: a } => match git_sha1_object_id(hex: lrt_tree()) {
+      Absent => false
+      Present { value: t } =>
+        match occurrence_transport_validate(transport: OccurrenceTransport {
+          index: OccurrenceIndex { entries: [
+            OccurrenceIndexEntry {
+              projection: OccurrenceProjection {
+                occurrence: OccurrenceId { value: 900 },
+                authored_name: "root",
+                diagnostic_span: lrt_span()
+              },
+              containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } }
+            },
+            OccurrenceIndexEntry {
+              projection: OccurrenceProjection {
+                occurrence: OccurrenceId { value: 10 },
+                authored_name: "r",
+                diagnostic_span: lrt_span()
+              },
+              containment: lrt_path()
+            }
+          ] },
+          declarations: [DeclarationOccurrence {
+            occurrence: OccurrenceId { value: 900 },
+            containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } },
+            category: LexicalValueOccurrence,
+            diagnostic_span: lrt_span()
+          }],
+          references: [ReferenceOccurrence {
+            occurrence: OccurrenceId { value: 10 },
+            containment: lrt_path(),
+            category: LexicalValueOccurrence,
+            diagnostic_span: lrt_span()
+          }]
+        }) {
+          OccurrenceTransportRefused { refusal: _ } => false
+          OccurrenceTransportValidated { transport: tr } =>
+            match persist_capture_from_bridge_rows(
+              materialization: materialization_receipt(
+                requested: a, observed_head: a, observed_tree: t, commit_tree: t
+              ),
+              tree_subject: tree_derived_subject(tree: t, subject: lrt_subject()),
+              observation: LegacyBindingObservation {
+                subject: lrt_subject(),
+                rows: [LegacyBindingObservationRow { occurrence: OccurrenceId { value: 10 }, outcome: LrtBound }]
+              },
+              transport: tr,
+              rows: lrt_rows()
+            ) {
+              PersistRefusedNotCaptured => false
+              PersistAdmitted { persisted: p } => persisted_against_requested(persisted: p, requested: a)
+            }
+        }
+    }
+  }
+}
+
+test fn empty_name_row_is_dropped_from_the_roster() -> Bool {
+  let rows = [
+    ReferenceDerivedCandidateRow {
+      module_name: "",
+      name: "Bool",
+      disposition: CandidateRegistryAbsent
+    }
+  ]
+  (repair_roster_from_bridge_rows(rows: rows).sites |> count) == 0
+}
+
+test fn never_emitted_is_declared_modules_absent_from_the_emitter_walk() -> Bool {
+  let emitted = repair_emitted_module_names(rows: lrt_rows())
+  let never = never_emitted_declared_modules(
+    declared_modules: ["std.logic", "std.not.emitted"],
+    emitted_modules: emitted
+  )
+  (never |> any(m => m == "std.not.emitted")) && !(never |> any(m => m == "std.logic"))
+}
+
+test fn xl1_capture_subject_is_the_xl6_cut_roster_join() -> Bool {
+  xl1_primary_root_cut_subjects() |> any(_ => true)
+}

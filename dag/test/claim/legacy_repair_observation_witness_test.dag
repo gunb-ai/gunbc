@@ -37,7 +37,16 @@ import v2.workflow.legacy_repair_observation {
   repair_site_roster_identity,
   legacy_repair_subject_applicability,
   legacy_repair_completeness,
-  admit_complete_repair_observation
+  admit_complete_repair_observation,
+  repair_subject_field_label,
+  RepairSemanticSourceDigestField,
+  RepairSourceSetDigestField,
+  RepairCompilerArtifactDigestField,
+  RepairerIdentityModulePathField,
+  RepairerIdentityDeclNameField,
+  RepairerIdentityFieldField,
+  RepairSiteRosterDigestField,
+  ResolutionRegistryDigestField
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -261,7 +270,8 @@ test fn an_observation_taken_on_another_base_refuses_against_a_proven_roster() -
         ),
         proven: p
       ) {
-        RepairObservationSubjectDiverged { field: f } => f == "semantic_source_digest"
+        RepairObservationSubjectDiverged { field: f } =>
+          f == RepairSemanticSourceDigestField
         RepairObservationAdmitted { admitted: _ } => false
         RepairObservationRefused { completeness: _ } => false
       }
@@ -328,7 +338,7 @@ test fn a_site_equals_itself() -> Bool {
 // against.
 fn lro_diverged_field(other: LegacyRepairObservationSubject) -> String {
   match legacy_repair_subject_applicability(left: lro_base_subject(), right: other) {
-    LegacyRepairSubjectDiverged { field: f } => f
+    LegacyRepairSubjectDiverged { field: f } => repair_subject_field_label(f: f) as String
     LegacyRepairSubjectApplicable => ""
   }
 }
@@ -349,7 +359,7 @@ test fn a_moved_semantic_source_refuses() -> Bool {
     repairer_identity: base.repairer_identity,
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: base.resolution_registry_digest
-  }) == "semantic_source_digest"
+  }) == (repair_subject_field_label(f: RepairSemanticSourceDigestField) as String)
 }
 
 test fn a_moved_source_set_refuses() -> Bool {
@@ -361,7 +371,7 @@ test fn a_moved_source_set_refuses() -> Bool {
     repairer_identity: base.repairer_identity,
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: base.resolution_registry_digest
-  }) == "source_set_digest"
+  }) == (repair_subject_field_label(f: RepairSourceSetDigestField) as String)
 }
 
 test fn a_moved_compiler_artifact_refuses() -> Bool {
@@ -373,7 +383,7 @@ test fn a_moved_compiler_artifact_refuses() -> Bool {
     repairer_identity: base.repairer_identity,
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: base.resolution_registry_digest
-  }) == "compiler_artifact_digest"
+  }) == (repair_subject_field_label(f: RepairCompilerArtifactDigestField) as String)
 }
 
 test fn a_moved_repairer_module_refuses() -> Bool {
@@ -385,7 +395,7 @@ test fn a_moved_repairer_module_refuses() -> Bool {
     repairer_identity: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId"),
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: base.resolution_registry_digest
-  }) == "repairer_identity.module_path"
+  }) == (repair_subject_field_label(f: RepairerIdentityModulePathField) as String)
 }
 
 test fn a_moved_repairer_decl_refuses() -> Bool {
@@ -397,7 +407,7 @@ test fn a_moved_repairer_decl_refuses() -> Bool {
     repairer_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIndex"),
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: base.resolution_registry_digest
-  }) == "repairer_identity.decl_name"
+  }) == (repair_subject_field_label(f: RepairerIdentityDeclNameField) as String)
 }
 
 test fn a_moved_repairer_field_refuses() -> Bool {
@@ -409,7 +419,7 @@ test fn a_moved_repairer_field_refuses() -> Bool {
     repairer_identity: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value"),
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: base.resolution_registry_digest
-  }) == "repairer_identity.field"
+  }) == (repair_subject_field_label(f: RepairerIdentityFieldField) as String)
 }
 
 test fn a_moved_roster_refuses() -> Bool {
@@ -421,7 +431,7 @@ test fn a_moved_roster_refuses() -> Bool {
     repairer_identity: base.repairer_identity,
     repair_site_roster_digest: lro_digest(label: "dddddddddddddddd"),
     resolution_registry_digest: base.resolution_registry_digest
-  }) == "repair_site_roster_digest"
+  }) == (repair_subject_field_label(f: RepairSiteRosterDigestField) as String)
 }
 
 test fn a_moved_resolution_registry_refuses() -> Bool {
@@ -433,7 +443,7 @@ test fn a_moved_resolution_registry_refuses() -> Bool {
     repairer_identity: base.repairer_identity,
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: lro_digest(label: "eeeeeeeeeeeeeeee")
-  }) == "resolution_registry_digest"
+  }) == (repair_subject_field_label(f: ResolutionRegistryDigestField) as String)
 }
 
 // ── THE DUPLICATE-DENOMINATOR ARMS (review 56949) ──
