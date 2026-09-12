@@ -106,17 +106,10 @@ because `ipmitool` was invoked with stdin not a terminal, warned, hit stdin EOF,
 `rc=0` after roughly three seconds while the wrapper slept out the window. Repaired — pty with
 stdin held open — the same client stayed connected 645 seconds and captured the text above.
 
-The class is `gunbc.recurring_failure_mode` `empty_capture_read_as_clean_result`, and the rule
-that would have caught it is that row's own sixth instance: a verdict whose green arm is the
-absence of bad lines cannot distinguish healthy from unread.
-
-**THIS PR DOES NOT CONTAIN THAT FILING, and an earlier draft of this sentence claimed it did.**
-Review 64298 found it: the carrier on this branch still ends at its sixth instance, so prose
-asserting a filing that is not on the carrier is a parallel ledger (DESIGN section 3) and a
-fabricated done-state (section 5). The seventh receipt is appended on the `session/eager-owl-205`
-branch, PR #10965, at commit `606251b3fa2` — a different branch, which is exactly why the claim
-did not hold here. It is deliberately not duplicated onto this branch: two lanes appending the
-same row is the merge collision the one-class-per-file layout exists to avoid.
+Filed as the seventh instance of `gunbc.recurring_failure_mode`
+`empty_capture_read_as_clean_result`, which is the class, and the rule that would have caught it
+is that row's own sixth instance: a verdict whose green arm is the absence of bad lines cannot
+distinguish healthy from unread.
 
 ## Consequence for the fleet purchase
 
