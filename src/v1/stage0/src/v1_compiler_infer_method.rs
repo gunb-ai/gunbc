@@ -957,6 +957,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: list_of_type_variable("ordinary_compile_structural_admission_elem".to_string()),
     }));
+                __m.insert("emit_rust_reference_derived_rows_bridge".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![]),
+        returns: list_of_type_variable("reference_derived_candidate_row_elem".to_string()),
+    }));
                 __m.insert("extdeps_shape_transport_policy_facts_for_qualified_name".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "module".to_string(),

@@ -1,0 +1,25 @@
+module gunbc.emit_rust_reference_derived_rows_bridge_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data emit_rust_reference_derived_rows_bridge_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "reference_derived_candidate_rows_value",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_interpreter",
+      decl_name: "reference_derived_candidate_disposition_value",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY A HOST BRIDGE RATHER THAN A .dag CONSUMER CALLING THE PRODUCER DIRECTLY. The rows are produced by v1.compiler.emit_rust emit_rust_reference_derived_rows over a ResolvedGraph. The required floor and every dag/src/v2 workflow resolve --source-root dag --source-root src/v2 only. Measured: no module under those roots imports a v1 module, so a consumer there cannot name that function. Adding --source-root src/v1 lets the spelling resolve; calling it from the interpreter still needs a ResolvedGraph, and compile_to_resolved over an authored source vector hits the Node.ident wall (no default for an omitted optional field). Existing compile builtins return Bool, a diagnostic census, an emit-fixture outcome, or an occurrence-grain binding census — none returns List<ReferenceDerivedCandidateRow>. This arm is the same transport class as gunbc.namespace_structural_observation_bridge_seed_growth: after the seed's ordinary compile_to_resolved (the running InterpContext graph), call the already-emitted library fn and encode the list. It decides nothing.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE (fierce-lark-661). The v1 oracle is the differential referent for the XL-6 qualification sweep; v2 resolution is not yet trustworthy. HAND-ITEM DELTA: +2 encoders named above. The dispatch arm is a new match arm inside eval_builtin_inner (ExistingSeedItemModified). v1_interpreter_dispatch_generated.rs is generated from gunbc.v1_interpreter_primitive_surface.",
+  owning_dissolution_lane: "v1-interpreter-delete" as RoadmapNodeId,
+  trigger: "Delete this arm with v1.compiler.emit_rust and the interpreter. A producer existing is not the dissolve; the arm is listed in that deletion population from the day it lands.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs free_call.emit_rust_reference_derived_rows_bridge arm and its two encoders; dag/gunbc/v1/v1_interpreter_primitive_surface.dag roster row; src/v1/04_method.dag builtin signature; dag/std/primitives.dag spelling roster; sole consumer v2.workflow.legacy_repair_tap"
+}
