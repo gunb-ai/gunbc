@@ -8,9 +8,9 @@ import std.symbols { Ascii }
 import extdeps.render.surface { PlainTerminal }
 import gunbc.cli_wire { CliWireResponse, cli_wire_response }
 import std.predictive_claim {
-  PredictionRegistration, ConversationOnly, CommittedPredictionWithoutWitnessedOrder, PreregisteredPrediction, PostOutcomeArchivedPrediction,
-  PredictionTestReceipt, ConsistentWithPrediction, ContradictsPrediction, PredictionTestInconclusive,
-  IsolatedMechanism, ConfoundedMechanisms,
+  PredictionRegistration, PredictionRegistrationFold, prediction_registration_fold,
+  PredictionTestReceipt, PredictionTestVerdictFold, prediction_test_verdict_fold,
+  PredictionTestDiscriminationFold, prediction_test_discrimination_fold,
   PredictiveStanding, UntestedPrediction, NarrowedPredictionAwaitingTest, TestedPrediction, FalsifiedPredictionNeedsNarrowing,
   PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
   PredictiveNextObligation, AdversarialTestRequired, CounterexampleNarrowingRequired,
@@ -41,19 +41,21 @@ fn predictive_refusal_text(cause: PredictiveClaimRefusal) -> String {
 }
 
 fn prediction_registration_text(registration: PredictionRegistration) -> String {
-  match registration {
-    ConversationOnly { report: report } => concat("conversation-only; no immutable pre-outcome receipt: ", declaration_ref_display_key(ref: report))
-    CommittedPredictionWithoutWitnessedOrder { commit: commit, artifact: artifact, report: _ } =>
+  prediction_registration_fold(registration: registration, fold: PredictionRegistrationFold {
+    conversation_only: fn(report) { concat("conversation-only; no immutable pre-outcome receipt: ", declaration_ref_display_key(ref: report)) },
+    committed_unwitnessed: fn(commit, artifact, _) {
       concat("committed; ordering not independently witnessed: ", concat(commit, concat(":", artifact)))
-    PostOutcomeArchivedPrediction { archive: archive } => join([
+    },
+    archived_after_outcome: fn(archive) { join([
       "post-outcome archive; ordering asserted only; identity history: ", archive.identity_history,
       "; original object: ", archive.commit, ":", archive.artifact,
       "; retrieval ref: ", archive.archive_ref,
       "; correction source: ", declaration_ref_display_key(ref: archive.report),
-    ], "")
-    PreregisteredPrediction { commit: commit, declaration: declaration, recorded_at: _, started_at: _, observed_at: _ } =>
+    ], "") },
+    preregistered: fn(commit, declaration, _, _, _) {
       concat("preregistered on supplied ordered observations: ", concat(commit, concat(" ", declaration_ref_display_key(ref: declaration))))
-  }
+    },
+  })
 }
 
 fn predictive_standing_text(standing: PredictiveStanding) -> String {
@@ -69,15 +71,18 @@ fn predictive_standing_text(standing: PredictiveStanding) -> String {
 }
 
 fn prediction_test_lines<S, O>(receipt: PredictionTestReceipt<S, O>) -> List<String> {
-  let verdict = match receipt.verdict {
-    ConsistentWithPrediction => "consistent with prediction; not proof"
-    ContradictsPrediction => "FALSIFIES prediction"
-    PredictionTestInconclusive => "inconclusive"
-  }
-  let discrimination = match receipt.discrimination {
-    IsolatedMechanism { isolation_evidence: evidence } => [concat("Isolation evidence: ", declaration_ref_display_key(ref: evidence))]
-    ConfoundedMechanisms { first_confound: first, further_confounds: further } =>
-      append([concat("CONFOUNDED: ", first)], items: further)
+  let verdict = prediction_test_verdict_fold(verdict: receipt.verdict, fold: PredictionTestVerdictFold {
+    consistent: "consistent with prediction; not proof",
+    contradicts: "FALSIFIES prediction",
+    inconclusive: "inconclusive",
+  })
+  let discrimination = prediction_test_discrimination_fold(discrimination: receipt.discrimination,
+    fold: PredictionTestDiscriminationFold {
+      isolated: fn(evidence) { [concat("Isolation evidence: ", declaration_ref_display_key(ref: evidence))] },
+      confounded: fn(first, further) { append([concat("CONFOUNDED: ", first)], items: further) },
+    },
+  )
+  append([concat("CONFOUNDED: ", first)], items: further)
   }
   append([
     concat(receipt.observation.id, concat(": ", verdict)),

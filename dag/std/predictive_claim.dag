@@ -50,6 +50,21 @@ type PredictionTestDiscrimination
   = IsolatedMechanism { isolation_evidence: DeclarationRef }
   | ConfoundedMechanisms { first_confound: NonEmptyStr, further_confounds: List<NonEmptyStr> }
 
+type PredictionTestDiscriminationFold<R> {
+  isolated: fn(DeclarationRef) -> R
+  confounded: fn(NonEmptyStr, List<NonEmptyStr>) -> R
+}
+
+fn prediction_test_discrimination_fold<R>(
+  discrimination: PredictionTestDiscrimination,
+  fold: PredictionTestDiscriminationFold<R>,
+) -> R {
+  match discrimination {
+    IsolatedMechanism { isolation_evidence: evidence } => fold.isolated(evidence)
+    ConfoundedMechanisms { first_confound: first, further_confounds: further } => fold.confounded(first, further)
+  }
+}
+
 // Retrievability established only after the outcome does not establish pre-outcome publication.
 // Identity history records corrections/amendments without silently replacing the earlier citation.
 type PostOutcomePredictionArchive {
@@ -76,6 +91,27 @@ type PredictionRegistration
       observed_at: EpochMs,
     }
 
+type PredictionRegistrationFold<R> {
+  conversation_only: fn(DeclarationRef) -> R
+  committed_unwitnessed: fn(CommitSha, FilePath, DeclarationRef) -> R
+  archived_after_outcome: fn(PostOutcomePredictionArchive) -> R
+  preregistered: fn(CommitSha, DeclarationRef, EpochMs, EpochMs, EpochMs) -> R
+}
+
+fn prediction_registration_fold<R>(
+  registration: PredictionRegistration,
+  fold: PredictionRegistrationFold<R>,
+) -> R {
+  match registration {
+    ConversationOnly { report: report } => fold.conversation_only(report)
+    CommittedPredictionWithoutWitnessedOrder { commit: commit, artifact: artifact, report: report } =>
+      fold.committed_unwitnessed(commit, artifact, report)
+    PostOutcomeArchivedPrediction { archive: archive } => fold.archived_after_outcome(archive)
+    PreregisteredPrediction { commit: commit, declaration: declaration, recorded_at: recorded, started_at: started, observed_at: observed } =>
+      fold.preregistered(commit, declaration, recorded, started, observed)
+  }
+}
+
 // This deliberate protocol vocabulary compares an observed O to the declared expected O and
 // falsifier O. Consistency is not EvidenceSupports: the restart proxy can match while its cause
 // remains unknown. Inconclusive means neither declared outcome matched, not a decision by an
@@ -85,6 +121,20 @@ type PredictionTestVerdict
   = ConsistentWithPrediction
   | ContradictsPrediction
   | PredictionTestInconclusive
+
+type PredictionTestVerdictFold<R> {
+  consistent: R
+  contradicts: R
+  inconclusive: R
+}
+
+fn prediction_test_verdict_fold<R>(verdict: PredictionTestVerdict, fold: PredictionTestVerdictFold<R>) -> R {
+  match verdict {
+    ConsistentWithPrediction => fold.consistent
+    ContradictsPrediction => fold.contradicts
+    PredictionTestInconclusive => fold.inconclusive
+  }
+}
 
 type PredictionTestReceipt<S, O> {
   configuration: S
@@ -140,10 +190,10 @@ fn predictive_scope_admits<S, O>(model: PredictiveModel<S, O>, configuration: S)
 }
 
 fn predictive_falsifiers<S, O>(model: PredictiveModel<S, O>) -> List<PredictionTestReceipt<S, O>> {
-  model.tests |> filter(receipt => match receipt.verdict {
-    ContradictsPrediction => true
-    _ => false
-  })
+  model.tests |> filter(receipt => prediction_test_verdict_fold(
+    verdict: receipt.verdict,
+    fold: PredictionTestVerdictFold { consistent: false, contradicts: true, inconclusive: false },
+  ))
 }
 
 fn predictive_test_verdict<S, O>(prediction: Prediction<S, O>, observed: O) -> PredictionTestVerdict {
@@ -180,12 +230,12 @@ type PredictiveTestStart<S, O>
   | PredictiveTestStartRefused { cause: PredictiveClaimRefusal }
 
 fn predictive_receipt_precedes_commit<S, O>(receipt: PredictionTestReceipt<S, O>, recorded_at: EpochMs) -> Bool {
-  match receipt.registration {
-    ConversationOnly { report: _ } => true
-    CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => true
-    PostOutcomeArchivedPrediction { archive: _ } => true
-    PreregisteredPrediction { commit: _, declaration: _, recorded_at: _, started_at: _, observed_at: observed } => observed < recorded_at
-  }
+  prediction_registration_fold(registration: receipt.registration, fold: PredictionRegistrationFold {
+    conversation_only: fn(_) { true },
+    committed_unwitnessed: fn(_, _, _) { true },
+    archived_after_outcome: fn(_) { true },
+    preregistered: fn(_, _, _, _, observed) { observed < recorded_at },
+  })
 }
 
 fn start_predictive_test<S, O>(
@@ -412,31 +462,41 @@ fn predictive_standing<S, O>(model: PredictiveModel<S, O>) -> PredictiveStanding
   } else if count(model.tests) == 0 {
     if revisions == 0 { UntestedPrediction } else { NarrowedPredictionAwaitingTest { revisions: revisions } }
   } else {
-    let matches = model.tests |> filter(receipt => match receipt.verdict {
-      ConsistentWithPrediction => true
-      _ => false
-    })
-    let isolated = matches |> filter(receipt => match receipt.registration {
-      ConversationOnly { report: _ } => false
-      CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => false
-      PostOutcomeArchivedPrediction { archive: _ } => false
-      PreregisteredPrediction { commit: _, declaration: _, recorded_at: _, started_at: _, observed_at: _ } =>
-        match receipt.discrimination {
-          IsolatedMechanism { isolation_evidence: _ } => true
-          ConfoundedMechanisms { first_confound: _, further_confounds: _ } => false
-        }
-    })
+    let matches = model.tests |> filter(receipt => prediction_test_verdict_fold(
+      verdict: receipt.verdict,
+      fold: PredictionTestVerdictFold { consistent: true, contradicts: false, inconclusive: false },
+    ))
+    let isolated = matches |> filter(receipt => prediction_registration_fold(
+      registration: receipt.registration,
+      fold: PredictionRegistrationFold {
+        conversation_only: fn(_) { false },
+        committed_unwitnessed: fn(_, _, _) { false },
+        archived_after_outcome: fn(_) { false },
+        preregistered: fn(_, _, _, _, _) { prediction_test_discrimination_fold(
+          discrimination: receipt.discrimination,
+          fold: PredictionTestDiscriminationFold {
+            isolated: fn(_) { true }, confounded: fn(_, _) { false },
+          },
+        ) },
+      },
+    ))
     TestedPrediction {
       preregistered_isolated_matches: count(isolated),
       weak_matches: count(matches) - count(isolated),
-      committed_unwitnessed_matches: count(matches |> filter(receipt => match receipt.registration {
-        CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => true
-        _ => false
-      })),
-      post_outcome_archived_matches: count(matches |> filter(receipt => match receipt.registration {
-        PostOutcomeArchivedPrediction { archive: _ } => true
-        _ => false
-      })),
+      committed_unwitnessed_matches: count(matches |> filter(receipt => prediction_registration_fold(
+        registration: receipt.registration,
+        fold: PredictionRegistrationFold {
+          conversation_only: fn(_) { false }, committed_unwitnessed: fn(_, _, _) { true },
+          archived_after_outcome: fn(_) { false }, preregistered: fn(_, _, _, _, _) { false },
+        },
+      ))),
+      post_outcome_archived_matches: count(matches |> filter(receipt => prediction_registration_fold(
+        registration: receipt.registration,
+        fold: PredictionRegistrationFold {
+          conversation_only: fn(_) { false }, committed_unwitnessed: fn(_, _, _) { false },
+          archived_after_outcome: fn(_) { true }, preregistered: fn(_, _, _, _, _) { false },
+        },
+      ))),
       inconclusive: count(model.tests) - count(matches),
       narrowed_revisions: revisions,
     }
