@@ -343,6 +343,14 @@ fn ancestry_produced_by_path(workspace: &Path) -> PathBuf {
     ancestry_dir(workspace).join("produced_by_execution_sha512")
 }
 
+fn ancestry_artifact_digest_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("artifact_sha512")
+}
+
+fn ancestry_readback_digest_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("readback_sha512")
+}
+
 fn write_ancestry_text(path: &Path, text: &str) -> Result<(), String> {
     std::fs::write(path, format!("{}\n", text.trim_end()))
         .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))
@@ -622,6 +630,17 @@ fn sha512_from_stored_hex(ctx: &v1_interpreter::InterpContext, hex: &str) -> Res
     Ok(record_field(ctx, fields, "value")?.clone())
 }
 
+fn observed_digest_value(ctx: &v1_interpreter::InterpContext, hex: &str) -> Result<Value, String> {
+    eval_named(
+        ctx,
+        "v2.compiler.self_host.generation.observed_artifact_digest",
+        &[(
+            Some("observed".to_string()),
+            sha512_from_stored_hex(ctx, hex)?,
+        )],
+    )
+}
+
 fn named_build_configuration_hash(
     ctx: &v1_interpreter::InterpContext,
     remap_from: &str,
@@ -669,6 +688,12 @@ fn native_generation_from_store(
         .ok_or_else(|| unverified("GenesisFromSeed.seed_binary was not stored"))?;
     let generation_paths = read_ancestry_lines(&ancestry_generation_closure_path(workspace))
         .map_err(|_| unverified("realized closure roster was not stored"))?;
+    let artifact_hex = read_ancestry_text(&ancestry_artifact_digest_path(workspace))
+        .ok_or_else(|| unverified("materialized artifact sha512 was not stored"))?;
+    let readback_hex = read_ancestry_text(&ancestry_readback_digest_path(workspace))
+        .ok_or_else(|| unverified("independent read-back sha512 was not stored"))?;
+    let observed_artifact = observed_digest_value(ctx, &artifact_hex)?;
+    let observed_readback = observed_digest_value(ctx, &readback_hex)?;
     let identity = eval_named(
         ctx,
         "v2.compiler.self_host.generation.compiler_artifact_identity",
@@ -697,8 +722,8 @@ fn native_generation_from_store(
                 Some("materialized_artifact".to_string()),
                 Value::Variant {
                     type_name: ctx.sym("GeneratedArtifactIdentity"),
-                    variant_name: ctx.sym("ArtifactNotMaterialized"),
-                    fields: Rc::new(vec![]),
+                    variant_name: ctx.sym("ArtifactMaterialized"),
+                    fields: Rc::new(vec![(ctx.sym("digest"), observed_artifact)]),
                 },
             ),
         ],
@@ -763,8 +788,8 @@ fn native_generation_from_store(
                 ctx.sym("read_back"),
                 Value::Variant {
                     type_name: ctx.sym("ReadBackReceipt"),
-                    variant_name: ctx.sym("ReadBackUnperformed"),
-                    fields: Rc::new(vec![]),
+                    variant_name: ctx.sym("ReadBackReported"),
+                    fields: Rc::new(vec![(ctx.sym("reported_artifact"), observed_readback)]),
                 },
             ),
             (
@@ -977,6 +1002,18 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
             binary_path.display()
         )
     })?;
+    let materialized_hex = sha512_file(&binary_path)?;
+    let readback_hex = sha512_file(&stored)?;
+    if materialized_hex != readback_hex {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — cargo-target digest and stored-compiler digest disagree (copy is not the built artifact)"
+        ));
+    }
+    write_ancestry_text(
+        &ancestry_artifact_digest_path(&workspace),
+        &materialized_hex,
+    )?;
+    write_ancestry_text(&ancestry_readback_digest_path(&workspace), &readback_hex)?;
     let seed_exe = std::env::current_exe().map_err(|e| {
         format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — current_exe: {e}")
     })?;
