@@ -1320,6 +1320,21 @@ fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> 
   )
 }
 
+// ONE PASS OVER THE FACTS PER ROUND, NOT ONE PER FRONTIER MEMBER (review 64181). This fold used
+// to run `fold_list(xs: facts, ...)` INSIDE the per-frontier fold, so a round cost
+// |frontier| x |facts| and rescanned every source fact for every module still to expand. The
+// facts are now walked once per round and each fact contributes its imports if its own module
+// is on this round's frontier, which is the same answer for strictly less work.
+// 
+// IT IS STILL NOT THE KEYED JOIN, and this comment does not get to imply otherwise: the
+// frontier membership test below is a list scan, so the round remains O(facts x frontier) and
+// the walk O(rounds x facts x frontier). Removing that factor needs keyed lookup, which v2
+// does not have — `v2.std.collection` `map_insert` builds a CLOSURE CHAIN whose lookup walks
+// every prior insert, so a set built from it answers membership in O(n) exactly like
+// `contains`. The capability is declared and unrealized: `v2.std.collection`
+// `map_insert_host_binding` binds `std.primitives` `map_insert_contract` and nothing delegates
+// to it. THAT is the trigger — primitive-backed `map_insert`/`map_lookup` delegates — and until
+// it lands this fold is the honest shape rather than a keyed set in name.
 fn native_lane_module_reachable(
   facts: List<NativeLaneSourceFacts>,
   frontier: List<String>,
@@ -1335,21 +1350,6 @@ fn native_lane_module_reachable(
       detail: native_lane_closure_exhausted_detail(budget: budget, frontier: frontier)
     )
   } else {
-    // ONE PASS OVER THE FACTS PER ROUND, NOT ONE PER FRONTIER MEMBER (review 64181). This fold used
-    // to run `fold_list(xs: facts, ...)` INSIDE the per-frontier fold, so a round cost
-    // |frontier| x |facts| and rescanned every source fact for every module still to expand. The
-    // facts are now walked once per round and each fact contributes its imports if its own module
-    // is on this round's frontier, which is the same answer for strictly less work.
-    //
-    // IT IS STILL NOT THE KEYED JOIN, and this comment does not get to imply otherwise: the
-    // frontier membership test below is a list scan, so the round remains O(facts x frontier) and
-    // the walk O(rounds x facts x frontier). Removing that factor needs keyed lookup, which v2
-    // does not have — `v2.std.collection` `map_insert` builds a CLOSURE CHAIN whose lookup walks
-    // every prior insert, so a set built from it answers membership in O(n) exactly like
-    // `contains`. The capability is declared and unrealized: `v2.std.collection`
-    // `map_insert_host_binding` binds `std.primitives` `map_insert_contract` and nothing delegates
-    // to it. THAT is the trigger — primitive-backed `map_insert`/`map_lookup` delegates — and until
-    // it lands this fold is the honest shape rather than a keyed set in name.
     let next = fold_list(
       xs: facts,
       empty: [],
@@ -1716,19 +1716,19 @@ type NativeLaneControls {
   true_control: Optional<NativeTestVerdict>
 }
 
+// THE CONTROL MODULE'S OWN FAILURE IS CARRIED, NOT COLLAPSED (review 64181). This discarded
+// the resolver's diagnostics and answered Absent/Absent, which admission does refuse -- so it
+// was never fail-open -- but it made a DEFECT IN THE CONTROL MODULE indistinguishable from any
+// other missing verdict, which is the one distinction these two controls exist to draw. The
+// refusal is carried as the verdict it is, at the stage it happened, with the reason every
+// sibling arm preserves. Both clauses already map NativeTestRefused to false
+// (gunbc.witness_v2_native_route native_route_false_control_holds / _true_control_holds), so
+// this reports the same verdict with the cause attached rather than changing what is admitted.
 fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
   match native_test_prepare_module(
     context: context,
     module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
   ) {
-    // THE CONTROL MODULE'S OWN FAILURE IS CARRIED, NOT COLLAPSED (review 64181). This discarded
-    // the resolver's diagnostics and answered Absent/Absent, which admission does refuse -- so it
-    // was never fail-open -- but it made a DEFECT IN THE CONTROL MODULE indistinguishable from any
-    // other missing verdict, which is the one distinction these two controls exist to draw. The
-    // refusal is carried as the verdict it is, at the stage it happened, with the reason every
-    // sibling arm preserves. Both clauses already map NativeTestRefused to false
-    // (gunbc.witness_v2_native_route native_route_false_control_holds / _true_control_holds), so
-    // this reports the same verdict with the cause attached rather than changing what is admitted.
     Rejected { diagnostics: d } =>
       {
         let refused = NativeTestRefused {
