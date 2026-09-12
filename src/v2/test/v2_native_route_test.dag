@@ -53,7 +53,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.collection { List }
 import v2.std.algebra { fold_list, length }
@@ -1240,13 +1240,25 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
 // v2.compiler.compile with the derivation, so their discriminating reds move with them.
 
 test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
-  native_lane_declared_module_name(
+  match native_lane_declared_module_name(
     content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport v2.std.logic { Bool }\nmodule not.the.header\n"
-  ) == "v2.test.subject"
+  ) {
+    Present { value: declared } => declared == "v2.test.subject"
+    Absent => false
+  }
 }
 
+// ABSENCE IS AN ARM, NOT A VALUE (review 64499). This pair compared the result against a bare
+// String while native_lane_declared_module_name returns Optional<String>, so `Absent == ""` could
+// never hold and this witness had an UNAUTHORABLE GREEN -- the state DESIGN section 4b names at
+// the top rung, where a check that cannot pass carries no information and is worse than absent
+// because it is counted as coverage. The sentinel it asserted was abolished by this same PR, two
+// declarations away from the annotation saying absence is Optional and not an empty string.
 test fn a_source_with_no_module_header_declares_no_module() -> Bool {
-  native_lane_declared_module_name(content: "// only prose\ntest fn t() -> Bool { true }\n") == ""
+  match native_lane_declared_module_name(content: "// only prose\ntest fn t() -> Bool { true }\n") {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 // The headerless source that enrols a row is the one the derivation names; a headerless source
@@ -1271,20 +1283,25 @@ test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation()
     sidecar_violations: [],
     disposition_refusal: Absent
   }
-  native_lane_unowned_row_path(facts: [
+  match native_lane_unowned_row_path(facts: [
     NativeLaneSourceFacts {
-      module: "",
+      module: Absent,
       path: ^src_v2_test_quiet_dag,
       imports: [],
-      discovery: empty
+      discovery: empty,
+      malformed_import: Absent
     },
     NativeLaneSourceFacts {
-      module: "",
+      module: Absent,
       path: ^headerless_test_path,
       imports: [],
-      discovery: enrolled
+      discovery: enrolled,
+      malformed_import: Absent
     }
-  ]) == "headerless_test_path"
+  ]) {
+    Present { value: unowned } => unowned == ^headerless_test_path
+    Absent => false
+  }
 }
 
 // The green receipt with one control swapped: the old-route arm is the only field under test in
@@ -1341,9 +1358,11 @@ test fn an_absent_old_route_naming_nothing_is_refused() -> Bool {
 // malformed outsider harmless: never in the ingest means never tokenized, so it cannot mint a
 // refusal row or move a verdict.
 
+// The closure probes all name a module, so the row carries Present; the headerless case is the
+// unowned witness above, which is the one that exercises Absent.
 fn closure_fact(module: String, path: Symbol, imports: List<String>) -> NativeLaneSourceFacts {
   NativeLaneSourceFacts {
-    module: module,
+    module: optional_present(value: module),
     path: path,
     imports: imports,
     discovery: FloorDiscoveryWalkState {
@@ -1352,7 +1371,8 @@ fn closure_fact(module: String, path: Symbol, imports: List<String>) -> NativeLa
       walk_failure_path: Absent,
       sidecar_violations: [],
       disposition_refusal: Absent
-    }
+    },
+    malformed_import: Absent
   }
 }
 

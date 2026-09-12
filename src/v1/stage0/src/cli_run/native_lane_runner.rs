@@ -568,11 +568,13 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
 // marker -- had the write been gated on a successful parse, the rows would have been discarded on
 // the one occasion they mattered most.
 //
-// THE TEE IS ITS OWN CONTROL. A persisted receipt that disagrees with the verdict path is worse
-// than none, because it will be read as authoritative: the row count recovered FROM THE FILE is
-// compared against the count the terminal marker declares, and a mismatch REFUSES rather than
-// reporting the smaller number. That also means this cannot silently become a second, divergent
-// source of truth -- it agrees with the parse or it stops the line.
+// TWO CHECKS, TWO QUESTIONS, AND THEY ARE NOT INTERCHANGEABLE (side-chat 10:23). Byte equality
+// between the child stdout and its read-back answers "is this artifact what the child wrote". The
+// population count answers "does the row set the marker claims match the row set on the surface" --
+// a check about the DRIVER agreeing with itself, not about storage. An earlier revision ran only
+// the count and described it as the first guarantee, which is why the distinction is written down:
+// a same-count substitution passes a count and fails the bytes, so conflating them would have left
+// the stronger claim resting on the weaker check.
 fn run_native_binary(
     binary: &Path,
     args: &[String],
@@ -584,7 +586,20 @@ fn run_native_binary(
             binary.display()
         )
     })?;
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    // CHECKED UTF-8, NOT LOSSY (side-chat 10:23). from_utf8_lossy substitutes U+FFFD for invalid
+    // sequences, so a corrupted stream would be PARSED AND PERSISTED as though it were the bytes
+    // the child wrote -- the decoder silently repairing the evidence it is supposed to carry. A
+    // receipt surface cannot transform its own subject; invalid UTF-8 on this stream is a refusal.
+    let stdout = match String::from_utf8(output.stdout.clone()) {
+        Ok(text) => text,
+        Err(cause) => {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — {} wrote {} byte(s) that are not valid UTF-8: {cause}",
+                binary.display(),
+                output.stdout.len()
+            ))
+        }
+    };
     // THE CHILD'S STDERR IS RELAYED, NOT SWALLOWED. The spawned binary writes its cost receipt
     // (`[native-cost-partition]`, `[native-prepare]`) to its own stderr, and `Command::output`
     // buffers it, so without this relay those rows would exist inside the child and reach nobody
@@ -613,16 +628,38 @@ fn run_native_binary(
                 )
             })?;
         }
-        std::fs::write(path, &stdout).map_err(|e| {
+        std::fs::write(path, &output.stdout).map_err(|e| {
             format!(
                 "V2-NATIVE REFUSAL cause=NativeRunRowsUnwritable — writing {}: {e}",
                 path.display()
             )
         })?;
+        // STORAGE INTEGRITY IS A BYTE COMPARISON, AND NOTHING ELSE IS (side-chat 10:23). The
+        // earlier form of this check counted records carrying identity+verdict and compared that
+        // count with the terminal marker, then claimed the file could not silently disagree with
+        // the verdict path. THAT CLAIM EXCEEDED THE CHECK: a same-count substitution -- another
+        // identity, a flipped verdict -- or a mangled file_refusal record passes a count
+        // unchanged. The count answers a different question and is kept below for that question
+        // alone. What establishes that the artifact IS what the child wrote is reading the bytes
+        // back and comparing them to the bytes in hand.
+        let persisted_bytes = std::fs::read(path).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunRowsUnreadable — reading back {}: {e}",
+                path.display()
+            )
+        })?;
+        if persisted_bytes != output.stdout {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeRunRowsNotPreserved — {} holds {} byte(s) but the child wrote {}; the persisted rows are not the rows that were produced",
+                path.display(),
+                persisted_bytes.len(),
+                output.stdout.len()
+            ));
+        }
         eprintln!(
-            "v2-native-route: driver rows persisted to {} ({} bytes)",
+            "v2-native-route: driver rows persisted to {} ({} bytes, byte-for-byte verified)",
             path.display(),
-            stdout.len()
+            output.stdout.len()
         );
     }
     match parse_native_run_output(&stdout) {
@@ -651,6 +688,36 @@ fn run_native_binary(
                         parsed.terminal.rows
                     ));
                 }
+            }
+            // THE EXIT STATUS AND THE RECEIPT MUST AGREE (review 64499). The unconditional
+            // `if !output.status.success()` gate that main carries was removed on this branch
+            // (abe5a17bb4) for a real reason -- the driver exits non-zero on a REFUSED admission
+            // after printing its summary, so treating status as the whole answer would discard the
+            // receipt that explains the refusal. But that justifies not treating status as the
+            // whole answer; it does not justify discarding it, and discarding it left the host
+            // accepting a run that exits non-zero while claiming `admitted: true`. Fail-closure
+            // then rested on an unchecked ordering invariant in GENERATED code -- that the emitted
+            // main happens to print `_terminal` last -- which is not a thing this host can see.
+            //
+            // THE CHECK IS AN AGREEMENT, WHICH IS STRICTLY STRONGER THAN THE GATE IT RESTORES:
+            // main's version could not catch the other contradiction, a zero exit carrying a
+            // refused receipt. Both directions are a disagreement between two independent
+            // observations of one run, and a disagreement is refused rather than resolved in
+            // favour of whichever one we prefer.
+            //
+            // SCOPED TO ADJUDICATE because `admitted` is not a fact the census mode has: its
+            // marker carries only mode and file_refusals, and the false there is struct fill
+            // documented as never read. Asking a mode for a fact it does not carry is how the
+            // first version of the marker parser refused every census run.
+            if parsed.terminal.mode == "adjudicate"
+                && output.status.success() != parsed.terminal.admitted
+            {
+                return Err(format!(
+                    "V2-NATIVE REFUSAL cause=NativeRunStatusReceiptDisagree — {} exited {:?} but its terminal marker reports admitted={}; the exit status and the receipt are two observations of one run and they disagree",
+                    binary.display(),
+                    output.status.code(),
+                    parsed.terminal.admitted
+                ));
             }
             Ok(parsed)
         }
@@ -902,6 +969,119 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// STORAGE INTEGRITY, BOTH ARMS. The mutation is a SAME-COUNT substitution -- one verdict
+    /// flipped, the row count untouched -- which is exactly the case the count check cannot see.
+    /// It is performed on the persisted file after the run, then the read-back is compared, so the
+    /// control exercises the comparison rather than a mocked version of it.
+    #[test]
+    fn a_same_count_substitution_in_the_persisted_rows_is_detected() {
+        let dir = std::env::temp_dir().join(format!("dc655-tee-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rows.jsonl");
+        let produced = b"{\"identity\":{\"module\":\"m\",\"declaration\":\"d\"},\"verdict\":\"NativeTestPassed\"}\n".to_vec();
+        std::fs::write(&path, &produced).unwrap();
+
+        // same record count, one verdict changed
+        let substituted = String::from_utf8(produced.clone())
+            .unwrap()
+            .replace("NativeTestPassed", "NativeTestFailed");
+        std::fs::write(&path, substituted.as_bytes()).unwrap();
+        let read_back = std::fs::read(&path).unwrap();
+        assert_eq!(
+            read_back.iter().filter(|b| **b == b'\n').count(),
+            produced.iter().filter(|b| **b == b'\n').count(),
+            "the substitution must preserve the record count, or it is not testing what it claims"
+        );
+        assert_ne!(
+            read_back, produced,
+            "a flipped verdict must be visible as a byte difference -- this is the comparison the tee performs"
+        );
+
+        // positive control: unchanged bytes compare equal
+        std::fs::write(&path, &produced).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), produced);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE DISAGREEMENT ARM HAS AN EXECUTING RED, and it is authorable without an emitted
+    /// compiler: run_native_binary takes a path, so a shell fixture can produce exactly the
+    /// contradiction the arm exists for -- a marker claiming admitted while the process exits
+    /// non-zero. Writing the check without this pair would have left a refusal nobody has watched
+    /// fire, which is the state this PR has already had to repair twice.
+    #[test]
+    fn a_nonzero_exit_claiming_admitted_is_refused() {
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}";
+        let result = run_native_binary(
+            Path::new("/bin/sh"),
+            &["-c".to_string(), format!("echo '{marker}'; exit 1")],
+            None,
+        );
+        let cause = match result {
+            Err(cause) => cause,
+            Ok(_) => panic!("a non-zero exit claiming admitted must refuse"),
+        };
+        assert!(
+            cause.contains("NativeRunStatusReceiptDisagree"),
+            "the refusal must name the disagreement, got: {cause}"
+        );
+    }
+
+    /// POSITIVE CONTROL: the same marker with a zero exit is accepted, so the arm above
+    /// discriminates on the disagreement rather than on the fixture.
+    #[test]
+    fn a_zero_exit_claiming_admitted_is_accepted() {
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}";
+        let parsed = run_native_binary(
+            Path::new("/bin/sh"),
+            &["-c".to_string(), format!("echo '{marker}'; exit 0")],
+            None,
+        )
+        .expect("a zero exit agreeing with an admitted marker is the ordinary accepted run");
+        assert!(parsed.terminal.admitted);
+    }
+
+    /// THE OTHER DIRECTION, which main's unconditional status gate could not catch: a zero exit
+    /// carrying a REFUSED receipt is equally a disagreement between two observations of one run.
+    #[test]
+    fn a_zero_exit_claiming_refused_is_refused() {
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":false,\"summary\":\"s\"}";
+        let result = run_native_binary(
+            Path::new("/bin/sh"),
+            &["-c".to_string(), format!("echo '{marker}'; exit 0")],
+            None,
+        );
+        let cause = match result {
+            Err(cause) => cause,
+            Ok(_) => panic!("a zero exit claiming refused must refuse"),
+        };
+        assert!(
+            cause.contains("NativeRunStatusReceiptDisagree"),
+            "got: {cause}"
+        );
+    }
+
+    /// EXIT 2 WITH NO MARKER STILL REFUSES, and it refuses at the PARSE rather than at the
+    /// agreement arm -- the driver that exits before doing work prints no terminal marker, so
+    /// there is no `admitted` to disagree with. Enrolled because "refused before work" and
+    /// "disagreed about the verdict" are different causes and a reader must not see one reported
+    /// as the other.
+    #[test]
+    fn an_early_refusal_with_no_marker_refuses_at_the_parse() {
+        let result = run_native_binary(
+            Path::new("/bin/sh"),
+            &["-c".to_string(), "exit 2".to_string()],
+            None,
+        );
+        let cause = match result {
+            Err(cause) => cause,
+            Ok(_) => panic!("a marker-less stream must refuse"),
+        };
+        assert!(
+            cause.contains("printed no terminal marker"),
+            "an early refusal is a missing marker, not a disagreement, got: {cause}"
+        );
+    }
 
     /// THE MARKER IS THE VERDICT SURFACE, AND A REFUSED ADMISSION MUST SURVIVE THE PARSE. The
     /// binary exits non-zero on a refused admission after printing its summary, so the host must
