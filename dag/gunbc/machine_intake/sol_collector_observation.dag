@@ -8,14 +8,11 @@ import std.measure { Second }
 // SEL, OEM-decode, and the other PreOs axes) is gunbc.machine_intake_pre_os_observation_capabilities
 // on gunbc#11110. This module does not mint that file.
 
-// Activation, coverage, host payload, termination, and terminate_deadline are independent.
-// A window that elapses while the client stays attached is not coverage complete. The
-// deadline must terminate the client. Local client banner bytes (ipmitool tcgetattr /
-// SOL Session operational) are not host payload.
-
-type SolSessionActivationStanding
-  = SolSessionActivationAcknowledged
-  | SolSessionActivationNotAcknowledged
+// Coverage exists only after session activation is acknowledged. SolCoverageComplete cannot
+// coexist with an unacknowledged session: that pair has no constructor. Local client banner
+// bytes (ipmitool tcgetattr / SOL Session operational) are not host payload. A window that
+// elapses while the client stays attached is not coverage complete; the deadline must
+// terminate the client.
 
 type SolCollectorCoverageStanding
   = SolCoverageNeverEstablished
@@ -33,13 +30,18 @@ type SolHostPayloadStanding
   = SolHostPayloadReceived
   | SolHostPayloadNotReceived
 
-type SolCollectorObservation {
-  activation: SolSessionActivationStanding
-  coverage: SolCollectorCoverageStanding
-  termination: SolCollectorTermination
-  host_payload: SolHostPayloadStanding
-  terminate_deadline: Second
-}
+type SolCollectorObservation
+  = SolCollectorSessionNotAcknowledged {
+      termination: SolCollectorTermination
+      host_payload: SolHostPayloadStanding
+      terminate_deadline: Second
+    }
+  | SolCollectorSessionAcknowledged {
+      coverage: SolCollectorCoverageStanding
+      termination: SolCollectorTermination
+      host_payload: SolHostPayloadStanding
+      terminate_deadline: Second
+    }
 
 type SolHostFactFromCollector
   = SolHostPayloadAdmitted
@@ -47,18 +49,29 @@ type SolHostFactFromCollector
   | SolCollectorDidNotEstablishCoverage { coverage: SolCollectorCoverageStanding }
 
 fn sol_host_fact_from_collector(obs: SolCollectorObservation) -> SolHostFactFromCollector {
-  match obs.host_payload {
-    SolHostPayloadReceived => SolHostPayloadAdmitted
-    SolHostPayloadNotReceived =>
-      match obs.coverage {
-        SolCoverageComplete => SolHostProducedNoConsoleBytes
-        SolCoverageNeverEstablished => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
-        SolCoverageInterrupted => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
-        SolCoverageStillRunningPastDeadline => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+  match obs {
+    SolCollectorSessionNotAcknowledged { termination: _, host_payload: _, terminate_deadline: _ } =>
+      SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished }
+    SolCollectorSessionAcknowledged { coverage: coverage, termination: _, host_payload: host_payload, terminate_deadline: _ } =>
+      match host_payload {
+        SolHostPayloadReceived => SolHostPayloadAdmitted
+        SolHostPayloadNotReceived =>
+          match coverage {
+            SolCoverageComplete => SolHostProducedNoConsoleBytes
+            SolCoverageNeverEstablished => SolCollectorDidNotEstablishCoverage { coverage: coverage }
+            SolCoverageInterrupted => SolCollectorDidNotEstablishCoverage { coverage: coverage }
+            SolCoverageStillRunningPastDeadline => SolCollectorDidNotEstablishCoverage { coverage: coverage }
+          }
       }
   }
 }
 
-// Frontier after #11110 lands: ConsoleSessionHeldPastActivation derives from a
-// SolCollectorObservation whose activation is Acknowledged and whose termination is not
-// yet decided; SolBannerOnly / SolHostBytesObserved derive from host_payload standing.
+// The four-field product (NotAcknowledged × Complete × stdin-EOF × no payload) is unconstructible
+// here. No compiler fixture harness for an invalid product of those fields is enrolled; that
+// missing harness is the next-rung trigger for a typecheck RED of the old record shape. The
+// executing control is sol_host_fact_from_collector on SolCollectorSessionNotAcknowledged, which
+// cannot return SolHostProducedNoConsoleBytes.
+
+// Frontier after #11110 lands: ConsoleSessionHeldPastActivation derives from
+// SolCollectorSessionAcknowledged whose termination is not yet decided; SolBannerOnly /
+// SolHostBytesObserved derive from host_payload standing.

@@ -50,6 +50,8 @@ import gunbc.machine_intake_sol_collector_observation {
   CollectorTerminatedByDeadline,
   CollectorTerminatedExitZeroStdinEof,
   SolCollectorDidNotEstablishCoverage,
+  SolCollectorSessionAcknowledged,
+  SolCollectorSessionNotAcknowledged,
   SolCoverageComplete,
   SolCoverageNeverEstablished,
   SolCoverageStillRunningPastDeadline,
@@ -57,7 +59,6 @@ import gunbc.machine_intake_sol_collector_observation {
   SolHostPayloadNotReceived,
   SolHostPayloadReceived,
   SolHostProducedNoConsoleBytes,
-  SolSessionActivationAcknowledged,
   SolCollectorObservation,
   sol_host_fact_from_collector,
 }
@@ -145,8 +146,7 @@ test fn web_and_ipmi_event_log_layouts_are_distinct() -> Bool {
 }
 
 fn collector_without_coverage() -> SolCollectorObservation {
-  SolCollectorObservation {
-    activation: SolSessionActivationAcknowledged,
+  SolCollectorSessionAcknowledged {
     coverage: SolCoverageNeverEstablished,
     termination: CollectorTerminatedExitZeroStdinEof,
     host_payload: SolHostPayloadNotReceived,
@@ -155,10 +155,9 @@ fn collector_without_coverage() -> SolCollectorObservation {
 }
 
 fn collector_with_host_payload() -> SolCollectorObservation {
-  SolCollectorObservation {
-    activation: SolSessionActivationAcknowledged,
+  SolCollectorSessionAcknowledged {
     coverage: SolCoverageComplete,
-    termination: CollectorTerminatedExitZeroStdinEof,
+    termination: CollectorTerminatedByDeadline,
     host_payload: SolHostPayloadReceived,
     terminate_deadline: megarac_sol_collector_terminate_deadline,
   }
@@ -173,14 +172,34 @@ test fn incomplete_sol_coverage_is_not_a_host_silence_fact() -> Bool {
       SolHostPayloadAdmitted => true
       _ => false
     }
-    && match sol_host_fact_from_collector(obs: SolCollectorObservation {
-      activation: SolSessionActivationAcknowledged,
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
       coverage: SolCoverageComplete,
-      termination: CollectorTerminatedExitZeroStdinEof,
+      termination: CollectorTerminatedByDeadline,
       host_payload: SolHostPayloadNotReceived,
       terminate_deadline: megarac_sol_collector_terminate_deadline,
     }) {
       SolHostProducedNoConsoleBytes => true
+      _ => false
+    }
+}
+
+test fn unacknowledged_session_never_claims_the_host_produced_no_bytes() -> Bool {
+  match sol_host_fact_from_collector(obs: SolCollectorSessionNotAcknowledged {
+    termination: CollectorTerminatedExitZeroStdinEof,
+    host_payload: SolHostPayloadNotReceived,
+    terminate_deadline: megarac_sol_collector_terminate_deadline,
+  }) {
+    SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished } => true
+    SolHostProducedNoConsoleBytes => false
+    _ => false
+  }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionNotAcknowledged {
+      termination: CollectorTerminatedExitZeroStdinEof,
+      host_payload: SolHostPayloadReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished } => true
+      SolHostPayloadAdmitted => false
       _ => false
     }
 }
@@ -201,11 +220,16 @@ test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> 
     SolHostPayloadAdmitted => true
     _ => false
   }
-    && megarac_sol_host_payload_positive_control.coverage == SolCoverageStillRunningPastDeadline
-    && megarac_sol_host_payload_positive_control.termination == CollectorStillRunning
-    && megarac_sol_host_payload_positive_control.activation == SolSessionActivationAcknowledged
-    && match sol_host_fact_from_collector(obs: SolCollectorObservation {
-      activation: SolSessionActivationAcknowledged,
+    && match megarac_sol_host_payload_positive_control {
+      SolCollectorSessionAcknowledged {
+        coverage: SolCoverageStillRunningPastDeadline,
+        termination: CollectorStillRunning,
+        host_payload: SolHostPayloadReceived,
+        terminate_deadline: _,
+      } => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
       coverage: SolCoverageComplete,
       termination: CollectorTerminatedByDeadline,
       host_payload: SolHostPayloadReceived,
@@ -214,8 +238,7 @@ test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> 
       SolHostPayloadAdmitted => true
       _ => false
     }
-    && match sol_host_fact_from_collector(obs: SolCollectorObservation {
-      activation: SolSessionActivationAcknowledged,
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
       coverage: SolCoverageStillRunningPastDeadline,
       termination: CollectorStillRunning,
       host_payload: SolHostPayloadNotReceived,
