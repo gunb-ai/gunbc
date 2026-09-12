@@ -47,12 +47,15 @@ import v2.std.logic { Bool }
 // from a short row list.
 //
 // WHAT THIS ROUTE CANNOT SEE is measured, not speculated:
-// v2.test.claim.namespace_xl0.call_argument_mention_survival and
-// v2.test.claim.declaring_identity_spelling.production_ingest. Kernel type-position names,
-// callees and call arguments are absent until eager-raven-113's lowering repair (gunbc#11207,
-// scope widened to type positions). User type-position names and value mentions outside
-// calls can reach. Empty rows on the absent classes is today's loss, RED when the repair
-// lands. A parse-tree walker is not a workaround.
+// v2.test.claim.declaring_identity_spelling.production_ingest matched_type_vs_value
+// (same module, no call): value_only and user type_only reach; imported Bool in a
+// parameter does not. Callee and call-argument absence is a separate class
+// (InvisibleUntilCallExpressionRetained; eager-raven-113 / gunbc#11207). Kernel
+// type-position absence is InvisibleUntilTypePositionMentionSurvives and is NOT
+// that call-lowering event -- naming #11207 as its trigger would retire the wait
+// while kernel types stayed dead. Empty rows on those classes is today's loss.
+// A parse-tree walker is not a workaround. The restoration capability for type
+// positions lands with fierce-lark / eager-raven, not in this census.
 
 type DeclaringIdentitySpellingCensus {
   rows: FreeMonoid<DeclaringIdentitySpelling>
