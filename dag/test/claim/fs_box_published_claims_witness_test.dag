@@ -3,7 +3,7 @@ module test.claim.fs_box_published_claims_witness
 import std.types { Bool, NonEmptyStr }
 import std.measure {
   millivolt_count, micrometer_count, minute_count, celsius_count,
-  gram_count, milliampere_hour_count,
+  gram_count, coulomb_count,
 }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import extdeps.transceiver.sff_8636 { transceiver_identifier_from_byte }
@@ -67,7 +67,7 @@ test fn data_sheet_battery_interrupt_is_endurance_not_write_recovery() -> Bool {
   (fs_box_v4_data_sheet.battery_endurance_condition as String) == "without interrupting configuration"
     && minute_count(m: fs_box_v4_data_sheet.battery_endurance_low_power_sfp) == 540
     && minute_count(m: fs_box_v4_data_sheet.battery_endurance_high_power_qsfp_dd) == 210
-    && milliampere_hour_count(q: fs_box_v4_data_sheet.battery_capacity) == 3200
+    && coulomb_count(q: fs_box_v4_data_sheet.battery_capacity) == 11520
     && string_contains(s: fs_box_v4_data_sheet.warranty as String, pattern: "5-year limited warranty")
 }
 

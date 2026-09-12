@@ -805,16 +805,16 @@ pub fn gram_count(g: Gram) -> Nat {
     measure_count(g.clone())
 }
 
-pub type MilliampereHour = Rc<Measure<ElectricCharge, Milli, i64>>;
+pub type Coulomb = Rc<Measure<ElectricCharge, One, i64>>;
 
-pub fn milliampere_hour(count: Nat) -> MilliampereHour {
+pub fn coulomb(count: Nat) -> Coulomb {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn milliampere_hour_count(q: MilliampereHour) -> Nat {
+pub fn coulomb_count(q: Coulomb) -> Nat {
     measure_count(q.clone())
 }
 

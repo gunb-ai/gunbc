@@ -2,8 +2,8 @@ module extdeps.instrument.fs_box_v4
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure {
-  Micrometer, Millivolt, Celsius, Minute, Gram, MilliampereHour,
-  micrometer, millivolt, celsius, minute, gram, milliampere_hour,
+  Micrometer, Millivolt, Celsius, Minute, Gram, Coulomb,
+  micrometer, millivolt, celsius, minute, gram, coulomb,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority {
@@ -27,7 +27,7 @@ import extdeps.uri { Uri, Https }
 // per-leg programming, disconnection, write recoverability, EEPROM bytes, or NVIDIA (ETH)
 // coding. Those absences are the point of reading it. Length, voltage, temperature and endurance
 // use std.measure carriers: 28.7 mm is 28700 micrometres, 3.7 V is 3700 millivolts,
-// 9 h / 3.5 h are 540 / 210 minutes, 0.2 kg is gram(200), 3200 mAh is milliampere_hour(3200).
+// 9 h / 3.5 h are 540 / 210 minutes, 0.2 kg is gram(200), 3200 mAh is coulomb(11520).
 // The V3 line on the ordering table is a row of THIS document, not a V3 product module.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -69,7 +69,7 @@ type FsBoxV4DataSheet {
   bluetooth_protocol: NonEmptyStr
   charging_connector: NonEmptyStr
   power: FsBoxV4Supply
-  battery_capacity: MilliampereHour
+  battery_capacity: Coulomb
   battery_endurance_low_power_sfp: Minute
   battery_endurance_high_power_qsfp_dd: Minute
   battery_endurance_condition: NonEmptyStr
@@ -114,7 +114,7 @@ data fs_box_v4_data_sheet: FsBoxV4DataSheet = FsBoxV4DataSheet {
     battery: millivolt(count: 3700),
     usb: millivolt(count: 5000),
   },
-  battery_capacity: milliampere_hour(count: 3200),
+  battery_capacity: coulomb(count: 11520),
   battery_endurance_low_power_sfp: minute(count: 540),
   battery_endurance_high_power_qsfp_dd: minute(count: 210),
   battery_endurance_condition: "without interrupting configuration" as NonEmptyStr,

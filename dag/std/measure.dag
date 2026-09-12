@@ -769,16 +769,16 @@ fn gram_count(g: Gram) -> Nat {
   measure_count(g)
 }
 
-// ELECTRIC CHARGE as published battery capacity. The sheet's unit is milliampere-hour;
-// MilliampereHour is Milli of Quantity ElectricCharge so 3200 mAh is exact. Ampere-hour
-// as Scale One, and coulomb (3600 C per A·h), wait on a consumer that stores those grains.
-type MilliampereHour = Measure<ElectricCharge, Milli, Nat>
+// ELECTRIC CHARGE: Quantity ElectricCharge's One is the coulomb (ChargeMicro is already
+// microcoulombs of the same quantity). 3200 mAh is exactly 11520 C (1 mA·h = 3.6 C).
+// Milli of ElectricCharge would be millicoulomb, not milliampere-hour.
+type Coulomb = Measure<ElectricCharge, One, Nat>
 
-fn milliampere_hour(count: Nat) -> MilliampereHour {
+fn coulomb(count: Nat) -> Coulomb {
   Measure { count: count }
 }
 
-fn milliampere_hour_count(q: MilliampereHour) -> Nat {
+fn coulomb_count(q: Coulomb) -> Nat {
   measure_count(q)
 }
 
