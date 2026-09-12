@@ -1,10 +1,12 @@
 module gunbc.public_workload_census
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.measure { HardwareThreadCount, hardware_thread_count }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { Architecture }
 import extdeps.github.workflow_runs {
   WorkflowJobRun,
+  WorkflowRunConclusion,
   Completed,
   Success,
   Failure,
@@ -24,6 +26,7 @@ import gunbc.runner_label_resolution {
   NotArmConfirmed,
   ArmUndetermined,
   provider_reading,
+  ProviderReading,
   ProviderFromCatalog,
   ProviderUnresolved,
 }
@@ -138,14 +141,6 @@ fn declared_architecture_standing(
   }
 }
 
-fn declared_architecture_is_arm(s: DeclaredArchitectureStanding) -> Bool {
-  match s {
-    DeclaredArm { via } => true
-    DeclaredNotArm { via, architecture } => false
-    DeclaredArchitectureUnresolved { via, cause } => false
-  }
-}
-
 fn alternatives_any_provider_unresolved(
   alternatives: List<String>,
   observed_at: Rfc3339Timestamp,
@@ -250,15 +245,15 @@ fn observed_primary_label(o: ObservedExecution) -> String {
 fn observed_provider_standing(
   o: ObservedExecution,
   observed_at: Rfc3339Timestamp,
-) -> DeclaredProviderStanding {
+) -> ProviderReading {
   let label = observed_primary_label(o: o)
   if label == "" {
-    DeclaredProviderUnresolved {
-      via: DeclaredLabel { label: label },
+    ProviderUnresolved {
+      label: label,
       cause: "no runner label was observed on a job resource",
     }
   } else {
-    declared_provider_standing(spec: DeclaredLabel { label: label }, observed_at: observed_at)
+    provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at))
   }
 }
 
@@ -437,11 +432,12 @@ fn trial_authorization_from_census() -> CensusVerdict<TrialAuthorization> {
   CensusVerdict { reading: TrialUnauthorized { cause: trial_refusal_note } }
 }
 
-fn trial_is_authorized(t: CensusVerdict<TrialAuthorization>) -> Bool {
-  match t.reading {
-    TrialUnauthorized { cause } => false
-  }
-}
+type ResourceRequirements
+  = ResourceRequirementsObserved {
+      hardware_threads: HardwareThreadCount
+      uses_container: Bool
+    }
+  | ResourceRequirementsUnobserved { obligation: NonEmptyStr }
 
 type CandidateSelection
   = SelectedWorkload { rank: Int, complementarity: NonEmptyStr }
@@ -461,7 +457,7 @@ type WorkloadCandidate {
   observed: ObservedExecution
   observation_time: Rfc3339Timestamp
   workload_commands: List<NonEmptyStr>
-  resource_requirements: NonEmptyStr
+  resource_requirements: ResourceRequirements
   caches: List<CacheMechanism>
   external_effects: List<ExternalEffect>
   replay: ReplayAdmission
@@ -478,7 +474,7 @@ fn candidate_declared_provider(c: WorkloadCandidate) -> DeclaredProviderStanding
   declared_provider_standing(spec: c.declared_runner, observed_at: c.observation_time)
 }
 
-fn candidate_observed_provider(c: WorkloadCandidate) -> DeclaredProviderStanding {
+fn candidate_observed_provider(c: WorkloadCandidate) -> ProviderReading {
   observed_provider_standing(o: c.observed, observed_at: c.observation_time)
 }
 
@@ -502,9 +498,28 @@ fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
   count(filter(c.caches, m => cache_condition_is_warm(c: cache_condition(m: m))))
 }
 
-fn spend_is_unobserved(s: SpendStanding) -> Bool {
-  match s {
-    SpendUnobserved { obligation } => true
+fn observed_job_attempt(o: ObservedExecution) -> Int? {
+  match o {
+    JobRunObserved { job, head_sha, correctness } => Present { value: observed_job_run_attempt(job: job) }
+    NoRunObserved { obligation } => Absent
+  }
+}
+
+fn baseline_attempt(b: CensusVerdict<BaselineAdmission>) -> Int? {
+  match b.reading {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } =>
+      Present { value: run_attempt }
+    BaselineRefused { cause } => Absent
+  }
+}
+
+fn baseline_attempt_matches_observed_job(c: WorkloadCandidate) -> Bool {
+  match observed_job_attempt(o: c.observed) {
+    Present { value: job_attempt } => match baseline_attempt(b: candidate_baseline(c: c)) {
+      Present { value: admitted_attempt } => job_attempt == admitted_attempt
+      Absent => false
+    }
+    Absent => false
   }
 }
 
@@ -539,12 +554,15 @@ data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
     },
     head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
     correctness: TestsExecuted {
-      step: "Run tests on depot-ubuntu-24.04-arm-16 (success, 2026-09-04T16:04:06Z to 2026-09-04T16:08:12Z)",
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
     },
   },
   observation_time: "2026-09-04T16:03:32Z",
   workload_commands: ["cargo test --workspace --features=js_plugin"],
-  resource_requirements: "16-vCPU class Arm runner; moonrepo/setup-rust; no service containers",
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
   caches: [
     CacheMechanism {
       name: "moonrepo/setup-rust (cache-base: main)",
@@ -590,7 +608,7 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
     },
     head_sha: "0f2df8380e89bb066e947a5818f6267016847d98",
     correctness: TestsExecuted {
-      step: "inv ci-dnsdist-run-unit-tests (success; job 2026-09-04T09:57:28Z to 2026-09-04T10:07:09Z)",
+      step: "inv ci-dnsdist-run-unit-tests",
     },
   },
   observation_time: "2026-09-04T09:57:28Z",
@@ -600,7 +618,10 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
     "inv ci-dnsdist-run-ninja",
     "inv ci-dnsdist-run-unit-tests",
   ],
-  resource_requirements: "4-vCPU class Arm runner inside a maintainer-published build container, --sysctl net.ipv6.conf.all.disable_ipv6=0, asan+ubsan, recursive submodules",
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 4),
+    uses_container: true,
+  },
   caches: [
     CacheMechanism {
       name: "./.github/actions/cache (cache-key-base dnsdist-full-asan+ubsan-meson-arm-ccache)",
@@ -665,7 +686,10 @@ data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
   workload_commands: [
     "cargo build --features mimalloc --profile release-profiling --target aarch64-unknown-linux-gnu",
   ],
-  resource_requirements: "16-vCPU Ubicloud Arm runner; nightly-2025-11-11 toolchain; frontend built in-job",
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
   caches: [
     CacheMechanism {
       name: "Swatinem/rust-cache (prefix-key arm64)",
@@ -733,7 +757,10 @@ data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
   workload_commands: [
     "cargo build --features mimalloc --profile release-profiling --target x86_64-unknown-linux-gnu",
   ],
-  resource_requirements: "8-vCPU Ubicloud runner (catalog x86_64)",
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 8),
+    uses_container: false,
+  },
   caches: [],
   external_effects: [
     ExternalEffect {
@@ -782,7 +809,10 @@ data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
   },
   observation_time: "2026-09-01T10:28:12Z",
   workload_commands: [],
-  resource_requirements: "16-vCPU Ubicloud Arm runner performing docker manifest create",
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
   caches: [],
   external_effects: [
     ExternalEffect {
@@ -831,7 +861,9 @@ data candidate_biome_test_windows: WorkloadCandidate = WorkloadCandidate {
   },
   observation_time: "2026-09-04T16:03:31Z",
   workload_commands: ["cargo test --workspace --features=js_plugin"],
-  resource_requirements: "Depot Windows Server 2022 16-vCPU class (family outside the surveyed Linux catalog)",
+  resource_requirements: ResourceRequirementsUnobserved {
+    obligation: "Depot Windows family is outside the surveyed Linux catalog, so thread count is not a catalog reading",
+  },
   caches: [],
   external_effects: [],
   replay: ReplayRefusedArchitecture {
@@ -872,7 +904,9 @@ data candidate_biome_test_macos: WorkloadCandidate = WorkloadCandidate {
   },
   observation_time: "2026-09-04T16:08:06Z",
   workload_commands: ["cargo test --workspace --features=js_plugin"],
-  resource_requirements: "Depot macOS latest (family outside the surveyed Linux catalog; latest is a floating alias)",
+  resource_requirements: ResourceRequirementsUnobserved {
+    obligation: "Depot macOS family and the -latest alias are outside the surveyed Linux catalog",
+  },
   caches: [],
   external_effects: [],
   replay: ReplayRefusedArchitecture {
@@ -913,7 +947,9 @@ data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
   },
   observation_time: "2026-09-01T10:29:11Z",
   workload_commands: [],
-  resource_requirements: "GitHub-hosted ubuntu-latest (deliberately excluded from the hosted-runner catalog as a vendor-floating alias)",
+  resource_requirements: ResourceRequirementsUnobserved {
+    obligation: "ubuntu-latest is excluded from the hosted-runner catalog as a vendor-floating alias",
+  },
   caches: [],
   external_effects: [],
   replay: ReplayRefusedArchitecture {
@@ -942,7 +978,10 @@ fn selected_workloads() -> List<WorkloadCandidate> {
 }
 
 fn correctness_admitted_workloads() -> List<WorkloadCandidate> {
-  filter(selected_workloads(), c => baseline_is_admitted(b: candidate_baseline(c: c)))
+  filter(selected_workloads(), c =>
+    baseline_is_admitted(b: candidate_baseline(c: c))
+      && baseline_attempt_matches_observed_job(c: c)
+  )
 }
 
 fn rejected_candidates() -> List<WorkloadCandidate> {
