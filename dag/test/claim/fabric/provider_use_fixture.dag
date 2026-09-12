@@ -201,11 +201,11 @@ fn fx_scope(
 // route a caller names. That is deliberate for a fixture whose subject is not admission: it keeps
 // the callers' reds about ranking rather than about whether the fixture happened to cover them.
 fn fixture_posture_revision() -> ContentHash {
-  fx_hash(seed: "fixture-posture-r1")
+  fx_posture().revision
 }
 
 fn fixture_route_facts_revision() -> ContentHash {
-  fx_hash(seed: "fixture-facts-r1")
+  fx_facts(route: fixture_route()).facts_revision
 }
 
 fn fixture_permit_for(

@@ -114,16 +114,16 @@ fn gitlab_demand() -> Demand<NonEmptyStr> {
   }
 }
 
-fn running_grant() -> List<ExecutionGrant<NonEmptyStr>> {
+fn running_grant() -> ExecutionGrant<NonEmptyStr>? {
   match fixture_permit_for(
     route: fixture_route(),
     offer: FabricIdentity { principal: "supplier", key: "offer-1" },
     demand: demand_id(principal: "github", key: "demand-gh"),
     work: work_of(principal: "fabric", key: "work-1"),
   ) {
-    Absent => []
-    Present { value: permit } => [
-      ExecutionGrant {
+    Absent => none
+    Present { value: permit } => Present {
+      value: ExecutionGrant {
         id: FabricIdentity { principal: "fabric", key: "grant-1" },
         object: FabricGrantObject {
           offer: FabricIdentity { principal: "supplier", key: "offer-1" },
@@ -154,8 +154,8 @@ fn running_grant() -> List<ExecutionGrant<NonEmptyStr>> {
         permit: permit,
         resource_reservations: ["res-cpu-1"],
         money_reservation: "res-money-1",
-      },
-    ]
+      }
+    }
   }
 }
 
@@ -356,16 +356,57 @@ fn decide(
   )
 }
 
+fn one_running() -> List<ExecutionGrant<NonEmptyStr>>? {
+  match running_grant() {
+    Absent => none
+    Present { value: g } => Present { value: [g] }
+  }
+}
+
+fn two_running() -> List<ExecutionGrant<NonEmptyStr>>? {
+  match running_grant() {
+    Absent => none
+    Present { value: a } =>
+      match second_running_grant() {
+        Absent => none
+        Present { value: b } => Present { value: [a, b] }
+      }
+  }
+}
+
+fn decide_live(
+  population: DemandPopulation<NonEmptyStr>,
+  grants: List<ExecutionGrant<NonEmptyStr>>?,
+  command: DemandCommand<NonEmptyStr>,
+) -> DemandCommandEffect<NonEmptyStr>? {
+  match grants {
+    Absent => none
+    Present { value: gs } => Present {
+      value: decide(population: population, grants: gs, command: command),
+    }
+  }
+}
+
+fn shown(e: DemandCommandEffect<NonEmptyStr>?) -> NonEmptyStr {
+  match e {
+    Absent => "no-permit"
+    Present { value: x } => effect_label(e: x)
+  }
+}
+
 // THE TWO-PROVIDER CLAIM, FIRST DIRECTION. One of two demands withdraws and the
 // Work survives with the other still attached, so the running attempt
 // continues. This is the case the prose says a provider binding cannot decide
 // on its own, because only the core holds the second demand.
 
 test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool {
-  let e = decide(population: both_demands(), grants: running_grant(), command: withdraw(principal: "github", key: "demand-gh"))
-  effect_label(e: e) == "still-required-attempt-continues"
-    && population_demands(p: effect_population(e: e)).length() == 1
-    && released_reservations(e: e).length() == 0
+  match decide_live(population: both_demands(), grants: one_running(), command: withdraw(principal: "github", key: "demand-gh")) {
+    Absent => false
+    Present { value: e } =>
+      effect_label(e: e) == "still-required-attempt-continues"
+        && population_demands(p: effect_population(e: e)).length() == 1
+        && released_reservations(e: e).length() == 0
+  }
 }
 
 // THE MIRROR. Withdraw the second demand as well and the Work is released, the
@@ -374,15 +415,21 @@ test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool {
 // releases anything at all.
 
 test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() -> Bool {
-  let after_first = decide(population: both_demands(), grants: running_grant(), command: withdraw(principal: "github", key: "demand-gh"))
-  let e = decide(
-    population: effect_population(e: after_first),
-    grants: running_grant(),
-    command: withdraw(principal: "gitlab", key: "demand-gl"),
-  )
-  effect_label(e: e) == "released-attempt-stops"
-    && population_demands(p: effect_population(e: e)).length() == 0
-    && released_reservations(e: e).length() == 2
+  match decide_live(population: both_demands(), grants: one_running(), command: withdraw(principal: "github", key: "demand-gh")) {
+    Absent => false
+    Present { value: after_first } =>
+      match decide_live(
+        population: effect_population(e: after_first),
+        grants: one_running(),
+        command: withdraw(principal: "gitlab", key: "demand-gl"),
+      ) {
+        Absent => false
+        Present { value: e } =>
+          effect_label(e: e) == "released-attempt-stops"
+            && population_demands(p: effect_population(e: e)).length() == 0
+            && released_reservations(e: e).length() == 2
+      }
+  }
 }
 
 // Losing the last demand before any grant issued is a real state with its own
@@ -407,7 +454,7 @@ test fn releasing_a_work_with_nothing_running_names_no_attempt() -> Bool {
 // unwritable.
 
 test fn a_withdrawal_from_the_wrong_principal_refuses_by_principal_not_as_unknown() -> Bool {
-  effect_label(e: decide(population: both_demands(), grants: running_grant(), command: withdraw(principal: "gitlab", key: "demand-gh")))
+  shown(e: decide_live(population: both_demands(), grants: one_running(), command: withdraw(principal: "gitlab", key: "demand-gh")))
     == "principal-mismatch"
 }
 
@@ -461,9 +508,9 @@ test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bo
     admission: terms(),
     satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: true, step_reuse_permitted: true },
   }
-  effect_label(e: decide(population: single_gitlab_registry(), grants: running_grant(), command: SubmitDemand { demand: attaches }))
+  shown(e: decide_live(population: single_gitlab_registry(), grants: one_running(), command: SubmitDemand { demand: attaches }))
     == "attach-to-existing-execution"
-    && effect_label(e: decide(population: single_gitlab_registry(), grants: running_grant(), command: SubmitDemand { demand: reruns }))
+    && shown(e: decide_live(population: single_gitlab_registry(), grants: one_running(), command: SubmitDemand { demand: reruns }))
       == "new-attempt-reusing-steps"
 }
 
@@ -497,19 +544,23 @@ test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admi
     admission: terms(),
     satisfaction: attaching_satisfaction(),
   }
-  let refused = decide(
+  let refused = decide_live(
     population: both_demands(),
-    grants: running_grant(),
+    grants: one_running(),
     command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: elsewhere, evidence: "sup-1" },
   )
-  let admitted = decide(
+  let admitted = decide_live(
     population: both_demands(),
-    grants: running_grant(),
+    grants: one_running(),
     command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: same_work, evidence: "sup-1" },
   )
-  effect_label(e: refused) == "replacement-work-mismatch"
-    && effect_label(e: admitted) == "attach-to-existing-execution"
-    && population_demands(p: effect_population(e: admitted)).length() == 2
+  shown(e: refused) == "replacement-work-mismatch"
+    && match admitted {
+      Absent => false
+      Present { value: e } =>
+        effect_label(e: e) == "attach-to-existing-execution"
+          && population_demands(p: effect_population(e: e)).length() == 2
+    }
 }
 
 // A supersede never releases a Work, because it removes one demand and adds
@@ -526,14 +577,17 @@ test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
     admission: terms(),
     satisfaction: attaching_satisfaction(),
   }
-  let e = decide(
+  match decide_live(
     population: single_github_registry(),
-    grants: running_grant(),
+    grants: one_running(),
     command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: replacement, evidence: "sup-1" },
-  )
-  effect_label(e: e) == "attach-to-existing-execution"
-    && population_demands(p: effect_population(e: e)).length() == 1
-    && released_reservations(e: e).length() == 0
+  ) {
+    Absent => false
+    Present { value: e } =>
+      effect_label(e: e) == "attach-to-existing-execution"
+        && population_demands(p: effect_population(e: e)).length() == 1
+        && released_reservations(e: e).length() == 0
+  }
 }
 
 // A supersede may only replace the presenting requester's own demand. Without
@@ -543,10 +597,10 @@ test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
 
 test fn a_supersede_may_not_replace_another_principals_demand() -> Bool {
   let intruder = demand_of(principal: "gitlab", key: "demand-gh2", work_key: "work-1", satisfaction: attaching_satisfaction())
-  effect_label(
-    e: decide(
+  shown(
+    e: decide_live(
       population: both_demands(),
-      grants: running_grant(),
+      grants: one_running(),
       command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: intruder, evidence: "sup-1" },
     ),
   ) == "supersede-crosses-principal"
@@ -582,14 +636,19 @@ test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
     attestation: attesting(principal: "github"),
     command: withdraw(principal: "gitlab", key: "demand-gl"),
   )
-  let truthful = decide_as(
-    attested: "gitlab",
-    population: both_demands(),
-    grants: running_grant(),
-    command: withdraw(principal: "gitlab", key: "demand-gl"),
-  )
+  let truthful = match one_running() {
+    Absent => none
+    Present { value: gs } => Present {
+      value: decide_as(
+        attested: "gitlab",
+        population: both_demands(),
+        grants: gs,
+        command: withdraw(principal: "gitlab", key: "demand-gl"),
+      )
+    }
+  }
   admission_label(a: impersonating) == "attestation-does-not-cover-principal"
-    && effect_label(e: truthful) == "still-required-attempt-continues"
+    && shown(e: truthful) == "still-required-attempt-continues"
 }
 
 // The gate covers submission too, so a binding cannot register a demand under a
@@ -615,16 +674,16 @@ test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to
 // one resource reservation, so two grants must yield four named reservations -
 // a head-only implementation yields two and this goes red.
 
-fn second_running_grant() -> List<ExecutionGrant<NonEmptyStr>> {
+fn second_running_grant() -> ExecutionGrant<NonEmptyStr>? {
   match fixture_permit_for(
     route: fixture_route(),
     offer: FabricIdentity { principal: "supplier", key: "offer-2" },
     demand: demand_id(principal: "gitlab", key: "demand-gl"),
     work: work_of(principal: "fabric", key: "work-1"),
   ) {
-    Absent => []
-    Present { value: permit } => [
-      ExecutionGrant {
+    Absent => none
+    Present { value: permit } => Present {
+      value: ExecutionGrant {
         id: FabricIdentity { principal: "fabric", key: "grant-2" },
         object: FabricGrantObject {
           offer: FabricIdentity { principal: "supplier", key: "offer-2" },
@@ -655,24 +714,30 @@ fn second_running_grant() -> List<ExecutionGrant<NonEmptyStr>> {
         permit: permit,
         resource_reservations: ["res-cpu-2"],
         money_reservation: "res-money-2",
-      },
-    ]
+      }
+    }
   }
 }
 
 test fn releasing_a_work_names_every_grants_reservations_not_just_the_first() -> Bool {
-  let after_first = decide(
+  match decide_live(
     population: both_demands(),
-    grants: concat(running_grant(), second_running_grant()),
+    grants: two_running(),
     command: withdraw(principal: "github", key: "demand-gh"),
-  )
-  let released = decide(
-    population: effect_population(e: after_first),
-    grants: concat(running_grant(), second_running_grant()),
-    command: withdraw(principal: "gitlab", key: "demand-gl"),
-  )
-  effect_label(e: released) == "released-attempt-stops"
-    && released_reservations(e: released).length() == 4
+  ) {
+    Absent => false
+    Present { value: after_first } =>
+      match decide_live(
+        population: effect_population(e: after_first),
+        grants: two_running(),
+        command: withdraw(principal: "gitlab", key: "demand-gl"),
+      ) {
+        Absent => false
+        Present { value: released } =>
+          effect_label(e: released) == "released-attempt-stops"
+            && released_reservations(e: released).length() == 4
+      }
+  }
 }
 
 // The same blindness on the surviving-work arm: while a Work is still required,
@@ -680,13 +745,16 @@ test fn releasing_a_work_names_every_grants_reservations_not_just_the_first() ->
 // caller to keep one alive while saying nothing about the others.
 
 test fn a_surviving_work_names_every_running_attempt() -> Bool {
-  let e = decide(
+  match decide_live(
     population: both_demands(),
-    grants: concat(running_grant(), second_running_grant()),
+    grants: two_running(),
     command: withdraw(principal: "github", key: "demand-gh"),
-  )
-  effect_label(e: e) == "still-required-attempt-continues"
-    && continuing_attempts(e: e).length() == 2
+  ) {
+    Absent => false
+    Present { value: e } =>
+      effect_label(e: e) == "still-required-attempt-continues"
+        && continuing_attempts(e: e).length() == 2
+  }
 }
 
 fn continuing_attempts(
@@ -717,10 +785,10 @@ fn continuing_attempts(
 
 test fn the_registry_can_only_be_built_by_the_cores_own_transitions() -> Bool {
   population_demands(p: both_demands()).length() == 2
-    && effect_label(
-      e: decide(
+    && shown(
+      e: decide_live(
         population: both_demands(),
-        grants: running_grant(),
+        grants: one_running(),
         command: withdraw(principal: "github", key: "demand-gh"),
       ),
     ) == "still-required-attempt-continues"
@@ -733,18 +801,24 @@ test fn the_registry_can_only_be_built_by_the_cores_own_transitions() -> Bool {
 // have passed against that defect, which is why this reads the authority.
 
 test fn a_release_names_the_authority_that_vouched_for_the_command() -> Bool {
-  let after_first = decide(
+  match decide_live(
     population: both_demands(),
-    grants: running_grant(),
+    grants: one_running(),
     command: withdraw(principal: "github", key: "demand-gh"),
-  )
-  let released = decide(
-    population: effect_population(e: after_first),
-    grants: running_grant(),
-    command: withdraw(principal: "gitlab", key: "demand-gl"),
-  )
-  effect_label(e: released) == "released-attempt-stops"
-    && release_authorities(e: released).length() == 1
+  ) {
+    Absent => false
+    Present { value: after_first } =>
+      match decide_live(
+        population: effect_population(e: after_first),
+        grants: one_running(),
+        command: withdraw(principal: "gitlab", key: "demand-gl"),
+      ) {
+        Absent => false
+        Present { value: released } =>
+          effect_label(e: released) == "released-attempt-stops"
+            && release_authorities(e: released).length() == 1
+      }
+  }
 }
 
 fn release_authorities(e: DemandCommandEffect<NonEmptyStr>) -> List<DeclarationRef> {

@@ -834,8 +834,8 @@ test fn w_a_permit_for_another_demand_refuses_at_issuance() -> Bool {
 // THE GRANT NAMES ITS OWN ADMISSION. The projections are read off the committed grant, not off
 // the permit issue_grant was handed and not off any candidate: an auditor holding only the grant
 // can re-derive the posture revision, the route-facts revision and the route. The expected
-// revisions are the fixture's independently named hashes, so a grant that merely stored a
-// different permit about the same offer would still go red.
+// revisions are read off fx_posture / fx_facts, the same constructors that minted the permit,
+// so a second seed string cannot drift from what admission actually recorded.
 test fn w_a_committed_grant_names_its_admitting_posture_and_route() -> Bool {
   let issued = committed_grants_of(os: issue(
     work: subject_work,
