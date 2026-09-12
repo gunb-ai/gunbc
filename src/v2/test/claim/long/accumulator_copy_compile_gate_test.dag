@@ -58,7 +58,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The sources are therefore restored to the forms that read clearly, since a shortened spelling that
 // buys nothing is redundant work with a refuted rationale attached.
-data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
 
 data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
 

@@ -14,6 +14,7 @@ import std.primitive_projection {
   primitive_length,
   primitive_map_get,
   primitive_map_insert,
+  primitive_lookup,
   primitive_projection_row,
 }
 import std.primitive_identity {
@@ -162,6 +163,18 @@ test fn w_seam_and_modeled_projections_are_one_authority() -> Bool {
     && declaration_and_primitive_are_one_authority(
       declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "empty_map"),
       primitive: primitive_empty_map,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate"),
+      primitive: primitive_map_insert,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate"),
+      primitive: primitive_lookup,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_lookup"),
+      primitive: primitive_lookup,
     )
 }
 
