@@ -1721,9 +1721,18 @@ pub struct TransitionAdmission {
 /// `import extdeps.filesystem.filesystem_io` became `{ Filesystem }` and the spelling's candidate
 /// set narrowed from three modules to two without changing what it resolves to. Its stated trigger
 /// was "this row goes when #11137 merges"; #11137 merged at 06:35:25 on 2026-09-12, so the base
-/// carries the named import, the delta stopped being producible, and the deletion came due on this
-/// roster's next touch -- which this change is. The roster is empty again, which this file already
-/// records as its resting state.
+/// carries the named import and the delta stopped being producible. The roster is empty again,
+/// which this file already records as its resting state.
+///
+/// WHY THIS CHANGE IS THE ONE THAT DELETES IT, AND THE GROUND MATTERS MORE THAN THE OUTCOME. Not
+/// because it happened to be the roster's next touch, and not because a pull request that must
+/// re-run anyway carries the deletion cheaply -- both are true and both are the wrong reason, being
+/// arguments from convenience that would widen any change's subject. The reason is SCOPE: with this
+/// row in its tree, gunbc#11162 could not pass its OWN required gate. A spent row refuses the floor
+/// structurally for every pull request whose base carries the subject's merge, so the deletion is
+/// that pull request's repair of its own blocker, which is inside any change's subject whatever
+/// file the blocker lives in. And it carries no freight with it: the evaluator is untouched, so
+/// nothing about how admissions are judged rides along with the removal.
 ///
 /// THE DELETION IS THIS ROSTER'S DOCUMENTED DISSOLUTION, NOT UNRELATED CLEANUP RIDING A DIFF, and
 /// the file says so above: "the phase refused every unrelated change, so the shrink is the fix, not
