@@ -51,7 +51,10 @@ import std.measure {
 // as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: the rows
 // NativeDriverExclusiveRows carries, over parent_span_nanos) plus one `[native-prepare-split]`
 // line per unique module that partitions prepare into resolve vs infer (the two halves
-// native_test_resolve_module / native_test_infer_resolved) and carries decls=. The
+// native_test_resolve_module / native_test_infer_resolved) and carries decls=. Its outcome names
+// which arm decided the module: accepted, infer_refused, resolve_refused, or context_refused --
+// the last for a module whose FILE this context already refused, which never enters the resolver,
+// so its resolve span is the refusal lookup and not a resolution it did not perform. The
 // `[native-cost-partition]` verdict is native_driver_cost_account over NativeDriverExclusiveRows,
 // not a second copy of the reconcile law: remainder_nanos is that fold's residual, and
 // OverAttributed carries no remainder field (underflow is not a number). A non-Reconciled

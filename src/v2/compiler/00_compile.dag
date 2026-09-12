@@ -2302,50 +2302,95 @@ type NativeLaneModulePreparation
   = NativeLaneModulePrepared { prepared: NativeTestPreparedModule }
   | NativeLaneModuleRowsDecided { rows: List<NativeRouteMemberRow> }
 
-fn native_lane_module_preparation(
+fn native_lane_module_refusal_rows(
+  entry: NativeLaneUniverseModule,
+  verdict: NativeTestVerdict
+) -> List<NativeRouteMemberRow> {
+  fold_list(
+    xs: entry.declarations,
+    empty: [],
+    cons: fn(acc, d) {
+      list_snoc_item(xs: acc, item: native_lane_member_row(
+        module: entry.module,
+        declaration: d,
+        verdict: verdict
+      ))
+    }
+  )
+}
+
+// THE TWO HALVES OF PREPARATION ARE ENTERED SEPARATELY, for the reason the type above already
+// gives: the host owns the clock the substrate does not have, so a grain it must PRICE is a grain
+// it must ENTER. Composing resolve and infer into one call handed the host one opaque span and
+// forced it to label both halves with one phase name -- the measurement defect the prepare/eval
+// split exists to avoid, committed one level down. std.compiler_entry's driver contract declares
+// one [native-prepare-split] line per module carrying resolve_nanos and infer_nanos, and a single
+// composed call cannot produce it. The rows are unchanged: the same fold over the same
+// declarations, shaped by native_lane_module_refusal_rows, at the same two stages, in the same
+// order -- Context for a file refusal, Prepare for either half's rejection.
+// THE TWO REFUSAL CAUSES BEFORE INFER ARE SEPARATE VARIANTS, not one. A file this context refused
+// and a module the resolver rejected produce rows at DIFFERENT stages (Context vs Prepare) and cost
+// different work -- the first never enters the resolver at all -- so collapsing them would make the
+// split line label a context refusal as a resolve refusal, which is a fabricated attribution of
+// someone else's cost. The rows each arm produces are unchanged by the split.
+type NativeLaneModuleResolution
+  = NativeLaneModuleResolved { resolved: ResolvedTree }
+  | NativeLaneModuleContextRowsDecided { rows: List<NativeRouteMemberRow> }
+  | NativeLaneModuleResolveRowsDecided { rows: List<NativeRouteMemberRow> }
+
+fn native_lane_module_resolution(
   context: NativeTestContext,
   entry: NativeLaneUniverseModule
-) -> NativeLaneModulePreparation {
+) -> NativeLaneModuleResolution {
   match native_lane_file_refusal_for_path(refusals: context.file_refusals, path: entry.path) {
     Present { value: fr } =>
-      NativeLaneModuleRowsDecided {
-        rows: fold_list(
-          xs: entry.declarations,
-          empty: [],
-          cons: fn(acc, d) {
-            list_snoc_item(xs: acc, item: native_lane_member_row(
-              module: entry.module,
-              declaration: d,
-              verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
-            ))
-          }
+      NativeLaneModuleContextRowsDecided {
+        rows: native_lane_module_refusal_rows(
+          entry: entry,
+          verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
         )
       }
     Absent =>
-      match native_test_prepare_module(
+      match native_test_resolve_module(
         context: context,
         module: qualified_name_from_dotted_string(dotted: entry.module)
       ) {
         Rejected { diagnostics: d } =>
-          NativeLaneModuleRowsDecided {
-            rows: fold_list(
-              xs: entry.declarations,
-              empty: [],
-              cons: fn(acc, decl) {
-                list_snoc_item(xs: acc, item: native_lane_member_row(
-                  module: entry.module,
-                  declaration: decl,
-                  verdict: NativeTestRefused {
-                    stage: NativeTestStagePrepare,
-                    reason: native_test_fatal_reason(d: d)
-                  }
-                ))
+          NativeLaneModuleResolveRowsDecided {
+            rows: native_lane_module_refusal_rows(
+              entry: entry,
+              verdict: NativeTestRefused {
+                stage: NativeTestStagePrepare,
+                reason: native_test_fatal_reason(d: d)
               }
             )
           }
-        Accepted { value: prepared, diagnostics: _ } =>
-          NativeLaneModulePrepared { prepared: prepared }
+        Accepted { value: resolved, diagnostics: _ } =>
+          NativeLaneModuleResolved { resolved: resolved }
       }
+  }
+}
+
+fn native_lane_module_inference(
+  entry: NativeLaneUniverseModule,
+  resolved: ResolvedTree
+) -> NativeLaneModulePreparation {
+  match native_test_infer_resolved(
+    module: qualified_name_from_dotted_string(dotted: entry.module),
+    resolved: resolved
+  ) {
+    Rejected { diagnostics: d } =>
+      NativeLaneModuleRowsDecided {
+        rows: native_lane_module_refusal_rows(
+          entry: entry,
+          verdict: NativeTestRefused {
+            stage: NativeTestStagePrepare,
+            reason: native_test_fatal_reason(d: d)
+          }
+        )
+      }
+    Accepted { value: prepared, diagnostics: _ } =>
+      NativeLaneModulePrepared { prepared: prepared }
   }
 }
 
