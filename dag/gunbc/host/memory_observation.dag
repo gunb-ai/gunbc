@@ -1,0 +1,163 @@
+module gunbc.memory_observation
+
+import std.types { Bool, Int, Seconds, List, NonEmptyStr, String }
+import std.integer { UInt8 }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.memory_configuration { MemoryConfiguration, MemoryPosition }
+import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
+
+// An identity binding for a token actually printed by this captured firmware.
+// An observed unsuffixed identity is not an exact manufacturer-catalog join.
+// This is observing evidence, not a vendor promise about output formatting.
+type MemoryPrintedPartBinding {
+  part: DeclarationRef
+  printed: NonEmptyStr
+  required_descriptors: List<NonEmptyStr>
+}
+
+// Coordinate tokens are supplied by the capture's observing producer. The
+// generic inventory join does not define any firmware's print convention.
+type MemoryPrintedPositionBinding {
+  position: MemoryPosition
+  printed: NonEmptyStr
+}
+
+// An interval receipt and captured complete stimulus cycles establish different
+// coverage. The latter does not assert uninterrupted attachment between cycles.
+type MemoryCaptureCoverage
+  = MemoryCaptureInterval { required_start: Seconds, required_end: Seconds, collector_start: Seconds, collector_end: Seconds }
+  | MemoryCaptureCycles { required_cycles: Nat, start_token: NonEmptyStr, completion_token: NonEmptyStr }
+
+// Transcript ingestion boundary, not a hardware actuator. Identical hashes
+// are suspicion alongside stimulus, process and payload evidence, never proof.
+type MemoryCollectorReceipt {
+  source: DeclarationRef
+  printed_parts: List<MemoryPrintedPartBinding>
+  printed_positions: List<MemoryPrintedPositionBinding>
+  expected_payload_token: NonEmptyStr
+  session: NonEmptyStr
+  expected_stimulus: NonEmptyStr
+  observed_stimulus: NonEmptyStr?
+  coverage: MemoryCaptureCoverage
+  exit_code: Int
+  payload: String
+  capture_digest: NonEmptyStr
+  previous_capture_digest: NonEmptyStr?
+}
+
+fn memory_capture_coverage_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
+  match c.coverage {
+    MemoryCaptureInterval { required_start, required_end, collector_start, collector_end } =>
+      if required_end <= required_start || collector_start > required_start || collector_end < required_end {
+        Present { value: "collector did not cover the required stimulus interval" as NonEmptyStr }
+      } else { none }
+    MemoryCaptureCycles { required_cycles, start_token, completion_token } => {
+      let cycles = split(s: c.payload, delimiter: start_token as String).skip(n: 1)
+      if required_cycles == 0 || count(cycles) < required_cycles
+        || !all(cycles, cycle => contains(cycle, completion_token as String)) {
+        Present { value: "collector did not capture the required complete stimulus cycles" as NonEmptyStr }
+      } else { none }
+    }
+  }
+}
+
+fn memory_collector_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
+  let refusal = if c.exit_code != 0 { Present { value: "collector process failed" as NonEmptyStr } }
+  else { match memory_capture_coverage_refusal(c: c) {
+    Present { value: cause } => Present { value: cause as NonEmptyStr }
+    Absent => match c.observed_stimulus {
+      Absent => Present { value: "expected stimulus was not observed in this session" as NonEmptyStr }
+      Present { value: stimulus } =>
+        if stimulus != c.expected_stimulus { Present { value: "observed stimulus belongs to another attempt" as NonEmptyStr } }
+        else if !contains(c.payload, c.expected_payload_token as String) {
+          Present { value: "no positive host memory payload; session banner is not host observation" as NonEmptyStr }
+        } else { none }
+    }
+  } }
+  match refusal {
+    Absent => none
+    Present { value: cause } =>
+      if memory_capture_repetition_suspected(c: c) {
+        Present { value: concat("repeated capture digest; independent collector failure: ", cause as String) as NonEmptyStr }
+      } else { refusal }
+  }
+}
+
+fn memory_capture_repetition_suspected(c: MemoryCollectorReceipt) -> Bool {
+  match c.previous_capture_digest {
+    Absent => false
+    Present { value: previous } => previous == c.capture_digest
+  }
+}
+
+// Require the positioned inventory in addition to a syndrome. A header or a
+// partial table cannot bind this finding to a whole captured configuration.
+fn memory_payload_covers_population(configuration: MemoryConfiguration, collector: MemoryCollectorReceipt, payload: String) -> Bool {
+  let lines = split(s: payload, delimiter: "\n")
+  count(configuration.population) > 0 && contains(payload, collector.expected_payload_token as String)
+    && fold(configuration.population, init: true, f: (covered, dimm) => {
+      let coordinates = filter(collector.printed_positions, binding => binding.position == dimm.position)
+      let bindings = filter(collector.printed_parts, binding => declaration_ref_eq(a: binding.part, b: dimm.part))
+      covered && count(coordinates) == 1 && count(bindings) == 1 && any(coordinates, coordinate => any(bindings, binding =>
+        any(lines, line => contains(line, coordinate.printed as String) && contains(line, binding.printed as String)
+          && all(binding.required_descriptors, descriptor => contains(line, descriptor as String)))))
+    })
+}
+
+fn memory_capture_covers_population(configuration: MemoryConfiguration, collector: MemoryCollectorReceipt) -> Bool {
+  match collector.coverage {
+    MemoryCaptureInterval { required_start: _, required_end: _, collector_start: _, collector_end: _ } =>
+      memory_payload_covers_population(configuration: configuration, collector: collector, payload: collector.payload)
+    MemoryCaptureCycles { required_cycles, start_token, completion_token: _ } => {
+      let cycles = split(s: collector.payload, delimiter: start_token as String).skip(n: 1)
+      required_cycles > 0 && count(cycles) >= required_cycles
+        && all(cycles, cycle => memory_payload_covers_population(configuration: configuration, collector: collector, payload: cycle))
+    }
+  }
+}
+
+// This row records a comparison observed in one attempt. The group is a
+// socket, explicitly named, and only the observed pair is a rejection fact.
+// Scope expansion to another firmware, board, setting or socket is not implicit.
+type MemoryMixtureFinding {
+  attempt: NonEmptyStr
+  configuration: MemoryConfiguration
+  collector: MemoryCollectorReceipt
+  comparison_socket: Nat
+  mismatch_position: MemoryPosition
+  expected_byte: UInt8
+  actual_byte: UInt8
+}
+
+// Standings remain four independent facts. This binding makes a receipt about
+// a whole configuration; neither a simulated initialization nor a passed
+// mixture check can construct an observed standing.
+type ConfigurationQualificationReceipt {
+  configuration: MemoryConfiguration
+  collector: MemoryCollectorReceipt
+  standings: List<HostMemoryStanding>
+}
+
+type MemoryEvaluationEvidence {
+  revision: NonEmptyStr
+  mixtures: List<ObservationAttempt<MemoryMixtureFinding, NonEmptyStr>>
+  qualifications: List<ConfigurationQualificationReceipt>
+  training_failures: List<PlatformTrainingFailure>
+}
+
+// Shared observing read: callers supply the committed artifact identity and
+// perform their own bounded recognition only after both reads succeed.
+func read_verified_memory_capture(path: NonEmptyStr, expected_sha256: NonEmptyStr) -> ObservationAttempt<String, NonEmptyStr> {
+  let read = Filesystem.Read(path: path as String)
+  let hash = sha256sum_file_digest_via_shell(path: path)
+  let valid_hash = match hash {
+    Sha256FileDigest { digest } => digest.hex == expected_sha256
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+  }
+  if read.success && valid_hash { ObservationEstablished { observed: read.content } }
+  else { ObservationRefused { cause: concat("capture could not be read and hash-verified: ", path as String) as NonEmptyStr } }
+}
