@@ -1,6 +1,7 @@
 module extdeps.access.posix_effective_principal_read_op
 
-import std.types { String, Int, Bool, List }
+import std.types { Int, Bool, List, Unit }
+import std.string_type { String }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead, EffectivePosixPrincipalReadOutcome,
 }

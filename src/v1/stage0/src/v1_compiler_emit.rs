@@ -2610,6 +2610,7 @@ pub enum FileResultChannel {
     FileChanByteCount,
     FileChanPath,
     FileChanError,
+    FileChanErrorKind,
     FileChanContent,
 }
 
@@ -2676,12 +2677,16 @@ pub fn file_result_channel_of_key(key: String) -> Option<FileResultChannel> {
                 if (key.clone() == "error".to_string()) {
                     Some(FileResultChannel::FileChanError)
                 } else {
-                    if ((key.clone() == "content".to_string())
-                        || (key.clone() == "entries".to_string()))
-                    {
-                        Some(FileResultChannel::FileChanContent)
+                    if (key.clone() == "error_kind".to_string()) {
+                        Some(FileResultChannel::FileChanErrorKind)
                     } else {
-                        std::option::Option::None
+                        if ((key.clone() == "content".to_string())
+                            || (key.clone() == "entries".to_string()))
+                        {
+                            Some(FileResultChannel::FileChanContent)
+                        } else {
+                            std::option::Option::None
+                        }
                     }
                 }
             }
@@ -8304,6 +8309,8 @@ pub struct FileChanByteCount;
 pub struct FileChanPath;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileChanError;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileChanErrorKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileChanContent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
