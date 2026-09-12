@@ -64,6 +64,47 @@ fn install_hint(sources: List<InstallSource>) -> String {
   sources |> map(s => one_hint(source: s)) |> join(separator: " | ")
 }
 
+// THE APT PACKAGE, STRUCTURALLY, BESIDE THE SENTENCE. one_hint renders every InstallSource as
+// PROSE for a human, and until now that was the only thing that read the variants -- so a caller
+// that wanted to ACT on an install source had nothing to read and would have re-authored the
+// package name beside the tool. This is the same fold, asked for the value rather than the wording,
+// and it is what lets a convergence consume `installable_via` instead of carrying a second package
+// row that could disagree with it (§3).
+//
+// IT IS OPTIONAL AND NOT A DEFAULT. installable_via is a LIST and a tool may legitimately carry no
+// apt source at all -- websocat is a GitHub release, rustfmt comes from rustup, the coreutils tools
+// come with the system -- so "no apt package" is a real and correct answer, not a failure of this
+// function. Absent is returned rather than a fabricated package name, and the CALLER names the tool
+// in its refusal, because the caller is what knows why it wanted one. A default here would be the
+// §5 fabricated-plausible-output arm: `apt install <binary name>` is right often enough to look
+// correct and wrong exactly where the package and the binary differ (mosquitto_pub from
+// mosquitto-clients, busybox from busybox-static -- both already in this corpus).
+//
+// FIRST MATCH WINS and the order is the roster's. No tool in the corpus declares two apt sources;
+// if one ever does, the row is expressing a choice this fold cannot make and the roster is where
+// that belongs.
+fn apt_package_of(tool: CliTool) -> NonEmptyStr? {
+  fold_list(
+    xs: tool.installable_via,
+    empty: none,
+    cons: fn(acc, source) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          match source {
+            SourceApt { package: p } => Present { value: p }
+            SourceCoreutils => none
+            SourceRustup => none
+            SourceBrew { formula: _ } => none
+            SourceGitHubRelease {
+              repo: _, tag: _, asset_aarch64: _, asset_x86_64: _, install_path: _
+            } => none
+          }
+      }
+    },
+  )
+}
+
 // Migrated off shell.Which.Check to shell.PosixCommandV.Check (crisp-wren-896, PR #8590): no fleet
 // host's OperatingSystemSurface carries a package-set authority, our own CI/falsifier runner
 // included, so `which`'s external-binary presence was never an established fact here either, and

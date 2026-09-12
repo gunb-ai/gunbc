@@ -1,0 +1,32 @@
+module fixtures.dag_artifact_identity.registry_order_specimen
+
+// THE FIXTURE THIS CONTROL NEEDS IS A MODULE WITH MANY ITEM-REGISTRY KEYS, AND THE COUNT IS THE
+// WHOLE POINT. `dag-artifact.json` carries `item_registry_keys` per module and once for the
+// graph; the defect this specimen discriminates emitted that SET in host map order, so two runs
+// of one binary over one tree agreed on every `$ref` and disagreed on those lists. A two-key
+// module would agree by chance half the time, which is a control that reads green on a tree that
+// still carries the defect. Sixteen declarations make a chance agreement 1/16! -- still not zero,
+// and stated rather than rounded to "deterministic".
+//
+// The declarations are deliberately trivial and mutually independent: the subject is the
+// EMITTER'S key ordering, so anything the resolver could reorder for its own reasons would
+// confound it.
+
+fn item_alpha() -> Int { 1 }
+fn item_bravo() -> Int { 2 }
+fn item_charlie() -> Int { 3 }
+fn item_delta() -> Int { 4 }
+fn item_echo() -> Int { 5 }
+fn item_foxtrot() -> Int { 6 }
+fn item_golf() -> Int { 7 }
+fn item_hotel() -> Int { 8 }
+fn item_india() -> Int { 9 }
+fn item_juliett() -> Int { 10 }
+fn item_kilo() -> Int { 11 }
+fn item_lima() -> Int { 12 }
+fn item_mike() -> Int { 13 }
+fn item_november() -> Int { 14 }
+fn item_oscar() -> Int { 15 }
+fn item_papa() -> Int { 16 }
+
+fn main() -> Int { item_alpha() }

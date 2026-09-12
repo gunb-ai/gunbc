@@ -2610,6 +2610,7 @@ pub fn reference_resolution_facts(
                 tally: &mut scratch_tally,
                 unclassified: &mut scratch_unclassified,
                 module: self_module.clone(),
+                value_refs: std::collections::BTreeSet::new(),
                 occurrences: 0,
                 free_reference_edges: 0,
                 bound_occurrences_suppressed: 0,
