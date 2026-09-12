@@ -366,12 +366,14 @@ pub fn claim_scope_dag_multi_module_fixture(
     // RAISING THE BOUND IS NOT THE REMEDY. It is a stated production cost wall, and widening it so
     // a test instrument fits is the instrument dictating production limits.
     //
-    // MEASURED, on gunbc#11143's floor before this: the POSITIVE control returned false while the
-    // NEGATIVE one PASSED -- the inverse of both passing locally. The memo is thread-LOCAL and the
-    // floor evaluates claims across several workers, so the verdict depended on which worker
-    // picked the claim up. Anyone building another floor-resident instrument should read that
-    // sentence before trusting a green: a probe that reaches a thread-local, process-bounded cache
-    // is order- and thread-dependent by construction.
+    // WHY THIS IS NOT A TUNING DETAIL. The memo is thread-LOCAL and the floor evaluates claims
+    // across several workers, so an instrument that reaches it is order- and thread-dependent BY
+    // CONSTRUCTION: which worker picks a claim up can decide its verdict, and a local run holding
+    // only one subject cannot see that at all. Anyone building another floor-resident instrument
+    // should read that before trusting a green. The receipt is the required floor's own
+    // `required-witnesses-floor` job on this branch, whose control rows re-derive it; it is named
+    // rather than transcribed, because a copied observation rots without anyone touching either
+    // end (DESIGN §6).
     //
     // The Err that survives here is `ExprVarReconciliationMismatch`, which IS about the supplied
     // graph, so it is reported as a scope refusal rather than an instrument one.
