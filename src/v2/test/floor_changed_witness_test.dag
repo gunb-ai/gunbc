@@ -482,6 +482,7 @@ test fn unchanged_cost_debt_identity_takes_no_verdict_only_policy() -> Bool {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: false,
+      module_path: "v2.test.manual.bootstrap_footprint_anchor",
       identity: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
     )
   ) == "ordinary"
@@ -494,6 +495,7 @@ test fn changed_cost_debt_identity_takes_the_verdict_only_policy() -> Bool {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
+      module_path: "v2.test.manual.bootstrap_footprint_anchor",
       identity: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
     )
   ) == "verdict-only"
@@ -505,6 +507,7 @@ test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
+      module_path: "v2.test.floor_changed_witness",
       identity: "v2.test.floor_changed_witness.changed_ordinary_identity_keeps_the_ordinary_policy",
     )
   ) == "ordinary"
@@ -805,4 +808,146 @@ test fn a_route_gap_with_no_wet_facts_at_all_still_blocks() -> Bool {
       PlannedWithoutTerminalVerdict => true
       _ => false
     }
+}
+
+
+// ---- THE LONG-HOME ARM (operator ruling A, 2026-09-11) ----
+
+// THE DISCRIMINATING RED. A changed witness in a long module runs FOR ITS VERDICT, because the
+// long home is the same declaration as a cost-debt row -- "not run on an ordinary floor, the
+// 500ms line cannot carry it" -- said per module instead of per identity. Before this arm the
+// identity fell through to the armed line: measured on gunbc#11004 at 6b153bf8, where touching
+// one long module planned three witnesses that were budget-refused BEFORE reaching a verdict, none
+// of which is planned on any ordinary floor. The instrument is that run's own floor receipt -- its
+// BUDGET-REFUSED announcements and the required-floor-claim-cost artifact beside them -- and the
+// figures are read from there rather than copied to here, because a transcribed number is
+// unreachable from the producer that owns it (DESIGN section 6). This control is red on the code
+// that shipped that run.
+test fn changed_long_module_witness_takes_the_verdict_only_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: true,
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+    )
+  ) == "verdict-only"
+}
+
+// THE MIRROR CONTROL, and it is the reason the arm is an arm rather than a widening: a changed
+// witness that is NOT in a long module and NOT rostered still takes the ordinary policy, so the
+// CPU line still converts its crossing into a red. An arm that cannot be shown to STOP somewhere
+// is indistinguishable from raising the ceiling, which docs/plans/floor-cost-distribution-near-
+// the-ceiling.md refuses for this class.
+test fn changed_short_module_witness_still_takes_the_ordinary_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: true,
+      module_path: "v2.test.claim.lens_application.some_ordinary_module",
+      identity: "v2.test.claim.lens_application.some_ordinary_module.some_ordinary_witness",
+    )
+  ) == "ordinary"
+}
+
+// THE ARM IS KEYED ON THE MODULE, NOT ON SELECTION: an UNCHANGED witness in a long module reaches
+// no policy here at all. It is declined at build by required_floor_site_disposition as
+// DeclinedLongModule and never becomes a claim, so answering verdict-only for it would be a
+// policy over a population that does not execute.
+test fn unchanged_long_module_witness_takes_no_verdict_only_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: false,
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+    )
+  ) == "ordinary"
+}
+
+// ALL THREE AUTHORED LONG PREFIXES SELECT THE ARM, because the long home is not one namespace:
+// the roster carries test.claim.long., v2.test.long. and v2.test.claim.long., and a one-prefix
+// reading excluded 42 rows of an expected ~310 when it was last tried. An arm keyed on one of
+// the three would be narrower than the class it claims.
+test fn every_long_prefix_selects_the_verdict_only_policy() -> Bool {
+  !any(["test.claim.long.x", "v2.test.long.x", "v2.test.claim.long.x"], m =>
+    cost_policy_kind(
+      policy: changed_witness_cost_policy(
+        selected_as_changed_witness: true,
+        module_path: m,
+        identity: "irrelevant.identity",
+      )
+    ) != "verdict-only")
+}
+
+// ---- THE POLICY THE ARM SELECTS MUST BE THE POLICY THE STANDING CARRIES ----
+
+// THE RED FOR A DEFECT THAT LIVED BETWEEN TWO CORRECT HALVES. The policy fold answered
+// verdict-only for a long-module changed witness, and the standing fold projected verdict-only
+// readings correctly -- and the seed still greened such a row as an ordinary planned-and-passed,
+// because its projection REBUILT the policy from a set the long-home identity never entered
+// rather than carrying the policy its claim executed under. Both folds were right; the seam
+// between them was not, so neither fold's own controls could see it.
+//
+// This composes them: the policy is taken from changed_witness_cost_policy for a long-module
+// identity rather than written in by hand, so the control goes red if EITHER the arm stops
+// selecting verdict-only or the standing stops carrying the cost fact. A hand-written
+// ChangedCostDebtVerdictOnly here would have tested the standing fold twice and the join not at
+// all, which is what left the gap open.
+fn standing_under_selected_policy(
+  module_path: String,
+  identity: String,
+  terminal: ChangedWitnessTerminalReading,
+  cost: ChangedWitnessCostReading,
+) -> ChangedWitnessExecutionStanding {
+  changed_standing_of(
+    reading: DispositionRow {
+      disposition: PlannedAsChangedWitness {},
+      terminal: terminal,
+      cost_policy: changed_witness_cost_policy(
+        selected_as_changed_witness: true,
+        module_path: module_path,
+        identity: identity,
+      ),
+      cost: cost
+    }
+  )
+}
+
+test fn a_long_module_changed_pass_carries_its_cost_debt_observation() -> Bool {
+  standing_kind(
+    s: standing_under_selected_policy(
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+      terminal: TerminalOutcome { outcome: Passed {} },
+      cost: over_line_observation()
+    )
+  ) == "planned-and-passed-with-cost-debt-observed"
+}
+
+// THE OTHER HALF OF THE SAME JOIN: standing the CPU gate down and publishing nothing is the one
+// new red, and it must reach a long-module row too. If a long-home witness projected as ordinary,
+// this arm could never fire for it -- the gate would be stood down with no measurement in its
+// place and the run would still read green.
+test fn a_long_module_changed_pass_without_a_measurement_is_red() -> Bool {
+  standing_kind(
+    s: standing_under_selected_policy(
+      module_path: "v2.test.long.accumulator_copy_compile_gate",
+      identity: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating",
+      terminal: TerminalOutcome { outcome: Passed {} },
+      cost: CostUnobserved {}
+    )
+  ) == "cost-observation-missing-under-verdict-only"
+}
+
+// THE BOUNDARY, composed the same way: a NON-long changed witness off the roster takes the
+// ordinary policy, so its pass is an ordinary pass and carries no cost-debt observation. Without
+// this, the two controls above would be satisfied by an arm that made every changed witness
+// verdict-only.
+test fn a_short_module_changed_pass_is_an_ordinary_pass() -> Bool {
+  standing_kind(
+    s: standing_under_selected_policy(
+      module_path: "v2.test.floor_changed_witness",
+      identity: "v2.test.floor_changed_witness.some_ordinary_witness",
+      terminal: TerminalOutcome { outcome: Passed {} },
+      cost: over_line_observation()
+    )
+  ) == "planned-and-passed"
 }
