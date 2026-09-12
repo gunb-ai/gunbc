@@ -148,6 +148,8 @@ data call_only_fixture_path: String = "src/v2/test/fixture/declaring_identity_sp
 
 data value_outside_call_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag"
 
+data matched_type_vs_value_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag"
+
 test fn coverage_frontiers_are_not_observed_tree_holds() -> Bool {
   match held_type_position_coverage {
     InvisibleUntilTypePositionMentionSurvives =>

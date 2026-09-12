@@ -520,9 +520,9 @@ test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bo
     && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
 }
 
-// XL-3 stays NotDerivable while type-position and call mentions are invisible on the
-// production ingest route. The producer is wired; the instrument remains outstanding
-// because those classes are the XL-3 population.
+// XL-3 stays NotDerivable while kernel type-position and call mentions are invisible
+// on the production ingest route. Those are two frontiers; call lowering is not the
+// type-position trigger. The producer is wired; the instrument remains outstanding.
 test fn xl3_is_not_derivable_while_type_position_and_call_mentions_are_invisible() -> Bool {
   standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL3DeclaringIdentitySpelling))
     && any(stages_awaiting(i: DeclaringIdentitySpellingCensus),

@@ -39,6 +39,8 @@ data unresolvable_source: String = "module v2.test.fixture.declaring_identity_sp
 
 data call_only_source: String = "module v2.test.fixture.declaring_identity_spelling.call_only\n\nfn helper() -> Int { 0 }\n\nfn go() -> Int { helper() }\n"
 
+data matched_type_vs_value_source: String = "module v2.test.fixture.declaring_identity_spelling.matched_type_vs_value\n\nimport v2.std.logic { Bool }\n\ntype type_only {}\n\ndata value_only: Int = 0\n\nfn go(x: type_only, flag: Bool) -> Int { value_only }\n"
+
 fn fixture_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -188,4 +190,28 @@ test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
     ),
     spelling: "Int"
   )
+}
+
+fn matched_census() -> DeclaringIdentitySpellingCensus {
+  census_of(
+    text: matched_type_vs_value_source,
+    path: "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag",
+    unit: ^xl3_matched_type_vs_value
+  )
+}
+
+// MATCHED CONTROL (sharp-owl-21): same module, no call. One name only as a value
+// mention outside a call, one only as a user type in a parameter, one imported kernel
+// type (Bool) only in a parameter. If the value is present and a type is absent, that
+// type-position class is not call-expression erasure.
+test fn matched_value_only_mention_reaches_the_census_today() -> Bool {
+  authored_is(census: matched_census(), spelling: "value_only")
+}
+
+test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool {
+  authored_is(census: matched_census(), spelling: "type_only")
+}
+
+test fn matched_imported_kernel_type_position_is_absent_from_the_census_today() -> Bool {
+  !authored_is(census: matched_census(), spelling: "Bool")
 }

@@ -15,13 +15,16 @@ import v2.std.qualified_name { QualifiedName }
 // collector or a parse-tree walker.
 //
 // WHAT PRODUCTION INGEST ACTUALLY SEES is measured by
-// v2.test.claim.namespace_xl0.call_argument_mention_survival and
-// v2.test.claim.declaring_identity_spelling.production_ingest, not by this comment:
-// a value mention outside a call and a user type-position name can reach the collector;
-// a call argument, a callee name, and a kernel type-position name (Int/Bool) do not.
-// Restoration for the absences is the body-lowering repair (eager-raven-113 / gunbc#11207,
-// scope widened to type positions). Empty .sites on a kernel type-position or call-only
-// fixture is RED, not Clear.
+// v2.test.claim.declaring_identity_spelling.production_ingest (matched_type_vs_value:
+// same module, no call) and v2.test.claim.namespace_xl0.call_argument_mention_survival:
+// a value mention outside a call and a USER type-position name can reach; a call
+// argument, a callee name, and a KERNEL type-position name (Int, imported Bool) do not.
+// Those last are TWO classes: call-expression erasure vs type-position mention survival.
+// The kernel type-position class is visible with no call in the declaration, so its
+// trigger is the type-position capability, not eager-raven-113 / gunbc#11207. Empty
+// .sites on a kernel type-position or call-only fixture is RED, not Clear. The answer
+// to which lowering restores type-position belongs with fierce-lark / eager-raven,
+// not in this carrier.
 
 type UnresolvableCause
   = IdentityAmbiguous
@@ -45,9 +48,11 @@ type DeclaringIdentitySpelling
       cause: UnresolvableCause
     }
 
-// Coverage of the (held) file-ingest producer. Empty observed sites on a file that
-// authorially contains a mention is RED, not Clear. Ingest itself is no longer the
-// unknown: the surviving class is a value mention outside a call.
+// Coverage of the file-ingest producer. Empty observed sites on a file that
+// authorially contains a mention is RED, not Clear. User type-position names and
+// value mentions outside calls can be ObservedOnNormalizedTree; kernel type-position
+// names wait on InvisibleUntilTypePositionMentionSurvives (not call lowering);
+// callees/arguments wait on InvisibleUntilCallExpressionRetained.
 type DeclaringIdentityCensusCoverage
   = ObservedOnNormalizedTree
   | InvisibleUntilTypePositionMentionSurvives
