@@ -3133,11 +3133,18 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
 /// a compiler is a thing whose regression probes are invalid programs.
 ///
-/// ONE DETECTOR, NOT TWO. This runs `claim_scope_for_without_memos` itself rather than
-/// re-deriving the ambiguity population, so the refusal a control observes IS the refusal the
-/// corpus floor would raise, from the same `ambiguous_reads` vector the census prints from. A
-/// second computation here -- even an identical one -- would be the second authority the census
-/// exists to avoid, and would be free to drift.
+/// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
+/// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
+/// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
+/// of the same `ambiguous_reads` vector the census prints from. A second computation here, even
+/// an identical one, would be the second authority the census exists to avoid and would be free
+/// to drift.
+///
+/// What differs from the floor's call is the memo arguments, which are a caching decision and not
+/// a semantic one: `None` for the fragment cache, and a caller-built reference-closure index so
+/// this throwaway subject does not occupy one of the bounded per-subject slots the floor needs.
+/// `claim_scope_for_without_memos` is the obvious spelling for that and is NOT used -- it is
+/// `cfg(any(test, feature = "interp_test_witness"))`, so a release build has no such function.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimScopeFixtureOutcome {
     /// The harness itself could not measure: a ragged manifest, an entry naming no source, a

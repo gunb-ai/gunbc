@@ -249,11 +249,12 @@ fn resolved_rust_fn_has_parameter(signature: ResolvedRustFnSignature, parameter_
 // representable as source handed to the compiler by a fixture, and declining to enrol it there is
 // specification-without-execution.
 //
-// ONE DETECTOR, NOT TWO. The host builtin behind this runs `claim_scope_for_without_memos`
-// itself. It does not re-derive the ambiguity population, so the refusal a control observes IS
-// the refusal the corpus floor raises, from one computation. A second copy here -- even a
-// faithful one -- would be the second authority the census exists to prevent, and would be free
-// to drift from it silently.
+// ONE DETECTOR, NOT TWO. The host builtin behind this calls `claim_scope_for_with_memos`, the
+// same function the floor's own entry point calls. It does not re-derive the ambiguity
+// population, so the refusal a control observes IS the refusal the corpus floor raises, from one
+// computation. A second copy here -- even a faithful one -- would be the second authority the
+// census exists to prevent, and would be free to drift from it silently. What differs from the
+// floor's call is the memo arguments, which is a caching decision rather than a semantic one.
 //
 // THE ENTRY IS A MODULE PATH, not a file path, because that is what `claim_scope_for` is keyed on.
 type ClaimScopeFixtureOutcome
@@ -270,26 +271,16 @@ fn claim_scope_fixture(fixture: MultiModuleCompileFixture, entry_module_path: St
   )
 }
 
-// PURE READS OVER THE OUTCOME BY MATCHING, never by an accessor, for the reason the fixture's own
-// readers give above: `ClaimScopeInstrumentRefused` and `ClaimScopeCompileRefused` are the arms
-// that say the HARNESS or the MANIFEST broke rather than the subject, and both must read as false
-// on BOTH polarities. A ragged manifest then fails the positive control and the negative one
-// together, which is the signature of a broken probe -- rather than silently satisfying whichever
-// one happened to be phrased as an absence.
-fn claim_scope_was_refused(o: ClaimScopeFixtureOutcome) -> Bool {
-  match o {
-    ClaimScopeRefused { cause: c } => true
-    ClaimScopeAccepted { module_count: n } => false
-    ClaimScopeCompileRefused { blocking_count: n } => false
-    ClaimScopeInstrumentRefused { cause: c } => false
-  }
-}
-
-// AND WHICH REFUSAL IT WAS. `claim_scope_was_refused` says only that the scope builder refused,
-// which is not the same claim as "it refused for the reason under test": a probe satisfied by ANY
-// refusal goes green the day an unrelated one starts firing first, and would then be cited as
-// coverage for a cause it never observed. This reader matches the arm AND requires the cause to
-// name the expected refusal, so a red has to be the red the caller meant.
+// AND WHICH REFUSAL IT WAS -- the only refusal reader this instrument offers, deliberately.
+//
+// A reader that answered "did the scope builder refuse" would say nothing about WHY, and a probe
+// satisfied by ANY refusal goes green the day an unrelated one starts firing first, and would
+// then be cited as coverage for a cause it never observed. One was written here and deleted
+// rather than shipped beside this: two readers, one of them strictly weaker, is an invitation to
+// reach for the weaker.
+//
+// So this reader matches the arm AND requires the cause to name the expected refusal: a red has
+// to be the red the caller meant.
 //
 // Substring scan via the ambient split, the idiom the corpus already uses for this: a marker is
 // contained when splitting on it yields more than one piece.
