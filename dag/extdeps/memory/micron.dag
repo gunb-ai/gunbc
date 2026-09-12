@@ -125,6 +125,13 @@ data stick_capacity_bytes_16g: ByteSize = byte_size(17179869184)
 //
 // The eBay listing that sold these modules described them as "2Rx4"; the physical label reads
 // "2DRx4". The listing is not a source for any field of this row.
+//
+// INDEPENDENTLY MEASURED, NOT AUTHORED FROM HERE: the Mt. Collins unit-1 host firmware prints
+// this part as "RDIMM[2c:80] 16GB 2133 ECC 2R x4 RCD[b3:80] 36ADS2G72PZ-2G1A1" and, when a
+// socket also held monolithic modules, "CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91]" -- so the
+// module's own SPD reads byte 6 = 0x91 on the board, agreeing with the image Micron publishes.
+// That reading is a receipt in the observing layer (hw-first-host, 2026-09-12) and is quoted
+// here only as the corroboration; the row cites Micron.
 data mta36ads2g72pz_2g1a1_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "MTA36ADS2G72PZ-2G1A1",
   manufacturer: micron,
@@ -168,11 +175,13 @@ data mta36ads2g72pz_2g1a1_numbering_citation: FactCitation = FactCitation {
 // the whole of what these two rows can say; which of those three the Mt. Collins training
 // outcome tracks is an observation for the observing layer and is not authored here.
 //
-// THE SUFFIX IS MICRON'S, NOT THE LABEL'S. -2G1A2 is the MTA36ASF2G72PZ-2G1 SKU Micron's
-// catalogue serves a record for; the operator's brief names the trained quartet only as
-// "Micron 2Rx4". If the physical label reads a different die/PCB revision pair (-2G1A1,
-// -2G1B1, ...) the base part and every organization byte above are the same family and the
-// row still identifies it; the revision suffix is confirmed from the label, not assumed here.
+// THE SUFFIX IS MICRON'S, AND THE LABEL AGREES. -2G1A2 is the MTA36ASF2G72PZ-2G1 SKU Micron's
+// catalogue serves a record for. The Mt. Collins unit-1 host firmware reads the trained
+// quartet's SPD part-number field as 36ASF2G72PZ-2G1A2II (hw-first-host SOL capture,
+// 2026-09-12): the same die/PCB revision pair, followed by II, which is one of the eight
+// process codes Micron's record lists for this SKU (KI/KJ/KK/KG/II/IG/IJ/IK). A process code
+// selects register-vendor bytes and nothing organizational, so the row's part_number stays at
+// the catalogue grain and the process code is a per-module observation.
 data mta36asf2g72pz_2g1a2_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "MTA36ASF2G72PZ-2G1A2",
   manufacturer: micron,

@@ -44,14 +44,30 @@ facts. Nothing observed on Mt. Collins unit 1 is authored into `extdeps`.
    and no 2133 row at all, so the AVL is equally silent about the ADS part and the ASF part
    that trained. An AVL omission is not a prohibition and this survey does not read it as one.
 
+**Firmware corroboration, received from hw-first-host after this survey was drafted (SOL capture
+`artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt`, sha256 `e5044f71…8a4c`, on that
+lane's branch).** The Altra DRAM-init firmware prints the ADS part as
+`RDIMM[2c:80] 16GB 2133 ECC 2R x4 RCD[b3:80] 36ADS2G72PZ-2G1A1` — rank count 2, exactly as
+Micron's byte 12 says, the `D` being a package letter and not a rank — and refuses the mixed
+socket with `ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]` followed by
+`ERROR: Non-identical DIMM mixture NOT supported!`. Two things follow, both about the observing
+layer and neither authored into `extdeps`: (a) the module's SPD byte 6 reads `0x91` on the
+board, agreeing with Micron's published image; (b) what the firmware enforces on that socket is
+**byte-6 agreement across the socket's channels**, i.e. a MIXING rule, so the failure with
+4 × ADS + 12 monolithic is a mixed-population refusal and says nothing about a uniform ADS
+population, which has not been run. The trained quartet's label reads `36ASF2G72PZ-2G1A2II`,
+matching the catalogue SKU carried here plus process code `II`. The firmware's `RCD[b3:80]` /
+`RCD[32:86]` per-module variation is the same variation Micron's record carries across process
+codes (bytes 133–135), which is why register vendor is not a field of the catalogue row.
+
 **What Micron's data leaves as the only differences between the two quartets:** package
 construction (dual-die multi-load stack vs monolithic), PCB outline (18.75 vs 31.25 mm) and, with
 the outline, the JEDEC raw-card reference design (SPD byte 130 `0x08` vs `0x01`) and the
 module-attribute byte 131 (`0x05` vs `0x09`). Everything else — vendor, generation, capacity,
 speed bin, CAS latency, ECC, buffering, device width, package-rank count, die density, DRAM
 addressing — is byte-identical between the two SPD images. Which of those the Mt. Collins
-training outcome tracks is not decided by any document read here; it is an observing-layer
-question, and the receipts for it belong with the lane that ran the crossovers.
+training outcome tracks is not decided by any document read here; the firmware line above
+names byte 6 directly, and that receipt belongs with the lane that ran the crossovers.
 
 ## Documents read
 
