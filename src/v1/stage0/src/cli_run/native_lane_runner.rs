@@ -533,7 +533,7 @@ fn native_generation_from_store(
     ctx: &v1_interpreter::InterpContext,
     workspace: &Path,
     generation: i64,
-    _binary_path: &Path,
+    binary_path: &Path,
 ) -> Result<Value, String> {
     let unverified =
         |detail: &str| acquisition_refusal("NativeAncestorUnverified", generation, detail);
@@ -549,12 +549,11 @@ fn native_generation_from_store(
         .ok_or_else(|| unverified("GenesisFromSeed.seed_binary was not stored"))?;
     let generation_paths = read_ancestry_lines(&ancestry_generation_closure_path(workspace))
         .map_err(|_| unverified("realized closure roster was not stored"))?;
-    let artifact_hex = read_ancestry_text(&ancestry_artifact_digest_path(workspace))
-        .ok_or_else(|| unverified("materialized artifact sha512 was not stored"))?;
-    let readback_hex = read_ancestry_text(&ancestry_readback_digest_path(workspace))
-        .ok_or_else(|| unverified("independent read-back sha512 was not stored"))?;
-    let observed_artifact = observed_digest_value(ctx, &artifact_hex)?;
-    let observed_readback = observed_digest_value(ctx, &readback_hex)?;
+    let genesis_artifact_hex = read_ancestry_text(&ancestry_artifact_digest_path(workspace))
+        .ok_or_else(|| unverified("genesis materialized artifact sha512 was not stored"))?;
+    let live_hex = sha512_file(binary_path)?;
+    let observed_live = observed_digest_value(ctx, &live_hex)?;
+    let observed_genesis = observed_digest_value(ctx, &genesis_artifact_hex)?;
     let identity = eval_named(
         ctx,
         "v2.compiler.self_host.generation.compiler_artifact_identity",
@@ -584,7 +583,7 @@ fn native_generation_from_store(
                 Value::Variant {
                     type_name: ctx.sym("GeneratedArtifactIdentity"),
                     variant_name: ctx.sym("ArtifactMaterialized"),
-                    fields: Rc::new(vec![(ctx.sym("digest"), observed_artifact)]),
+                    fields: Rc::new(vec![(ctx.sym("digest"), observed_live)]),
                 },
             ),
         ],
@@ -650,7 +649,7 @@ fn native_generation_from_store(
                 Value::Variant {
                     type_name: ctx.sym("ReadBackReceipt"),
                     variant_name: ctx.sym("ReadBackReported"),
-                    fields: Rc::new(vec![(ctx.sym("reported_artifact"), observed_readback)]),
+                    fields: Rc::new(vec![(ctx.sym("reported_artifact"), observed_genesis)]),
                 },
             ),
             (
@@ -687,10 +686,14 @@ fn available_generation(
             "stored generation number is not an integer",
         )
     })?;
-    let closure_identity = std::fs::read_to_string(ancestry_closure_identity_path(workspace))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let closure_identity = read_ancestry_text(&ancestry_closure_identity_path(workspace))
+        .ok_or_else(|| {
+            acquisition_refusal(
+                "NativeAncestorUnverified",
+                ANCESTRY_GENERATION_ZERO as i64,
+                "source-closure identity was not stored",
+            )
+        })?;
     let binary_identity = sha256_file(&binary_path)?;
     let native = native_generation_from_store(ctx, workspace, generation, &binary_path)?;
     Ok((
@@ -723,14 +726,62 @@ fn acquire_native_compiler(
             (Some("available".to_string()), available),
         ],
     )?;
-    interpret_acquisition(
+    let preparation = interpret_acquisition(
         &ctx,
         workspace,
         &acquisition,
         binary_path,
         closure_identity,
         binary_identity,
-    )
+    )?;
+    refuse_if_stored_producer_closure_is_not_native(source_roots, workspace)?;
+    Ok(preparation)
+}
+
+fn refuse_if_stored_producer_closure_is_not_native(
+    source_roots: &[String],
+    workspace: &Path,
+) -> Result<(), String> {
+    let paths = read_ancestry_lines(&ancestry_producer_closure_path(workspace)).map_err(|_| {
+        "V2-NATIVE REFUSAL cause=OldRouteControlAbsent — producer_closure was not stored"
+            .to_string()
+    })?;
+    if paths.is_empty() {
+        return Err(
+            "V2-NATIVE REFUSAL cause=OldRouteControlAbsent — producer_closure names nothing"
+                .to_string(),
+        );
+    }
+    let ctx = eval_entry_context(source_roots, PRODUCER_PROVENANCE_ENTRY)?;
+    let closure = realized_closure_value(&ctx, &paths);
+    let verdict = eval_named(
+        &ctx,
+        "v2.compiler.self_host.emitter_producer_provenance.v2_emitter_closure_admission",
+        &[(Some("closure".to_string()), closure)],
+    )?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &verdict
+    else {
+        return Err("v2_emitter_closure_admission did not return a variant".to_string());
+    };
+    if ctx.sym_eq(*variant_name, "ProducerMintRefused") {
+        let cause = record_field(ctx, fields, "cause")
+            .map(|v| ctx.format_value(v))
+            .unwrap_or_else(|_| "producer_closure_refused".to_string());
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=OldRoutePresentInProducerClosure — {cause}"
+        ));
+    }
+    if !ctx.sym_eq(*variant_name, "ProducerMintAdmitted") {
+        return Err(format!(
+            "v2_emitter_closure_admission returned unknown variant `{}`",
+            ctx.resolve(*variant_name)
+        ));
+    }
+    Ok(())
 }
 
 fn refuse_if_genesis_already_executed(workspace: &Path) -> Result<(), String> {
