@@ -63,13 +63,15 @@ data call_only_source: String = "module v2.test.fixture.declaring_identity_spell
 
 data matched_type_vs_value_source: String = "module v2.test.fixture.declaring_identity_spelling.matched_type_vs_value\n\nimport v2.std.logic { Bool }\n\ntype type_only {}\n\ndata value_only: Int = 0\n\nfn go(x: type_only, flag: Bool) -> Int { value_only }\n"
 
-data cross_provider_source: String = "module v2.test.fixture.declaring_identity_spelling.cross_provider\n\ndata Probe: Int = 0\n\ntype ProvidedMarker {}\n"
+data cross_provider_source: String = "module v2.test.fixture.declaring_identity_spelling.cross_provider\n\ndata Probe: Int = 0\n\ntype ProvidedMarker {}\n\ntype ProvidedFieldMarker {}\n"
 
-data cross_consumer_source: String = "module v2.test.fixture.declaring_identity_spelling.cross_consumer\n\nfn go() -> Int { v2.test.fixture.declaring_identity_spelling.cross_provider.Probe }\n\nfn uses(x: v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker) -> Int { 0 }\n"
+data cross_consumer_source: String = "module v2.test.fixture.declaring_identity_spelling.cross_consumer\n\nfn go() -> Int { v2.test.fixture.declaring_identity_spelling.cross_provider.Probe }\n\nfn uses(x: v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker) -> Int { 0 }\n\ntype Wrapper { f: v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedFieldMarker }\n"
 
 data qualified_cross_module_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.Probe"
 
 data qualified_type_position_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker"
+
+data qualified_field_type_spelling: String = "v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedFieldMarker"
 
 fn fixture_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -349,4 +351,11 @@ test fn a_qualified_cross_module_mention_is_absent_from_the_census_today() -> Bo
 test fn a_qualified_type_position_mention_is_absent_from_the_census_today() -> Bool {
   spelling_census_is_total(census: two_module_census())
     && !authored_is(census: two_module_census(), spelling: qualified_type_position_spelling)
+}
+
+// DOTTED name used only as a field type, nowhere else in the ingest. Not merged
+// with the parameter-type row until this one is measured.
+test fn a_qualified_field_type_mention_is_absent_from_the_census_today() -> Bool {
+  spelling_census_is_total(census: two_module_census())
+    && !authored_is(census: two_module_census(), spelling: qualified_field_type_spelling)
 }
