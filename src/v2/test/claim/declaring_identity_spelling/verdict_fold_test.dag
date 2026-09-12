@@ -9,6 +9,7 @@ import std.declaring_identity_spelling {
   IdentityOwnerless,
   InvisibleUntilCallExpressionRetained,
   InvisibleUntilTypePositionMentionSurvives,
+  InvisibleUntilQualifiedCrossModuleMentionSurvives,
   ObservedOnNormalizedTree,
   ResolvedAuthoredNotOnCanonicalPath,
   ResolvedSpelling,
@@ -138,6 +139,8 @@ data held_type_position_coverage: DeclaringIdentityCensusCoverage = InvisibleUnt
 
 data held_call_erasure_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilCallExpressionRetained
 
+data held_cross_module_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilQualifiedCrossModuleMentionSurvives
+
 data shorter_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/shorter.dag"
 
 data canonical_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/canonical.dag"
@@ -150,15 +153,27 @@ data value_outside_call_fixture_path: String = "src/v2/test/fixture/declaring_id
 
 data matched_type_vs_value_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag"
 
+data cross_provider_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_provider.dag"
+
+data cross_consumer_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_consumer.dag"
+
 test fn coverage_frontiers_are_not_observed_tree_holds() -> Bool {
   match held_type_position_coverage {
     InvisibleUntilTypePositionMentionSurvives =>
       match held_call_erasure_coverage {
-        InvisibleUntilCallExpressionRetained => true
+        InvisibleUntilCallExpressionRetained =>
+          match held_cross_module_coverage {
+            InvisibleUntilQualifiedCrossModuleMentionSurvives => true
+            ObservedOnNormalizedTree => false
+            InvisibleUntilTypePositionMentionSurvives => false
+            InvisibleUntilCallExpressionRetained => false
+          }
         ObservedOnNormalizedTree => false
         InvisibleUntilTypePositionMentionSurvives => false
+        InvisibleUntilQualifiedCrossModuleMentionSurvives => false
       }
     ObservedOnNormalizedTree => false
     InvisibleUntilCallExpressionRetained => false
+    InvisibleUntilQualifiedCrossModuleMentionSurvives => false
   }
 }
