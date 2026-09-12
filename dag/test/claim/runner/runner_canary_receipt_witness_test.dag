@@ -24,7 +24,7 @@ import gunbc.runner.runner_usage_receipt {
   UsageIntervalOrderRefused, RunnerInstantsIncomparable, RunnerInstantsReversed, metered_vcpu_minutes_fraction,
 }
 import gunbc.runner.runner_teardown_receipt {
-  RunnerResourceClass, runner_resource_classes,
+  RunnerResourceClass,
   RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
   TeardownObserverInsideEnvironment, TeardownInstrumentChanged,
   RunnerEnvironmentInventory, RunnerResourceReading, RunnerResourcePresent,
@@ -328,8 +328,11 @@ fn fixture_single_residue(resource: RunnerResourceClass, value: RunnerResourceRe
   }
 }
 
+// Independent controlled-fixture population: do not derive this from the production roster.
+// Omitting a production class must leave its fixture here and expose the surviving resource.
 test fn every_residue_and_unreadable_resource_refuses() -> Bool {
-  runner_resource_classes
+  [RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive,
+   RunnerWorkspace, RunnerTap, RunnerFirewallTable]
     |> all(resource => {
       let survived = match fixture_teardown(after: fixture_single_residue(resource: resource, value: RunnerResourcePresent),
         before: fixture_readback(value: RunnerResourcePresent), observer: 30) {
