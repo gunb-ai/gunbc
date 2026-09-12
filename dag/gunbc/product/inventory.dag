@@ -1,6 +1,6 @@
 module product.inventory
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, Map, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
@@ -1238,24 +1238,51 @@ fn derive_inventory_balance(
   }
 }
 
-// The caller first admits its whole evidence population through admit_ledger_evidence.
-// This sum takes only admitted ledgers, so it needs no second refusal interpretation.
+// Ledger admission checks event history; population projection additionally requires
+// distinct acquisition identities. Repeated evidence is not another acquisition.
+// Index the first occurrence by lot identity, avoiding a linear scan per ledger.
+// Positions locate evidence; the minted identity alone determines repetition.
+// This does not change admit_ledger_evidence or its provenance consumers, which
+// deliberately retain repeated evidence to diagnose asset-source conflicts.
 // Consumers: test.claim.dgx_spark_inventory_witness and
 // test.claim.inventory_ledger_witness through the required witness lane.
-fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryBalance {
-  fold(ledgers, init: inventory_balance_from_state(state: initial_ledger_state()), f: fn(acc, ledger) {
-    let b = ledger.balance
-    InventoryBalance {
-      acquired: acc.acquired + b.acquired,
-      owned: acc.owned + b.owned,
-      received: acc.received + b.received,
-      unqualified: acc.unqualified + b.unqualified,
-      qualified: acc.qualified + b.qualified,
-      available: acc.available + b.available,
-      reserved: acc.reserved + b.reserved,
-      installed: acc.installed + b.installed,
-      quarantined: acc.quarantined + b.quarantined,
-      departed: acc.departed + b.departed,
+type InventoryPopulationBalance
+  = InventoryPopulationSummed { balance: InventoryBalance, lot_positions: Map<InventoryLotIdentity, Nat> }
+  | InventoryPopulationRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
+
+fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPopulationBalance {
+  fold(ledgers, init: InventoryPopulationSummed {
+    balance: inventory_balance_from_state(state: initial_ledger_state()),
+    lot_positions: empty_map(),
+  }, f: fn(acc, ledger) {
+    match acc {
+      InventoryPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: n } =>
+        InventoryPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: n }
+      InventoryPopulationSummed { balance: total, lot_positions: seen } => {
+        match lookup(seen, ledger.lot.identity) {
+          Present { value: first } => InventoryPopulationRepeatedLot {
+            lot: ledger.lot.identity, first_ordinal: first, ledger_ordinal: seen.length(),
+          }
+          Absent => {
+            let b = ledger.balance
+            InventoryPopulationSummed {
+              lot_positions: map_insert(seen, ledger.lot.identity, seen.length()),
+              balance: InventoryBalance {
+                acquired: total.acquired + b.acquired,
+                owned: total.owned + b.owned,
+                received: total.received + b.received,
+                unqualified: total.unqualified + b.unqualified,
+                qualified: total.qualified + b.qualified,
+                available: total.available + b.available,
+                reserved: total.reserved + b.reserved,
+                installed: total.installed + b.installed,
+                quarantined: total.quarantined + b.quarantined,
+                departed: total.departed + b.departed,
+              },
+            }
+          }
+        }
+      }
     }
   })
 }

@@ -6,6 +6,7 @@ import std.decl_ref { declaration_ref_eq }
 import product.inventory {
   InventoryLotEvidence, AllLedgersAdmitted, LedgerEvidenceRefused,
   admit_ledger_evidence, sum_inventory_balances,
+  InventoryPopulationSummed, InventoryPopulationRepeatedLot,
   LotAcquired, LotReceived, CatalogRowUnread, CatalogRowExact,
   ReceiptHeldPrivately, ReceiptRecorded,
   LandedCostHeldPrivately, LandedCostUnsettled, LandedCostRecorded,
@@ -28,8 +29,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: Nat, owned: Nat) -> Bool {
   match admit_ledger_evidence(evidence: evidence) {
     AllLedgersAdmitted { ledgers: ledgers } => {
-      let b = sum_inventory_balances(ledgers: ledgers)
-      b.acquired == acquired && b.received == received && b.owned == owned
+      match sum_inventory_balances(ledgers: ledgers) {
+        InventoryPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+        InventoryPopulationSummed { balance: b, lot_positions: _ } =>
+          b.acquired == acquired && b.received == received && b.owned == owned
+      }
     }
     LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
   }
@@ -94,9 +98,12 @@ test fn w_invalid_ledger_refuses_the_whole_population() -> Bool {
 test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
   match admit_ledger_evidence(evidence: dgx_spark_procurement_ledgers) {
     AllLedgersAdmitted { ledgers: ledgers } => {
-      let b = sum_inventory_balances(ledgers: ledgers)
-      unique(xs: dgx_spark_asset_identities, eq: physical_asset_identity_eq)
-        && dgx_spark_asset_identities.length() == b.received && b.received == b.owned
+      match sum_inventory_balances(ledgers: ledgers) {
+        InventoryPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+        InventoryPopulationSummed { balance: b, lot_positions: _ } =>
+          unique(xs: dgx_spark_asset_identities, eq: physical_asset_identity_eq)
+            && dgx_spark_asset_identities.length() == b.received && b.received == b.owned
+      }
     }
     LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
   }
@@ -157,4 +164,26 @@ test fn w_receipt_serials_do_not_fabricate_installation_provenance() -> Bool {
         })
     LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
   }
+}
+
+// Individually lawful evidence may still repeat an acquisition. Interleave another
+// lot to locate the duplicate; no prefix balance may escape the refused population.
+test fn w_repeated_acquisition_identity_refuses_population_total() -> Bool {
+  population_is(evidence: dgx_spark_procurement_ledgers, acquired: 8, received: 8, owned: 8)
+    && fold([dgx_spark_micro_center_lot_ledger, []], init: true, f: fn(acc, repeated_events) {
+      acc && match admit_ledger_evidence(evidence: [
+        InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+        InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+        InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: repeated_events },
+        InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+      ]) {
+        LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+        AllLedgersAdmitted { ledgers: ledgers } =>
+          match sum_inventory_balances(ledgers: ledgers) {
+            InventoryPopulationSummed { balance: _, lot_positions: _ } => false
+            InventoryPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: n } =>
+              inventory_lot_identity_eq(left: l, right: dgx_spark_micro_center_lot.identity) && first == 0 && n == 2
+          }
+      }
+  })
 }

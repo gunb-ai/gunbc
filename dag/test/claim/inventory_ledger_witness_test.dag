@@ -3,6 +3,7 @@ module test.claim.inventory_ledger_witness
 import product.inventory {
   InventoryLotEvidence, AllLedgersAdmitted, LedgerEvidenceRefused,
   admit_ledger_evidence, sum_inventory_balances,
+  InventoryPopulationSummed, InventoryPopulationRepeatedLot,
   AwaitingReceipt,
   Available,
   BalanceDerived,
@@ -800,10 +801,13 @@ test fn w_admitted_population_sum_preserves_all_stock_buckets() -> Bool {
   ]) {
     LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
     AllLedgersAdmitted { ledgers: ledgers } => {
-      let b = sum_inventory_balances(ledgers: ledgers)
-      b.acquired == 12 && b.owned == 11 && b.received == 9
-        && b.unqualified == 1 && b.qualified == 6 && b.available == 2
-        && b.reserved == 2 && b.installed == 2 && b.quarantined == 1 && b.departed == 1
+      match sum_inventory_balances(ledgers: ledgers) {
+        InventoryPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+        InventoryPopulationSummed { balance: b, lot_positions: _ } =>
+          b.acquired == 12 && b.owned == 11 && b.received == 9
+            && b.unqualified == 1 && b.qualified == 6 && b.available == 2
+            && b.reserved == 2 && b.installed == 2 && b.quarantined == 1 && b.departed == 1
+      }
     }
   }
 }
