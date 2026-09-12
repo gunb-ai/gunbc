@@ -72,6 +72,19 @@ data spare_screen_testing_obligation: AdversarialTestingObligation = Adversarial
   next_discriminator: "Commit the next exact module selection and its falsifier before changing hardware; vary one module against the reported original-set baseline. Retain independently witnessed recording/start/outcome order. A faulty spare and an intolerant cross-channel combination remain alternatives; sixteen simultaneous substitutions identify neither. Re-test the narrowed original-set prediction rather than treating its prior clean run as a prospective test of the new revision.",
 }
 
+// Named parameter typing is forced by generic_lambda_parameter_receiver_evidence_stall.
+fn spare_screen_shape_in_prediction(configuration: SpareScreenConfiguration) -> Bool {
+  configuration.population.dimm_count == mt_collins_population_16_dimms.dimm_count
+    && configuration.population.connectors == mt_collins_population_16_dimms.connectors
+}
+
+fn original_screen_cohort_in_prediction(configuration: SpareScreenConfiguration) -> Bool {
+  match configuration.modules {
+    OriginalSixteenReported => true
+    SixteenOfSeventeenSparesSelectionUnrecorded => false
+  }
+}
+
 fn spare_screen_prediction() -> Prediction<SpareScreenConfiguration, SpareScreenOutcome> {
   Prediction {
     claim: Claim {
@@ -81,10 +94,7 @@ fn spare_screen_prediction() -> Prediction<SpareScreenConfiguration, SpareScreen
       proposition: TrainingAndPostObserved,
       scope: [PredictionRestriction {
         reason: "The same Table 11 16-DIMM shape: odd connectors, one module per channel, eight channels per socket.",
-        admits: fn(configuration) {
-          configuration.population.dimm_count == mt_collins_population_16_dimms.dimm_count
-            && configuration.population.connectors == mt_collins_population_16_dimms.connectors
-        },
+        admits: spare_screen_shape_in_prediction,
       }],
       bound: ApproximatePredictionWindow { duration: 311000 },
     },
@@ -130,10 +140,7 @@ fn narrowed_spare_screen_model() -> PredictiveModelResult<SpareScreenConfigurati
       statement: "Predict training only for the reported original sixteen in the same supported shape. Shape alone is not sufficient; whether any supported shape is physically necessary remains unestablished.",
       restriction: PredictionRestriction {
         reason: "Exclude the spare cohort that falsified the shape-only sufficiency claim; retain the reported original cohort as the next testable domain.",
-        admits: fn(configuration) { match configuration.modules {
-          OriginalSixteenReported => true
-          SixteenOfSeventeenSparesSelectionUnrecorded => false
-        } },
+        admits: original_screen_cohort_in_prediction,
       },
       retained_configuration: original_screen_configuration,
       obligation: spare_screen_testing_obligation,

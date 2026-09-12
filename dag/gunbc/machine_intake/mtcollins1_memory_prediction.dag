@@ -70,6 +70,12 @@ data memory_prediction_testing_obligation: AdversarialTestingObligation = Advers
   next_discriminator: "Before the operator touches the next population, commit its exact configuration, predicted observation, falsifier, observation window and confound assessment. Retain an independent receipt that publication preceded power-up. A full-population training receipt falsifies the unconditional failure prediction; a restart alone cannot attribute a cause. Continue testing edges after every surviving test and every narrowed revision.",
 }
 
+// Named parameter typing is forced by generic_lambda_parameter_receiver_evidence_stall.
+fn memory_configuration_in_prediction(configuration: MemoryTestConfiguration) -> Bool {
+  configuration.populated_dimms == 32 && configuration.channel_count == 16
+    && configuration.minimum_simultaneous_violations >= 7
+}
+
 fn memory_training_prediction() -> Prediction<MemoryTestConfiguration, MemoryTrainingObservation> {
   Prediction {
     claim: Claim {
@@ -79,10 +85,7 @@ fn memory_training_prediction() -> Prediction<MemoryTestConfiguration, MemoryTra
       proposition: RestartWithoutTrainingReceipt,
       scope: [PredictionRestriction {
         reason: "Reported fully populated specimen with simultaneous same-channel violations; this is a derived prediction, not what Table 3 asserts.",
-        admits: fn(configuration) {
-          configuration.populated_dimms == 32 && configuration.channel_count == 16
-            && configuration.minimum_simultaneous_violations >= 7
-        },
+        admits: memory_configuration_in_prediction,
       }],
       bound: PredictionWindowNotRecorded,
     },

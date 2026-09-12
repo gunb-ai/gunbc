@@ -26,7 +26,10 @@ data generic_lambda_parameter_receiver_evidence_stall: GuaranteeStall = Guarante
       head: "std.emission_provenance emission_source_fragment -- MEASURED. The direct form refuses with algebra receiver application evidence unavailable for 'FreeMonoid' at argument 0 plus method 'append' not found on receiver type 'Coproduct(FreeMonoid)'; the delegating form through emission_source_appended compiles with zero blocking diagnostics. Both arms run, so this member is a discriminator and not an assertion.",
       tail: Cons {
         head: "the inline-annotation route is not merely unused but UNWRITABLE: fn(fragments: FreeMonoid<String>) refuses at parse with expected RParen, found Colon. This is what separates the class from an ordinary annotate-your-code remedy.",
-        tail: Empty {}
+        tail: Cons {
+          head: "std.predictive_claim PredictionRestriction<S>.admits -- MEASURED in BuildBuddy invocation b5ce3f74-fc7b-4734-8d42-14daf0cfd5bf. The concrete machine-intake MemoryTestConfiguration and SpareScreenConfiguration receivers retain S: five field accesses refuse (populated_dimms, channel_count, minimum_simultaneous_violations, and population twice). Read-only tracing in v1.compiler.infer follows infer_record_lit field_expected into ExprLambda expected-parameter propagation; no compiler repair is claimed. The consumers use named typed memory_configuration_in_prediction, spare_screen_shape_in_prediction and original_screen_cohort_in_prediction, the declared forced restructure; this receipt preserves the deficit rather than treating that form as inference closure.",
+          tail: Empty {}
+        }
       }
     }
   },
