@@ -10,6 +10,7 @@ import product.fabric.provider_route {
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
   ProviderPathAbsent, ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders,
+  PermittedJurisdictionsEnumerated, JurisdictionDropEnrollment,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -204,9 +205,50 @@ data spark_first_party_use_posture: FirstPartySelfUsePosture = FirstPartySelfUse
 // a RE-POSTURING and not an edit to the row above: the authority reference below points at that row,
 // so an auditor re-derives what was evaluated by reading it, and a new posture leaves every sanction
 // bound to this revision stale.
+//
+// THE POSTURE PERMITS EXACTLY ONE JURISDICTION, AND IT IS THE SITE ALLOCATION RATHER THAN A COUNTRY.
+// The route's eight on-site paths are located at the allocation -- who said the units are there, and
+// when -- so that is what the posture must permit if the two are to be the same fact. Naming "the
+// United States" here would be a second, coarser authority for the same place, agreeing with the
+// route only by convention, which is the nicknaming DESIGN section 3 forbids and which the region
+// reference above already refuses one type down.
+//
+// THE ONE PATH THAT LEAVES THE SITE IS ENROLLED IN ITS DECLARED DROP, NOT PERMITTED AS A
+// JURISDICTION, and the distinction is the whole safety of the row.
+// extdeps.vllm.usage_stats' service_jurisdiction holds ServiceJurisdictionUndocumentedUpstream,
+// which IS NOT A JURISDICTION -- it is the absence of one. Putting it in the permitted population
+// would not permit this route; it would permit EVERY route, present and future, whose telemetry
+// jurisdiction is undocumented, because the comparison matches a citation and any route may carry
+// that same citation. That is a bounded declared drop converted into an unbounded standing
+// permission while looking like an ordinary data row, which is DESIGN section 5's absorbing
+// fallback exactly.
+//
+// So the exception is keyed to THIS PATH: the enrollment names spark_serving_usage_stats_standing,
+// which is the telemetry path's own evidence declaration, and names the drop row that carries the
+// reason, the bounded population and the restoration trigger. A second route citing the same
+// undocumented-jurisdiction field is NOT enrolled and refuses as TransferOrLocationUnresolved --
+// which is enrolled as a red in test.claim.fabric.provider_admission_witness, because the property
+// that the exception is bound to the path rather than to the value is the one a reader most needs
+// and the one no other test in that set can see.
+//
+// THE ENROLLMENT ALSO NAMES THE CITATION, so if this path ever moves to a different undocumented or
+// non-permitted counterparty it stops being enrolled and refuses. The exception excuses an examined
+// fact, not the path forever.
 data spark_first_party_posture: CompliancePostureRevision = CompliancePostureRevision {
   authority: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
   revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.spark.first-party-self-use.2026-09-11" as NonEmptyStr)),
+  permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+    first: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation"),
+    further: [],
+    basis: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  },
+  jurisdiction_drop_enrollments: [
+    JurisdictionDropEnrollment {
+      path_evidence: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"),
+      jurisdiction: decl_field_ref(module_path: "extdeps.vllm.usage_stats", decl_name: "vllm_usage_stats_reporting", field_name: "service_jurisdiction"),
+      drop: decl_ref(module_path: "gunbc.rung_drop.provider_path_jurisdiction_unread_admits", decl_name: "provider_path_jurisdiction_unread_admits"),
+    },
+  ],
 }
 
 // ── THE PROFILES THE SANCTION IS WRITTEN OVER ─────────────────────────────────────────────────

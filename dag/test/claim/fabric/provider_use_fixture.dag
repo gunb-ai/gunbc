@@ -8,6 +8,7 @@ import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
   DownstreamProviderPopulation, NoDownstreamProviders,
+  PermittedJurisdictionsEnumerated,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -65,6 +66,7 @@ data fixture_data_handling_profile: NonEmptyStr = "fixture-data-handling-profile
 data fixture_agreement_v1: NonEmptyStr = "fixture-agreement-v1"
 data fixture_operator: NonEmptyStr = "fixture-operator"
 data fixture_jurisdiction: NonEmptyStr = "fixture-jurisdiction"
+data fixture_posture_basis: NonEmptyStr = "fixture-posture-basis"
 data fixture_evidence: NonEmptyStr = "fixture-evidence"
 data fixture_no_spill: NonEmptyStr = "fixture-no-spill"
 data fixture_no_downstream: NonEmptyStr = "fixture-no-downstream"
@@ -108,10 +110,20 @@ fn fx_hash(seed: String) -> ContentHash {
   as_content_hash_structural(structural: content_hash_atom(value: seed))
 }
 
+// THE POSTURE PERMITS THE ONE JURISDICTION EVERY FIXTURE PATH IS LOCATED IN, and nothing else. That
+// keeps this convenience fixture's callers green on the subject they are actually about - ranking,
+// arbitration, the store - rather than refusing them over a jurisdiction none of them declares an
+// interest in. It enrolls no drop: an exception is the admission witness's subject, not this one's.
 fn fx_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: "fixture_posture_authority"),
     revision: fx_hash(seed: "fixture-posture-r1"),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: "fixture_jurisdiction"),
+      further: [],
+      basis: decl_ref(module_path: "test.claim.fabric.provider_use_fixture", decl_name: "fixture_posture_basis"),
+    },
+    jurisdiction_drop_enrollments: [],
   }
 }
 

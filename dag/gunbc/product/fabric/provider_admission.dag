@@ -7,6 +7,10 @@ import std.access { AccessDecision, access_policy_refusal }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, fabric_identity_eq }
 import product.fabric.provider_route {
   ProviderRoute, provider_route_eq, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent, ProviderPathUnread,
+  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated, PermittedJurisdictionsUnread,
+  JurisdictionDropEnrollment, jurisdiction_drop_enrolled,
+  data_bearing_paths, provider_access_paths,
   first_unresolved_obligation, downstream_obligation,
 }
 
@@ -193,17 +197,45 @@ type ProviderUsePermit<P> sole_constructor {
 // different thing to go and do, and each is built by exactly one producer that reached it by
 // matching the coproduct that caused it.
 //
-// TWO ARMS WERE DELETED RATHER THAN LEFT UNINHABITABLE. TransferOrLocationUnresolved and
-// ProviderAccessPathUnsupported both require comparing a LOCATED path's jurisdiction against the
-// jurisdictions a posture permits, and the posture revision carried here is an authority plus a
-// hash with no jurisdiction population to compare against. An arm no producer can inhabit is
-// decoration that will later be cited as coverage (DESIGN section 4b). RESTORATION TRIGGER: a
-// posture revision that carries its permitted-jurisdiction population, at which point a located
-// path in a non-permitted jurisdiction becomes authorable and both arms land with their reds.
+// THE TWO DELETED ARMS ARE BACK, AND THEIR TRIGGER FIRED RATHER THAN BEING WAIVED.
+// TransferOrLocationUnresolved and ProviderAccessPathUnsupported were deleted rather than left
+// uninhabitable, because both require comparing a LOCATED path's jurisdiction against the
+// jurisdictions a posture permits and the posture revision carried no such population -- an arm no
+// producer can inhabit is decoration that will later be cited as coverage (DESIGN section 4b). The
+// stated restoration trigger was "a posture revision that carries its permitted-jurisdiction
+// population", and product.fabric.provider_route CompliancePostureRevision now carries exactly
+// that, so both arms land below with producers that reached them by matching the coproduct that
+// caused them, and with discriminating reds in test.claim.fabric.provider_admission_witness.
+//
+// THE TWO ARMS ANSWER DIFFERENT QUESTIONS, AND EACH SENDS THE CALLER SOMEWHERE ELSE. If they did
+// not, this would be one arm written twice.
+//   TransferOrLocationUnresolved  -- the route's material SITS somewhere the posture does not
+//     permit. Go and place it elsewhere, or get that jurisdiction permitted by the posture
+//     authority. It names the offending jurisdiction and nothing else, because the operator of a
+//     bucket we chose is not who the caller must negotiate with.
+//   ProviderAccessPathUnsupported -- the provider's own control plane, support desk or
+//     administrators REACH the material from somewhere the posture does not permit. No region
+//     choice fixes this, because a support desk does not relocate with the workload: go and obtain
+//     from that OPERATOR a commitment restricting privileged access to permitted jurisdictions.
+//     It names the operator for that reason.
+//
+// THE THIRD ARM IS THE POPULATION ITSELF, AND IT IS NOT A SPARE. A posture whose permitted
+// jurisdictions nobody has read cannot be compared against, and the two arms above would then be
+// diagnosing the data path for a defect that is in the posture -- the category right and the remedy
+// wrong, which DESIGN section 5 calls a fabricated diagnosis. The remedy here is to go and read
+// what the posture authority permits, which is neither of the other two, so it is its own arm and
+// it REFUSES. It never widens to "all permitted".
 type ProviderUseRefusal
   = ProviderRouteUnclassified { route: ProviderRoute }
   | ProviderRouteFactsIncomplete { route: ProviderRoute, obligation: DeclarationRef }
   | DownstreamProviderUnassessed { obligation: DeclarationRef }
+  | PostureJurisdictionsUnread { obligation: DeclarationRef }
+  | TransferOrLocationUnresolved { route: ProviderRoute, jurisdiction: DeclarationRef }
+  | ProviderAccessPathUnsupported {
+      route: ProviderRoute,
+      operator: DeclarationRef,
+      jurisdiction: DeclarationRef,
+    }
   | PostureRevisionStale { evaluated: List<ContentHash>, active: ContentHash }
   | CustomerScopeUnsupported { cause: DeclarationRef }
   | DataHandlingUnsupported { cause: DeclarationRef }
@@ -231,6 +263,9 @@ fn refusal_reason(c: ProviderUseRefusal) -> String {
     ProviderRouteUnclassified { route } => "route unclassified",
     ProviderRouteFactsIncomplete { route, obligation } => "route facts incomplete",
     DownstreamProviderUnassessed { obligation } => "downstream unassessed",
+    PostureJurisdictionsUnread { obligation } => "posture jurisdictions unread",
+    TransferOrLocationUnresolved { route, jurisdiction } => "transfer or location unresolved",
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => "provider access path unsupported",
     PostureRevisionStale { evaluated, active } => "posture stale",
     CustomerScopeUnsupported { cause } => "customer scope unsupported",
     DataHandlingUnsupported { cause } => "data handling unsupported",
@@ -350,6 +385,114 @@ fn downstream_refusals(facts: ProviderRouteFacts) -> List<ProviderUseRefusal> {
   map(downstream_obligation(d: facts.downstream), o => DownstreamProviderUnassessed { obligation: o })
 }
 
+// THE SUBJECT IS A CLOSED COPRODUCT FOR THE SAME REASON DispositionProgram IS. The two
+// jurisdiction arms are built by ONE fold over ONE path group each, and the only thing that differs
+// between the two calls is which refusal the offending path becomes. Writing the fold twice would
+// be section 2's duplicated work in the place it is most expensive -- two copies of a wall, free to
+// drift -- and passing a string to choose would be the undeclared sum this module already deleted
+// once, where a typo silently routes a location defect to an access remedy. As a coproduct the
+// dispatch is exhaustive, so a third path group fails to compile rather than quietly becoming an
+// access refusal.
+type JurisdictionSubject
+  = DataBearingPaths
+  | ProviderAccessPaths
+
+fn jurisdiction_subject_refusal(
+  s: JurisdictionSubject,
+  route: ProviderRoute,
+  operator: DeclarationRef,
+  jurisdiction: DeclarationRef,
+) -> ProviderUseRefusal {
+  match s {
+    DataBearingPaths => TransferOrLocationUnresolved { route: route, jurisdiction: jurisdiction },
+    ProviderAccessPaths =>
+      ProviderAccessPathUnsupported { route: route, operator: operator, jurisdiction: jurisdiction },
+  }
+}
+
+// ONE MATCH OF ProviderPathStanding, AND THE REFUSAL IS BUILT INSIDE THE ARM THAT CAUSED IT. The
+// tempting shape -- project the offending path out, then match it again to build the refusal -- is
+// the second walk this module keeps refusing: the second match would have Absent and Unread arms
+// that cannot be reached and must still return something, and that something is a fabricated value
+// sitting one guard-move away from being the answer. Building in place removes the question.
+//
+// AN UNREAD PATH YIELDS NOTHING HERE, DELIBERATELY. Whether an unexamined path's jurisdiction is
+// permitted is not a question that has an answer, and path_refusals has already refused the route
+// as ProviderRouteFactsIncomplete naming that path's own obligation. Answering it a second time
+// with a different remedy would be two diagnoses of one defect.
+//
+// The init is [] -- "nothing refused" -- not a seed standing in for a value, and the first offender
+// in the group's fixed order wins, so the reported jurisdiction is deterministic.
+//
+// THE ENROLLED-DROP ARM IS A DECLARED EXCEPTION, NOT A WIDENING, and the difference is that it is
+// keyed to the PATH rather than to what the path cites. product.fabric.provider_route
+// JurisdictionDropEnrollment carries the argument in full; what matters here is that a path whose
+// evidence declaration is not enrolled refuses no matter what it cites, so the exception cannot
+// spread to a second route by copying a citation.
+fn nonpermitted_jurisdiction_refusals(
+  paths: List<ProviderPathStanding>,
+  permitted: List<DeclarationRef>,
+  enrollments: List<JurisdictionDropEnrollment>,
+  subject: JurisdictionSubject,
+  route: ProviderRoute,
+) -> List<ProviderUseRefusal> {
+  fold(
+    paths,
+    init: [],
+    f: fn(acc, p) {
+      if count(acc) > 0 {
+        acc
+      } else {
+        match p {
+          ProviderPathLocated { operator, jurisdiction, evidence } =>
+            if count(filter(permitted, j => declaration_ref_eq(a: j, b: jurisdiction))) > 0
+              || jurisdiction_drop_enrolled(
+                   enrollments: enrollments, path_evidence: evidence, jurisdiction: jurisdiction) {
+              acc
+            } else {
+              [jurisdiction_subject_refusal(
+                s: subject, route: route, operator: operator, jurisdiction: jurisdiction)]
+            },
+          ProviderPathAbsent { evidence } => acc,
+          ProviderPathUnread { obligation } => acc,
+        }
+      }
+    },
+  )
+}
+
+// THE POPULATION IS MATCHED ONCE AND BOTH HALVES COME OUT OF THAT MATCH. The unread arm yields its
+// own obligation; the enumerated arm yields its own permitted list, built from first and further,
+// which is why no call site ever holds a list that might have come from an unread population. That
+// is the whole shape of the fail-closed guarantee here: there is no path on which "unread" becomes
+// an empty permitted list that then silently refuses with a location cause, and none on which it
+// becomes a wildcard.
+fn jurisdiction_refusals(
+  facts: ProviderRouteFacts,
+  active: CompliancePostureRevision,
+) -> List<ProviderUseRefusal> {
+  match active.permitted_jurisdictions {
+    PermittedJurisdictionsUnread { obligation } => [PostureJurisdictionsUnread { obligation: obligation }],
+    PermittedJurisdictionsEnumerated { first, further, basis } =>
+      concat(
+        nonpermitted_jurisdiction_refusals(
+          paths: data_bearing_paths(c: facts.data_paths),
+          permitted: concat([first], further),
+          enrollments: active.jurisdiction_drop_enrollments,
+          subject: DataBearingPaths,
+          route: facts.route,
+        ),
+        nonpermitted_jurisdiction_refusals(
+          paths: provider_access_paths(c: facts.data_paths),
+          permitted: concat([first], further),
+          enrollments: active.jurisdiction_drop_enrollments,
+          subject: ProviderAccessPaths,
+          route: facts.route,
+        ),
+      ),
+  }
+}
+
 fn program_refusals(d: DispositionStanding, program: DispositionProgram) -> List<ProviderUseRefusal> {
   map(disposition_obligation(d: d), o => disposition_program_refusal(p: program, obligation: o))
 }
@@ -409,9 +552,13 @@ fn agreement_refusals(
 }
 
 // THE DECISION, AND THE REASON ITS SEED IS THE PERMIT. The order of the concatenation is the order
-// of the remedies: classify the route, assess its downstream, gather its facts, match the customer
+// of the remedies: classify the route, assess its downstream, gather its facts, JUDGE THEIR
+// JURISDICTIONS AGAINST THE POSTURE, match the customer
 // scope, match the data class, clear the three use dispositions, reconcile posture, bind the
-// agreement. Reporting the FIRST refusal rather than all of them is deliberate - a caller acts on
+// agreement. The jurisdiction judgement sits immediately after the facts are gathered and before
+// anything about the USE, because it is the last question about the ROUTE itself: an unread path
+// must refuse as incomplete rather than as mislocated, and a route whose material sits somewhere we
+// may not put it is refused before anyone asks which customer wanted it there. Reporting the FIRST refusal rather than all of them is deliberate - a caller acts on
 // one obligation at a time, and a refusal listing five causes invites picking the cheapest.
 //
 // This was an if/else chain whose refusal builders folded zero-or-one lists seeded with an
@@ -441,16 +588,19 @@ fn admit_provider_use<P>(
       concat(
         path_refusals(facts: facts),
         concat(
-          scope_refusals(by_customer: by_customer, matched: matched, scope: scope),
+          jurisdiction_refusals(facts: facts, active: active),
           concat(
-            program_refusals(d: scope.prohibited_use_disposition, program: ProhibitedUseProgram),
+            scope_refusals(by_customer: by_customer, matched: matched, scope: scope),
             concat(
-              program_refusals(d: scope.sanctions_disposition, program: SanctionsProgram),
+              program_refusals(d: scope.prohibited_use_disposition, program: ProhibitedUseProgram),
               concat(
-                program_refusals(d: scope.export_disposition, program: ExportProgram),
+                program_refusals(d: scope.sanctions_disposition, program: SanctionsProgram),
                 concat(
-                  posture_refusals(matched: matched, current: current, active: active),
-                  agreement_refusals(current: current, bound: bound),
+                  program_refusals(d: scope.export_disposition, program: ExportProgram),
+                  concat(
+                    posture_refusals(matched: matched, current: current, active: active),
+                    agreement_refusals(current: current, bound: bound),
+                  ),
                 ),
               ),
             ),

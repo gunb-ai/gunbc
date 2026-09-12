@@ -63,9 +63,91 @@ fn provider_route_eq(a: ProviderRoute, b: ProviderRoute) -> Bool {
 // The authority is an open DeclarationRef because THE POSTURE PRODUCER IS NOT IN THIS TREE (see
 // the frontier annotation on product.fabric.provider_admission). The generic fabric must not
 // enumerate whose posture governs it any more than it enumerates jurisdictions.
+//
+// A POSTURE NOW CARRIES THE JURISDICTIONS IT PERMITS, and that is what makes a located path's
+// jurisdiction answerable at all. An authority plus a hash says WHOSE rule was in force and WHICH
+// revision of it; it does not say what that rule allows, so "this path is in Germany" had nothing
+// to be compared against and the two refusals that needed the comparison were deleted as
+// uninhabitable rather than left as decoration (product.fabric.provider_admission stated the
+// restoration trigger). This field IS that trigger: with the population here, a located path in a
+// non-permitted jurisdiction is authorable, and both arms land with producers.
 type CompliancePostureRevision {
   authority: DeclarationRef
   revision: ContentHash
+  permitted_jurisdictions: PermittedJurisdictionPopulation
+  jurisdiction_drop_enrollments: List<JurisdictionDropEnrollment>
+}
+
+// THE PERMITTED JURISDICTIONS ARE A POPULATION WITH THE SAME TWO-ARM DISCIPLINE THE REST OF THIS
+// MODULE KEEPS, and the arms are what stop it being a list. A bare List<DeclarationRef> makes the
+// empty list mean either "this posture permits nothing" or "nobody has written down what it
+// permits", and a consumer cannot tell them apart -- the identical collapse ProviderPathAbsent and
+// ProviderPathUnread are kept separate to avoid, one type up. The unread arm REFUSES; it never
+// widens to "all permitted", because a posture whose permissions nobody has read admitting every
+// jurisdiction on earth is the absorbing fallback DESIGN section 5 forbids by name.
+//
+// THE ENUMERATED ARM CANNOT BE EMPTY, and the first/further encoding is why. A posture permitting
+// zero jurisdictions is not a posture with an empty list; it is a stop-work order, which is a
+// different subject with a different remedy, and giving it a representation here would let it
+// arrive as an ordinary posture that happens to refuse everything. The shape is deliberately
+// DownstreamProviderPopulation's, since it answers the same kind of question about a different
+// population, and reusing it is the point rather than a coincidence.
+//
+// JURISDICTIONS STAY OPEN DECLARATION REFERENCES. This type does not enumerate them and must not:
+// "Asia" is not a jurisdiction, and adding Germany is a row in somebody's posture rather than an
+// edit to a generic type every unrelated consumer recompiles against.
+type PermittedJurisdictionPopulation
+  = PermittedJurisdictionsEnumerated {
+      first: DeclarationRef,
+      further: List<DeclarationRef>,
+      basis: DeclarationRef,
+    }
+  | PermittedJurisdictionsUnread { obligation: DeclarationRef }
+
+// A DECLARED RUNG DROP MADE EXECUTABLE, BOUND TO ONE PATH AND ONE CITATION. DESIGN section 4b(3)
+// admits a bounded, declared drop with a restoration trigger; what it does not admit is a drop
+// whose population is a sentence nothing reads, because then the exception is whatever the code
+// happens to do. This row is the executing half: the drop roster says which paths are enrolled in
+// prose, and a posture that means it says so in a value the decision folds over.
+//
+// THE KEY IS THE PATH'S OWN EVIDENCE DECLARATION, AND THE CHOICE IS THE WHOLE SAFETY OF THE ROW.
+// The tempting key is the offending jurisdiction citation itself, and it is catastrophic: a
+// citation is a VALUE any route may carry, so enrolling one exempts every route that cites it,
+// present and future, while looking like a single narrow exception. That converts a bounded
+// population-scoped drop into an unbounded standing permission - DESIGN section 5's absorbing
+// fallback exactly, the-value-as-answer conflated with the-value-as-ignorance. The path's evidence
+// declaration is the opposite: it names WHICH path was examined and enrolled, so a second route
+// citing the same thing is not enrolled and refuses, which is the discriminating red that proves
+// the exception is bound to the path rather than to the value.
+//
+// THE JURISDICTION IS CARRIED TOO, so an enrolled path that later moves to a DIFFERENT
+// non-permitted jurisdiction stops being enrolled and refuses. Without it the enrollment would
+// excuse the path rather than the examined fact about it, and would keep excusing it after the
+// fact changed.
+//
+// THE DROP REFERENCE IS NOT DECORATION: it is the roster row that carries the reason, the bounded
+// population and the restoration trigger, and a reader holding an admitted permit reaches all three
+// from the posture the permit records. An enrollment naming no drop would be the exception without
+// the accounting, which is the silent regression 4b(3) exists to forbid.
+type JurisdictionDropEnrollment {
+  path_evidence: DeclarationRef
+  jurisdiction: DeclarationRef
+  drop: DeclarationRef
+}
+
+// One match per enrollment, and BOTH components must agree. The result is a count rather than a
+// Bool over a projected list because the caller is a fold that wants "is this exact path, citing
+// this exact thing, enrolled" and nothing else.
+fn jurisdiction_drop_enrolled(
+  enrollments: List<JurisdictionDropEnrollment>,
+  path_evidence: DeclarationRef,
+  jurisdiction: DeclarationRef,
+) -> Bool {
+  count(filter(
+    enrollments,
+    e => declaration_ref_eq(a: e.path_evidence, b: path_evidence)
+      && declaration_ref_eq(a: e.jurisdiction, b: jurisdiction),
+  )) > 0
 }
 
 // ONE LOCATION IS NOT A DATA PATH. A Helsinki VM whose backups, telemetry or administrators sit
@@ -142,13 +224,15 @@ type ProviderRouteFacts {
 // obligation", a one-element list IS the located obligation, and neither can lie.
 //
 // The nine paths are visited in a FIXED order, so the reported obligation is deterministic
-// rather than whichever arm a fold happened to reach last.
+// rather than whichever arm a fold happened to reach last. The order is now the two groups below
+// concatenated rather than a third transcription of the same nine fields: one list that could
+// disagree with the groups is exactly the fork section 3 consolidates later at interest. The
+// relative order within each group is unchanged; spill now precedes the access paths, which moves
+// nothing that any consumer reads, since determinism rather than the particular sequence is what
+// this fold owes.
 fn first_unresolved_obligation(c: ProviderDataPathClosure) -> List<DeclarationRef> {
   fold(
-    [
-      c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
-      c.control_plane, c.support_access, c.administrative_access, c.spill,
-    ],
+    concat(data_bearing_paths(c: c), provider_access_paths(c: c)),
     init: [],
     f: fn(acc, p) {
       if count(acc) > 0 {
@@ -172,4 +256,28 @@ fn downstream_obligation(d: DownstreamProviderPopulation) -> List<DeclarationRef
     DownstreamProvidersEnumerated { first, further, coverage } => [],
     DownstreamProvidersUnread { obligation } => [obligation],
   }
+}
+
+// THE TWO GROUPS, AND THE SPLIT IS THIS MODULE'S OWN DISTINCTION RATHER THAN A NEW ONE. The
+// closure's annotation already draws it: object storage, logs, telemetry, backups and spill are
+// where the route's material SITS, while the control plane, support access and administrative
+// access are how the provider's own people REACH that material "without appearing in any
+// customer-visible topology". The two groups are the same nine paths, partitioned, so no path is
+// in both and none is in neither -- and the partition is what lets a non-permitted jurisdiction
+// refuse with the right remedy, because the remedies are not the same thing at all.
+//
+// WHERE MATERIAL SITS IS SOMETHING WE CHOOSE. Placing a workload, a bucket or a backup in a
+// permitted jurisdiction is a decision on our side of the boundary: pick another region, another
+// storage class, another retention target.
+fn data_bearing_paths(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
+  [c.execution, c.durable_storage, c.backups, c.logs, c.telemetry, c.spill]
+}
+
+// WHO REACHES IT IS SOMETHING THE PROVIDER COMMITS TO, and no region choice moves it. A support
+// desk and a control plane do not relocate because the workload did; they are where the provider
+// runs them, so the only remedy is a commitment from that operator restricting privileged access
+// to permitted jurisdictions -- which is why the refusal built over this group names the operator
+// and the one built over the group above does not.
+fn provider_access_paths(c: ProviderDataPathClosure) -> List<ProviderPathStanding> {
+  [c.control_plane, c.support_access, c.administrative_access]
 }
