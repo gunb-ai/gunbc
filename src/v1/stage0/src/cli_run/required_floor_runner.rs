@@ -827,10 +827,7 @@ pub(crate) fn floor_base_test_decl_census(
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<Value> = paths.iter().map(|p| str_value(p.clone())).collect();
     let args = [
-        (
-            Some("base".to_string()),
-            str_value(comparison.base().to_string()),
-        ),
+        (Some("base".to_string()), str_value(comparison.base())),
         (Some("paths".to_string()), list_value_from_vec(path_values)),
     ];
     let result = v1_interpreter::run_in_context_with_args(
