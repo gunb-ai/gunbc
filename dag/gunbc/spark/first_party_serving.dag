@@ -379,35 +379,27 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // itself, sufficient for a located path to say its jurisdiction is unread without the whole path
 // becoming unread.
 //
-// THE REMEDY IF ZERO EGRESS IS EVER WANTED is one environment variable on the launch --
-// VLLM_NO_USAGE_STATS=1, or DO_NOT_TRACK=1, or the marker file -- on a box the operator owns. It is
-// named here rather than blocked on, because it is the operator's to set.
+// THERE IS NO LONGER A REMEDY THAT LIVES IN THE DECLARATION, AND THE THREE PARAGRAPHS THAT USED TO
+// STAND HERE ARE DELETED RATHER THAN EDITED. They described a fold this revision removes: that the
+// launch environment was folded against extdeps.vllm.usage_stats' disable terms, that every lane had
+// to disable it before the disabled arm was reached, and that the standing therefore took the worst
+// case and assessed reporting as on. None of that is performed any more. spark_lane_disables_usage_stats
+// is deleted, this module no longer imports spark_pair_container_env, and
+// spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm -- so there is no
+// disabled arm to reach and nothing is assessed either way.
 //
-// AND THE STANDING IS DERIVED FROM THAT LAUNCH RATHER THAN TRANSCRIBED FROM IT. The first spelling
-// wrote "the container environment sets neither variable" into a basis string, which review 64033 is
-// right to call the same defect this module fixes one function below for the content class: the
-// environment is a MODELED value in this repository, so a sentence about it is a second authority
-// that rots the moment somebody edits the first. It is folded now -- the observed lanes' container
-// environments against extdeps.vllm.usage_stats' own disable terms, read by that module.
+// THEY WERE ALSO WRONG IN THE DIRECTION THAT MATTERS, which is why this note stays instead of the
+// text simply vanishing. Each one told a reader that setting VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1
+// on the launch would change this route's answer. It would not: that edits what the launch is
+// DECLARED to do, and this decision no longer consults the declaration at all. A reader who followed
+// that advice would have set a variable, seen nothing change, and had no way to learn why -- the
+// stranded promise is worse than silence because it is actionable.
 //
-// WHAT THAT FOLD MAY AND MAY NOT CONCLUDE, WHICH IS THE REPAIR THIS REVISION MAKES. An earlier
-// spelling said that adding VLLM_NO_USAGE_STATS=1 to the launch flips the telemetry path to
-// ProviderPathAbsent and takes the rung drop's population out from under it. It no longer does, and
-// it should not have: the environment folded here is the one gunbc.spark.pair_serving_realization
-// spark_pair_container_env declares a container is CREATED with, so concluding that THIS process has
-// reporting off means attributing a declaration to a process nobody read it from -- and ProviderPathAbsent
-// is the strong claim that no telemetry leaves at all, which is exactly the claim that may not rest on
-// that. So the fold still answers what the LAUNCH IS DECLARED to do, which is what the rung drop
-// records as not lost, and the standing takes the WORST CASE for the process: reporting is assessed as
-// on unless a reading of the running container establishes otherwise. Discharging it needs
-// spark_serving_usage_stats_declared_environment_obligation, not a further edit to the declaration.
-//
-// EVERY LANE MUST DISABLE IT, NOT ANY. A group serves from several hosts and a reporter on one of
-// them is an egress for the route, so the fold is over the lanes that do NOT disable it and the
-// disabled arm is reached only when that set is empty. AN EMPTY LANE ROSTER IS UNREAD, not disabled:
-// with no observed lane there is no environment to read, and the vacuous "all of nothing" would be
-// the check reading cleanest exactly where it knows least -- the same trap the host-coverage fold
-// avoids above.
+// WHAT ACTUALLY RESOLVES THE ROUTE is evidence of the effective telemetry configuration of the
+// process that answered, bound to the offered launch, covering both whether the reporter runs and
+// where it sends: spark_serving_usage_stats_declared_environment_obligation names it as a capability.
+// Until that exists the telemetry path is unread and provider-use admission refuses, which is the
+// whole of this module's current answer on the question.
 //
 // ── THE ROUTE FACTS ARE ABOUT THE REALIZATION THAT ANSWERED, NOT ABOUT A DECLARATION ─────────
 //
