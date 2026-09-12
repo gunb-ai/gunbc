@@ -3309,6 +3309,23 @@ const SCM_MERGE_BASE_COHOME_LABEL: &str =
 ///
 /// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
 /// stops being producible, and CONSUMED comes due on the roster's next touch.
+/// EIGHTH MERGE. Main is back to an EMPTY roster; this branch still carries its 40 live SCM rows,
+/// so this is the keep-ours case and nothing of main's rows is dropped -- it has none. What IS
+/// carried across is main's rationale for the gunbc#11137 row, below: that row was authored and
+/// deleted on both sides, and the reasoning for why it existed is its lane's history, not something
+/// this branch should re-derive or discard because the row is gone. This file keeps the prose of a
+/// deleted row by its own convention.
+///
+/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
+/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
+/// module into the candidate set for every name it declares, so filesystem_io's copy of
+/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
+/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
+/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
+/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: SCM_SOURCE_RECOVERY_REHOME_LABEL,
