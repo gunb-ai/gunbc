@@ -7,10 +7,12 @@ import extdeps.numeric.base16 { base16_digit_rows }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart, OemSelPayload }
 import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart, OtherStandardEvent, OemTimestamped }
 
-// ipmitool's rendered SEL is a durable append log, not a clock. Keep the complete
-// prefix so clear, rollover, replacement and reused record ids REFUSE. A numeric
-// greater-than cursor alone silently skips a cleared or wrapped log. Rendering
-// changes also refuse; they are not evidence of a new boot. OEM rows stay opaque.
+// Keep the rendered prefix to detect clear, rollover and replacement when they
+// change it. Prefix equality alone DOES NOT prove source-generation continuity:
+// a cleared log can reuse the same ids and bytes. The envelope consumer must
+// supply generation evidence independently. Rendering changes also refuse the
+// delta; they are not evidence of a new boot. Retain the snapshot across that
+// gap. OEM rows stay opaque and clocks never order events here.
 type SelWatermark sole_constructor { records: List<String> }
 type SelDelta { watermark: SelWatermark, events: List<SelWindowEvent> }
 
@@ -94,7 +96,7 @@ fn sel_after(watermark: SelWatermark, text: String) -> ObservationAttempt<SelDel
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: next } =>
       if next.records.take(n: count(watermark.records)) != watermark.records {
-        ObservationRefused { cause: "SEL watermark prefix changed: clear, rollover or replacement; re-arm required" }
+        ObservationRefused { cause: "SEL watermark prefix changed: retain snapshot with gap; source continuity unestablished" }
       } else {
         ObservationEstablished { observed: SelDelta { watermark: next,
           events: flat_map(next.records.skip(n: count(watermark.records)), line => match sel_rendered_record(line: line) {
