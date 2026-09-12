@@ -1040,6 +1040,38 @@ fn run() -> Result<ExitCode, ExitCode> {
                     phase_failures.push(format!("regen-fixed-point ({e})"));
                 }
             }
+
+            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THIS PHASE, for the reason
+            // the rostered-row join rides the parse: it is the SAME QUESTION this phase already
+            // asks -- re-run the producer over an unchanged tree, compare the bytes -- one
+            // artifact over, and the roster of required jobs is closed to growth. It is a rider,
+            // not a phase, so `RequiredCiPhase::RegenFixedPoint`'s lane ownership answers for it
+            // and no second routing fact exists to drift.
+            //
+            // ITS COST IS THREE EMISSIONS OF A SIXTEEN-DECLARATION FIXTURE, not of the corpus.
+            // The class it catches is a property of the EMITTER, so the smallest specimen that
+            // carries several registry keys discriminates it exactly as the corpus does; paying
+            // corpus cost for it would buy nothing this control can read.
+            match v1_compiler::cli_run::run_dag_artifact_identity() {
+                Ok(outcome) => {
+                    eprintln!("required-ci: dag-artifact-identity {}", outcome.summary());
+                    for finding in &outcome.findings {
+                        eprintln!("required-ci: dag-artifact-identity FAIL {finding}");
+                    }
+                    if !outcome.passed() {
+                        phase_failures.push(format!(
+                            "dag-artifact-identity ({} finding(s))",
+                            outcome.findings.len()
+                        ));
+                    }
+                }
+                // NO VERDICT IS NOT A GREEN. A fixture that will not compile leaves this run
+                // holding no identity evidence, and that stops the line under its own name.
+                Err(e) => {
+                    eprintln!("required-ci: dag-artifact-identity NOT EVALUATED — {e}");
+                    phase_failures.push("dag-artifact-identity (subject unobtainable)".to_string());
+                }
+            }
             ran.push("regen-fixed-point");
         }
 
@@ -2095,6 +2127,20 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for over_cost in &outcome.completed_over_cost_requirement {
         eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
     }
+    for blocker in &outcome.enrolment_margin_blocking {
+        eprintln!(
+            "required-floor: ENROLMENT-MARGIN-REFUSED {} cause={} — this change ENROLS this \
+             identity, and it was not shown to reach a verdict inside the margin the measured \
+             runner envelope implies. The ceiling is not the bar here: a row that clears 500ms on \
+             the runner that measured it can cross on the runner that runs it next, which is what \
+             every one of the fifteen incident rows did. Reduce what the witness reaches for, or \
+             enroll it in a lane that declares its own ceiling AND names it as an executing \
+             consumer. RELOCATING THE FILE DOES NOT DISCHARGE IT. If the cause is \
+             `enrolment_not_measured`, nothing timed this identity at all — that is a missing \
+             measurement to produce, not a cost to reduce.",
+            blocker.identity, blocker.cause
+        );
+    }
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
     }
@@ -2168,7 +2214,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 
 /// Whether the floor outcome permits a green run.
 ///
-/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
@@ -2215,6 +2261,19 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         // is only the identities this change's diff touched, never the standing declined
         // corpus, so this conjunct cannot red a PR for debt it did not author.
         && outcome.changed_witness_blocking.is_empty()
+        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
+        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
+        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
+        // the line every one of the fifteen incident rows cleared on the run that measured them
+        // and crossed on the run that did not. Three refusing states, deliberately distinct:
+        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
+        // the one that must not be folded into the others — absence of a measurement is not
+        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
+        //
+        // The population is only what this change enrols, so this conjunct cannot red a PR for
+        // debt it did not author. Authority:
+        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
+        && outcome.enrolment_margin_blocking.is_empty()
 }
 
 fn required_floor_measurement_blockers(
@@ -2266,6 +2325,13 @@ fn required_floor_measurement_blockers(
     // The distinction was computed in `changed_witness_projection_rows` and dropped on the way
     // out (`gunbc.recurring_failure_mode` `non_verdict_disposition_surfaces_as_refusal`).
     for blocker in &outcome.changed_witness_blocking {
+        add(&blocker.identity, &blocker.cause);
+    }
+    // SAME DISCIPLINE, SAME REASON: the cause comes from the row. The enrolment gate distinguishes
+    // measured-over-margin, censored-at-ceiling and not-measured-at-all, and those have three
+    // different remedies — collapsing them into one population name here would rebuild exactly the
+    // defect the loop above was repaired for.
+    for blocker in &outcome.enrolment_margin_blocking {
         add(&blocker.identity, &blocker.cause);
     }
     blockers
