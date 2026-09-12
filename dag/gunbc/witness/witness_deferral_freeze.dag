@@ -841,19 +841,18 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis_test.dag",
     functions: [
       "quadratic_fold_has_suspect", "real_branch_body_quadratic_is_caught",
-      "noncarrier_name_in_copied_port_refuses_not_clean", "let_alias_is_proven_suspect",
-      "let_transitive_alias_is_proven_suspect", "let_fresh_binding_is_provably_clean",
-      "let_unknown_alias_still_refuses_may_alias",
+      "noncarrier_name_in_copied_port_refuses_not_clean",
+      "let_transitive_alias_is_proven_suspect", "let_unknown_alias_still_refuses_may_alias",
       "nested_call_head_cannot_masquerade_as_bare_name",
       "unregistered_combiner_reached_by_carrier_refuses",
       "carrier_inside_computed_argument_to_unregistered_combiner_refuses",
       "item_inside_computed_argument_stays_clean",
       "computed_let_mentioning_carrier_refuses_at_unregistered_use",
       "unreadable_call_head_with_carrier_port_refuses",
-      "named_step_fold_refuses_accumulator_unread", "multiline_unregistered_combiner_refuses",
+      "multiline_unregistered_combiner_refuses",
       "projection_call_carrier_is_classified", "quadratic_ingest_has_lowered_loop",
       "quadratic_ingest_has_no_surface_fold_call", "identity_fold_has_no_finding",
-      "out_of_iteration_append_is_out_of_domain", "report_counters_state_the_domain"
+      "out_of_iteration_append_is_out_of_domain"
     ]
   },
   FrozenPathDeferral {
