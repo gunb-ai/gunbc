@@ -1,0 +1,131 @@
+module test.claim.fabric_m0_job_ending_seal
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key,
+  censuses_differ_by_exactly_the_target_key
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// DISCRIMINATING RED for the JobEnding seal. The production module claimed a caller could not
+// stamp Success beside a pending publication; with an open record that state was writable.
+// These probes hand the compiler the forbidden literal and the sanctioned mint, same envelope.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn census_rows_or_refuse(source: String) -> List<CompileDiagnosticCensusRow> {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => rows
+    CensusNotRunnable { cause: _ } => [unrunnable_sentinel_row()]
+  }
+}
+
+fn unrunnable_sentinel_row() -> CompileDiagnosticCensusRow {
+  CompileDiagnosticCensusRow {
+    diagnostic_class: "CENSUS-NOT-RUNNABLE",
+    subject_name: "census",
+    blocking: true,
+    count: 1,
+  }
+}
+
+fn sole_constructor_on_job_ending(source: String) -> Int {
+  keyed_count(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "JobEnding")
+}
+
+// ONE AXIS: identical module header, imports, signature, return type. Only the body that
+// produces the JobEnding differs. The green arm must return JobEnding, so it goes through
+// end_required_job rather than unwrapping an Outcome that has no reading on the unavailable
+// branch.
+fn job_ending_probe_source(body: String) -> String {
+  "module probe_fabric_m0_job_ending_axis\n"
+    + "import std.types { List, NonEmptyStr }\n"
+    + "import std.measure { hardware_thread_count }\n"
+    + "import std.content_hash { Sha256Digest, Sha256DigestHex }\n"
+    + "import std.scoped_authorization { AttemptIdentity }\n"
+    + "import product.fabric.envelope { unstated_envelope }\n"
+    + "import product.fabric.isolation { shared_kernel_sandbox_profile }\n"
+    + "import product.fabric.work {\n"
+    + "  Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,\n"
+    + "  Shape, HardRequirements, ControlPlaneCapacity, work_for,\n"
+    + "  OutputObligation, OutputArtifactObligation, DeclaredOutputObligations,\n"
+    + "}\n"
+    + "import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }\n"
+    + "import extdeps.github.checks { Success }\n"
+    + "import gunbc.fabric_m0_completion {\n"
+    + "  ComputationSucceeded, CommittedOutput, OriginObservation, ManifestMember,\n"
+    + "  JobPublication, PublishPendingReconciliation,\n"
+    + "}\n"
+    + "import gunbc.fabric_m0_commit {\n"
+    + "  CommitTransportOutcome, StoreAnswered, ManifestReadbackObservation, ManifestReadUnavailable, CommitNamespace,\n"
+    + "}\n"
+    + "import gunbc.fabric_m0_job_ending { JobEnding, end_required_job }\n"
+    + "fn fixture_work() -> Work<NonEmptyStr> {\n"
+    + "  work_for(\n"
+    + "    principal: \"gunbc\" as NonEmptyStr,\n"
+    + "    contract: WorkContract {\n"
+    + "      program: \"gunbc.fabric-m0.program:1\",\n"
+    + "      steps: [WorkStep { step_id: \"fabric-m0\", resumability: ReceiptSatisfiable }],\n"
+    + "      source: \"source:1\", inputs: \"inputs:1\", runtime_closure: \"runtime:1\",\n"
+    + "      effect_contract: \"effects:1\", output_contract: \"outputs:1\",\n"
+    + "      output_obligations: DeclaredOutputObligations { required: [] },\n"
+    + "    },\n"
+    + "    requirements: ExecutionRequirements {\n"
+    + "      capacity_class: ControlPlaneCapacity,\n"
+    + "      shape: Shape { hard: HardRequirements { threads: hardware_thread_count(8) }, envelope: unstated_envelope() },\n"
+    + "      capabilities: \"linux-arm64\", trust_domain: \"fleet-owned\", isolation: shared_kernel_sandbox_profile(),\n"
+    + "    }\n"
+    + "  )\n"
+    + "}\n"
+    + "fn answered() -> CommitTransportOutcome {\n"
+    + "  StoreAnswered {\n"
+    + "    slot: \"fabric-m0/v1/commit/attempt-1\",\n"
+    + "    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: \"read refused\" } },\n"
+    + "  }\n"
+    + "}\n"
+    + "fn subject() -> JobEnding {\n  "
+    + body
+    + "\n}\n"
+}
+
+data forged_job_ending_body: String = "JobEnding { publication: PublishPendingReconciliation { attempt: \"attempt-1\" as AttemptIdentity, subject: \"commit-manifest\", cause: \"forged\", unresolved: [] }, conclusion: Success }"
+
+data sanctioned_body: String = "end_required_job(work: fixture_work(), attempt: \"attempt-1\" as AttemptIdentity, computation: ComputationSucceeded, committed: [], observations: [], namespace: \"fabric-m0/v1/commit\" as CommitNamespace, manifest_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex }, members: [], transport: answered(), observed: ManifestReadUnavailable { cause: \"origin unbound\" })"
+
+test fn a_forged_success_beside_pending_is_refused_at_compile() -> Bool {
+  sole_constructor_on_job_ending(source: job_ending_probe_source(body: forged_job_ending_body)) == 1
+}
+
+test fn the_sanctioned_ending_draws_no_violation() -> Bool {
+  sole_constructor_on_job_ending(source: job_ending_probe_source(body: sanctioned_body)) == 0
+}
+
+test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
+  censuses_differ_by_exactly_the_target_key(
+    red: census_rows_or_refuse(source: job_ending_probe_source(body: forged_job_ending_body)),
+    green: census_rows_or_refuse(source: job_ending_probe_source(body: sanctioned_body)),
+    target_class: "SoleConstructorViolation",
+    target_subject: "JobEnding",
+  )
+}
+
+test fn both_arms_of_the_differential_actually_compiled() -> Bool {
+  (census_count_at_key(rows: census_rows_or_refuse(source: job_ending_probe_source(body: forged_job_ending_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+    && (census_count_at_key(rows: census_rows_or_refuse(source: job_ending_probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+}

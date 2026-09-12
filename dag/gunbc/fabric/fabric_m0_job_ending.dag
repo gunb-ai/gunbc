@@ -73,14 +73,22 @@ fn check_conclusion_of_publication(publication: JobPublication) -> CheckConclusi
   }
 }
 
-type JobEnding {
+// Sealed because the pair is one fact: conclusion is derived from publication inside
+// end_required_job. An open record lets any module write JobEnding { publication: pending,
+// conclusion: Success }, which is the guarantee the comment used to claim and did not hold
+// (DESIGN 4b(1)). sole_constructor on this RECORD (not on JobPublication — coproduct seals do
+// not refuse cross-module variants) makes that literal a compile refusal outside this module.
+// Evidence: test.claim.fabric_m0_job_ending_seal. Path-scoped: the emitted Rust mirror is a
+// public struct; this fold has no Rust consumer.
+type JobEnding sole_constructor {
   publication: JobPublication
   conclusion: CheckConclusion
 }
 
 // THE ENDING. One call from a run that already holds Work, transport, and an independent
 // origin observation to the pair a process or check can report. The conclusion is DERIVED
-// from the publication; a caller cannot stamp Success beside a pending publication.
+// from the publication. The seal is what makes stamping Success beside a pending publication
+// unwritable on the source-to-dag path; the mapping below is what chooses the conclusion.
 fn end_required_job<P>(
   work: Work<P>,
   attempt: AttemptIdentity,
