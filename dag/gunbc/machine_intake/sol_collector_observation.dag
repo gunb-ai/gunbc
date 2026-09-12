@@ -1,6 +1,6 @@
 module gunbc.machine_intake_sol_collector_observation
 
-import std.types { Bool, Int }
+import std.types { Int }
 import std.measure { Second }
 
 // ATTEMPT OBSERVATION: what one SOL collector covered and received. Platform capability
@@ -55,19 +55,6 @@ fn sol_host_fact_from_collector(obs: SolCollectorObservation) -> SolHostFactFrom
         SolCoverageNeverEstablished => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
         SolCoverageInterrupted => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
         SolCoverageStillRunningPastDeadline => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
-      }
-  }
-}
-
-fn sol_activation_acknowledged_without_coverage(obs: SolCollectorObservation) -> Bool {
-  match obs.activation {
-    SolSessionActivationNotAcknowledged => false
-    SolSessionActivationAcknowledged =>
-      match obs.coverage {
-        SolCoverageComplete => false
-        SolCoverageNeverEstablished => true
-        SolCoverageInterrupted => true
-        SolCoverageStillRunningPastDeadline => true
       }
   }
 }

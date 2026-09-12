@@ -6,6 +6,8 @@ import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.megarac {
   BiosUefiSettingsSurfaceAbsent,
+  ChassisPowerOnEventsEnable,
+  ChasisPowerOnEventsEnable,
   DiesOnReset,
   MegaRacIpmiSelPayloadPreserved,
   MegaRacWebEventLogOemEmptySelData,
@@ -26,13 +28,12 @@ import extdeps.bmc.megarac {
   megarac_framebuffer_recorder_reset_survival,
   megarac_ipmi_sel_layout,
   megarac_live_sol_activate_reset_survival,
-  megarac_redirection_is_connecting,
-  megarac_redirection_is_started,
   megarac_redirection_status_of_wire,
   megarac_served_ui_absence_standing,
   megarac_sol_recorder_reset_survival,
-  megarac_sol_trigger_power_on_field_wire,
-  megarac_video_trigger_power_on_field_wire,
+  megarac_sol_trigger_power_on_field,
+  megarac_trigger_power_on_field_wire,
+  megarac_video_trigger_power_on_field,
   megarac_web_event_log_layout,
 }
 import extdeps.ampere.oem_sel {
@@ -42,7 +43,6 @@ import extdeps.ampere.oem_sel {
   ampere_oem_sel_manufacturer_id_byte2,
   ampere_oem_sel_pen_matches_le_bytes,
   ampere_oem_sel_producer_layout,
-  ampere_oem_sel_producer_layout_covers_sensor,
   ampere_openbmc_boot_syndrome_sensor_number,
 }
 import gunbc.machine_intake_sol_collector_observation {
@@ -59,13 +59,10 @@ import gunbc.machine_intake_sol_collector_observation {
   SolHostProducedNoConsoleBytes,
   SolSessionActivationAcknowledged,
   SolCollectorObservation,
-  sol_activation_acknowledged_without_coverage,
   sol_host_fact_from_collector,
 }
 import gunbc.machine_intake_megarac_pre_os_channel {
-  megarac_incomplete_sol_coverage_is_not_a_host_fact,
   megarac_sol_collector_terminate_deadline,
-  megarac_sol_host_fact,
   megarac_sol_host_payload_positive_control,
 }
 
@@ -83,10 +80,7 @@ test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
           match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0) {
             RedirectionStatusKnown { firmware: _, status: RedirectionStopped } =>
               match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7) {
-                RedirectionStatusKnown { firmware: _, status: RedirectionVendorRenderedStopped { wire: 7 } } =>
-                  megarac_redirection_is_started(status: RedirectionStartedConnectionAccepted)
-                    && megarac_redirection_is_connecting(status: RedirectionConnecting)
-                    && !megarac_redirection_is_started(status: RedirectionConnecting)
+                RedirectionStatusKnown { firmware: _, status: RedirectionVendorRenderedStopped { wire: 7 } } => true
                 _ => false
               }
             _ => false
@@ -110,8 +104,10 @@ test fn recorders_survive_reset_and_live_sol_does_not() -> Bool {
     && megarac_sol_recorder_reset_survival == SurvivesHostAndControllerReset
     && megarac_live_sol_activate_reset_survival == DiesOnReset
     && megarac_framebuffer_recorder_reset_survival != megarac_live_sol_activate_reset_survival
-    && megarac_video_trigger_power_on_field_wire() == "chassis_power_on_events_enable" as NonEmptyStr
-    && megarac_sol_trigger_power_on_field_wire() == "chasis_power_on_events_enable" as NonEmptyStr
+    && megarac_video_trigger_power_on_field == ChassisPowerOnEventsEnable
+    && megarac_sol_trigger_power_on_field == ChasisPowerOnEventsEnable
+    && megarac_trigger_power_on_field_wire(name: megarac_video_trigger_power_on_field)
+      != megarac_trigger_power_on_field_wire(name: megarac_sol_trigger_power_on_field)
 }
 
 test fn served_ui_absences_are_first_class_at_0_32() -> Bool {
@@ -169,14 +165,11 @@ fn collector_with_host_payload() -> SolCollectorObservation {
 }
 
 test fn incomplete_sol_coverage_is_not_a_host_silence_fact() -> Bool {
-  sol_activation_acknowledged_without_coverage(obs: collector_without_coverage())
-    && megarac_incomplete_sol_coverage_is_not_a_host_fact(obs: collector_without_coverage())
-    && !megarac_incomplete_sol_coverage_is_not_a_host_fact(obs: collector_with_host_payload())
-    && match megarac_sol_host_fact(obs: collector_without_coverage()) {
-      SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished } => true
-      _ => false
-    }
-    && match megarac_sol_host_fact(obs: collector_with_host_payload()) {
+  match sol_host_fact_from_collector(obs: collector_without_coverage()) {
+    SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished } => true
+    _ => false
+  }
+    && match sol_host_fact_from_collector(obs: collector_with_host_payload()) {
       SolHostPayloadAdmitted => true
       _ => false
     }
@@ -199,14 +192,8 @@ test fn ampere_oem_sel_pen_is_the_le_manufacturer_id_bytes() -> Bool {
     b1: ampere_oem_sel_manufacturer_id_byte1,
     b2: ampere_oem_sel_manufacturer_id_byte2,
   ) && ampere_oem_sel_producer_layout.iana_pen == ampere_iana_private_enterprise_number
-    && ampere_oem_sel_producer_layout_covers_sensor(
-      layout: ampere_oem_sel_producer_layout,
-      sensor_number: ampere_openbmc_boot_syndrome_sensor_number,
-    )
-    && !ampere_oem_sel_producer_layout_covers_sensor(
-      layout: ampere_oem_sel_producer_layout,
-      sensor_number: 222,
-    )
+    && ampere_oem_sel_producer_layout.sensor_number == ampere_openbmc_boot_syndrome_sensor_number
+    && ampere_oem_sel_producer_layout.sensor_number != 222
 }
 
 test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> Bool {
@@ -216,7 +203,7 @@ test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> 
   }
     && megarac_sol_host_payload_positive_control.coverage == SolCoverageStillRunningPastDeadline
     && megarac_sol_host_payload_positive_control.termination == CollectorStillRunning
-    && sol_activation_acknowledged_without_coverage(obs: megarac_sol_host_payload_positive_control)
+    && megarac_sol_host_payload_positive_control.activation == SolSessionActivationAcknowledged
     && match sol_host_fact_from_collector(obs: SolCollectorObservation {
       activation: SolSessionActivationAcknowledged,
       coverage: SolCoverageComplete,

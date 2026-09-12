@@ -251,20 +251,6 @@ fn megarac_redirection_status_of_wire(
   }
 }
 
-fn megarac_redirection_is_started(status: MegaRacRedirectionStatus) -> Bool {
-  match status {
-    RedirectionStartedConnectionAccepted => true
-    _ => false
-  }
-}
-
-fn megarac_redirection_is_connecting(status: MegaRacRedirectionStatus) -> Bool {
-  match status {
-    RedirectionConnecting => true
-    _ => false
-  }
-}
-
 // CONSOLE RECORDERS. Two recorders, two subjects. video/* records the framebuffer the KVM
 // renders; sol-triggers records the SOL stream. Both persist across resets. The SOL object's
 // chassis-power-on field is spelled chasis_power_on_events_enable (upstream typo); the video
@@ -273,22 +259,19 @@ type MegaRacConsoleRecorderSubject
   = FramebufferRecorder
   | SolStreamRecorder
 
-type MegaRacVideoTriggerPowerOnFieldName
-  = | ChassisPowerOnEventsEnable
+type MegaRacTriggerPowerOnFieldName
+  = ChassisPowerOnEventsEnable
+  | ChasisPowerOnEventsEnable
 
-type MegaRacSolTriggerPowerOnFieldName
-  = | ChasisPowerOnEventsEnable
+data megarac_video_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = ChassisPowerOnEventsEnable
 
-data megarac_video_trigger_power_on_field: MegaRacVideoTriggerPowerOnFieldName = ChassisPowerOnEventsEnable
+data megarac_sol_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = ChasisPowerOnEventsEnable
 
-data megarac_sol_trigger_power_on_field: MegaRacSolTriggerPowerOnFieldName = ChasisPowerOnEventsEnable
-
-fn megarac_video_trigger_power_on_field_wire() -> NonEmptyStr {
-  "chassis_power_on_events_enable" as NonEmptyStr
-}
-
-fn megarac_sol_trigger_power_on_field_wire() -> NonEmptyStr {
-  "chasis_power_on_events_enable" as NonEmptyStr
+fn megarac_trigger_power_on_field_wire(name: MegaRacTriggerPowerOnFieldName) -> NonEmptyStr {
+  match name {
+    ChassisPowerOnEventsEnable => "chassis_power_on_events_enable" as NonEmptyStr
+    ChasisPowerOnEventsEnable => "chasis_power_on_events_enable" as NonEmptyStr
+  }
 }
 
 type MegaRacResetSurvival

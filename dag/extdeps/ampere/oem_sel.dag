@@ -94,7 +94,3 @@ data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelPr
 fn ampere_oem_sel_pen_matches_le_bytes(pen: Int, b0: Int, b1: Int, b2: Int) -> Bool {
   pen == (b0 + (b1 * 256) + (b2 * 65536))
 }
-
-fn ampere_oem_sel_producer_layout_covers_sensor(layout: AmpereOemSelProducerLayout, sensor_number: Int) -> Bool {
-  layout.sensor_number == sensor_number
-}

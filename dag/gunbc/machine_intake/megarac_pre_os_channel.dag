@@ -4,13 +4,10 @@ import std.types { NonEmptyStr }
 import std.measure { Second, second }
 import gunbc.machine_intake_sol_collector_observation {
   CollectorStillRunning,
-  SolCollectorDidNotEstablishCoverage,
   SolCoverageStillRunningPastDeadline,
-  SolHostFactFromCollector,
   SolHostPayloadReceived,
   SolSessionActivationAcknowledged,
   SolCollectorObservation,
-  sol_host_fact_from_collector,
 }
 
 // JOIN: MegaRAC names the SOL session as a channel on the served UI; whether captured bytes
@@ -30,15 +27,4 @@ data megarac_sol_host_payload_positive_control: SolCollectorObservation = SolCol
   termination: CollectorStillRunning,
   host_payload: SolHostPayloadReceived,
   terminate_deadline: megarac_sol_collector_terminate_deadline,
-}
-
-fn megarac_sol_host_fact(obs: SolCollectorObservation) -> SolHostFactFromCollector {
-  sol_host_fact_from_collector(obs: obs)
-}
-
-fn megarac_incomplete_sol_coverage_is_not_a_host_fact(obs: SolCollectorObservation) -> Bool {
-  match megarac_sol_host_fact(obs: obs) {
-    SolCollectorDidNotEstablishCoverage { coverage: _ } => true
-    _ => false
-  }
 }
