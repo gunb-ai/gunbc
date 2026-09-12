@@ -111,15 +111,37 @@ fn collect_value_identifiers(n: Node) -> List<Symbol> {
   collect_value_identifiers_into(n: n, acc: std.algebra.Empty)
 }
 
+// AN ARGUMENT CAPTURE IS NOT THE ARGUMENT'S VALUE. A named argument `left: acc` captures the
+// LABEL as well as the value, and the label is a parameter name at the CALLEE - it is not an
+// identifier this body mentions. Counting it made every named-argument port read two identifiers,
+// so the bare-name arm below was unreachable for every call in a corpus where named arguments are
+// the ordinary spelling, and a copied accumulator classified as ^copied_port_computed_argument: a
+// refusal standing exactly where a proof was available, which is why the lens minted no suspect on
+// the textbook fold/list_append specimen. The value subtree is the node arg_value_symbol already
+// reads through, so the identifier census and the symbol read now ask ONE authority what the
+// argument IS rather than disagreeing about it. The no-value-capture arm keeps reading the whole
+// capture: the census stays an over-approximation there, so the reading degrades toward the
+// refusal arms and never toward clean.
+fn arg_value_capture_optional(arg_capture: Node) -> Optional<Node> {
+  find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr)
+}
+
 fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
-  match find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
+  match arg_value_capture_optional(arg_capture: arg_capture) {
     Absent => Absent
     Present { value: value_expr } => sequence_left_symbol(cap: value_expr)
   }
 }
 
+fn arg_value_mentions(arg_capture: Node) -> List<Symbol> {
+  match arg_value_capture_optional(arg_capture: arg_capture) {
+    Present { value: value_expr } => collect_value_identifiers(n: value_expr)
+    Absent => collect_value_identifiers(n: arg_capture)
+  }
+}
+
 fn port_reading(arg_capture: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
-  let mentions = collect_value_identifiers(n: arg_capture)
+  let mentions = arg_value_mentions(arg_capture: arg_capture)
   let idents = symbol_list_length(xs: mentions)
   if idents == 0 {
     v2.lens.complexity_accumulator_copy.PortPureLiteral
