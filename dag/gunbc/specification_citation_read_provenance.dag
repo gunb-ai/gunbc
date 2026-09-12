@@ -9,6 +9,7 @@ import extdeps.publication { SpecificationDocumentDate }
 import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_authority }
 import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority }
 import extdeps.ampere.mt_collins_2u_user_guide.subject { doslab_mirror_authority }
+import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1_ref }
 
 // OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN
 // section 3). Each receipt names the upstream declaration it is about and records what gunbc did on
@@ -260,3 +261,17 @@ data mt_collins_2u_citation_read_comparison: SpecificationCitationReadByteCompar
   publisher: mt_collins_2u_publisher_citation_read_receipt,
   mirror: mt_collins_2u_mirror_citation_read_receipt,
 )
+
+// THE PINNED CONTRACT STANDARD'S READ, recorded here and not on the extdeps record, because how
+// this repository read a locator is an observation of ours (DESIGN section 3, external upstream
+// decomposition) while what the document says is the upstream's. The subject reference is
+// imported from the module that declares it rather than re-spelled here.
+data common_paper_csa_v2_1_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: common_paper_csa_v2_1_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 119746),
+    content_digest: "sha256 56c6c40adb9fc2f7f7016c973d333e6962858ce4600848a533d28d1c59b81fd7",
+    detail: "Fetched without credentials from the publisher locator on 2026-09-12 as HTML; the tag-stripped visible text (35474 characters) carries the heading 'Version 2.1 Released November 5, 2024', the statement that these Version 2.1 Standard Terms remain hosted on this page and any future change is issued under a new version number on a different page, and Standard Terms sections 1 (Service) through 13 (Definitions) with the Section 5.6 survival list naming all thirteen. The index page at commonpaper.com/standards/cloud-service-agreement/ was fetched the same day (HTTP 200, 218225 bytes, sha256 770cecf7f971b9077e93cb8ee2f140fd46a23316389960ee7738b88e72c3d225) and is what grounds the CC BY 4.0 publication status and the current-version claim on the extdeps record.",
+  },
+}

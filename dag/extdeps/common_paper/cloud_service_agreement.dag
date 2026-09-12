@@ -1,0 +1,145 @@
+module extdeps.common_paper.cloud_service_agreement
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedUnderOpenLicense, SpecificationDocumentDate }
+import extdeps.uri { Uri, Https }
+
+// THE ONE PINNED EXTERNAL CONTRACT AUTHORITY (M2 compliance spine, rank 2). Warranty, indemnity,
+// IP, confidentiality, payment, liability, dispute and termination terms do not DERIVE from any
+// compliance model this repository carries, so the agreement a provider-use sanction requires is
+// a CITED UPSTREAM, not something authored here. This module cites it; it does not sign it, and
+// nothing in it commits any party to a contractual term.
+//
+// WHAT THE UPSTREAM ACTUALLY IS, in its own names. The Common Paper Cloud Service Agreement (CSA)
+// is two components: a COVER PAGE the parties complete and sign, and the STANDARD TERMS, hosted
+// online and incorporated into the Cover Page by reference. The Cover Page carries the Key Terms
+// (the Order Form and the Framework Terms) and every Variable - Subscription Period, Fees,
+// General Cap Amount, Governing Law, an optional Pilot Period, and any modifications to the
+// Standard Terms, which upstream requires be made by addendum on the Cover Page and never by
+// editing the Standard Terms themselves. Every capitalized word that is not a Cover Page Variable
+// is defined in the Standard Terms, sections 1 (Service) through 13 (Definitions).
+//
+// WHAT THIS MODULE MODELS, AND WHAT IT DELIBERATELY DOES NOT (DESIGN section 3: interface,
+// realization and policy are three facts). The subject here is the STANDARD TERMS at one posted
+// version: the fixed, publicly hosted, independently versioned document. That is the only part of
+// the agreement that is an upstream fact. The Cover Page is where every commercial position lives -
+// which cap amount, which governing law, whether a Pilot Period exists and what is modified during
+// it - and each of those is a workflow-layer decision the operator takes, not a property of the
+// standard. Modeling a cap number or an accepted deviation here would be the policy-into-extdeps
+// layer inversion section 3 names, and choosing one is outside this module's authority.
+//
+// THE VERSION IS PINNED AND THE PIN IS STABLE BY THE UPSTREAM'S OWN RULE. The v2.1 page states
+// that the Version 2.1 Standard Terms remain hosted at their page unchanged, and that any future
+// change is issued under a new version number on a different page; the index page adds that new
+// versions do not change agreements that incorporate prior versions. So the anchor locator IS the
+// version identity: a new version is a new row with a new anchor, never an edit to this one, and
+// a consumer citing common_paper_csa_v2_1 cites the same text on every future read.
+//
+// READ 2026-09-12 by this session, without credentials: the anchor answered HTTP 200 with 119746
+// bytes of HTML whose visible text carries the full Standard Terms and the two versioning
+// statements above; the index page answered HTTP 200 and states the CC BY 4.0 licence, the Cover
+// Page plus incorporated Standard Terms structure, the optional Pilot Period, and that 2.1 is the
+// current version. The fetch receipt with the content digest is a gunbc-layer observation and
+// lives in gunbc.specification_citation_read_provenance, not on this record.
+//
+// WHY THE CREDIBLE ALTERNATIVE, THE BONTERMS CLOUD TERMS, LOST. Both are CC BY 4.0 cover-page-plus-
+// standard-terms forms for a cloud service. The discriminator is CITABILITY OF THE STANDARD TERMS
+// AT A STABLE VERSIONED LOCATOR, which is the property a DeclarationRef-based sanction needs.
+// Observed 2026-09-12 by this session: bonterms.com/forms/cloud-terms/ (the locator under which
+// the Cloud Terms were previously published) answers HTTP 404; bonterms.com/download-center/
+// cloud-terms answers 200 but serves a download page (Standard Agreement, Cover Page Example,
+// Playbook, Order Form Example, Release Notes) whose visible text carries no version label and no
+// hosted terms text; and the support article "How to Use the Bonterms Cloud Terms" answers 403
+// unauthenticated. Those are observations of what the locators served on that date, not claims
+// about the Bonterms terms themselves, which this session did not read. A standard whose current
+// text and version this repository cannot read at a public locator cannot be cited to a version
+// here; Common Paper's, at a page the publisher itself declares immutable, can.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "commonpaper.com/standards/cloud-service-agreement/2.1/",
+  }
+}
+
+data common_paper_csa_standard_terms_v2_1_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data common_paper_csa_index_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "commonpaper.com/standards/cloud-service-agreement/",
+  }
+}
+
+data common_paper_csa_version_history_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "commonpaper.com/standards/cloud-service-agreement/versions",
+  }
+}
+
+// ONE TYPE PER POSTED VERSION. Upstream posts each version under its own number and never edits
+// a posted one, so a version is a construction here, not a free label: a consumer cannot cite
+// "2.2" until a row for it exists with its own anchor. Spelled as a unit type plus an alias rather
+// than a one-variant coproduct because the v1 seed reads a single-variant coproduct as a type
+// alias and exports no constructor for it (std.decl_ref records the same measurement); the alias
+// becomes the coproduct the day a second version is pinned.
+type CommonPaperCsaVersion2_1 {}
+
+type CommonPaperCsaVersion = CommonPaperCsaVersion2_1
+
+data common_paper_csa_title: NonEmptyStr = "Common Paper Cloud Service Agreement Standard Terms"
+
+data common_paper_csa_v2_1_version_label: NonEmptyStr = "2.1"
+
+data common_paper_csa_v2_1_released: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2024,
+  month: 11,
+  day: 5,
+}
+
+data common_paper_csa_v2_1_publication_status: DocumentPublicationStatus = PubliclyPublishedUnderOpenLicense {
+  license: "CC BY 4.0",
+}
+
+type CommonPaperCloudServiceAgreementStandardTerms {
+  title: NonEmptyStr
+  version: CommonPaperCsaVersion
+  version_label: NonEmptyStr
+  released: SpecificationDocumentDate
+  publication_status: DocumentPublicationStatus
+  standard_terms: ExternalAuthority
+}
+
+// THE DECLARATION A PROVIDER-USE SANCTION CITES. product.fabric.provider_admission
+// RouteScopeSanction.requires_agreement and ProviderUseScope.agreement are DeclarationRefs, and
+// this row is what they are supposed to name; admit_provider_use compares the two by
+// declaration_ref_eq and refuses RequiredAgreementAuthorityAbsent when the scope presents any
+// other agreement. The executing consumer is test.claim.fabric.common_paper_csa_agreement_witness,
+// which runs both arms against this exact reference.
+data common_paper_csa_v2_1: CommonPaperCloudServiceAgreementStandardTerms = CommonPaperCloudServiceAgreementStandardTerms {
+  title: common_paper_csa_title,
+  version: CommonPaperCsaVersion2_1 {},
+  version_label: common_paper_csa_v2_1_version_label,
+  released: common_paper_csa_v2_1_released,
+  publication_status: common_paper_csa_v2_1_publication_status,
+  standard_terms: common_paper_csa_standard_terms_v2_1_authority,
+}
+
+data common_paper_csa_v2_1_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.common_paper.cloud_service_agreement",
+  decl_name: "common_paper_csa_v2_1",
+  field: WholeDeclaration,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: common_paper_csa_v2_1_ref,
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    common_paper_csa_index_authority,
+    common_paper_csa_version_history_authority,
+  ],
+}
