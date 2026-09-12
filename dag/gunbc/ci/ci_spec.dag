@@ -65,7 +65,8 @@ import gunbc.heal_revalidation {
   heal_author_commit_required_token,
   heal_push_refused_token,
   superseded_by_author_head_token,
-  superseded_by_healed_head_token
+  superseded_by_healed_head_token,
+  superseded_by_healed_head_approve_remedy
 }
 import gunbc.heal_push_plan {
   auto_push_eligible_committed_artifact_paths,
@@ -2348,14 +2349,18 @@ fn ci_heal_shell_lines() -> List<String> {
 // remain for a named manual dispatch; they are not invoked from this job.
 //
 // THE NONZERO EXIT STAYS. This run judged PRIOR_HEAD; it has no standing to speak for H1. So
-// SupersededByHealedHead still prints and this job still fails -- a human APPROVE on the gated
-// pull_request run is what starts H1's verdict.
+// SupersededByHealedHead still prints and this job still fails. THE LOSS IS NAMED, NOT LEFT
+// SILENT: before removal a dispatched run could leave commit check-runs SUCCESS while the PR
+// rollup stayed BLOCKED; after it there is no executed verdict until a human approves the gated
+// pull_request run. The notice below names that remedy and where to find the run (the id is not
+// known here; this job does not list Actions runs and must not approve itself).
 fn gunbc_ci_heal_commit_push_script() -> String {
   join(
     [
       gunbc_invoke_root_stamp_script(),
       fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
       concat("  echo \"", concat(superseded_by_healed_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n")),
+      concat("  echo \"::notice::", concat(superseded_by_healed_head_token, concat(" healed_head=$HEALED_HEAD ", concat(superseded_by_healed_head_approve_remedy, "\"\n")))),
       "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
       concat(concat("    echo \"::error::", concat(heal_author_commit_required_token, " head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=")), concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
       "  fi\n  exit 1\nfi\n"

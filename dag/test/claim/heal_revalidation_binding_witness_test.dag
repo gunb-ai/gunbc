@@ -20,7 +20,12 @@ import gunbc.witness_floor_workflow {
   witness_floor_triggers
 }
 import gunbc.ci_spec { gunbc_ci_heal_commit_push_script, gunbc_ci_heal_dispatch_invoke }
-import gunbc.heal_revalidation { superseded_by_author_head_token, heal_push_refused_token }
+import gunbc.heal_revalidation {
+  superseded_by_author_head_token,
+  heal_push_refused_token,
+  superseded_by_healed_head_token,
+  superseded_by_healed_head_approve_remedy
+}
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_root_stamp_script }
 import gunbc.ci_heal_credential { ci_heal_job_permissions }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_name }
@@ -231,6 +236,14 @@ test fn the_heal_terminal_does_not_dispatch_the_healed_head() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
   !string_contains(s: script, pattern: gunbc_ci_heal_dispatch_invoke())
     && string_contains(s: script, pattern: "  echo \"SupersededByHealedHead")
+    && string_contains(
+      s: script,
+      pattern: concat(
+        concat("::notice::", superseded_by_healed_head_token),
+        concat(" healed_head=$HEALED_HEAD ", superseded_by_healed_head_approve_remedy)
+      )
+    )
+    && string_contains(s: script, pattern: "POST /actions/runs/<id>/approve")
     && string_contains(s: script, pattern: "  exit 1\nfi\n")
     && string_contains(s: script, pattern: concat(gunbc_invoke_root_stamp_script(), "git config user.name"))
 }
