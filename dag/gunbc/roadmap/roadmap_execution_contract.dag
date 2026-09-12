@@ -62,16 +62,20 @@ type ClaimSourceRootLayout
 // not satisfy it either.
 
 // WorkItemExecutionContract is the per-node execution fact. ExecutionContractUnspecified and
-// ExecutionContract have live producers in gunbc.roadmap_authority. OperatorExclusive, ExternalLead
-// and CalendarObservation are DECLARED FRONTIER, not dangling: launch admission, serve 409,
-// verify, and contract_closure already refuse each mode by name so Unspecified is not their
-// stand-in. No live RoadmapNode.execution is constructed as one of those three today — minting a
-// public authority row that is not actually non-agent work would be a fake producer. TRIGGER: a
-// RoadmapNode the belt looks up (this public authority, or a plan supplied as a parameter) is
-// constructed with execution: OperatorExclusive, ExternalLead, or CalendarObservation, so
-// LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. A witness that constructs the arm in isolation does
-// not satisfy this trigger. Inventing a public node whose work is not operator-exclusive,
-// external-lead, or calendar-observation does not satisfy it either.
+// ExecutionContract have live producers in gunbc.roadmap_authority. NotAgentWork is DECLARED
+// FRONTIER, not dangling: launch admission, serve 409, verify, and contract_closure already refuse
+// by NonAgentWorkMode so Unspecified is not their stand-in. No live RoadmapNode.execution is
+// constructed as NotAgentWork today — minting a public authority row that is not actually non-agent
+// work would be a fake producer. TRIGGER: a RoadmapNode the belt looks up (this public authority,
+// or a plan supplied as a parameter) is constructed with execution: NotAgentWork { mode }, so
+// LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. A witness that
+// constructs the arm in isolation does not satisfy this trigger. Inventing a public node whose
+// work is not operator-exclusive, external-lead, or calendar-observation does not satisfy it either.
+
+type NonAgentWorkMode
+  = OperatorExclusiveMode
+  | ExternalLeadMode
+  | CalendarObservationMode
 
 type WorkItemExecutionContract
   = ExecutionContractUnspecified
@@ -81,9 +85,7 @@ type WorkItemExecutionContract
       path_scope: AttemptPathScope,
       source_roots: ClaimSourceRootLayout,
     }
-  | OperatorExclusive
-  | ExternalLead
-  | CalendarObservation
+  | NotAgentWork { mode: NonAgentWorkMode }
 
 type CapabilityRealization {
   capability: ExecutionCapability
@@ -172,9 +174,7 @@ fn execution_contract_required_capabilities(
 ) -> List<ExecutionCapability> {
   match contract {
     ExecutionContractUnspecified => []
-    OperatorExclusive => []
-    ExternalLead => []
-    CalendarObservation => []
+    NotAgentWork { mode: _ } => []
     ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       let required = fold(
         validations,
@@ -222,11 +222,6 @@ fn execution_contract_required_capabilities(
 // gunbc_claim_execution_contract, which always emits exactly one validation. The de-fork is what
 // keeps that true when the fifth binding is written by hand.
 
-type NonAgentWorkMode
-  = OperatorExclusiveMode
-  | ExternalLeadMode
-  | CalendarObservationMode
-
 type ContractClosure
   = ContractDeclaresNoValidation
   | ContractClosesNothing
@@ -241,12 +236,26 @@ fn non_agent_work_mode_label(mode: NonAgentWorkMode) -> String {
   }
 }
 
+fn non_agent_work_mode_from_label(label: String) -> NonAgentWorkMode? {
+  if label == non_agent_work_mode_label(mode: OperatorExclusiveMode) {
+    some(OperatorExclusiveMode)
+  } else if label == non_agent_work_mode_label(mode: ExternalLeadMode) {
+    some(ExternalLeadMode)
+  } else if label == non_agent_work_mode_label(mode: CalendarObservationMode) {
+    some(CalendarObservationMode)
+  } else {
+    none
+  }
+}
+
+fn not_agent_work_execution(mode: NonAgentWorkMode) -> WorkItemExecutionContract {
+  NotAgentWork { mode: mode }
+}
+
 fn contract_closure(contract: WorkItemExecutionContract) -> ContractClosure {
   match contract {
     ExecutionContractUnspecified => ContractDeclaresNoValidation
-    OperatorExclusive => ContractNotAgentWork { mode: OperatorExclusiveMode }
-    ExternalLead => ContractNotAgentWork { mode: ExternalLeadMode }
-    CalendarObservation => ContractNotAgentWork { mode: CalendarObservationMode }
+    NotAgentWork { mode } => ContractNotAgentWork { mode: mode }
     ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       if count(validations) == 0 {
         ContractClosesNothing
@@ -292,9 +301,7 @@ fn dispatch_required_capabilities(
 ) -> List<ExecutionCapability> {
   match contract {
     ExecutionContractUnspecified => []
-    OperatorExclusive => []
-    ExternalLead => []
-    CalendarObservation => []
+    NotAgentWork { mode: _ } => []
     ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       fold(
         concat(
@@ -396,9 +403,7 @@ fn contract_source_roots(contract: WorkItemExecutionContract) -> ClaimSourceRoot
     ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots } =>
       source_roots
     ExecutionContractUnspecified => PublicWorktreeLayout
-    OperatorExclusive => PublicWorktreeLayout
-    ExternalLead => PublicWorktreeLayout
-    CalendarObservation => PublicWorktreeLayout
+    NotAgentWork { mode: _ } => PublicWorktreeLayout
   }
 }
 
@@ -549,9 +554,8 @@ fn execution_contract_validation_summary(
 ) -> String {
   match contract {
     ExecutionContractUnspecified => "execution contract unspecified"
-    OperatorExclusive => "operator-exclusive: no agent may take this work"
-    ExternalLead => "external-lead: no agent may take this work"
-    CalendarObservation => "calendar-observation: no agent may take this work"
+    NotAgentWork { mode } =>
+      join([non_agent_work_mode_label(mode: mode), ": no agent may take this work"], "")
     ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots } =>
       join(
         map(
@@ -585,9 +589,7 @@ fn validation_consumes_affected_set_window(validation: ValidationOperation) -> B
 fn execution_contract_needs_diff_window(contract: WorkItemExecutionContract) -> Bool {
   match contract {
     ExecutionContractUnspecified => false
-    OperatorExclusive => false
-    ExternalLead => false
-    CalendarObservation => false
+    NotAgentWork { mode: _ } => false
     ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       any(
         validations,

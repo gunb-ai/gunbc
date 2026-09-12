@@ -230,14 +230,6 @@ import gunbc.roadmap_execution_contract {
   GitWorkspaceCapability,
   GunbcClaimRunnerCapability,
   WorkItemExecutionContract,
-  ExecutionContract,
-  ExecutionContractUnspecified,
-  OperatorExclusive,
-  ExternalLead,
-  CalendarObservation,
-  OperatorExclusiveMode,
-  ExternalLeadMode,
-  CalendarObservationMode,
   ClaimSourceRootLayout,
   ValidationOperation,
   ModeledValidationCommand,
@@ -246,6 +238,12 @@ import gunbc.roadmap_execution_contract {
   execution_contract_validation_summary,
   validation_consumes_affected_set_window,
   execution_contract_needs_diff_window,
+  contract_closure,
+  ContractDeclaresNoValidation,
+  ContractClosesNothing,
+  ContractCloses,
+  ContractNotAgentWork,
+  contract_source_roots,
 }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publication_helper {
@@ -5402,43 +5400,38 @@ fn belt_verify_run_and_persist(
           verdict: ValidationRefused { cause: cause },
         }
       ValidationOracleAdmitted { identity } =>
-        match node.execution {
-          ExecutionContractUnspecified =>
+        match contract_closure(contract: node.execution) {
+          ContractDeclaresNoValidation =>
             BeltValidationRun {
               executions: [],
               verdict: ValidationRefused {
                 cause: ValidationContractUnspecified,
               },
             }
-          OperatorExclusive =>
+          ContractNotAgentWork { mode } =>
             BeltValidationRun {
               executions: [],
               verdict: ValidationRefused {
-                cause: ValidationNotAgentWork { mode: OperatorExclusiveMode },
+                cause: ValidationNotAgentWork { mode: mode },
               },
             }
-          ExternalLead =>
-            BeltValidationRun {
-              executions: [],
-              verdict: ValidationRefused {
-                cause: ValidationNotAgentWork { mode: ExternalLeadMode },
-              },
-            }
-          CalendarObservation =>
-            BeltValidationRun {
-              executions: [],
-              verdict: ValidationRefused {
-                cause: ValidationNotAgentWork { mode: CalendarObservationMode },
-              },
-            }
-          ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots } =>
+          ContractClosesNothing =>
+            belt_run_validation_operations(
+              instance: instance,
+              validations: [],
+              worktree: worktree,
+              oracle_identity: identity,
+              diff_window_path: diff_window_path,
+              source_roots: contract_source_roots(contract: node.execution),
+            )
+          ContractCloses { validations } =>
             belt_run_validation_operations(
               instance: instance,
               validations: validations,
               worktree: worktree,
               oracle_identity: identity,
               diff_window_path: diff_window_path,
-              source_roots: source_roots,
+              source_roots: contract_source_roots(contract: node.execution),
             )
         }
     }

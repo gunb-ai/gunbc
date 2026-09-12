@@ -17,7 +17,7 @@ import gunbc.roadmap_execution_contract {
   contract_closure,
   contract_has_closing_validation,
   gunbc_claim_execution_contract,
-  OperatorExclusive,
+  not_agent_work_execution,
   OperatorExclusiveMode,
 }
 import gunbc.roadmap_dashboard_instance {
@@ -257,7 +257,7 @@ test fn operator_exclusive_verify_is_not_contract_needed() -> Bool {
     node_id: "n",
     instance: srv1_lab_dashboard_instance(),
     workdir: "/tmp" as FilePath,
-    contract: OperatorExclusive,
+    contract: not_agent_work_execution(mode: OperatorExclusiveMode),
   ) {
     VerificationNotAgentWork { node_id, mode: OperatorExclusiveMode } =>
       node_id == "n"

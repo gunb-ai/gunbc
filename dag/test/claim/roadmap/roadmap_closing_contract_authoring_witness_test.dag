@@ -7,7 +7,7 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
-  OperatorExclusive,
+  NotAgentWork,
   OperatorExclusiveMode,
   ValidationOperation,
   GunbcClaimValidation,
@@ -124,7 +124,7 @@ test fn an_unspecified_contract_refuses() -> Bool {
 test fn operator_exclusive_is_not_an_unspecified_closing_contract() -> Bool {
   match closing_contract_verdict_for_observed(
     node: target(),
-    contract: OperatorExclusive,
+    contract: NotAgentWork { mode: OperatorExclusiveMode },
     observations: [],
   ) {
     ClosingContractTargetNotAgentWork { target: t, mode: OperatorExclusiveMode } =>

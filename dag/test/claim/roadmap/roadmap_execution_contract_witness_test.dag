@@ -12,9 +12,10 @@ import gunbc.roadmap_execution_contract {
   CargoTestValidation,
   ExecutionContract,
   ExecutionContractUnspecified,
-  OperatorExclusive,
-  ExternalLead,
-  CalendarObservation,
+  NotAgentWork,
+  OperatorExclusiveMode,
+  ExternalLeadMode,
+  CalendarObservationMode,
   PublicWorktreeLayout,
   PathsUnrestricted,
   CapabilityRealization,
@@ -144,9 +145,7 @@ test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
     function: "example_holds" as NonEmptyStr,
   ) {
     ExecutionContractUnspecified => false
-    OperatorExclusive => false
-    ExternalLead => false
-    CalendarObservation => false
+    NotAgentWork { mode: _ } => false
     ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
       count(validations) == 1
         && count(extra_capabilities) == 0
@@ -175,9 +174,9 @@ test fn non_agent_work_does_not_await_closing_validation_authoring() -> Bool {
         source_roots: PublicWorktreeLayout,
       },
     )
-    && !contract_awaits_closing_validation_authoring(contract: OperatorExclusive)
-    && !contract_awaits_closing_validation_authoring(contract: ExternalLead)
-    && !contract_awaits_closing_validation_authoring(contract: CalendarObservation)
+    && !contract_awaits_closing_validation_authoring(contract: NotAgentWork { mode: OperatorExclusiveMode })
+    && !contract_awaits_closing_validation_authoring(contract: NotAgentWork { mode: ExternalLeadMode })
+    && !contract_awaits_closing_validation_authoring(contract: NotAgentWork { mode: CalendarObservationMode })
     && !contract_awaits_closing_validation_authoring(
       contract: gunbc_claim_execution_contract(
         entry: "dag/test/claim/example_test.dag" as FilePath,

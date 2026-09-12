@@ -8,7 +8,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_execution_contract {
-  ExecutionContractUnspecified, OperatorExclusive, ExternalLead, CalendarObservation,
+  ExecutionContractUnspecified, NotAgentWork,
   ExecutionContract, PathsAllowed, PathsUnrestricted, PublicWorktreeLayout,
   PinnedPublicPlusLocalRoot, PathOutOfScope, PathsAdmitted,
   GunbcClaimValidation, ClaimSourceRootLayout, WorkItemExecutionContract,
@@ -244,7 +244,7 @@ test fn allowed_paths_admit_a_path_under_the_prefix_directory() -> Bool {
 }
 
 test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool {
-  match contract_closure(contract: OperatorExclusive) {
+  match contract_closure(contract: NotAgentWork { mode: OperatorExclusiveMode }) {
     ContractNotAgentWork { mode: OperatorExclusiveMode } =>
       non_agent_work_mode_label(mode: OperatorExclusiveMode) == "operator-exclusive"
     ContractDeclaresNoValidation => false
@@ -255,9 +255,9 @@ test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool {
 }
 
 test fn external_lead_and_calendar_refuse_as_their_own_modes() -> Bool {
-  match contract_closure(contract: ExternalLead) {
+  match contract_closure(contract: NotAgentWork { mode: ExternalLeadMode }) {
     ContractNotAgentWork { mode: ExternalLeadMode } =>
-      match contract_closure(contract: CalendarObservation) {
+      match contract_closure(contract: NotAgentWork { mode: CalendarObservationMode }) {
         ContractNotAgentWork { mode: CalendarObservationMode } => true
         ContractDeclaresNoValidation => false
         ContractClosesNothing => false
@@ -274,7 +274,7 @@ test fn external_lead_and_calendar_refuse_as_their_own_modes() -> Bool {
 test fn unspecified_is_still_a_different_cause_from_operator_exclusive() -> Bool {
   match contract_closure(contract: ExecutionContractUnspecified) {
     ContractDeclaresNoValidation =>
-      match contract_closure(contract: OperatorExclusive) {
+      match contract_closure(contract: NotAgentWork { mode: OperatorExclusiveMode }) {
         ContractNotAgentWork { mode: OperatorExclusiveMode } => true
         ContractDeclaresNoValidation => false
         ContractClosesNothing => false

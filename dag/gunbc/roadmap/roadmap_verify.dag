@@ -122,7 +122,7 @@ type VerificationOutcome
 
 // SIX ARMS BECAUSE SIX REMEDIES. Unbound means an agent-work node names no validation — nothing
 // failed, there is simply nothing to run, and the fix is to author a contract. NotAgentWork is
-// not that state: OperatorExclusive, ExternalLead, and CalendarObservation refuse by named mode,
+// not that state: NotAgentWork refuses by NonAgentWorkMode,
 // and must not become ContractNeededFirst. Failed means the validation ran and answered no: the
 // work is genuinely incomplete. Refused means it could not run at all — a missing binary, an
 // unrealized capability, a transport that did not deliver the command — which is an environment
