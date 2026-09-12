@@ -596,7 +596,7 @@ jobs:
             fi
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
             echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
-            echo "::notice::SupersededByHealedHead healed_head=$HEALED_HEAD has no executed verdict until a human approves the gated pull_request run (POST /actions/runs/<id>/approve). The run id is not known at this step because GitHub creates that run after the push returns; list it with GET /repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$HEALED_HEAD&event=pull_request. Do not push again to force a verdict; another bot head creates another gated run."
+            echo "::notice::SupersededByHealedHead healed_head=$HEALED_HEAD has no executed verdict until a human approves the gated pull_request run (POST /actions/runs/<id>/approve). The run id is not known at this step because GitHub creates that run after the push returns; list it with GET /repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEALED_HEAD&event=pull_request. Do not push again to force a verdict; another bot head creates another gated run."
             if [ -n "$AUTHOR_COMMIT_DRIFT" ]; then
               echo "::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=ActionsJobCredentialScopeUnavailable regen_command='gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet'" >&2
             fi

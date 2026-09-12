@@ -292,7 +292,7 @@ data superseded_by_healed_head_token: String = prior_run_disposition_token(dispo
 // trades a commit-level SUCCESS that the PR rollup could not see for NO executed verdict until a
 // human approves the gated pull_request run. The run id is not known at this step: GitHub creates
 // that run after the push returns, and this job's actions grant is none (it must not approve itself).
-data superseded_by_healed_head_approve_remedy: String = "has no executed verdict until a human approves the gated pull_request run (POST /actions/runs/<id>/approve). The run id is not known at this step because GitHub creates that run after the push returns; list it with GET /repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$HEALED_HEAD&event=pull_request. Do not push again to force a verdict; another bot head creates another gated run."
+data superseded_by_healed_head_approve_remedy: String = "has no executed verdict until a human approves the gated pull_request run (POST /actions/runs/<id>/approve). The run id is not known at this step because GitHub creates that run after the push returns; list it with GET /repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEALED_HEAD&event=pull_request. Do not push again to force a verdict; another bot head creates another gated run."
 
 data superseded_by_author_head_token: String = prior_run_disposition_token(disposition: SupersededByAuthorHead {
     prior_head: heal_token_arm_probe,
