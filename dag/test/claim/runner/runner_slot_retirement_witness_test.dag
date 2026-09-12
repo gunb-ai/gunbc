@@ -1,0 +1,150 @@
+module test.claim.runner.runner_slot_retirement_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import gunbc.host_axis_caps {
+  CapRaiseAdmitted,
+  CapRaiseBlockedPendingRetirement,
+  CapRaiseBlockedUnobserved,
+  cap_raise_standing,
+}
+import gunbc.runner_slot_retirement {
+  RetirementComplete,
+  RetirementPendingDrain,
+  RetirementUnobserved,
+  RunnerRetirementObservation,
+  runner_retirement_standing,
+  surplus_observation_after_retirement,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn drained() -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: "actions-runner@srv1-14.service",
+    replacement_inhibited: true,
+    unit_present: false,
+    cgroup_process_count: 0,
+    cgroup_readable: true,
+  }
+}
+
+// THE POSITIVE CONTROL. Without it every refusal below is satisfied by a predicate that never
+// completes, which is the failure a refusal-only suite cannot see.
+test fn a_fully_drained_slot_is_retired() -> Bool {
+  match runner_retirement_standing(o: drained()) {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A UNIT STILL PRESENT IS NOT RETIRED, and it is not stopped either -- admitted work finishes.
+test fn a_present_unit_is_pending_rather_than_stopped() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      unit_present: true,
+      cgroup_process_count: 3,
+      cgroup_readable: true,
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// THE ORPHAN STATE: THE UNIT IS GONE AND ITS CGROUP IS NOT EMPTY. This is the exact class the
+// teardown drop-in (ExitType=cgroup, KillMode=control-group) was landed to prevent -- a unit
+// reporting stopped while Runner.Worker, claim_executor and gunbc keep running under it. Capacity
+// must stay charged, because that work is still holding memory.
+test fn a_gone_unit_with_a_populated_cgroup_is_not_retired() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      unit_present: false,
+      cgroup_process_count: 2,
+      cgroup_readable: true,
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// AN UNREADABLE CGROUP IS UNOBSERVED, NOT EMPTY. A count that could not be taken and a count of zero
+// have opposite consequences; treating the first as the second releases a ceiling on evidence
+// nobody has.
+test fn an_unreadable_cgroup_is_unobserved_not_empty() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      unit_present: false,
+      cgroup_process_count: 0,
+      cgroup_readable: false,
+    }
+  ) {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+}
+
+// A DRAIN WITHOUT INHIBITION NEVER COMPLETES. An ephemeral runner exits after one job and is
+// restarted by its manager, so a slot drained without inhibiting replacement simply returns.
+test fn an_uninhibited_slot_cannot_complete_a_drain() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: false,
+      unit_present: false,
+      cgroup_process_count: 0,
+      cgroup_readable: true,
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// THE END-TO-END JOIN: one drained slot and one still draining must leave the raise BLOCKED, and the
+// blocked standing must name the slot that is not done.
+test fn a_partial_drain_still_blocks_the_raise() -> Bool {
+  match cap_raise_standing(
+    observation: surplus_observation_after_retirement(
+      standings: [
+        runner_retirement_standing(o: drained()),
+        runner_retirement_standing(
+          o: RunnerRetirementObservation {
+            unit: "actions-runner@srv1-15.service",
+            replacement_inhibited: true,
+            unit_present: true,
+            cgroup_process_count: 1,
+            cgroup_readable: true,
+          }
+        ),
+      ]
+    )
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
+    CapRaiseAdmitted => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AND A COMPLETE DRAIN ADMITS IT. This is the only path to a raise in the whole transaction.
+test fn a_complete_drain_admits_the_raise() -> Bool {
+  match cap_raise_standing(
+    observation: surplus_observation_after_retirement(standings: [runner_retirement_standing(o: drained())])
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}

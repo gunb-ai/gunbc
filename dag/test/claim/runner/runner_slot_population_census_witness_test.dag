@@ -1,0 +1,156 @@
+module test.claim.runner.runner_slot_population_census_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.host_axis_caps {
+  CapRaiseAdmitted,
+  CapRaiseBlockedPendingRetirement,
+  CapRaiseBlockedUnobserved,
+  cap_raise_standing,
+}
+import gunbc.runner_slot_population_census {
+  CensusDerived,
+  CensusRefused,
+  ObservedRunnerUnit,
+  observed_units_from_list_units,
+  slot_population_census,
+  surplus_observation,
+  unit_is_owned_by_host,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PROPERTY THIS FILE EXISTS FOR: A SHRINK MUST NOT BLIND ITSELF.
+//
+// The natural way to recognise a runner unit is to look it up in the desired set, and it is
+// self-blinding for precisely this operation. The moment the width narrows, the slots being retired
+// leave the desired set -- so a desired-membership decoder stops recognising them at the instant the
+// removal needs to act on them, and a host's own units read as foreign.
+
+// OWNERSHIP SURVIVES THE SHRINK. srv1-14 belongs to srv1 whether or not srv1 desires a fourteenth
+// slot, and this is the assertion that would red if ownership were ever re-keyed on desired
+// membership.
+test fn an_old_managed_slot_is_still_ours_after_the_width_narrows() -> Bool {
+  unit_is_owned_by_host(host: operator_host_srv1, unit: "actions-runner@srv1-14.service")
+    && unit_is_owned_by_host(host: operator_host_srv1, unit: "actions-runner@srv1-21.service")
+    && unit_is_owned_by_host(host: operator_host_srv1, unit: "actions-runner@srv1-01.service")
+}
+
+// AND IT DOES NOT OVER-CLAIM. A neighbour's unit is not ours merely by sitting in the same
+// directory, which is the other half of the same rule.
+test fn another_hosts_slot_is_not_ours() -> Bool {
+  !unit_is_owned_by_host(host: operator_host_srv1, unit: "actions-runner@srv3-01.service")
+    && !unit_is_owned_by_host(host: operator_host_srv3, unit: "actions-runner@srv1-01.service")
+}
+
+// A SURPLUS SLOT IS SEEN AS RETIRING AND THEREFORE BLOCKS THE RAISE. This is the end-to-end join:
+// census -> observation -> gate.
+test fn a_surviving_old_slot_blocks_the_raise_through_the_census() -> Bool {
+  match cap_raise_standing(
+    observation: surplus_observation(
+      census: slot_population_census(
+        host: operator_host_srv1,
+        observed: [
+          ObservedRunnerUnit { unit: "actions-runner@srv1-01.service", active: true },
+          ObservedRunnerUnit { unit: "actions-runner@srv1-14.service", active: false },
+        ],
+      )
+    )
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
+    CapRaiseAdmitted => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AN INACTIVE SURPLUS UNIT IS STILL PRESENT. A stopped-but-present unit can be restarted by the
+// manager, so presence rather than activity is the retirement condition -- `busy=false` is not
+// retirement and neither is `inactive`. The row above uses active: false deliberately; this one
+// states why it must still block.
+test fn an_inactive_surplus_unit_is_not_retired() -> Bool {
+  match surplus_observation(
+    census: slot_population_census(
+      host: operator_host_srv1,
+      observed: [ObservedRunnerUnit { unit: "actions-runner@srv1-20.service", active: false }],
+    )
+  ) {
+    SurplusSlotsObserved { retired: _, still_present: sp } => sp.length() == 1
+    SurplusSlotsUnobserved { cause: _ } => false
+  }
+}
+
+// A FOREIGN OCCUPANT REFUSES THE CENSUS WHOLESALE, and the refusal propagates as UNOBSERVED rather
+// than as an empty surplus -- so a shrink stops rather than proceeding around something it could
+// not identify on a host where it is about to stop units.
+test fn a_foreign_occupant_refuses_the_census() -> Bool {
+  match slot_population_census(
+    host: operator_host_srv1,
+    observed: [
+      ObservedRunnerUnit { unit: "actions-runner@srv1-01.service", active: true },
+      ObservedRunnerUnit { unit: "actions-runner@srv3-02.service", active: true },
+    ],
+  ) {
+    CensusRefused { cause: _ } => true
+    CensusDerived { rows: _ } => false
+  }
+}
+
+test fn a_refused_census_blocks_the_raise_as_unobserved() -> Bool {
+  match cap_raise_standing(
+    observation: surplus_observation(
+      census: slot_population_census(
+        host: operator_host_srv1,
+        observed: [ObservedRunnerUnit { unit: "actions-runner@srv3-02.service", active: true }],
+      )
+    )
+  ) {
+    CapRaiseBlockedUnobserved { cause: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+  }
+}
+
+// EQUAL COUNTS WITH WRONG IDENTITIES MUST FAIL. A census that compared how MANY units were present
+// would pass this input -- one observed, one desired -- while the observed unit is not the desired
+// one. Counting is what the capacity planner's own history records as unable to converge.
+test fn equal_counts_with_wrong_identities_do_not_admit() -> Bool {
+  match cap_raise_standing(
+    observation: surplus_observation(
+      census: slot_population_census(
+        host: operator_host_srv1,
+        observed: [ObservedRunnerUnit { unit: "actions-runner@srv1-21.service", active: true }],
+      )
+    )
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
+    CapRaiseAdmitted => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+
+// THE PARSE IS PINNED AGAINST REAL `systemctl list-units --plain --no-legend` OUTPUT, columns
+// UNIT LOAD ACTIVE SUB DESCRIPTION. A parser that took the wrong field would still produce a
+// plausible list, which is why this asserts the ACTIVE flag rather than only the names.
+test fn list_units_output_parses_to_units_with_activity() -> Bool {
+  let parsed = observed_units_from_list_units(
+    stdout: join([
+      "actions-runner@srv1-01.service loaded active running GitHub Actions Runner\n",
+      "actions-runner@srv1-14.service loaded inactive dead GitHub Actions Runner\n",
+      "sshd.service loaded active running OpenBSD Secure Shell server\n",
+    ], "")
+  )
+  parsed.length() == 2
+    && any(parsed, o => o.unit == "actions-runner@srv1-01.service" && o.active)
+    && any(parsed, o => o.unit == "actions-runner@srv1-14.service" && !o.active)
+}
+
+// A NON-RUNNER UNIT IN THE SAME LISTING IS NOT A FOREIGN OCCUPANT -- it is not a runner slot at all
+// and never reaches the ownership question. Conflating "not a slot unit" with "a slot unit we do
+// not own" would refuse every census taken on a host that also runs sshd.
+test fn a_non_runner_unit_is_filtered_before_ownership() -> Bool {
+  observed_units_from_list_units(
+    stdout: "sshd.service loaded active running OpenBSD Secure Shell server\n"
+  ).length() == 0
+}

@@ -1,0 +1,97 @@
+module gunbc.runner_slot_retirement
+
+import std.types { Bool, List, String }
+import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
+
+// RETIRING A SLOT IS A DRAIN, NOT A STOP, AND THE DIFFERENCE IS A JOB.
+//
+// A surplus runner slot may be mid-job. `systemctl stop` or `mask --now` ends that job, so a shrink
+// implemented with either converts a capacity change into cancelled CI work -- the cost the whole
+// transaction exists to avoid. Retirement is therefore three separate obligations, and the order
+// between them is the safety property:
+//
+//   1. INHIBIT REPLACEMENT so the slot cannot come back while draining. An ephemeral JIT runner
+//      exits after one job and is restarted by its manager; without inhibition a drained slot is
+//      simply replaced and the census sees it again next pass, forever.
+//   2. LET ADMITTED WORK FINISH. Nothing is killed. The unit leaves on its own when its current job
+//      ends, which is what makes this a drain.
+//   3. OBSERVE IT GONE, and observe the CGROUP EMPTY -- two facts, not one.
+//
+// WHY THE CGROUP IS A SEPARATE OBSERVATION FROM THE UNIT. `gunbc.runner_unit`'s teardown intent
+// (ExitType=cgroup, KillMode=control-group) exists precisely because a runner unit could report
+// stopped while its Runner.Worker, claim_executor and gunbc children kept running -- the orphan
+// class that motivated that drop-in. A unit reported gone whose cgroup still holds processes is
+// exactly that state, and it still holds memory. Charging capacity against the unit's disposition
+// alone would release a ceiling while the work under it is live.
+type RunnerRetirementObservation {
+  unit: String
+  replacement_inhibited: Bool
+  unit_present: Bool
+  cgroup_process_count: Int
+  cgroup_readable: Bool
+}
+
+// `busy=false` IS NOT RETIREMENT AND NEITHER IS `inactive`. The arms below are named for what is
+// still true rather than for how far along the drain is, so a consumer cannot mistake progress for
+// completion.
+type RunnerRetirementStanding
+  = RetirementComplete { unit: String }
+  | RetirementPendingDrain { unit: String, cause: String }
+  | RetirementUnobserved { unit: String, cause: String }
+
+// AN UNREADABLE CGROUP IS UNOBSERVED, NOT EMPTY. A count that could not be taken and a count of
+// zero are different states with opposite consequences, and rendering the first as the second
+// releases a ceiling on evidence nobody has.
+fn runner_retirement_standing(o: RunnerRetirementObservation) -> RunnerRetirementStanding {
+  if !o.cgroup_readable {
+    RetirementUnobserved {
+      unit: o.unit,
+      cause: "the slot's cgroup could not be read, so whether work is still running under it is unknown",
+    }
+  } else if !o.replacement_inhibited {
+    RetirementPendingDrain {
+      unit: o.unit,
+      cause: "replacement is not inhibited, so this slot can return after it drains and the drain would never complete",
+    }
+  } else if o.unit_present {
+    RetirementPendingDrain {
+      unit: o.unit,
+      cause: "the unit is still present; admitted work is allowed to finish rather than be stopped",
+    }
+  } else if o.cgroup_process_count > 0 {
+    RetirementPendingDrain {
+      unit: o.unit,
+      cause: "the unit is gone but its cgroup still holds processes, which is the orphan state the teardown drop-in exists to prevent; the capacity stays charged",
+    }
+  } else {
+    RetirementComplete { unit: o.unit }
+  }
+}
+
+fn retirement_is_complete(s: RunnerRetirementStanding) -> Bool {
+  match s {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+fn retirement_unit(s: RunnerRetirementStanding) -> String {
+  match s {
+    RetirementComplete { unit: u } => u
+    RetirementPendingDrain { unit: u, cause: _ } => u
+    RetirementUnobserved { unit: u, cause: _ } => u
+  }
+}
+
+// THE JOIN INTO THE CAP GATE. A slot is removed from `still_present` ONLY on RetirementComplete, so
+// every other standing -- pending, unobserved, unreadable -- keeps the raise blocked and keeps the
+// slot's capacity charged. There is deliberately no arm that treats "probably done" as done.
+fn surplus_observation_after_retirement(
+  standings: List<RunnerRetirementStanding>,
+) -> SurplusSlotObservation {
+  SurplusSlotsObserved {
+    retired: standings |> filter(s => retirement_is_complete(s: s)) |> map(s => retirement_unit(s: s)),
+    still_present: standings |> filter(s => !retirement_is_complete(s: s)) |> map(s => retirement_unit(s: s)),
+  }
+}
