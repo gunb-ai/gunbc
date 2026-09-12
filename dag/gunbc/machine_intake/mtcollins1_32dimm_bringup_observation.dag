@@ -76,6 +76,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   association_is_decoded,
   oem_sel_empirical_association,
   pre_os_bringup_verdict,
+  restart_without_progress_terminal_threshold,
   sel_window_after_cursor,
   sol_capture_reading,
   verdict_permits_further_actuation,
@@ -576,8 +577,8 @@ fn check_bounded_terminal() -> ProcessExit {
     PhysicalRemediationRequired { restarts_without_progress: n, localization: l } =>
       match l {
         LocalizableFrom { source: src } =>
-          if n < 3 {
-            exit_failure(reason: "bounded-terminal: fewer restarts than the threshold were reported for a window of twenty")
+          if n < restart_without_progress_terminal_threshold {
+            exit_failure(reason: "bounded-terminal: fewer restarts than the declared threshold were reported for a window of twenty")
           } else if src.decl_name != "mtcollins1_dram_training_capture" {
             exit_failure(reason: "bounded-terminal: the localization pointer does not name the firmware console capture that exposes per-slot evidence")
           } else {
