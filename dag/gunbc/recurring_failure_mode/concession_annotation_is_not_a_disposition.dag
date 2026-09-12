@@ -70,7 +70,7 @@ data concession_annotation_is_not_a_disposition: RecurringFailureMode = Recurrin
 
     "A grep for \"gone constant\" / \"next repair\" / \"for now\" does not fire this trigger; those phrases are how the concession is currently spelled, not the invalid state.",
 
-    "The capability is refusing the construction, which is what makes the concession have nothing left to stand in for.)"
+    "The capability is refusing the construction, which is what makes the concession have nothing left to stand in for.)",
   ],
 
   evidence: [
