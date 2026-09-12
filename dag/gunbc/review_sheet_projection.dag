@@ -409,27 +409,6 @@ fn listing_has_erasure(erasure_by_id: Map<String, DerivedPayloadErasure>, listin
   }
 }
 
-fn read_row_listing_standing(
-  schema: ReviewSheetSchema,
-  header_by_name: Map<String, Int>,
-  row: ObservedSheetRow,
-) -> ListingStandingRead? {
-  match observed_cell_for_column(
-    header_by_name: header_by_name,
-    row: row,
-    column: first_column_where(schema: schema, take: col => match col.kind {
-      ListingStanding => Present { value: col }
-      DerivedField { source_field: _ } => none
-      OperatorEntered => none
-      DerivedErasureMark => none
-    }),
-  ) {
-    KindAbsentFromSchema => none
-    KindColumnMissingFromHeader { column: _ } => none
-    KindCell { value: cell } => Present { value: read_listing_standing(cell: cell) }
-  }
-}
-
 fn read_row_erasure_mark(
   schema: ReviewSheetSchema,
   header_by_name: Map<String, Int>,
