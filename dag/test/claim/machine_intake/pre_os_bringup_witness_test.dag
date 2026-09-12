@@ -252,6 +252,41 @@ test fn progress_after_one_restart_reads_as_progress_even_beside_oem_records() -
   }
 }
 
+// MIXED HISTORY: one good boot followed by a sustained failure run must still reach the terminal
+// (review 64164); a good boot followed by a run BELOW the bound still reads as progress.
+test fn an_early_good_boot_does_not_outvote_a_trailing_failure_run() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), progress(id: 2), restart(id: 3), restart(id: 4), restart(id: 5)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: _ } => true
+    _ => false
+  }
+}
+
+test fn a_trailing_run_below_the_bound_after_progress_still_reads_as_progress() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), progress(id: 2), restart(id: 3), restart(id: 4)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 2 } => true
+    _ => false
+  }
+}
+
+test fn the_whole_corpus_window_uncut_reaches_the_terminal_despite_the_early_good_boot() -> Bool {
+  match pre_os_bringup_verdict(
+    window: mtcollins1_sel_window,
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    PhysicalRemediationRequired { restarts_without_progress: 20, localization: _ } => true
+    _ => false
+  }
+}
+
 fn emitting_console_profile() -> PreOsObservationCapabilities {
   PreOsObservationCapabilities {
     baseboard: mtcollins1_pre_os_capabilities.baseboard,

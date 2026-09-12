@@ -174,11 +174,22 @@ type PreOsBringupVerdict
   | BringupUndetermined { cause: BringupUndeterminedCause }
   | PhysicalRemediationRequired { restarts_without_progress: Int, localization: RemediationLocalization }
 
+// THE RUN OF RESTARTS SINCE THE LAST PROGRESS. A cycle that saw progress resets the count, so the
+// figure is the length of the TRAILING failure sequence -- the only one that says anything about
+// the host as it is now. Counting every progress-less cycle in the window would let one early good
+// boot outvote any number of later failures (review 64164 on gunbc#11110), which is a bound that
+// never engages.
+fn trailing_restarts_without_progress(cycles: List<BootCycleReading>) -> Int {
+  fold(cycles, init: 0, f: (acc, c) => if c.progress_seen { 0 } else { acc + 1 })
+}
+
 // THE FOLD. Its inputs are the window, the profile and the console reading; NOT an OEM payload,
-// NOT an actuation receipt. Progress anywhere in the window is progress. No progress and at least
-// the threshold of restarts is the stable terminal, and the answer to a stable terminal is a
-// refusal to keep actuating: PhysicalRemediationRequired, localized only as far as the platform
-// can see. Fewer restarts is undetermined -- the window may simply be short.
+// NOT an actuation receipt. The stable terminal is decided FIRST, from the trailing run: at least
+// the threshold of restarts since the last progress is a refusal to keep actuating,
+// PhysicalRemediationRequired, localized only as far as the platform can see, whatever happened
+// earlier in the window. Only a window whose trailing run is below the bound may report progress
+// seen anywhere in it; a shorter run with no progress at all is undetermined -- the window may
+// simply be short.
 //
 // THE CONSOLE ENTERS EXACTLY ONCE, on the empty-window arm, and only to name the cause more
 // precisely: a silent console beside an empty window is "nothing observed", while an emitting
@@ -193,10 +204,11 @@ fn pre_os_bringup_verdict(
   let cycles = boot_cycles(window: window)
   let with_progress = cycles_with_progress(cycles: cycles)
   let without_progress = cycles_without_progress(cycles: cycles)
-  if with_progress > 0 {
+  let trailing = trailing_restarts_without_progress(cycles: cycles)
+  if trailing >= restart_without_progress_terminal_threshold {
+    PhysicalRemediationRequired { restarts_without_progress: trailing, localization: remediation_localization(profile: profile) }
+  } else if with_progress > 0 {
     FirmwareProgressObserved { cycles_with_progress: with_progress, cycles_without_progress: without_progress }
-  } else if without_progress >= restart_without_progress_terminal_threshold {
-    PhysicalRemediationRequired { restarts_without_progress: without_progress, localization: remediation_localization(profile: profile) }
   } else if without_progress > 0 {
     BringupUndetermined { cause: RestartsBelowTerminalThreshold { restarts_without_progress: without_progress } }
   } else {
