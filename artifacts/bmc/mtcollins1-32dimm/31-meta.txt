@@ -1,0 +1,3 @@
+sol_pid=614789 22:24:24.338Z
+22:24:28.343Z reset issued
+Chassis Power Control: Reset
