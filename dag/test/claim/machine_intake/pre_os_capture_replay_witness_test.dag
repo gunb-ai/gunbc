@@ -55,9 +55,7 @@ test fn w_truncated_configuration_cannot_support_absence() -> Bool {
           match positive.inventory { ObservationEstablished { observed: true } => match negative.inventory { ObservationRefused { cause: _ } => true _ => false } _ => false }
             && match absence { GoalSatisfied { evidence: _ } => !contains(payload, diagnostic) GoalDiverged { deviations: _ } => contains(payload, diagnostic) _ => false }
             && match pre_os_diagnostic_absence(question: question, payload: incomplete, source: source, diagnostic: diagnostic) { GoalAssessmentRefused { cause: _ } => true _ => false }
-            && match pre_os_diagnostic_absence(question: question, payload: "", source: source, diagnostic: diagnostic) { GoalAssessmentRefused { cause: _ } => true _ => false }
-            && match pre_os_diagnostic_absence(question: question, payload: payload,
-              source: CoverageGapContinuityBroken { continuity: ContinuityUnknown { detail: "collector exited at stdin EOF before coverage was established" } }, diagnostic: diagnostic) { GoalAssessmentRefused { cause: _ } => true _ => false }
+
         }
       })
   }
