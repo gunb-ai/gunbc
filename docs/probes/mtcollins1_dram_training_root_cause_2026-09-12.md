@@ -74,15 +74,28 @@ controller's own clock reading, and `exit=0`. Record `51e` is the restart and `5
 `0fde70331102`.
 
 **AND JOINING THE TWO ARTIFACTS REQUIRES A FACT NEITHER OF THEM STATES ALONE — the controller's
-clock is wrong by exactly four hours while labelling itself UTC.** Measured in the same second:
-the host reads `2026-09-12T03:55:24Z` and the controller reports `09/11/2026 11:55:24 PM UTC`.
+clock is wrong by exactly four hours while labelling itself UTC.** The measurement is the first
+three lines of `mtcollins1-sel-full-2026-09-12T0355Z.txt`: line 1 is the host clock at capture,
+line 2 is the argv that read the controller's clock, and line 3 is the controller's answer. Read
+them as a pair — the seconds agree, the hours differ by four, and the controller's day is the
+previous one.
+
+The readings are deliberately NOT re-typed here. An earlier revision of this paragraph quoted a
+host/controller pair taken from a live probe about half a minute before the committed capture, so
+the numbers in the prose appeared nowhere in the artifact the prose cited — the same defect this
+section exists to retract, committed inside the retraction. Review 64318 found it. DESIGN section 6
+is the rule: name the instrument, never transcribe its output, because a transcribed number is
+unreachable from the thing that owns it.
+
 So every timestamp in every SEL capture from this unit is four hours behind real UTC, and reads
 as a different calendar day. The reviewer's observation that the artifact contains no `09/12/2026`
 rows is correct and is explained by this, not by the boot being absent.
 
-Applying it: the SOL capture opens at `02:37:23Z` host time; SEL `518` (`S0/G0: working`) is
-BMC `10:37:05 PM` = `02:37:05Z`, and SEL `51f` is BMC `10:42:09 PM` = `02:42:09Z` — 4m46s after
-the SOL session attached. The payload and the console text describe one boot.
+Applying it: the SOL capture's own first line carries its start; SEL records `518`
+(`S0/G0: working`), `51e` (`System Restart`) and `51f` (the `0fde70331102` payload) sit at lines
+1308, 1314 and 1315 of that capture. Add four hours to their controller timestamps and they
+bracket the SOL session — power-on just before it attached, restart under five minutes later. The
+payload and the console text describe one boot.
 
 This is a JOIN ACROSS TWO CLOCKS, one of which is known wrong, so it is an inference and not a
 deduction. What would make it one: a shared identifier in both streams, which neither carries.
