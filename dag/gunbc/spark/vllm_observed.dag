@@ -401,7 +401,6 @@ type VllmModelsRouteReadbackStanding
   | ModelsRouteFieldUnreadable { served_model_id: NonEmptyStr, field: NonEmptyStr, cause: NonEmptyStr }
   | ModelsRouteEntryDuplicated { served_model_id: NonEmptyStr, count: Int }
   | ModelsRouteDocumentUnreadable { cause: NonEmptyStr }
-  | ModelsRouteEntryNotAnObject { served_model_id: NonEmptyStr }
 
 fn vllm_models_route_standing_wire(s: VllmModelsRouteReadbackStanding) -> String {
   match s {
@@ -419,8 +418,6 @@ fn vllm_models_route_standing_wire(s: VllmModelsRouteReadbackStanding) -> String
       join(["the /v1/models document advertises ", i as String, " ", to_string(n), " times, so no single entry describes it"], "")
     ModelsRouteDocumentUnreadable { cause: c } =>
       join(["the /v1/models document could not be read as a model list: ", c as String], "")
-    ModelsRouteEntryNotAnObject { served_model_id: i } =>
-      join(["the /v1/models entry for ", i as String, " is not an object, so it has no members to read"], "")
   }
 }
 
@@ -557,13 +554,28 @@ fn vllm_models_entry_selection(entries: List<JsonValue>, served_model_id: NonEmp
   }
 }
 
+// THE NON-OBJECT ARMS BELOW ARE TOTALITY, NOT A WALL, AND THEY GET NO STANDING ARM OF THEIR OWN.
+// An earlier spelling gave "the entry is not an object" its own arm of the standing, and review
+// 64206 is right that nothing could ever observe it: an entry only reaches this function after
+// vllm_models_entry_id_matches answered JsonMemberFound for its id, which a scalar cannot do. So the
+// state is unreachable BY CONSTRUCTION on this path, and an arm no producer can inhabit is
+// decoration that will later be cited as coverage (DESIGN 4b). The match still answers the case
+// because the coproduct is total; it answers it as an unreadable field rather than as a distinct
+// outcome the type promises a reader they might see. A scalar entry IS reported, one level up, where
+// it is genuinely observable: vllm_models_entry_selection counts it as unexaminable.
+//
 // ONE MATCH PER FIELD AND NO SEED. Each member is looked up once, every lookup arm has its own
 // sentence, and there is nowhere to substitute a default: an entry missing root does not become an
 // empty path, an entry that is a scalar is not reported as an entry missing a field, and a
 // max_model_len this substrate cannot read exactly does not become a zero context.
 fn vllm_models_route_standing_from_entry(entry: JsonValue, served_model_id: NonEmptyStr) -> VllmModelsRouteReadbackStanding {
   match json_object_unique_member(v: entry, key: "root") {
-    JsonMemberNotAnObject => ModelsRouteEntryNotAnObject { served_model_id: served_model_id }
+    JsonMemberNotAnObject =>
+      ModelsRouteFieldUnreadable {
+        served_model_id: served_model_id,
+        field: "root" as NonEmptyStr,
+        cause: vllm_member_shape_cause(field: "root" as NonEmptyStr, lookup: JsonMemberNotAnObject),
+      }
     JsonMemberAbsent => ModelsRouteFieldAbsent { served_model_id: served_model_id, field: "root" as NonEmptyStr }
     JsonMemberDuplicated { count: n } =>
       ModelsRouteFieldUnreadable {
@@ -577,7 +589,12 @@ fn vllm_models_route_standing_from_entry(entry: JsonValue, served_model_id: NonE
           match json_object_unique_member(v: entry, key: "max_model_len") {
             JsonMemberAbsent =>
               ModelsRouteFieldAbsent { served_model_id: served_model_id, field: "max_model_len" as NonEmptyStr }
-            JsonMemberNotAnObject => ModelsRouteEntryNotAnObject { served_model_id: served_model_id }
+            JsonMemberNotAnObject =>
+              ModelsRouteFieldUnreadable {
+                served_model_id: served_model_id,
+                field: "max_model_len" as NonEmptyStr,
+                cause: vllm_member_shape_cause(field: "max_model_len" as NonEmptyStr, lookup: JsonMemberNotAnObject),
+              }
             JsonMemberDuplicated { count: n } =>
               ModelsRouteFieldUnreadable {
                 served_model_id: served_model_id,

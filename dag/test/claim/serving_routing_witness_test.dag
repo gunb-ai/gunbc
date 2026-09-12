@@ -171,7 +171,10 @@ test fn a_route_that_does_not_answer_is_never_ready_and_one_that_answers_wrongly
   w_ready(standing: HarnessBackendServing {
     model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
     unit: DeepseekV4FlashOnVllm,
-    readback: ModelsRouteEntryAbsent { served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr },
+    readback: ModelsRouteEntryAbsent {
+      served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+      unexaminable_entries: 0,
+    },
   })
     && !w_ready(standing: HarnessBackendUnreachable { url: "http://192.168.1.236:30000/v1/models" })
     && !w_ready(standing: HarnessBackendUnreadable { cause: "unexpected token" })

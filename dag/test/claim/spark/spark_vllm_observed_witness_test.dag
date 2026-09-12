@@ -36,7 +36,7 @@ import gunbc.spark.vllm_observed {
   vllm_readback_2026_09_03,
   VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteEntryAbsent,
   ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, ModelsRouteEntryDuplicated,
-  ModelsRouteDocumentUnreadable, ModelsRouteEntryNotAnObject,
+  ModelsRouteDocumentUnreadable,
   vllm_models_route_standing,
 }
 import extdeps.vllm.server {
