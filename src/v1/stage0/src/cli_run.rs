@@ -42648,6 +42648,15 @@ pub fn run_required_regen_fixed_point(
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
+/// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --
+/// see `required_regen_host::run_dag_artifact_identity`. Re-exported here rather than reached
+/// directly so every required phase addresses its producer through one surface, the way the
+/// regen and generated-artifact paths do.
+pub use required_regen_host::{
+    run_dag_artifact_identity, DagArtifactIdentityOutcome, DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT,
+    DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT,
+};
+
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
 
