@@ -13,13 +13,14 @@ import gunbc.roadmap_status {
 import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified, ExecutionContract,
   CargoFmtValidation,
+  PathsUnrestricted, PublicWorktreeLayout,
 }
 import gunbc.v1_deletion_plan { V1FinishLineSpec, CompilerFixedPoint }
 import gunbc.roadmap_program_view {
   V1ConvergenceFront, NamespacePDeriveFront, V2GenerationFront,
   ConvergenceFrontSpec, program_front_key,
   RemainingShape, ConstraintView, ConstraintKind,
-  ImplementationConstraint, ContractConstraint,
+  ImplementationConstraint, ContractConstraint, NonAgentWorkConstraint,
   ProposedPlane, ProposedCarrierAbsent,
   FinishLineView, V1DeletionProgramView,
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused,
@@ -70,7 +71,7 @@ fn fx_node_custom(
       Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
     } else { Unsized },
     execution: if bound {
-      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
+      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
     signoff: Unsigned,
@@ -87,7 +88,7 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
       Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
     } else { Unsized },
     execution: if bound {
-      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] }
+      ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
     owner: "fixture",
     signoff: Unsigned,
@@ -101,7 +102,7 @@ fn fx_pr_node(id: String) -> RoadmapNode {
     line: DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
-    execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [] },
+    execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     owner: "fixture",
     signoff: Unsigned,
   }
@@ -191,7 +192,7 @@ fn fx_derived(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>)
       finish_lines: [], fronts: [],
       remaining: RemainingShape {
         sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
-        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
+        in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, not_agent_work: 0 - 1, unsized: 0 - 1,
       },
       proposed: ProposedCarrierAbsent,
     }
@@ -254,6 +255,7 @@ test fn witness_acceptance_moves_the_primary_constraint() -> Bool {
               && match ac.kind {
                 ImplementationConstraint => true
                 ContractConstraint => false
+                NonAgentWorkConstraint => false
               }
         }
       }

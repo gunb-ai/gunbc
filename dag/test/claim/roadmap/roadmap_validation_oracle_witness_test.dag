@@ -51,6 +51,8 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
+  PathsUnrestricted,
+  PublicWorktreeLayout,
   GunbcClaimValidation,
   CargoTestValidation,
   ModeledValidationCommand,
@@ -66,6 +68,7 @@ import gunbc.roadmap_validation_oracle {
   ValidationOracleGateRefused,
   ValidationRefusalCause,
   ValidationContractUnspecified,
+  ValidationContractClosesNothing,
   ValidationOracleUnpinnable,
   ValidationOracleMissing,
   ValidationOracleAmbiguous,
@@ -125,6 +128,8 @@ fn oracle_contract() -> WorkItemExecutionContract {
       },
     ],
     extra_capabilities: [],
+    path_scope: PathsUnrestricted,
+    source_roots: PublicWorktreeLayout,
   }
 }
 
@@ -441,6 +446,8 @@ test fn cargo_test_validation_refuses_as_unpinnable() -> Bool {
     contract: ExecutionContract {
       validations: [CargoTestValidation { filter: "roadmap_" as NonEmptyStr }],
       extra_capabilities: [],
+      path_scope: PathsUnrestricted,
+      source_roots: PublicWorktreeLayout,
     },
     observations: [],
     pin_recorded: true,
@@ -471,6 +478,29 @@ test fn unspecified_contract_refuses_rather_than_verifying() -> Bool {
     ValidationOracleGateRefused { cause } =>
       match cause {
         ValidationContractUnspecified => true
+        _ => false
+      }
+  }
+}
+
+test fn empty_validation_contract_refuses_as_closes_nothing_not_admitted() -> Bool {
+  match validation_oracle_gate(
+    contract: ExecutionContract {
+      validations: [],
+      extra_capabilities: [],
+      path_scope: PathsUnrestricted,
+      source_roots: PublicWorktreeLayout,
+    },
+    observations: [],
+    pin_recorded: true,
+    expected_identity: pinned_identity(),
+    revision: oracle_dispatch_revision,
+    pin_read_detail: "",
+  ) {
+    ValidationOracleAdmitted { identity: _ } => false
+    ValidationOracleGateRefused { cause } =>
+      match cause {
+        ValidationContractClosesNothing => true
         _ => false
       }
   }
@@ -722,6 +752,9 @@ test fn every_verdict_the_emitter_writes_is_one_the_reader_accepts() -> Bool {
     })
     && verdict_round_trips(verdict: ValidationRefused {
       cause: ValidationContractUnspecified,
+    })
+    && verdict_round_trips(verdict: ValidationRefused {
+      cause: ValidationContractClosesNothing,
     })
 }
 
@@ -1000,6 +1033,7 @@ test fn roadmap_validation_oracle_keystone_holds() -> Bool {
     && unpinned_dependency_detail_names_the_uncovered_modules()
     && cargo_test_validation_refuses_as_unpinnable()
     && unspecified_contract_refuses_rather_than_verifying()
+    && empty_validation_contract_refuses_as_closes_nothing_not_admitted()
     && attempt_without_a_recorded_pin_refuses()
     && refused_and_failed_verdicts_are_distinct_on_the_wire()
     && refusal_quoting_passed_does_not_decode_as_passed()

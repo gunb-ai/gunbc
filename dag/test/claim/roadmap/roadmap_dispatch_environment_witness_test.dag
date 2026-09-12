@@ -22,6 +22,8 @@ import gunbc.roadmap_execution_contract {
   GunbcClaimValidation,
   ExecutionContract,
   ExecutionContractUnspecified,
+  PathsUnrestricted,
+  PublicWorktreeLayout,
   CapabilityRealization,
   execution_capability_label,
 }
@@ -71,6 +73,8 @@ fn admitted_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionCont
       },
     ],
     extra_capabilities: [],
+    path_scope: PathsUnrestricted,
+    source_roots: PublicWorktreeLayout,
   }
 }
 
@@ -235,7 +239,7 @@ test fn admission_receipt_is_structured_and_located() -> Bool {
 
 test fn empty_validation_contract_refuses_with_its_own_reason() -> Bool {
   match dispatch_environment_admission_decision(
-    contract: ExecutionContract { validations: [], extra_capabilities: [] },
+    contract: ExecutionContract { validations: [], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     receipts: [],
     validation_summary: "",
   ) {

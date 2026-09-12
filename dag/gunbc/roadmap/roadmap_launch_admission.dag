@@ -7,8 +7,11 @@ import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
 import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_is_sized, node_unmet_parent_ids }
 import gunbc.roadmap_execution_contract {
-  ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses,
+  ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses, ContractNotAgentWork,
+  OperatorExclusiveMode, ExternalLeadMode, CalendarObservationMode,
+  NonAgentWorkMode,
   contract_closure,
+  non_agent_work_mode_label,
 }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -215,6 +218,7 @@ type LaunchRefusal
   | LaunchReviewRequired
   | LaunchSizeMissing
   | LaunchExecutionContractMissing { reason: String }
+  | LaunchNotAgentWork { mode: NonAgentWorkMode }
   | LaunchDependenciesBlocked { blockers: List<String> }
   | LaunchSessionsUnobservable { reason: String }
   | LaunchAlreadyLive { session_name: String }
@@ -234,6 +238,14 @@ type LaunchAdmission
 // the operator's reading do not change under the migration; the arms the plan added carry new words
 // in the same shape.
 
+fn launch_non_agent_work_wire_label(mode: NonAgentWorkMode) -> String {
+  fold(
+    split(s: non_agent_work_mode_label(mode: mode), delimiter: "-"),
+    init: "",
+    f: (acc, part) => if acc == "" { part } else { concat(concat(acc, "_"), part) },
+  )
+}
+
 fn launch_refusal_label(r: LaunchRefusal) -> String {
   match r {
     LaunchNoActuatingInstance { reason: _ } => "no_instance"
@@ -247,6 +259,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "review_required"
     LaunchSizeMissing => "size_missing"
     LaunchExecutionContractMissing { reason: _ } => "execution_contract_missing"
+    LaunchNotAgentWork { mode } => launch_non_agent_work_wire_label(mode: mode)
     LaunchDependenciesBlocked { blockers: _ } => "dependencies_blocked"
     LaunchSessionsUnobservable { reason: _ } => "observe_refused"
     LaunchAlreadyLive { session_name: _ } => "already_live"
@@ -272,6 +285,8 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "node's implementation evidence is in review; acceptance, not a relaunch, is the next step"
     LaunchSizeMissing => "node is unsized; a launch needs intricacy, volume, repo and acceptance"
     LaunchExecutionContractMissing { reason } => reason
+    LaunchNotAgentWork { mode } =>
+      join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
     LaunchDependenciesBlocked { blockers } => join(["dependencies not closed: ", join(blockers, ", ")], "")
     LaunchSessionsUnobservable { reason } => join(["live session set could not be observed: ", reason], "")
     LaunchAlreadyLive { session_name } => join(["attempt already live in ", session_name], "")
@@ -297,6 +312,9 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchReviewRequired,
     LaunchSizeMissing,
     LaunchExecutionContractMissing { reason: "r" },
+    LaunchNotAgentWork { mode: OperatorExclusiveMode },
+    LaunchNotAgentWork { mode: ExternalLeadMode },
+    LaunchNotAgentWork { mode: CalendarObservationMode },
     LaunchDependenciesBlocked { blockers: ["p"] },
     LaunchSessionsUnobservable { reason: "r" },
     LaunchAlreadyLive { session_name: "s" },
@@ -730,6 +748,8 @@ fn launch_gate_contract(node: RoadmapNode) -> LaunchGateVerdict {
         GateRefused { refusal: LaunchExecutionContractMissing {
           reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit a launch",
         } }
+      ContractNotAgentWork { mode } =>
+        GateRefused { refusal: LaunchNotAgentWork { mode: mode } }
       ContractCloses { validations: _ } => GatePassed
     }
   }

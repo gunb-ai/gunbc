@@ -141,6 +141,7 @@ fn remaining_text(r: RemainingShape) -> String {
     " · in flight ", to_string(r.in_flight),
     " · dependency-held ", to_string(r.dependency_held),
     " · contract-held ", to_string(r.contract_held),
+    " · not-agent-work ", to_string(r.not_agent_work),
   ], "")
 }
 

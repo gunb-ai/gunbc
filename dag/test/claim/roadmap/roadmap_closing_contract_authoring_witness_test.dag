@@ -7,6 +7,8 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
+  NotAgentWork,
+  OperatorExclusiveMode,
   ValidationOperation,
   GunbcClaimValidation,
   CargoTestValidation,
@@ -17,6 +19,8 @@ import gunbc.roadmap_execution_contract {
   GunbcClaimRunnerCapability,
   closing_contract_authoring_contract,
   validation_operation_command,
+  PublicWorktreeLayout,
+  PathsUnrestricted,
 }
 import gunbc.ensure { EnsureObserveOnly }
 import gunbc.roadmap_validation_oracle {
@@ -33,6 +37,7 @@ import gunbc.roadmap_closing_contract_authoring {
   ClosingContractAuthored,
   ClosingContractTargetNotDeclared,
   ClosingContractTargetUnspecified,
+  ClosingContractTargetNotAgentWork,
   ClosingContractTargetClosesNothing,
   ClosingContractTargetClosesItself,
   ClosingContractTargetOracleIncomplete,
@@ -79,6 +84,8 @@ fn authored_contract() -> WorkItemExecutionContract {
   ExecutionContract {
     validations: [resolving_validation()],
     extra_capabilities: [],
+    path_scope: PathsUnrestricted,
+    source_roots: PublicWorktreeLayout,
   }
 }
 
@@ -91,6 +98,7 @@ test fn a_resolving_contract_closes_its_target() -> Bool {
     ClosingContractAuthored { target: t } => (t as String) == "example-node"
     ClosingContractTargetNotDeclared { target: _ } => false
     ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
     ClosingContractTargetClosesNothing { target: _ } => false
     ClosingContractTargetClosesItself { target: _ } => false
     ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
@@ -106,6 +114,25 @@ test fn an_unspecified_contract_refuses() -> Bool {
     ClosingContractTargetUnspecified { target: t } => (t as String) == "example-node"
     ClosingContractAuthored { target: _ } => false
     ClosingContractTargetNotDeclared { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
+    ClosingContractTargetClosesNothing { target: _ } => false
+    ClosingContractTargetClosesItself { target: _ } => false
+    ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
+  }
+}
+
+test fn operator_exclusive_is_not_an_unspecified_closing_contract() -> Bool {
+  match closing_contract_verdict_for_observed(
+    node: target(),
+    contract: NotAgentWork { mode: OperatorExclusiveMode },
+    observations: [],
+  ) {
+    ClosingContractTargetNotAgentWork { target: t, mode: OperatorExclusiveMode } =>
+      (t as String) == "example-node"
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
+    ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractAuthored { target: _ } => false
+    ClosingContractTargetNotDeclared { target: _ } => false
     ClosingContractTargetClosesNothing { target: _ } => false
     ClosingContractTargetClosesItself { target: _ } => false
     ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
@@ -115,13 +142,14 @@ test fn an_unspecified_contract_refuses() -> Bool {
 test fn a_contract_with_no_validation_refuses_separately() -> Bool {
   match closing_contract_verdict_for_observed(
     node: target(),
-    contract: ExecutionContract { validations: [], extra_capabilities: [] },
+    contract: ExecutionContract { validations: [], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     observations: [],
   ) {
     ClosingContractTargetClosesNothing { target: t } => (t as String) == "example-node"
     ClosingContractAuthored { target: _ } => false
     ClosingContractTargetNotDeclared { target: _ } => false
     ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
     ClosingContractTargetClosesItself { target: _ } => false
     ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
   }
@@ -137,6 +165,7 @@ test fn a_target_closed_by_another_closing_contract_task_refuses() -> Bool {
     ClosingContractAuthored { target: _ } => false
     ClosingContractTargetNotDeclared { target: _ } => false
     ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
     ClosingContractTargetClosesNothing { target: _ } => false
     ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
   }
@@ -164,6 +193,7 @@ test fn a_validation_whose_oracle_is_missing_refuses() -> Bool {
     ClosingContractAuthored { target: _ } => false
     ClosingContractTargetNotDeclared { target: _ } => false
     ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
     ClosingContractTargetClosesNothing { target: _ } => false
     ClosingContractTargetClosesItself { target: _ } => false
   }
@@ -181,6 +211,7 @@ test fn a_validation_whose_oracle_is_ambiguous_refuses() -> Bool {
     ClosingContractAuthored { target: _ } => false
     ClosingContractTargetNotDeclared { target: _ } => false
     ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
     ClosingContractTargetClosesNothing { target: _ } => false
     ClosingContractTargetClosesItself { target: _ } => false
   }
@@ -191,6 +222,7 @@ test fn an_undeclared_target_refuses_against_the_live_authority() -> Bool {
     ClosingContractTargetNotDeclared { target: t } => t == "no-such-roadmap-node"
     ClosingContractAuthored { target: _ } => false
     ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
     ClosingContractTargetClosesNothing { target: _ } => false
     ClosingContractTargetClosesItself { target: _ } => false
     ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
@@ -213,6 +245,7 @@ test fn the_validation_projects_the_target_into_its_argv() -> Bool {
         },
       ],
     },
+    source_roots: PublicWorktreeLayout,
   ) {
     Present { value: command } =>
       join(command.args, " ")
@@ -224,6 +257,7 @@ test fn the_validation_projects_the_target_into_its_argv() -> Bool {
 test fn roadmap_closing_contract_authoring_keystone_holds() -> Bool {
   a_resolving_contract_closes_its_target()
     && an_unspecified_contract_refuses()
+    && operator_exclusive_is_not_an_unspecified_closing_contract()
     && a_contract_with_no_validation_refuses_separately()
     && a_target_closed_by_another_closing_contract_task_refuses()
     && a_validation_whose_oracle_is_missing_refuses()

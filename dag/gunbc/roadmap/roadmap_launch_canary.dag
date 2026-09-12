@@ -1,10 +1,13 @@
 module gunbc.roadmap_launch_canary
 
-import std.types { String, NonEmptyStr, FilePath, List }
+import std.types { String, NonEmptyStr, FilePath }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest }
 import gunbc.roadmap_status { TicketFields }
-import gunbc.roadmap_execution_contract { WorkItemExecutionContract, gunbc_claim_execution_contract }
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract,
+  gunbc_claim_execution_contract,
+}
 
 // THE TWO-NODE CANARY OF THE ROADMAP LAUNCH MVP, DECLARED INERT (RLM-0 of
 // docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap_authority: the
@@ -56,15 +59,9 @@ fn roadmap_launch_canary_execution_contract() -> WorkItemExecutionContract {
   )
 }
 
-// THE ONE ALLOWED CHANGED PATH. Recorded as a typed row because the brief fixes it as part of
-// the contract, and recorded as a FINDING because gunbc.roadmap_execution_contract has no field
-// for it: a WorkItemExecutionContract names validations and capabilities, nothing about the extent
-// of the change it admits, so no consumer today refuses an attempt that touches a second path.
-// Its consumer is RLM-5's publication refusal ("extra path" falsifier); until that lands this row
-// is declared scope, not an enforced wall, and the plan's serial gating is what keeps that honest.
-data roadmap_launch_canary_allowed_change_paths: List<FilePath> = [
-  "dag/gunbc/roadmap/roadmap_launch_canary_sentinel.dag" as FilePath,
-]
+// Ticket prose still names the intended sentinel path. That is not AttemptPathScope.
+// Production contracts, including this canary, bind PathsUnrestricted. The PathsAllowed
+// production consumer is paths_allowed_production_consumer_frontier.
 
 // The acceptance criteria of the parent, in the ticket carrier the live authority uses, so the
 // criteria digest RLM-3..6 bind is gunbc.roadmap_model roadmap_criteria_digest over exactly these

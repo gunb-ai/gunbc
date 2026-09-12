@@ -34,7 +34,9 @@ import gunbc.roadmap_launch_admission {
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchAlreadyAccepted, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchDependenciesBlocked, LaunchExecutionContractMissing,
+  LaunchNotAgentWork,
 }
+import gunbc.roadmap_execution_contract { OperatorExclusiveMode }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.roadmap_component { instrument_tuner_asset_path }
@@ -217,6 +219,7 @@ test fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: na(r: LaunchRevisionUnobserved { cause: "c" })) == 503
     && belt_dispatch_status(r: na(r: LaunchDependenciesBlocked { blockers: ["p"] })) == 409
     && belt_dispatch_status(r: na(r: LaunchExecutionContractMissing { reason: "r" })) == 409
+    && belt_dispatch_status(r: na(r: LaunchNotAgentWork { mode: OperatorExclusiveMode })) == 409
     && all(belt_dispatch_result_exemplars(), r => status_is_typed(s: belt_dispatch_status(r: r)))
 }
 

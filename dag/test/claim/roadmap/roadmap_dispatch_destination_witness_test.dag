@@ -1,0 +1,364 @@
+module test.claim.roadmap_dispatch_destination_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, NodeSizing, Sized, Unsized,
+  IntricacyLow, VolumeSmall, PrsMerged,
+}
+import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified, NotAgentWork,
+  ExecutionContract, PathsAllowed, PathsUnrestricted, PublicWorktreeLayout,
+  PinnedPublicPlusLocalRoot, PathOutOfScope, PathsAdmitted,
+  GunbcClaimValidation, ClaimSourceRootLayout, WorkItemExecutionContract,
+  CargoFmtValidation, gunbc_claim_execution_contract,
+  contract_closure, ContractNotAgentWork, OperatorExclusiveMode, ExternalLeadMode,
+  CalendarObservationMode, ContractDeclaresNoValidation,
+  attempt_paths_admitted, claim_source_root_args, validation_operation_command,
+  DispatchHostEnvironment, CapabilityRealization, GunbcClaimRunnerCapability,
+  non_agent_work_mode_label,
+}
+import gunbc.ensure { EnsureObserveOnly }
+import gunbc.roadmap_dispatch_destination {
+  node_dispatch_destination, DispatchDestinationResolved, DispatchDestinationMissing,
+  DestinationPrivacyObserved, DestinationPrivacyUnobserved,
+  DestinationDefaultBranchObserved, DestinationDefaultBranchUnobserved,
+  destination_is_known_public, DispatchSpawnOrigin, dispatch_spawn_origin_json,
+  spawn_origin_is_public_gunbc, destination_is_this_spawn_tree,
+  destination_not_this_spawn_tree_reason, DestinationIdentity,
+}
+import gunbc.roadmap_belt_actuate {
+  belt_publication_subject_for_node,
+  WorktreeHeadObservation,
+  worktree_head_observation_of,
+  BeltExecOutcome, ExecOk,
+  belt_spawn_oracle_pin_standing,
+  SpawnOraclePinAdmitted,
+  SpawnOraclePinRefused,
+  belt_oracle_pin_not_observable_reason,
+}
+import gunbc.roadmap_validation_oracle {
+  ValidationOracleRef, OracleFound, OracleMissing,
+}
+import std.content_hash { content_hash_atom }
+import gunbc.roadmap_publish { PublicationSubjectObserved, PublicationSubjectUnobserved }
+import std.types { CommitSha }
+
+fn dest_nid(s: String) -> RoadmapNodeId { s }
+
+fn node_with_repo(id: String, repo: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_DESTINATIONWITNESS00000001" as RoadmapNodeIdentity,
+    node: dest_nid(s: id),
+    line: DerivableLine { prs: [1], title: id, description: "" },
+    carriers: [],
+    sizing: Sized { repo: repo, intricacy: IntricacyLow, volume: VolumeSmall, acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+data dest_head: CommitSha = "1111111111111111111111111111111111111111"
+
+fn observed_head() -> WorktreeHeadObservation {
+  worktree_head_observation_of(outcome: ExecOk { stdout: (dest_head as String) })
+}
+
+test fn a_non_public_destination_does_not_publish_to_gunbc() -> Bool {
+  let node = node_with_repo(id: "private-dest-node", repo: "example/other")
+  match belt_publication_subject_for_node(
+    node: node,
+    attempt_key: "feedfacefeedface",
+    branch: "dispatch/private-dest-node-afeedfacefeedface",
+    base_branch: "main" as NonEmptyStr,
+    head: observed_head(),
+  ) {
+    PublicationSubjectObserved { subject: _ } => false
+    PublicationSubjectUnobserved { reason } =>
+      reason.contains("example/other")
+        && reason.contains("no observed privacy standing")
+  }
+}
+
+test fn a_named_destination_is_not_known_public() -> Bool {
+  let node = node_with_repo(id: "private-dest-node", repo: "example/other")
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason: _ } => false
+    DispatchDestinationResolved { identity } =>
+      !destination_is_known_public(identity: identity)
+        && !spawn_origin_is_public_gunbc(
+          origin: DispatchSpawnOrigin {
+            identity: identity,
+            base_ref: "main" as NonEmptyStr,
+            base_sha: dest_head as NonEmptyStr,
+          },
+        )
+        && !destination_is_this_spawn_tree(identity: identity)
+        && (destination_not_this_spawn_tree_reason(identity: identity) as String)
+          .contains("working in gunbc and publishing to example/other")
+  }
+}
+
+test fn spawn_origin_json_records_known_public_gunbc_from_the_standing() -> Bool {
+  let node = node_with_repo(id: "public-dest-node", repo: "gunbc")
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason: _ } => false
+    DispatchDestinationResolved { identity } => {
+      let origin = DispatchSpawnOrigin {
+        identity: identity,
+        base_ref: "main" as NonEmptyStr,
+        base_sha: dest_head as NonEmptyStr,
+      }
+      spawn_origin_is_public_gunbc(origin: origin)
+        && destination_is_known_public(identity: identity)
+        && (dispatch_spawn_origin_json(origin: origin)).contains("\"known_public_gunbc\": true")
+        && (dispatch_spawn_origin_json(origin: origin))
+          .contains("\"default_branch_standing\": \"observed\"")
+        && (dispatch_spawn_origin_json(origin: origin)).contains("\"default_branch\": \"main\"")
+    }
+  }
+}
+
+test fn spawn_origin_json_records_a_named_destination_as_not_known_public_gunbc() -> Bool {
+  let node = node_with_repo(id: "private-dest-node", repo: "example/other")
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason: _ } => false
+    DispatchDestinationResolved { identity } =>
+      {
+        let wire = dispatch_spawn_origin_json(
+          origin: DispatchSpawnOrigin {
+            identity: identity,
+            base_ref: "main" as NonEmptyStr,
+            base_sha: dest_head as NonEmptyStr,
+          },
+        )
+        wire.contains("\"known_public_gunbc\": false")
+          && wire.contains("\"default_branch_standing\": \"unobserved\"")
+          && !wire.contains("\"default_branch\":")
+      }
+  }
+}
+
+test fn spawn_origin_json_escapes_a_quote_in_the_repository_name() -> Bool {
+  let origin = DispatchSpawnOrigin {
+    identity: DestinationIdentity {
+      owner: "example",
+      name: "o\"ther",
+      full_name: "example/o\"ther",
+      privacy: DestinationPrivacyUnobserved,
+      default_branch: DestinationDefaultBranchUnobserved,
+    },
+    base_ref: "main" as NonEmptyStr,
+    base_sha: dest_head as NonEmptyStr,
+  }
+  let wire = dispatch_spawn_origin_json(origin: origin)
+  wire.contains("\\\"")
+    && !wire.contains("\"repository\":\"example/o\"ther\"")
+    && wire.contains("\"default_branch_standing\": \"unobserved\"")
+    && !wire.contains("\"default_branch\":")
+}
+
+test fn a_named_destination_does_not_claim_privacy_or_default_branch_from_a_slug() -> Bool {
+  let node = node_with_repo(id: "private-dest-node", repo: "example/other")
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason: _ } => false
+    DispatchDestinationResolved { identity } =>
+      identity.full_name == "example/other"
+        && match identity.privacy {
+          DestinationPrivacyUnobserved =>
+            match identity.default_branch {
+              DestinationDefaultBranchUnobserved => true
+              DestinationDefaultBranchObserved { branch: _ } => false
+            }
+          DestinationPrivacyObserved { private: _ } => false
+        }
+  }
+}
+
+test fn a_public_gunbc_node_still_publishes_to_gunbc() -> Bool {
+  let node = node_with_repo(id: "public-dest-node", repo: "gunbc")
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason: _ } => false
+    DispatchDestinationResolved { identity } =>
+      identity.full_name == gunbc_repository.full_name
+        && match identity.privacy {
+          DestinationPrivacyObserved { private } =>
+            !private
+              && match identity.default_branch {
+                DestinationDefaultBranchObserved { branch } =>
+                  branch == gunbc_repository.default_branch
+                    && match belt_publication_subject_for_node(
+                      node: node,
+                      attempt_key: "feedfacefeedface",
+                      branch: "dispatch/public-dest-node-afeedfacefeedface",
+                      base_branch: "main" as NonEmptyStr,
+                      head: observed_head(),
+                    ) {
+                      PublicationSubjectUnobserved { reason: _ } => false
+                      PublicationSubjectObserved { subject } =>
+                        subject.repository.full_name == gunbc_repository.full_name
+                    }
+                DestinationDefaultBranchUnobserved => false
+              }
+          DestinationPrivacyUnobserved => false
+        }
+  }
+}
+
+test fn allowed_paths_refuse_a_touched_path_outside_the_prefixes() -> Bool {
+  match attempt_paths_admitted(
+    scope: PathsAllowed {
+      prefixes: ["dag/gunbc/roadmap/" as FilePath],
+    },
+    touched: ["src/v1/stage0/src/cli_run.rs" as FilePath],
+  ) {
+    PathsAdmitted => false
+    PathOutOfScope { path } => (path as String) == "src/v1/stage0/src/cli_run.rs"
+  }
+}
+
+test fn allowed_paths_do_not_admit_a_sibling_that_only_shares_a_string_prefix() -> Bool {
+  match attempt_paths_admitted(
+    scope: PathsAllowed {
+      prefixes: ["dag/foo" as FilePath],
+    },
+    touched: ["dag/foobar/secret.dag" as FilePath],
+  ) {
+    PathsAdmitted => false
+    PathOutOfScope { path } => (path as String) == "dag/foobar/secret.dag"
+  }
+}
+
+test fn allowed_paths_admit_a_path_under_the_prefix_directory() -> Bool {
+  match attempt_paths_admitted(
+    scope: PathsAllowed {
+      prefixes: ["dag/foo" as FilePath],
+    },
+    touched: ["dag/foo/ok.dag" as FilePath],
+  ) {
+    PathsAdmitted => true
+    PathOutOfScope { path: _ } => false
+  }
+}
+
+test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool {
+  match contract_closure(contract: NotAgentWork { mode: OperatorExclusiveMode }) {
+    ContractNotAgentWork { mode: OperatorExclusiveMode } =>
+      non_agent_work_mode_label(mode: OperatorExclusiveMode) == "operator-exclusive"
+    ContractDeclaresNoValidation => false
+    ContractClosesNothing => false
+    ContractCloses { validations: _ } => false
+    ContractNotAgentWork { mode: _ } => false
+  }
+}
+
+test fn external_lead_and_calendar_refuse_as_their_own_modes() -> Bool {
+  match contract_closure(contract: NotAgentWork { mode: ExternalLeadMode }) {
+    ContractNotAgentWork { mode: ExternalLeadMode } =>
+      match contract_closure(contract: NotAgentWork { mode: CalendarObservationMode }) {
+        ContractNotAgentWork { mode: CalendarObservationMode } => true
+        ContractDeclaresNoValidation => false
+        ContractClosesNothing => false
+        ContractCloses { validations: _ } => false
+        ContractNotAgentWork { mode: _ } => false
+      }
+    ContractDeclaresNoValidation => false
+    ContractClosesNothing => false
+    ContractCloses { validations: _ } => false
+    ContractNotAgentWork { mode: _ } => false
+  }
+}
+
+test fn unspecified_is_still_a_different_cause_from_operator_exclusive() -> Bool {
+  match contract_closure(contract: ExecutionContractUnspecified) {
+    ContractDeclaresNoValidation =>
+      match contract_closure(contract: NotAgentWork { mode: OperatorExclusiveMode }) {
+        ContractNotAgentWork { mode: OperatorExclusiveMode } => true
+        ContractDeclaresNoValidation => false
+        ContractClosesNothing => false
+        ContractCloses { validations: _ } => false
+        ContractNotAgentWork { mode: _ } => false
+      }
+    ContractClosesNothing => false
+    ContractCloses { validations: _ } => false
+    ContractNotAgentWork { mode: _ } => false
+  }
+}
+
+test fn private_layout_validation_composes_both_roots() -> Bool {
+  let args = claim_source_root_args(
+    layout: PinnedPublicPlusLocalRoot { public_prefix: "public" as NonEmptyStr },
+  )
+  join(args, " ") == "--source-root public/dag --source-root public/src/v2 --source-root dag"
+}
+
+test fn public_layout_validation_stays_two_roots() -> Bool {
+  join(claim_source_root_args(layout: PublicWorktreeLayout), " ")
+    == "--source-root dag --source-root src/v2"
+}
+
+fn pin_witness_oracle() -> ValidationOracleRef {
+  ValidationOracleRef {
+    entry: "dag/test/claim/roadmap/roadmap_dispatch_destination_witness_test.dag" as FilePath,
+    function: "a_non_public_destination_does_not_publish_to_gunbc" as NonEmptyStr,
+  }
+}
+
+fn pin_witness_claim_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: pin_witness_oracle().entry,
+    function: pin_witness_oracle().function,
+  )
+}
+
+test fn a_declared_oracle_absent_from_the_named_tree_is_incomplete_standing() -> Bool {
+  let tree = "/attempt-worktree"
+  match belt_spawn_oracle_pin_standing(
+    contract: pin_witness_claim_contract(),
+    observations: [
+      OracleMissing {
+        oracle: pin_witness_oracle(),
+        detail: "absent",
+      },
+    ],
+    tree: tree,
+  ) {
+    SpawnOraclePinAdmitted => false
+    SpawnOraclePinRefused { reason } =>
+      reason == belt_oracle_pin_not_observable_reason(tree: tree)
+  }
+}
+
+test fn a_found_oracle_still_admits_spawn() -> Bool {
+  match belt_spawn_oracle_pin_standing(
+    contract: pin_witness_claim_contract(),
+    observations: [
+      OracleFound {
+        oracle: pin_witness_oracle(),
+        identity: content_hash_atom(value: "pin-witness-oracle" as NonEmptyStr),
+      },
+    ],
+    tree: "/attempt-worktree",
+  ) {
+    SpawnOraclePinAdmitted => true
+    SpawnOraclePinRefused { reason: _ } => false
+  }
+}
+
+test fn a_contract_with_no_pinnable_oracle_still_admits_spawn() -> Bool {
+  match belt_spawn_oracle_pin_standing(
+    contract: ExecutionContract {
+      validations: [CargoFmtValidation],
+      extra_capabilities: [],
+      path_scope: PathsUnrestricted,
+      source_roots: PublicWorktreeLayout,
+    },
+    observations: [],
+    tree: "/attempt-worktree",
+  ) {
+    SpawnOraclePinAdmitted => true
+    SpawnOraclePinRefused { reason: _ } => false
+  }
+}
