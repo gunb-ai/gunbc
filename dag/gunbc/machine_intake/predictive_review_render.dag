@@ -82,8 +82,6 @@ fn prediction_test_lines<S, O>(receipt: PredictionTestReceipt<S, O>) -> List<Str
       confounded: fn(first, further) { append([concat("CONFOUNDED: ", first)], items: further) },
     },
   )
-  append([concat("CONFOUNDED: ", first)], items: further)
-  }
   append([
     concat(receipt.observation.id, concat(": ", verdict)),
     prediction_registration_text(registration: receipt.registration),
