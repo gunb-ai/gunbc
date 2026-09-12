@@ -32713,41 +32713,101 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
+    /// The floor prepared a subject and this roster entry is not in it. A SEPARATE ARM from
+    /// `EntryMissing`, because the two have opposite remedies: `EntryMissing` means the roster
+    /// names a path that is not on disk (fix the row), this means the path exists but preparation
+    /// excluded it or it fell outside the prepared closure (fix the subject, or the exclusion).
+    /// Collapsing them would be the not-applicable-rendered-as-malformed conflation DESIGN's
+    /// failure-mode list names — one symbol over "the input is wrong" and "this strategy had
+    /// nothing to say about it".
+    OutsidePreparedSubject {
+        detail: String,
+    },
+    /// The subject HOLDS the entry and the decoded handoff law refuses to serve it. Distinct from
+    /// `OutsidePreparedSubject` because the remedy is the law, not the subject's membership.
+    PreparedProductWithheld {
+        detail: String,
+    },
     FunctionNotFound,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum RosterEntryRegistryCache {
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
+    OutsidePreparedSubject {
+        detail: String,
+    },
+    /// The prepared subject HOLDS this entry and the decoded handoff law refuses to serve it.
+    ///
+    /// A THIRD STATE, NOT A SPELLING OF THE SECOND. `OutsidePreparedSubject` says the subject does
+    /// not have it — the remedy is the subject or its exclusions. This says the subject has it and
+    /// the law says no — the remedy is the law. Collapsing them would put one symbol over two
+    /// causes with different owners, which is the conflation DESIGN's failure-mode list names, and
+    /// it would also make the `hit=Refuse` fixture indistinguishable from a lookup miss.
+    PreparedProductWithheld {
+        detail: String,
+    },
     Functions(std::collections::HashSet<String>),
 }
 
-fn roster_entry_registry_cache(
-    index: &MultiEntryIndex,
-    roots: &[String],
+/// THE ROSTER GATE'S QUESTION IS PER-FILE, AND IT USED TO BE ANSWERED BY A SECOND CORPUS.
+///
+/// `commit_witness_claim_pair_resolvable` asks one thing: does the entry this roster row names
+/// declare the function it names. The answer used to be computed by resolving the entry's whole
+/// closure through a `MultiEntryIndex` and standing up an `InterpContext`, in order to read
+/// `ctx.item_registry.keys()` — a set of NAMES. Building a corpus-wide index to read a
+/// name set is the cost-shape defect DESIGN section 6 names, and it was not a small one: the index
+/// it required is a second typed universe over the SAME roots the floor has already prepared
+/// (`gunbc.ci_layer_roots` `witness_layer_roots` is the floor's own `--source-root` pair), priced
+/// by `prime_witness_execution_legs` at ~6GB and +44% wall.
+///
+/// This answers the same question from the PREPARED SUBJECT's own immutable source, parse-only.
+/// No index, no resolve, no typecheck, no second inventory — preparation already holds these bytes
+/// and this reads them where they lie.
+///
+/// THE GRAIN CHANGES AND THE CHANGE IS THE POINT. `item_registry` is the entry's whole CLOSURE, so
+/// a roster row naming a function that some IMPORTED module declares resolved green — binding by
+/// pool coincidence, the class `v2.workflow.floor2_prepared_subject`
+/// `floor2_binding_strictness_regression` already records one layer up. Per-file is what the roster
+/// means: `WitnessIdentity` in that same module is `module.function`, never a bare name. Agreement
+/// between the two readings over the live roster is measured by
+/// `roster_registry_prepared_matches_closure_reading` rather than assumed.
+///
+/// A PARSE FAILURE IS A TYPED ANSWER, NOT AN ABSENCE. `parse_dag_content` collapses a parse error
+/// into `None` — its own doc comment records that the class is unreconciled across its callers —
+/// so this caller converts it to `EntryResolveFailed` with the file named, which is the fail-closed
+/// reading and the same disposition the resolve path produced for an unparseable entry.
+fn roster_entry_registry_from_prepared_source(
     entry: &str,
+    source: &crate::v1_compiler_compile::SourceFile,
 ) -> RosterEntryRegistryCache {
-    let entry_path = match resolve_entry_file_under_roots(roots, entry) {
-        Ok(p) => p,
-        Err(detail) => {
-            return RosterEntryRegistryCache::EntryMissing { detail };
-        }
+    let Some(parsed) =
+        crate::module_path_index::parsed_dag_file::parse_dag_content(&source.content, &source.path)
+    else {
+        return RosterEntryRegistryCache::EntryResolveFailed {
+            detail: format!("prepared source for {entry} did not parse"),
+        };
     };
-    let (graph, source_indices) = match resolve_entry_with_index(index, &entry_path) {
-        Ok(r) => r,
-        Err(detail) => {
-            return RosterEntryRegistryCache::EntryResolveFailed { detail };
+    let mut names = std::collections::HashSet::new();
+    for item in parsed.items.iter() {
+        let name =
+            crate::v1_std_core::authored_name_at(parsed.source_indices.clone(), item.clone());
+        if !name.is_empty() {
+            names.insert(name);
         }
-    };
-    let ctx = make_eval_context(
-        &graph,
-        source_indices,
-        v1_interpreter::ExecutionMode::Hermetic,
-    );
-    RosterEntryRegistryCache::Functions(ctx.item_registry.keys().cloned().collect())
+    }
+    RosterEntryRegistryCache::Functions(names)
 }
 
 #[cfg(test)]
@@ -39748,9 +39808,45 @@ thread_local! {
         std::cell::RefCell::new(None);
 }
 
+/// What the model says a consumer may do about one prepared product. Decoded from
+/// `PreparedProductOutcome`'s VARIANT during preparation, never assumed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparedProductDisposition {
+    Serve,
+    Refuse,
+}
+
+/// The decoded handoff law, carried with the prepared authority so the real lookup consumes it.
+///
+/// WHY IT IS CARRIED RATHER THAN RE-ASKED: the lookup runs inside claim evaluation, so calling
+/// back into the interpreter per lookup would be re-entrant. Decoding once at preparation and
+/// carrying the answer gets the model's governance without that — the host cannot act on a
+/// disposition the model did not give it, and cannot reach a disposition the model did not decode.
+#[derive(Debug, Clone, Copy)]
+pub struct PreparedProductLaw {
+    pub hit: PreparedProductDisposition,
+    pub miss: PreparedProductDisposition,
+}
+
 struct FloorPreparedAuthority {
     inventory: Vec<PreparedSourceView>,
     inventory_digest: String,
+    /// The decoded law. `roster_entry_registry` reads `miss` to decide what a lookup that found
+    /// nothing MEANS; it is not free to decide that for itself.
+    law: PreparedProductLaw,
+    /// EXACT IDENTITY, ESTABLISHED HERE AND NOT RE-DERIVED BY LOOKUP.
+    ///
+    /// Keyed by `workspace_relative_entry_path` of the prepared source's own path — the same
+    /// normalizer `assemble_prepared_subject_closure` uses to key its `path_to_module` map, so a
+    /// consumer and preparation agree on what "this file" means by construction rather than by two
+    /// spellings that happen to coincide.
+    ///
+    /// IT IS A MAP BECAUSE THE ALTERNATIVE WAS WRONG, not merely slow. A consumer matching a
+    /// prepared source by PATH SUFFIX can hit the wrong file whenever one repo-relative spelling is
+    /// a tail of another — `test/claim/x.dag` is a suffix of both `dag/test/claim/x.dag` and
+    /// `src/v2/test/claim/x.dag`, and both roots are in this subject. An exact key cannot express
+    /// that ambiguity; a suffix scan silently resolves it to whichever entry it met first.
+    by_entry_path: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
 }
 
 struct FloorPreparedAuthorityGuard;
@@ -39764,13 +39860,24 @@ impl Drop for FloorPreparedAuthorityGuard {
 
 /// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
 /// Drop always clears the thread-locals and compile memo.
-fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
+fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>, law: PreparedProductLaw) {
     crate::coproduct_reflection::register_decl_census_memo();
     let inventory_digest = floor_inventory_content_digest(&inventory);
+    let by_entry_path: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = inventory
+        .iter()
+        .map(|view| {
+            (
+                workspace_relative_entry_path(&view.source.path),
+                view.source.clone(),
+            )
+        })
+        .collect();
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         *cell.borrow_mut() = Some(FloorPreparedAuthority {
             inventory,
             inventory_digest,
+            law,
+            by_entry_path,
         });
     });
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
@@ -39842,7 +39949,16 @@ pub fn run_floor_prepared_toll_receipt() {
         languages_disk_ms, languages_inventory_ms, item4_reclaimed
     );
 
-    let _floor_prepared_guard = register_floor_prepared_authority_guard(inventory);
+    // The toll receipt is a measurement harness, not the floor: it registers the inventory to time
+    // inventory-backed parsing and never reaches the roster gate. It supplies the law the model
+    // declares so the carrier is never half-built, and takes no position of its own on it.
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(
+        inventory,
+        PreparedProductLaw {
+            hit: PreparedProductDisposition::Serve,
+            miss: PreparedProductDisposition::Refuse,
+        },
+    );
 
     let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
     let file_path = "src/cuartifact_ok.rs";
@@ -39868,9 +39984,240 @@ pub fn run_floor_prepared_toll_receipt() {
 
 fn register_floor_prepared_authority_guard(
     inventory: Vec<PreparedSourceView>,
+    law: PreparedProductLaw,
 ) -> FloorPreparedAuthorityGuard {
-    register_floor_prepared_authority(inventory);
+    register_floor_prepared_authority(inventory, law);
     FloorPreparedAuthorityGuard
+}
+
+#[cfg(test)]
+mod prepared_source_identity_test {
+    use super::*;
+
+    fn declared_law() -> PreparedProductLaw {
+        PreparedProductLaw {
+            hit: PreparedProductDisposition::Serve,
+            miss: PreparedProductDisposition::Refuse,
+        }
+    }
+
+    /// A law that withholds a HELD product. Not what the model declares today — it is the input
+    /// that makes `law.hit` observable at all, and without it a host ignoring the hit disposition
+    /// passes every other test in this module.
+    fn withholding_law() -> PreparedProductLaw {
+        PreparedProductLaw {
+            hit: PreparedProductDisposition::Refuse,
+            miss: PreparedProductDisposition::Refuse,
+        }
+    }
+
+    fn view(path: &str, content: &str) -> PreparedSourceView {
+        PreparedSourceView {
+            module_path: path.replace(['/', '.'], "_"),
+            source: Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            }),
+        }
+    }
+
+    /// THE FIXTURE PLANTS THE AMBIGUITY THE OLD LOOKUP COULD NOT SEE.
+    ///
+    /// Two prepared sources whose repo-relative paths share a tail — `test/claim/x.dag` — under the
+    /// two roots this subject actually carries. A suffix scan answers whichever it meets first and
+    /// cannot report that it had a choice; an exact key cannot express the ambiguity at all.
+    ///
+    /// DISCRIMINATING: restore `p.ends_with(&format!("/{wanted}"))` in
+    /// `floor_prepared_source_for_entry_path` and the third assertion goes RED — a bare
+    /// `test/claim/x.dag` resolves to one of the two rather than to neither.
+    #[test]
+    fn prepared_lookup_is_exact_not_suffix() {
+        let _guard = register_floor_prepared_authority_guard(
+            vec![
+                view("dag/test/claim/x.dag", "module dag_x"),
+                view("src/v2/test/claim/x.dag", "module v2_x"),
+            ],
+            declared_law(),
+        );
+
+        let under_dag =
+            crate::cli_run::floor_prepared_source_for_entry_path("dag/test/claim/x.dag")
+                .expect("the dag-root entry is held");
+        assert_eq!(under_dag.content, "module dag_x");
+
+        let under_v2 =
+            crate::cli_run::floor_prepared_source_for_entry_path("src/v2/test/claim/x.dag")
+                .expect("the src/v2-root entry is held");
+        assert_eq!(under_v2.content, "module v2_x");
+
+        assert!(
+            crate::cli_run::floor_prepared_source_for_entry_path("test/claim/x.dag").is_none(),
+            "a shared tail is not an identity: it names neither prepared source, and answering \
+             with either one would serve the wrong file's bytes with no way for the caller to tell"
+        );
+    }
+
+    /// THE PREPARED SUBJECT OUTLIVES THE TREE IT WAS TAKEN FROM, which is what makes it an
+    /// authority rather than a cache. This entry is held by preparation and does not exist on disk
+    /// at any point in this test.
+    ///
+    /// DISCRIMINATING: put a `resolve_entry_file_under_roots` stat in front of the prepared lookup
+    /// in `roster_entry_registry` — the ordering an earlier revision shipped — and this goes RED
+    /// with `EntryMissing`, because the file is not there to be found.
+    #[test]
+    fn a_held_entry_serves_even_though_no_such_file_exists() {
+        let _guard = register_floor_prepared_authority_guard(
+            vec![view(
+                "dag/test/claim/deleted_after_preparation.dag",
+                "module gone\n\nfn still_declared() -> Bool { true }\n",
+            )],
+            declared_law(),
+        );
+
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        assert!(
+            !std::path::Path::new("dag/test/claim/deleted_after_preparation.dag").exists(),
+            "fixture precondition: this path must not exist on disk"
+        );
+
+        match crate::cli_run::witness_gates::roster_entry_registry(
+            &roots,
+            "dag/test/claim/deleted_after_preparation.dag",
+        ) {
+            RosterEntryRegistryCache::Functions(names) => {
+                assert!(
+                    names.contains("still_declared"),
+                    "the frozen bytes declare it: {names:?}"
+                );
+            }
+            other => panic!("expected the prepared bytes to serve, got {other:?}"),
+        }
+    }
+
+    /// An entry the prepared subject does not hold refuses by NAME, and with the arm whose remedy
+    /// is "fix the subject" rather than the one whose remedy is "fix the roster row".
+    #[test]
+    fn an_unheld_entry_refuses_as_outside_the_subject() {
+        let _guard = register_floor_prepared_authority_guard(
+            vec![view("dag/test/claim/held.dag", "module h")],
+            declared_law(),
+        );
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        match crate::cli_run::witness_gates::roster_entry_registry(
+            &roots,
+            "dag/test/claim/not_held.dag",
+        ) {
+            RosterEntryRegistryCache::OutsidePreparedSubject { detail } => {
+                assert!(detail.contains("dag/test/claim/not_held.dag"), "{detail}");
+            }
+            other => panic!("expected OutsidePreparedSubject, got {other:?}"),
+        }
+    }
+
+    /// BOTH BRANCHES OF THE LAW ARE CONSUMED, and this is the pair that shows it. The same held
+    /// entry, the same bytes, two laws: under `hit=Serve` its declarations are served, under
+    /// `hit=Refuse` it is withheld. A host that served held bytes unconditionally — which is what
+    /// an earlier revision did — passes the first half and fails the second.
+    ///
+    /// `PreparedProductWithheld` is asserted rather than any refusal, because the third state has
+    /// its own remedy: the subject HAS the entry and the law says no. Accepting
+    /// `OutsidePreparedSubject` here would let a lookup miss masquerade as a withholding.
+    #[test]
+    fn a_held_entry_is_served_or_withheld_by_the_laws_hit_disposition() {
+        let held = "dag/test/claim/governed.dag";
+        let bytes = "module governed\n\nfn governed_fn() -> Bool { true }\n";
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+
+        {
+            let _guard =
+                register_floor_prepared_authority_guard(vec![view(held, bytes)], declared_law());
+            match crate::cli_run::witness_gates::roster_entry_registry(&roots, held) {
+                RosterEntryRegistryCache::Functions(names) => assert!(
+                    names.contains("governed_fn"),
+                    "hit=Serve must serve the held bytes: {names:?}"
+                ),
+                other => panic!("hit=Serve must serve, got {other:?}"),
+            }
+        }
+
+        let _guard =
+            register_floor_prepared_authority_guard(vec![view(held, bytes)], withholding_law());
+        match crate::cli_run::witness_gates::roster_entry_registry(&roots, held) {
+            RosterEntryRegistryCache::PreparedProductWithheld { detail } => {
+                assert!(detail.contains(held), "{detail}");
+            }
+            other => panic!(
+                "hit=Refuse must withhold the same held bytes; serving them would mean the hit \
+                 disposition was decoded and ignored. Got {other:?}"
+            ),
+        }
+    }
+
+    /// THE FIXTURE THAT ACTUALLY CATCHES A DISK FALLBACK, and the reason the one above does not.
+    ///
+    /// `an_unheld_entry_refuses_as_outside_the_subject` names a path that is ALSO absent from the
+    /// tree, so a host that quietly fell back to reading the file would still have refused — for
+    /// the wrong reason, invisibly. The distinction only becomes observable when the unheld entry
+    /// EXISTS ON DISK AND PARSES: then "refuse" and "read it anyway" give different answers, and
+    /// only the first is the prepared subject being the authority.
+    ///
+    /// The subject is this repository's own `dag/std/logic.dag` — a real, committed, parseable
+    /// module deliberately left out of the registered inventory.
+    ///
+    /// DISCRIMINATING: add any `std::fs::read_to_string` fallback to the floor arm of
+    /// `roster_entry_registry` and this goes RED, because the file is there and its declarations
+    /// would be served.
+    #[test]
+    fn an_unheld_entry_that_exists_on_disk_still_refuses() {
+        // THE FILE IS AUTHORED HERE RATHER THAN NAMED IN THE TREE, and the first draft of this
+        // test is why. It pointed at `dag/std/logic.dag`, which is real — but `cargo test` runs
+        // from the crate directory, so the path resolved under `src/v1/stage0/` and did not exist.
+        // The precondition caught it; without one the test would have passed for the wrong reason,
+        // proving nothing, which is exactly the failure it exists to detect one layer down.
+        let mut on_disk = std::env::temp_dir();
+        on_disk.push(format!(
+            "gunbc_unheld_but_readable_{}_{}.dag",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(
+            &on_disk,
+            "module unheld_but_readable\n\nfn readable_from_disk() -> Bool { true }\n",
+        )
+        .expect("fixture writes its own subject");
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(on_disk.clone());
+        let on_disk = on_disk.to_string_lossy().into_owned();
+
+        assert!(
+            std::path::Path::new(&on_disk).is_file(),
+            "fixture precondition: {on_disk} must be readable, or this test cannot tell a refusal \
+             from an absence"
+        );
+
+        let _guard = register_floor_prepared_authority_guard(
+            vec![view("dag/test/claim/held.dag", "module h")],
+            declared_law(),
+        );
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        match crate::cli_run::witness_gates::roster_entry_registry(&roots, &on_disk) {
+            RosterEntryRegistryCache::OutsidePreparedSubject { detail } => {
+                assert!(detail.contains(&on_disk), "{detail}");
+            }
+            other => panic!(
+                "a file the prepared subject does not hold must refuse even though it is readable \
+                 on disk and declares `readable_from_disk`; got {other:?}"
+            ),
+        }
+    }
 }
 
 /// THE SUBJECT THE REQUIRED RUN PREPARES — assembled once, BEFORE any judgment is passed on it.
@@ -41790,11 +42137,18 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
     "v2.workflow.floor_pure_producer_share",
+    // The prepared-product handoff law (`prepared_product_held_serves` /
+    // `prepared_product_outside_subject_refuses`, evaluated by
+    // `floor_required_prepared_product_law`). Enrolled here for the reason the comment below
+    // gives: this list IS the declaration that a module is evaluated by name, and a law the
+    // running floor consults must be in the subject by declaration rather than by whichever
+    // unrelated closure happens to drag it in.
+    "v2.workflow.floor2_prepared_subject",
     // The grounded opaque-host-call surface (`opaque_host_call_surface`, qualified, from
     // `floor_required_opaque_host_call_surface`). Enrolled here rather than read out of the
     // policy module's frame because this list IS the declaration that a module is evaluated by

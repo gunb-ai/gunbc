@@ -3325,6 +3325,43 @@ pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
     FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.inventory.clone()))
 }
 
+/// One prepared source, looked up by the EXACT identity preparation established for it.
+///
+/// WHY THIS EXISTS BESIDE `floor_prepared_inventory_snapshot`: that accessor clones the whole
+/// inventory vector, which is the right shape for a consumer that folds the corpus and the wrong
+/// one for a consumer asking about a SINGLE entry. The roster gate asks per entry, so cloning
+/// ~5k `Rc`s to read one of them would be the cost-shape defect DESIGN section 6 names, at the
+/// accessor rather than in the caller.
+///
+/// THE KEY IS AN IDENTITY, NOT A SUFFIX. `register_floor_prepared_authority` builds
+/// `by_entry_path` with the same normalizer preparation keys its own `path_to_module` map with,
+/// so agreement is by construction. An earlier revision of this function scanned the inventory for
+/// a path ENDING IN the requested one, which is not merely slower: `test/claim/x.dag` is a tail of
+/// both `dag/test/claim/x.dag` and `src/v2/test/claim/x.dag` and both roots are in this subject, so
+/// a suffix scan could serve the wrong file's bytes and the caller could never tell.
+///
+/// It does NOT fall back to a disk read: absence here is a real answer — the entry is outside the
+/// prepared subject — and its caller refuses on it rather than looking for a second answer.
+pub(crate) fn floor_prepared_source_for_entry_path(
+    entry_path: &str,
+) -> Option<Rc<crate::v1_compiler_compile::SourceFile>> {
+    let wanted = workspace_relative_entry_path(entry_path);
+    FLOOR_PREPARED_AUTHORITY.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .and_then(|auth| auth.by_entry_path.get(&wanted).cloned())
+    })
+}
+
+/// The decoded handoff law for the live prepared authority, or `None` outside the floor.
+///
+/// `roster_entry_registry` reads this to learn what a MISS means. It is deliberately not a
+/// convenience accessor over a constant: the value came out of the model during preparation, so a
+/// host reading it is a host being governed rather than a host agreeing.
+pub(crate) fn floor_prepared_product_law() -> Option<PreparedProductLaw> {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.law))
+}
+
 pub(crate) fn floor_prepared_inventory_digest() -> Option<String> {
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         cell.borrow()
@@ -3738,6 +3775,138 @@ pub(crate) fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str
 /// `v2.workflow.floor_naming_hygiene`) is read from its own module's scope, never from the
 /// policy module's — whether the policy module's closure happens to reach a module is a fact
 /// about the corpus, not about the question being asked.
+/// THE PREPARED-PRODUCT HANDOFF LAW, EVALUATED FROM ITS OWN MODULE ON THE RUN THAT USES IT.
+///
+/// `v2.workflow.floor2_prepared_subject` declares what a consumer may do when its prepared product
+/// is not held: refuse, with no reconstruct arm. `roster_entry_registry` implements exactly that in
+/// Rust — and an implementation that merely RESEMBLES its model is what this call exists to stop
+/// being. Both nullary probes are evaluated here, every required run, and a disagreement stops the
+/// line before a single claim executes.
+///
+/// WHY BOTH ARMS AND NOT JUST THE REFUSAL: a probe that only checks "outside refuses" is satisfied
+/// by a model that refuses everything, which would make the gate useless in the opposite direction.
+/// The served arm is what proves the law can still say yes.
+///
+/// FAIL-CLOSED AT EVERY ARM, like every other authority decode on this path: a subject that cannot
+/// frame the module, a probe that will not evaluate, and a probe returning a non-`Bool` each refuse
+/// by name. A skipped conformance check would leave the host's arms unlicensed while CI reads green.
+pub(crate) fn floor_decode_prepared_product_law(
+    prepared: &PreparedRepository,
+) -> Result<PreparedProductLaw, String> {
+    const MODULE: &str = "v2.workflow.floor2_prepared_subject";
+    let ctx = floor_authority_frame(prepared, MODULE).map_err(|e| {
+        format!("REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnframeable module={MODULE} — {e}")
+    })?;
+    let hit = floor_decode_prepared_product_disposition(
+        &ctx,
+        MODULE,
+        "prepared_product_outcome_for_roster_gate_hit",
+    )?;
+    let miss = floor_decode_prepared_product_disposition(
+        &ctx,
+        MODULE,
+        "prepared_product_outcome_for_roster_gate_miss",
+    )?;
+    Ok(PreparedProductLaw { hit, miss })
+}
+
+/// Decode ONE `PreparedProductOutcome` into the disposition the host will act on.
+///
+/// THE VARIANT IS THE ANSWER, which is the whole difference from the predicate form this replaced.
+/// A `Bool` compared against a literal tells the host nothing it did not already assume; a variant
+/// name it must map to behaviour means an arm the host does not implement cannot be ignored. The
+/// unknown arm is therefore a REFUSAL that names the variant, not a default — if
+/// `PreparedProductOutcome` ever gains a reconstruct arm, this is where the run stops.
+fn floor_decode_prepared_product_disposition(
+    ctx: &v1_interpreter::InterpContext,
+    module: &str,
+    func: &str,
+) -> Result<PreparedProductDisposition, String> {
+    const EXPECTED_PRODUCT: &str = "PreparedModuleSource";
+    const EXPECTED_CONSUMER: &str = "CommitWitnessRosterGate";
+    let qualified = format!("{module}.{func}");
+    match v1_interpreter::run_in_context(ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) => {
+            let disposition = match ctx.resolve(variant_name).as_str() {
+                "PreparedProductServed" => PreparedProductDisposition::Serve,
+                "PreparedProductRefused" => PreparedProductDisposition::Refuse,
+                unknown => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PreparedProductDispositionUnimplemented \
+                         {qualified} answered `{unknown}`, which this host has no behaviour for. \
+                         The model has grown an arm the prepared-product lookup does not \
+                         implement; acting on the arms it does know would silently ignore the new \
+                         one."
+                    ));
+                }
+            };
+            // THE PAYLOAD IS CHECKED, NOT DISCARDED, and the reason is that a variant name alone
+            // does not say WHOSE disposition this is. An outcome carrying `PreparedClaimScope` or
+            // naming `WitnessClaimFold` is a perfectly well-formed `PreparedProductRefused` about
+            // a DIFFERENT consumer's product, and reading only the name would let the roster gate
+            // adopt it as its own — the authority-substitution failure DESIGN names: both halves
+            // check out and only the arrow between them is missing.
+            floor_prepared_product_field_is(ctx, &fields, "product", EXPECTED_PRODUCT).map_err(
+                |found| {
+                    format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawWrongProduct {qualified} \
+                         answered about `{found}`, but the roster gate's product is \
+                         `{EXPECTED_PRODUCT}`. This outcome is not this consumer's to act on."
+                    )
+                },
+            )?;
+            // The consumer field exists only on the refused arm, so its absence on `Served` is
+            // not a defect. Where it IS present it must name this gate, for the same reason.
+            if fields.iter().any(|(k, _)| ctx.resolve(*k) == "consumer") {
+                floor_prepared_product_field_is(ctx, &fields, "consumer", EXPECTED_CONSUMER)
+                    .map_err(|found| {
+                        format!(
+                            "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawWrongConsumer \
+                             {qualified} answered for `{found}`, but this is \
+                             `{EXPECTED_CONSUMER}`'s lookup. A refusal addressed to another \
+                             consumer is not authority for this one."
+                        )
+                    })?;
+            }
+            Ok(disposition)
+        }
+        Ok(other) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawNotAnOutcome {qualified}: expected a \
+             PreparedProductOutcome variant, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnevaluable {qualified} — {e}"
+        )),
+    }
+}
+
+/// One field of a decoded outcome must be the nullary variant this consumer expects.
+/// `Err` carries what was found instead, so the caller's refusal can name it.
+fn floor_prepared_product_field_is(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
+    field: &str,
+    expected_variant: &str,
+) -> Result<(), String> {
+    match ctx.field(fields, field) {
+        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            let found = ctx.resolve(*variant_name);
+            if found == expected_variant {
+                Ok(())
+            } else {
+                Err(found)
+            }
+        }
+        Some(other) => Err(floor_value_shape(Some(other))),
+        None => Err(format!("no `{field}` field")),
+    }
+}
+
 pub(crate) fn floor_authority_frame(
     prepared: &PreparedRepository,
     module_path: &str,
@@ -4511,6 +4680,11 @@ pub fn run_required_floor(
         Some((&gate_entry_index, &closure_seeds)),
     )?;
     drop(gate_entry_index);
+    // THE HANDOFF LAW IS CONSULTED BEFORE ANY CONSUMER USES IT. `roster_entry_registry` serves its
+    // answers out of the prepared authority registered a few lines below, so the model that
+    // licenses its two arms is evaluated here, first, and a divergence refuses the run rather than
+    // being discovered by a reader comparing two files.
+    let prepared_product_law = floor_decode_prepared_product_law(&prepared)?;
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize
@@ -4530,7 +4704,8 @@ pub fn run_required_floor(
     // the release (review 57430).
     let discovery_exclusions = std::mem::take(&mut prepared.discovery_exclusions);
     let full_inventory = std::mem::take(&mut prepared.full_inventory);
-    let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
+    let _floor_prepared_guard =
+        register_floor_prepared_authority_guard(prepared_sources, prepared_product_law);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
     // `compile_dag_rust_emit_check` (the emit witnesses' host arm) calls
@@ -4607,9 +4782,27 @@ pub fn run_required_floor(
     // key here must match theirs; `canonical_shared_index_roots` normalizes relative and
     // absolute forms to the same key regardless.
     //
-    // dissolve-on: same as the module-path-index warm above — when the shared index derives
-    // from the prepared inventory instead of a second disk walk, this warm call becomes
+    // THOSE THREE CALL SITES ARE GONE (2026-09-12) AND THIS WARM IS NOT, WHICH IS WHY THE
+    // PARAGRAPH ABOVE IS KEPT IN THE PAST TENSE RATHER THAN DELETED WITH THEM. The roster
+    // gate now answers from the prepared subject's own bytes, parse-only, and touches no
+    // index at all (`roster_entry_registry`). So the MEASUREMENT above — 62.7-83.0s billed to
+    // one witness — is the receipt for a cost that no longer exists, and a reader looking for
+    // today's reason to warm must not find that receipt and take it as one.
+    //
+    // WHAT STILL JUSTIFIES THE WARM, stated because removing the original consumer without
+    // naming the surviving one would leave this call looking orphaned: the bare-reference
+    // edge-index warm below builds an index over these same roots regardless
+    // (`canonical_shared_index_roots` maps `source_roots` and `witness_layer_roots()` to one
+    // key), so the second universe is constructed on this run whether or not this line runs.
+    // Deleting the warm would therefore relocate the attribution onto the edge-index phase
+    // rather than remove any work — the exact move the three paragraphs above reject.
+    //
+    // dissolve-on: UNCHANGED IN SUBSTANCE AND NARROWER IN SCOPE — when the shared index
+    // derives from the prepared inventory instead of a second disk walk, this warm becomes
     // unnecessary rather than merely redundant, because there is no second authority to warm.
+    // The roster gate was one of its consumers and is now off it; the remaining consumers are
+    // the edge index, `changed_witness_identities`, the compile-clean gate, the four diff
+    // readouts and the discovery corpus, and the warm retires when the LAST of them moves.
     let (warmed_shared_index_modules, shared_index_warm) =
         observe_shared_build(false, "floor-preparation", || {
             process_shared_index(&witness_layer_roots())
