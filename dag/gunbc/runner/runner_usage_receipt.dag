@@ -5,7 +5,7 @@ import v2.std.optional { Optional, Present, Absent }
 import std.nat { Nat }
 import std.algebra { FieldOfFractions }
 import std.measure {
-  Nanosecond, ObservationInstant, HardwareThreadCount, WallClock,
+  Nanosecond, ObservationInstant, HardwareThreadCount, HardwareThreadMinute, Measure, WallClock,
   compare_instants, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, nanosecond, nanosecond_count,
   hardware_thread_count_value, minute, minute_to_millisecond, millisecond_to_nanosecond,
 }
@@ -86,16 +86,17 @@ type RunnerUsageRefusal
   | UsageClockBasisNotWall
   | UsageIntervalOrderRefused { diagnostic: RunnerInstantOrderRefusal }
 
-// Product-dimension gap: std.measure has typed Count and Time operands but no product quantity.
-// This carrier retains exactness and controlled construction; its product dimension awaits that
-// capability. Tracked by runner_canary_evidence_frontier.runner_canary_executed_evidence_frontier.
+// HardwareThreadMinute is the named std.measure carrier returned to consumers. The receipt
+// witnesses execute against it; the alias-nominal compiler property is separately owned by
+// gunbc#11190. Inline Measure dimensions are NOT enforced; the remaining structural-marker gap
+// is runner_canary_evidence_frontier's MeteredVcpuMinutes row.
 // Minutes are an exact fraction of the universal nanoseconds-per-minute scale. The constructor
 // owns both numerator and denominator; the caller cannot supply a rounded total beside the meter.
 type MeteredVcpuMinutes sole_constructor {
-  count: FieldOfFractions<Nat>
+  count: HardwareThreadMinute
 }
 
-fn metered_vcpu_minutes_fraction(usage: MeteredVcpuMinutes) -> FieldOfFractions<Nat> {
+fn metered_vcpu_minutes_measure(usage: MeteredVcpuMinutes) -> HardwareThreadMinute {
   usage.count
 }
 
@@ -146,10 +147,10 @@ fn runner_usage_from_observation<P>(
                   RunnerUsageProduced { receipt: RunnerUsageReceipt {
                     meter: meter,
                     initiator: initiator,
-                    vcpu_minutes: MeteredVcpuMinutes { count: FieldOfFractions {
+                    vcpu_minutes: MeteredVcpuMinutes { count: Measure { count: FieldOfFractions {
                       num: elapsed * hardware_thread_count_value(t: meter.configured_vcpus),
                       denom: nanosecond_count(n: millisecond_to_nanosecond(m: minute_to_millisecond(m: minute(count: 1)))),
-                    } },
+                    } } },
                     vm_elapsed: nanosecond(count: elapsed),
                     capacity_held: nanosecond(count: held),
                   } }

@@ -7,7 +7,7 @@ import product.fabric.identity { FabricIdentity, WorkKey }
 import product.placement_supply { HostIdentity }
 import std.measure {
   ObservationInstant, SharedMonotonic, WallClock, CpuClock, ClockBasis,
-  nanosecond, nanosecond_count, hardware_thread_count,
+  nanosecond, nanosecond_count, hardware_thread_count, measure_count,
 }
 import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest }
@@ -21,7 +21,7 @@ import gunbc.runner.runner_usage_receipt {
   produce_runner_usage_receipt, RunnerUsageProduced, RunnerUsageRefused,
   UsageMeterMissing, UsageSubjectMismatch, UsageInitiatorMissing, UsageInitiatorJobMismatch,
   UsageVcpuCountZero, UsageClockResolutionZero, UsageClockBasisNotWall,
-  UsageIntervalOrderRefused, RunnerInstantsIncomparable, RunnerInstantsReversed, metered_vcpu_minutes_fraction,
+  UsageIntervalOrderRefused, RunnerInstantsIncomparable, RunnerInstantsReversed, metered_vcpu_minutes_measure,
 }
 import gunbc.runner.runner_teardown_receipt {
   RunnerResourceClass,
@@ -102,7 +102,7 @@ test fn fractional_minutes_preserve_meter_and_exclude_staging() -> Bool {
       reaped: fixture_at(ns: 50125000000), resolution: 1000000) },
     initiator: fixture_initiator(subject: subject)) {
     RunnerUsageProduced { receipt: r } => {
-      let fraction = metered_vcpu_minutes_fraction(usage: r.vcpu_minutes)
+      let fraction = measure_count(m: metered_vcpu_minutes_measure(usage: r.vcpu_minutes))
       fraction.num == 160500000000 && fraction.denom == 60000000000 &&
       nanosecond_count(n: r.vm_elapsed) == 40125000000 &&
       nanosecond_count(n: r.capacity_held) == 60000000000 &&
