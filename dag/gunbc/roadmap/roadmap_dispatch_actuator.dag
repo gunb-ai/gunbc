@@ -2816,6 +2816,49 @@ fn dispatch_permitted_from_selection(
   }
 }
 
+fn classify_dispatch_lease_after_destination(
+  node: RoadmapNode,
+  tmux_entries: List<TmuxLsEntry>,
+  attempt_key: String,
+  process_fingerprint: NonEmptyStr,
+  effort: ReasoningEffort,
+  model: ProviderModelSelection,
+) -> DispatchRequestGate {
+  let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+    node_id: node.node,
+    process_fingerprint: process_fingerprint,
+  )
+  let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
+  match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
+    UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+      DispatchRefused { reason: reason }
+    UpsertClassification { verdict: _, decision: Noop } =>
+      DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+    UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+      dispatch_permitted_from_selection(
+        node: node,
+        attempt_key: attempt_key,
+        effort: effort,
+        model: model,
+      )
+  }
+}
+
+fn classify_dispatch_destination_gate(node: RoadmapNode) -> DispatchRequestGate? {
+  match node_dispatch_destination(node: node) {
+    DispatchDestinationMissing { reason } =>
+      Present { value: DispatchRefused { reason: reason } }
+    DispatchDestinationResolved { identity } =>
+      if !destination_is_this_spawn_tree(identity: identity) {
+        Present {
+          value: DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) },
+        }
+      } else {
+        none
+      }
+  }
+}
+
 fn classify_dispatch_request_for_process_fingerprint(
   node: RoadmapNode,
   ready: List<RoadmapNode>,
@@ -2828,32 +2871,17 @@ fn classify_dispatch_request_for_process_fingerprint(
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
-    match node_dispatch_destination(node: node) {
-      DispatchDestinationMissing { reason } =>
-        DispatchRefused { reason: reason }
-      DispatchDestinationResolved { identity } =>
-        if !destination_is_this_spawn_tree(identity: identity) {
-          DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) }
-        } else {
-      let scope = dispatch_tmux_session_scope_for_process_fingerprint(
-        node_id: node.node,
-        process_fingerprint: process_fingerprint,
-      )
-      let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
-      match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
-        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
-          DispatchRefused { reason: reason }
-        UpsertClassification { verdict: _, decision: Noop } =>
-          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
-        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-          dispatch_permitted_from_selection(
-            node: node,
-            attempt_key: attempt_key,
-            effort: effort,
-            model: model,
-          )
-      }
-        }
+    match classify_dispatch_destination_gate(node: node) {
+      Present { value: refused } => refused
+      Absent =>
+        classify_dispatch_lease_after_destination(
+          node: node,
+          tmux_entries: tmux_entries,
+          attempt_key: attempt_key,
+          process_fingerprint: process_fingerprint,
+          effort: effort,
+          model: model,
+        )
     }
   }
 }
@@ -2884,27 +2912,21 @@ fn classify_dispatch_request(
   if !node_in_ready(node_id: node.node, ready: ready) {
     DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
   } else {
-    match node_dispatch_destination(node: node) {
-      DispatchDestinationMissing { reason } =>
-        DispatchRefused { reason: reason }
-      DispatchDestinationResolved { identity } =>
-        if !destination_is_this_spawn_tree(identity: identity) {
-          DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) }
-        } else {
-      match selection {
-        DispatchActuatorSelectionRefused { reason } =>
-          DispatchRefused { reason: reason }
-        DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
-          classify_dispatch_request_for_process_fingerprint(
-            node: node,
-            ready: ready,
-            tmux_entries: tmux_entries,
-            attempt_key: attempt_key,
-            process_fingerprint: process_fingerprint,
-            effort: effort,
-            model: model,
-          )
-      }
+    match classify_dispatch_destination_gate(node: node) {
+      Present { value: refused } => refused
+      Absent =>
+        match selection {
+          DispatchActuatorSelectionRefused { reason } =>
+            DispatchRefused { reason: reason }
+          DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
+            classify_dispatch_lease_after_destination(
+              node: node,
+              tmux_entries: tmux_entries,
+              attempt_key: attempt_key,
+              process_fingerprint: process_fingerprint,
+              effort: effort,
+              model: model,
+            )
         }
     }
   }

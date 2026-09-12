@@ -120,6 +120,16 @@ fn destination_github_repository(identity: DestinationIdentity) -> DestinationGi
   }
 }
 
+fn destination_slug_not_owner_name(slug: String) -> DispatchDestination {
+  DispatchDestinationMissing {
+    reason: join([
+      "destination slug ",
+      slug,
+      " is not owner/name, so it cannot become a publication repository",
+    ], "") as NonEmptyStr,
+  }
+}
+
 fn repository_from_repo_slug(repo: String) -> DispatchDestination {
   let slug = trim(repo)
   if slug == "" {
@@ -129,53 +139,15 @@ fn repository_from_repo_slug(repo: String) -> DispatchDestination {
   } else if gunbc_destination_slug_matches(repo: slug) {
     DispatchDestinationResolved { identity: gunbc_destination_identity() }
   } else {
-    let parts = split(s: slug, delimiter: "/")
-    if count(parts) != 2 {
-      DispatchDestinationMissing {
-        reason: join([
-          "destination slug ",
-          slug,
-          " is not owner/name, so it cannot become a publication repository",
-        ], "") as NonEmptyStr,
-      }
+    let segments = split(s: slug, delimiter: "/") |> map(p => trim(p)) |> filter(p => p != "")
+    if count(segments) != 2 {
+      destination_slug_not_owner_name(slug: slug)
     } else {
-      match first(parts) {
-        Absent =>
-          DispatchDestinationMissing {
-            reason: join([
-              "destination slug ",
-              slug,
-              " is not owner/name, so it cannot become a publication repository",
-            ], "") as NonEmptyStr,
-          }
-        Present { value: owner_raw } =>
-          match first(parts.skip(n: 1)) {
-            Absent =>
-              DispatchDestinationMissing {
-                reason: join([
-                  "destination slug ",
-                  slug,
-                  " is not owner/name, so it cannot become a publication repository",
-                ], "") as NonEmptyStr,
-              }
-            Present { value: name_raw } => {
-              let owner = trim(owner_raw)
-              let name = trim(name_raw)
-              if owner == "" || name == "" {
-                DispatchDestinationMissing {
-                  reason: join([
-                    "destination slug ",
-                    slug,
-                    " has an empty owner or name",
-                  ], "") as NonEmptyStr,
-                }
-              } else {
-                DispatchDestinationResolved {
-                  identity: named_destination_identity_from_owner_name(owner: owner, name: name),
-                }
-              }
-            }
-          }
+      DispatchDestinationResolved {
+        identity: named_destination_identity_from_owner_name(
+          owner: segments.first(),
+          name: segments.skip(n: 1).first(),
+        ),
       }
     }
   }
