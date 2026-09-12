@@ -143,6 +143,8 @@ type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 // unchanged. Coverage is therefore closed over a NAME, and the claim it supports is "a gate
 // registered under this identity ran at this grain", not "the declaration this identity names ran".
 // The residual sits at MITIGATION: a typed field, authored and unverified.
+// The class is `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`: the join's
+// two sides here are the authored name and a witness stamped FROM that same authored name.
 //
 // NO DISCRIMINATING RED IS AUTHORABLE TODAY, which is why this is a stated ceiling rather than a
 // missing test. A control would have to recover a declaration identity FROM a function value and
@@ -842,6 +844,10 @@ fn validated_from_compile_output(
 // representable as source handed to the compiler by a fixture, and that declining the evidence
 // there would be specification-without-execution. The honest statement is therefore about grain:
 // fixture-grain the join discriminates six ways; door-grain it catches a duplicated or empty roster.
+//
+// THE CLASS IS ROSTERED: `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`,
+// whose discriminator is the one sentence that finds this without reading any witness -- the
+// comparison's two operands have a common producer. Both of this file's instances are its specimens.
 //
 // TRIGGER for the door-grain claim to become the one this annotation used to make: an INDEPENDENT
 // observation channel -- a receipt carried out of the runner that executed the gates, rather than a
