@@ -163,8 +163,13 @@ fn t_not_engaged_naming(d: DispositionStanding, basis_decl: NonEmptyStr) -> Bool
   }
 }
 
-// THIS ROW NOW ASSERTS AT THE SEAM THAT OWNS THE DISPOSITIONS, and the move is forced rather than
-// stylistic. It used to read the three standings off an ADMITTED permit. After the telemetry repair
+// WHAT THIS ROW ESTABLISHES AND WHAT IT DOES NOT, stated first because the distinction is easy to
+// lose: t_not_engaged_naming checks the VARIANT and the basis REFERENCE. It does not evaluate the
+// truth of the prose inside the referenced basis, so re-pointing this row does not turn those
+// sentences into executed findings and must not be described as doing so. What it establishes is
+// that each program is NOT ENGAGED rather than cleared, and that each names the basis it claims to.
+//
+// AND IT ASSERTS AT THE SEAM THAT OWNS THE DISPOSITIONS, which is forced rather than stylistic. It used to read the three standings off an ADMITTED permit. After the telemetry repair
 // no realization admits -- the route facts are incomplete for every input, by design -- so the
 // permit arm is unreachable and a witness that asserts through it is asserting nothing. The
 // dispositions are not admission's to produce, though: they are produced by this module's own
@@ -197,14 +202,21 @@ test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
 // a later one -- so the rows below take facts whose paths are all resolved and therefore reach the
 // question they are about.
 //
-// NOTHING HERE IS INVENTED, WHICH IS THE POINT. The closure is not built from a fabricated Located
-// value: every slot reuses this module's OWN on-site path, the one spark_first_party_route_facts
-// already produces for execution, storage and logs on operator-owned hardware. So the fixture says
-// "suppose the telemetry path were as established as the on-site ones already are", which is a
-// supposition about a FIXTURE INPUT and never a claim about a deployment. It does not assert that
-// telemetry is established, it does not reach production, and the row that WOULD assert it --
-// a positive control carrying launch-bound evidence -- is deliberately absent until such evidence
-// exists.
+// THIS IS A HYPOTHETICAL RESOLVED-ROUTE FIXTURE, AND THAT NAME IS THE HONEST ONE. An earlier
+// spelling defended it as "inventing nothing", on the ground that every slot reuses a value
+// production already returns -- this module's own on-site path. That defence is wrong and worth
+// recording as wrong: COPYING A PRODUCTION VALUE INTO A SLOT DOES NOT MAKE IT AN OBSERVATION OF THAT
+// SLOT'S DESTINATION. Assigning the execution path to the telemetry slot constructs a closure that
+// no producer returns and no evidence supports; the provenance of the copied value buys nothing.
+//
+// WHAT MAKES IT ADMISSIBLE IS THE EXPLICIT HYPOTHESIS AND THE BOUNDED QUESTION, nothing else. The
+// claim these rows support is exactly: GIVEN a resolved-route fixture, the production admission
+// evaluator still rejects an unsupported customer profile and a superseded posture, each for its own
+// reason. That is a fact about the evaluator's later arms, which is what they are for.
+//
+// IT IS NOT PRODUCTION TELEMETRY EVIDENCE and must never be cited as any. It does not establish that
+// a telemetry path resolves, it does not reach production, and it is NOT the deferred launch-bound
+// positive control -- that row remains absent until evidence bound to the offered launch exists.
 fn t_facts_reaching_the_scope_checks() -> ProviderRouteFacts {
   let f = spark_first_party_route_facts(realization: t_pair_realization())
   let onsite = f.data_paths.execution

@@ -134,6 +134,15 @@ type SparkServingReadiness
 // unreadable readback on covered hosts received the pair-serving service by default -- the same
 // declaration-standing-in-for-a-realization defect this module was changed to remove, surviving in
 // the half nobody had looked at.
+// THE TWO ROUTE-BEARING ARMS ARE RETAINED AND ARE CURRENTLY UNREACHABLE FROM THE STANDING, said
+// here rather than left for a reader to discover by grep. ServingRouteOperatorAsserted is the right
+// answer once the deployment that answered is established as the offered launch, and
+// ServingRouteObserved once a producer observes the region rather than the operator asserting it.
+// Neither is reachable today: the region is asserted and the service is not established for any
+// input, so spark_serving_route_standing returns a refusing arm every time. They are kept because
+// they are the shapes those answers take, and deleting them would mean re-deriving them when the
+// evidence lands; they are named unreachable because an arm that quietly cannot occur is the
+// decoration DESIGN 4b warns will later be cited as coverage.
 type SparkServingRoute
   = ServingRouteObserved { route: ProviderRoute }
   | ServingRouteOperatorAsserted { route: ProviderRoute, allocation: OperatorAllocation }
@@ -186,6 +195,41 @@ fn spark_serving_route_uncovered_obligation(uncovered: List<HostIdentity>) -> No
   ], "") as NonEmptyStr
 }
 
+// WHY A MATCHING CONFIGURATION DOES NOT ESTABLISH THE SERVICE EITHER, which is the repair that
+// makes this arm unconditional. An earlier spelling refused only when the readback was unreadable or
+// reported a different path, and returned the pair-serving service whenever the reported
+// configured_model_path MATCHED. That preserved the exact defect the telemetry repair exists to
+// remove, one seam over: gunbc.spark.first_party_serving spark_realization_identity says in its own
+// annotation that the comparison establishes CONFIGURATION AGREEMENT and not which launch answered,
+// and that a consumer may not read RealizationIsPairServing as identity. This was that consumer,
+// reading it as identity, and naming a specific declared deployment on the strength of it.
+//
+// SO REFUSING THE UNREADABLE AND DIFFERENT-PATH CASES WAS NEVER THE FIX. Those are the easy cases.
+// The motivating case is two deployments that SHARE a configuration, which the comparison cannot
+// separate -- so the service is unestablished for every input, and the arm is unconditional rather
+// than conditioned on a join that cannot answer the question.
+//
+// WHAT THIS DOES NOT CLAIM: it does not detect a foreign launch. Nothing here can distinguish two
+// launches sharing a configuration, and a refusal is not a detection. The claim is only the narrow
+// one -- matching configuration does not establish the specific deployment service -- which is why
+// the region, resting on evidence of a different kind, survives untouched.
+data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark.serving_offer: gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED. Nothing available here establishes it: host coverage says only where the machines sit, and the models-route readback establishes at most that the process reports the configuration we declared, which two deployments can share. THE CAPABILITY THAT DISCHARGES THIS is evidence identifying the deployment that answered as the offered launch -- an observation or convergence receipt bound to that launch, not a wider comparison of what it reports. Until then the region is asserted from the operator's dated allocation and the service is refused."
+
+// THE CAUSE THE IDENTITY JOIN REPORTS, carried into the refusal so a reader learns WHICH of the two
+// situations obtained -- an unreadable or different-path readback, or a configuration that matched
+// and still did not establish the deployment. The refusal is the same either way; the diagnosis is
+// not, and a reader who cannot tell them apart will go looking for the wrong evidence.
+fn spark_realization_identity_cause(realization: SparkServingRealization) -> NonEmptyStr {
+  match spark_realization_identity(realization: realization) {
+    RealizationIsPairServing { configured_model_path: p } =>
+      join([
+        "the engine reports the model path this launch is declared to serve (", p as String,
+        "), which is configuration agreement and not identity -- a second deployment configured the same way reports the same string",
+      ], "") as NonEmptyStr
+    RealizationUnidentified { cause: why } => why
+  }
+}
+
 fn spark_serving_route_standing(realization: SparkServingRealization) -> SparkServingRoute {
   let hosts = realization.hosts
   if count(hosts) == 0 {
@@ -195,21 +239,14 @@ fn spark_serving_route_standing(realization: SparkServingRealization) -> SparkSe
     if count(uncovered) > 0 {
       ServingRouteRegionUnobserved { obligation: spark_serving_route_uncovered_obligation(uncovered: uncovered) }
     } else {
-      match spark_realization_identity(realization: realization) {
-        RealizationIsPairServing { configured_model_path: _ } =>
-          ServingRouteOperatorAsserted {
-            route: spark_first_party_route(),
-            allocation: spark_fleet_site_allocation.allocation,
-          }
-        RealizationUnidentified { cause: why } =>
-          ServingRouteServiceUnidentified {
-            allocation: spark_fleet_site_allocation.allocation,
-            obligation: join([
-              "the operator's dated site allocation covers every host of this realization, so the REGION is established and is not in question. The SERVICE is not: ",
-              why as String,
-              ". gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED, and host coverage establishes only where the machines sit. Returning that service here would attribute a specific declared deployment to a process this repository cannot identify.",
-            ], "") as NonEmptyStr,
-          }
+      ServingRouteServiceUnidentified {
+        allocation: spark_fleet_site_allocation.allocation,
+        obligation: join([
+          "the operator's dated site allocation covers every host of this realization, so the REGION is established and is not in question. The SERVICE is not. ",
+          spark_serving_route_service_identity_obligation as String,
+          " For this realization the identity join reports: ",
+          spark_realization_identity_cause(realization: realization) as String,
+        ], "") as NonEmptyStr,
       }
     }
   }
