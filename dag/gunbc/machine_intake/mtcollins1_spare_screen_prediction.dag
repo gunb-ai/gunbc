@@ -11,7 +11,8 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
 }
 import std.predictive_claim {
   Prediction, PredictionRestriction, AdversarialTestingObligation, PostOutcomePredictionArchive,
-  ApproximatePredictionWindow, ConfoundedMechanisms,
+  ApproximatePredictionWindow, PredictionObservationWindow, PredictionObservationWindowFold,
+  prediction_observation_window_fold, ConfoundedMechanisms,
   PredictiveModel, PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
   PredictiveClaimRefusal, PredictiveStanding, PredictiveNextObligation,
   begin_predictive_model, record_archived_prediction_test, narrow_predictive_model,
@@ -148,12 +149,27 @@ fn spare_screen_prediction() -> Prediction<SpareScreenConfiguration, SpareScreen
   }
 }
 
-fn falsified_spare_screen_model() -> PredictiveModelResult<SpareScreenConfiguration, SpareScreenOutcome> {
+// The historical window is approximate, so this comparison uses its reported nominal duration;
+// it does not manufacture an exact deadline or witnessed registration. A later restart or an
+// absent window cannot supply the recorded falsifier.
+fn spare_screen_restart_outcome(report: SpareScreenOutcomeReport, window: PredictionObservationWindow) -> SpareScreenOutcome {
+  let within = prediction_observation_window_fold(window: window, fold: PredictionObservationWindowFold {
+    bounded: fn(duration) { duration > 0 && report.restart_after_power_on <= duration },
+    approximate: fn(duration) { duration > 0 && report.restart_after_power_on <= duration },
+    unrecorded: false,
+  })
+  if within { RestartInsideDeclaredWindow } else { SpareScreenOutcomeUnknown }
+}
+
+fn spare_screen_model_from_report(report: SpareScreenOutcomeReport) -> PredictiveModelResult<SpareScreenConfiguration, SpareScreenOutcome> {
   match begin_predictive_model(prediction: spare_screen_prediction()) {
     PredictiveModelRefused { cause: cause } => PredictiveModelRefused { cause: cause }
     PredictiveModelAccepted { model: model } => record_archived_prediction_test(
       model: model, configuration: spare_screen_configuration,
-      observation: RecordedFact { id: "msg_94eec616-spare-screen-restart" as RecordedFactId, value: RestartInsideDeclaredWindow },
+      observation: RecordedFact {
+        id: "msg_94eec616-spare-screen-restart" as RecordedFactId,
+        value: spare_screen_restart_outcome(report: report, window: model.prediction.claim.bound),
+      },
       archive: spare_screen_archive_receipt(),
       source: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "spare_screen_outcome_report"),
       discrimination: ConfoundedMechanisms {
@@ -166,6 +182,10 @@ fn falsified_spare_screen_model() -> PredictiveModelResult<SpareScreenConfigurat
       },
     )
   }
+}
+
+fn falsified_spare_screen_model() -> PredictiveModelResult<SpareScreenConfiguration, SpareScreenOutcome> {
+  spare_screen_model_from_report(report: spare_screen_outcome_report)
 }
 
 // One counterexample disproves sufficiency. It DOES NOT prove necessity: concluding that an

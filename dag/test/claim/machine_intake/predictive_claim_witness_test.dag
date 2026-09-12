@@ -33,7 +33,8 @@ import gunbc.machine_intake_mtcollins1_spare_screen_prediction {
   spare_screen_prediction_review, spare_screen_prediction_cli, SpareScreenPredictionReported, SpareScreenPredictionRefused,
   spare_screen_configuration, original_screen_configuration, spare_screen_prediction_commit,
   spare_screen_prediction, spare_screen_archive_receipt, SpareScreenConfiguration, SpareScreenOutcome, TrainingAndPostObserved,
-  RestartInsideDeclaredWindow,
+  RestartInsideDeclaredWindow, SpareScreenOutcomeUnknown, SpareScreenOutcomeReport,
+  spare_screen_restart_outcome, spare_screen_model_from_report, spare_screen_outcome_report,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -356,6 +357,28 @@ test fn spare_screen_archives_the_falsified_commit_and_narrows_without_inventing
   }
 }
 
+test fn a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen() -> Bool {
+  let original = spare_screen_outcome_report
+  let late = SpareScreenOutcomeReport {
+    message_id: original.message_id, restart_after_power_on: 400000,
+    oem_payload_quotation: original.oem_payload_quotation,
+    socket0_memory_power: original.socket0_memory_power, socket1_memory_power: original.socket1_memory_power,
+    original_each_socket_memory_power: original.original_each_socket_memory_power,
+    original_reported_clean_duration: original.original_reported_clean_duration,
+  }
+  let no_window = spare_screen_restart_outcome(report: original, window: PredictionWindowNotRecorded) == SpareScreenOutcomeUnknown
+  let shortened = spare_screen_restart_outcome(report: original, window: ApproximatePredictionWindow { duration: 280000 }) == SpareScreenOutcomeUnknown
+  no_window && shortened && match spare_screen_model_from_report(report: late) {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
+      TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
+        strong == 0 && weak == 0 && unknown == 1 && revisions == 0
+          && all(model.tests, receipt => receipt.observation.value == SpareScreenOutcomeUnknown)
+      _ => false
+    }
+  }
+}
+
 test fn training_instead_of_restart_would_not_falsify_the_spare_screen() -> Bool {
   match begin_predictive_model(prediction: spare_screen_prediction()) {
     PredictiveModelRefused { cause: _ } => false
@@ -438,6 +461,7 @@ func predictive_claim_contract_probe() -> ProcessExit {
     && tonight_is_one_weak_conversation_match_and_not_preregistered()
     && a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration()
     && spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass()
+    && a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen()
     && training_instead_of_restart_would_not_falsify_the_spare_screen()
     && archival_publication_never_earns_committed_or_preregistered_match_standing()
     && operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() {
