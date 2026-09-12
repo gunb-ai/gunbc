@@ -109,8 +109,16 @@ type CapturePersistenceRefusal
 // LOCAL DURABLE COMMIT AND DOWNSTREAM ACCEPTANCE ARE SEPARATE FACTS and are never folded into one
 // "saved" flag. A chunk can be durably on this machine's spool and unaccepted anywhere else, which
 // is the normal state while the machine whose reboot we are capturing is down.
+// TWO DIGESTS, BECAUSE THEY ARE TWO DIFFERENT SEMANTIC FACTS AND COMPARING THEM WOULD FABRICATE AN
+// EQUALITY. `committed_content` is the durable store's own slot digest -- what the compare-and-set
+// authority committed, over whatever envelope the store serializes. `attests_payload` is the digest
+// OF THE RAW CHUNK PAYLOAD the receipt is a receipt FOR. A commit receipt that does not say which
+// chunk it commits cannot bind bytes to storage, so a caller could carry a valid receipt for a
+// DIFFERENT chunk and have it read as this chunk being kept. The binding is therefore VERIFIED at
+// the fold below (commit_attests_chunk) rather than assumed, and the two fields are never compared
+// to each other.
 type LocalCommitStanding
-  = LocallyCommitted { committed_content: ContentHash }
+  = LocallyCommitted { committed_content: ContentHash, attests_payload: ContentHash }
   | LocalCommitFailed { cause: CapturePersistenceRefusal }
   | LocalCommitNotAttempted
 
@@ -127,10 +135,10 @@ type DownstreamAcceptanceStanding
 // Every CAS refusal maps to a DISTINCT persistence refusal rather than one flat failure, because a
 // missing referenced object is re-derivable, a malformed head is repaired by hand, and a refused
 // read is retried -- three remedies a caller cannot choose between from prose.
-fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
+fn local_commit_from_cas<T>(outcome: CasOutcome<T>, attests_payload: ContentHash) -> LocalCommitStanding {
   match outcome {
     CasCommitted { committed: committed } =>
-      LocallyCommitted { committed_content: committed.content }
+      LocallyCommitted { committed_content: committed.content, attests_payload: attests_payload }
     CasPreconditionFailed { expected: _, observed: _ } =>
       LocalCommitFailed { cause: ChunkCommitRefused { detail: "durable commit lost a compare-and-set race; the chunk is not kept" } }
     CasStoreRefused { cause: cause } =>
@@ -147,9 +155,54 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
 
 fn chunk_is_locally_committed(standing: LocalCommitStanding) -> Bool {
   match standing {
-    LocallyCommitted { committed_content: _ } => true
+    LocallyCommitted { committed_content: _, attests_payload: _ } => true
     LocalCommitFailed { cause: _ } => false
     LocalCommitNotAttempted => false
+  }
+}
+
+// WHETHER A COMMIT RECEIPT ACTUALLY ATTESTS THIS CHUNK'S BYTES. Cross-family digests return
+// ChunkPayloadIncomparable rather than a fabricated false, because compare_content_hash refuses that
+// comparison and this fold must not paper over the refusal (DESIGN section 5).
+type CommitBinding
+  = CommitAttestsThisChunk
+  | CommitAttestsOtherPayload { attested: ContentHash, chunk_payload: ContentHash }
+  | CommitBindingIncomparable { attested: ContentHash, chunk_payload: ContentHash }
+
+fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> CommitBinding {
+  match standing {
+    LocallyCommitted { committed_content: _, attests_payload: attests } =>
+      match compare_content_hash(left: attests, right: chunk.payload_digest) {
+        ContentHashEqual => CommitAttestsThisChunk
+        ContentHashDifferent =>
+          CommitAttestsOtherPayload { attested: attests, chunk_payload: chunk.payload_digest }
+        ContentHashCrossFamilyIncomparable =>
+          CommitBindingIncomparable { attested: attests, chunk_payload: chunk.payload_digest }
+      }
+    LocalCommitFailed { cause: _ } =>
+      CommitAttestsOtherPayload { attested: chunk.payload_digest, chunk_payload: chunk.payload_digest }
+    LocalCommitNotAttempted =>
+      CommitAttestsOtherPayload { attested: chunk.payload_digest, chunk_payload: chunk.payload_digest }
+  }
+}
+
+// HOW MANY BYTES THIS CHUNK ACTUALLY CARRIES. Silence is a POSITIVE RECEIPT in this model -- a
+// durably committed, continuity-verified EMPTY range -- rather than a caller's assertion that
+// nothing showed up, which is the shape the sixth instance of
+// gunbc.recurring_failure_mode.empty_capture_read_as_clean_result demands.
+fn chunk_byte_count(chunk: CaptureChunk) -> Nat {
+  byte_size_count(b: chunk.range.length)
+}
+
+// WHETHER CONTINUITY WAS VERIFIED FAR ENOUGH TO ANSWER FOR A REQUESTED RANGE. Establishing
+// continuity through offset 10 says nothing about offset 100, and reading the ESTABLISHED arm
+// without reading how far it reaches is the same defect one level up: a standing consumed without
+// the figure that bounds it.
+fn continuity_reaches(continuity: StreamContinuity, through: Nat) -> Bool {
+  match continuity {
+    ContinuityEstablished { verified_through: verified } => verified >= through
+    ContinuityGap { gap: _, cause: _ } => false
+    ContinuityUnknown { detail: _ } => false
   }
 }
 

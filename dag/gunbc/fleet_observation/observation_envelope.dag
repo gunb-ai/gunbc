@@ -8,6 +8,7 @@ import std.measure { ObservationInstant }
 import std.content_hash { ContentHash }
 import gunbc.fleet_observation_collector_ownership {
   CollectorSessionId,
+  ownership_generation,
   EndpointOwnership,
   OwnerRecording,
   FollowerReadOnly,
@@ -28,7 +29,15 @@ import gunbc.fleet_observation_capture_chunk {
   DownstreamNotOffered,
   chunk_is_locally_committed,
   continuity_is_established,
+  continuity_reaches,
+  commit_attests_chunk,
+  chunk_byte_count,
+  CommitBinding,
+  CommitAttestsThisChunk,
+  CommitAttestsOtherPayload,
+  CommitBindingIncomparable,
   range_covers,
+  range_end,
 }
 
 // THE PUBLISHED INTERFACE. gunbc's acquisition half records bytes; the interpretation half
@@ -149,29 +158,67 @@ type ObservationEnvelope {
 type SourceByteFact
   = SourceBytesObserved { digest: ContentHash }
   | SourceProducedNoBytesInRange { range: SourceStreamRange }
-  | CoverageGapNotDurablyCommitted
+  | CoverageGapNotDurablyCommitted { standing: LocalCommitStanding }
+  | CoverageGapCommitDoesNotBindThisChunk { binding: CommitBinding }
   | CoverageGapContinuityBroken { continuity: StreamContinuity }
+  | CoverageGapContinuityShortOfRange { verified_through: Nat, requested_end: Nat }
   | CoverageGapRangeNotCovered { requested: SourceStreamRange, committed: SourceStreamRange }
   | CoverageGapNotTheRecordingOwner { ownership: EndpointOwnership }
+  | CoverageGapEvidenceNamesAnotherSubject { detail: NonEmptyStr }
 
 // THE WALL. Read the order of the guards: every coverage question is answered BEFORE the payload
 // question, so there is no path on which an empty payload short-circuits to silence.
 //
 // A collector that cannot prove coverage reports a coverage gap; it does not report silence as
 // quiet. Each refusal names what was missing, and none of them widens.
-fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange, payload_present: Bool) -> SourceByteFact {
-  if !may_record(ownership: envelope.ownership) {
-    CoverageGapNotTheRecordingOwner { ownership: envelope.ownership }
-  } else if !chunk_is_locally_committed(standing: envelope.local_commit) {
-    CoverageGapNotDurablyCommitted
-  } else if !continuity_is_established(continuity: envelope.continuity) {
-    CoverageGapContinuityBroken { continuity: envelope.continuity }
-  } else if !range_covers(outer: envelope.chunk.range, inner: requested) {
-    CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-  } else if payload_present {
-    SourceBytesObserved { digest: envelope.chunk.payload_digest }
-  } else {
-    SourceProducedNoBytesInRange { range: requested }
+fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange) -> SourceByteFact {
+  let requested_end = range_end(range: requested)
+  match recording_owner_session(ownership: envelope.ownership) {
+    NotTheRecordingOwner =>
+      CoverageGapNotTheRecordingOwner { ownership: envelope.ownership }
+    RecordingOwner { session: owner_session, generation: owner_generation } =>
+      if !evidence_names_one_subject(
+        owner_session: owner_session,
+        owner_generation: owner_generation,
+        chunk: envelope.chunk,
+        binding: envelope.binding,
+      ) {
+        CoverageGapEvidenceNamesAnotherSubject {
+          detail: "the recording owner, the chunk occurrence and the source-machine binding do not name one subject"
+        }
+      } else if !chunk_is_locally_committed(standing: envelope.local_commit) {
+        CoverageGapNotDurablyCommitted { standing: envelope.local_commit }
+      } else {
+        match commit_attests_chunk(standing: envelope.local_commit, chunk: envelope.chunk) {
+          CommitAttestsOtherPayload { attested: a, chunk_payload: c } =>
+            CoverageGapCommitDoesNotBindThisChunk {
+              binding: CommitAttestsOtherPayload { attested: a, chunk_payload: c }
+            }
+          CommitBindingIncomparable { attested: a, chunk_payload: c } =>
+            CoverageGapCommitDoesNotBindThisChunk {
+              binding: CommitBindingIncomparable { attested: a, chunk_payload: c }
+            }
+          CommitAttestsThisChunk =>
+            if !continuity_is_established(continuity: envelope.continuity) {
+              CoverageGapContinuityBroken { continuity: envelope.continuity }
+            } else if !continuity_reaches(continuity: envelope.continuity, through: requested_end) {
+              CoverageGapContinuityShortOfRange {
+                verified_through: continuity_verified_through(continuity: envelope.continuity),
+                requested_end: requested_end,
+              }
+            } else if envelope.chunk.range.first_offset > requested.first_offset {
+              CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+            } else if chunk_byte_count(chunk: envelope.chunk) > 0 {
+              if range_covers(outer: envelope.chunk.range, inner: requested) {
+                SourceBytesObserved { digest: envelope.chunk.payload_digest }
+              } else {
+                CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+              }
+            } else {
+              SourceProducedNoBytesInRange { range: requested }
+            }
+        }
+      }
   }
 }
 
@@ -204,10 +251,89 @@ data retention_promise_this_slice: List<RetentionPromise> = [
 // this predicate is the only place they are read together -- it answers whether the bytes have
 // actually left the collector host, which is exactly the question the refused promise above makes
 // load-bearing.
+// WHAT THE REFUSED PROMISE MEANS FOR ONE ENVELOPE, and this is the roster's consumer rather than a
+// second statement of it. The roster above is the authority for WHICH promise is refused; this fold
+// reads that authority to answer, for a given envelope, whether its bytes are still inside the
+// refused window. An envelope whose bytes are only locally committed is exposed to collector-host
+// loss and carries the roster's own refusal text; once downstream has accepted, it is not.
+type RetentionExposure
+  = RetainedBeyondCollectorHost
+  | ExposedToCollectorHostLoss { refusal: NonEmptyStr }
+  | NotYetRetained { standing: LocalCommitStanding }
+
+// THE REFUSAL TEXT COMES FROM THE ROSTER, never from a literal here -- a second copy of the sentence
+// would be the duplication DESIGN section 3 forbids, and would drift from the promise it describes.
+fn collector_host_loss_refusal(promises: List<RetentionPromise>) -> NonEmptyStr {
+  match promises.first() {
+    Absent => "no collector-host-loss promise is rostered" as NonEmptyStr
+    Present { value: promise } =>
+      match promise {
+        CollectorHostLossNotSurvived { refusal: refusal } => refusal
+        SubjectRebootSurvivedOutOfBand => collector_host_loss_refusal(promises: promises.skip(n: 1))
+      }
+  }
+}
+
+fn retention_exposure(envelope: ObservationEnvelope) -> RetentionExposure {
+  if is_forwarded(envelope: envelope) {
+    RetainedBeyondCollectorHost
+  } else if chunk_is_locally_committed(standing: envelope.local_commit) {
+    ExposedToCollectorHostLoss {
+      refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
+    }
+  } else {
+    NotYetRetained { standing: envelope.local_commit }
+  }
+}
+
 fn is_forwarded(envelope: ObservationEnvelope) -> Bool {
   match envelope.downstream {
     DownstreamAccepted { accepted_content: _ } => true
     DownstreamRejected { cause: _ } => false
     DownstreamNotOffered => false
+  }
+}
+
+// THE RECORDING OWNER'S OWN IDENTITY, extracted once so the fold reads it rather than re-deriving it
+// per guard. Only OwnerRecording yields one: a follower and a foreign-held endpoint are not the
+// recorder and have no ownership generation to offer.
+type RecordingOwnerIdentity
+  = RecordingOwner { session: CollectorSessionId, generation: Int }
+  | NotTheRecordingOwner
+
+fn recording_owner_session(ownership: EndpointOwnership) -> RecordingOwnerIdentity {
+  match ownership {
+    OwnerRecording { session: session, lease: lease, fencing: _ } =>
+      RecordingOwner { session: session, generation: ownership_generation(lease: lease) }
+    FollowerReadOnly { session: _ } => NotTheRecordingOwner
+    ForeignSessionHeld { observed: _ } => NotTheRecordingOwner
+  }
+}
+
+// EVERY PIECE OF EVIDENCE MUST NAME ONE SUBJECT. The recording owner's session, the chunk's own
+// occurrence, and the authenticated source-to-machine binding are three independently authored
+// facts, and an envelope can be assembled in which they disagree -- a commit receipt from one
+// collector carried beside a chunk from another, under a binding naming a third machine. Nothing in
+// the field types prevents that, so it is CHECKED here before any coverage question is answered.
+// Without this guard the fold would answer about a subject it was never handed.
+fn evidence_names_one_subject(
+  owner_session: CollectorSessionId,
+  owner_generation: Int,
+  chunk: CaptureChunk,
+  binding: SourceMachineBinding,
+) -> Bool {
+  ((owner_session.collector_session as String) == (chunk.occurrence.session.collector_session as String))
+  && ((owner_session.enrolled_machine as String) == (chunk.occurrence.session.enrolled_machine as String))
+  && (owner_generation == chunk.occurrence.ownership_generation)
+  && ((binding.enrolled_machine as String) == (owner_session.enrolled_machine as String))
+}
+
+// HOW FAR CONTINUITY REACHES, as a figure rather than a standing, so a shortfall can name the gap it
+// leaves. A non-established continuity has verified nothing and answers zero.
+fn continuity_verified_through(continuity: StreamContinuity) -> Nat {
+  match continuity {
+    ContinuityEstablished { verified_through: verified } => verified
+    ContinuityGap { gap: _, cause: _ } => 0
+    ContinuityUnknown { detail: _ } => 0
   }
 }
