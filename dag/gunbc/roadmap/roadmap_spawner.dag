@@ -286,9 +286,16 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
   }
 }
 
-// THE SIZE KEYS ARE OMITTED WHEN NO SIZE WAS DERIVED, never defaulted. The dashboard's spawn
-// argument pair is both-or-neither, so an absent pair is a valid request that dispatches without a
-// declared size; a substituted cell would instead publish the stub's silence as a measurement.
+// THE SIZE KEYS ARE OMITTED WHEN NO SIZE WAS DERIVED, never defaulted -- and THAT IS WHY THE
+// SCHEMA STRING MOVED TO v2. A substituted cell would publish the stub's silence as a measurement,
+// so omission is the only honest arm; but omission is a MATERIAL change to the wire contract, not a
+// cosmetic one. docs/plans/roadmap-spawner.md declares v1 a frozen interface in which intricacy and
+// volume are present and "drive ctrl's tier grid", so every v1 consumer is entitled to read them.
+// Emitting objects without them under the v1 name is precisely the meaning fork DESIGN section 3
+// forbids: one spelling, one declared version, materially different obligations. A materially
+// different contract needs a materially different name, so this is roadmap-spawn-request/v2 and
+// roadmap-dispatch/v2, and a v1-pinned consumer refuses loudly instead of silently reading an
+// absent tier.
 fn sizing_json_members(derivation: NodeSizingDerivation) -> List<JsonKeyValue> {
   match derivation {
     SizingDerived { subject: _, sizing } => [
@@ -340,7 +347,7 @@ fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_co
   let nodes = next_spawnable(doc: doc, merged: merged)
   let edges = doc_all_edges(doc: doc)
   serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-spawn-request/v1")),
+    json_kv(key: "schema", value: json_string(s: "roadmap-spawn-request/v2")),
     json_kv(key: "anchor_commit", value: json_string(s: anchor_commit)),
     json_kv(key: "ready", value: json_array(elements: nodes |> map(n => match n.dispatch {
       NotDispatchable => json_object(members: [])
@@ -380,7 +387,7 @@ fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonV
   let edges = doc_all_edges(doc: doc)
   let frontier = spawn_frontier(doc: doc, merged: merged)
   json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-dispatch/v1")),
+    json_kv(key: "schema", value: json_string(s: "roadmap-dispatch/v2")),
     json_kv(key: "ready", value: json_array(elements: frontier.ready |> map(n => match n.dispatch {
       NotDispatchable => json_object(members: [])
       Dispatchable { repo, acceptance } =>

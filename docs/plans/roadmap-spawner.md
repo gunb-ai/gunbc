@@ -44,7 +44,7 @@ A gunbc CLI entry evaluates `next_spawnable` over the authority at HEAD and writ
 
 ```json
 {
-  "schema": "roadmap-spawn-request/v1",
+  "schema": "roadmap-spawn-request/v2",
   "anchor_commit": "<the main sha the authority was read at>",
   "ready": [
     {
@@ -63,6 +63,16 @@ A gunbc CLI entry evaluates `next_spawnable` over the authority at HEAD and writ
 
 - `node_id` — the `ProcessNodeId` from the roadmap authority. Stable dedup key.
 - `intricacy` ∈ {low,medium,high}, `volume` ∈ {small,medium,large} — drive ctrl's tier grid.
+  **v2: PRESENT ONLY WHEN A SIZE WAS DERIVED, and absent together or not at all.** Sizing stopped
+  being an authored field on the roadmap node and became a derived one (`gunbc.roadmap_sizing`);
+  while its deriver is a stub that refuses, these two keys are absent from every object. The schema
+  string moved v1 → v2 for exactly this reason: v1 entitles a consumer to read them, so emitting
+  objects without them under the v1 name would be the DESIGN §3 meaning fork — one spelling, one
+  declared version, materially different obligations. A v1-pinned consumer should refuse a v2
+  payload rather than read an absent tier. The loss is declared at
+  `gunbc.rung_drop.roadmap_sizing_authored_to_derived`, whose trigger is the derivation capability
+  itself; when that lands, the keys return under v2 without another schema change, because v2
+  declares them conditional.
 - `parent_node_id` — null for top-level, else the composite parent (`RoadmapEdge`).
 - `acceptance` — `{kind:"prs_merged", prs:[...]}` or `{kind:"manual"}` for MVP. The coproduct
   generalizes later (`witness_green`, `artifact_exists`).
@@ -88,7 +98,7 @@ One control the operator flips in **one action, no gunbc commit/regen required**
 
 1. **gunbc lane** — add `intricacy`/`volume`/`repo` to `RoadmapNode`; an `Acceptance` field
    (MVP arms `PrsMerged`/`Manual`); `next_spawnable(authority, merged_prs)` pure fold; a CLI
-   entry emitting the `roadmap-spawn-request/v1` JSON. Reuse `authored_merged_prs()` for the
+   entry emitting the `roadmap-spawn-request/v1` JSON (now v2 — see the contract note above). Reuse `authored_merged_prs()` for the
    merged facts. Witness: a fixture authority with a satisfied-dep node appears in `ready`, an
    unsatisfied-dep node does not (discriminating RED).
 2. **ctrl bridge lane** — a thin loop (ctrl JS, Stage 1): poll the pause control; if unpaused,

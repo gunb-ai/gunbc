@@ -364,7 +364,7 @@ test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() ->
         let dispatch = roadmap_dispatch_file_content_for_projection(proj: projected)
         string_contains(s: dispatch, pattern: "\"brief_template\": ")
           && string_contains(s: dispatch, pattern: "\"dispatch\": ")
-          && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v1\"")
+          && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v2\"")
           && !string_contains(s: dispatch, pattern: "\"refused\": true")
       }
       RoadmapAuthorityProjectionRefused { detail: _ } => false

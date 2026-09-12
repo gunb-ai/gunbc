@@ -141,7 +141,7 @@ test fn witness_json_schema_field_present() -> Bool {
   let node = sized_derivable(id: "test-json", prs: [77], title: "Json Node")
   let doc = fixture_doc(nodes: [node], edges: [])
   let json = roadmap_spawn_request_json(doc: doc, merged: [], anchor_commit: "abc123")
-  string_contains(s: json, pattern: "roadmap-spawn-request/v1")
+  string_contains(s: json, pattern: "roadmap-spawn-request/v2")
     && string_contains(s: json, pattern: "abc123")
     && string_contains(s: json, pattern: "test-json")
     && string_contains(s: json, pattern: "Json Node")
@@ -211,7 +211,7 @@ test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
   ]
   let doc = fixture_doc(nodes: [node_done, node_ready, node_gated], edges: edges)
   let json = roadmap_dispatch_json(doc: doc, merged: [100])
-  string_contains(s: json, pattern: "roadmap-dispatch/v1")
+  string_contains(s: json, pattern: "roadmap-dispatch/v2")
     && string_contains(s: json, pattern: "\"node_id\": \"dj-ready\"")
     && !string_contains(s: json, pattern: "\"node_id\": \"dj-done\"")
     && string_contains(s: json, pattern: "\"node_id\": \"dj-gated\", \"title\": \"Gated Node\", \"unmet_parents\": [\"dj-ready\"]")
