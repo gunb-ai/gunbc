@@ -165,15 +165,12 @@ fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmpt
 }
 
 // ---------------------------------------------------------------------------------------------
-// SERVED SP-X UI SURFACE CATALOG, keyed to firmware identity 0.32. The 255 api/ paths were
-// extracted from source.min.js (6,597,873 bytes, sha256
-// 8b5ef64f5bf1df88a0f497887540d198a677e7a6f63f1bc8fc9bbc79e4f54fcd) as served at
-// https://192.168.1.228/source.min.js on 2026-09-12, and committed as
-// artifacts/bmc/mtcollins1-megarac-api-surface.txt (sha256
-// 4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd). The catalog is a FACT ABOUT
-// THIS FIRMWARE'S SERVED UI PATHS, not a unit observation, not a family-wide MegaRAC claim, and
-// not a redirection_status map: AMI advertises Redfish on other builds; this surface does not
-// carry it. Status-code meanings are a separate fact, cited on megarac_redirection_status_of_wire.
+// SERVED SP-X UI SURFACE CATALOG, keyed to firmware identity 0.32. The capture receipt (path
+// and digest) is gunbc.machine_intake_megarac_served_ui_catalog_observation; this module keeps
+// only firmware-identity-keyed facts about that surface. The catalog is a FACT ABOUT THIS
+// FIRMWARE'S SERVED UI PATHS, not a family-wide MegaRAC claim, and not a redirection_status map:
+// AMI advertises Redfish on other builds; this surface does not carry it. Status-code meanings
+// are a separate fact, cited on megarac_redirection_status_of_wire.
 // ---------------------------------------------------------------------------------------------
 
 data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
@@ -181,19 +178,16 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
   wire: "0.32",
 )
 
-data megarac_spx_ui_surface_path: NonEmptyStr = "artifacts/bmc/mtcollins1-megarac-api-surface.txt" as NonEmptyStr
-
-data megarac_spx_ui_surface_sha256: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd" as NonEmptyStr
-
 // THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
 // share type; the host sees a virtual CD. PXE is not a term of this route. The required
 // image_redirection fact is MegaRacImageRedirectionRequired / megarac_op_media_start.
 
 // REDIRECTION_STATUS. The 255-path catalog does not contain these mappings. The codes that this
 // decoder names are the ones committed observations actually returned on firmware 0.32:
-// 0 stopped (artifacts/bmc/mtcollins1-media-independence-probe.log), 1 started and 100 connecting
-// (artifacts/bmc/mtcollins1-diskless-boot.json, artifacts/bmc/mtcollins1-virtual-media-boot.json,
-// and gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
+// 0 stopped (gunbc.runner_host_media_independence_receipt mtcollins1_independence_evidence), 1 started
+// and 100 connecting (gunbc.machine_intake_mtcollins1_diskless_boot_receipt
+// mtcollins1_diskless_boot_artifact_path, and
+// gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_media_redirection_samples).
 // Connecting is presenting: the same unit booted GRUB from a session that still read 100.
 // Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial
 // recovered from source.min.js (those bytes are not in the tree). A firmware identity this row

@@ -4,7 +4,10 @@ import std.types { Bool, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { Sha256Matches, sha256sum_verify_via_shell }
-import extdeps.bmc.megarac { megarac_spx_ui_surface_path, megarac_spx_ui_surface_sha256 }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation {
+  megarac_spx_ui_surface_path,
+  megarac_spx_ui_surface_sha256,
+}
 import gunbc.machine_intake_megarac_pre_os_channel {
   megarac_sol_host_payload_positive_control_path,
   megarac_sol_host_payload_positive_control_sha256,
