@@ -17,7 +17,7 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
 }
-import std.decl_ref { declaration_ref_eq, decl_ref }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import gunbc.runner_label_resolution {
@@ -46,7 +46,9 @@ import gunbc.runner_label_resolution {
 // catalog row is ArmUndetermined, not x64.
 //
 // THIS MODULE IS A CENSUS AND A SELECTION. It does not port, benchmark, authorize a trial, or
-// authorize outreach. Spend is unobserved on every row: a third-party label is use, not a bill.
+// authorize outreach. Inspection is read-only: public workflow files (Get Repository Content at a
+// pinned ref) and public job-run metadata. No maintainer was contacted. Nothing here qualifies a
+// customer. Spend is unobserved on every row: a third-party label is use, not a bill.
 //
 // FIVE PROMOTIONS THE CARRIERS KEEP APART: an x64 catalog row is not Arm; a green job that ran no
 // test is not a baseline; an unobserved cache is not warm; provider use is not verified spend;
@@ -99,56 +101,50 @@ fn declared_architecture_standing(
           DeclaredArchitectureUnresolved { via: spec, cause: cause }
       }
     DeclaredExpression { expression, alternatives } =>
-      if count(alternatives) == 0 {
-        DeclaredArchitectureUnresolved {
+      let standings = alternative_arm_standings(alternatives: alternatives, observed_at: observed_at)
+      match standings.first() {
+        Absent => DeclaredArchitectureUnresolved {
           via: spec,
           cause: "declared runs-on expression listed no concrete alternatives",
         }
-      } else {
-        let standings = alternative_arm_standings(alternatives: alternatives, observed_at: observed_at)
-        if any(standings, s => match s {
-          ArmUndetermined { label, cause } => true
-          ArmConfirmed { label, snapshot } => false
-          NotArmConfirmed { label, architecture, snapshot } => false
-        }) {
-          DeclaredArchitectureUnresolved {
-            via: spec,
-            cause: "at least one declared alternative is absent from the surveyed runner catalogs, so architecture is not established by the workflow file alone",
-          }
-        } else if any(standings, s => match s {
-          ArmConfirmed { label, snapshot } => true
-          NotArmConfirmed { label, architecture, snapshot } => false
-          ArmUndetermined { label, cause } => false
-        }) && any(standings, s => match s {
-          NotArmConfirmed { label, architecture, snapshot } => true
-          ArmConfirmed { label, snapshot } => false
-          ArmUndetermined { label, cause } => false
-        }) {
-          DeclaredArchitectureUnresolved {
-            via: spec,
-            cause: "declared alternatives mix catalog Arm and not-Arm labels; the workflow does not establish a single architecture",
-          }
-        } else if any(standings, s => match s {
-          ArmConfirmed { label, snapshot } => true
-          NotArmConfirmed { label, architecture, snapshot } => false
-          ArmUndetermined { label, cause } => false
-        }) {
-          DeclaredArm { via: spec }
-        } else {
-          match standings.first() {
-            Present { value: standing } => match standing {
+        Present { value: first_standing } =>
+          if any(standings, s => match s {
+            ArmUndetermined { label, cause } => true
+            ArmConfirmed { label, snapshot } => false
+            NotArmConfirmed { label, architecture, snapshot } => false
+          }) {
+            DeclaredArchitectureUnresolved {
+              via: spec,
+              cause: "at least one declared alternative is absent from the surveyed runner catalogs, so architecture is not established by the workflow file alone",
+            }
+          } else if any(standings, s => match s {
+            ArmConfirmed { label, snapshot } => true
+            NotArmConfirmed { label, architecture, snapshot } => false
+            ArmUndetermined { label, cause } => false
+          }) && any(standings, s => match s {
+            NotArmConfirmed { label, architecture, snapshot } => true
+            ArmConfirmed { label, snapshot } => false
+            ArmUndetermined { label, cause } => false
+          }) {
+            DeclaredArchitectureUnresolved {
+              via: spec,
+              cause: "declared alternatives mix catalog Arm and not-Arm labels; the workflow does not establish a single architecture",
+            }
+          } else if any(standings, s => match s {
+            ArmConfirmed { label, snapshot } => true
+            NotArmConfirmed { label, architecture, snapshot } => false
+            ArmUndetermined { label, cause } => false
+          }) {
+            DeclaredArm { via: spec }
+          } else {
+            match first_standing {
               NotArmConfirmed { label, architecture, snapshot } =>
                 DeclaredNotArm { via: spec, architecture: architecture }
               ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
               ArmUndetermined { label, cause } =>
                 DeclaredArchitectureUnresolved { via: spec, cause: cause }
             }
-            Absent => DeclaredArchitectureUnresolved {
-              via: spec,
-              cause: "declared alternatives were nonempty by count but first() was absent",
-            }
           }
-        }
       }
   }
 }
@@ -160,23 +156,15 @@ fn alternative_provider_readings(
   map(alternatives, l => provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)))
 }
 
-fn provider_readings_share_one_catalog_provider(readings: List<ProviderReading>) -> Bool {
-  if count(readings) == 0 {
-    false
-  } else {
-    match readings.first() {
-      Present { value: first_reading } => match first_reading {
-        ProviderUnresolved { label, cause } => false
-        ProviderFromCatalog { provider: first_provider, label, snapshot } =>
-          all(readings, r => match r {
-            ProviderFromCatalog { provider, label, snapshot } =>
-              declaration_ref_eq(a: provider, b: first_provider)
-            ProviderUnresolved { label, cause } => false
-          })
-      }
-      Absent => false
-    }
-  }
+fn remaining_readings_share_catalog_provider(
+  first_provider: DeclarationRef,
+  readings: List<ProviderReading>,
+) -> Bool {
+  all(readings, r => match r {
+    ProviderFromCatalog { provider, label, snapshot } =>
+      declaration_ref_eq(a: provider, b: first_provider)
+    ProviderUnresolved { label, cause } => false
+  })
 }
 
 fn declared_provider_standing(
@@ -192,40 +180,36 @@ fn declared_provider_standing(
           DeclaredProviderUnresolved { via: spec, cause: cause }
       }
     DeclaredExpression { expression, alternatives } =>
-      if count(alternatives) == 0 {
-        DeclaredProviderUnresolved {
+      let readings = alternative_provider_readings(alternatives: alternatives, observed_at: observed_at)
+      match readings.first() {
+        Absent => DeclaredProviderUnresolved {
           via: spec,
           cause: "declared runs-on expression listed no concrete alternatives",
         }
-      } else {
-        let readings = alternative_provider_readings(alternatives: alternatives, observed_at: observed_at)
-        if any(readings, r => match r {
-          ProviderUnresolved { label, cause } => true
-          ProviderFromCatalog { provider, label, snapshot } => false
-        }) {
-          DeclaredProviderUnresolved {
-            via: spec,
-            cause: "at least one declared alternative is absent from the surveyed runner catalogs, so the workflow file does not establish a provider",
-          }
-        } else if provider_readings_share_one_catalog_provider(readings: readings) {
-          match readings.first() {
-            Present { value: first_reading } => match first_reading {
+        Present { value: first_reading } =>
+          if any(readings, r => match r {
+            ProviderUnresolved { label, cause } => true
+            ProviderFromCatalog { provider, label, snapshot } => false
+          }) {
+            DeclaredProviderUnresolved {
+              via: spec,
+              cause: "at least one declared alternative is absent from the surveyed runner catalogs, so the workflow file does not establish a provider",
+            }
+          } else {
+            match first_reading {
               ProviderFromCatalog { provider, label, snapshot } =>
-                DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+                if remaining_readings_share_catalog_provider(first_provider: provider, readings: readings) {
+                  DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+                } else {
+                  DeclaredProviderUnresolved {
+                    via: spec,
+                    cause: "declared alternatives resolve to more than one surveyed provider, so the workflow file does not establish which one will run",
+                  }
+                }
               ProviderUnresolved { label, cause } =>
                 DeclaredProviderUnresolved { via: spec, cause: cause }
             }
-            Absent => DeclaredProviderUnresolved {
-              via: spec,
-              cause: "declared alternatives were nonempty by count but first() was absent",
-            }
           }
-        } else {
-          DeclaredProviderUnresolved {
-            via: spec,
-            cause: "declared alternatives resolve to more than one surveyed provider, so the workflow file does not establish which one will run",
-          }
-        }
       }
   }
 }
@@ -1034,5 +1018,3 @@ fn unresolved_candidates() -> List<WorkloadCandidate> {
     CandidateRejected { reason } => false
   })
 }
-
-data census_scope_note: NonEmptyStr = "read-only inspection of public workflow files (Get Repository Content at a pinned ref) and public job-run metadata. No maintainer was contacted. Nothing here qualifies a customer or authorizes outreach."
