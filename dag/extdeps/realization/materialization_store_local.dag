@@ -1,6 +1,7 @@
 module extdeps.realization.materialization_store_local
 
 import extdeps.filesystem.filesystem_io {
+  Filesystem,
   FilesystemFailureKind, FilesystemNotFound, FilesystemAlreadyExists, FilesystemPermissionDenied,
   FilesystemOtherFailure,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,

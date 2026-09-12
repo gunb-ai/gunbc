@@ -1,7 +1,7 @@
 module test.claim.materialization_store_local_wet_witness
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
 import std.materialization_provider {
