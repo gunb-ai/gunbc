@@ -213,9 +213,17 @@ test fn persist_binds_only_to_the_capture_base_commit() -> Bool {
   lbp_minted_capture_persisted()
 }
 
-test fn live_outstanding_names_the_unpinned_pre_cut_base() -> Bool {
+test fn live_outstanding_is_the_enrollment_fold_with_no_held_capture() -> Bool {
   match current_pre_cut_base_pin() {
     PreCutBasePinned { base: _ } => false
-    PreCutBaseUnpinned => (persisted_legacy_baseline_outstanding() |> count) == 1
+    PreCutBaseUnpinned =>
+      let live = persisted_legacy_baseline_outstanding()
+      let via = persisted_enrollment_outstanding(
+        pin: PreCutBaseUnpinned,
+        held: none
+      )
+      (live |> count) == 1
+        && (via |> count) == 1
+        && all(live, s => any(via, t => s == t))
   }
 }

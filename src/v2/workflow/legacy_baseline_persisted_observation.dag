@@ -92,10 +92,8 @@ fn persisted_enrollment_outstanding<O, R>(
 }
 
 fn persisted_legacy_baseline_outstanding() -> List<String> {
-  match current_pre_cut_base_pin() {
-    PreCutBaseUnpinned =>
-      ["pre-cut base is unpinned; enrolment cannot bind a capture to an unnamed HEAD"]
-    PreCutBasePinned { base: _ } =>
-      ["pinned pre-cut base has no held LegacyBaselineCapture joined by base_commit"]
-  }
+  persisted_enrollment_outstanding(
+    pin: current_pre_cut_base_pin(),
+    held: none
+  )
 }
