@@ -4,7 +4,9 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.types { Int }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.reference_site_collector { collect_module_reference_sites }
 import v2.lens.module_graph {
+  LocatedModuleRoot,
   located_roots_from_source_root_ingest,
   reference_derived_edges_from_located_roots,
 }
@@ -15,7 +17,9 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
 import v2.std.node { Symbol }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -23,8 +27,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // MEASUREMENTS OF TODAY'S XL-4 ROUTE: module_roots_from_source_root_ingest then
 // normalized_tree_roots_to_nodes (via located_roots_from_source_root_ingest), then the one
 // collector. Not a second parse_module ingest.
-// Call-argument and type-position-with-no-call: tree-side; go red when eager-raven-113 lowering
-// widened to type positions lands, then this same ingest.
+// Call-argument and callee: tree-side; go red when eager-raven-113 lowering lands, then this ingest.
+// Type-position on this fixture is a QUALIFIED name (provider.ProvidedMarker), re-derived here:
+// the full spelling is not a site and there is no edge. Same open class as a qualified body
+// mention (collector reassembly of the access chain), not XL-0's retracted "type-position
+// names do not reach the collector" and not body-lowering.
 // Qualified cross-module body mention: enrolled as absent, NOT hardened as tree-loss. A body
 // qualified name is dag_field_access_body_node (Transform of a dot atom plus operands). The
 // collector currently emits those as separate bare sites. That pair of rows retires when the
@@ -94,6 +101,8 @@ data fixture_ingest: SourceRootIngest = Cons {
   }
 }
 
+data provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
+
 fn production_edge_count(path: String, target: String) -> Int {
   match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
     Rejected { diagnostics: _ } => production_ingest_refused_count
@@ -104,6 +113,21 @@ fn production_edge_count(path: String, target: String) -> Int {
           include_import_syntax: false
         ).edges |> filter(e => e.path == path && e.target_module == target)
       )
+  }
+}
+
+fn type_position_provided_marker_site_count() -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match items |> filter(item => item.path == consumer_type_only_path) |> first {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          length(
+            xs: collect_module_reference_sites(root: item.root).sites
+              |> filter(site => qualified_name_to_dotted_string(qn: site.spelling) == provided_marker_dotted)
+          )
+      }
   }
 }
 
@@ -126,8 +150,11 @@ test fn production_route_call_contents_are_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
 }
 
-// Tree-side, no call anywhere. Trigger: eager-raven-113 lowering widened to type positions.
-test fn production_route_type_position_is_missing_today_holds() -> Bool {
+test fn production_route_type_position_qualified_site_is_missing_today_holds() -> Bool {
+  type_position_provided_marker_site_count() == 0
+}
+
+test fn production_route_type_position_edge_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_type_only_path, target: provider_module) == 0
 }
 
