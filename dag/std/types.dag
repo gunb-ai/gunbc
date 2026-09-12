@@ -182,8 +182,11 @@ type HttpStatus   = Int where range(min: 100, max: 599)
 // must be HERE, beside the range, rather than a copied pair of literals at each parse site that
 // drifts silently if the range row ever moves. The bounds are read from the two rows the fold
 // consumes; the refinement keeps the same numbers as literals because a where-clause cannot name
-// a data row, and the pairing is what a reader checks when either changes. A parse site consumes
-// http_status_of and matches its Absent arm; it does not compare against 100 or 599 itself.
+// a data row. That pairing is a language-layer gap, not a reader check: its next-rung trigger is
+// gunbc.where_refinement_predicate_vocabulary
+// http_status_where_clause_names_declaration_frontier_rows (capability: a where-clause names a
+// declaration). A parse site consumes http_status_of and matches its Absent arm; it does not
+// compare against 100 or 599 itself.
 data http_status_min: Int = 100
 
 data http_status_max: Int = 599

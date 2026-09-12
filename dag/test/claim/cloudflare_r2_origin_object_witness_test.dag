@@ -22,6 +22,9 @@ import extdeps.tools.curl {
   curl_sigv4_s3_upload_command,
   curl_sigv4_s3_download_command,
   curl_aws_sigv4_s3_provider,
+  curl_aws_sigv4_cli_tool,
+  curl_aws_sigv4_min_version,
+  curl_cli_tool,
 }
 import gunbc.cloudflare.r2_origin {
   fleet_cloudflare_account_id,
@@ -139,6 +142,27 @@ test fn curl_sigv4_upload_signs_through_the_netrc_and_never_through_argv() -> Bo
     && has_word(words: words, word: "-T")
     && has_word(words: words, word: "/work/obj")
     && last_word(words: words) == "https://h/b/k"
+}
+
+fn first_word(words: List<String>) -> String {
+  fold(words, init: "", f: (acc, w) => if acc == "" { w } else { acc })
+}
+
+// THE SIGV4 BUILDERS NAME THE 7.75 REQUIREMENT, NOT THE 7.68 FLEET PIN. curl_cli_tool still admits
+// 7.68 for download/FTPS; a host that satisfies that pin and lacks --aws-sigv4 must fail the
+// SigV4 path at the requirement, not as an opaque curl usage error.
+test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool {
+  match curl_aws_sigv4_cli_tool.min_version {
+    Present { value: v } =>
+      (v as String) == (curl_aws_sigv4_min_version as String)
+        && (curl_aws_sigv4_min_version as String) == ">= 7.75"
+        && first_word(words: words_of_upload(create_only: true)) == (curl_aws_sigv4_cli_tool.name as String)
+        && match curl_cli_tool.min_version {
+          Present { value: fleet } => (fleet as String) == ">= 7.68"
+          none => false
+        }
+    none => false
+  }
 }
 
 // CREATE-IF-ABSENT IS A PARAMETER: the conditional header is present exactly when asked for.

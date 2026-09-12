@@ -103,12 +103,19 @@ fn curl_ftps_upload_command(
 }
 
 // --aws-sigv4 LANDED IN curl 7.75.0 (curl.se/docs/manpage.html, "--aws-sigv4 <provider1[:prvdr2[:reg[:srv]]]>",
-// "Added in 7.75.0"). The two S3 builders below are unspellable on an older curl, so the pin is
-// carried beside them as its own row rather than by silently raising curl_pinned_version: the
-// download and FTPS builders above genuinely need no more than 7.68, and a fleet host that carries
-// 7.68 still runs them correctly. A consumer that emits a SigV4 argv is the one that owes this
-// constraint.
+// "Added in 7.75.0"). The two S3 builders below are unspellable on an older curl, so they name a
+// SECOND CliTool whose min_version is this constraint rather than silently raising curl_pinned_version:
+// the download and FTPS builders above genuinely need no more than 7.68, and a fleet host that
+// carries 7.68 still runs them correctly. curl_cli_tool stays the 7.68 pin; the SigV4 builders
+// emit curl_aws_sigv4_cli_tool.name so a 7.68 host that satisfies curl_cli_tool still owes 7.75
+// on the path that spells --aws-sigv4.
 data curl_aws_sigv4_min_version: VersionConstraint = ">= 7.75"
+
+data curl_aws_sigv4_cli_tool: CliTool = CliTool {
+  name: curl_program,
+  min_version: Present { value: curl_aws_sigv4_min_version },
+  installable_via: [SourceApt { package: package_curl }],
+}
 
 // THE SIGV4 PROVIDER STRING FOR AN S3-SHAPED ENDPOINT. curl's --aws-sigv4 value is
 // provider1[:provider2[:region[:service]]]; "aws:amz" is the algorithm/header prefix pair every
@@ -164,7 +171,7 @@ fn curl_sigv4_s3_upload_command(
   create_only: Bool,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_program,
+    program: curl_aws_sigv4_cli_tool.name,
     arguments: concat(
       [
         "-fsS",
@@ -188,7 +195,7 @@ fn curl_sigv4_s3_download_command(
   sigv4_region: NonEmptyStr,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_program,
+    program: curl_aws_sigv4_cli_tool.name,
     arguments: [
       "-fsS",
       "--netrc-file", netrc_path as String,
