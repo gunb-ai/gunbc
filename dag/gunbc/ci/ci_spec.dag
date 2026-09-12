@@ -64,7 +64,7 @@ import gunbc.heal_revalidation {
   heal_produced_token,
   heal_author_commit_required_token,
   heal_push_refused_token,
-  heal_superseded_by_author_head_token,
+  superseded_by_author_head_token,
   superseded_by_healed_head_token
 }
 import gunbc.heal_push_plan {
@@ -2304,7 +2304,7 @@ fn ci_heal_shell_lines() -> List<String> {
             "  if ! git -c core.hooksPath= push origin \"HEAD:$HEAL_BRANCH_REF\"; then",
             "    REMOTE_HEAD=$(git ls-remote origin \"refs/heads/$HEAL_BRANCH_REF\" | cut -f1)",
             "    if [ -n \"$REMOTE_HEAD\" ] && [ \"$REMOTE_HEAD\" != \"$PRIOR_HEAD\" ]; then",
-            concat("      echo \"::notice::", concat(heal_superseded_by_author_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF author_commit_paths=$AUTHOR_COMMIT_DRIFT changed_artifacts=$CHANGED_ARTIFACTS; the branch moved under this run, nothing was published, and the repair for the current head belongs to its own run\"")),
+            concat("      echo \"::notice::", concat(superseded_by_author_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF author_commit_paths=$AUTHOR_COMMIT_DRIFT changed_artifacts=$CHANGED_ARTIFACTS; the branch moved under this run, nothing was published, and the repair for the current head belongs to its own run\"")),
             "      exit 0",
             "    fi",
             concat("    echo \"::error::", concat(heal_push_refused_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF -- the push was refused while the branch still stood at the head this run judged, so this is not a lost race\" >&2")),

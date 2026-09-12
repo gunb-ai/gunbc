@@ -20,7 +20,7 @@ import gunbc.witness_floor_workflow {
   witness_floor_triggers
 }
 import gunbc.ci_spec { gunbc_ci_heal_commit_push_script, gunbc_ci_heal_dispatch_invoke }
-import gunbc.heal_revalidation { heal_superseded_by_author_head_token }
+import gunbc.heal_revalidation { superseded_by_author_head_token, heal_push_refused_token }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_root_stamp_script }
 import gunbc.ci_heal_credential { ci_heal_job_permissions }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_name }
@@ -374,10 +374,11 @@ test fn an_absent_input_is_an_ordinary_manual_dispatch_in_the_preflight_step() -
 }
 
 // THE NAME IS NOW CONSTRUCTED, SO THIS ROW NO LONGER CARRIES THAT JOIN. gunbc.ci_spec splices
-// gunbc.heal_revalidation heal_superseded_by_author_head_token into the emitted line, so a second
-// name for the arm is not writable in the emitter at all and the token half of this witness cannot
-// go red -- it is a regression control that the construction stays in place, not the wall. What
-// this row still discriminates is the SHAPE around the name, which construction does not reach.
+// gunbc.heal_revalidation superseded_by_author_head_token into the emitted line, and this row
+// consumes the same declarations rather than re-typing them, so a second name for an arm is not
+// writable on either side and the token half of this witness cannot go red -- it is a regression
+// control that the construction stays in place, not the wall. What this row still discriminates is
+// the SHAPE around the names, which construction does not reach.
 //
 // THE EXIT STATUS IS ASSERTED AS ORDERED ADJACENCY, for the reason the dispatch row above states:
 // membership alone stays green with the `exit 0` anywhere in the file, including inside the
@@ -386,7 +387,7 @@ test fn an_absent_input_is_an_ordinary_manual_dispatch_in_the_preflight_step() -
 // nonzero exit, so a change that softened every push failure into a notice fails this row.
 test fn the_heal_push_race_leaves_by_its_own_named_arm() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  let token = heal_superseded_by_author_head_token
+  let token = superseded_by_author_head_token
   string_contains(
     s: script,
     pattern: concat(
@@ -395,7 +396,7 @@ test fn the_heal_push_race_leaves_by_its_own_named_arm() -> Bool {
     )
   )
     && string_contains(s: script, pattern: "\n      exit 0\n    fi\n")
-    && string_contains(s: script, pattern: "::error::HealPushRefused")
+    && string_contains(s: script, pattern: concat("::error::", heal_push_refused_token))
     && string_contains(s: script, pattern: "\n    exit 1\n  fi\n")
     && !string_contains(s: script, pattern: "push --force")
     && !string_contains(s: script, pattern: "--force-with-lease")

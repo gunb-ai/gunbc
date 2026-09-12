@@ -21,7 +21,15 @@ import gunbc.heal_revalidation {
   prior_run_disposition,
   classify_workflow_dispatch_preflight,
   classify_heal_revalidation_admission,
-  heal_revalidation_admits
+  heal_revalidation_admits,
+  heal_no_change_token,
+  heal_produced_token,
+  heal_author_commit_required_token,
+  heal_push_refused_token,
+  heal_outcome_token,
+  prior_run_still_current_token,
+  superseded_by_healed_head_token,
+  superseded_by_author_head_token
 }
 
 data prior_head: CommitSha = "1111111111111111111111111111111111111111"
@@ -275,4 +283,35 @@ test fn a_push_refused_at_a_standing_head_leaves_the_prior_run_current() -> Bool
     SupersededByAuthorHead { prior_head: _, remote_head: _ } => false
     SupersededByHealedHead { prior_head: _, healed_head: _ } => false
   }
+}
+
+// NO TOKEN NAMES TWO ARMS, ACROSS BOTH FOLDS AS WELL AS WITHIN EACH. This row exists because the
+// collision it forbids was written: the HealOutcome arm HealSupersededByAuthorHead was first
+// spelled "SupersededByAuthorHead", which is the PriorRunDisposition arm beside it, so one word in
+// the heal log named two arms in two coproducts and only one of them was recoverable from it. A
+// token is the name a reader joins back to a declaration, so a shared spelling is the §3 fork in
+// its purest form -- and nothing about a total match refuses it, since both arms typecheck
+// perfectly while returning the same string. The wall is here rather than in either fold because
+// it is a property OF THE PAIR; each fold alone is blind to it.
+test fn no_heal_token_names_two_arms() -> Bool {
+  let outcome_tokens = [
+    heal_no_change_token,
+    heal_produced_token,
+    heal_author_commit_required_token,
+    heal_push_refused_token,
+    heal_outcome_token(outcome: superseded_by_author())
+  ]
+  let disposition_tokens = [
+    prior_run_still_current_token,
+    superseded_by_healed_head_token,
+    superseded_by_author_head_token
+  ]
+  let all_tokens = concat(outcome_tokens, disposition_tokens)
+  fold_list(
+    xs: all_tokens,
+    empty: true,
+    cons: fn(acc, t) {
+      acc && count(filter(all_tokens, u => u == t)) == 1
+    }
+  ) && count(all_tokens) == 8
 }

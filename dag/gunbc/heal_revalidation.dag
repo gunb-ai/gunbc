@@ -234,6 +234,15 @@ data heal_token_arm_probe: CommitSha = "0000000000000000000000000000000000000000
 // PRODUCED BY the match over the arms rather than re-typed next to them, and a second name for an
 // arm is not writable in the emitter at all.
 //
+// BOTH SUPERSEDE WORDS THE JOB PRINTS COME FROM PriorRunDisposition, WHICH IS THE QUESTION THEY
+// ANSWER. A supersede line says what STANDING the prior head now has, not what the heal produced,
+// and SupersededByHealedHead was already emitted from that fold; sourcing its author-side twin
+// from HealOutcome instead bought a shorter name at the price of one log word naming two arms in
+// two coproducts. Each fold now maps every arm to its own spelling character for character, so a
+// token is recoverable to exactly one arm and the payload each line carries -- healed_head on a
+// disposition word, as the sibling already does -- is the emitter composing outcome data beside
+// the standing it reports.
+//
 // THE PROBE REVISION IS NOT A CLAIM ABOUT ANY RUN. A token names an ARM, and every fold below
 // discards its payload, so the value handed in exists only to select the arm. It is one shared
 // zero sha rather than a plausible-looking one precisely so that a reader who finds it in a log
@@ -245,7 +254,7 @@ fn heal_outcome_token(outcome: HealOutcome) -> String {
     HealAuthorCommitRequired { head: _, author_commit_paths: _ } => "HealAuthorCommitRequired"
     HealPushRefused { prior_head: _, healed_head: _, remote_head: _ } => "HealPushRefused"
     HealSupersededByAuthorHead { prior_head: _, healed_head: _, remote_head: _, changed_artifacts: _ } =>
-      "SupersededByAuthorHead"
+      "HealSupersededByAuthorHead"
   }
 }
 
@@ -276,14 +285,16 @@ data heal_push_refused_token: String = heal_outcome_token(outcome: HealPushRefus
     remote_head: heal_token_arm_probe
   })
 
-data heal_superseded_by_author_head_token: String = heal_outcome_token(outcome: HealSupersededByAuthorHead {
-    prior_head: heal_token_arm_probe,
-    healed_head: heal_token_arm_probe,
-    remote_head: heal_token_arm_probe,
-    changed_artifacts: []
+data prior_run_still_current_token: String = prior_run_disposition_token(disposition: PriorRunStillCurrent {
+    head: heal_token_arm_probe
   })
 
 data superseded_by_healed_head_token: String = prior_run_disposition_token(disposition: SupersededByHealedHead {
     prior_head: heal_token_arm_probe,
     healed_head: heal_token_arm_probe
+  })
+
+data superseded_by_author_head_token: String = prior_run_disposition_token(disposition: SupersededByAuthorHead {
+    prior_head: heal_token_arm_probe,
+    remote_head: heal_token_arm_probe
   })
