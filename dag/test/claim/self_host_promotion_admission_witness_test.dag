@@ -58,9 +58,9 @@ import v2.std.node { Atom, Node, TypeNode }
 import v2.std.witness { Holds }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.node { Hash, symbol_identity_digest }
+import v2.std.node { Hash, combine_hash, symbol_identity_digest }
 import v2.std.optional { Absent, Present }
-import std.content_hash { sha512_hex_digest }
+import std.content_hash { content_hash_atom, sha512_hex_digest }
 import std.types { NonEmptyStr }
 
 // Test-side projection. The authority carrier deliberately exposes no is_* Bool over
@@ -1841,4 +1841,21 @@ test fn a_lens_reported_twice_in_one_coverage_is_refused() -> Bool {
   promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_row_duplicated)
     && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
     && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_ran_a_different_roster)
+}
+
+// ---- THE AXIS IS MINTED IN THE FAMILY ITS CARRIER REQUIRES ----
+//
+// `Hash` is `Fnv1a64Structural`, not the union `ContentHash`, and the axis this module derives flows
+// into `GenerationIdentity.required_lens_contract` and from there into `combine_hash` beside a real
+// structural digest inside `pre_materialization_digest`. Minting it with the union-level helper put
+// the wrong carrier in that slot -- the inverse of what the carrier wall states -- and no existing
+// witness could see it, because a value minted the wrong way still equals itself. This one compares
+// the axis to the structural mint of the same digest text, and then combines it, so the carrier is
+// checked where the materialization key actually consumes it.
+test fn the_contract_axis_is_a_structural_digest() -> Bool {
+  let text = required_lens_roster_digest_of(lenses: pa_contract_material())
+  let axis = contract_axis_of_roster_digest(digest: text)
+  let structural = content_hash_atom(value: text as NonEmptyStr)
+  axis == structural
+    && combine_hash(a: axis, b: structural) == combine_hash(a: structural, b: structural)
 }

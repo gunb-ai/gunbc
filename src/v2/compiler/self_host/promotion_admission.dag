@@ -22,7 +22,7 @@ import v2.compiler.compile {
   required_lens_roster_digest_of
 }
 import std.decl_ref { declaration_ref_display_key }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_atom }
 import std.types { NonEmptyStr }
 import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
@@ -575,8 +575,12 @@ fn lens_coverage_uncovered_causes(
   )])
 }
 
+// THE FAMILY-SPECIFIC MINT, NOT THE UNION ONE. `Hash` is `Fnv1a64Structural`, and
+// `content_hash_of_value` answers the union carrier `ContentHash`; putting one in the other's slot
+// is the inverse of the carrier wall `content_hash_family_grounding_note` states, and this value
+// reaches `combine_hash` beside a real structural digest in `pre_materialization_digest`.
 fn contract_axis_of_roster_digest(digest: String) -> Hash {
-  content_hash_of_value(value: digest as NonEmptyStr)
+  content_hash_atom(value: digest as NonEmptyStr)
 }
 
 // THE BINDING, AND IT IS CHECKED AGAINST THE GENERATION RATHER THAN AGAINST THE RECEIPT. The
