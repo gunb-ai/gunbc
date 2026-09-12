@@ -1705,7 +1705,7 @@ pub struct TransitionAdmission {
 /// is twice in one day on this file, which is what a shared append-only roster costs while two
 /// lanes are both moving: the rows are cheap to add and the obligation lands on whoever touches it
 /// next.
-
+///
 /// THE RESTING STATE WAS EMPTY AND THIS CHANGE AUTHORS ONE ROW BACK INTO IT, which is the ordinary
 /// motion and not a regression of the dissolution above: the twentieth dissolution retired a row
 /// whose delta had stopped being producible, and the row below admits a different delta that this
@@ -1726,7 +1726,7 @@ pub struct TransitionAdmission {
 /// refused adjudication because a roster-touching change owes that deletion. This change is the
 /// toucher, so the deletion is paid here rather than deferred, and main's account of that subject
 /// goes with its row. The sizing rows below retire the same way, by their own merge.
-
+///
 /// The resting state was empty again as of THAT change, and this one authors rows back into it,
 /// which is the ordinary motion rather than a regression: empty is not permissive and non-empty is
 /// not permission, because a run with any delta no row names still refuses it as UNADJUDICATED.
