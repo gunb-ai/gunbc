@@ -15211,6 +15211,17 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 // wrote. An element that is not a bare variable naming an input -- a literal, an interpolation -- is
 // one word by construction and never reaches the splice arm.
 //
+// THE TWO ARMS ARE COUPLED THROUGH A FUNCTION ONLY ONE OF THEM CALLS, and that is worth stating
+// because the coupling is invisible at the site that would break it (review 64440 on gunbc#11154).
+// The one-word arm routes each element through emit_rust_dag_string_to_host_via_seam; the word-list
+// arm emits the binding and lets Command::args iterate it. Those agree only while that seam is the
+// identity it is today. If it ever becomes a real dag-String-to-host-String conversion, every word
+// spliced through the list arm silently skips the conversion every word through the one-word arm
+// receives -- silently, because both arms still compile and the splice still produces the right
+// NUMBER of words. A lane changing the seam has no reason to read this function, and this function
+// does not name the seam. TRIGGER: the first change that makes that seam non-identity routes this
+// arm's elements through it too, per element, or states why a spliced run of words is exempt.
+//
 // AN OPTIONAL WORD LIST IS OUT OF SCOPE AND STAYS LOUD. `List<String>?` is excluded by the
 // cardinality conjunct below, so such an element keeps the one-word arm and keeps earning rustc's
 // refusal; no site in the corpus declares one, and admitting it would mean deciding what an absent
