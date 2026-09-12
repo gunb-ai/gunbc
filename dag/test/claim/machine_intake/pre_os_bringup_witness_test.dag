@@ -21,6 +21,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   OemDecodeControllerDeclaredUnknown,
   OemDecodeNotProbed,
   OemDecodeRenderedUncited,
+  LocalizationUnavailableFromExposedTelemetry,
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
   SolPresentEmitting,
@@ -34,7 +35,7 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   CollectorStanding,
   CollectorProvenRunning,
   ConsoleLeaseNotHeld,
-  ConsoleSessionBannerSeen,
+  ConsoleSessionHeldPastActivation,
   ControllerColdReset,
   ControllerLivenessWatch,
   ControllerObservedReachable,
@@ -59,6 +60,8 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   FirmwareProgressRecord,
   LocalizableFrom,
   NoRestartInWindow,
+  NothingObservedBeyondActivation,
+  SolHostBytesObserved,
   OemPayloadAbsentFromWindow,
   OemTimestamped,
   PhysicalRemediationRequired,
@@ -67,6 +70,9 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   SelWindowEvent,
   SolBannerOnly,
   boot_cycles,
+  firmware_console_report,
+  NoTerminalStated,
+  TrainingRefusedByFirmware,
   pre_os_bringup_verdict,
 }
 import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
@@ -114,7 +120,7 @@ test fn law_three_opaque_oem_stays_opaque_over_the_corpus() -> Bool {
 
 fn proven_collectors() -> List<CollectorStanding> {
   [
-    CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
+    CollectorProvenRunning { proof: ConsoleSessionHeldPastActivation { capture_path: "x.log", activation_bytes: byte_size(count: 86), client_alive_at: 5, terminate_deadline: 900 } },
     CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
     CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
   ]
@@ -138,7 +144,7 @@ test fn a_missing_liveness_watch_is_named_as_the_gap() -> Bool {
     sink: EvidenceSinkPresent { directory: "sink" },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
     collectors: [
-      CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
+      CollectorProvenRunning { proof: ConsoleSessionHeldPastActivation { capture_path: "x.log", activation_bytes: byte_size(count: 86), client_alive_at: 5, terminate_deadline: 900 } },
       CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
     ],
   ) {
@@ -292,13 +298,29 @@ fn emitting_console_profile() -> PreOsObservationCapabilities {
   }
 }
 
-test fn on_an_emitting_console_a_banner_only_capture_beside_an_empty_window_is_no_restart_not_silence() -> Bool {
+fn unlocalizable_profile() -> PreOsObservationCapabilities {
+  PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: mtcollins1_pre_os_capabilities.console,
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    web_event_log: mtcollins1_pre_os_capabilities.web_event_log,
+    dimm_localization: LocalizationUnavailableFromExposedTelemetry,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+}
+
+// A PLATFORM THAT EXPOSES NO PER-SLOT EVIDENCE GETS THE HONEST ARM, and nothing else.
+test fn a_platform_with_no_per_slot_evidence_reports_localization_unavailable() -> Bool {
   match pre_os_bringup_verdict(
-    window: [],
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
-    profile: emitting_console_profile(),
+    profile: unlocalizable_profile(),
   ) {
-    BringupUndetermined { cause: NoRestartInWindow } => true
+    PhysicalRemediationRequired { restarts_without_progress: 3, localization: UnavailableFromExposedTelemetry } => true
     _ => false
   }
 }
@@ -372,6 +394,57 @@ test fn a_payload_absent_from_the_window_has_no_first_seen_record() -> Bool {
   )
   match assoc.observed {
     OemPayloadAbsentFromWindow { payload: _ } => true
+    _ => false
+  }
+}
+
+// A BANNER-ONLY CAPTURE IS "NOTHING OBSERVED" ON EVERY PLATFORM, emitting or not, because the
+// banner is the client's; host bytes that state no terminal beside an empty window are "no restart".
+test fn banner_only_beside_an_empty_window_is_nothing_observed_even_on_an_emitting_console() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: emitting_console_profile(),
+  ) {
+    BringupUndetermined { cause: NothingObservedBeyondActivation } => true
+    _ => false
+  }
+}
+
+test fn host_bytes_stating_no_terminal_beside_an_empty_window_are_no_restart() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: SolHostBytesObserved { capture_path: "x", bytes: byte_size(count: 500), report: NoTerminalStated },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: NoRestartInWindow } => true
+    _ => false
+  }
+}
+
+// ── the firmware statement ─────────────────────────────────────────────────────────────────────
+
+// `ERR:` code lines alone state no terminal -- they are undecoded hex, handled exactly like the
+// OEM payload; only an `ERROR:` statement does, and the locus comes from the firmware's own
+// SK[]/MC[] lines with Absent where it named none.
+test fn err_code_lines_without_a_statement_are_no_terminal() -> Bool {
+  match firmware_console_report(lines: ["ERR: 84f05923", "ERR: 8ff0c500", "CP: 3ff00800"]) {
+    NoTerminalStated => true
+    _ => false
+  }
+}
+
+test fn a_statement_without_locus_lines_carries_an_absent_locus() -> Bool {
+  match firmware_console_report(lines: ["ERROR:   Non-identical DIMM mixture NOT supported!"]) {
+    TrainingRefusedByFirmware { statement: _, locus: l } =>
+      match l.socket { Absent => match l.memory_controller { Absent => true  _ => false }  _ => false }
+    _ => false
+  }
+}
+
+test fn a_malformed_locus_line_yields_absent_not_a_guess() -> Bool {
+  match firmware_console_report(lines: ["ERROR:   SK[x]: 00110010", "ERROR: refused"]) {
+    TrainingRefusedByFirmware { statement: st, locus: l } => st == "ERROR: refused" && match l.socket { Absent => true  _ => false }
     _ => false
   }
 }

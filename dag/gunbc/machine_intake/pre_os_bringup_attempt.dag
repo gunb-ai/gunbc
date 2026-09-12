@@ -30,11 +30,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // CollectorsReady has exactly one producer, which refuses.
 //
 // WHAT "PROVEN RUNNING" MEANS, per collector, because "armed" is not it. A collector proves it is
-// running by exhibiting a fact only a running collector could produce: the console capture shows
-// the controller's session banner (so the session is the one live session and it is ours); the
-// SEL tail has recorded the cursor it will read forward from; the liveness watcher has observed
-// the controller REACHABLE before the action, so a later "down" is a transition it witnessed and
-// not a state it was born into.
+// running by exhibiting a fact only a running collector could produce: the console client is
+// still alive after the session was activated, under a deadline that will end it; the SEL tail
+// has recorded the cursor it will read forward from; the liveness watcher has observed the
+// controller REACHABLE before the action, so a later "down" is a transition it witnessed and not
+// a state it was born into. Readiness at activation earns nothing about the interval after it.
 //
 // THIS MODULE IS PURE. It models readiness and the request; issuing the action is an effect at a
 // declared frontier (pre_os_actuation_issuance_frontier), and the issued receipt this module can
@@ -67,13 +67,17 @@ type CollectorKind
 // THE PROOF EACH COLLECTOR MUST EXHIBIT. These are facts, not flags: each names something the
 // collector READ, and a collector that has read nothing has no proof to offer.
 //
-// ConsoleSessionBannerSeen carries the byte count of the banner the controller printed into the
-// capture. That banner is the only thing a silent console ever prints, so on such a platform it
-// is simultaneously the proof the capture is live and the WHOLE of what the capture will contain
-// -- which is why the verdict module reads "banner only" as no host information rather than as a
-// host that emitted nothing.
+// THE CONSOLE'S SESSION BANNER IS NOT A PROOF OF RUNNING, AND AN EARLIER REVISION SAID IT WAS. On
+// 2026-09-12 (eager-owl-205, artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt) the same
+// client invoked with a pty and stdin held open stayed connected 645 seconds and captured real
+// firmware output; every earlier 86-byte "silent" capture was the client printing its banner,
+// hitting stdin EOF, and exiting rc=0 after about three seconds while the wrapper slept out the
+// window. The banner therefore proves SESSION ACTIVATION ACKNOWLEDGED and nothing about the
+// interval after it. The proof this arm demands is the client still alive at an instant AFTER
+// activation, under an explicit deadline that will terminate it -- because a correctly held
+// client never exits on its own, and a collector that only waits on it never returns.
 type CollectorRunningProof
-  = ConsoleSessionBannerSeen { capture_path: NonEmptyStr, banner_bytes: ByteSize }
+  = ConsoleSessionHeldPastActivation { capture_path: NonEmptyStr, activation_bytes: ByteSize, client_alive_at: EpochMs, terminate_deadline: EpochMs }
   | SelCursorRecorded { last_record_id: Int, recorded_at: EpochMs }
   | ControllerObservedReachable { at: EpochMs }
 
@@ -88,7 +92,7 @@ type CollectorStanding
 
 fn proof_kind(proof: CollectorRunningProof) -> CollectorKind {
   match proof {
-    ConsoleSessionBannerSeen { capture_path: _, banner_bytes: _ } => ConsoleCapture
+    ConsoleSessionHeldPastActivation { capture_path: _, activation_bytes: _, client_alive_at: _, terminate_deadline: _ } => ConsoleCapture
     SelCursorRecorded { last_record_id: _, recorded_at: _ } => SelCursorTail
     ControllerObservedReachable { at: _ } => ControllerLivenessWatch
   }

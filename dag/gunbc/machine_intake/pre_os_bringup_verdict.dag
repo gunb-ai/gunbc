@@ -1,6 +1,6 @@
 module gunbc.machine_intake_pre_os_bringup_verdict
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
 import std.decl_ref { DeclarationRef }
@@ -20,18 +20,20 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   OemDecodeRenderedUncited,
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
-  console_silence_is_informative,
 }
 
 // WHAT A PRE-OS BRING-UP ATTEMPT ESTABLISHED ABOUT THE HOST, from independent observations only.
 // Two laws are structural here rather than checked:
 //
-//   CONSOLE SILENCE IS NOT A TERMINAL. The verdict's failure arm is constructed from the SEL
-//   window alone. The console reading is consulted only to decide whether an inconclusive window
-//   is UNDETERMINED or merely WAITING, and a banner-only capture on a silent-console platform
-//   contributes nothing in either direction -- the same 86 bytes arrived at idle, after a power
-//   cycle, after an AC cycle and after a reset on 2026-09-11, so those bytes discriminate nothing
-//   (gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked).
+//   CONSOLE SILENCE IS NOT A TERMINAL, BUT A FIRMWARE STATEMENT IS. A banner-only capture carries
+//   no host information -- the same 86 bytes arrived at idle, after a power cycle, after an AC
+//   cycle and after a reset on 2026-09-11, and on 2026-09-12 they turned out to be the collector
+//   exiting, not the host being quiet (gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked).
+//   What the firmware itself PRINTS is the opposite kind of fact: it originates at the subject,
+//   which is exactly what gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect
+//   requires of a subject-level terminal. So a stated training refusal is a terminal on first
+//   sight, with the localization the firmware stated; the SEL-window bound is for hosts that say
+//   nothing.
 //
 //   AN OPAQUE OEM CODE STAYS OPAQUE. OemSelPayloadObserved, OemSelDecodeStanding and
 //   OemSelEmpiricalAssociation are three carriers with no fold between them and the verdict. The
@@ -46,14 +48,102 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
 // else. Comparing sizes would call any 86-byte host emission a banner.
 type SolCaptureReading
   = SolBannerOnly { capture_path: NonEmptyStr, bytes: ByteSize }
-  | SolHostBytesObserved { capture_path: NonEmptyStr, bytes: ByteSize }
+  | SolHostBytesObserved { capture_path: NonEmptyStr, bytes: ByteSize, report: FirmwareConsoleReport }
   | SolCaptureUnreadable { capture_path: NonEmptyStr }
 
-fn sol_capture_reading(capture_path: NonEmptyStr, bytes: ByteSize, digest: ContentHash, banner_digest: ContentHash) -> SolCaptureReading {
+// THE LINES ARE READ ONLY WHEN THE DIGEST SAYS THERE IS MORE THAN THE BANNER, so a banner-only
+// capture never reaches the statement parser and cannot yield a report.
+fn sol_capture_reading(capture_path: NonEmptyStr, bytes: ByteSize, digest: ContentHash, banner_digest: ContentHash, lines: List<String>) -> SolCaptureReading {
   match compare_content_hash(left: digest, right: banner_digest) {
     ContentHashEqual => SolBannerOnly { capture_path: capture_path, bytes: bytes }
-    ContentHashDifferent => SolHostBytesObserved { capture_path: capture_path, bytes: bytes }
+    ContentHashDifferent => SolHostBytesObserved { capture_path: capture_path, bytes: bytes, report: firmware_console_report(lines: lines) }
     ContentHashCrossFamilyIncomparable => SolCaptureUnreadable { capture_path: capture_path }
+  }
+}
+
+// ── the firmware's own statement ───────────────────────────────────────────────────────────────
+
+// WHAT THE DRAM TRAINING FIRMWARE PRINTS WHEN IT REFUSES, as observed on Mt. Collins unit 1
+// (artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt): `ERROR:`-prefixed lines, two of
+// which carry the socket and memory-controller the firmware attributes the fault to as `SK[n]:`
+// and `MC[n]:`, and one of which is the human-readable cause. THE GRAMMAR IS TRANSCRIBED FROM ONE
+// CAPTURE AND CITED TO NO PUBLISHED DOCUMENT; the rows here are the spellings that capture shows,
+// and a line the parser does not recognise is carried verbatim rather than guessed at. The
+// localization it yields is the FIRMWARE'S statement, which is the one source this module may
+// take a socket or controller from -- never timing, never an OEM payload.
+data firmware_error_line_prefix: NonEmptyStr = "ERROR:"
+data firmware_socket_marker: NonEmptyStr = "SK["
+data firmware_memory_controller_marker: NonEmptyStr = "MC["
+
+type FirmwareStatedLocus {
+  socket: Int?
+  memory_controller: Int?
+}
+
+type FirmwareConsoleReport
+  = NoTerminalStated
+  | TrainingRefusedByFirmware { statement: NonEmptyStr, locus: FirmwareStatedLocus }
+
+// THE INTEGER BETWEEN `<marker>` AND THE NEXT `]`, or Absent when the line does not carry it in
+// that shape. Absent is the honest answer for a line that mentions the marker but renders the
+// index some other way; nothing here defaults it.
+fn bracketed_index_after(line: String, marker: NonEmptyStr) -> Int? {
+  match get(xs: split(s: line, delimiter: marker as String), index: 1) {
+    Absent => none
+    Present { value: rest } =>
+      match get(xs: split(s: rest, delimiter: "]"), index: 0) {
+        Absent => none
+        Present { value: digits } => parse_int(s: digits)
+      }
+  }
+}
+
+fn is_firmware_error_line(line: String) -> Bool {
+  starts_with(s: trim(line), prefix: firmware_error_line_prefix as String)
+}
+
+fn line_carries_marker(line: String, marker: NonEmptyStr) -> Bool {
+  line |> contains(marker as String)
+}
+
+type FirmwareReportFold {
+  statement: NonEmptyStr?
+  socket: Int?
+  memory_controller: Int?
+}
+
+fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReportFold {
+  if is_firmware_error_line(line: line) == false {
+    acc
+  } else if line_carries_marker(line: line, marker: firmware_socket_marker) {
+    FirmwareReportFold {
+      statement: acc.statement,
+      socket: match acc.socket { Present { value: _ } => acc.socket  Absent => bracketed_index_after(line: line, marker: firmware_socket_marker) },
+      memory_controller: acc.memory_controller,
+    }
+  } else if line_carries_marker(line: line, marker: firmware_memory_controller_marker) {
+    FirmwareReportFold {
+      statement: acc.statement,
+      socket: acc.socket,
+      memory_controller: match acc.memory_controller { Present { value: _ } => acc.memory_controller  Absent => bracketed_index_after(line: line, marker: firmware_memory_controller_marker) },
+    }
+  } else {
+    FirmwareReportFold {
+      statement: match acc.statement { Present { value: _ } => acc.statement  Absent => Present { value: trim(line) as NonEmptyStr } },
+      socket: acc.socket,
+      memory_controller: acc.memory_controller,
+    }
+  }
+}
+
+// THE FIRST STATED CAUSE WINS, with the first socket and controller the firmware named; a capture
+// with no `ERROR:` statement reports no terminal, however many `ERR:` code lines it carries --
+// those are undecoded hex and are treated exactly as the OEM payload is.
+fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
+  let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
+  match done.statement {
+    Absent => NoTerminalStated
+    Present { value: st } => TrainingRefusedByFirmware { statement: st, locus: FirmwareStatedLocus { socket: done.socket, memory_controller: done.memory_controller } }
   }
 }
 
@@ -167,6 +257,7 @@ data restart_without_progress_terminal_threshold: Int = 3
 type RemediationLocalization
   = UnavailableFromExposedTelemetry
   | LocalizableFrom { source: DeclarationRef }
+  | StatedByFirmware { locus: FirmwareStatedLocus }
 
 fn remediation_localization(profile: PreOsObservationCapabilities) -> RemediationLocalization {
   match profile.dimm_localization {
@@ -178,12 +269,13 @@ fn remediation_localization(profile: PreOsObservationCapabilities) -> Remediatio
 type BringupUndeterminedCause
   = NoRestartInWindow
   | RestartsBelowTerminalThreshold { restarts_without_progress: Int }
-  | ConsoleSilentAndWindowEmpty
+  | NothingObservedBeyondActivation
 
 type PreOsBringupVerdict
   = FirmwareProgressObserved { cycles_with_progress: Int, cycles_without_progress: Int }
   | BringupUndetermined { cause: BringupUndeterminedCause }
   | PhysicalRemediationRequired { restarts_without_progress: Int, localization: RemediationLocalization }
+  | TrainingRefusedByFirmwareStatement { statement: NonEmptyStr, localization: RemediationLocalization }
 
 // THE RUN OF CLOSED RESTARTS SINCE THE LAST PROGRESS. A cycle that saw progress resets the count, so the
 // figure is the length of the TRAILING failure sequence -- the only one that says anything about
@@ -196,19 +288,37 @@ fn trailing_restarts_without_progress(cycles: BootCycleWindow) -> Int {
 }
 
 // THE FOLD. Its inputs are the window, the profile and the console reading; NOT an OEM payload,
-// NOT an actuation receipt. The stable terminal is decided FIRST, from the trailing run: at least
+// NOT an actuation receipt. A firmware-stated refusal is decided first: it is the subject's own
+// statement and needs no repetition. Otherwise the stable terminal is decided from the trailing run: at least
 // the threshold of restarts since the last progress is a refusal to keep actuating,
 // PhysicalRemediationRequired, localized only as far as the platform can see, whatever happened
 // earlier in the window. Only a window whose trailing run is below the bound may report progress
 // seen anywhere in it; a shorter run with no progress at all is undetermined -- the window may
 // simply be short.
 //
-// THE CONSOLE ENTERS EXACTLY ONCE, on the empty-window arm, and only to name the cause more
-// precisely: a silent console beside an empty window is "nothing observed", while an emitting
-// console beside an empty window would be a reading the SEL did not corroborate. On a silent
-// platform the reading is discarded before it can be read as evidence, which is the
-// console_silence_is_informative gate.
+// THE CONSOLE ENTERS EXACTLY ONCE HERE, on the empty-window arm, and only to name the cause more
+// precisely: a banner-only capture beside an empty window is "nothing observed beyond session
+// activation" -- on ANY platform, because the banner is the client's, not the host's -- while
+// host bytes that stated no terminal beside an empty window is "no restart in window".
 fn pre_os_bringup_verdict(
+  window: List<SelWindowEvent>,
+  console: SolCaptureReading,
+  profile: PreOsObservationCapabilities,
+) -> PreOsBringupVerdict {
+  let stated = match console {
+    SolHostBytesObserved { capture_path: _, bytes: _, report: r } => r
+    SolBannerOnly { capture_path: _, bytes: _ } => NoTerminalStated
+    SolCaptureUnreadable { capture_path: _ } => NoTerminalStated
+  }
+  match stated {
+    TrainingRefusedByFirmware { statement: st, locus: l } =>
+      TrainingRefusedByFirmwareStatement { statement: st, localization: StatedByFirmware { locus: l } }
+    NoTerminalStated => sel_window_verdict(window: window, console: console, profile: profile)
+  }
+}
+
+// THE VERDICT FOR A HOST THAT STATED NOTHING, from the SEL window alone.
+fn sel_window_verdict(
   window: List<SelWindowEvent>,
   console: SolCaptureReading,
   profile: PreOsObservationCapabilities,
@@ -225,13 +335,8 @@ fn pre_os_bringup_verdict(
     BringupUndetermined { cause: RestartsBelowTerminalThreshold { restarts_without_progress: without_progress } }
   } else {
     match console {
-      SolBannerOnly { capture_path: _, bytes: _ } =>
-        if console_silence_is_informative(profile: profile) {
-          BringupUndetermined { cause: NoRestartInWindow }
-        } else {
-          BringupUndetermined { cause: ConsoleSilentAndWindowEmpty }
-        }
-      SolHostBytesObserved { capture_path: _, bytes: _ } => BringupUndetermined { cause: NoRestartInWindow }
+      SolBannerOnly { capture_path: _, bytes: _ } => BringupUndetermined { cause: NothingObservedBeyondActivation }
+      SolHostBytesObserved { capture_path: _, bytes: _, report: _ } => BringupUndetermined { cause: NoRestartInWindow }
       SolCaptureUnreadable { capture_path: _ } => BringupUndetermined { cause: NoRestartInWindow }
     }
   }
@@ -245,6 +350,7 @@ fn verdict_permits_further_actuation(verdict: PreOsBringupVerdict) -> Bool {
     FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => true
     BringupUndetermined { cause: _ } => true
     PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => false
+    TrainingRefusedByFirmwareStatement { statement: _, localization: _ } => false
   }
 }
 

@@ -1,8 +1,9 @@
 module gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.scoped_authorization { AttemptIdentity }
 import std.temporal_effect { LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, held_lease }
@@ -17,13 +18,13 @@ import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_firmware 
 import gunbc.machine_intake_pre_os_observation_capabilities {
   AggregateMemoryPowerExposed,
   HostCallbackIntendedNotDemonstrated,
-  LocalizationUnavailableFromExposedTelemetry,
   NoManagedAcActuator,
   PreOsObservationCapabilities,
   WebEventLogDecodeObservation,
   oem_sel_decode_capability_of_web_log,
   SelStandardDecoded,
-  SolPresentSilent,
+  SolPresentEmitting,
+  PerSlotLocalizationExposed,
   WebEventLogAvailable,
 }
 import gunbc.machine_intake_pre_os_bringup_attempt {
@@ -34,9 +35,10 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   CollectorProvenRunning,
   CollectorStanding,
   CollectorsReadiness,
+  ConsoleCapture,
   ControllerLivenessWatch,
   ConsoleLeaseNotHeld,
-  ConsoleSessionBannerSeen,
+  ConsoleSessionHeldPastActivation,
   ControllerObservedReachable,
   EvidenceSinkPresent,
   HostWarmReset,
@@ -51,7 +53,7 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
 }
 import gunbc.machine_intake_pre_os_bringup_verdict {
   BringupUndetermined,
-  ConsoleSilentAndWindowEmpty,
+  NothingObservedBeyondActivation,
   ControllerDeclaredUnknown,
   FirmwareProgressObserved,
   OemPayloadAbsentFromWindow,
@@ -67,8 +69,10 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   SolBannerOnly,
   SolCaptureReading,
   SolHostBytesObserved,
+  StatedByFirmware,
+  TrainingRefusedByFirmwareStatement,
   SolCaptureUnreadable,
-  UnavailableFromExposedTelemetry,
+  LocalizableFrom,
   association_is_decoded,
   oem_sel_empirical_association,
   pre_os_bringup_verdict,
@@ -95,7 +99,10 @@ data mtcollins1_32dimm_artifact_dir: NonEmptyStr = "artifacts/bmc/mtcollins1-32d
 
 // THE CONTROLLER'S SESSION BANNER AS ipmitool CAPTURES IT WITH NO TTY AND STDERR MERGED: one
 // tcgetattr complaint and the "[SOL Session operational.  Use ~? for help]" line, 86 bytes. This is
-// what a capture contains when the session is live and the host has sent nothing.
+// what a capture contains when the client activated the session and then EXITED -- established
+// 2026-09-12 (mtcollins1_dram_training_capture): the same client, given a pty and a held stdin,
+// stayed connected and captured the firmware. An earlier revision read these bytes as "the host
+// sent nothing"; they are "the collector was not there".
 data mtcollins1_sol_session_banner_bytes: ByteSize = byte_size(count: 86)
 
 data mtcollins1_sol_session_banner_digest: ContentHash = Sha256Hash(Sha256Digest {
@@ -136,6 +143,55 @@ fn mtcollins1_sol_reading(capture: SolCaptureUnderCondition) -> SolCaptureReadin
     bytes: capture.bytes,
     digest: capture.digest,
     banner_digest: mtcollins1_sol_session_banner_digest,
+    lines: [],
+  )
+}
+
+// ── the held-session capture: the firmware's own training statement ────────────────────────────
+
+// THE FIRST CAPTURE FROM A CLIENT THAT HELD THE SESSION (eager-owl-205, 2026-09-12, 645 seconds
+// connected). Two DRAM-training passes, each printing the firmware's DRAM FW version, a
+// checkpoint progression, the populated-DIMM table in the firmware's own SK<socket> MC<mcu>
+// S<slot> addressing, and a refusal. The population at that capture was sixteen modules --
+// four Micron 2R in SK0 MC0..MC3 and twelve Hynix 1R elsewhere -- not the thirty-two of the
+// restart loop; what it establishes for THIS module is that the console emits, and that the
+// firmware states a cause and a locus when it refuses.
+//
+// ONLY THE `ERROR:` AND `ERR:` LINES OF THE FIRST PASS ARE TRANSCRIBED, because those are what
+// the statement fold reads; the population table is the post-boot half's subject and is left to
+// the artifact.
+type HeldSessionCapture {
+  artifact_path: NonEmptyStr
+  byte_count: ByteSize
+  digest: ContentHash
+  seconds_connected: Int
+  first_pass_error_lines: List<String>
+}
+
+data mtcollins1_dram_training_capture: HeldSessionCapture = HeldSessionCapture {
+  artifact_path: "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt",
+  byte_count: byte_size(count: 3764),
+  digest: Sha256Hash(Sha256Digest { hex: "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c" }),
+  seconds_connected: 645,
+  first_pass_error_lines: [
+    "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]",
+    "ERR: 84f05923",
+    "ERR: 84f05800",
+    "ERR: 8ff0c500",
+    "ERR: bff0c100",
+    "ERROR:   SK[0]: 00110010",
+    "ERROR:     MC[4]: 00f10081",
+    "ERROR:   Non-identical DIMM mixture NOT supported!",
+  ],
+}
+
+fn mtcollins1_dram_training_reading() -> SolCaptureReading {
+  sol_capture_reading(
+    capture_path: mtcollins1_dram_training_capture.artifact_path,
+    bytes: mtcollins1_dram_training_capture.byte_count,
+    digest: mtcollins1_dram_training_capture.digest,
+    banner_digest: mtcollins1_sol_session_banner_digest,
+    lines: mtcollins1_dram_training_capture.first_pass_error_lines,
   )
 }
 
@@ -311,22 +367,26 @@ data mtcollins1_web_event_log_decode: WebEventLogDecodeObservation = WebEventLog
 
 // ── the capability profile, as measured today ──────────────────────────────────────────────────
 
-// SOL present but silent (four identical captures, and the keystroke probe 22-sol-probe.log --
-// two carriage returns fed in, only the banner and the probe's own exit line back); raw SEL and standard
-// decode yes (50-sel-final.txt renders every standard sensor event); OEM decode no
-// (mtcollins1_web_event_log_decode); web event log yes (it answered 500 records); per-DIMM
-// localization no (the SEL carries no slot-addressed record and the census module already
-// established that EDAC under firmware-first exposes no channel topology); aggregate memory power
-// yes (CPU0/CPU1 DIMM VRD temperatures and VDDQ rails in 06-sdr.txt); managed AC no (the AC cycle
-// was performed by hand, 10-ac-meta.txt); host callback intended, not demonstrated.
+// SOL present and EMITTING under a held session (mtcollins1_dram_training_capture; the four
+// banner-only captures and the keystroke probe 22-sol-probe.log were the client exiting at stdin
+// EOF and are not measurements of the console); raw SEL and standard decode yes (50-sel-final.txt
+// renders every standard sensor event); OEM decode no (mtcollins1_web_event_log_decode); web
+// event log yes (it answered 500 records); per-DIMM localization exposed BY THE FIRMWARE CONSOLE
+// -- the SEL carries no slot-addressed record and the census module established that EDAC under
+// firmware-first exposes no channel topology, but the training firmware prints SK/MC/S-addressed
+// rows and names a socket and controller when it refuses; aggregate memory power yes (CPU0/CPU1
+// DIMM VRD temperatures and VDDQ rails in 06-sdr.txt); managed AC no (the AC cycle was performed
+// by hand, 10-ac-meta.txt); host callback intended, not demonstrated.
 data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObservationCapabilities {
   baseboard: AmpereMtCollins,
   controller_firmware: mtcollins1_firmware,
-  console: SolPresentSilent,
+  console: SolPresentEmitting,
   sel: SelStandardDecoded,
   oem_sel_decode: oem_sel_decode_capability_of_web_log(observation: mtcollins1_web_event_log_decode),
   web_event_log: WebEventLogAvailable,
-  dimm_localization: LocalizationUnavailableFromExposedTelemetry,
+  dimm_localization: PerSlotLocalizationExposed {
+    source: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
+  },
   memory_power: AggregateMemoryPowerExposed,
   managed_ac: NoManagedAcActuator,
   host_callback: HostCallbackIntendedNotDemonstrated,
@@ -339,8 +399,10 @@ data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObserva
 // and its FIRST probe found the controller unreachable ("BMC down (ipmi no answer) after 1s",
 // logged twenty seconds later because that first `mc info` hung until timeout): it never observed
 // the controller reachable, so the down it reported was a state it was born into, not a
-// transition it witnessed. The console session had two stale capture processes competing for it,
-// which is why every later script begins by killing every `sol activate` before attaching.
+// transition it witnessed. The console client printed its banner and exited at stdin EOF about
+// three seconds after activation, so the console collector was ARMED and never proven; and the
+// session had stale capture processes competing for it, which is why every later script begins
+// by killing every `sol activate` before attaching.
 //
 // Fed to collectors_ready, this fixture must REFUSE; the readiness a correct run would have
 // presented is beside it and must be admitted. Both are exercised by the probe below.
@@ -354,13 +416,13 @@ data mtcollins1_console_lease_epoch: LeaseEpoch = LeaseEpoch {
 }
 
 data mtcollins1_ac_cycle_collectors_as_run: List<CollectorStanding> = [
-  CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
+  CollectorArmedUnproven { kind: ConsoleCapture },
   CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
   CollectorArmedUnproven { kind: ControllerLivenessWatch },
 ]
 
 data mtcollins1_ac_cycle_collectors_as_required: List<CollectorStanding> = [
-  CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
+  CollectorProvenRunning { proof: ConsoleSessionHeldPastActivation { capture_path: "11-ac-sol.log", activation_bytes: byte_size(count: 86), client_alive_at: 1789164863580, terminate_deadline: 1789165753580 } },
   CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
   CollectorProvenRunning { proof: ControllerObservedReachable { at: 1789164310688 } },
 ]
@@ -459,7 +521,9 @@ fn check_collectors_before_actuation() -> ProcessExit {
 }
 
 // LAW 2: four byte-identical captures across four conditions all read as banner-only, and the
-// verdict over an empty post-cursor window beside them is UNDETERMINED, never a failure.
+// verdict over an empty post-cursor window beside them is UNDETERMINED, never a failure -- while
+// the held-session capture, whose firmware STATED a refusal, is a terminal with the firmware's
+// own locus.
 fn check_console_silence_is_not_a_terminal() -> ProcessExit {
   let readings = if sol_readings_all_banner_only(captures: mtcollins1_sol_captures) {
     ExitSuccess
@@ -473,28 +537,55 @@ fn check_console_silence_is_not_a_terminal() -> ProcessExit {
   ) {
     BringupUndetermined { cause: c } =>
       match c {
-        ConsoleSilentAndWindowEmpty => ExitSuccess
-        _ => exit_failure(reason: "console-silence: a silent console beside an empty window was not named as such")
+        NothingObservedBeyondActivation => ExitSuccess
+        _ => exit_failure(reason: "console-silence: a banner-only capture beside an empty window was not named as nothing observed beyond activation")
       }
     _ => exit_failure(reason: "console-silence: a banner-only capture beside an empty SEL window produced a verdict about the host")
   }
-  first_failure(checks: [readings, verdict])
+  let stated = match pre_os_bringup_verdict(
+    window: sel_window_after_cursor(window: mtcollins1_sel_window(), cursor_record_id: 1103),
+    console: mtcollins1_dram_training_reading(),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    TrainingRefusedByFirmwareStatement { statement: st, localization: l } =>
+      match l {
+        StatedByFirmware { locus: locus } =>
+          if st != "ERROR:   Non-identical DIMM mixture NOT supported!" {
+            exit_failure(reason: concat("firmware-statement: the stated cause was not the refusal line; read: ", st as String))
+          } else {
+            match locus.socket {
+              Present { value: 0 } =>
+                match locus.memory_controller {
+                  Present { value: 4 } => ExitSuccess
+                  _ => exit_failure(reason: "firmware-statement: the memory controller the firmware named (MC[4]) was not carried")
+                }
+              _ => exit_failure(reason: "firmware-statement: the socket the firmware named (SK[0]) was not carried")
+            }
+          }
+        _ => exit_failure(reason: "firmware-statement: the localization was not the firmware's own statement")
+      }
+    _ => exit_failure(reason: "firmware-statement: the held-session capture with an ERROR: refusal did not produce a firmware-stated terminal")
+  }
+  first_failure(checks: [readings, verdict, stated])
 }
 
 // THE BOUNDED TERMINAL: the 32-DIMM window is a stable restart-before-progress terminal, refused
-// with no localization and permitting no further actuation; the last 16-DIMM boot is the positive
+// with a localization POINTER to the firmware console (the loop was observed with a broken
+// collector, so no statement exists for it) and permitting no further actuation; the last 16-DIMM boot is the positive
 // control that shows the terminal arm discriminates.
 fn check_bounded_terminal() -> ProcessExit {
   let terminal = match mtcollins1_32dimm_verdict() {
     PhysicalRemediationRequired { restarts_without_progress: n, localization: l } =>
       match l {
-        UnavailableFromExposedTelemetry =>
+        LocalizableFrom { source: src } =>
           if n < 3 {
             exit_failure(reason: "bounded-terminal: fewer restarts than the threshold were reported for a window of twenty")
+          } else if src.decl_name != "mtcollins1_dram_training_capture" {
+            exit_failure(reason: "bounded-terminal: the localization pointer does not name the firmware console capture that exposes per-slot evidence")
           } else {
             ExitSuccess
           }
-        _ => exit_failure(reason: "bounded-terminal: a localization was minted on a platform that exposes no per-slot telemetry")
+        _ => exit_failure(reason: "bounded-terminal: a SEL-only terminal on this platform must point at the firmware console as the source that would localize it -- never a slot, never unavailable now that the console is known to emit")
       }
     _ => exit_failure(reason: "bounded-terminal: the 32-DIMM window -- twenty restarts, zero firmware-progress records -- did not resolve to PhysicalRemediationRequired")
   }

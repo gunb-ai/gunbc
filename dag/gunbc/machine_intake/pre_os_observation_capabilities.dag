@@ -17,10 +17,13 @@ import extdeps.boards.types { BaseboardModel }
 // is PRESENT AND SILENT is neither "SOL: yes" nor "SOL: no", and reading it as yes is exactly how
 // silence got promoted to a firmware verdict on 2026-09-11.
 
-// THE CONSOLE. SolPresentSilent is the arm the Mt. Collins unit inhabits: the controller accepts
-// the session, prints its own banner, accepts keystrokes, and returns no host bytes under any
-// power condition measured. It is separate from SolAbsent because the remedies differ -- a silent
-// console may be a firmware console-redirection setting; an absent one is a controller capability.
+// THE CONSOLE. SolPresentSilent is a console that activates and returns no host bytes under a
+// collector PROVEN to be holding the session; it is separate from SolAbsent because the remedies
+// differ -- a silent console may be a firmware console-redirection setting; an absent one is a
+// controller capability. It is NOT the arm Mt. Collins inhabits, though an earlier revision said
+// so: eight "silent" captures were one broken collector exiting at stdin EOF, and a held session
+// captured the firmware's DRAM training output on the first try (2026-09-12). A profile may
+// carry this arm only on the strength of a held-session capture, never a banner-only one.
 type ConsoleObservationCapability
   = SolAbsent
   | SolPresentSilent
@@ -129,19 +132,9 @@ type PreOsObservationCapabilities {
   host_callback: HostCallbackCapability
 }
 
-// THE ONE QUESTION A DOWNSTREAM FOLD ASKS OF THE CONSOLE AXIS. The OEM-decode and localization
-// axes are consumed by gunbc.machine_intake_pre_os_bringup_verdict matching the profile's fields
-// directly (oem_sel_decode_standing, remediation_localization); a predicate here for each would
-// be a second reading of one field with no consumer (DESIGN section 3c).
-
-// May a console capture that contains nothing beyond the session banner be read as evidence about
-// the HOST? Only when the console is known to emit: on a silent-console platform the same bytes
-// arrive whatever the host does, so they carry no host information
-// (gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked).
-fn console_silence_is_informative(profile: PreOsObservationCapabilities) -> Bool {
-  match profile.console {
-    SolAbsent => false
-    SolPresentSilent => false
-    SolPresentEmitting => true
-  }
-}
+// THE OEM-DECODE AND LOCALIZATION AXES ARE CONSUMED by gunbc.machine_intake_pre_os_bringup_verdict
+// matching the profile's fields directly (oem_sel_decode_standing, remediation_localization); a
+// predicate here for each would be a second reading of one field with no consumer (DESIGN
+// section 3c). The console axis is consumed by no fold in this change: the verdict reads the
+// CAPTURE (banner-only versus host bytes), which is the measurement, and the profile's console
+// arm is the platform-grain summary of such captures.
