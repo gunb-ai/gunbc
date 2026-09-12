@@ -4164,12 +4164,16 @@ fn extend_with_reference_closure_for_pool(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let edges = both_closure_edge_index(mei)?;
-    extend_sources_via_edge_map(
+    extend_sources_via_demanded_edges(
         sources,
-        &edges.ref_out,
-        None,
         &path_to_source_lookup(&mei.source_files),
+        |source| {
+            let edges = build_both_closure_edge_index(mei, source)?;
+            let file = workspace_relative_repo_path(&source.path);
+            edges.ref_out.get(&file).cloned().ok_or_else(|| {
+                format!("closure_edge_demand: reference edges absent after production for '{file}'")
+            })
+        },
     )
 }
 
@@ -8619,11 +8623,10 @@ mod bare_identifier_candidates_tests {
     }
 }
 
-/// Per-module outgoing edges for the both-closure fixpoint — built once per
-/// `MultiEntryIndex` process and reused across every entry load. Dissolves the
-/// #6848 once-per-entry cost: the fixpoint becomes graph BFS over these edges
-/// instead of re-scanning every module's text and re-querying the census on each
-/// of ~2100 discovery entries (~140ms/witness PRE-fix).
+/// Outgoing rows materialized only for sources visited by a closure demand. The index
+/// owns each row once and shares it across entry loads; whole-pool coverage is an explicit
+/// regen/floor demand, never a prerequisite for compiling one entry.
+#[derive(Clone, Default)]
 struct BothClosureEdgeIndex {
     /// workspace-relative file path → files pulled by bare-reference resolution
     /// (each target is the full import-closure of the resolved provider).
@@ -8773,42 +8776,34 @@ fn source_declares_import_lines(content: &str) -> bool {
         .any(|l| l.trim_start().starts_with("import "))
 }
 
-/// BFS closure extension over a precomputed per-file edge map.
-fn extend_sources_via_edge_map(
+/// A BFS asks for outgoing edges only when it visits a source. Admission is separate:
+/// an unrelated bad reference must refuse without materializing its outgoing edges.
+fn extend_sources_via_demanded_edges(
     mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    edge_map: &HashMap<String, Vec<String>>,
-    scan_eligible: Option<&HashSet<String>>,
     path_lookup: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    mut edges_for: impl FnMut(&Rc<v1_compiler_compile::SourceFile>) -> Result<Vec<String>, String>,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let mut known_paths: HashSet<String> = sources
         .iter()
         .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
         .collect();
-    let mut queue: VecDeque<String> = sources
-        .iter()
-        .map(|s| workspace_relative_repo_path(&s.path))
-        .collect();
-    while let Some(file_rel) = queue.pop_front() {
-        if scan_eligible.is_some_and(|eligible| !eligible.contains(&file_rel)) {
-            continue;
-        }
-        let Some(pulled) = edge_map.get(&file_rel) else {
-            continue;
-        };
-        for rel in pulled {
-            if known_paths.contains(rel) {
+    let mut queue: VecDeque<_> = sources.iter().cloned().collect();
+    while let Some(source) = queue.pop_front() {
+        let file_rel = workspace_relative_repo_path(&source.path);
+        for rel in edges_for(&source)? {
+            if known_paths.contains(&rel) {
                 continue;
             }
-            let Some(dep_sf) = path_lookup.get(rel).cloned() else {
+            let Some(dep_sf) = path_lookup.get(&rel).cloned() else {
                 return Err(format!(
                     "closure_edge_map: pulled path '{rel}' (from '{file_rel}') has no \
                      provenance in module index (fail-closed)"
                 ));
             };
-            known_paths.insert(rel.clone());
+            known_paths.insert(rel);
             known_paths.insert(dep_sf.path.clone());
             sources.push(dep_sf.clone());
-            queue.push_back(rel.clone());
+            queue.push_back(dep_sf);
         }
     }
     Ok(sources)
@@ -8818,13 +8813,64 @@ fn bare_reference_pull_paths_for_source(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<String>, String> {
+    let mut pulled = Vec::new();
+    let mut seen = HashSet::new();
+    visit_bare_reference_providers(
+        sf,
+        index,
+        |root| closure_name_census(index, root),
+        |provider| {
+            for path in import_closure_live_paths_with_facts(provider, &index.module_graph_facts) {
+                let path = workspace_relative_repo_path(&path);
+                if seen.insert(path.clone()) {
+                    pulled.push(path);
+                }
+            }
+            Ok(())
+        },
+    )?;
+    Ok(pulled)
+}
+
+/// Pool admission consumes the same resolution predicate as edge production, but never
+/// expands an import closure or retains an edge. Memoize the verdict for this immutable
+/// index, including refusals; the heads census is its only shared lookup input.
+fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
+    if let Some(verdict) = index.bare_reference_admission.borrow().as_ref() {
+        return verdict.clone();
+    }
+    let mut sources: Vec<_> = index.source_files.values().collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    let verdict = sources.into_iter().try_for_each(|source| {
+        if source_declares_import_lines(&source.content) {
+            return Ok(());
+        }
+        visit_bare_reference_providers(
+            source,
+            index,
+            |root| closure_name_census(index, root),
+            |_| Ok(()),
+        )
+    });
+    *index.bare_reference_admission.borrow_mut() = Some(verdict.clone());
+    verdict
+}
+
+/// One resolver, two consumers: admission discards selected providers, and a demanded
+/// edge row expands them. Candidate classification remains `closure_bare_disposition`,
+/// which consumes `v1.compiler.infer_env::global_bare_chain_candidates`.
+fn visit_bare_reference_providers(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &MultiEntryIndex,
+    census_for: impl Fn(Option<&str>) -> Result<Rc<SymbolIndex>, String>,
+    mut visit: impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
     use crate::v1_compiler_infer_env::GlobalBareLookupState;
     let file_rel = workspace_relative_repo_path(&sf.path);
     let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
-        return Ok(Vec::new());
+        return Ok(());
     };
-    let (census, census_nanos) =
-        nanos_net_of_pool_parse(|| tree_bare_census_for_root(index, &root));
+    let (census, census_nanos) = nanos_net_of_pool_parse(|| census_for(Some(&root)));
     let census = census?;
     resolve_stage_slot_add(|st| {
         st.edge_index_tree_census += census_nanos;
@@ -8911,8 +8957,6 @@ fn bare_reference_pull_paths_for_source(
         crate::std_types::kernel_type_set().contains_key(name)
             || crate::std_types::container_type_arity().contains_key(name)
     };
-    let mut pulled: Vec<String> = Vec::new();
-    let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
     let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
@@ -9037,7 +9081,7 @@ fn bare_reference_pull_paths_for_source(
         let (target_module, resolution_arm, census_state) = match resolve_in(&census)? {
             (Some(m), state) => (Some(m), "scoped", state),
             (None, _) => {
-                let (m, state) = resolve_in(&pool_bare_census(index)?)?;
+                let (m, state) = resolve_in(&census_for(None)?)?;
                 (m, "pool-fallback", state)
             }
         };
@@ -9081,14 +9125,9 @@ fn bare_reference_pull_paths_for_source(
                  (fail-closed)"
             ));
         }
-        for path in import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts) {
-            let rel = workspace_relative_repo_path(&path);
-            if pulled_set.insert(rel.clone()) {
-                pulled.push(rel);
-            }
-        }
+        visit(&dep_rel)?;
     }
-    // `pool_bare_census` is the loop's cross-tree fallback and forces the same shared
+    // The whole-pool name reading forces the same shared
     // parse. In practice the census above has already forced it, so this delta is
     // normally zero — but "normally" is an ordering accident and the row must not
     // depend on one.
@@ -9101,7 +9140,7 @@ fn bare_reference_pull_paths_for_source(
             .as_nanos()
             .saturating_sub(resolve_loop_pool);
     });
-    Ok(pulled)
+    Ok(())
 }
 
 fn reference_pull_paths_for_source(
@@ -9138,53 +9177,349 @@ fn reference_pull_paths_for_source(
     Ok(pulled)
 }
 
+/// Materialize one demanded source row. A successful admission does not imply any row
+/// was produced; complete coverage is requested explicitly by the whole-pool consumers.
 fn build_both_closure_edge_index(
     index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<Rc<BothClosureEdgeIndex>, String> {
-    let mut bare_out: HashMap<String, Vec<String>> = HashMap::new();
-    let mut ref_out: HashMap<String, Vec<String>> = HashMap::new();
-    let mut bare_scan_eligible: HashSet<String> = HashSet::new();
-    resolve_stage_slot_add(|st| {
-        st.edge_index_builds += 1;
-        st.edge_index_source_files += index.source_files.len() as u128;
-    });
-    for sf in index.source_files.values() {
-        let file_rel = workspace_relative_repo_path(&sf.path);
-        let ref_started = std::time::Instant::now();
-        let ref_paths =
-            reference_pull_paths_for_source(sf, &index.source_files, &index.module_graph_facts)?;
-        resolve_stage_slot_add(|st| st.edge_index_ref_half += ref_started.elapsed().as_nanos());
-        ref_out.insert(file_rel.clone(), ref_paths);
-        if source_declares_import_lines(&sf.content) {
-            continue;
+    admit_pool_bare_references(index)?;
+    let file = workspace_relative_repo_path(&source.path);
+    if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
+        if hit.ref_out.contains_key(&file) {
+            return Ok(hit.clone());
         }
-        bare_scan_eligible.insert(file_rel.clone());
-        let (bare_paths, bare_nanos) =
-            nanos_net_of_pool_parse(|| bare_reference_pull_paths_for_source(sf, index));
-        let bare_paths = bare_paths?;
+    }
+    let ref_started = std::time::Instant::now();
+    let ref_paths =
+        reference_pull_paths_for_source(source, &index.source_files, &index.module_graph_facts)?;
+    resolve_stage_slot_add(|st| st.edge_index_ref_half += ref_started.elapsed().as_nanos());
+    let bare_paths = if source_declares_import_lines(&source.content) {
+        None
+    } else {
+        let (paths, nanos) =
+            nanos_net_of_pool_parse(|| bare_reference_pull_paths_for_source(source, index));
         resolve_stage_slot_add(|st| {
-            st.edge_index_bare_half += bare_nanos;
+            st.edge_index_bare_half += nanos;
             st.edge_index_bare_eligible += 1;
         });
-        bare_out.insert(file_rel, bare_paths);
-    }
+        Some(paths?)
+    };
     let publish_started = std::time::Instant::now();
-    let built = Rc::new(BothClosureEdgeIndex {
-        bare_out,
-        ref_out,
-        bare_scan_eligible,
+    let mut slot = index.both_closure_edges.borrow_mut();
+    let edges = slot.get_or_insert_with(|| {
+        resolve_stage_slot_add(|st| st.edge_index_builds += 1);
+        Rc::new(BothClosureEdgeIndex::default())
     });
-    resolve_stage_slot_add(|st| st.edge_index_publish += publish_started.elapsed().as_nanos());
-    Ok(built)
+    let row = Rc::make_mut(edges);
+    row.ref_out.insert(file.clone(), ref_paths);
+    if let Some(paths) = bare_paths {
+        row.bare_scan_eligible.insert(file.clone());
+        row.bare_out.insert(file, paths);
+    }
+    resolve_stage_slot_add(|st| {
+        st.edge_index_source_files += 1;
+        st.edge_index_publish += publish_started.elapsed().as_nanos();
+    });
+    Ok(edges.clone())
 }
 
-fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdgeIndex>, String> {
-    if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
-        return Ok(hit.clone());
+/// Explicit whole-pool demand: regen reads all rows in reverse, and floor preparation
+/// serves every entry. Entry compiles never call this boundary.
+fn whole_pool_closure_edge_index(
+    index: &MultiEntryIndex,
+) -> Result<Rc<BothClosureEdgeIndex>, String> {
+    admit_pool_bare_references(index)?;
+    for source in index.source_files.values() {
+        build_both_closure_edge_index(index, source)?;
     }
-    let built = build_both_closure_edge_index(index)?;
-    *index.both_closure_edges.borrow_mut() = Some(built.clone());
-    Ok(built)
+    Ok(index
+        .both_closure_edges
+        .borrow_mut()
+        .get_or_insert_with(|| Rc::new(BothClosureEdgeIndex::default()))
+        .clone())
+}
+
+#[cfg(test)]
+mod closure_edge_demand_tests {
+    use super::*;
+
+    struct Fixture(std::path::PathBuf);
+
+    impl Fixture {
+        fn new(files: &[(&str, &str)]) -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let root = workspace_root().join("target").join(format!(
+                "closure-edge-demand-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            for (file, contents) in files {
+                let path = root.join(file);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, contents).unwrap();
+            }
+            Self(root)
+        }
+
+        fn index(&self) -> MultiEntryIndex {
+            build_multi_entry_index(&[self.0.to_string_lossy().into_owned()])
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    fn providers(
+        index: &MultiEntryIndex,
+        source: &Rc<v1_compiler_compile::SourceFile>,
+        resolved: bool,
+    ) -> Result<Vec<String>, String> {
+        let mut providers = Vec::new();
+        visit_bare_reference_providers(
+            source,
+            index,
+            |root| {
+                if resolved {
+                    match root {
+                        Some(root) => tree_bare_census_for_root(index, root),
+                        None => pool_bare_census(index),
+                    }
+                } else {
+                    closure_name_census(index, root)
+                }
+            },
+            |path| {
+                providers.push(path.to_string());
+                Ok(())
+            },
+        )?;
+        Ok(providers)
+    }
+
+    #[test]
+    fn nonclosure_ambiguity_refuses_without_materializing_edges() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module frontier_entry\nfn main() -> Int { 1 }\n",
+            ),
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "b.dag",
+                "module frontier.child\nfn duplicated() -> Int { 2 }\n",
+            ),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let old =
+            providers(&index, &index.source_files["frontier.child.consumer"], true).unwrap_err();
+        let refused = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .unwrap_err();
+        assert_eq!(refused, old);
+        assert!(refused.contains("AMBIGUOUS"), "{refused}");
+        assert!(refused.contains("frontier, frontier.child"), "{refused}");
+        assert!(refused.contains("c.dag"), "{refused}");
+        assert!(index.both_closure_edges.borrow().is_none());
+        assert_eq!(admit_pool_bare_references(&index), Err(old));
+    }
+
+    #[test]
+    fn entry_produces_only_reached_rows_and_explicit_whole_demand_completes_them() {
+        let fixture = Fixture::new(&[
+            ("entry.dag", "module frontier_entry\nimport chain.provider { first }\nfn main() -> Int { first() }\n"),
+            ("provider.dag", "module chain.provider\nfn first() -> Int { next() }\n"),
+            ("tail.dag", "module chain.tail\nfn next() -> Int { 1 }\n"),
+            ("unrelated.dag", "module unrelated\nfn unused() -> Int { 1 }\n"),
+        ]);
+        let index = fixture.index();
+        admit_pool_bare_references(&index).unwrap();
+        assert!(
+            index.both_closure_edges.borrow().is_none(),
+            "admission must retain no edges"
+        );
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .unwrap();
+        let modules: BTreeSet<_> = sources
+            .iter()
+            .map(|s| extract_module_path(&s.content).unwrap())
+            .collect();
+        assert_eq!(
+            modules,
+            BTreeSet::from([
+                "frontier_entry".into(),
+                "chain.provider".into(),
+                "chain.tail".into()
+            ])
+        );
+        let demanded: BTreeSet<_> = index
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .ref_out
+            .keys()
+            .cloned()
+            .collect();
+        let reached: BTreeSet<_> = sources
+            .iter()
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        assert_eq!(demanded, reached);
+        assert!(
+            index.tree_bare_census.borrow().is_empty(),
+            "edge production must not resolve full signatures"
+        );
+        assert!(index.pool_bare_census.borrow().is_none());
+        let preparation = warm_bare_reference_edge_index(&index).unwrap();
+        assert!(matches!(
+            preparation.provenance,
+            SharedBuildProvenance::BuiltByPreparation
+        ));
+        let edges = whole_pool_closure_edge_index(&index).unwrap();
+        let all: BTreeSet<_> = index
+            .source_files
+            .values()
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        assert_eq!(edges.ref_out.keys().cloned().collect::<BTreeSet<_>>(), all);
+        drop(edges);
+        assert!(matches!(
+            warm_bare_reference_edge_index(&index).unwrap().provenance,
+            SharedBuildProvenance::AlreadyWarmOnEntry { .. }
+        ));
+        assert!(
+            !index.tree_bare_census.borrow().is_empty(),
+            "floor preparation owns the later reconciliation demand"
+        );
+    }
+
+    #[test]
+    fn decomposition_releases_production_name_censuses_and_admission() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module frontier_entry\nfn main() -> Int { 1 }\n",
+        )]);
+        let index = fixture.index();
+        let root = workspace_relative_repo_path(&index.source_roots[0]);
+        let tree = closure_name_census(&index, Some(&root)).unwrap();
+        let pool = closure_name_census(&index, None).unwrap();
+        assert!(!tree.entries.is_empty());
+        assert!(!pool.entries.is_empty());
+        let owners = [Rc::downgrade(&tree), Rc::downgrade(&pool)];
+        drop(tree);
+        drop(pool);
+        admit_pool_bare_references(&index).unwrap();
+        assert!(index.pool_bare_census.borrow().is_none());
+        assert!(index.both_closure_edges.borrow().is_none());
+        let counts = private_term_entry_counts_for_test(&index);
+        assert!(counts.contains(&("closure_name_censuses", 2)));
+        assert!(counts.contains(&("bare_reference_admission", 1)));
+        for term in ["closure_name_censuses", "bare_reference_admission"] {
+            assert!(drop_attributable_terms_for_test().contains(&term));
+        }
+        assert!(owners.iter().all(|owner| owner.upgrade().is_some()));
+        assert!(drop_private_term_for_test(&index, "closure_name_censuses"));
+        assert!(owners.iter().all(|owner| owner.upgrade().is_none()));
+        assert!(index.bare_reference_admission.borrow().is_some());
+        assert!(drop_private_term_for_test(
+            &index,
+            "bare_reference_admission"
+        ));
+        assert!(index.bare_reference_admission.borrow().is_none());
+        let counts = private_term_entry_counts_for_test(&index);
+        assert!(counts.contains(&("closure_name_censuses", 0)));
+        assert!(counts.contains(&("bare_reference_admission", 0)));
+        assert!(!drop_private_term_for_test(&index, "unknown_census_term"));
+    }
+
+    #[test]
+    fn heads_and_resolved_readings_agree_on_candidate_and_variant_gating() {
+        let fixture = Fixture::new(&[
+            ("a.dag", "module frontier\ntype Box<T> { value: T }\ntype Choice = First | Second\nfn generic<T>(x: T) -> Box<T> { Box { value: x } }\nfn duplicated() -> Int { 1 }\n"),
+            ("b.dag", "module frontier.child\nfn duplicated() -> Int { 2 }\n"),
+            ("c.dag", "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n"),
+            ("d.dag", "module unrelated\ntype Other = First | Third\nfn unique() -> Int { 1 }\n"),
+            ("e.dag", "module frontier.consumer\nfn read() -> Int { unique() }\nfn boxed() -> Box<Int> { generic(x: 1) }\n"),
+        ]);
+        let index = fixture.index();
+        for source in index.source_files.values() {
+            let input_table = index.intern_table.borrow().clone();
+            let (production, _) =
+                parse_module_heads_for_pool_census(&index, source.clone()).unwrap();
+            let updated_table = index.intern_table.replace(input_table);
+            let ((_, _), (heads, _)) = census_heads_both_readings(&index, source);
+            index.intern_table.replace(updated_table);
+            // Same heads reading and same incoming intern/occurrence snapshot. Whole
+            // Node equality cannot compare independent allocator histories as structure.
+            assert_eq!(
+                heads.unwrap(),
+                production,
+                "differential must witness the production projection: {}",
+                source.path
+            );
+            assert_eq!(
+                providers(&index, source, false),
+                providers(&index, source, true),
+                "{}",
+                source.path
+            );
+        }
+    }
+
+    #[test]
+    fn regen_reverse_walk_requests_unvisited_modules_by_execution() {
+        let fixture = Fixture::new(&[
+            ("dag/entry.dag", "module entry\nfn main() -> Int { 1 }\n"),
+            ("dag/provider.dag", "module chain.provider\nfn value() -> Int { 1 }\n"),
+            ("dag/consumer.dag", "module chain.consumer\nimport chain.provider { value }\nfn read() -> Int { value() }\n"),
+        ]);
+        for root in regen_source_roots().all() {
+            std::fs::create_dir_all(fixture.0.join(root.repo_relative_path())).unwrap();
+        }
+        let (edges, modules) = required_regen_host::regen_module_edges(&fixture.0).unwrap();
+        assert!(modules.contains(&"entry".to_string()));
+        assert!(edges.contains(&("chain.consumer".to_string(), "chain.provider".to_string())));
+        let reached = required_regen_host::regen_reverse_closure_host(
+            &["chain.provider".to_string()],
+            &edges,
+        );
+        assert!(reached.contains(&"chain.consumer".to_string()));
+        assert!(!reached.contains(&"entry".to_string()));
+    }
+
+    #[test]
+    #[ignore = "live-corpus differential: execute explicitly for closure-census changes"]
+    fn live_pool_heads_and_resolved_provider_readings_agree() {
+        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
+        let mut compared = 0;
+        for source in index.source_files.values() {
+            if source_declares_import_lines(&source.content) {
+                continue;
+            }
+            assert_eq!(
+                providers(&index, source, false),
+                providers(&index, source, true),
+                "{}",
+                source.path
+            );
+            compared += 1;
+        }
+        assert!(compared > 0, "no bare-eligible sources were compared");
+        eprintln!("closure census differential: {compared} sources compared");
+    }
 }
 
 /// ONE observation of ONE shared preparation build — the unit whose cost is being
@@ -9227,33 +9562,10 @@ pub struct SharedBuildObservation {
     pub provenance: SharedBuildProvenance,
 }
 
-/// Build the bare-reference edge index (and, through it, the per-root tree bare census)
-/// for `index` NOW, so that the one-time cost is paid by the caller that prepares the
-/// subject rather than by whichever claim happens to reach it first.
-///
-/// WHY THIS EXISTS, and why it is the third warm in this file rather than an optimization:
-/// `both_closure_edge_index` is memoized per `MultiEntryIndex` and `tree_bare_census_for_root`
-/// per (index, root), so the work is already done exactly once per process — the trace
-/// (`GUNBC_EDGE_INDEX_CENSUS_TRACE=1`) reports two misses on two roots against ONE index
-/// address, with `edge_index_construction { builds: 1 }`. Memoization is therefore correct
-/// and complete, and the defect is not duplication: it is ATTRIBUTION. The first claim to
-/// resolve an entry paid the whole ~28s build inside its own per-claim timer and was
-/// refused against a 5000ms per-claim safety limit that answers a different question, while
-/// its sibling — reaching the identical computation milliseconds later — ran free.
-/// Quarantining the payer only hands the bill to the next claim in evaluation order; the
-/// module-path-index and shared-index warms directly above are the same repair, and the
-/// three modules quarantined down that chain are the receipt for why relocation is not one.
-///
-/// This does NOT make the build cheaper and does not claim to. It moves the charge to the
-/// unit that incurs it, where it is bounded by its own limits (`FloorPreparationRefused`)
-/// instead of by a per-claim ceiling that was never about shared setup.
-/// MEASURE ANY SHARED PREPARATION BUILD THE SAME WAY, so a phase declared protected by
-/// `v2.workflow.required_floor` `FloorPreparationPhase` is protected by execution and not by the
-/// type merely listing it (review 55338, and the finding was correct: the model named three phases
-/// while exactly one was measured and adjudicated — two modeled safety walls were informational).
-///
-/// The closure runs between the same clock and RSS reads the edge-index warm uses, so all three
-/// phases produce one comparable observation and go through one refusal.
+/// Measure a shared preparation build at its owner. Floor preparation explicitly asks
+/// for whole-pool edge coverage because its later claims collectively consume that pool;
+/// an entry compile has no such demand. Each protected phase uses this same measurement
+/// boundary and the existing FloorPreparationRefused budget adjudication.
 fn observe_shared_build<T>(
     already_built: bool,
     triggered_by: &'static str,
@@ -9290,12 +9602,23 @@ fn observe_shared_build<T>(
 pub fn warm_bare_reference_edge_index(
     index: &MultiEntryIndex,
 ) -> Result<SharedBuildObservation, String> {
-    // NAMED, not a bool. If the index is already built when preparation reaches it, some EARLIER
+    // Complete coverage is the warm fact; a prior entry may have produced only some rows.
+    // If the whole index is already built when preparation reaches it, some EARLIER
     // site triggered it — an ordering defect this line must locate rather than merely note. The
     // trigger is not identified per call site here (the memo records no author), so the arm names
     // the boundary that is knowable: something ahead of preparation. That is honestly weaker than a
     // call-site name and is why the string is a fixed label rather than a fabricated attribution.
-    let provenance = if index.both_closure_edges.borrow().is_some() {
+    let provenance = if index
+        .both_closure_edges
+        .borrow()
+        .as_ref()
+        .is_some_and(|edges| {
+            index.source_files.values().all(|source| {
+                edges
+                    .ref_out
+                    .contains_key(&workspace_relative_repo_path(&source.path))
+            })
+        }) {
         SharedBuildProvenance::AlreadyWarmOnEntry {
             triggered_by: "a-site-ahead-of-floor-preparation",
         }
@@ -9305,7 +9628,18 @@ pub fn warm_bare_reference_edge_index(
     let rss_before = current_rss_bytes().unwrap_or(0);
     let cpu_before = v1_interpreter::thread_cpu_nanos();
     let wall_before = std::time::Instant::now();
-    let edges = both_closure_edge_index(index)?;
+    let edges = whole_pool_closure_edge_index(index)?;
+    // Reconciliation was another consumer of the resolved tree censuses the old
+    // eager edge build happened to warm. Keep that real preparation demand here,
+    // explicitly, rather than moving its cost into the first timed claim.
+    let roots: BTreeSet<_> = edges
+        .bare_scan_eligible
+        .iter()
+        .filter_map(|file| source_tree_root_of(&index.source_roots, file))
+        .collect();
+    for root in roots {
+        tree_bare_census_for_root(index, &root)?;
+    }
     let wall_ms = wall_before.elapsed().as_millis() as u64;
     let cpu_ms =
         ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
@@ -9328,19 +9662,13 @@ pub fn warm_bare_reference_edge_index(
 /// which surfaced as `no such function` at witness runtime: typecheck resolved a
 /// name through the census while the interpreter never loaded its body). A bare
 /// name resolves exactly as the typecheck lookup will: census-unique → that
-/// module; ambiguous → the nearest-ancestor candidate from the referencing
-/// module's containment position; still ambiguous → load nothing (the typecheck
-/// refusal stays the loud authority, the loader never guesses a side).
+/// module; ambiguous → the unique ancestor-chain candidate from the referencing
+/// module's containment position; two or more on-chain candidates refuse.
 fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    // Sub-attribution inside the bare-reference closure (entry-graph-union slice 1). The
-    // fixpoint measured ~100% of `load`; these three rows say WHICH of its parts, which is
-    // what decides whether the fix is a memo, an incremental closure, or a union graph.
-    let (edges, edge_nanos) = nanos_net_of_pool_parse(|| both_closure_edge_index(index));
-    let edges = edges?;
-    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_nanos);
+    admit_pool_bare_references(index)?;
     let lookup_started = std::time::Instant::now();
     let lookup = path_to_source_lookup(&index.source_files);
     resolve_stage_slot_add(|s| {
@@ -9348,12 +9676,19 @@ fn extend_with_bare_reference_closure(
         s.load_bare_path_lookup_calls += 1;
     });
     let walk_started = std::time::Instant::now();
-    let out = extend_sources_via_edge_map(
-        sources,
-        &edges.bare_out,
-        Some(&edges.bare_scan_eligible),
-        &lookup,
-    );
+    let out = extend_sources_via_demanded_edges(sources, &lookup, |source| {
+        let (edges, nanos) =
+            nanos_net_of_pool_parse(|| build_both_closure_edge_index(index, source));
+        resolve_stage_slot_add(|s| s.load_bare_edge_index += nanos);
+        let edges = edges?;
+        let file = workspace_relative_repo_path(&source.path);
+        if !edges.bare_scan_eligible.contains(&file) {
+            return Ok(Vec::new());
+        }
+        edges.bare_out.get(&file).cloned().ok_or_else(|| {
+            format!("closure_edge_demand: bare edges absent after production for '{file}'")
+        })
+    });
     resolve_stage_slot_add(|s| s.load_bare_edge_walk += walk_started.elapsed().as_nanos());
     out
 }
@@ -11608,28 +11943,26 @@ pub struct MultiEntryIndex {
     /// census when it typechecks (bare = own tree; qualified = whole pool; cross-
     /// tree bare reach stays refused). Keyed by source root, built lazily.
     tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
-    /// Whole-pool census (every pool module, both trees) — the LOADER's cross-
-    /// tree fallback: a bare reference that misses the referencing file's own
-    /// tree census resolves here so the provider still gets pulled into the
-    /// closure (fill = whole tree). Same-tree resolution keeps priority — this
-    /// is consulted only on an own-tree miss, so cross-tree homonyms cannot
-    /// steal a same-tree name. Typecheck-side bare visibility is unchanged
-    /// (closure census + own-tree underlay); the pulled provider becomes
-    /// closure-visible, which is what serves the name at typecheck.
+    /// Previous resolved whole-pool reading, kept only as a differential oracle and
+    /// explicit memory-decomposition instrument. Production uses closure_name_censuses.
+    #[cfg(any(test, feature = "interp_test_witness"))]
     pool_bare_census: RefCell<Option<Rc<SymbolIndex>>>,
     /// Memo: normalized entry path → name-derived closure sources. The bare-
     /// reference fixpoint (`extend_sources_to_both_closure_fixpoint`) is pure
     /// for a fixed pool; witnesses sharing an entry file within one floor worker
     /// reused the loader without this and re-paid the #6848 walk each time.
     entry_closure_sources: RefCell<HashMap<String, Vec<Rc<v1_compiler_compile::SourceFile>>>>,
-    /// Per-pool precomputed bare/reference closure edges — built once per process,
-    /// amortized across every entry's both-closure fixpoint walk.
     /// The live-read selection manifest for this index, built at most once. The memo keys on
     /// nothing because the index IS the key: a different index is a different object with its own
     /// generation and its own empty cell. A refusal is memoized too — recomputing a producer that
     /// already refused would only refuse again, more slowly.
     live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
+    /// Only produced rows; consumers needing every row call whole_pool_closure_edge_index.
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
+    /// Admission and edge selection need declaration heads, not resolved signatures.
+    /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
+    closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,
+    bare_reference_admission: RefCell<Option<Result<(), String>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -11819,7 +12152,7 @@ pub fn force_pool_bare_census_for_test(index: &MultiEntryIndex) -> Result<(), St
 
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn force_both_closure_edges_for_test(index: &MultiEntryIndex) -> Result<(), String> {
-    both_closure_edge_index(index).map(|_| ())
+    whole_pool_closure_edge_index(index).map(|_| ())
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -11869,6 +12202,14 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
         ),
         ("tree_bare_census", index.tree_bare_census.borrow().len()),
         (
+            "closure_name_censuses",
+            index.closure_name_censuses.borrow().len(),
+        ),
+        (
+            "bare_reference_admission",
+            usize::from(index.bare_reference_admission.borrow().is_some()),
+        ),
+        (
             "entry_closure_sources",
             index.entry_closure_sources.borrow().len(),
         ),
@@ -11907,6 +12248,8 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
+        "closure_name_censuses" => index.closure_name_censuses.borrow_mut().clear(),
+        "bare_reference_admission" => *index.bare_reference_admission.borrow_mut() = None,
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
         "resolved_graph_memo" => {
@@ -11955,6 +12298,8 @@ pub fn schedule_entry_completed_for_test(
 
 /// The drop-attributable term names, in the order the decomposition reports them.
 /// `source_files` is deliberately absent (see `drop_private_term_for_test`).
+/// `pool_bare_census` is the resolved differential oracle; production name lookup
+/// retains `closure_name_censuses`, with its admission verdict attributed separately.
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
     &[
@@ -11963,6 +12308,8 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "parse_cache",
         "pool_parse",
         "both_closure_edges",
+        "closure_name_censuses",
+        "bare_reference_admission",
         "pool_bare_census",
         "tree_bare_census",
         "pool_qualified_fill",
@@ -13937,7 +14284,7 @@ pub struct ResolveStageNanos {
     /// two, and they land in DIFFERENT top-level rows — which is why this row is an
     /// exclusive peer rather than a child of any of them:
     ///   - `load` -> the bare-reference closure -> the edge index -> the per-root census
-    ///     (and, as the loop's cross-tree fallback, `pool_bare_census`);
+    ///     (including the whole-pool heads name reading);
     ///   - reconcile -> `assembly_pool_fill` (via `pool_qualified_fill`) and
     ///     `assembly_root_symbol_index` (via the per-root census again).
     /// `assembly_pool_fill` runs first in the reconcile path, so on that path it is the
@@ -13953,12 +14300,12 @@ pub struct ResolveStageNanos {
     pub edge_index_bare_resolve_loop: u128,
     /// `Rc::new` + hand-off of the finished index.
     pub edge_index_publish: u128,
-    /// `both_closure_edge_index` (memoized on the index; nonzero here is the first build).
+    /// `build_both_closure_edge_index` (memoized on the index; nonzero here is the first build).
     pub load_bare_edge_index: u128,
     /// `path_to_source_lookup` — a corpus-wide map rebuilt on EVERY call (no memo).
     pub load_bare_path_lookup: u128,
     pub load_bare_path_lookup_calls: u128,
-    /// `extend_sources_via_edge_map` — the actual closure walk over the edge map.
+    /// `extend_sources_via_demanded_edges` — the closure walk, including demanded production.
     pub load_bare_edge_walk: u128,
 }
 
@@ -15487,7 +15834,10 @@ fn parse_module_heads_for_pool_census(
         ));
     }
     match &parsed.result.module {
-        Some(module) => Ok((census_heads_module_node(module.clone()), nl_index)),
+        Some(module) => Ok((
+            v1_compiler_compile::census_heads_module_node(module.clone()),
+            nl_index,
+        )),
         None => Err(format!(
             "symbol_index qualified-projection census refused: no module in {}",
             source.path
@@ -15664,6 +16014,72 @@ fn source_tree_root_of(roots: &[String], file: &str) -> Option<String> {
     best
 }
 
+/// The tree/import population is shared by typed reconciliation and heads-only name
+/// admission. Changing the reading must not change which modules participate.
+fn tree_census_nodes(
+    index: &MultiEntryIndex,
+    root: &str,
+) -> Result<Rc<im::Vector<Rc<Node>>>, String> {
+    let pool = pool_parse(index)?;
+    let trimmed = root.trim_end_matches('/');
+    let prefix = format!("{trimmed}/");
+    let mut reached: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    for (file, _) in pool.nodes_by_file.iter() {
+        if file == trimmed || file.starts_with(&prefix) {
+            reached.insert(file.clone());
+            queue.push_back(file.clone());
+        }
+    }
+    while let Some(importer) = queue.pop_front() {
+        let Some(targets) = index.module_graph_facts.adjacency.get(&importer) else {
+            continue;
+        };
+        for path in targets {
+            if reached.insert(path.clone()) {
+                queue.push_back(path.clone());
+            }
+        }
+    }
+    Ok(Rc::new(
+        pool.nodes_by_file
+            .iter()
+            .filter(|(file, _)| reached.contains(file))
+            .map(|(_, node)| node.clone())
+            .collect(),
+    ))
+}
+
+/// The existing raw census preserves candidate multiplicity, service keys and corpus
+/// variant gating. Signature upgrading only rewrites types inside bindings; closure
+/// selection reads names, params presence, type-annotation presence and connective.
+fn closure_name_census(
+    index: &MultiEntryIndex,
+    root: Option<&str>,
+) -> Result<Rc<SymbolIndex>, String> {
+    let key = root.map(str::to_string);
+    if let Some(hit) = index.closure_name_censuses.borrow().get(&key) {
+        return Ok(hit.clone());
+    }
+    let pool = pool_parse(index)?;
+    let nodes = match root {
+        Some(root) => tree_census_nodes(index, root)?,
+        None => Rc::new(
+            pool.nodes_by_file
+                .iter()
+                .map(|(_, node)| node.clone())
+                .collect(),
+        ),
+    };
+    let census =
+        v1_compiler_infer::build_symbol_index_census_raw_nodes(nodes, pool.combined_si.clone());
+    index
+        .closure_name_censuses
+        .borrow_mut()
+        .insert(key, census.clone());
+    Ok(census)
+}
+
 /// The SAME-TREE bare census for one source root: the full census (bare +
 /// qualified + services) over the root's WHOLE-TREE COMPILE CLOSURE — every pool
 /// module under the root plus the pool modules import-reached from them. This is
@@ -15702,36 +16118,9 @@ fn tree_bare_census_for_root(
         );
     }
     let pool = pool_parse(index)?;
-    let trimmed = root.trim_end_matches('/');
-    let prefix = format!("{trimmed}/");
-    let mut reached: HashSet<String> = HashSet::new();
-    let mut queue: VecDeque<String> = VecDeque::new();
-    for (file, _) in pool.nodes_by_file.iter() {
-        if file == trimmed || file.starts_with(&prefix) {
-            reached.insert(file.clone());
-            queue.push_back(file.clone());
-        }
-    }
-    while let Some(importer) = queue.pop_front() {
-        let Some(targets) = index.module_graph_facts.adjacency.get(&importer) else {
-            continue;
-        };
-        for path in targets {
-            if reached.insert(path.clone()) {
-                queue.push_back(path.clone());
-            }
-        }
-    }
-    let nodes: im::Vector<Rc<Node>> = pool
-        .nodes_by_file
-        .iter()
-        .filter(|(file, _)| reached.contains(file))
-        .map(|(_, node)| node.clone())
-        .collect();
-    let census = v1_compiler_infer::build_symbol_index_census_nodes(
-        Rc::new(nodes),
-        pool.combined_si.clone(),
-    );
+    let nodes = tree_census_nodes(index, root)?;
+    let census =
+        v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
     index
         .tree_bare_census
         .borrow_mut()
@@ -15750,11 +16139,8 @@ fn tree_bare_census_for_root(
     Ok(census)
 }
 
-/// Whole-pool census: every pool module regardless of tree. The loader's
-/// cross-tree fallback (see the `pool_bare_census` field note) — a v2 module's
-/// bare `gunbc_ci_spec` (declared in dag/gunbc/ci/ci_spec.dag) resolves here after
-/// missing the v2 tree census, so the provider is pulled and becomes
-/// closure-visible at typecheck.
+/// Resolved-census oracle for proving that heads-only closure lookup preserves selection.
+#[cfg(any(test, feature = "interp_test_witness"))]
 fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
     if let Some(hit) = index.pool_bare_census.borrow().as_ref() {
         return Ok(hit.clone());
@@ -23117,7 +23503,7 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
 struct WorkspaceRootRelativeEntry(&'static str);
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_source_authority.dag");
 
 fn resolve_workspace_entry(
     source_roots: &[String],
@@ -36954,8 +37340,9 @@ pub fn extdeps_shape_transport_policy_module_facts(
 
 // SCAFFOLD (shrunken corpus-consumer core) — host-speed anchor projection for the
 // mandatory-tag extdeps region (v2.lens.mandatory_tag, corpus grain). The VERDICT
-// authority is the modeled lens: v2.lens.mandatory_tag's fold, enrolled in
-// always_required_root_lenses and red/green-controlled at the v2 parse grain
+// authority is the modeled lens: v2.lens.mandatory_tag's fold, registered in
+// required_compile_lens_roster at CompileLensRoot grain (the mandatory_tag_lens
+// row) and red/green-controlled at the v2 parse grain
 // (v2.test.long.mandatory_tag_gate_witness). This block survives only because the
 // interpreted v2 pipeline prices a whole-corpus witness out of every cadence
 // (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
@@ -43082,8 +43469,10 @@ pub(crate) use emitted_closure_compile_host::{
     fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
     fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
     fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
-    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
-    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
+    run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
+    run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
+    run_function_value_adapter_discrimination, run_nested_refinement_cast_discrimination,
+    run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
     FixtureClosureOutcome,
 };
 

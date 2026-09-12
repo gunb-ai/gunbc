@@ -326,6 +326,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/github/push_event.dag",
   "dag/extdeps/instrument/pip_boy_3000.dag",
   "dag/extdeps/instrument/pip_boy_3000_mk_v.dag",
+  "dag/extdeps/instrument/fs_box_v4.dag",
+  "dag/extdeps/instrument/fs_box_v3_v4_v5_faq.dag",
   "dag/extdeps/linux/edac.dag",
   "dag/extdeps/linux/kernel.dag",
   "dag/extdeps/linux/proc_self_cgroup.dag",
@@ -500,7 +502,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/docker/images/xomoxcc_dgx_spark_sglang.dag",
   "dag/extdeps/vllm/recipe_deepseek_v4_1_flash.dag",
   "dag/extdeps/ebay/browse.dag",
-  "dag/extdeps/ebay/marketplace_account_deletion.dag"
+  "dag/extdeps/ebay/marketplace_account_deletion.dag",
+  "dag/extdeps/google/workspace.dag",
+  "dag/extdeps/google/sheets.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
@@ -521,5 +525,6 @@ data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/shell_mock_corpus.dag",
   "dag/extdeps/ssh/mock_corpus.dag",
   "dag/extdeps/tcgplayer/mock_corpus.dag",
-  "dag/extdeps/test/mock_corpus.dag"
+  "dag/extdeps/test/mock_corpus.dag",
+  "dag/extdeps/google/sheets_mock_corpus.dag"
 ]
