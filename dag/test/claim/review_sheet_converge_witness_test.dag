@@ -23,6 +23,7 @@ import gunbc.review_sheet_projection {
   ReviewSheetUnreadable,
   write_plan_preserves_operator_columns,
   write_plan_touches_column,
+  operator_column_names,
   write_plan_covers_column_letter,
   a1_row_span_includes_letter,
   classify_review_sheet,
@@ -30,6 +31,10 @@ import gunbc.review_sheet_projection {
   append_listing_row,
   columns_by_name,
   judgement_for_listing,
+  buyer_review_identity_column,
+  buyer_review_operator_columns,
+  buyer_review_sheet_schema,
+  buyer_review_sheet_projection,
   buyer_review_judgement_read_frontier,
   JudgementBlank,
   JudgementEntered,
@@ -1504,6 +1509,57 @@ test fn judgement_for_duplicate_listing_rows_is_unreadable() -> Bool {
       string_contains(s: r as String, pattern: "duplicate sheet listing L1")
     JudgementEntered { value: _ } => false
     JudgementBlank => false
+  }
+}
+
+fn w_buyer_title_derived() -> List<ReviewColumn> {
+  [ReviewColumn { name: "Title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } }]
+}
+
+test fn buyer_review_sheet_schema_is_listing_identity_and_operator_entered_without_standing() -> Bool {
+  let schema = buyer_review_sheet_schema(derived_columns: w_buyer_title_derived())
+  (schema.identity_column as String) == (buyer_review_identity_column as String)
+    && (buyer_review_identity_column as String) == "Listing"
+    && (operator_column_names(schema: schema) |> count) == 4
+    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Decision")
+    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Units to buy")
+    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Accepted on judgement")
+    && string_contains(s: join(map(operator_column_names(schema: schema), n => n as String), ","), pattern: "Note")
+    && (buyer_review_operator_columns |> count) == 4
+    && match schema.columns |> filter(c => match c.kind {
+      ListingStanding => true
+      DerivedField { source_field: _ } => false
+      OperatorEntered => false
+    }) |> first {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn buyer_review_projection_classify_does_not_write_operator_columns() -> Bool {
+  let projection = buyer_review_sheet_projection(
+    derived_columns: w_buyer_title_derived(),
+    rows: [ProjectionRow {
+      listing_id: "v1|123" as NonEmptyStr,
+      derived: [DerivedCell { column: "Title" as NonEmptyStr, value: "alpha" }],
+    }],
+  )
+  match classify_review_sheet(
+    observed: w_observed(
+      headers: ["Listing", "Title", "Decision", "Units to buy", "Accepted on judgement", "Note"],
+      rows: [],
+    ),
+    projection: projection,
+  ) {
+    ReviewSheetNeedsWrite { plan: p } =>
+      write_plan_preserves_operator_columns(schema: projection.schema, plan: p)
+        && !write_plan_touches_column(plan: p, column: "Decision" as NonEmptyStr)
+        && !write_plan_touches_column(plan: p, column: "Units to buy" as NonEmptyStr)
+        && !write_plan_touches_column(plan: p, column: "Accepted on judgement" as NonEmptyStr)
+        && !write_plan_touches_column(plan: p, column: "Note" as NonEmptyStr)
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
   }
 }
 
