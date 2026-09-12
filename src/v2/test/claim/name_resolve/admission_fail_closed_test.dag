@@ -422,21 +422,45 @@ test fn shared_context_malformed_root_refusal_preserves_every_diagnostic_for_eac
   })
 }
 
+// The export-provider fixtures contain an unbound service marker under the empty
+// prelude. They are valid import targets, not independently resolvable subjects.
+// Both subjects below resolve the provider's exported binding through admission.
+fn fc_shared_subject_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_dual_import_subject_root(
+    seg: ^fc_subject_a_seg,
+    use_sym: ^fc_use_a_sym,
+    imported_decl: ^fc_export_a_sym
+  )), f: fn(a) {
+    bind_outcome(o: fc_admitted(n: fc_dual_import_subject_root(
+      seg: ^fc_subject_b_seg,
+      use_sym: ^fc_use_b_sym,
+      imported_decl: ^fc_export_a_sym
+    )), f: fn(b) {
+      bind_outcome(o: fc_admitted(n: fc_module_root_export(
+        seg: ^fc_import_a_seg,
+        export_sym: ^fc_export_a_sym
+      )), f: fn(provider) {
+        outcome_accepted(value: [a, b, provider])
+      })
+    })
+  })
+}
+
 test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_location() -> Bool {
-  fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
+  fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let context = resolution_context(
       lm: dag_language_model_surface_empty_prelude(),
       roots: roots
     )
     let accepted = fold_list(
-      xs: [^fc_import_a_seg, ^fc_import_b_seg],
+      xs: [^fc_subject_a_seg, ^fc_subject_b_seg],
       empty: true,
       cons: fn(ok, subject) {
         ok && match resolve_with_admission_context_policy(
           context: context,
           admission: Admission {
             subject: ResolutionSubject { name: fc_qn(seg: subject) },
-            imports: Empty
+            imports: [Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible }]
           },
           index: source_root_index_empty(),
           active_roots: Empty,
