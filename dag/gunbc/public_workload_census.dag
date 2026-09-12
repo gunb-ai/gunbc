@@ -15,6 +15,7 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
 }
+import std.decl_ref { declaration_ref_eq }
 import gunbc.runner_label_resolution {
   resolve_runner_label,
   arm_standing,
@@ -22,6 +23,9 @@ import gunbc.runner_label_resolution {
   ArmConfirmed,
   NotArmConfirmed,
   ArmUndetermined,
+  provider_reading,
+  ProviderFromCatalog,
+  ProviderUnresolved,
 }
 
 // PUBLIC WORKFLOW-JOB CENSUS (year_end_plan item public-workload-census).
@@ -142,6 +146,69 @@ fn declared_architecture_is_arm(s: DeclaredArchitectureStanding) -> Bool {
   }
 }
 
+fn alternatives_any_provider_unresolved(
+  alternatives: List<String>,
+  observed_at: Rfc3339Timestamp,
+) -> Bool {
+  any(alternatives, l => match provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)) {
+    ProviderUnresolved { label, cause } => true
+    ProviderFromCatalog { provider, label, snapshot } => false
+  })
+}
+
+fn alternatives_share_one_provider(
+  alternatives: List<String>,
+  observed_at: Rfc3339Timestamp,
+) -> Bool {
+  if count(alternatives) == 0 {
+    false
+  } else {
+    match provider_reading(r: resolve_runner_label(label: alternatives.first(), observed_at: observed_at)) {
+      ProviderUnresolved { label, cause } => false
+      ProviderFromCatalog { provider: first_provider, label, snapshot } =>
+        all(alternatives, l => match provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)) {
+          ProviderFromCatalog { provider, label, snapshot } =>
+            declaration_ref_eq(a: provider, b: first_provider)
+          ProviderUnresolved { label, cause } => false
+        })
+    }
+  }
+}
+
+fn declared_provider_standing(
+  spec: DeclaredRunner,
+  observed_at: Rfc3339Timestamp,
+) -> DeclaredProviderStanding {
+  match spec {
+    DeclaredLabel { label } =>
+      match provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+        ProviderFromCatalog { provider, label, snapshot } =>
+          DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+        ProviderUnresolved { label, cause } =>
+          DeclaredProviderUnresolved { via: spec, cause: cause }
+      }
+    DeclaredExpression { expression, alternatives } =>
+      if alternatives_any_provider_unresolved(alternatives: alternatives, observed_at: observed_at) {
+        DeclaredProviderUnresolved {
+          via: spec,
+          cause: "at least one declared alternative is absent from the surveyed runner catalogs, so the workflow file does not establish a provider",
+        }
+      } else if alternatives_share_one_provider(alternatives: alternatives, observed_at: observed_at) {
+        match provider_reading(r: resolve_runner_label(label: alternatives.first(), observed_at: observed_at)) {
+          ProviderFromCatalog { provider, label, snapshot } =>
+            DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+          ProviderUnresolved { label, cause } =>
+            DeclaredProviderUnresolved { via: spec, cause: cause }
+        }
+      } else {
+        DeclaredProviderUnresolved {
+          via: spec,
+          cause: "declared alternatives resolve to more than one surveyed provider, so the workflow file does not establish which one will run",
+        }
+      }
+  }
+}
+
 // -------------------------------------------------------------------------------------
 // OBSERVED EXECUTION. The job resource is the observation; correctness is a second reading of
 // the steps, not of the conclusion name.
@@ -176,6 +243,21 @@ fn observed_primary_label(o: ObservedExecution) -> String {
         observed_job_labels(job: job).first()
       }
     NoRunObserved { obligation } => ""
+  }
+}
+
+fn observed_provider_standing(
+  o: ObservedExecution,
+  observed_at: Rfc3339Timestamp,
+) -> DeclaredProviderStanding {
+  let label = observed_primary_label(o: o)
+  if label == "" {
+    DeclaredProviderUnresolved {
+      via: DeclaredLabel { label: label },
+      cause: "no runner label was observed on a job resource",
+    }
+  } else {
+    declared_provider_standing(spec: DeclaredLabel { label: label }, observed_at: observed_at)
   }
 }
 
@@ -389,6 +471,14 @@ type WorkloadCandidate {
 
 fn candidate_declared_architecture(c: WorkloadCandidate) -> DeclaredArchitectureStanding {
   declared_architecture_standing(spec: c.declared_runner, observed_at: c.observation_time)
+}
+
+fn candidate_declared_provider(c: WorkloadCandidate) -> DeclaredProviderStanding {
+  declared_provider_standing(spec: c.declared_runner, observed_at: c.observation_time)
+}
+
+fn candidate_observed_provider(c: WorkloadCandidate) -> DeclaredProviderStanding {
+  observed_provider_standing(o: c.observed, observed_at: c.observation_time)
 }
 
 fn candidate_baseline(c: WorkloadCandidate) -> CensusVerdict<BaselineAdmission> {
