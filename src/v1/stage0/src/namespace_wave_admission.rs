@@ -1558,17 +1558,19 @@ pub struct TransitionAdmission {
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
 
-/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11143). The `gunbc#11137 extdeps.tools.sha256sum
-/// names Filesystem instead of reaching it` row is deleted, leaving the roster EMPTY -- its
-/// resting state. #11137 merged, so its narrowed import is at the base, the delta it admitted
-/// stopped being producible, and the required floor on this head reported it as `STALE
-/// ADMISSION` with zero unadjudicated deltas -- a row matching nothing, which blocks the phase.
-/// Its own recorded trigger was "this row goes when #11137 merges", and this change is a roster
-/// touch on which that came due.
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
 ///
-/// EMPTY IS NOT PERMISSIVE, as the entries above have said each time this roster emptied: a run
-/// carrying any delta no row names still refuses it as UNADJUDICATED. The roster being empty
-/// means no transition is currently admitted, not that transitions are unchecked.
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
 ///
 /// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
 /// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
