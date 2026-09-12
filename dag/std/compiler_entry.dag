@@ -122,10 +122,8 @@ fn native_driver_cost_account(
 }
 
 // A COMPLETE --v2-native-route RUN WITH NO COST LINES IS UN-OBSERVED, NOT GREEN.
-// The driver eprints [native-cost-partition] on ITS stderr (the reconcile verdict rides
-// there). [native-cost-shared] is a subset of that line: present on this head, dropped on
-// #10940 because DESIGN §3 forbids spelling one fact twice. Observed requires the
-// partition tag only — requiring both would RED a healthy post-#10940 run.
+// The driver eprints [native-cost-partition] on ITS stderr; that is the receipt the
+// reconcile verdict rides on. Observed requires that tag after NativeDriverChildExited.
 // On main the host spawn (native_lane_runner run_native_binary) captures that pipe via
 // Command::output and drops it on the success path — measured: srv2 15508s admitted run,
 // 3536 verdict rows, zero cost tags in host-captured stderr (eager-raven-113 universe

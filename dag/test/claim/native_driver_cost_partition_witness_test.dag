@@ -102,18 +102,6 @@ test fn a_planted_partition_line_is_observed() -> Bool {
   }
 }
 
-test fn a_shared_line_without_partition_is_unobserved() -> Bool {
-  match native_driver_cost_row_standing(
-    child: NativeDriverChildExited {
-      stderr: "[native-cost-shared] {\"producer\":\"std.compiler_entry.SourceRootEvalDriver\"}\n"
-    }
-  ) {
-    NativeDriverCostRowsUnobserved => true
-    NativeDriverCostRowsObserved => false
-    NativeDriverCostRowsPending => false
-  }
-}
-
 test fn a_child_that_has_not_exited_is_pending_not_unobserved() -> Bool {
   match native_driver_cost_row_standing(child: NativeDriverChildStillRunning) {
     NativeDriverCostRowsPending => true

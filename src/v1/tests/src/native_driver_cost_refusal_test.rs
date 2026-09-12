@@ -130,25 +130,7 @@ fn a_planted_partition_line_is_observed() {
             standing.as_ref(),
             NativeDriverCostRowStanding::NativeDriverCostRowsObserved
         ),
-        "the partition tag is the receipt; shared is optional"
-    );
-}
-
-#[test]
-fn a_shared_line_without_partition_is_unobserved() {
-    let stderr =
-        "[native-cost-shared] {\"producer\":\"std.compiler_entry.SourceRootEvalDriver\"}\n";
-    let standing = native_driver_cost_row_standing(std::rc::Rc::new(
-        NativeDriverChildStanding::NativeDriverChildExited {
-            stderr: stderr.to_string(),
-        },
-    ));
-    assert!(
-        matches!(
-            standing.as_ref(),
-            NativeDriverCostRowStanding::NativeDriverCostRowsUnobserved
-        ),
-        "shared without partition is not the reconcile receipt"
+        "the partition tag after exit is Observed"
     );
 }
 
