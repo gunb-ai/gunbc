@@ -13,11 +13,11 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.roadmap_model { RoadmapNode, WorkItemDispatch, Dispatchable, NotDispatchable }
+import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
 
 // A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
-// It is read from WorkItemDispatch.repo. destination_from_dispatch matches
-// Dispatchable/NotDispatchable. The resolver itself does not change.
+// It is read from NodeSizing.repo. destination_from_sizing matches Sized/Unsized.
+// The resolver itself does not change. After #10994 lands, this fold binds WorkItemDispatch.
 //
 // THIS MODULE NAMES NO PRIVATE REPOSITORY. A node whose work lives elsewhere supplies its
 // own owner/name via the repo slug; the public authority only knows gunbc_repository as an
@@ -181,19 +181,19 @@ fn repository_from_repo_slug(repo: String) -> DispatchDestination {
   }
 }
 
-fn destination_from_dispatch(dispatch: WorkItemDispatch) -> DispatchDestination {
-  match dispatch {
-    NotDispatchable =>
+fn destination_from_sizing(sizing: NodeSizing) -> DispatchDestination {
+  match sizing {
+    Unsized =>
       DispatchDestinationMissing {
         reason: "the node carries no dispatch binding, so it has no destination repository" as NonEmptyStr,
       }
-    Dispatchable { repo, acceptance: _ } =>
+    Sized { repo, intricacy: _, volume: _, acceptance: _ } =>
       repository_from_repo_slug(repo: repo)
   }
 }
 
 fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
-  destination_from_dispatch(dispatch: node.dispatch)
+  destination_from_sizing(sizing: node.sizing)
 }
 
 // Destination identity and spawn actuation are different facts. repository_from_repo_slug

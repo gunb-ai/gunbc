@@ -27,6 +27,8 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
+  IntricacyLow,
+  VolumeSmall,
   section_group,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
@@ -217,6 +219,8 @@ fn ready_dispatch_node() -> RoadmapNode {
   launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
     done: false,
     content: "dispatch-me",
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
     repo: "gunbc"))
 }
 
@@ -231,7 +235,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
     node: base.node,
     line: base.line,
     carriers: base.carriers,
-    dispatch: base.dispatch,
+    sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
     signoff: gunbc.roadmap_authority.signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
@@ -330,6 +334,8 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
     prs: [7301],
     title: "review-me",
     description: "",
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
     repo: "gunbc"))
   match dispatch_doc_html_for_with_merged(rn: node, merged: [7301]) {
     EmitRejected { reason: _ } => false
@@ -344,18 +350,18 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
 }
 
 // RLM-1: the unsized row's manual out-of-order dispatch is GONE; the button is disabled with SizeMissing.
-test fn witness_unsized_open_sizing_expectation_refused_size_missing() -> Bool {
+test fn witness_unsized_open_node_dispatch_refused_size_missing() -> Bool {
   match dispatch_doc_html_for(rn: unsized_open_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"workflow-controls\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
-        && string_contains(s: h, pattern: "data-launch=\"dispatch_binding_missing\"")
+        && string_contains(s: h, pattern: "data-launch=\"size_missing\"")
         && string_contains(s: h, pattern: "disabled=\"\"")
   }
 }
 
-data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, the repository, any derived sizing cell, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. The pin below expects a repo fact and NO sizing fact: sizing is derived now (gunbc.roadmap_sizing) and the deriver is a stub that refuses, so the badge the fused NodeSizing used to render is absent rather than empty — a sizing span reappearing here means the deriver started answering, which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
+data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, sizing codes, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
 
 test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
@@ -364,9 +370,8 @@ test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
       string_contains(s: h, pattern: "<span class=\"node-mid\"><span class=\"title\">dispatch-me</span></span>")
         && string_contains(
           s: h,
-          pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>facts</summary><div class=\"item-body\"><div class=\"item-facts\"><span class=\"repo\">gunbc</span></div></div></details>")
-        && !string_contains(s: h, pattern: "class=\"sizing\"")
-        && !string_contains(s: h, pattern: "class=\"title\">dispatch-me</span><span class=\"repo\"")
+          pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>facts</summary><div class=\"item-body\"><div class=\"item-facts\"><span class=\"sizing\">i:low v:small gunbc</span></div></div></details>")
+        && !string_contains(s: h, pattern: "class=\"title\">dispatch-me</span><span class=\"sizing\"")
   }
 }
 
@@ -380,6 +385,8 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
   let blocked = launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "disp-blocked",
     done: false,
     content: "blocked work",
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
     repo: "gunbc"))
   let edges = [
     RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
@@ -396,7 +403,7 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
 // RLM-1 red control (d, page half): the blocked child renders NO ordinary Launch -- the button is
 // disabled and carries the admission's DependenciesBlocked label naming the exact parents; the
 // override arm that used to make it operable is gone.
-test fn witness_upcoming_sizing_expectation_refused_dependencies_blocked() -> Bool {
+test fn witness_upcoming_node_dispatch_refused_dependencies_blocked() -> Bool {
   match blocked_dispatch_workspace_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>

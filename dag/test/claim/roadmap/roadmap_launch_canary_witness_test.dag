@@ -3,7 +3,7 @@ module test.claim.roadmap_launch_canary_witness
 import std.types { String, Bool, List }
 import gunbc.roadmap_model {
   RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, RoadmapEdge,
-  ManualAcceptance,
+  IntricacyLow, VolumeSmall, ManualAcceptance, Sized,
   SectionElement, Group, SectionGroup,
 }
 import gunbc.roadmap_status {
@@ -25,9 +25,7 @@ import gunbc.roadmap_dispatch_environment {
 }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission {
-  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchExecutionContractMissing,
-  LaunchNotAgentWork,
-  launch_graph_of_document, Operator,
+  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchExecutionContractMissing, launch_graph_of_document, Operator,
   launch_admission,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
@@ -72,7 +70,7 @@ fn canary_node(
     node: id,
     line: TicketLine { done: false, ticket: roadmap_launch_canary_ticket() },
     carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
+    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance },
     execution: execution,
     owner: "",
     signoff: signoff,
@@ -215,7 +213,7 @@ fn canary_parent_derivable(signoff: Signoff) -> RoadmapNode {
     node: roadmap_launch_canary_parent_node_id(),
     line: DerivableLine { prs: [1], title: "Roadmap launch canary: flip one sentinel", description: "" },
     carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
+    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance },
     execution: roadmap_launch_canary_execution_contract(),
     owner: "",
     signoff: signoff,

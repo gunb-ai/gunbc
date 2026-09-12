@@ -46,9 +46,15 @@ import gunbc.codex_provider_runtime_receipt {
 }
 import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import gunbc.roadmap_sizing {
-  NodeSizing, NodeSizingDerivation, SizingDerived, SizingNotDerivable,
-  IntricacyHigh, VolumeMedium,
+import gunbc.roadmap_model {
+  NodeSizing,
+  Sized,
+  Unsized,
+  Volume,
+  VolumeMedium,
+  Intricacy,
+  IntricacyHigh,
+  PrsMerged,
 }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_capacity_control {
@@ -80,26 +86,8 @@ import gunbc.provider_account {
 // Slice A selection kernel (operator execution-profile directive 2026-08-01, addendum 2026-08-01).
 // This carrier names the three-valued coproduct ExecutionProfile; the operator also names the same
 // semantics ExecutionPreference — see dispatch_execution_preference_alias_note. Provider offers are
-// a per-provider coproduct; SIZE ENTERS AS A DECLARED EXPECTATION AND NEVER AS A SILENT DEFAULT.
-// Until the sizing unbundling this module threaded a hand-authored NodeSizing through every resolve
-// function and recorded it on the receipt, and the note here claimed volume and intricacy never
-// flow into model or effort. The claim was true and the parameter was unread by every branch and by
-// every consumer of the receipt -- a passenger, which is the shape that lets a later edit quietly
-// start reading an authored guess. Sizing is derived now (gunbc.roadmap_sizing), and this module is
-// the consumer that legitimately wants one, because choosing an execution profile is exactly the
-// decision a size would inform. So the passenger becomes a DECLARED, TWO-ARM-HONEST input:
-// SizingProfileExpectation is either a derived cell or the explicit absence of one, and there is no
-// third spelling in which a stub answer arrives looking derived.
-//
-// WHAT THE ABSENT ARM DOES TODAY, stated rather than implied: nothing. Live selection is
-// ProfileAutomatic for every request, so NoDerivedSizingExpectation and a derived cell resolve to
-// the same provider, model and effort, and the expectation is recorded on the receipt as the fact
-// it is -- what was known about the task's size when it was dispatched. That is deliberate, and it
-// is the operator ruling of 2026-09-10: a missing size is not a reason to refuse a correctly
-// bounded task, because dispatch safety comes from the execution contract, the path boundary, the
-// oracle and publication confinement, never from how big the work is. The day a profile policy
-// reads the derived arm it reads THIS field, and the absent arm is already there for it to refuse
-// on or fall back from explicitly. Every dispatch records requested_selection beside resolved_execution bound fields in
+// a per-provider coproduct; volume and intricacy from NodeSizing never flow into model or effort
+// selection. Every dispatch records requested_selection beside resolved_execution bound fields in
 // DispatchExecutionReceipt so what was REQUESTED is never displayed as proof of what RAN.
 
 data dispatch_execution_preference_alias_note: String = "Naming authority: ExecutionProfile. Operator synonym: ExecutionPreference. Both denote the same closed coproduct Automatic | Deep | ExactOverride with identical semantics."
@@ -257,24 +245,8 @@ type DispatchResolvedExecution {
   attempt_identity: DispatchAttemptIdentity
 }
 
-// THE TASK'S SIZE AS SELECTION SEES IT. Two arms and no more: a size was derived, or none was --
-// whether because the deriver could not answer or because this dispatch has no task subject at all
-// (a harness probe selecting a provider is not sizing anything). Collapsing those two into one
-// absent arm is deliberate: to a profile decision they are the same fact, "no derived expectation",
-// and WHY a size is missing is the sizing authority's business and is recorded there.
-type SizingProfileExpectation
-  = NoDerivedSizingExpectation
-  | DerivedSizingExpectation { sizing: NodeSizing }
-
-fn sizing_profile_expectation(d: NodeSizingDerivation) -> SizingProfileExpectation {
-  match d {
-    SizingDerived { subject: _, sizing } => DerivedSizingExpectation { sizing: sizing }
-    SizingNotDerivable { subject: _, detail: _ } => NoDerivedSizingExpectation
-  }
-}
-
 type DispatchExecutionReceipt {
-  sizing_expectation: SizingProfileExpectation
+  node_sizing: NodeSizing
   requested_selection: ProviderSelectionRequest
   resolved_selection: ResolvedProviderSelection
   resolved_execution: DispatchResolvedExecution
@@ -285,7 +257,7 @@ type DispatchExecutionReceipt {
 type DispatchSelectionResult
   = DispatchSelectionResolved { receipt: DispatchExecutionReceipt }
   | DispatchSelectionRefused {
-      sizing_expectation: SizingProfileExpectation
+      node_sizing: NodeSizing
       requested_selection: ProviderSelectionRequest
       reason: NonEmptyStr
     }
@@ -520,14 +492,14 @@ fn dispatch_resolved_execution_from_selection(
 }
 
 fn dispatch_execution_receipt(
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
   requested_selection: ProviderSelectionRequest,
   resolved_selection: ResolvedProviderSelection,
   provider_kind: ProviderKind,
   applied_effort: ReasoningEffort,
 ) -> DispatchExecutionReceipt {
   DispatchExecutionReceipt {
-    sizing_expectation: sizing_expectation,
+    node_sizing: node_sizing,
     requested_selection: requested_selection,
     resolved_selection: resolved_selection,
     resolved_execution: dispatch_resolved_execution_from_selection(resolved: resolved_selection),
@@ -872,7 +844,7 @@ fn codex_effort_for_profile(
       }
       DispatchSelectionResolved {
         receipt: dispatch_execution_receipt(
-          sizing_expectation: NoDerivedSizingExpectation,
+          node_sizing: Unsized,
           requested_selection: SelectAutomatically { profile: ProfileAutomatic },
           resolved_selection: resolved,
           provider_kind: CodexCliProvider,
@@ -895,7 +867,7 @@ fn codex_effort_for_profile(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: NoDerivedSizingExpectation,
+              node_sizing: Unsized,
               requested_selection: SelectAutomatically { profile: ProfileDeep },
               resolved_selection: resolved,
               provider_kind: CodexCliProvider,
@@ -905,14 +877,14 @@ fn codex_effort_for_profile(
         }
         DeepUnavailable =>
           DispatchSelectionRefused {
-            sizing_expectation: NoDerivedSizingExpectation,
+            node_sizing: Unsized,
             requested_selection: SelectAutomatically { profile: ProfileDeep },
             reason: "provider offer has no configured Deep realization" as NonEmptyStr,
           }
       }
     ProfileExactOverride =>
       DispatchSelectionRefused {
-        sizing_expectation: NoDerivedSizingExpectation,
+        node_sizing: Unsized,
         requested_selection: SelectAutomatically { profile: ProfileExactOverride },
         reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
       }
@@ -922,12 +894,12 @@ fn codex_effort_for_profile(
 fn resolve_codex_offer(
   offer: CodexOffer,
   request: ProviderSelectionRequest,
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
 ) -> DispatchSelectionResult {
   match codex_offer_observed_process_fingerprint(offer: offer) {
     Absent =>
       DispatchSelectionRefused {
-        sizing_expectation: sizing_expectation,
+        node_sizing: node_sizing,
         requested_selection: request,
         reason: dispatch_codex_process_fingerprint_unobserved_selection_refusal,
       }
@@ -936,7 +908,7 @@ fn resolve_codex_offer(
         offer: offer,
         observed_fingerprint: observed_fingerprint,
         request: request,
-        sizing_expectation: sizing_expectation,
+        node_sizing: node_sizing,
       )
   }
 }
@@ -945,7 +917,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
   offer: CodexOffer,
   observed_fingerprint: NonEmptyStr,
   request: ProviderSelectionRequest,
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
 ) -> DispatchSelectionResult {
   match request {
     SelectAutomatically { profile } =>
@@ -957,16 +929,16 @@ fn resolve_codex_offer_with_observed_fingerprint(
         DispatchSelectionResolved { receipt } =>
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: sizing_expectation,
+              node_sizing: node_sizing,
               requested_selection: request,
               resolved_selection: receipt.resolved_selection,
               provider_kind: receipt.provider_kind,
               applied_effort: receipt.applied_effort,
             ),
           }
-        DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
           DispatchSelectionRefused {
-            sizing_expectation: sizing_expectation,
+            node_sizing: node_sizing,
             requested_selection: request,
             reason: reason,
           }
@@ -986,7 +958,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: sizing_expectation,
+              node_sizing: node_sizing,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: CodexCliProvider,
@@ -1009,7 +981,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  sizing_expectation: sizing_expectation,
+                  node_sizing: node_sizing,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: CodexCliProvider,
@@ -1019,7 +991,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
             }
             DeepUnavailable =>
               DispatchSelectionRefused {
-                sizing_expectation: sizing_expectation,
+                node_sizing: node_sizing,
                 requested_selection: request,
                 reason: "provider offer has no configured Deep realization" as NonEmptyStr,
               }
@@ -1037,7 +1009,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: sizing_expectation,
+              node_sizing: node_sizing,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: CodexCliProvider,
@@ -1050,7 +1022,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
     }
     _ =>
       DispatchSelectionRefused {
-        sizing_expectation: sizing_expectation,
+        node_sizing: node_sizing,
         requested_selection: request,
         reason: "selection request shape does not match Codex offer" as NonEmptyStr,
       }
@@ -1060,7 +1032,7 @@ fn resolve_codex_offer_with_observed_fingerprint(
 fn resolve_claude_offer(
   offer: ClaudeOffer,
   request: ProviderSelectionRequest,
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
 ) -> DispatchSelectionResult {
   match request {
     SelectAutomatically { profile } =>
@@ -1078,7 +1050,7 @@ fn resolve_claude_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: sizing_expectation,
+              node_sizing: node_sizing,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: ClaudeCliProvider,
@@ -1101,7 +1073,7 @@ fn resolve_claude_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  sizing_expectation: sizing_expectation,
+                  node_sizing: node_sizing,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: ClaudeCliProvider,
@@ -1111,14 +1083,14 @@ fn resolve_claude_offer(
             }
             DeepUnavailable =>
               DispatchSelectionRefused {
-                sizing_expectation: sizing_expectation,
+                node_sizing: node_sizing,
                 requested_selection: request,
                 reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
               }
           }
         ProfileExactOverride =>
           DispatchSelectionRefused {
-            sizing_expectation: sizing_expectation,
+            node_sizing: node_sizing,
             requested_selection: request,
             reason: "ExactOverride requires an explicit provider selection arm" as NonEmptyStr,
           }
@@ -1138,7 +1110,7 @@ fn resolve_claude_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: sizing_expectation,
+              node_sizing: node_sizing,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: ClaudeCliProvider,
@@ -1161,7 +1133,7 @@ fn resolve_claude_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  sizing_expectation: sizing_expectation,
+                  node_sizing: node_sizing,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: ClaudeCliProvider,
@@ -1171,7 +1143,7 @@ fn resolve_claude_offer(
             }
             DeepUnavailable =>
               DispatchSelectionRefused {
-                sizing_expectation: sizing_expectation,
+                node_sizing: node_sizing,
                 requested_selection: request,
                 reason: "Claude offer has no configured Deep realization" as NonEmptyStr,
               }
@@ -1189,7 +1161,7 @@ fn resolve_claude_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: sizing_expectation,
+              node_sizing: node_sizing,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: ClaudeCliProvider,
@@ -1206,13 +1178,13 @@ fn resolve_claude_offer(
       operator_asserted_native_limit_bucket: _,
     } =>
       DispatchSelectionRefused {
-        sizing_expectation: sizing_expectation,
+        node_sizing: node_sizing,
         requested_selection: request,
         reason: "Codex selection request does not match a Claude offer" as NonEmptyStr,
       }
     SelectCursor { profile: _, credential: _, model: _, agent_mode: _ } =>
       DispatchSelectionRefused {
-        sizing_expectation: sizing_expectation,
+        node_sizing: node_sizing,
         requested_selection: request,
         reason: "Cursor selection request does not match a Claude offer" as NonEmptyStr,
       }
@@ -1222,18 +1194,18 @@ fn resolve_claude_offer(
 fn resolve_provider_offer(
   offer: ProviderOffer,
   request: ProviderSelectionRequest,
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
 ) -> DispatchSelectionResult {
   match offer {
     OfferCodex { offer: codex } => resolve_codex_offer(
       offer: codex,
       request: request,
-      sizing_expectation: sizing_expectation,
+      node_sizing: node_sizing,
     )
     OfferClaude { offer: claude } => resolve_claude_offer(
       offer: claude,
       request: request,
-      sizing_expectation: sizing_expectation,
+      node_sizing: node_sizing,
     )
     OfferCursor { offer: cursor } =>
       match request {
@@ -1249,7 +1221,7 @@ fn resolve_provider_offer(
           }
           DispatchSelectionResolved {
             receipt: dispatch_execution_receipt(
-              sizing_expectation: sizing_expectation,
+              node_sizing: node_sizing,
               requested_selection: request,
               resolved_selection: resolved,
               provider_kind: CursorCliProvider,
@@ -1271,7 +1243,7 @@ fn resolve_provider_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  sizing_expectation: sizing_expectation,
+                  node_sizing: node_sizing,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: CursorCliProvider,
@@ -1281,7 +1253,7 @@ fn resolve_provider_offer(
             }
             ProfileDeep =>
               DispatchSelectionRefused {
-                sizing_expectation: sizing_expectation,
+                node_sizing: node_sizing,
                 requested_selection: request,
                 reason: "Cursor offer has no configured Deep realization" as NonEmptyStr,
               }
@@ -1297,7 +1269,7 @@ fn resolve_provider_offer(
               }
               DispatchSelectionResolved {
                 receipt: dispatch_execution_receipt(
-                  sizing_expectation: sizing_expectation,
+                  node_sizing: node_sizing,
                   requested_selection: request,
                   resolved_selection: resolved,
                   provider_kind: CursorCliProvider,
@@ -1308,7 +1280,7 @@ fn resolve_provider_offer(
           }
         _ =>
           DispatchSelectionRefused {
-            sizing_expectation: sizing_expectation,
+            node_sizing: node_sizing,
             requested_selection: request,
             reason: "selection request shape does not match Cursor offer" as NonEmptyStr,
           }
@@ -1506,11 +1478,11 @@ fn dispatch_selection_refusal_reason_for_miss(
 fn resolve_dispatch_selection(
   inventory: ProviderInventory,
   request: ProviderSelectionRequest,
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
 ) -> DispatchSelectionResult {
   if list_length(items: inventory.offers) == 0 {
     DispatchSelectionRefused {
-      sizing_expectation: sizing_expectation,
+      node_sizing: node_sizing,
       requested_selection: request,
       reason: "provider inventory is empty" as NonEmptyStr,
     }
@@ -1520,11 +1492,11 @@ fn resolve_dispatch_selection(
         resolve_provider_offer(
           offer: offer,
           request: request,
-          sizing_expectation: sizing_expectation,
+          node_sizing: node_sizing,
         )
       Absent =>
         DispatchSelectionRefused {
-          sizing_expectation: sizing_expectation,
+          node_sizing: node_sizing,
           requested_selection: request,
           reason: dispatch_selection_refusal_reason_for_miss(
             inventory: inventory,
@@ -1538,12 +1510,12 @@ fn resolve_dispatch_selection(
 fn dispatch_selection_for_instance(
   instance: HostDashboardInstance,
   request: ProviderSelectionRequest,
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
 ) -> DispatchSelectionResult {
   resolve_dispatch_selection(
     inventory: provider_inventory_for_instance(instance: instance),
     request: request,
-    sizing_expectation: sizing_expectation,
+    node_sizing: node_sizing,
   )
 }
 
@@ -1641,8 +1613,11 @@ fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) 
       match resolve_dispatch_selection(
         inventory: inventory,
         request: default_provider_selection_request(),
-        sizing_expectation: DerivedSizingExpectation {
-          sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeMedium },
+        node_sizing: Sized {
+          intricacy: IntricacyHigh,
+          volume: VolumeMedium,
+          repo: "gunbc",
+          acceptance: PrsMerged,
         },
       ) {
         DispatchSelectionResolved { receipt } =>
@@ -1653,7 +1628,7 @@ fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) 
               resolved: receipt.resolved_selection,
               codex_default_effort: shell.default_effort,
             )
-        DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
       }
     }
   }

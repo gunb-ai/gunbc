@@ -69,7 +69,7 @@ import gunbc.roadmap_belt_actuate {
   BeltProviderPreflight, ProviderPreflightRefused,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
-import gunbc.dispatch_selection { NoDerivedSizingExpectation }
+import gunbc.roadmap_model { Unsized }
 import gunbc.dispatch_preflight { dispatch_preflight_for_instance, PreflightAdmitted, PreflightRefused }
 import gunbc.roadmap_launch_admission { launch_admission_contract_digest_hex }
 import gunbc.roadmap_launch_deployment_observe {
@@ -140,7 +140,7 @@ fn rlm_workflow_file_path() -> String {
 // is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal
 // rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
-data rlm1_contract_digest_frozen: String = "df693f20bfe92df2"
+data rlm1_contract_digest_frozen: String = "20ca8a8cde2f7e84"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
@@ -330,7 +330,7 @@ fn principal_fact() -> PrincipalFact {
 }
 
 fn provider_fact(instance: HostDashboardInstance) -> BeltProviderPreflight {
-  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionRefused { reason: r } => ProviderPreflightRefused { step: "dispatch-selection", detail: r as String }
     DispatchActuatorSelectionOk { provider: p, effort: _, model: _, process_fingerprint: _ } => belt_provider_preflight_for_instance(instance: instance, provider: p)
   }

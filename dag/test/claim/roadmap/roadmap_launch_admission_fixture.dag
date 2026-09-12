@@ -133,7 +133,7 @@ fn launch_fixture_with_contract(rn: RoadmapNode) -> RoadmapNode {
     node: rn.node,
     line: rn.line,
     carriers: rn.carriers,
-    dispatch: rn.dispatch,
+    sizing: rn.sizing,
     execution: launch_fixture_contract(),
     owner: rn.owner,
     signoff: rn.signoff,

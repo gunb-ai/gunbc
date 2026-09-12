@@ -84,7 +84,7 @@ fn renamed(n: RoadmapNode) -> RoadmapNode {
     node: "renamed-slug-fixture" as RoadmapNodeId,
     line: n.line,
     carriers: n.carriers,
-    dispatch: n.dispatch,
+    sizing: n.sizing,
     execution: n.execution,
     owner: n.owner,
     signoff: n.signoff,

@@ -1,17 +1,14 @@
 module test.claim.roadmap_dispatch_actuator
 
-import gunbc.roadmap_sizing {
-  NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
-}
 import v2.std.optional { Present }
 import std.types { NonEmptyStr, GitRef, FilePath }
 import std.disposition { Scaffold, Terminal }
 import gunbc.roadmap_model {
   RoadmapNodeId,
-  RoadmapNodeIdentity,
   RoadmapNode, RoadmapEdge,
+  Intricacy, IntricacyHigh, IntricacyLow, VolumeMedium,
   PrsMerged,
-  WorkItemDispatch, NotDispatchable, Dispatchable,
+  NodeSizing, Sized, Unsized,
   SectionElement, Group, SectionGroup,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
@@ -129,8 +126,6 @@ import gunbc.dispatch_selection {
   SelectCodex,
   dispatch_codex_default_model,
   resolved_process_fingerprint,
-  NoDerivedSizingExpectation,
-  DerivedSizingExpectation,
 }
 import gunbc.provider_standing {
   provider_standing_from_observed_bundle,
@@ -161,21 +156,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn roadmap_dispatch_actuator_nid(s: String) -> RoadmapNodeId { s }
 
-fn sized_derivable_in_repo(id: String, prs: List<Int>, title: String, repo: String) -> RoadmapNode {
+fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    dispatch: Dispatchable { repo: repo, acceptance: PrsMerged },
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
-}
-
-fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
-  sized_derivable_in_repo(id: id, prs: prs, title: title, repo: "gunbc")
 }
 
 fn fixture_section(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
@@ -213,15 +204,21 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
   let high = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    sizing_expectation: DerivedSizingExpectation {
-      sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeLarge },
+    node_sizing: Sized {
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
     },
   )
   let low = resolve_dispatch_selection(
     inventory: inventory,
     request: default_provider_selection_request(),
-    sizing_expectation: DerivedSizingExpectation {
-      sizing: NodeSizing { intricacy: IntricacyLow, volume: VolumeSmall },
+    node_sizing: Sized {
+      intricacy: IntricacyLow,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
     },
   )
   match high {
@@ -231,10 +228,10 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
           reasoning_effort_label(effort: high_receipt.applied_effort) == "medium"
             && reasoning_effort_label(effort: low_receipt.applied_effort) == "medium"
             && high_receipt.applied_effort == low_receipt.applied_effort
-        DispatchSelectionRefused { requested_selection: _, reason: _ } =>
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } =>
           false
       }
-    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
@@ -319,9 +316,9 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
           ],
         },
         request: default_provider_selection_request(),
-        sizing_expectation: NoDerivedSizingExpectation,
+        node_sizing: Unsized,
       ) {
-        DispatchSelectionRefused { requested_selection: _, reason } =>
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
           reason == dispatch_selection_standing_ineligible_reason
         DispatchSelectionResolved { receipt: _ } => false
       }
@@ -335,7 +332,7 @@ test fn witness_actuator_automatic_selection_refuses_with_standing_reason() -> B
 test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
   match dispatch_actuator_selection_for_provider(
     provider: ClaudeCodeProvider,
-    sizing_expectation: NoDerivedSizingExpectation,
+    node_sizing: Unsized,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
     DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
@@ -348,11 +345,11 @@ test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bo
       instance: srv1_live_dashboard_instance(),
     ),
     request: default_provider_selection_request(),
-    sizing_expectation: NoDerivedSizingExpectation,
+    node_sizing: Unsized,
   ) {
     DispatchSelectionResolved { receipt } =>
       resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("node" as NonEmptyStr)
-    DispatchSelectionRefused { requested_selection: _, reason: _ } => false
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
 
@@ -653,44 +650,6 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
   }
 }
 
-test fn witness_named_destination_refuses_this_spawn_tree() -> Bool {
-  let node = sized_derivable_in_repo(id: "ready-node", prs: [10], title: "Ready", repo: "example/other")
-  let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
-  match classify_dispatch_request_for_process_fingerprint(
-    node: node,
-    ready: ready,
-    tmux_entries: [],
-    attempt_key: "feedfacefeedface",
-    process_fingerprint: dispatch_codex_process_fingerprint,
-    effort: ReasoningMedium,
-    model: ProviderAccountDefaultModel,
-  ) {
-    DispatchRefused { reason: r } =>
-      string_contains(s: r as String, pattern: "working in gunbc and publishing to example/other")
-    _ => false
-  }
-}
-
-test fn witness_missing_destination_reason_reaches_classify() -> Bool {
-  let node = sized_derivable_in_repo(id: "ready-node", prs: [10], title: "Ready", repo: "not-a-slug")
-  let doc = fixture_doc(nodes: [node], edges: [])
-  let ready = next_spawnable(doc: doc, merged: [])
-  match classify_dispatch_request_for_process_fingerprint(
-    node: node,
-    ready: ready,
-    tmux_entries: [],
-    attempt_key: "feedfacefeedface",
-    process_fingerprint: dispatch_codex_process_fingerprint,
-    effort: ReasoningMedium,
-    model: ProviderAccountDefaultModel,
-  ) {
-    DispatchRefused { reason: r } =>
-      string_contains(s: r as String, pattern: "is not owner/name")
-    _ => false
-  }
-}
-
 test fn witness_live_lease_refused() -> Bool {
   let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
   let doc = fixture_doc(nodes: [node], edges: [])
@@ -775,7 +734,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
-  let selection = dispatch_actuator_vendor_selection(sizing_expectation: NoDerivedSizingExpectation)
+  let selection = dispatch_actuator_vendor_selection(node_sizing: Unsized)
   match selection {
     DispatchActuatorSelectionRefused { reason } =>
       reason == dispatch_selection_standing_ineligible_reason
@@ -938,7 +897,7 @@ fn ticket_fixture_node() -> RoadmapNode {
     updates: [],
     authored_on: "2026-07-24",
     last_verified_on: "2026-07-24",
-  }, repo: "gunbc")
+  }, intricacy: IntricacyMedium, volume: VolumeSmall, repo: "gunbc")
 }
 
 test fn witness_ticket_brief_fills_real_slots() -> Bool {

@@ -2,10 +2,10 @@ module gunbc.roadmap_launch_admission
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge, node_is_dispatchable }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
-import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_unmet_parent_ids }
+import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_is_sized, node_unmet_parent_ids }
 import gunbc.roadmap_execution_contract {
   ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses, ContractNotAgentWork,
   OperatorExclusiveMode, ExternalLeadMode, CalendarObservationMode,
@@ -48,12 +48,8 @@ import extdeps.languages.json.parse {
 // arms the actuator, environment and belt already modeled (the labels below are the existing wire
 // words wherever one existed) and adds only what the plan's sketch left implicit: a superseded
 // node, an unobservable session set, the three non-running liveness arms, and the cause/mode arm.
-// `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS one with no dispatch
-// binding, so it is one fact (LaunchDispatchBindingMissing) with SchedulingUnplanned as its
-// presentation. The arm was named LaunchSizeMissing and its wire word was size_missing until sizing
-// was unbundled from the binding; it never checked a size -- it checked whether the row carries a
-// repository and an acceptance route -- and keeping that spelling once size left the row would
-// have been a section 3 meaning fork, the same name for a materially different fact.
+// `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS an unsized one, so it is
+// one fact (LaunchSizeMissing) with SchedulingUnplanned as its presentation.
 
 type LaunchCause
   = Operator
@@ -220,7 +216,7 @@ type LaunchRefusal
   | LaunchNodeSuperseded { by: String }
   | LaunchAlreadyAccepted
   | LaunchReviewRequired
-  | LaunchDispatchBindingMissing
+  | LaunchSizeMissing
   | LaunchExecutionContractMissing { reason: String }
   | LaunchNotAgentWork { mode: NonAgentWorkMode }
   | LaunchDependenciesBlocked { blockers: List<String> }
@@ -261,7 +257,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchNodeSuperseded { by: _ } => "node_superseded"
     LaunchAlreadyAccepted => "already_done_signed_off"
     LaunchReviewRequired => "review_required"
-    LaunchDispatchBindingMissing => "dispatch_binding_missing"
+    LaunchSizeMissing => "size_missing"
     LaunchExecutionContractMissing { reason: _ } => "execution_contract_missing"
     LaunchNotAgentWork { mode } => launch_non_agent_work_wire_label(mode: mode)
     LaunchDependenciesBlocked { blockers: _ } => "dependencies_blocked"
@@ -287,7 +283,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchNodeSuperseded { by } => join(["node is superseded by ", by], "")
     LaunchAlreadyAccepted => "node is signed off as accepted; relaunch refused"
     LaunchReviewRequired => "node's implementation evidence is in review; acceptance, not a relaunch, is the next step"
-    LaunchDispatchBindingMissing => "node carries no dispatch binding; a launch needs the repository the work happens in and the acceptance evidence it must return"
+    LaunchSizeMissing => "node is unsized; a launch needs intricacy, volume, repo and acceptance"
     LaunchExecutionContractMissing { reason } => reason
     LaunchNotAgentWork { mode } =>
       join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
@@ -314,7 +310,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchNodeSuperseded { by: "s" },
     LaunchAlreadyAccepted,
     LaunchReviewRequired,
-    LaunchDispatchBindingMissing,
+    LaunchSizeMissing,
     LaunchExecutionContractMissing { reason: "r" },
     LaunchNotAgentWork { mode: OperatorExclusiveMode },
     LaunchNotAgentWork { mode: ExternalLeadMode },
@@ -740,8 +736,8 @@ fn launch_gate_node_state(node: RoadmapNode, merged: List<Int>) -> LaunchGateVer
 }
 
 fn launch_gate_contract(node: RoadmapNode) -> LaunchGateVerdict {
-  if !node_is_dispatchable(n: node) {
-    GateRefused { refusal: LaunchDispatchBindingMissing }
+  if !node_is_sized(n: node) {
+    GateRefused { refusal: LaunchSizeMissing }
   } else {
     match contract_closure(contract: node.execution) {
       ContractDeclaresNoValidation =>

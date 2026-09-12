@@ -3,7 +3,7 @@ module test.claim.roadmap_focus_witness_test
 import std.types { Bool, String, Int, List }
 import gunbc.roadmap_model {
   RoadmapNodeIdentity,
-  RoadmapNode, RoadmapEdge, Pointer, Dispatchable, ManualAcceptance,
+  RoadmapNode, RoadmapEdge, Pointer, Sized, IntricacyMedium, VolumeMedium, ManualAcceptance,
 }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
@@ -130,7 +130,7 @@ fn fx(id: String, owner: String) -> RoadmapNode {
       updates: [], authored_on: "", last_verified_on: "",
     } },
     carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
+    sizing: Sized { intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc", acceptance: ManualAcceptance },
     execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,

@@ -13,42 +13,31 @@ import gunbc.roadmap_model {
   RoadmapNodeIdentity,
   RoadmapNode,
   RoadmapEdge,
-  Dispatchable,
-  NotDispatchable,
-  node_sizing_subject_id,
+  IntricacyLow,
+  IntricacyMedium,
+  IntricacyHigh,
+  VolumeSmall,
+  VolumeMedium,
+  VolumeLarge,
+  Sized,
+  Unsized,
   ManualAcceptance,
 }
-import gunbc.roadmap_sizing {
-  SizingDerived,
-  NodeSizing,
-  IntricacyMedium, IntricacyHigh,
-  VolumeSmall, VolumeMedium,
-}
 import gunbc.roadmap_forecast {
-  NodeSizingAssignment,
-  NodeSizingAdaptation,
-  node_sizing_adaptation,
-  derived_node_sizings,
-  SizingAssignmentRefused,
-  SizingForAnotherSubject,
-  SizingAssignedTwice,
+  SizingCell,
+  sizing_cell_eq,
   CycleTimeObservation,
   AcceptedRoadmapNodePullHistory,
+  CycleTimeObserved,
+  CycleTimeHistoryRefused,
   roadmap_cycle_time_observation_builds,
   accepted_cycle_time_observations,
   cycle_time_history_refusals,
   cycle_time_population_exclusions,
-  accepted_node_pull_links,
-  HistoryNodeUnsized,
-  HistoryNodeMissing,
-  HistoryNodeDuplicate,
-  HistoryAcceptanceMissing,
-  HistoryAcceptanceDuplicate,
-  HistoryPullMissing,
-  HistoryPullDuplicate,
-  HistoryPullNotMergedAfterOpen,
-  HistoryAcceptanceCarrierLoadRefused,
-  HistorySizingAssignmentRefused,
+  BundledPullDelivery,
+  calibrate_cell,
+  Calibrated,
+  CalibrationRefusedNoSample,
   ForecastAnchorObservation,
   ReviewCycleCount,
   OperatorMergeLatencyAssumption,
@@ -68,6 +57,8 @@ import gunbc.roadmap_forecast {
   ForecastRoadmapAuthorityRefused,
   ForecastBuildRefused,
   schedule_forecast,
+  live_roadmap_schedule_forecast,
+  no_calibration_gap_count,
   AdjustmentUnavailable,
   ReviewCycleDurationUnobserved,
   OperatorMergeLatencyUnobserved,
@@ -93,33 +84,39 @@ fn anchor() -> ForecastAnchorObservation {
   ForecastAnchorObservation { observed_at: 1000 }
 }
 
-// SIZE IS NO LONGER ON THE FIXTURE NODE. The forecast takes a sizing assignment list, so a fixture
-// declares the node and, separately, the cell it wants that node to be sized at; a node with no
-// assignment is the unsized case. That split is what keeps the positive controls below executable
-// while gunbc.roadmap_sizing derive_task_sizing is still a stub -- the production assignment list
-// is empty, and these witnesses supply their own.
-fn fixture_node(id: String) -> RoadmapNode {
+fn sized_node(id: String, cell: SizingCell) -> RoadmapNode {
   RoadmapNode {
     identity: concat("fixture-", id) as RoadmapNodeIdentity,
     node: id as RoadmapNodeId,
     line: PlainLine { content: id },
     carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
+    sizing: Sized {
+      intricacy: cell.intricacy,
+      volume: cell.volume,
+      repo: "gunbc",
+      acceptance: ManualAcceptance,
+    },
     execution: ExecutionContractUnspecified,
     owner: "fixture",
     signoff: Unsigned,
   }
 }
 
-fn sized_at(n: RoadmapNode, cell: NodeSizing) -> NodeSizingAssignment {
-  NodeSizingAssignment { subject: node_sizing_subject_id(rn: n), sizing: cell }
+fn unsized_node(id: String) -> RoadmapNode {
+  let base = sized_node(id: id, cell: SizingCell { intricacy: IntricacyLow, volume: VolumeSmall })
+  RoadmapNode {
+    identity: base.identity,
+    node: base.node,
+    line: base.line,
+    carriers: base.carriers,
+    sizing: Unsized,
+    execution: base.execution,
+    owner: base.owner,
+    signoff: base.signoff,
+  }
 }
 
-fn fixture_sizings(ns: List<RoadmapNode>) -> List<NodeSizingAssignment> {
-  ns |> map(n => sized_at(n: n, cell: fixture_cell()))
-}
-
-fn observation(id: String, cell: NodeSizing, duration_ms: Int) -> CycleTimeObservation {
+fn observation(id: String, cell: SizingCell, duration_ms: Int) -> CycleTimeObservation {
   CycleTimeObservation {
     node: id as RoadmapNodeId,
     sizing_cell: cell,
@@ -131,8 +128,8 @@ fn observation(id: String, cell: NodeSizing, duration_ms: Int) -> CycleTimeObser
   }
 }
 
-fn fixture_cell() -> NodeSizing {
-  NodeSizing { intricacy: IntricacyMedium, volume: VolumeMedium }
+fn fixture_cell() -> SizingCell {
+  SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium }
 }
 
 fn fixture_observations() -> List<CycleTimeObservation> {
@@ -143,84 +140,150 @@ fn fixture_observations() -> List<CycleTimeObservation> {
   ]
 }
 
-// THE LIVE HISTORY JOIN IS THE OTHER SIDE OF THE SAME LOSS, AND THIS WITNESS NOW ASSERTS WHAT IS
-// TRUE RATHER THAN WHAT USED TO BE. Before the unbundling, each accepted node carried a hand-
-// authored cell, so the ten cited acceptance/pull links produced four calibration observations and
-// two bundled-delivery exclusions with no refusals. Sizing is derived now and the deriver is a
-// stub, so observation_for_link reaches its sizing check with no assignment and refuses every
-// remaining link as HistoryNodeUnsized. Asserting that refusal is not bookkeeping: it is the
-// discriminating control that the loss is TOTAL and LOUD rather than partial and quiet, and it
-// goes red the day a link joins again -- which is this drop retiring.
-//
-// TOTAL IS AN IDENTITY JOIN AND THE POPULATION IS READ, NOT TRANSCRIBED. An earlier form of this
-// witness asserted count(builds) == 10 and merely that SOME refusal existed and every refusal was
-// HistoryNodeUnsized, which a PARTIAL deriver would still satisfy: observation_for_link reaches
-// the bundled-delivery exclusion only AFTER a cell is present, so a deriver that sized exactly the
-// previously-bundled links would turn those into exclusions while the rest stayed unsized --
-// observations still zero, refusals still non-empty and still all-unsized, control still green,
-// which is the opposite of going red when a link joins. It now joins the refusals to
-// accepted_node_pull_links in both directions, requires the exclusion population to be EMPTY, and
-// takes its denominator from the live link roster instead of a literal copied out of the tree.
-test fn witness_cited_acceptance_pr_history_refuses_every_link_as_unsized() -> Bool {
-  let links = accepted_node_pull_links()
+test fn witness_cited_acceptance_pr_history_joins_without_refusal() -> Bool {
   let builds = roadmap_cycle_time_observation_builds()
-  let refusals = cycle_time_history_refusals(builds: builds)
-  count(links) > 0
-    && count(builds) == count(links)
-    && count(refusals) == count(links)
-    && count(accepted_cycle_time_observations(builds: builds)) == 0
-    && count(cycle_time_population_exclusions(builds: builds)) == 0
-    && all(links, link => any(refusals, refusal => match refusal {
-      HistoryNodeUnsized { node } => node == link.node
-      HistoryNodeMissing { node: _ } => false
-      HistoryNodeDuplicate { node: _ } => false
-      HistoryAcceptanceMissing { node: _ } => false
-      HistoryAcceptanceDuplicate { node: _ } => false
-      HistoryPullMissing { node: _, pull_number: _ } => false
-      HistoryPullDuplicate { node: _, pull_number: _ } => false
-      HistoryPullNotMergedAfterOpen { node: _, pull_number: _ } => false
-      HistoryAcceptanceCarrierLoadRefused { detail: _ } => false
-      HistorySizingAssignmentRefused { refusals: _ } => false
-    }))
-    && all(refusals, refusal => match refusal {
-      HistoryNodeUnsized { node } => any(links, link => link.node == node)
-      HistoryNodeMissing { node: _ } => false
-      HistoryNodeDuplicate { node: _ } => false
-      HistoryAcceptanceMissing { node: _ } => false
-      HistoryAcceptanceDuplicate { node: _ } => false
-      HistoryPullMissing { node: _, pull_number: _ } => false
-      HistoryPullDuplicate { node: _, pull_number: _ } => false
-      HistoryPullNotMergedAfterOpen { node: _, pull_number: _ } => false
-      HistoryAcceptanceCarrierLoadRefused { detail: _ } => false
-      HistorySizingAssignmentRefused { refusals: _ } => false
+  count(builds) == 10
+    && count(accepted_cycle_time_observations(builds: builds)) == 4
+    && count(cycle_time_history_refusals(builds: builds)) == 0
+    && count(cycle_time_population_exclusions(builds: builds)) == 2
+    && all(accepted_cycle_time_observations(builds: builds), observation =>
+      millisecond_count(m: observation.cycle_time) > 0
+        && string_contains(observation.source_url as String, "https://github.com/gunb-ai/gunbc/pull/")
+    )
+    && all(cycle_time_population_exclusions(builds: builds), exclusion => match exclusion {
+      BundledPullDelivery { pull_number: _, nodes } => count(nodes) > 1
     })
 }
 
-// FOUR LIVE-GRAPH CALIBRATION WITNESSES WERE RETIRED HERE, AND SAYING SO IS THE POINT.
-// witness_live_graph_refuses_with_located_counted_calibration_gaps,
-// witness_live_graph_gap_count_matches_refusal_rows, witness_live_graph_refusal_is_only_calibration
-// and witness_live_calibration_keeps_small_sample_intervals each asserted a property of the LIVE
-// calibration population -- that the roadmap's own graph refuses with located, counted, per-cell
-// calibration gaps and with nothing else, and that the three live cells calibrate to their exact
-// observed intervals without collapsing a small sample to a point. That population
-// was keyed on the hand-authored intricacy/volume cells this change deleted, so the subject of all
-// three no longer exists: there are no cells to gap, because nothing is sized. They were not
-// weakened to keep them green and they were not quietly dropped; they are named in the population
-// of gunbc.rung_drop.roadmap_sizing_authored_to_derived, and its trigger -- a deriver that answers
-// from the task, with the forecast calibrating from the derived cells end to end -- is exactly the
-// condition under which they can be written again against a real population.
-//
-// What stands in their place until then is the control below, which is the one assertion that
-// remains authorable and is the one that matters while the deriver is a stub: the live graph
-// REFUSES, naming its unsized nodes, rather than rendering a schedule it cannot support.
+test fn witness_live_calibration_keeps_small_sample_intervals() -> Bool {
+  let observations = accepted_cycle_time_observations(builds: roadmap_cycle_time_observation_builds())
+  let low_small = calibrate_cell(
+    cell: SizingCell { intricacy: IntricacyLow, volume: VolumeSmall },
+    observations: observations,
+  )
+  let medium_medium = calibrate_cell(
+    cell: SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium },
+    observations: observations,
+  )
+  let high_medium = calibrate_cell(
+    cell: SizingCell { intricacy: IntricacyHigh, volume: VolumeMedium },
+    observations: observations,
+  )
+  match low_small {
+    CalibrationRefusedNoSample { cell: _ } => false
+    Calibrated { interval: l } =>
+      l.sample_count == 1
+        && millisecond_count(m: l.minimum) == 7721000
+        && millisecond_count(m: l.median) == 7721000
+        && millisecond_count(m: l.maximum) == 7721000
+        && match medium_medium {
+          CalibrationRefusedNoSample { cell: _ } => false
+          Calibrated { interval: m } =>
+            m.sample_count == 1
+              && millisecond_count(m: m.minimum) == 2570000
+              && millisecond_count(m: m.median) == 2570000
+              && millisecond_count(m: m.maximum) == 2570000
+              && match high_medium {
+                CalibrationRefusedNoSample { cell: _ } => false
+                Calibrated { interval: h } =>
+                  h.sample_count == 2
+                    && millisecond_count(m: h.minimum) == 4396000
+                    && millisecond_count(m: h.median) == 21652000
+                    && millisecond_count(m: h.maximum) == 38908000
+              }
+        }
+  }
+}
+
+test fn witness_live_graph_refuses_with_located_counted_calibration_gaps() -> Bool {
+  let result = live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
+  let derived_gap_count = no_calibration_gap_count(result: result)
+  derived_gap_count > 0
+    && match result {
+      ScheduleForecastKnown { forecast: _ } => false
+      ScheduleForecastRefused { refusals } =>
+        count(refusals) == 1
+          && match first(refusals) {
+            Absent => false
+            Present { value: refusal } => match refusal {
+              NoCalibrationSample { gaps, population_exclusions, assumptions: declared, scenario_adjustment: adjustment } =>
+                count(gaps) == derived_gap_count
+                  && count(population_exclusions) == 2
+                  && millisecond_count(m: declared.operator_merge_latency.duration) == 5
+                  && match adjustment {
+                    AdjustmentUnavailable { causes } =>
+                      count(causes) == 2
+                        && any(causes, cause => match cause {
+                          ReviewCycleDurationUnobserved { declared_count: _ } => true
+                          OperatorMergeLatencyUnobserved { declared_latency: _ } => false
+                        })
+                        && any(causes, cause => match cause {
+                          ReviewCycleDurationUnobserved { declared_count: _ } => false
+                          OperatorMergeLatencyUnobserved { declared_latency } => millisecond_count(m: declared_latency) == 5
+                        })
+                  }
+                  && all(gaps, gap => count(gap.nodes) > 0)
+              DependencyCycle { nodes: _ } => false
+              ForecastGraphEmpty => false
+              DependencyEndpointUnknown { nodes: _ } => false
+              NodeUnsized { nodes: _ } => false
+              CycleTimeObservationNonPositive { nodes: _ } => false
+              WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+              CalibrationHistoryRefused { refusals: _ } => false
+              ForecastRoadmapAuthorityRefused { detail: _ } => false
+              ForecastBuildRefused { node: _ } => false
+            }
+          }
+    }
+}
+
+test fn witness_live_graph_gap_count_matches_refusal_rows() -> Bool {
+  let result = live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor())
+  let derived_gap_count = no_calibration_gap_count(result: result)
+  derived_gap_count > 0
+    && match result {
+      ScheduleForecastKnown { forecast: _ } => false
+      ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+        NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } =>
+          count(gaps) == derived_gap_count && all(gaps, gap => count(gap.nodes) > 0)
+        ForecastGraphEmpty => false
+        DependencyCycle { nodes: _ } => false
+        DependencyEndpointUnknown { nodes: _ } => false
+        NodeUnsized { nodes: _ } => false
+        CycleTimeObservationNonPositive { nodes: _ } => false
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+        CalibrationHistoryRefused { refusals: _ } => false
+        ForecastRoadmapAuthorityRefused { detail: _ } => false
+        ForecastBuildRefused { node: _ } => false
+      })
+    }
+}
+
+test fn witness_live_graph_refusal_is_only_calibration() -> Bool {
+  match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } =>
+      count(refusals) == 1 && any(refusals, refusal => match refusal {
+        NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => true
+        ForecastGraphEmpty => false
+        DependencyCycle { nodes: _ } => false
+        DependencyEndpointUnknown { nodes: _ } => false
+        NodeUnsized { nodes: _ } => false
+        CycleTimeObservationNonPositive { nodes: _ } => false
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+        CalibrationHistoryRefused { refusals: _ } => false
+        ForecastRoadmapAuthorityRefused { detail: _ } => false
+        ForecastBuildRefused { node: _ } => false
+      })
+  }
+}
 
 test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bool {
-  let a = fixture_node(id: "a")
-  let b = fixture_node(id: "b")
-  let c = fixture_node(id: "c")
+  let a = sized_node(id: "a", cell: fixture_cell())
+  let b = sized_node(id: "b", cell: fixture_cell())
+  let c = sized_node(id: "c", cell: fixture_cell())
   let result = schedule_forecast(
     nodes: [a, b, c],
-    sizings: fixture_sizings(ns: [a, b, c]),
     edges: [RoadmapEdge { child: b.node, parent: a.node }],
     observations: fixture_observations(),
     history_refusals: [],
@@ -251,12 +314,11 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
 }
 
 test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
-  let a = fixture_node(id: "capacity-a")
-  let b = fixture_node(id: "capacity-b")
-  let c = fixture_node(id: "capacity-c")
+  let a = sized_node(id: "capacity-a", cell: fixture_cell())
+  let b = sized_node(id: "capacity-b", cell: fixture_cell())
+  let c = sized_node(id: "capacity-c", cell: fixture_cell())
   let one_worker = schedule_forecast(
     nodes: [a, b, c],
-    sizings: fixture_sizings(ns: [a, b, c]),
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -266,7 +328,6 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
   )
   let three_workers = schedule_forecast(
     nodes: [a, b, c],
-    sizings: fixture_sizings(ns: [a, b, c]),
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -290,10 +351,9 @@ test fn witness_worker_cap_changes_completion_lower_bound() -> Bool {
 }
 
 test fn witness_invalid_worker_cap_refuses() -> Bool {
-  let n = fixture_node(id: "invalid-cap")
+  let n = sized_node(id: "invalid-cap", cell: fixture_cell())
   match schedule_forecast(
     nodes: [n],
-    sizings: fixture_sizings(ns: [n]),
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -313,16 +373,14 @@ test fn witness_invalid_worker_cap_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
-      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
 
 test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
-  let n = fixture_node(id: "zero-cycle")
+  let n = sized_node(id: "zero-cycle", cell: fixture_cell())
   match schedule_forecast(
     nodes: [n],
-    sizings: fixture_sizings(ns: [n]),
     edges: [],
     observations: [observation(id: n.node, cell: fixture_cell(), duration_ms: 0)],
     history_refusals: [],
@@ -342,7 +400,6 @@ test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
-      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
@@ -350,7 +407,6 @@ test fn witness_zero_cycle_time_observation_refuses_before_headroom() -> Bool {
 test fn witness_empty_graph_refuses() -> Bool {
   match schedule_forecast(
     nodes: [],
-    sizings: [],
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -363,15 +419,10 @@ test fn witness_empty_graph_refuses() -> Bool {
   }
 }
 
-// UNSIZED IS NOW "ABSENT FROM THE ASSIGNMENT LIST", which is what the empty list below says. The
-// authored form of this fixture carried NodeSizing.Unsized on the node itself; with sizing an input
-// to the fold, a node the deriver could not answer for simply has no assignment, and handing this
-// witness a cell would make the arm it matches on unreachable.
 test fn witness_unsized_node_refuses() -> Bool {
-  let n = fixture_node(id: "unsized")
+  let n = unsized_node(id: "unsized")
   match schedule_forecast(
     nodes: [n],
-    sizings: [],
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -391,20 +442,17 @@ test fn witness_unsized_node_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
-      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
 
-// THE CELL HERE MUST BE ONE THE OBSERVATIONS DO NOT COVER, or the gap this witness exists to find
-// cannot exist. fixture_observations are all fixture_cell() (medium/medium), so the node is sized
-// high/small deliberately -- the shared fixture_sizings helper would hand it a calibrated cell and
-// the NoCalibrationSample assertion would become unsatisfiable.
 test fn witness_empty_calibration_cell_refuses() -> Bool {
-  let n = fixture_node(id: "missing-cell")
+  let n = sized_node(
+    id: "missing-cell",
+    cell: SizingCell { intricacy: IntricacyHigh, volume: VolumeSmall },
+  )
   match schedule_forecast(
     nodes: [n],
-    sizings: [sized_at(n: n, cell: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall })],
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -424,17 +472,15 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
-      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
 
 test fn witness_dependency_cycle_refuses() -> Bool {
-  let a = fixture_node(id: "cycle-a")
-  let b = fixture_node(id: "cycle-b")
+  let a = sized_node(id: "cycle-a", cell: fixture_cell())
+  let b = sized_node(id: "cycle-b", cell: fixture_cell())
   match schedule_forecast(
     nodes: [a, b],
-    sizings: fixture_sizings(ns: [a, b]),
     edges: [
       RoadmapEdge { child: a.node, parent: b.node },
       RoadmapEdge { child: b.node, parent: a.node },
@@ -457,17 +503,15 @@ test fn witness_dependency_cycle_refuses() -> Bool {
       CalibrationHistoryRefused { refusals: _ } => false
       ForecastRoadmapAuthorityRefused { detail: _ } => false
       ForecastBuildRefused { node: _ } => false
-      SizingAssignmentRefused { refusals: _ } => false
     })
   }
 }
 
 test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
-  let a = fixture_node(id: "projection-a")
+  let a = sized_node(id: "projection-a", cell: fixture_cell())
   let observed: CycleTimeObservation = first(fixture_observations())
   match schedule_forecast(
     nodes: [a],
-    sizings: fixture_sizings(ns: [a]),
     edges: [],
     observations: fixture_observations(),
     history_refusals: [],
@@ -481,131 +525,5 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
       millisecond_count(m: observed.cycle_time) == 10
         && projected.anchor.observed_at == anchor().observed_at
     }
-  }
-}
-
-// STUB DERIVER REFUSAL IS AN IDENTITY JOIN OVER THE GRAPH HANDED TO THE FOLD, not a live census.
-// The claim is that derived_node_sizings (the production adapter over the real stub) yields no
-// cells, and schedule_forecast then refuses NodeUnsized for EVERY handed node and no other -- not
-// a shortened forecast over survivors. Two nodes discriminate "every" from "some"; walking the
-// live roadmap does not. Expected ids are the same list the fold receives (gunbc#10987: do not
-// re-derive the population from a second authority). The enrolled name keeps "live_graph" because
-// that identity is already on the floor; the body is the smallest discriminating fixture.
-// Goes red the day the deriver answers, which is gunbc.rung_drop.roadmap_sizing_authored_to_derived
-// retiring. Re-derive: make gunbc.roadmap_sizing derive_task_sizing return SizingDerived for
-// subject fixture-stub-unsized-a and run this function with `gunbc run --source-root dag
-// --source-root src/v2 --entry dag/test/claim/roadmap/roadmap_forecast_witness_test.dag
-// --function witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
-// --claim-run`.
-test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
-  let a = fixture_node(id: "stub-unsized-a")
-  let b = fixture_node(id: "stub-unsized-b")
-  let handed = [a, b]
-  let expected = handed |> map(n => n.node)
-  let adapted = derived_node_sizings(nodes: handed)
-  count(adapted.assignments) == 0
-    && count(adapted.refusals) == 0
-    && match schedule_forecast(
-      nodes: handed,
-      sizings: adapted.assignments,
-      edges: [],
-      observations: fixture_observations(),
-      history_refusals: [],
-      population_exclusions: [],
-      assumptions: assumptions(),
-      anchor: anchor(),
-    ) {
-      ScheduleForecastKnown { forecast: _ } => false
-      ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-        NodeUnsized { nodes } =>
-          count(nodes) == count(expected)
-            && all(expected, id => any(nodes, reported => reported == id))
-            && all(nodes, reported => any(expected, id => id == reported))
-        NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
-        ForecastGraphEmpty => false
-        DependencyCycle { nodes: _ } => false
-        DependencyEndpointUnknown { nodes: _ } => false
-        CycleTimeObservationNonPositive { nodes: _ } => false
-        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-        CalibrationHistoryRefused { refusals: _ } => false
-        ForecastRoadmapAuthorityRefused { detail: _ } => false
-        ForecastBuildRefused { node: _ } => false
-        SizingAssignmentRefused { refusals: _ } => false
-      })
-    }
-}
-
-// A CELL ANSWERED FOR ANOTHER SUBJECT REFUSES RATHER THAN BEING REBOUND. This is the control for
-// the seam that activates when the deriver starts answering: the adapter takes the derivation as a
-// parameter, so a fixture can hand node A a cell that names node B's subject and read what
-// happens. If node_sizing_adaptation ever rebinds positionally, this reds.
-test fn witness_a_cell_answered_for_another_subject_refuses() -> Bool {
-  let a = fixture_node(id: "subject-a")
-  let b = fixture_node(id: "subject-b")
-  let answered_for_b = SizingDerived {
-    subject: node_sizing_subject_id(rn: b),
-    sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall },
-  }
-  let adapted = node_sizing_adaptation(rn: a, d: answered_for_b)
-  count(adapted.assignments) == 0
-    && count(adapted.refusals) == 1
-    && all(adapted.refusals, r => match r {
-      SizingForAnotherSubject { asked, answered } =>
-        asked == node_sizing_subject_id(rn: a) && answered == node_sizing_subject_id(rn: b)
-      SizingAssignedTwice { subject: _ } => false
-    })
-}
-
-test fn witness_a_cell_answered_for_its_own_subject_is_admitted() -> Bool {
-  let a = fixture_node(id: "subject-a")
-  let answered_for_a = SizingDerived {
-    subject: node_sizing_subject_id(rn: a),
-    sizing: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall },
-  }
-  let adapted = node_sizing_adaptation(rn: a, d: answered_for_a)
-  count(adapted.refusals) == 0
-    && count(adapted.assignments) == 1
-    && all(adapted.assignments, assignment =>
-      assignment.subject == node_sizing_subject_id(rn: a)
-        && assignment.sizing.volume == VolumeSmall)
-}
-
-// TWO CELLS FOR ONE SUBJECT REFUSE RATHER THAN LETTING LIST ORDER PICK A WINNER. assigned_sizing
-// takes the first match, which is only correct if a subject appears at most once; nothing in a
-// List enforces that, so the fold refuses on the population before reading it.
-test fn witness_two_cells_for_one_subject_refuse_rather_than_being_ordered() -> Bool {
-  let n = fixture_node(id: "twice-sized")
-  match schedule_forecast(
-    nodes: [n],
-    sizings: [
-      sized_at(n: n, cell: NodeSizing { intricacy: IntricacyHigh, volume: VolumeSmall }),
-      sized_at(n: n, cell: fixture_cell()),
-    ],
-    edges: [],
-    observations: fixture_observations(),
-    history_refusals: [],
-    population_exclusions: [],
-    assumptions: assumptions(),
-    anchor: anchor(),
-  ) {
-    ScheduleForecastKnown { forecast: _ } => false
-    ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-      SizingAssignmentRefused { refusals: conflicts } =>
-        count(conflicts) == 1
-          && all(conflicts, c => match c {
-            SizingAssignedTwice { subject } => subject == node_sizing_subject_id(rn: n)
-            SizingForAnotherSubject { asked: _, answered: _ } => false
-          })
-      NodeUnsized { nodes: _ } => false
-      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
-      ForecastGraphEmpty => false
-      DependencyCycle { nodes: _ } => false
-      DependencyEndpointUnknown { nodes: _ } => false
-      CycleTimeObservationNonPositive { nodes: _ } => false
-      WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-      CalibrationHistoryRefused { refusals: _ } => false
-      ForecastRoadmapAuthorityRefused { detail: _ } => false
-      ForecastBuildRefused { node: _ } => false
-    })
   }
 }

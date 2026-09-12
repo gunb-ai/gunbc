@@ -4,17 +4,15 @@ import std.types { Int, String, Bool, List, NonEmptyStr }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapNodeIdentity, RoadmapAcceptanceReceipt,
   roadmap_criteria_digest,
-  WorkItemDispatch, NotDispatchable, Dispatchable, ManualAcceptance, PrsMerged,
+  NodeSizing, Sized, Unsized, IntricacyLow, VolumeSmall, ManualAcceptance, PrsMerged,
 }
 import gunbc.roadmap_status {
   TicketLine, DerivableLine, TicketFields,
   RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
 }
-import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified, ExecutionContract,
   CargoFmtValidation,
-  PathsUnrestricted,
-  PublicWorktreeLayout,
+  PathsUnrestricted, PublicWorktreeLayout,
 }
 import gunbc.v1_deletion_plan { V1FinishLineSpec, CompilerFixedPoint }
 import gunbc.roadmap_program_view {
@@ -68,9 +66,9 @@ fn fx_node_custom(
     node: id as RoadmapNodeId,
     line: TicketLine { done: false, ticket: fx_ticket(headline: headline) },
     carriers: [],
-    dispatch: if sized {
-      Dispatchable { repo: "gunbc", acceptance: ManualAcceptance }
-    } else { NotDispatchable },
+    sizing: if sized {
+      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
+    } else { Unsized },
     execution: if bound {
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
@@ -85,9 +83,9 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
     node: id as RoadmapNodeId,
     line: TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
     carriers: [],
-    dispatch: if sized {
-      Dispatchable { repo: "gunbc", acceptance: ManualAcceptance }
-    } else { NotDispatchable },
+    sizing: if sized {
+      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance }
+    } else { Unsized },
     execution: if bound {
       ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout }
     } else { ExecutionContractUnspecified },
@@ -102,7 +100,7 @@ fn fx_pr_node(id: String) -> RoadmapNode {
     node: id as RoadmapNodeId,
     line: DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
     carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     owner: "fixture",
     signoff: Unsigned,

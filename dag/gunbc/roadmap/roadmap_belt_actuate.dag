@@ -4,9 +4,10 @@ import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
-import gunbc.roadmap_status { signoff_accepts, line_ticket, node_title }
+import gunbc.roadmap_status { signoff_accepts, line_ticket }
+import gunbc.roadmap_spawner { node_title }
 import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
   CriterionReviewEvidence, criterion_standing, criterion_standing_text, review_verdict_instruction,
@@ -45,7 +46,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
@@ -193,7 +194,7 @@ import gunbc.worker_lifecycle {
   transcript_evidence_label,
   terminal_outcome_evidence_label,
 }
-import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
+import gunbc.dispatch_selection { default_provider_selection_request }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import gunbc.deploy_transition {
   ActuationAdmission,
@@ -231,13 +232,6 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
-  OperatorExclusive,
-  ExternalLead,
-  CalendarObservation,
-  OperatorExclusiveMode,
-  ExternalLeadMode,
-  CalendarObservationMode,
-  ClaimSourceRootLayout,
   ValidationOperation,
   ModeledValidationCommand,
   validation_operation_command,
@@ -246,6 +240,7 @@ import gunbc.roadmap_execution_contract {
   validation_consumes_affected_set_window,
   execution_contract_needs_diff_window,
 }
+import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publication_helper {
   PublicationAnswerStanding,
   AnswerReady, AnswerAwaited, AnswerSpoolRefused,
@@ -345,7 +340,6 @@ import gunbc.roadmap_validation_oracle {
   ValidationCommandRefused,
   ValidationChangeWindowRefused,
   ValidationContractUnspecified,
-  ValidationNotAgentWork,
   validation_oracle_scopes,
   validation_oracle_observe_from_source,
   validation_oracle_set_observe,
@@ -744,7 +738,7 @@ fn belt_attempt_state_initialize_for_instance(
       }
     }
   }
-}
+    }
 }
 
 type SpawnOriginRecord
@@ -1750,9 +1744,7 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      let selection = dispatch_actuator_selection(
-        sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
-      )
+      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
       match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
@@ -2099,9 +2091,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      let selection = dispatch_actuator_selection(
-        sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
-      )
+      let selection = dispatch_actuator_selection(node_sizing: node.sizing)
       match selection {
         DispatchActuatorSelectionRefused { reason } =>
           SpawnFailed {
@@ -2363,7 +2353,7 @@ fn belt_observe_from_result(
       BeltSessionsObserved {
         live: dispatch_live_sessions_from_entries(
           entries: entries,
-          selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+          selection: dispatch_actuator_selection(node_sizing: Unsized),
         ),
       }
     TmuxNoServer { evidence: _ } =>
@@ -3742,7 +3732,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: panes,
                   pane_observation_refusal: "",
-                  selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
@@ -3751,7 +3741,7 @@ fn belt_sessions_observe_for_instance(
                   entries: entries,
                   panes: [],
                   pane_observation_refusal: reason,
-                  selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+                  selection: dispatch_actuator_selection(node_sizing: Unsized),
                 ),
               }
           }
@@ -4905,7 +4895,6 @@ fn belt_run_validation_operations(
   worktree: String,
   oracle_identity: ContentHash,
   diff_window_path: String?,
-  source_roots: ClaimSourceRootLayout,
 ) -> BeltValidationRun {
   fold(
     validations,
@@ -4925,7 +4914,6 @@ fn belt_run_validation_operations(
           match validation_operation_command(
             validation: validation,
             environment: instance.execution_environment,
-            source_roots: source_roots,
           ) {
             Absent =>
               BeltValidationRun {
@@ -5412,29 +5400,13 @@ fn belt_verify_run_and_persist(
                 cause: ValidationContractUnspecified,
               },
             }
-          OperatorExclusive =>
-            BeltValidationRun {
-              executions: [],
-              verdict: ValidationRefused { cause: ValidationNotAgentWork { mode: OperatorExclusiveMode } },
-            }
-          ExternalLead =>
-            BeltValidationRun {
-              executions: [],
-              verdict: ValidationRefused { cause: ValidationNotAgentWork { mode: ExternalLeadMode } },
-            }
-          CalendarObservation =>
-            BeltValidationRun {
-              executions: [],
-              verdict: ValidationRefused { cause: ValidationNotAgentWork { mode: CalendarObservationMode } },
-            }
-          ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots } =>
+          ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } =>
             belt_run_validation_operations(
               instance: instance,
               validations: validations,
               worktree: worktree,
               oracle_identity: identity,
               diff_window_path: diff_window_path,
-              source_roots: source_roots,
             )
         }
     }
@@ -5755,7 +5727,7 @@ fn belt_stop_node_for_instance(
     BeltSessionsObserved { live } => {
       match dispatch_tmux_session_scope(
         node_id: node_id,
-        selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+        selection: dispatch_actuator_selection(node_sizing: Unsized),
       ) {
         Absent =>
           StopRefusedResult {
@@ -6441,7 +6413,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchNodeSuperseded { by: _ } => BandFail
     LaunchAlreadyAccepted => BandFail
     LaunchReviewRequired => BandFail
-    LaunchDispatchBindingMissing => BandFail
+    LaunchSizeMissing => BandFail
     LaunchExecutionContractMissing { reason: _ } => BandFail
     LaunchNotAgentWork { mode: _ } => BandFail
     LaunchDependenciesBlocked { blockers: _ } => BandFail
@@ -6559,7 +6531,7 @@ data belt_dispatch_path_prefix: String = "/dispatch/"
 // at construction time, so exemplars, sandbox echoes and post-selection receipts stay honest when
 // standing refuses production re-query.
 fn belt_dispatch_provider_label() -> String {
-  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       dispatch_provider_label(provider: provider)
     DispatchActuatorSelectionRefused { reason } =>
@@ -7406,7 +7378,7 @@ fn belt_publish_attempt_for_instance(
       }
     }
   }
-}
+  }
 }
 
 fn belt_publish_pass_outcome_from(outcomes: List<BeltPublishOutcome>) -> BeltPassOutcome {

@@ -1,5 +1,6 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
 import std.types { String, Int, List, Bool }
@@ -7,8 +8,9 @@ import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
   RoadmapNodeIdentity,
+  IntricacyHigh, VolumeMedium,
   PrsMerged,
-  Dispatchable,
+  Sized,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_publish {
@@ -25,7 +27,6 @@ import gunbc.roadmap_publish {
 }
 import extdeps.github.pulls { PullRequest, PullRequestRef, Open }
 import extdeps.github.github { GitHubUser, User, Repository }
-import gunbc.repository { gunbc_repository }
 import std.types { CommitSha }
 import std.content_hash { content_hash_atom }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
@@ -146,7 +147,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchSessionsObserved,
@@ -195,7 +196,7 @@ fn ready_node(id: String) -> RoadmapNode {
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -516,7 +517,7 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
@@ -706,14 +707,11 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 25
+  belt_dispatch_label_band_rows().length() == 22
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
-    && band_key_for_label(label: "operator_exclusive") == "fail"
-    && band_key_for_label(label: "external_lead") == "fail"
-    && band_key_for_label(label: "calendar_observation") == "fail"
-    && band_key_for_label(label: "dispatch_binding_missing") == "fail"
+    && band_key_for_label(label: "size_missing") == "fail"
     && band_key_for_label(label: "review_required") == "fail"
     && band_key_for_label(label: "node_superseded") == "fail"
     && band_key_for_label(label: "no_capacity") == "fail"
@@ -772,11 +770,8 @@ fn d4_wire_contract_labels() -> List<String> {
     "node_superseded",
     "already_done_signed_off",
     "review_required",
-    "dispatch_binding_missing",
+    "size_missing",
     "execution_contract_missing",
-    "operator_exclusive",
-    "external_lead",
-    "calendar_observation",
     "dependencies_blocked",
     "observe_refused",
     "already_live",
@@ -1866,6 +1861,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
     attempt_key: "feedfacefeedface",
     branch: "dispatch/belt-pub-node-afeedfacefeedface",
     base_branch: "main" as NonEmptyStr,
+    repository: gunbc_repository,
     head: worktree_head_observation_of(
       outcome: ExecFailed {
         program: "git",
@@ -1873,17 +1869,16 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
         stderr: "not a git repository",
       },
     ),
-    repository: gunbc_repository,
   )
   let observed = belt_publication_subject_for(
     node_id: "belt-pub-node",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/belt-pub-node-afeedfacefeedface",
     base_branch: "main" as NonEmptyStr,
+    repository: gunbc_repository,
     head: worktree_head_observation_of(
       outcome: ExecOk { stdout: (belt_pub_head as String) },
     ),
-    repository: gunbc_repository,
   )
   subject_key(observation: missing) == ""
     && subject_key(observation: observed) == (belt_pub_head as String)

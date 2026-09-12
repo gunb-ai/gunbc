@@ -3,8 +3,9 @@ module test.claim.roadmap_spawner
 import gunbc.roadmap_model {
   RoadmapNodeId,
   RoadmapNode, RoadmapEdge, Pointer,
+  IntricacyHigh, VolumeMedium,
   PrsMerged, ManualAcceptance,
-  WorkItemDispatch, NotDispatchable, Dispatchable,
+  NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
 import gunbc.roadmap_status { DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered, HandbackNotDelivered }
@@ -23,7 +24,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     node: roadmap_spawner_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -36,7 +37,7 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
     node: base.node,
     line: base.line,
     carriers: base.carriers,
-    dispatch: base.dispatch,
+    sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
@@ -49,7 +50,7 @@ fn rejected_node(base: RoadmapNode) -> RoadmapNode {
     node: base.node,
     line: base.line,
     carriers: base.carriers,
-    dispatch: base.dispatch,
+    sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackNotDelivered, as_expected: true },
@@ -62,7 +63,7 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     node: roadmap_spawner_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
-    dispatch: NotDispatchable,
+    sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -103,7 +104,7 @@ test fn witness_unsatisfied_dep_not_spawnable() -> Bool {
 }
 
 test fn witness_unsized_node_excluded() -> Bool {
-  let node_a = unsized_derivable(id: "test-unsized", prs: [], title: "NotDispatchable Node")
+  let node_a = unsized_derivable(id: "test-unsized", prs: [], title: "Unsized Node")
   let doc = fixture_doc(nodes: [node_a], edges: [])
   let spawnable = next_spawnable(doc: doc, merged: [])
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-unsized"))
@@ -224,7 +225,7 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
     node: roadmap_spawner_nid(s: id),
     line: SupersededLine { by: by, content: content },
     carriers: [],
-    dispatch: NotDispatchable,
+    sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
@@ -251,7 +252,7 @@ test fn witness_superseded_control_open_parent_still_gates() -> Bool {
     node: roadmap_spawner_nid(s: "sp-old"),
     line: AuthoredLine { done: false, content: "Old Lane Row" },
     carriers: [],
-    dispatch: NotDispatchable,
+    sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,

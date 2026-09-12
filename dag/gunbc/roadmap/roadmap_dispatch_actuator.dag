@@ -20,12 +20,19 @@ import std.upsert_decision {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapNodeId,
-  NotDispatchable,
-  Dispatchable,
-  node_sizing_derivation,
+  Intricacy,
+  IntricacyLow,
+  IntricacyMedium,
+  IntricacyHigh,
+  Volume,
+  VolumeSmall,
+  VolumeMedium,
+  VolumeLarge,
+  NodeSizing,
+  Sized,
+  Unsized,
 }
-import gunbc.roadmap_spawner { dispatch_brief_template }
-import gunbc.roadmap_status { node_title }
+import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
 import gunbc.roadmap.roadmap_attempt_continuation { AttemptOrigin, FreshFromBase, attempt_origin_base_ref, continuation_brief_prefix }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
@@ -101,10 +108,6 @@ import gunbc.dispatch_selection {
   DispatchExecutionReceipt,
   DispatchSelectionResolved,
   DispatchSelectionRefused,
-  SizingProfileExpectation,
-  NoDerivedSizingExpectation,
-  DerivedSizingExpectation,
-  sizing_profile_expectation,
   default_provider_selection_request,
   provider_selection_request_for_kind,
   dispatch_selection_for_instance,
@@ -143,7 +146,6 @@ import gunbc.worker_lifecycle {
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
-import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
@@ -176,6 +178,7 @@ import gunbc.roadmap_verification_receipt {
 import gunbc.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
+import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination,
   DispatchDestinationResolved,
@@ -339,21 +342,15 @@ fn dispatch_harness_selection() -> DispatchActuatorSelection {
   }
 }
 
-// WHAT THESE SELECTORS TAKE IS AN EXPECTATION, NOT A SIZE. The parameter used to be a hand-authored
-// NodeSizing read off the roadmap node; it is now gunbc.dispatch_selection
-// SizingProfileExpectation, which a caller with a task derives from that task and a caller without
-// one (a harness probe) states as absent. The harness arm ignores it for the same reason it always
-// did -- there is one harness and nothing to choose -- and says so here rather than leaving a silent
-// unused parameter.
-fn dispatch_actuator_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
+fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
   dispatch_harness_selection()
 }
 
-fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
+fn dispatch_actuator_vendor_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
     instance: srv1_live_dashboard_instance(),
     request: default_provider_selection_request(),
-    sizing_expectation: sizing_expectation,
+    node_sizing: node_sizing,
   ) {
     DispatchSelectionResolved { receipt } =>
       DispatchActuatorSelectionOk {
@@ -362,7 +359,7 @@ fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectati
         model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
-    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
   }
 }
@@ -374,7 +371,7 @@ fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectati
 // path instead.
 fn dispatch_actuator_selection_for_provider(
   provider: DispatchCliProvider,
-  sizing_expectation: SizingProfileExpectation,
+  node_sizing: NodeSizing,
 ) -> DispatchActuatorSelection {
   match dispatch_cli_to_provider_kind(provider: provider) {
     DispatchExecutorHasNoVendorKind { executor: e } =>
@@ -390,7 +387,7 @@ fn dispatch_actuator_selection_for_provider(
     request: provider_selection_request_for_kind(
       kind: vendor_kind,
     ),
-    sizing_expectation: sizing_expectation,
+    node_sizing: node_sizing,
   ) {
     DispatchSelectionResolved { receipt } =>
       DispatchActuatorSelectionOk {
@@ -399,7 +396,7 @@ fn dispatch_actuator_selection_for_provider(
         model: resolved_model_selection(resolved: receipt.resolved_selection),
         process_fingerprint: resolved_process_fingerprint(resolved: receipt.resolved_selection),
       }
-    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       DispatchActuatorSelectionRefused { reason: reason }
   }
   }
@@ -606,7 +603,7 @@ fn dispatch_provider_instance_for_kind(
 // The alternative was to invent one so the shape stayed populated, which would put a fabricated
 // vendor row into every session observation downstream.
 fn dispatch_provider_instance() -> ProviderInstance? {
-  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
       match dispatch_cli_to_provider_kind(provider: provider) {
         DispatchProviderKindIs { kind: k } =>
@@ -641,7 +638,7 @@ fn dispatch_worker_observation() -> WorkerObservation? {
 }
 
 fn dispatch_applied_effort() -> ReasoningEffort? {
-  match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
+  match dispatch_actuator_selection(node_sizing: Unsized) {
     DispatchActuatorSelectionOk { provider: _, effort, model: _, process_fingerprint: _ } =>
       Present { value: effort }
     DispatchActuatorSelectionRefused { reason: _ } => none
@@ -651,7 +648,7 @@ fn dispatch_applied_effort() -> ReasoningEffort? {
 fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
   match dispatch_actuator_selection_for_provider(
     provider: provider,
-    sizing_expectation: NoDerivedSizingExpectation,
+    node_sizing: Unsized,
   ) {
     DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
       Present { value: process_fingerprint }
@@ -1570,8 +1567,8 @@ fn dispatch_brief_fields_for_environment(
     contract: node.execution,
     environment: environment,
   )
-  match node.dispatch {
-  Dispatchable { repo, acceptance: _ } => {
+  match node.sizing {
+  Sized { intricacy, volume, repo, acceptance: _ } => {
     let f = dispatch_slot_fields(node: node, repo: repo)
     DispatchBriefFields {
       node_id: f.node_id,
@@ -1586,7 +1583,7 @@ fn dispatch_brief_fields_for_environment(
       expected_artifact: "implementation diff plus receipts from the declared validation operations",
     }
   }
-  NotDispatchable => {
+  Unsized => {
     let f = dispatch_slot_fields(node: node, repo: "")
     DispatchBriefFields {
       node_id: f.node_id,
@@ -2495,9 +2492,9 @@ fn dispatch_spawn_commands_for_inventory(
   match resolve_dispatch_selection(
     inventory: inventory,
     request: request,
-    sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
+    node_sizing: node.sizing,
   ) {
-    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
+    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
       DispatchSpawnRefused {
         step: "dispatch-selection" as NonEmptyStr,
         detail: reason as String,
@@ -2691,8 +2688,8 @@ fn dispatch_spawn_commands_for_resolved_instance(
     }
     }
   }
-}
-}
+      }
+  }
 }
 
 fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
@@ -2838,25 +2835,25 @@ fn classify_dispatch_request_for_process_fingerprint(
         if !destination_is_this_spawn_tree(identity: identity) {
           DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) }
         } else {
-        let scope = dispatch_tmux_session_scope_for_process_fingerprint(
-          node_id: node.node,
-          process_fingerprint: process_fingerprint,
-        )
-        let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
-        match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
-          UpsertClassification { verdict: _, decision: Refuse { reason } } =>
-            DispatchRefused { reason: reason }
-          UpsertClassification { verdict: _, decision: Noop } =>
-            DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
-          UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
-            dispatch_permitted_from_selection(
-              node: node,
-              attempt_key: attempt_key,
-              effort: effort,
-              model: model,
-            )
-        }
+      let scope = dispatch_tmux_session_scope_for_process_fingerprint(
+        node_id: node.node,
+        process_fingerprint: process_fingerprint,
+      )
+      let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
+      match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
+        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+          DispatchRefused { reason: reason }
+        UpsertClassification { verdict: _, decision: Noop } =>
+          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+          dispatch_permitted_from_selection(
+            node: node,
+            attempt_key: attempt_key,
+            effort: effort,
+            model: model,
+          )
       }
+        }
     }
   }
 }
@@ -2894,20 +2891,20 @@ fn classify_dispatch_request(
         if !destination_is_this_spawn_tree(identity: identity) {
           DispatchRefused { reason: destination_not_this_spawn_tree_reason(identity: identity) }
         } else {
-        match selection {
-          DispatchActuatorSelectionRefused { reason } =>
-            DispatchRefused { reason: reason }
-          DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
-            classify_dispatch_request_for_process_fingerprint(
-              node: node,
-              ready: ready,
-              tmux_entries: tmux_entries,
-              attempt_key: attempt_key,
-              process_fingerprint: process_fingerprint,
-              effort: effort,
-              model: model,
-            )
-        }
+      match selection {
+        DispatchActuatorSelectionRefused { reason } =>
+          DispatchRefused { reason: reason }
+        DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
+          classify_dispatch_request_for_process_fingerprint(
+            node: node,
+            ready: ready,
+            tmux_entries: tmux_entries,
+            attempt_key: attempt_key,
+            process_fingerprint: process_fingerprint,
+            effort: effort,
+            model: model,
+          )
+      }
         }
     }
   }

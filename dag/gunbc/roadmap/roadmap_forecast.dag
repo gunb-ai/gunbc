@@ -31,17 +31,12 @@ import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   RoadmapAcceptanceReceipt,
-  node_sizing_derivation,
-  node_sizing_subject_id,
-  node_accepted,
-}
-import gunbc.roadmap_sizing {
+  Intricacy,
+  Volume,
   NodeSizing,
-  SizingSubjectId,
-  SizingDerived,
-  SizingNotDerivable,
-  NodeSizingDerivation,
-  node_sizing_eq,
+  Unsized,
+  Sized,
+  node_accepted,
 }
 import gunbc.roadmap_belt { BeltCapacity }
 import gunbc.roadmap_authority {
@@ -92,13 +87,22 @@ data critical_path_method_used: CriticalPathMethod = critical_path_method
 data three_point_estimate_method_used: ThreePointEstimateMethod = three_point_estimate_method
 data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod = resource_capacity_lower_bound_method
 
-// NodeSizing WAS A SECOND NAME FOR A SIZE. It carried exactly intricacy and volume, and existed
-// only because the authored NodeSizing coproduct fused a size with the repository and the
-// acceptance route, so this module had to project the size back out of the bundle. With the
-// unbundling that projection has nothing to strip: gunbc.roadmap_sizing NodeSizing IS the cell, and
-// keeping both would be the section 3 nickname. Calibration now keys on the DERIVED size, which is
-// why this module's population is empty until the deriver lands -- see the declared drop
-// gunbc.rung_drop.roadmap_sizing_authored_to_derived.
+type SizingCell {
+  intricacy: Intricacy
+  volume: Volume
+}
+
+fn sizing_cell_eq(a: SizingCell, b: SizingCell) -> Bool {
+  a.intricacy == b.intricacy && a.volume == b.volume
+}
+
+fn sizing_cell_of(sizing: NodeSizing) -> SizingCell? {
+  match sizing {
+    Unsized => Absent
+    Sized { intricacy, volume, repo: _, acceptance: _ } =>
+      Present { value: SizingCell { intricacy: intricacy, volume: volume } }
+  }
+}
 
 type AcceptedNodePullLink {
   node: RoadmapNodeId
@@ -151,7 +155,7 @@ type CycleTimeProvenance
 
 type CycleTimeObservation {
   node: RoadmapNodeId
-  sizing_cell: NodeSizing
+  sizing_cell: SizingCell
   pull_number: Int
   cycle_time: Millisecond
   accepted_on: NonEmptyStr
@@ -169,7 +173,6 @@ type CycleTimeHistoryRefusal
   | HistoryPullDuplicate { node: RoadmapNodeId, pull_number: Int }
   | HistoryPullNotMergedAfterOpen { node: RoadmapNodeId, pull_number: Int }
   | HistoryAcceptanceCarrierLoadRefused { detail: String }
-  | HistorySizingAssignmentRefused { refusals: List<SizingAssignmentRefusal> }
 
 type CycleTimePopulationExclusion
   = BundledPullDelivery { pull_number: Int, nodes: List<RoadmapNodeId> }
@@ -182,7 +185,6 @@ type CycleTimeObservationBuild
 fn observation_for_link(
   link: AcceptedNodePullLink,
   nodes: List<RoadmapNode>,
-  sizings: List<NodeSizingAssignment>,
   receipts: List<RoadmapAcceptanceReceipt>,
   pulls: List<PullTimingObservation>,
   links: List<AcceptedNodePullLink>,
@@ -206,7 +208,7 @@ fn observation_for_link(
   if !node_accepted(receipts: receipts, rn: node) {
     return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
   }
-  let cell = match assigned_sizing(sizings: sizings, subject: node_sizing_subject_id(rn: node)) {
+  let cell = match sizing_cell_of(sizing: node.sizing) {
     Absent => return CycleTimeHistoryRefused { refusal: HistoryNodeUnsized { node: link.node } }
     Present { value } => value
   }
@@ -247,13 +249,6 @@ fn observation_for_link(
   }
 }
 
-// BOTH ASSIGNMENT CHECKS RUN ON THIS POPULATION TOO, and skipping them here was the defect this
-// module's own NodeSizingAdaptation note describes: reading only the assignments makes a
-// wrong-subject answer indistinguishable from an unsized node, so a SizingForAnotherSubject would
-// have degraded silently into HistoryNodeUnsized and blamed the wrong cause, and without the
-// duplicate check list order would arbitrate between two conflicting cells inside assigned_sizing.
-// The whole build refuses rather than proceeding on a population it cannot trust, which is the
-// shape the sibling HistoryAcceptanceCarrierLoadRefused arm already uses for a bad population.
 fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
   match roadmap_acceptance_receipts() {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: detail } =>
@@ -264,18 +259,9 @@ fn roadmap_cycle_time_observation_builds() -> List<CycleTimeObservationBuild> {
       let nodes = declared_roadmap_nodes()
       let pulls = cited_pull_timings()
       let links = accepted_node_pull_links()
-      let adaptation = derived_node_sizings(nodes: nodes)
-      let sizings = adaptation.assignments
-      let assignment_refusals = concat(adaptation.refusals, duplicate_sizing_subjects(sizings: sizings))
-      if count(assignment_refusals) > 0 {
-        return [CycleTimeHistoryRefused {
-          refusal: HistorySizingAssignmentRefused { refusals: assignment_refusals },
-        }]
-      }
       links |> map(link => observation_for_link(
         link: link,
         nodes: nodes,
-        sizings: sizings,
         receipts: receipts,
         pulls: pulls,
         links: links,
@@ -324,7 +310,7 @@ type CycleTimeInterval {
 
 type CalibrationResult
   = Calibrated { interval: CycleTimeInterval }
-  | CalibrationRefusedNoSample { cell: NodeSizing }
+  | CalibrationRefusedNoSample { cell: SizingCell }
 
 fn int_at(sorted: List<Int>, index: Int) -> Int {
   first(sorted |> skip(n: index))
@@ -339,10 +325,10 @@ fn median_int(sorted: List<Int>) -> Int {
   }
 }
 
-fn calibrate_cell(cell: NodeSizing, observations: List<CycleTimeObservation>) -> CalibrationResult {
+fn calibrate_cell(cell: SizingCell, observations: List<CycleTimeObservation>) -> CalibrationResult {
   let samples = observations
     |> filter(o => o.provenance == AcceptedRoadmapNodePullHistory)
-    |> filter(o => node_sizing_eq(a: o.sizing_cell, b: cell))
+    |> filter(o => sizing_cell_eq(a: o.sizing_cell, b: cell))
     |> map(o => millisecond_count(m: o.cycle_time))
     |> sort_by(n => n)
   if count(samples) == 0 {
@@ -447,7 +433,7 @@ type ScheduleForecast {
 }
 
 type CalibrationGap {
-  cell: NodeSizing
+  cell: SizingCell
   nodes: List<RoadmapNodeId>
 }
 
@@ -467,7 +453,6 @@ type ForecastRefusal
   | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
   | ForecastRoadmapAuthorityRefused { detail: String }
   | ForecastBuildRefused { node: RoadmapNodeId }
-  | SizingAssignmentRefused { refusals: List<SizingAssignmentRefusal> }
 
 type ScheduleForecastResult
   = ScheduleForecastKnown { forecast: ScheduleForecast }
@@ -480,130 +465,35 @@ fn forecast_refusal_count(result: ScheduleForecastResult) -> Int {
   }
 }
 
-// SIZING IS AN INPUT TO THIS FOLD, NOT SOMETHING IT REACHES OUT FOR. Every other fact the forecast
-// consumes -- nodes, edges, observations, refusals, exclusions, the anchor -- arrives as a
-// parameter, and sizing was the exception only because it rode on the node record. Now that it is
-// derived, passing the derivation in keeps the fold total and testable: a witness supplies the
-// cells it wants to exercise, and production supplies whatever the deriver actually answered. A
-// node with no assignment is unsized to this fold, which is the same refusal the authored Unsized
-// arm used to produce.
-// THE ASSIGNMENT IS KEYED BY THE KEY THE DERIVER ANSWERED UNDER, and this is the whole reason the
-// type exists rather than the sizing riding on the node record. A derivation is SUBJECTED to a
-// SizingSubjectId -- gunbc.roadmap_model node_sizing_subject_id, the node's minted identity,
-// because roadmap_node_identity_law forbids the slug as an identity input. An assignment keyed by
-// RoadmapNodeId would have derived evidence under a durable key and then matched it to nodes by a
-// mutable one, so a rename would silently break the join: the strength of a join is its weakest
-// key, and the durable one would never have participated in the lookup.
-//
-// THE SLUG IS NOT BANISHED, IT IS SCOPED. RoadmapNodeId remains the key of the dependency edges,
-// of the refusal payloads, and of every population this module reports, because those are the
-// graph's and the wire's vocabulary and this change does not migrate them. What it must not be is
-// the key of THIS join. So a fold filters by identity and reports by slug.
-type NodeSizingAssignment {
-  subject: SizingSubjectId
-  sizing: NodeSizing
-}
-
-fn assigned_sizing(sizings: List<NodeSizingAssignment>, subject: SizingSubjectId) -> NodeSizing? {
-  match sizings |> filter(a => a.subject == subject) |> first {
-    Absent => Absent
-    Present { value: a } => Present { value: a.sizing }
-  }
-}
-
-// A DERIVED CELL IS ADMITTED FOR THE SUBJECT IT NAMES OR FOR NO SUBJECT AT ALL. The adapter below
-// is the seam where an answer from gunbc.roadmap_sizing becomes a fact about a roadmap node, and
-// it is the one place a wrong answer could be rebound to the wrong node. It does not rebind: it
-// compares the subject the deriver ANSWERED UNDER against the subject the node was ASKED UNDER --
-// the same gunbc.roadmap_model node_sizing_subject_id projection on both sides -- and a mismatch
-// produces SizingForAnotherSubject rather than an assignment.
-//
-// THIS ARM IS UNREACHABLE TODAY AND THAT IS EXACTLY WHY IT IS HERE. The stub refuses every subject,
-// so no assignment of any kind is produced; but this adapter is deliberately written to start
-// producing the moment the deriver answers, with no second edit. A positional rebind left at this
-// seam would therefore not be a dormant defect -- it would be a live defect scheduled to arrive
-// silently on the day the seam activates. The control that fires it is authorable because the
-// derivation is a PARAMETER here:
-// test.claim.roadmap_forecast_witness.witness_a_cell_answered_for_another_subject_refuses hands
-// this function a cell carrying another node's subject and reads the refusal, and
-// witness_a_cell_answered_for_its_own_subject_is_admitted is its positive twin, so the arm is
-// shown to discriminate rather than merely to fire.
-type SizingAssignmentRefusal
-  = SizingForAnotherSubject { asked: SizingSubjectId, answered: SizingSubjectId }
-  | SizingAssignedTwice { subject: SizingSubjectId }
-
-// BOTH HALVES OF ONE ANSWER, reported together rather than one silently dropping the other: a fold
-// that returned only the assignments would make a wrong-subject answer indistinguishable from an
-// unsized node, and one that returned only refusals could not produce a forecast.
-type NodeSizingAdaptation {
-  assignments: List<NodeSizingAssignment>
-  refusals: List<SizingAssignmentRefusal>
-}
-
-fn node_sizing_adaptation(rn: RoadmapNode, d: NodeSizingDerivation) -> NodeSizingAdaptation {
-  let asked = node_sizing_subject_id(rn: rn)
-  match d {
-    SizingNotDerivable { subject: _, detail: _ } =>
-      NodeSizingAdaptation { assignments: [], refusals: [] }
-    SizingDerived { subject, sizing } =>
-      if subject == asked {
-        NodeSizingAdaptation {
-          assignments: [NodeSizingAssignment { subject: subject, sizing: sizing }],
-          refusals: [],
-        }
-      } else {
-        NodeSizingAdaptation {
-          assignments: [],
-          refusals: [SizingForAnotherSubject { asked: asked, answered: subject }],
-        }
+fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
+  match result {
+    ScheduleForecastKnown { forecast: _ } => 0
+    ScheduleForecastRefused { refusals } => refusals |> fold(init: 0, f: (acc, refusal) =>
+      acc + match refusal {
+        NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps)
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => 0
+        ForecastGraphEmpty => 0
+        DependencyCycle { nodes: _ } => 0
+        DependencyEndpointUnknown { nodes: _ } => 0
+        NodeUnsized { nodes: _ } => 0
+        CycleTimeObservationNonPositive { nodes: _ } => 0
+        CalibrationHistoryRefused { refusals: _ } => 0
+        ForecastRoadmapAuthorityRefused { detail: _ } => 0
+        ForecastBuildRefused { node: _ } => 0
       }
+    )
   }
 }
 
-// THE PRODUCTION ADAPTATION, AND IT IS EMPTY TODAY. gunbc.roadmap_sizing derive_task_sizing is a
-// stub that refuses for every subject, so this fold yields no assignments and no refusals, and the
-// forecast refuses with NodeUnsized over the whole graph. That is the declared loss, rostered as
-// gunbc.rung_drop.roadmap_sizing_authored_to_derived; it is written as a fold over the real deriver
-// rather than as a literal empty list, so the day the deriver answers this function starts
-// producing without being edited.
-fn derived_node_sizings(nodes: List<RoadmapNode>) -> NodeSizingAdaptation {
-  nodes |> fold(init: NodeSizingAdaptation { assignments: [], refusals: [] }, f: (acc, n) => {
-    let one = node_sizing_adaptation(rn: n, d: node_sizing_derivation(rn: n))
-    NodeSizingAdaptation {
-      assignments: concat(acc.assignments, one.assignments),
-      refusals: concat(acc.refusals, one.refusals),
-    }
-  })
-}
-
-// LIST ORDER IS NOT AN ARBITER. assigned_sizing takes the first match, which is correct only if a
-// subject can appear at most once; nothing in a List enforces that, so the population is checked
-// before any fold reads it and a repeated subject refuses instead of letting position decide which
-// of two conflicting cells wins.
-fn duplicate_sizing_subjects(sizings: List<NodeSizingAssignment>) -> List<SizingAssignmentRefusal> {
-  sizings
-    |> filter(a => count(sizings |> filter(b => b.subject == a.subject)) > 1)
-    |> fold(init: [], f: (acc, a) =>
-      if any(acc, existing => match existing {
-        SizingAssignedTwice { subject } => subject == a.subject
-        SizingForAnotherSubject { asked: _, answered: _ } => false
-      }) { acc } else { concat(acc, [SizingAssignedTwice { subject: a.subject }]) }
-    )
-}
-
-fn unique_cells(cells: List<NodeSizing>) -> List<NodeSizing> {
+fn unique_cells(cells: List<SizingCell>) -> List<SizingCell> {
   cells |> fold(init: [], f: (acc, cell) =>
-    if any(acc, existing => node_sizing_eq(a: existing, b: cell)) { acc }
+    if any(acc, existing => sizing_cell_eq(a: existing, b: cell)) { acc }
     else { concat(acc, [cell]) }
   )
 }
 
-fn calibration_gaps(
-  nodes: List<RoadmapNode>,
-  sizings: List<NodeSizingAssignment>,
-  observations: List<CycleTimeObservation>,
-) -> List<CalibrationGap> {
-  let cells = unique_cells(cells: nodes |> flat_map(n => match assigned_sizing(sizings: sizings, subject: node_sizing_subject_id(rn: n)) {
+fn calibration_gaps(nodes: List<RoadmapNode>, observations: List<CycleTimeObservation>) -> List<CalibrationGap> {
+  let cells = unique_cells(cells: nodes |> flat_map(n => match sizing_cell_of(sizing: n.sizing) {
     Absent => []
     Present { value } => [value]
   }))
@@ -612,9 +502,9 @@ fn calibration_gaps(
     CalibrationRefusedNoSample { cell: missing } => [CalibrationGap {
       cell: missing,
       nodes: nodes
-        |> filter(n => match assigned_sizing(sizings: sizings, subject: node_sizing_subject_id(rn: n)) {
+        |> filter(n => match sizing_cell_of(sizing: n.sizing) {
           Absent => false
-          Present { value } => node_sizing_eq(a: value, b: missing)
+          Present { value } => sizing_cell_eq(a: value, b: missing)
         })
         |> map(n => n.node),
     }]
@@ -675,12 +565,11 @@ fn longer_path(a: PathEstimate, b: PathEstimate) -> PathEstimate {
 fn path_to_node(
   node: RoadmapNode,
   nodes: List<RoadmapNode>,
-  sizings: List<NodeSizingAssignment>,
   edges: List<RoadmapEdge>,
   observations: List<CycleTimeObservation>,
   bound: ForecastBound,
 ) -> PathEstimateResult {
-  let cell = match assigned_sizing(sizings: sizings, subject: node_sizing_subject_id(rn: node)) {
+  let cell = match sizing_cell_of(sizing: node.sizing) {
     Absent => return PathEstimateUnknown { node: node.node }
     Present { value } => value
   }
@@ -695,7 +584,6 @@ fn path_to_node(
       Present { value: parent } => path_to_node(
         node: parent,
         nodes: nodes,
-        sizings: sizings,
         edges: edges,
         observations: observations,
         bound: bound,
@@ -745,12 +633,11 @@ fn forecast_instant(anchor: ForecastAnchorObservation, duration: Millisecond) ->
 fn build_node_forecast(
   node: RoadmapNode,
   nodes: List<RoadmapNode>,
-  sizings: List<NodeSizingAssignment>,
   edges: List<RoadmapEdge>,
   observations: List<CycleTimeObservation>,
   anchor: ForecastAnchorObservation,
 ) -> NodeForecastBuild {
-  let cell = match assigned_sizing(sizings: sizings, subject: node_sizing_subject_id(rn: node)) {
+  let cell = match sizing_cell_of(sizing: node.sizing) {
     Absent => return NodeForecastBuildRefused { node: node.node }
     Present { value } => value
   }
@@ -758,9 +645,9 @@ fn build_node_forecast(
     CalibrationRefusedNoSample { cell: _ } => return NodeForecastBuildRefused { node: node.node }
     Calibrated { interval } => interval
   }
-  let earliest = path_to_node(node: node, nodes: nodes, sizings: sizings, edges: edges, observations: observations, bound: EarliestBound)
-  let median = path_to_node(node: node, nodes: nodes, sizings: sizings, edges: edges, observations: observations, bound: MedianBound)
-  let latest = path_to_node(node: node, nodes: nodes, sizings: sizings, edges: edges, observations: observations, bound: LatestBound)
+  let earliest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: EarliestBound)
+  let median = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: MedianBound)
+  let latest = path_to_node(node: node, nodes: nodes, edges: edges, observations: observations, bound: LatestBound)
   match earliest {
     PathEstimateUnknown { node: _ } => NodeForecastBuildRefused { node: node.node }
     PathEstimated { estimate: early } => match median {
@@ -870,7 +757,6 @@ fn parallelism_headroom(total: TotalWork, critical: CriticalPathMinimum) -> Para
 
 fn schedule_forecast(
   nodes: List<RoadmapNode>,
-  sizings: List<NodeSizingAssignment>,
   edges: List<RoadmapEdge>,
   observations: List<CycleTimeObservation>,
   history_refusals: List<CycleTimeHistoryRefusal>,
@@ -880,19 +766,16 @@ fn schedule_forecast(
 ) -> ScheduleForecastResult {
   let cycles = dependency_cycle_nodes(nodes: nodes, edges: edges)
   let unknown_endpoints = unknown_dependency_endpoints(nodes: nodes, edges: edges)
-  let unsized = nodes |> filter(n => match assigned_sizing(sizings: sizings, subject: node_sizing_subject_id(rn: n)) { Absent => true Present { value: _ } => false }) |> map(n => n.node)
+  let unsized = nodes |> filter(n => match n.sizing { Unsized => true Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => false }) |> map(n => n.node)
   let non_positive_observation_nodes = observations
     |> filter(observation => millisecond_count(m: observation.cycle_time) <= 0)
     |> fold(init: [], f: (located, observation) =>
       if any(located, node => node == observation.node) { located }
       else { append(located, items: [observation.node]) }
     )
-  let gaps = calibration_gaps(nodes: nodes, sizings: sizings, observations: observations)
+  let gaps = calibration_gaps(nodes: nodes, observations: observations)
   let invalid_worker_cap = assumptions.worker_concurrency_cap.max_concurrent <= 0
-  let duplicate_subjects = duplicate_sizing_subjects(sizings: sizings)
   let refusals = concat(
-    if count(duplicate_subjects) > 0 { [SizingAssignmentRefused { refusals: duplicate_subjects }] } else { [] },
-    concat(
     if count(nodes) == 0 { [ForecastGraphEmpty] } else { [] },
     concat(
       if count(cycles) > 0 { [DependencyCycle { nodes: cycles }] } else { [] },
@@ -918,7 +801,6 @@ fn schedule_forecast(
         ),
       ),
     ),
-    ),
   )
   if count(refusals) > 0 {
     return ScheduleForecastRefused { refusals: refusals }
@@ -926,7 +808,6 @@ fn schedule_forecast(
   let builds = nodes |> map(node => build_node_forecast(
     node: node,
     nodes: nodes,
-    sizings: sizings,
     edges: edges,
     observations: observations,
     anchor: anchor,
@@ -993,24 +874,15 @@ fn roadmap_schedule_forecast_over(
       ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: detail }] }
     RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
       let builds = roadmap_cycle_time_observation_builds()
-      let active_nodes = active_roadmap_nodes_for_accepted(accepted: accepted)
-      let adaptation = derived_node_sizings(nodes: active_nodes)
-      if count(adaptation.refusals) > 0 {
-        ScheduleForecastRefused {
-          refusals: [SizingAssignmentRefused { refusals: adaptation.refusals }],
-        }
-      } else {
-        schedule_forecast(
-          nodes: active_nodes,
-          sizings: adaptation.assignments,
-          edges: active_roadmap_edges_for_accepted(accepted: accepted),
-          observations: accepted_cycle_time_observations(builds: builds),
-          history_refusals: cycle_time_history_refusals(builds: builds),
-          population_exclusions: cycle_time_population_exclusions(builds: builds),
-          assumptions: assumptions,
-          anchor: anchor,
-        )
-      }
+      schedule_forecast(
+        nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
+        edges: active_roadmap_edges_for_accepted(accepted: accepted),
+        observations: accepted_cycle_time_observations(builds: builds),
+        history_refusals: cycle_time_history_refusals(builds: builds),
+        population_exclusions: cycle_time_population_exclusions(builds: builds),
+        assumptions: assumptions,
+        anchor: anchor,
+      )
   }
 }
 
