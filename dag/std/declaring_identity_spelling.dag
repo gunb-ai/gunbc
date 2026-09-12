@@ -9,7 +9,17 @@ import v2.std.qualified_name { QualifiedName }
 // XL-3: whether one mention is spelled as the identity that declared its target.
 // Canonical spelling is the SymbolIndex path (v2.std.symbol_index), the same qualified
 // projection 03_resolve already uses. This module does not walk trees and does not collect
-// sites -- that producer is held until the file-ingest path yields sites.
+// sites. Wiring is held: consume v2.compiler.reference_site_collector's
+// ReferenceSiteCollection (.sites plus .unreadable_roots) and refuse to treat the
+// census as complete unless reference_site_collection_is_total. Do not add a second
+// collector or a parse-tree walker.
+//
+// WHAT PRODUCTION INGEST ACTUALLY SEES is measured by
+// v2.test.claim.namespace_xl0.call_argument_mention_survival, not by this comment:
+// a value mention outside a call and a parameter mention survive; a call argument,
+// a callee name, and a type-position name do not. Restoration for the three absences
+// is the body-lowering repair (eager-raven-113 / gunbc#11207). Empty .sites on a
+// type-position or call-only fixture is RED, not Clear.
 
 type UnresolvableCause
   = IdentityAmbiguous
@@ -34,10 +44,11 @@ type DeclaringIdentitySpelling
     }
 
 // Coverage of the (held) file-ingest producer. Empty observed sites on a file that
-// authorially contains a mention is RED, not Clear.
+// authorially contains a mention is RED, not Clear. Ingest itself is no longer the
+// unknown: the surviving class is a value mention outside a call.
 type DeclaringIdentityCensusCoverage
   = ObservedOnNormalizedTree
-  | InvisibleUntilProductionIngestYieldsSites
+  | InvisibleUntilTypePositionMentionSurvives
   | InvisibleUntilCallExpressionRetained
 
 fn spelling_symbol_eq(a: Symbol, b: Symbol) -> Bool {
