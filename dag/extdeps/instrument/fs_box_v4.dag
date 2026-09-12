@@ -148,19 +148,11 @@ data fs_box_v4_data_sheet: FsBoxV4DataSheet = FsBoxV4DataSheet {
 }
 
 fn fs_box_v4_data_sheet_lists_form_factor(name: NonEmptyStr) -> Bool {
-  fold(
-    fs_box_v4_data_sheet.supported_form_factors,
-    init: false,
-    f: (hit, f) => hit || (f as String) == (name as String),
-  )
+  any(fs_box_v4_data_sheet.supported_form_factors, f => (f as String) == (name as String))
 }
 
 fn fs_box_v4_ordering_names_part(name: NonEmptyStr) -> Bool {
-  fold(
-    fs_box_v4_data_sheet.ordering,
-    init: false,
-    f: (hit, line) => hit || (line.part_number as String) == (name as String),
-  )
+  any(fs_box_v4_data_sheet.ordering, line => (line.part_number as String) == (name as String))
 }
 
 fn fs_box_v4_color_sku_count() -> Int {

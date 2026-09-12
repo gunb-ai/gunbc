@@ -1,6 +1,6 @@
 module product.fs_box_published_claims
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 import extdeps.transceiver.sff_8636 {
   TransceiverIdentifier, QsfpPlus, Qsfp28, QsfpDd, IdentifierUnmodelled,
 }
@@ -40,20 +40,16 @@ fn sff_identifier_named_on_v4_data_sheet(id: TransceiverIdentifier) -> Bool {
   }
 }
 
+fn browsers_name_firefox(browsers: List<NonEmptyStr>) -> Bool {
+  any(browsers, b => (b as String) == ("Firefox" as String))
+}
+
 fn faq_lists_firefox() -> Bool {
-  fold(
-    fs_box_v3_v4_v5_faq.browsers,
-    init: false,
-    f: (hit, b) => hit || (b as String) == ("Firefox" as String),
-  )
+  browsers_name_firefox(browsers: fs_box_v3_v4_v5_faq.browsers)
 }
 
 fn datasheet_lists_firefox() -> Bool {
-  fold(
-    fs_box_v4_data_sheet.browsers,
-    init: false,
-    f: (hit, b) => hit || (b as String) == ("Firefox" as String),
-  )
+  browsers_name_firefox(browsers: fs_box_v4_data_sheet.browsers)
 }
 
 fn faq_attests_extended_compliance_rewrite() -> Bool {

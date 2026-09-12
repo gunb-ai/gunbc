@@ -41,11 +41,9 @@ test fn online_configuration_writes_fewer_fields_than_box_pro() -> Bool {
 }
 
 test fn faq_names_hpe_compatible_optics_as_not_reconfigurable() -> Bool {
-  fold(
+  any(
     fs_box_v3_v4_v5_faq.reconfiguration_not_supported,
-    init: false,
-    f: (hit, row) =>
-      hit || (row as String) == "HPE-compatible SFP+/SFP28/XFP/QSFP+/QSFP28 transceivers",
+    row => (row as String) == "HPE-compatible SFP+/SFP28/XFP/QSFP+/QSFP28 transceivers",
   )
 }
 
@@ -57,16 +55,8 @@ test fn data_sheet_configurable_media_are_fs_optics_and_cables() -> Bool {
 }
 
 test fn data_sheet_and_faq_spell_macos_differently() -> Bool {
-  fold(
-    fs_box_v4_data_sheet.operating_systems,
-    init: false,
-    f: (hit, row) => hit || string_contains(s: row as String, pattern: "Mac OS"),
-  )
-    && fold(
-      fs_box_v3_v4_v5_faq.operating_systems,
-      init: false,
-      f: (hit, row) => hit || string_contains(s: row as String, pattern: "macOS"),
-    )
+  any(fs_box_v4_data_sheet.operating_systems, row => string_contains(s: row as String, pattern: "Mac OS"))
+    && any(fs_box_v3_v4_v5_faq.operating_systems, row => string_contains(s: row as String, pattern: "macOS"))
 }
 
 test fn data_sheet_two_v4_colors_and_a_v3_ordering_line() -> Bool {

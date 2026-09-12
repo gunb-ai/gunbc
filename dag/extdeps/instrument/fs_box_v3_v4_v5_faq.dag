@@ -82,11 +82,7 @@ data fs_box_v3_v4_v5_faq: FsBoxV3V4V5Faq = FsBoxV3V4V5Faq {
 }
 
 fn fs_box_faq_lists_box_pro_field(name: NonEmptyStr) -> Bool {
-  fold(
-    fs_box_v3_v4_v5_faq.box_pro_fields,
-    init: false,
-    f: (hit, f) => hit || (f as String) == (name as String),
-  )
+  any(fs_box_v3_v4_v5_faq.box_pro_fields, f => (f as String) == (name as String))
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
