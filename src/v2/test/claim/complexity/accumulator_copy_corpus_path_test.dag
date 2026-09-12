@@ -23,8 +23,8 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE FLOOR'S CPU LINE, MEASURED PER FUNCTION.
-// The line is v2.workflow.required_floor required_floor_claim_work_envelope_ms, named rather
+// WHAT IS A WITNESS HERE AND WHAT IS NOT IS DECIDED BY THE FLOOR'S WORK ENVELOPE, MEASURED PER
+// FUNCTION. The figure is v2.workflow.required_floor required_floor_claim_work_envelope_ms, named rather
 // than transcribed; interpreted ingest of the five-line fixture below measures several times it,
 // so every predicate that reaches the ingest reports
 // interrupted_before_verdict and BLOCKS rather than running (measured on this branch: seven of

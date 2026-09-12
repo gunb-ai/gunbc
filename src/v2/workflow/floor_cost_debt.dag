@@ -222,7 +222,12 @@ import v2.std.collection { List }
 // error this file was rebuilt once to correct, in mirror image: there a real number belonged to
 // another row, here a real zero does.
 
-// THE 500ms CEILING ITSELF IS JUDGED UNDER CONTENTION, AND THAT IS NOT THIS FILE'S ROW TO STATE.
+// THE 500ms FIGURE ITSELF IS JUDGED UNDER CONTENTION, AND THAT IS NOT THIS FILE'S ROW TO STATE.
+// It also NO LONGER GATES A CLAIM DIRECTLY (2026-09-12): the required floor's claim ceiling is
+// required_floor_claim_eval_step_budget, and required_floor_claim_work_envelope_ms carries the 500
+// as the policy that budget is grounded against. This roster is unchanged by that -- its members
+// were measured and frozen against the CPU line that then stood, and a row is released by the
+// explicit debt-removal transaction and by nothing else.
 // Every release and hold reasoned about here compares a claim's cost against
 // `required_floor_claim_work_envelope_ms`, and the standing of that comparison -- its measured
 // inflation, its bounded population, and the capability that restores it -- is carried by

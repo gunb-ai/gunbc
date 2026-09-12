@@ -29,7 +29,7 @@ data reachability_answered_is_consumed_as_protection_established: RecurringFailu
 
     "UNIONED, THE FAMILY-LEVEL CLAIM IS FALSE RATHER THAN WEAKLY SUPPORTED -- the family is MIXED, and family membership predicts nothing about any individual claim's arm. Recorded here because the under-powered form of that sentence is the one that would have been quoted onward without its caveat.",
 
-    "**A SECOND-ARM RECEIPT, 2026-09-07, AND IT IS THE `OpaqueHostCallUnbounded` HALF RATHER THAN THE SUB-STRIDE ONE THIS ROW WAS FILED ON.** Control run 34088506991 job 101637090035, on the head that had already hoisted the repeated corpus-index calls out of the join: `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test.live_undecidable_residues_are_outside_modeled_guarantee` reports `marginal_cpu_ms=42375` on `marginal_eval_steps=4096` -- EXACTLY THE STRIDE -- against a 500ms `required_floor_claim_work_envelope_ms`, and its disposition is `interrupted_before_verdict`.",
+    "**A SECOND-ARM RECEIPT, 2026-09-07, AND IT IS THE `OpaqueHostCallUnbounded` HALF RATHER THAN THE SUB-STRIDE ONE THIS ROW WAS FILED ON.** Control run 34088506991 job 101637090035, on the head that had already hoisted the repeated corpus-index calls out of the join: `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test.live_undecidable_residues_are_outside_modeled_guarantee` reports `marginal_cpu_ms=42375` on `marginal_eval_steps=4096` -- EXACTLY THE STRIDE -- against the 500ms CPU line then standing (`required_floor_claim_work_envelope_ms` carries the same 500 today as a work policy, and no CPU line gates), and its disposition is `interrupted_before_verdict`.",
 
     "Forty-two seconds of charged CPU across four thousand and ninety-six evaluator steps is not a claim doing expensive substrate work; it is a claim parked inside opaque host calls, where dag/std/evaluation_budget already records that NEITHER clock bounds it because the poll only lands between `eval_expr` calls.",
 
@@ -37,7 +37,7 @@ data reachability_answered_is_consumed_as_protection_established: RecurringFailu
 
     "**WHAT THIS ADDS TO THE ROW IS THE CONSUMER SIDE, WHICH IS WHERE THE INFLATION ACTUALLY HAPPENS.** The kernel carrier states the limitation honestly and states it FIRST -- dag/std/evaluation_budget says in terms that a declared cpu_limit is a real bound the poll can see and NO bound at all inside one opaque host call, and says it was recorded there before any caller was built on the contrary assumption.",
 
-    "The defect is that the disclaimer does not TRAVEL: `v2.workflow.required_floor` presents `required_floor_claim_work_envelope_ms` as the per-claim line without carrying the population it cannot bound, so a reader of the floor's own contract sees a wall, and citing that 500ms figure as coverage is the DESIGN section 4b(1) inflation -- a class's rung is the minimum across its in-scope paths, and one of these paths has no bound at all.",
+    "The defect is that the disclaimer does not TRAVEL: `v2.workflow.required_floor` presented its CPU safety deadline as the per-claim line without carrying the population it cannot bound, so a reader of the floor's own contract sees a wall, and citing that 500ms figure as coverage is the DESIGN section 4b(1) inflation -- a class's rung is the minimum across its in-scope paths, and one of these paths has no bound at all.",
 
     "An honest statement in the kernel and an unqualified one in the consumer is not two rungs, it is one rung reported twice at different honesty.",
 

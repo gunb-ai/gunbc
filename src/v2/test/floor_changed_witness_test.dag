@@ -515,8 +515,8 @@ test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
 }
 
 // THE OVERRIDE NO LONGER SELECTS A CLOCK, BECAUSE NO CLAIM'S CPU IS GATED (2026-09-12). This
-// witness stood here as `the_override_disarms_the_line_it_does_not_raise_it`, over
-// `changed_witness_cpu_deadline`: the cost-debt override disarmed the CPU deadline and an ordinary
+// witness stood here as `the_override_disarms_the_line_it_does_not_raise_it`, over a
+// changed_witness_cpu_deadline predicate: the cost-debt override disarmed the CPU deadline and an ordinary
 // changed witness kept it armed. Both the predicate and the two-armed `ClaimCpuDeadline` are
 // deleted -- the exception was generalised to every claim, so a function distinguishing the two
 // populations distinguishes nothing.
