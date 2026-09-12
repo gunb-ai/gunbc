@@ -319,37 +319,84 @@ fn ancestry_build_argv_path(workspace: &Path) -> PathBuf {
     ancestry_dir(workspace).join("build_cargo_argv")
 }
 
+fn ancestry_build_rustflags_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("build_rustflags")
+}
+
+fn ancestry_build_exit_status_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("build_exit_status")
+}
+
+fn ancestry_build_warning_count_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("build_warning_count")
+}
+
+fn ancestry_seed_binary_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("seed_binary_sha512")
+}
+
+fn ancestry_parent_artifact_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("parent_artifact_sha512")
+}
+
+fn ancestry_produced_by_path(workspace: &Path) -> PathBuf {
+    ancestry_dir(workspace).join("produced_by_execution_sha512")
+}
+
+fn write_ancestry_text(path: &Path, text: &str) -> Result<(), String> {
+    std::fs::write(path, format!("{}\n", text.trim_end()))
+        .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))
+}
+
+fn read_ancestry_text(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn write_stored_build(workspace: &Path, build: &EmittedBuildObserved) -> Result<(), String> {
-    std::fs::write(
-        ancestry_build_rustc_path(workspace),
-        format!("{}\n", build.rustc_identity),
-    )
-    .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
-    std::fs::write(
-        ancestry_build_compiler_path(workspace),
-        format!("{}\n", build.compiler_path),
-    )
-    .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
+    if build.rustc_identity.trim().is_empty() {
+        return Err(
+            "V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — rustc identity was not observed"
+                .to_string(),
+        );
+    }
+    write_ancestry_text(&ancestry_build_rustc_path(workspace), &build.rustc_identity)?;
+    write_ancestry_text(
+        &ancestry_build_compiler_path(workspace),
+        &build.compiler_path,
+    )?;
+    write_ancestry_text(&ancestry_build_rustflags_path(workspace), &build.rustflags)?;
+    write_ancestry_text(
+        &ancestry_build_exit_status_path(workspace),
+        &build.exit_status.to_string(),
+    )?;
+    write_ancestry_text(
+        &ancestry_build_warning_count_path(workspace),
+        &build.warning_count.to_string(),
+    )?;
     write_ancestry_lines(&ancestry_build_argv_path(workspace), &build.cargo_argv)
 }
 
 fn load_stored_build(workspace: &Path) -> Option<EmittedBuildObserved> {
-    let rustc_identity = std::fs::read_to_string(ancestry_build_rustc_path(workspace))
-        .ok()?
-        .trim()
-        .to_string();
-    let compiler_path = std::fs::read_to_string(ancestry_build_compiler_path(workspace))
-        .ok()?
-        .trim()
-        .to_string();
+    let rustc_identity = read_ancestry_text(&ancestry_build_rustc_path(workspace))?;
+    let compiler_path = read_ancestry_text(&ancestry_build_compiler_path(workspace))?;
+    let rustflags = read_ancestry_text(&ancestry_build_rustflags_path(workspace))?;
     let cargo_argv = read_ancestry_lines(&ancestry_build_argv_path(workspace)).ok()?;
+    let exit_status: i64 = read_ancestry_text(&ancestry_build_exit_status_path(workspace))?
+        .parse()
+        .ok()?;
+    let warning_count: i64 = read_ancestry_text(&ancestry_build_warning_count_path(workspace))?
+        .parse()
+        .ok()?;
     Some(EmittedBuildObserved {
         cargo_argv,
-        rustflags: super::emitted_closure_compile_host::WARNING_DENIAL_RUSTFLAGS.to_string(),
+        rustflags,
         compiler_path,
         rustc_identity,
-        exit_status: 0,
-        warning_count: 0,
+        exit_status,
+        warning_count,
     })
 }
 
@@ -528,41 +575,34 @@ fn interpret_acquisition(
         binary_identity,
         closure_identity,
         seed_identity: "native-generation-acquired".to_string(),
-        build: load_stored_build(workspace).unwrap_or(EmittedBuildObserved {
-            cargo_argv: Vec::new(),
-            rustflags: super::emitted_closure_compile_host::WARNING_DENIAL_RUSTFLAGS.to_string(),
-            compiler_path: String::new(),
-            rustc_identity: String::new(),
-            exit_status: 0,
-            warning_count: 0,
-        }),
+        build: load_stored_build(workspace).ok_or_else(|| {
+            acquisition_refusal(
+                "NativeAncestorUnverified",
+                ANCESTRY_GENERATION_ZERO as i64,
+                "stored emitted-build receipt is absent — refusing rather than minting a clean build",
+            )
+        })?,
     })
 }
 
-fn hash_from_hex(ctx: &v1_interpreter::InterpContext, hex: &str) -> Result<Value, String> {
-    let digest = eval_named(
-        ctx,
-        "std.content_hash.fnv1a64_structural_hex_digest",
-        &[(Some("hex".to_string()), str_value(hex))],
-    )?;
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &digest
-    else {
-        return Err("fnv1a64_structural_hex_digest did not return Optional".to_string());
-    };
-    if ctx.sym_eq(*variant_name, "Absent") {
-        return Err("fnv1a64_structural_hex_digest refused the axis hex".to_string());
+fn hash_of_observed_string(
+    ctx: &v1_interpreter::InterpContext,
+    observed: &str,
+) -> Result<Value, String> {
+    if observed.is_empty() {
+        return Err(
+            "V2-NATIVE REFUSAL cause=NativeAncestorUnverified — observed identity axis is empty"
+                .to_string(),
+        );
     }
-    Ok(record_field(ctx, fields, "value")?.clone())
+    eval_named(
+        ctx,
+        "std.content_hash.content_hash_atom",
+        &[(Some("value".to_string()), str_value(observed))],
+    )
 }
 
-fn observed_artifact_from_hex(
-    ctx: &v1_interpreter::InterpContext,
-    hex: &str,
-) -> Result<Value, String> {
+fn sha512_from_stored_hex(ctx: &v1_interpreter::InterpContext, hex: &str) -> Result<Value, String> {
     let digest = eval_named(
         ctx,
         "std.content_hash.sha512_hex_digest",
@@ -577,13 +617,35 @@ fn observed_artifact_from_hex(
         return Err("sha512_hex_digest did not return Optional".to_string());
     };
     if ctx.sym_eq(*variant_name, "Absent") {
-        return Err("sha512_hex_digest refused the observed artifact hex".to_string());
+        return Err("sha512_hex_digest refused the stored hex".to_string());
     }
-    let sha = record_field(ctx, fields, "value")?.clone();
+    Ok(record_field(ctx, fields, "value")?.clone())
+}
+
+fn named_build_configuration_hash(
+    ctx: &v1_interpreter::InterpContext,
+    remap_from: &str,
+    remap_to: &str,
+) -> Result<Value, String> {
+    let remapping = Value::Variant {
+        type_name: ctx.sym("BuildPathRemapping"),
+        variant_name: ctx.sym("PathRemapped"),
+        fields: Rc::new(vec![
+            (ctx.sym("host_prefix"), str_value(remap_from)),
+            (ctx.sym("canonical_prefix"), str_value(remap_to)),
+        ]),
+    };
+    let config = Value::Record {
+        type_name: ctx.sym("NamedBuildConfiguration"),
+        fields: Rc::new(vec![
+            (ctx.sym("cargo_profile"), str_value("release")),
+            (ctx.sym("remapping"), remapping),
+        ]),
+    };
     eval_named(
         ctx,
-        "v2.compiler.self_host.generation.observed_artifact_digest",
-        &[(Some("observed".to_string()), sha)],
+        "v2.compiler.self_host.generation.build_configuration_axis_digest",
+        &[(Some("config".to_string()), config)],
     )
 }
 
@@ -591,87 +653,65 @@ fn native_generation_from_store(
     ctx: &v1_interpreter::InterpContext,
     workspace: &Path,
     generation: i64,
-    binary_path: &Path,
+    _binary_path: &Path,
 ) -> Result<Value, String> {
-    let artifact_hex = sha512_file(binary_path)?;
-    let observed = observed_artifact_from_hex(ctx, &artifact_hex)?;
+    let unverified =
+        |detail: &str| acquisition_refusal("NativeAncestorUnverified", generation, detail);
+    let closure_identity = read_ancestry_text(&ancestry_closure_identity_path(workspace))
+        .ok_or_else(|| unverified("source-closure identity was not stored"))?;
+    let rustc_identity = read_ancestry_text(&ancestry_build_rustc_path(workspace))
+        .ok_or_else(|| unverified("toolchain rustc identity was not stored"))?;
+    let remap_from = read_ancestry_text(&ancestry_remap_from_path(workspace))
+        .ok_or_else(|| unverified("build-path remap_from was not stored"))?;
+    let remap_to = read_ancestry_text(&ancestry_remap_to_path(workspace))
+        .ok_or_else(|| unverified("build-path remap_to was not stored"))?;
+    let seed_hex = read_ancestry_text(&ancestry_seed_binary_path(workspace))
+        .ok_or_else(|| unverified("GenesisFromSeed.seed_binary was not stored"))?;
+    let generation_paths = read_ancestry_lines(&ancestry_generation_closure_path(workspace))
+        .map_err(|_| unverified("realized closure roster was not stored"))?;
     let identity = eval_named(
         ctx,
         "v2.compiler.self_host.generation.compiler_artifact_identity",
         &[
             (
                 Some("producer_compiler".to_string()),
-                hash_from_hex(ctx, "0123456789abcdef")?,
+                hash_of_observed_string(ctx, &seed_hex)?,
             ),
             (
                 Some("source_closure".to_string()),
-                hash_from_hex(ctx, "0123456789abcdee")?,
+                hash_of_observed_string(ctx, &closure_identity)?,
             ),
             (
                 Some("target_model".to_string()),
-                hash_from_hex(ctx, "0123456789abcded")?,
+                hash_of_observed_string(ctx, "Rust")?,
             ),
             (
                 Some("toolchain".to_string()),
-                hash_from_hex(ctx, "0123456789abcdec")?,
+                hash_of_observed_string(ctx, &rustc_identity)?,
             ),
             (
                 Some("build_configuration".to_string()),
-                hash_from_hex(ctx, "0123456789abcdeb")?,
+                named_build_configuration_hash(ctx, &remap_from, &remap_to)?,
             ),
             (
                 Some("materialized_artifact".to_string()),
                 Value::Variant {
                     type_name: ctx.sym("GeneratedArtifactIdentity"),
-                    variant_name: ctx.sym("ArtifactMaterialized"),
-                    fields: Rc::new(vec![(ctx.sym("digest"), observed.clone())]),
+                    variant_name: ctx.sym("ArtifactNotMaterialized"),
+                    fields: Rc::new(vec![]),
                 },
             ),
         ],
     )?;
-    let generation_paths =
-        read_ancestry_lines(&ancestry_generation_closure_path(workspace)).unwrap_or_default();
-    let remap_from = std::fs::read_to_string(ancestry_remap_from_path(workspace))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let remap_to = std::fs::read_to_string(ancestry_remap_to_path(workspace))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let build_path = if remap_from.is_empty() || remap_to.is_empty() {
-        Value::Variant {
-            type_name: ctx.sym("BuildPathTreatment"),
-            variant_name: ctx.sym("BuildPathUnresolved"),
-            fields: Rc::new(vec![]),
-        }
-    } else {
-        Value::Variant {
-            type_name: ctx.sym("BuildPathTreatment"),
-            variant_name: ctx.sym("BuildPathRemapped"),
-            fields: Rc::new(vec![
-                (ctx.sym("remap_prefix_from"), str_value(&remap_from)),
-                (ctx.sym("remap_prefix_to"), str_value(&remap_to)),
-            ]),
-        }
+    let build_path = Value::Variant {
+        type_name: ctx.sym("BuildPathTreatment"),
+        variant_name: ctx.sym("BuildPathRemapped"),
+        fields: Rc::new(vec![
+            (ctx.sym("remap_prefix_from"), str_value(&remap_from)),
+            (ctx.sym("remap_prefix_to"), str_value(&remap_to)),
+        ]),
     };
-    let seed_digest = eval_named(
-        ctx,
-        "std.content_hash.sha512_hex_digest",
-        &[(Some("hex".to_string()), str_value(&artifact_hex))],
-    )?;
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &seed_digest
-    else {
-        return Err("seed digest Optional missing".to_string());
-    };
-    if ctx.sym_eq(*variant_name, "Absent") {
-        return Err("seed digest hex refused".to_string());
-    }
-    let seed_binary = record_field(ctx, fields, "value")?.clone();
+    let seed_binary = sha512_from_stored_hex(ctx, &seed_hex)?;
     let ancestry = if generation == 0 {
         Value::Variant {
             type_name: ctx.sym("NativeAncestry"),
@@ -679,13 +719,33 @@ fn native_generation_from_store(
             fields: Rc::new(vec![(ctx.sym("seed_binary"), seed_binary)]),
         }
     } else {
+        let parent_hex = read_ancestry_text(&ancestry_parent_artifact_path(workspace))
+            .ok_or_else(|| unverified("SucceedsNative.parent_artifact was not stored"))?;
+        let ran_hex = read_ancestry_text(&ancestry_produced_by_path(workspace))
+            .ok_or_else(|| unverified("SucceedsNative.produced_by_execution_of was not stored"))?;
+        let parent = eval_named(
+            ctx,
+            "v2.compiler.self_host.generation.observed_artifact_digest",
+            &[(
+                Some("observed".to_string()),
+                sha512_from_stored_hex(ctx, &parent_hex)?,
+            )],
+        )?;
+        let ran = eval_named(
+            ctx,
+            "v2.compiler.self_host.generation.observed_artifact_digest",
+            &[(
+                Some("observed".to_string()),
+                sha512_from_stored_hex(ctx, &ran_hex)?,
+            )],
+        )?;
         Value::Variant {
             type_name: ctx.sym("NativeAncestry"),
             variant_name: ctx.sym("SucceedsNative"),
             fields: Rc::new(vec![
                 (ctx.sym("parent_generation"), Value::Int(generation - 1)),
-                (ctx.sym("parent_artifact"), observed.clone()),
-                (ctx.sym("produced_by_execution_of"), observed.clone()),
+                (ctx.sym("parent_artifact"), parent),
+                (ctx.sym("produced_by_execution_of"), ran),
             ]),
         }
     };
@@ -697,14 +757,14 @@ fn native_generation_from_store(
             (ctx.sym("identity"), identity),
             (
                 ctx.sym("emitted_source"),
-                hash_from_hex(ctx, "0123456789abcdea")?,
+                hash_of_observed_string(ctx, &closure_identity)?,
             ),
             (
                 ctx.sym("read_back"),
                 Value::Variant {
                     type_name: ctx.sym("ReadBackReceipt"),
-                    variant_name: ctx.sym("ReadBackReported"),
-                    fields: Rc::new(vec![(ctx.sym("reported_artifact"), observed)]),
+                    variant_name: ctx.sym("ReadBackUnperformed"),
+                    fields: Rc::new(vec![]),
                 },
             ),
             (
@@ -734,10 +794,13 @@ fn available_generation(
             generation_path.display()
         )
     })?;
-    let generation: i64 = generation_text
-        .trim()
-        .parse()
-        .unwrap_or(ANCESTRY_GENERATION_ZERO as i64);
+    let generation: i64 = generation_text.trim().parse().map_err(|_| {
+        acquisition_refusal(
+            "NativeAncestorUnverified",
+            ANCESTRY_GENERATION_ZERO as i64,
+            "stored generation number is not an integer",
+        )
+    })?;
     let closure_identity = std::fs::read_to_string(ancestry_closure_identity_path(workspace))
         .unwrap_or_default()
         .trim()
@@ -914,6 +977,13 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
             binary_path.display()
         )
     })?;
+    let seed_exe = std::env::current_exe().map_err(|e| {
+        format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — current_exe: {e}")
+    })?;
+    write_ancestry_text(
+        &ancestry_seed_binary_path(&workspace),
+        &sha512_file(&seed_exe)?,
+    )?;
     std::fs::write(ancestry_closure_identity_path(&workspace), closure_identity)
         .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
     std::fs::write(
@@ -927,19 +997,13 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
         "v2.compiler.self_host.emitter_producer_provenance.realized_closure_for_v2_direct_rust_door_emit_run",
         &[],
     )?;
-    let generation_paths = match eval_named(
+    let generation_closure = eval_named(
         &provenance_ctx,
         "v2.compiler.self_host.emitter_producer_provenance.cssl_harness_realized_closure",
         &[],
-    ) {
-        Ok(generation_closure) => {
-            emitter_module_paths_from_closure_value(&provenance_ctx, &generation_closure)?
-        }
-        Err(_) => vec![
-            "v1.compile".to_string(),
-            "v1.compiler.emit_rust".to_string(),
-        ],
-    };
+    )?;
+    let generation_paths =
+        emitter_module_paths_from_closure_value(&provenance_ctx, &generation_closure)?;
     write_ancestry_lines(
         &ancestry_producer_closure_path(&workspace),
         &emitter_module_paths_from_closure_value(&provenance_ctx, &door_closure)?,
@@ -1767,38 +1831,6 @@ mod tests {
             Some(("NativeTestStagePrepare", "resolve_module_not_found")),
             "a path-keyed map cannot answer the module-keyed question"
         );
-    }
-
-    #[test]
-    fn missing_ancestor_refuses_naming_generation_zero() {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc-native-ancestry-missing-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        assert!(
-            !ancestry_generation_path(&dir).is_file(),
-            "the miss path is an empty store, not a seed emit"
-        );
-        let err = acquisition_refusal(
-            "NativeAncestorMissing",
-            ANCESTRY_GENERATION_ZERO as i64,
-            "the seed is never the miss path",
-        );
-        assert!(
-            err.contains("NativeAncestorMissing"),
-            "missing ancestor must be a typed refusal, got {err}"
-        );
-        assert!(
-            err.contains("expected_generation=0"),
-            "refusal must name the expected generation, got {err}"
-        );
-        assert!(
-            !err.contains("compile_entry_emission") && !err.contains("seed, in-process"),
-            "v1 emit must not be the miss path, got {err}"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

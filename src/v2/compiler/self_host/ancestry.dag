@@ -382,23 +382,24 @@ data genesis_migration_deletion_trigger: DissolutionCondition = unbound_dissolut
   description: "delete GenesisFromSeed, GenesisStanding and admit_genesis when native_generation_mint_admission returns NativeGenerationAdmitted for a SucceedsNative generation of the production compile entry over the head source closure, EXECUTED rather than fixtured. Unbound deliberately: the condition is one execution verifying by read-back, which no declaration appearing or retiring can stand for — binding it to a decl ref would be a checkable trigger impersonating a decision, and would report fired on the day the decl was written." as NonEmptyStr
 )
 
-// ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. The recurring miss path now evaluates this
-// fold (native_lane_runner acquire_native_compiler). Genesis remains the one-time seed emit,
-// operator-invoked, and is not this fold's miss arm. See native_route_acquisition_frontier.
+// ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. See native_route_acquisition_frontier.
 //
 // The shape: it asks for generation N, and the answer is either that generation or a refusal
 // naming N. There is no arm carrying an alternative producer, so a caller cannot
 // pattern-match its way back to the seed, and there is no Optional that a caller could treat
 // as "absent, so do the other thing" — the refusal states WHICH generation was expected and
 // WHY the candidate did not qualify.
-// THE DECLARED FRONTIER for acquire_native_ancestor. The production consumer has landed: the
-// v2-native harness asks this fold for the generation it expects; NativeAncestorAcquired
-// supplies the ancestor artifact that is spawned, and NativeAncestorMissing /
-// NativeAncestorUnverified become the harness's typed refusal. No arm of that fold reaches an
-// emitter. Residual seed reach is genesis (compile_entry_emission under --v2-native-genesis),
-// which is genesis_migration_deletion_trigger's subject, not a miss-path fallback.
+// THE DECLARED FRONTIER for acquire_native_ancestor. CONSUMER: prepare_emitted_compiler /
+// acquire_native_compiler in the v2-native host harness. ROUTE: that harness evaluates this
+// fold; NativeAncestorMissing / NativeAncestorUnverified are the miss, never compile_entry_emission.
+// TRIGGER (unchanged from the #11042 wording): the frontier named the REMOVAL of
+// compile_entry_emission from that acquisition path. That removal has landed. This row stays
+// unbound because a DissolutionCondition cannot bind to a host-call removal, and it does NOT
+// retarget onto genesis_migration_deletion_trigger — that is a different residual (the
+// GenesisFromSeed constructor), and collapsing them is the grain mismatch DESIGN section 4b(3)
+// names. Residual genesis is that other row's subject.
 data native_route_acquisition_frontier: DissolutionCondition = unbound_dissolution(
-  description: "declared frontier for acquire_native_ancestor: the v2-native recurring acquisition now evaluates this fold instead of compile_entry_emission. Residual v1 reach is the one-time genesis path. The frontier stays unbound until GenesisFromSeed is deleted (genesis_migration_deletion_trigger), because that is when no v1 emitter remains reachable from any host acquisition. Unbound deliberately: the remaining condition is a constructor going away, which is neither a declaration appearing nor one retiring in this row." as NonEmptyStr
+  description: "declared frontier for acquire_native_ancestor: its production consumer is the v2-native route's emitted-compiler acquisition. The frontier named replacing prepare_emitted_compiler's compile_entry_emission call with acquire_native_ancestor. That replacement has landed; the row stays unbound because the condition is a host-call removal, which is neither a declaration appearing nor one retiring. Residual v1 reach is genesis (genesis_migration_deletion_trigger), a different subject — this row does not absorb that trigger." as NonEmptyStr
 )
 
 type NativeAncestorAcquisition
