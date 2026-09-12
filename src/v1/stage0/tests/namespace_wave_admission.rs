@@ -484,7 +484,7 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
             module: "probe.consumer",
             in_declaration: "use_it",
             spelling: "widget",
-            target: "probe.other",
+            expected_candidates: &["probe.other"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -535,7 +535,7 @@ const AUTHORED_LIKE_PRODUCTION: &[TransitionAdmission] = &[TransitionAdmission {
         module: "probe.consumer",
         in_declaration: "use_it",
         spelling: "widget",
-        target: "probe.other",
+        expected_candidates: &["probe.other"],
     },
     disposition: NamespaceDeltaDisposition::TargetChanged,
 }];
@@ -606,7 +606,7 @@ fn a_row_naming_the_empty_module_refuses_rather_than_admitting_silently() {
             module: "",
             in_declaration: "",
             spelling: "",
-            target: "",
+            expected_candidates: &[""],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -647,7 +647,7 @@ fn an_admission_naming_a_different_subject_does_not_admit_and_reports_stale() {
             module: "probe.consumer",
             in_declaration: "use_it",
             spelling: "gadget",
-            target: "probe.other",
+            expected_candidates: &["probe.other"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -963,7 +963,7 @@ fn a_consumed_row_comes_due_on_the_roster_touching_pr() {
          roster path out of the side `roster_touched` reads",
     );
     assert!(
-        refusal.contains("due for deletion on main or this roster-touching change"),
+        refusal.contains("due for correction or deletion"),
         "the refusal must name the obligation rather than a count alone: {refusal}"
     );
 
@@ -1840,7 +1840,7 @@ fn an_unmatched_row_refuses_and_is_never_typed_consumed() {
             module: "probe.consumer",
             in_declaration: "use_it",
             spelling: "gadget",
-            target: "probe.other",
+            expected_candidates: &["probe.other"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -1913,7 +1913,7 @@ fn one_run_separates_a_consumed_row_from_an_unmatched_one() {
                 module: "probe.consumer",
                 in_declaration: "use_it",
                 spelling: "widget",
-                target: "probe.other",
+                expected_candidates: &["probe.other"],
             },
             disposition: NamespaceDeltaDisposition::TargetChanged,
         },
@@ -1923,7 +1923,7 @@ fn one_run_separates_a_consumed_row_from_an_unmatched_one() {
                 module: "probe.consumer",
                 in_declaration: "use_it",
                 spelling: "gadget",
-                target: "probe.other",
+                expected_candidates: &["probe.other"],
             },
             disposition: NamespaceDeltaDisposition::TargetChanged,
         },
@@ -1959,8 +1959,8 @@ fn one_run_separates_a_consumed_row_from_an_unmatched_one() {
     );
 }
 
-/// A row whose spelling the base binds AMBIGUOUSLY (two declarers) is not provably consumed —
-/// the singleton-set requirement is load-bearing, not decoration.
+/// A singleton admission cannot be consumed by a two-member base: exact equality,
+/// not target containment, remains load-bearing.
 #[test]
 fn an_ambiguous_base_binding_is_not_consumption() {
     let sides = [
@@ -2004,7 +2004,7 @@ fn landing_refuses_consumed_rows_without_a_roster_diff() {
 }
 
 #[test]
-fn stale_roster_debt_belongs_to_landing_and_roster_edits_but_delta_debt_always_refuses() {
+fn stale_rows_refuse_every_run_and_unadjudicated_deltas_still_refuse() {
     let base = [
         ("home.dag", HOME),
         ("other.dag", OTHER),
@@ -2021,12 +2021,12 @@ fn stale_roster_debt_belongs_to_landing_and_roster_edits_but_delta_debt_always_r
             module: "probe.consumer",
             in_declaration: "use_it",
             spelling: "gadget",
-            target: "probe.other",
+            expected_candidates: &["probe.other"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
     for (name, head_sources, same_revision, roster_touched, refuses) in [
-        ("inherited_stale", &base, false, false, false),
+        ("inherited_stale", &base, false, false, true),
         ("edited_stale", &base, false, true, true),
         ("landing_stale", &base, true, false, true),
         ("inherited_stale_with_delta", &moved, false, false, true),
@@ -2053,6 +2053,70 @@ fn stale_roster_debt_belongs_to_landing_and_roster_edits_but_delta_debt_always_r
             assert!(refusal.contains("gunbc#11137 unmatched inherited row"));
             assert!(refusal.contains("delete these rows"));
             assert!(refusal.contains(ADMISSION_ROSTER_REL_PATH));
+        }
+    }
+}
+
+#[test]
+fn multi_candidate_narrowing_admits_then_consumes_only_the_exact_authored_set() {
+    let third = "module probe.third\n\ndata widget: String = \"t\"\n";
+    let before = "module probe.consumer\n\nimport probe.home { widget }\nimport probe.other { widget }\nimport probe.third { widget }\n\nfn use_it() -> String { widget }\n";
+    let base = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("third.dag", third),
+        ("consumer.dag", before),
+    ];
+    let head = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("third.dag", third),
+        ("consumer.dag", CONSUMER_IMPORTS_BOTH),
+    ];
+    for (name, expected_candidates, matches) in [
+        ("exact_two", &["probe.other", "probe.home"][..], true),
+        ("missing_member", &["probe.other"][..], false),
+        (
+            "extra_member",
+            &["probe.home", "probe.other", "probe.third"][..],
+            false,
+        ),
+    ] {
+        let admissions = [TransitionAdmission {
+            label: "three-to-two narrowing",
+            subject: AdmissionSubject::Binding {
+                module: "probe.consumer",
+                in_declaration: "use_it",
+                spelling: "widget",
+                expected_candidates,
+            },
+            disposition: NamespaceDeltaDisposition::TargetChanged,
+        }];
+        let transition = compare_with(&format!("{name}_transition"), &base, &head, &admissions);
+        assert_eq!(report_unadjudicated(&transition).is_empty(), matches);
+        assert_eq!(transition.stale_admissions.is_empty(), matches);
+        let settled = compare_with(&format!("{name}_settled"), &head, &head, &admissions);
+        assert_eq!(settled.consumed_admissions.len(), usize::from(matches));
+        assert_eq!(settled.stale_admissions.is_empty(), matches);
+        for (report, phase) in [(transition, "head"), (settled, "base")] {
+            let outcome = WaveAdmissionOutcome::Adjudicated {
+                base: "base".into(),
+                head: "head".into(),
+                report,
+                roster_touched: false,
+            };
+            if matches {
+                assert!(wave_admission_refusal(&outcome).is_none());
+            } else {
+                let refusal = wave_admission_refusal(&outcome)
+                    .expect("mis-authored set refuses even without a roster edit");
+                assert!(refusal.contains("three-to-two narrowing"));
+                assert!(refusal.contains(&format!("{phase} expected candidates")));
+                assert!(refusal.contains("found candidates {\"probe.home\", \"probe.other\"}"));
+                let expected: std::collections::BTreeSet<_> =
+                    expected_candidates.iter().copied().collect();
+                assert!(refusal.contains(&format!("expected candidates {expected:?}")));
+            }
         }
     }
 }
