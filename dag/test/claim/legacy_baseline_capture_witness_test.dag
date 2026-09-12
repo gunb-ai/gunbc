@@ -48,6 +48,7 @@ import v2.workflow.legacy_baseline_capture {
   LegacyBaselineRepairRosterMalformed,
   LegacyBaselineRepairSubjectDiverged,
   LegacyBaselineExecutionRefused,
+  LegacyBaselineObservedTransportRefused,
   subject_field_label,
   legacy_baseline_capture_capability,
   CaptureBlocked,
@@ -237,6 +238,7 @@ fn lbc_run(
                   LegacyBaselineRepairSubjectDiverged { field: f } => concat("repair-subject-diverged:", f)
                   LegacyBaselineRepairIncomplete { completeness: _ } => "repair-incomplete"
                   LegacyBaselineExecutionRefused { phase: _, cause: _ } => "execution-refused"
+                  LegacyBaselineObservedTransportRefused { refusal: _ } => "observed-transport-refused"
                 }
               }
             }

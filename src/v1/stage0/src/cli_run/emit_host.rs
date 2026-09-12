@@ -525,6 +525,39 @@ pub fn compile_dag_reference_occurrence_binding_census(
         };
     };
 
+    match observed_occurrence_transport_and_bindings(graph.as_ref()) {
+        ObservedOccurrenceBindingHalves::Refused { cause } => {
+            ReferenceOccurrenceBindingCensus::Refused { cause }
+        }
+        ObservedOccurrenceBindingHalves::Ready {
+            denominator,
+            observations,
+            ..
+        } => ReferenceOccurrenceBindingCensus::Observed {
+            source_digest,
+            compiler_digest,
+            denominator,
+            observations,
+        },
+    }
+}
+
+pub(crate) enum ObservedOccurrenceBindingHalves {
+    Ready {
+        transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
+        denominator: Vec<ReferenceOccurrenceDenominatorRow>,
+        observations: Vec<ReferenceOccurrenceBindingRow>,
+    },
+    Refused {
+        cause: String,
+    },
+}
+
+/// Seed-observed occurrence transport (per-module sidecars concatenated as stored) plus the
+/// occurrence-grain binding walk over that same transport. Callers must not rebuild containment.
+pub(crate) fn observed_occurrence_transport_and_bindings(
+    graph: &v1_compiler_compile::ResolvedGraph,
+) -> ObservedOccurrenceBindingHalves {
     use crate::std_occurrence_binding_candidates as candidates;
     use crate::std_occurrence_identity as identity;
     let mut entries = Vec::new();
@@ -585,7 +618,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
             index.clone()
         }
         other => {
-            return ReferenceOccurrenceBindingCensus::Refused {
+            return ObservedOccurrenceBindingHalves::Refused {
                 cause: format!("reference binding census: candidate index refused: {other:?}"),
             }
         }
@@ -617,8 +650,8 @@ pub fn compile_dag_reference_occurrence_binding_census(
             .get(&reference.occurrence.value)
             .cloned()
         else {
-            return ReferenceOccurrenceBindingCensus::Refused {
-                cause: format!(
+            return ObservedOccurrenceBindingHalves::Refused {
+                    cause: format!(
                     "reference binding census: occurrence {} is in the references view with no \
                      recorded consumer module; the walk that fills both changed under this instrument",
                     reference.occurrence.value
@@ -626,7 +659,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
             };
         };
         let Some(authored_name) = names.get(&reference.occurrence.value).cloned() else {
-            return ReferenceOccurrenceBindingCensus::Refused {
+            return ObservedOccurrenceBindingHalves::Refused {
                 cause: format!(
                     "reference binding census: occurrence {} is in the references view with no \
                      entry in the occurrence index, so it has no authored spelling",
@@ -672,7 +705,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
                         .iter()
                         .find(|module| module.type_env.module_path == consumer_module)
                     else {
-                        return ReferenceOccurrenceBindingCensus::Refused {
+                        return ObservedOccurrenceBindingHalves::Refused {
                             cause: format!(
                                 "reference binding census: consumer module '{consumer_module}' \
                                  carries occurrence {} but is absent from the resolved graph, so \
@@ -715,9 +748,8 @@ pub fn compile_dag_reference_occurrence_binding_census(
             disposition,
         });
     }
-    ReferenceOccurrenceBindingCensus::Observed {
-        source_digest,
-        compiler_digest,
+    ObservedOccurrenceBindingHalves::Ready {
+        transport,
         denominator,
         observations,
     }

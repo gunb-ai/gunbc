@@ -12280,6 +12280,211 @@ fn multi_module_compile_fixture_value(
     }
 }
 
+fn occurrence_id_value(
+    id: crate::std_occurrence_identity::OccurrenceId,
+    ctx: &InterpContext,
+) -> Value {
+    Value::Record {
+        type_name: ctx.sym("OccurrenceId"),
+        fields: Rc::new(sorted_fields(vec![(
+            ctx.sym("value"),
+            Value::Int(id.value),
+        )])),
+    }
+}
+
+fn authored_source_span_value(span: &crate::std_types::SourceSpan, ctx: &InterpContext) -> Value {
+    Value::Record {
+        type_name: ctx.sym("SourceSpan"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("file"), str_value(span.file.clone())),
+            (ctx.sym("start"), Value::Int(span.start)),
+            (ctx.sym("end"), Value::Int(span.end)),
+        ])),
+    }
+}
+
+fn occurrence_containment_path_value(
+    path: &crate::std_occurrence_identity::OccurrenceContainmentPath,
+    ctx: &InterpContext,
+) -> Value {
+    Value::Record {
+        type_name: ctx.sym("OccurrenceContainmentPath"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("ancestors"),
+                list_value(
+                    path.ancestors
+                        .iter()
+                        .copied()
+                        .map(|id| occurrence_id_value(id, ctx))
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+            (ctx.sym("terminal"), occurrence_id_value(path.terminal, ctx)),
+        ])),
+    }
+}
+
+fn occurrence_transport_value(
+    transport: &crate::std_occurrence_identity::OccurrenceTransport,
+    ctx: &InterpContext,
+) -> Value {
+    let projection = |p: &crate::std_occurrence_identity::OccurrenceProjection| Value::Record {
+        type_name: ctx.sym("OccurrenceProjection"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                occurrence_id_value(p.occurrence, ctx),
+            ),
+            (ctx.sym("authored_name"), str_value(p.authored_name.clone())),
+            (
+                ctx.sym("diagnostic_span"),
+                authored_source_span_value(p.diagnostic_span.as_ref(), ctx),
+            ),
+        ])),
+    };
+    let index_entry = |e: &crate::std_occurrence_identity::OccurrenceIndexEntry| Value::Record {
+        type_name: ctx.sym("OccurrenceIndexEntry"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("projection"), projection(e.projection.as_ref())),
+            (
+                ctx.sym("containment"),
+                occurrence_containment_path_value(e.containment.as_ref(), ctx),
+            ),
+        ])),
+    };
+    let declaration = |d: &crate::std_occurrence_identity::DeclarationOccurrence| Value::Record {
+        type_name: ctx.sym("DeclarationOccurrence"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                occurrence_id_value(d.occurrence, ctx),
+            ),
+            (
+                ctx.sym("containment"),
+                occurrence_containment_path_value(d.containment.as_ref(), ctx),
+            ),
+            (
+                ctx.sym("category"),
+                occurrence_category_value(&d.category, ctx),
+            ),
+            (
+                ctx.sym("diagnostic_span"),
+                authored_source_span_value(d.diagnostic_span.as_ref(), ctx),
+            ),
+        ])),
+    };
+    let reference = |r: &crate::std_occurrence_identity::ReferenceOccurrence| Value::Record {
+        type_name: ctx.sym("ReferenceOccurrence"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                occurrence_id_value(r.occurrence, ctx),
+            ),
+            (
+                ctx.sym("containment"),
+                occurrence_containment_path_value(r.containment.as_ref(), ctx),
+            ),
+            (
+                ctx.sym("category"),
+                occurrence_category_value(&r.category, ctx),
+            ),
+            (
+                ctx.sym("diagnostic_span"),
+                authored_source_span_value(r.diagnostic_span.as_ref(), ctx),
+            ),
+        ])),
+    };
+    Value::Record {
+        type_name: ctx.sym("OccurrenceTransport"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("index"),
+                Value::Record {
+                    type_name: ctx.sym("OccurrenceIndex"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("entries"),
+                        list_value(
+                            transport
+                                .index
+                                .entries
+                                .iter()
+                                .map(|e| index_entry(e.as_ref()))
+                                .collect::<Vec<_>>(),
+                        ),
+                    )])),
+                },
+            ),
+            (
+                ctx.sym("declarations"),
+                list_value(
+                    transport
+                        .declarations
+                        .iter()
+                        .map(|d| declaration(d.as_ref()))
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+            (
+                ctx.sym("references"),
+                list_value(
+                    transport
+                        .references
+                        .iter()
+                        .map(|r| reference(r.as_ref()))
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+        ])),
+    }
+}
+
+fn xl1_primary_root_tap_value(
+    tap: crate::cli_run::Xl1PrimaryRootTap,
+    ctx: &InterpContext,
+) -> Value {
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("Xl1PrimaryRootTap"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match tap {
+        crate::cli_run::Xl1PrimaryRootTap::Refused { cause } => variant(
+            "Xl1PrimaryRootRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::Xl1PrimaryRootTap::Observed {
+            primary_root,
+            repair_rows,
+            occurrence_transport,
+            binding_rows,
+        } => variant(
+            "Xl1PrimaryRootObserved",
+            vec![
+                (ctx.sym("primary_root"), str_value(primary_root)),
+                (
+                    ctx.sym("repair_rows"),
+                    reference_derived_candidate_rows_value(repair_rows.as_ref(), ctx),
+                ),
+                (
+                    ctx.sym("occurrence_transport"),
+                    occurrence_transport_value(occurrence_transport.as_ref(), ctx),
+                ),
+                (
+                    ctx.sym("binding_rows"),
+                    list_value(
+                        binding_rows
+                            .into_iter()
+                            .map(|row| reference_occurrence_binding_census_row_value(row, ctx))
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ],
+        ),
+    }
+}
+
 fn occurrence_category_value(
     category: &crate::std_occurrence_identity::OccurrenceCategory,
     ctx: &InterpContext,
@@ -12297,6 +12502,96 @@ fn occurrence_category_value(
             OccurrenceCategory::MethodOccurrence => "MethodOccurrence",
         }),
         fields: Rc::new(vec![]),
+    }
+}
+
+fn reference_occurrence_binding_census_row_value(
+    row: crate::cli_run::ReferenceOccurrenceBindingRow,
+    ctx: &InterpContext,
+) -> Value {
+    let source_value = |source: crate::cli_run::UnlistedImportBindingSource| Value::Variant {
+        type_name: ctx.sym("UnlistedImportBindingSource"),
+        variant_name: ctx.sym(match source {
+            crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
+            crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
+            crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+            crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
+        }),
+        fields: Rc::new(vec![]),
+    };
+    let disposition = match row.disposition {
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Bound {
+            declaration_occurrence,
+            provider_module,
+            binding_source,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+            variant_name: ctx.sym("ReferenceOccurrenceBound"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("declaration_occurrence"),
+                    Value::Int(declaration_occurrence),
+                ),
+                (ctx.sym("provider_module"), str_value(provider_module)),
+                (ctx.sym("binding_source"), source_value(binding_source)),
+            ])),
+        },
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Unresolved => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+            variant_name: ctx.sym("ReferenceOccurrenceUnresolved"),
+            fields: Rc::new(vec![]),
+        },
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Ambiguous { candidates } => {
+            Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceAmbiguous"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("candidates"),
+                    list_value(candidates.into_iter().map(Value::Int).collect::<Vec<_>>()),
+                )])),
+            }
+        }
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Refused { cause } => {
+            Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceBindingRefused"),
+                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+            }
+        }
+    };
+    Value::Record {
+        type_name: ctx.sym("ReferenceOccurrenceBindingRow"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                Value::Int(row.denominator.occurrence),
+            ),
+            (
+                ctx.sym("consumer_file"),
+                str_value(row.denominator.consumer_file),
+            ),
+            (
+                ctx.sym("consumer_module"),
+                str_value(row.denominator.consumer_module),
+            ),
+            (
+                ctx.sym("authored_name"),
+                str_value(row.denominator.authored_name),
+            ),
+            (
+                ctx.sym("category"),
+                occurrence_category_value(&row.denominator.category, ctx),
+            ),
+            (
+                ctx.sym("file_reference_ordinal"),
+                Value::Int(row.denominator.file_reference_ordinal),
+            ),
+            (
+                ctx.sym("span_start"),
+                Value::Int(row.denominator.span_start),
+            ),
+            (ctx.sym("disposition"), disposition),
+        ])),
     }
 }
 
@@ -18703,9 +18998,11 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.emit_rust_reference_derived_rows_bridge" { "emit_rust_reference_derived_rows_bridge" } => {
-                let graph = Rc::new($ctx.resolved_graph());
-                let rows = crate::v1_compiler_emit_rust::emit_rust_reference_derived_rows(graph);
-                Ok(Some(reference_derived_candidate_rows_value(rows.as_ref(), $ctx)))
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                Ok(Some(xl1_primary_root_tap_value(
+                    crate::cli_run::compile_xl1_primary_root_tap(&source_roots),
+                    $ctx,
+                )))
             },
 
             arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
