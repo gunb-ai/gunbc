@@ -72,10 +72,3 @@ fn fs_box_internet_constraint_instruction(works_offline: Bool) -> NonEmptyStr {
 fn current_fs_box_internet_constraint_instruction() -> NonEmptyStr {
   fs_box_internet_constraint_instruction(works_offline: fs_box_v3_v4_v5_faq.works_offline)
 }
-
-type CatalogPageFetch
-  = CatalogPageUnreadRobotCheck { locator: NonEmptyStr }
-
-data fs_box_catalog_page_fetch: CatalogPageFetch = CatalogPageUnreadRobotCheck {
-  locator: "www.fs.com/c/fs-box-3389" as NonEmptyStr,
-}

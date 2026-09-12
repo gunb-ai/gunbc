@@ -18,7 +18,6 @@ import product.fs_box_published_claims {
   qsfp56_named_on_v4_data_sheet, sff_identifier_named_on_v4_data_sheet,
   faq_lists_firefox, datasheet_lists_firefox, faq_attests_extended_compliance_rewrite,
   fs_box_internet_constraint_instruction, current_fs_box_internet_constraint_instruction,
-  fs_box_catalog_page_fetch, CatalogPageFetch, CatalogPageUnreadRobotCheck,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -116,13 +115,6 @@ test fn faq_does_not_attest_byte_192_rewrite() -> Bool {
 test fn faq_internet_requirement_reaches_the_instruction() -> Bool {
   current_fs_box_internet_constraint_instruction()
     != fs_box_internet_constraint_instruction(works_offline: true)
-}
-
-test fn catalog_page_was_not_read_as_a_form_factor_list() -> Bool {
-  match fs_box_catalog_page_fetch {
-    CatalogPageUnreadRobotCheck { locator: loc } =>
-      (loc as String) == "www.fs.com/c/fs-box-3389"
-  }
 }
 
 test fn leg_programming_stays_transcribed_uncited() -> Bool {

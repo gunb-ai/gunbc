@@ -16,9 +16,9 @@ import extdeps.uri { Uri, Https }
 // it. Per DESIGN section 3's external upstream decomposition this module owns this one product.
 // The V3/V4/V5 FAQ is a separately published document and lives in
 // extdeps.instrument.fs_box_v3_v4_v5_faq; a browser or OS list here is the data sheet's list, not
-// a merge. The current fs.com catalog page is not a citation of this module: it was fetched and
-// returned a JavaScript robot-check with no form-factor table, which is a fetch receipt in
-// product.fs_box_published_claims, not an Unobserved property of this product.
+// a merge. The current fs.com catalog page is not a citation of this module: a fetch of
+// www.fs.com/c/fs-box-3389 returned a JavaScript robot-check with no form-factor table, so that
+// page is unread rather than an Unobserved property of this product.
 //
 // NO FS COMPANY ENTITY IS MINTED HERE. Same standing as extdeps.transceiver.fs_145681: no FS
 // legal name was read from these documents as a citable legal-entity line.
