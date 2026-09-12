@@ -168,7 +168,7 @@ An earlier draft of this section read the 8-vs-4 rank difference as "one replica
 
 With replica count fixed at 1, the difference is **whether the shape fits the hosts that are actually available at all**:
 
-- Route A: at the first degree not ruled out, TP8 × 1 — a host demand that `host_commitment` may or may not be able to meet, and which on any current reading would require displacing a running serving deployment (§8.2).
+- Route A: at the first degree not ruled out, TP8 × 1 — a host demand that `host_commitment` may or may not be able to meet (§8.2).
 - Routes B/D: TP4 × 1 — a *smaller* host demand, which is the whole point of the comparison. **Whether that demand can be met is a separate question this document does not answer** (§8.2): investigating four-rank candidates does not establish that four hosts are available or acquired, and the resident working set (§10) and an actual fleet byte read (§8.3) both still stand between this and a feasibility claim.
 
 So placement is not trading a redundancy property against a latency property. It decides **feasibility inside a host set the fabric, not this decision, controls** — which is a hard constraint screened before Pareto, exactly where §7 puts things that can make a candidate unservable rather than merely expensive.
@@ -191,9 +191,7 @@ So the fit screen **consumes `gunbc.spark.host_commitment`** (in flight at this 
 
 **And this document does not state the number, in any revision.** An earlier revision said "four hosts — srv9–srv12". That was already wrong within hours — srv9 took the GLM canary — and the count has moved again since. **The replacement is not a fresher number.** Writing today's figure would repeat the mistake in a newer costume and would be stale by the same mechanism; the count is whatever `host_commitment` derives when asked. That it changed twice while this document was being written is the argument, and whether the supply is sufficient is an operator decision this plan does not resolve. The count is whatever `host_commitment` derives when asked, and the durable lesson is the one §8.2 already contained and this section already broke — **the host list must not be carried here as data.** A shape needing more admissible hosts than exist fails a hard constraint and is excluded before Pareto; if that empties the field, the result is `NoFeasibleRealization` with the exclusions named (§7), never a silent fit against 8.
 
-One consequence survives the correction unchanged, and is strengthened by it: route A is not "expensive", it is **infeasible without displacing a running four-rank serving deployment**. If A is ever taken, that displacement is what it costs, and it now names a real thing that would have to be torn down rather than a reservation nobody is using.
-
-Against that, route A's price for 189 GiB of the scarcest resource on the fleet buys 12.4 KiB/token of access. The RAM opportunity-cost axis of §7 is what states that; without it, A is simply "faster" and wins.
+Separately from host fit, and whatever `host_commitment` makes available: route A's price for 189 GiB of the scarcest resource on the fleet buys 12.4 KiB/token of access. The RAM opportunity-cost axis of §7 is what states that; without it, A is simply "faster" and wins.
 
 ### 8.3 Why it still does not conclude
 
@@ -259,7 +257,7 @@ It becomes a **hard constraint**, not an axis: if the runtime cannot serve the c
 
 **What that does not mean is "then the answer is A",** which an earlier revision said. Route A is subject to the same host-fit screen. A candidate requiring more hosts than `gunbc.spark.host_commitment` makes available is excluded. If the runtime and host-fit constraints together eliminate every candidate, the result is `NoFeasibleRealization` with the causes named — not A by elimination. A surviving candidate is one that passed every constraint, never the last one standing after the others were excluded; treating elimination as selection is how a screened-out candidate gets served anyway.
 
-That state is not hypothetical, and it is the most useful thing this subject can say: it would mean the deployment does not fit this fleet under any placement, and the reply is to change a constraint — release Group A, patch the runtime, add hosts — rather than to pick a route.
+That state is not hypothetical, and it is the most useful thing this subject can say: it would mean the deployment does not fit this fleet under any placement, and the reply is to change a constraint — free admitted supply, patch the runtime, widen the envelope — rather than to pick a route. Which constraint is cheapest to move depends on what is committed at the time, and is not a property of any route.
 
 ### 11.1 A capability probe cannot discharge this constraint — two gates, not one
 
