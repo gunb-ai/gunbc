@@ -276,14 +276,28 @@ fn rebuild_scope_reverse_closure(
   rows |> fold(init: seeds, f: fn(acc, row) { rebuild_scope_reverse_step(reached: acc, rows: rows) })
 }
 
+// Partition rows cover only partition-owned mirrors. The executable assembly's
+// HostShellEmittedOwner arm is derived by emit_lib_rs_from_paths: emitted modules
+// minus module-bearing partition modules are declared directly by the host shell.
+// The host supplies those declarations from the generated lib.rs, using the same
+// observation as convergence_surface_roles. Absence from the partition is NOT an
+// ownership answer: a mirror must positively join one of these two populations.
+// Keeping both inputs preserves duplicate-owner and missing-owner refusals, including
+// when a declaration is removed from the observed shell map.
 fn rebuild_scope_owners_of_mirror(
   mirror: String,
-  rows: List<GeneratedPartitionCrateRow>
+  rows: List<GeneratedPartitionCrateRow>,
+  host_shell_modules: List<String>
 ) -> List<String> {
-  rows
+  let partition_owners = rows
     |> filter(row => stage0_partition_row_is_module_bearing_package(row: row))
     |> filter(row => row.modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror))
     |> map(row => row.package_name)
+  if host_shell_modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror) {
+    concat(partition_owners, [stage0_host_shell_package_name()])
+  } else {
+    partition_owners
+  }
 }
 
 // EXACTLY ONE OWNER, or a refusal naming which way the roster is wrong. The emit path's
@@ -298,13 +312,14 @@ type OwnerResolution
 
 fn rebuild_scope_resolve_owners(
   changed_mirrors: List<String>,
-  rows: List<GeneratedPartitionCrateRow>
+  rows: List<GeneratedPartitionCrateRow>,
+  host_shell_modules: List<String>
 ) -> OwnerResolution {
   changed_mirrors |> fold(init: OwnerResolved { packages: [] }, f: fn(acc, mirror) {
     match acc {
       OwnerRefused { cause: c } => OwnerRefused { cause: c }
       OwnerResolved { packages: found } => {
-        let owners = rebuild_scope_owners_of_mirror(mirror: mirror, rows: rows)
+        let owners = rebuild_scope_owners_of_mirror(mirror: mirror, rows: rows, host_shell_modules: host_shell_modules)
         if count(owners) == 0 {
           OwnerRefused { cause: MirrorHasNoOwningPackage { mirror: mirror } }
         } else if count(owners) > 1 {
@@ -350,7 +365,8 @@ fn stage0_partition_rebuild_decision(
   changed_mirrors: List<String>,
   unlocatable: List<String>,
   rows: List<GeneratedPartitionCrateRow>,
-  executable: PartitionExecutableAssembly
+  executable: PartitionExecutableAssembly,
+  host_shell_modules: List<String>
 ) -> PartitionRebuildDecision {
   if count(unlocatable) > 0 {
     RebuildScopeRefused {
@@ -382,7 +398,7 @@ fn stage0_partition_rebuild_decision(
           }
         }
       } else {
-        match rebuild_scope_resolve_owners(changed_mirrors: release_changed, rows: rows) {
+        match rebuild_scope_resolve_owners(changed_mirrors: release_changed, rows: rows, host_shell_modules: host_shell_modules) {
           OwnerRefused { cause: c } => RebuildScopeRefused { cause: c }
           OwnerResolved { packages: owners } => {
             let partition_closure = rebuild_scope_reverse_closure(seeds: owners, rows: rows)
@@ -422,13 +438,15 @@ fn stage0_partition_rebuild_decision(
 
 fn stage0_partition_rebuild_decision_today(
   changed_mirrors: List<String>,
-  unlocatable: List<String>
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
 ) -> PartitionRebuildDecision {
   stage0_partition_rebuild_decision(
     changed_mirrors: changed_mirrors,
     unlocatable: unlocatable,
     rows: generated_partition_crate_rows,
-    executable: stage0_next_pass_executable_assembly()
+    executable: stage0_next_pass_executable_assembly(),
+    host_shell_modules: host_shell_modules
   )
 }
 
@@ -508,21 +526,24 @@ data rebuild_scope_owner_resolution_dissolve_on: DissolutionCondition = unbound_
 // line instead, with no build attempted and no monolithic fallback.
 fn stage0_partition_rebuild_is_actuatable_today(
   changed_mirrors: List<String>,
-  unlocatable: List<String>
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
 ) -> Bool {
   stage0_partition_rebuild_is_actuatable(
     decision: stage0_partition_rebuild_decision_today(
       changed_mirrors: changed_mirrors,
-      unlocatable: unlocatable
+      unlocatable: unlocatable,
+      host_shell_modules: host_shell_modules
     )
   )
 }
 
 fn stage0_partition_rebuild_packages_today(
   changed_mirrors: List<String>,
-  unlocatable: List<String>
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
 ) -> List<String> {
-  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable) {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable, host_shell_modules: host_shell_modules) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: c, executable_assembly: _ } => c
     ReleaseScopeEmpty { changed_mirrors: _ } => []
     WholeCompilerRebuildRequired { cause: _ } => []
@@ -536,9 +557,10 @@ fn stage0_partition_rebuild_packages_today(
 // so the guard that refuses an empty closure under a derived scope stays load-bearing.
 fn stage0_partition_rebuild_release_scope_empty_today(
   changed_mirrors: List<String>,
-  unlocatable: List<String>
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
 ) -> Bool {
-  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable) {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable, host_shell_modules: host_shell_modules) {
     ReleaseScopeEmpty { changed_mirrors: _ } => true
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
     WholeCompilerRebuildRequired { cause: _ } => false
@@ -556,12 +578,14 @@ fn stage0_partition_rebuild_release_scope_empty_today(
 // is what makes a single compiled crate a located refusal.
 fn stage0_partition_rebuild_excluded_today(
   changed_mirrors: List<String>,
-  unlocatable: List<String>
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
 ) -> List<String> {
   rebuild_scope_excluded_packages(
     closure: stage0_partition_rebuild_packages_today(
       changed_mirrors: changed_mirrors,
-      unlocatable: unlocatable
+      unlocatable: unlocatable,
+      host_shell_modules: host_shell_modules
     ),
     rows: generated_partition_crate_rows
   )
@@ -569,12 +593,14 @@ fn stage0_partition_rebuild_excluded_today(
 
 fn stage0_partition_rebuild_decision_line_today(
   changed_mirrors: List<String>,
-  unlocatable: List<String>
+  unlocatable: List<String>,
+  host_shell_modules: List<String>
 ) -> String {
   stage0_partition_rebuild_decision_line(
     decision: stage0_partition_rebuild_decision_today(
       changed_mirrors: changed_mirrors,
-      unlocatable: unlocatable
+      unlocatable: unlocatable,
+      host_shell_modules: host_shell_modules
     )
   )
 }

@@ -17,7 +17,7 @@ import product.fabric.provider_admission {
   ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
   PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
   RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
-  DispositionStanding, DispositionCleared, DispositionRefused, DispositionUnresolved,
+  DispositionStanding, DispositionCleared, DispositionNotEngaged, DispositionRefused, DispositionUnresolved,
   admit_provider_use,
 }
 
@@ -533,9 +533,23 @@ test fn w_closure_extractors_discriminate() -> Bool {
 // RED - the permit RECORDS the clearance evidence it gated on. The three evidences were once
 // extracted with a fallback that substituted the customer profile when a disposition was not
 // cleared; the fallback sat on a path the gate made unreachable, but an unreachable value naming
-// the wrong kind of thing is a lie waiting for the guard to move. As zero-or-one lists there is
-// nothing to substitute, and this asserts the admitted arm carries exactly one of each rather
-// than an empty audit trail.
+// the wrong kind of thing is a lie waiting for the guard to move.
+//
+// THE PERMIT NOW RECORDS THE STANDING RATHER THAN A PROJECTION OF IT, so this row asserts the ARM
+// as well as the reference. That is the discriminating half: with four arms and two of them
+// admitting, a permit that recorded only a DeclarationRef could not say whether a program was
+// CLEARED or had NO SUBJECT, and those are materially different admissions.
+// A NOT-ENGAGED STANDING FAILS THIS, WHICH IS THE POINT: the arm is matched, not merely the
+// reference read out of whichever arm happened to carry one.
+fn w_cleared_with(d: DispositionStanding, expected: DeclarationRef) -> Bool {
+  match d {
+    DispositionCleared { evidence } => declaration_ref_eq(a: evidence, b: expected),
+    DispositionNotEngaged { basis } => false,
+    DispositionRefused { cause } => false,
+    DispositionUnresolved { obligation } => false,
+  }
+}
+
 test fn w_permit_records_its_clearances() -> Bool {
   match decide(
     route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
@@ -546,11 +560,8 @@ test fn w_permit_records_its_clearances() -> Bool {
   ) {
     ProviderUseDenied { decision, cause } => false,
     ProviderUseAdmitted { permit } =>
-      count(filter(permit.evidence.prohibited_use_evidence,
-                   r => declaration_ref_eq(a: r, b: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "prohibited_use_cleared")))) == 1
-        && count(filter(permit.evidence.sanctions_evidence,
-                        r => declaration_ref_eq(a: r, b: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "sanctions_cleared")))) == 1
-        && count(filter(permit.evidence.export_evidence,
-                        r => declaration_ref_eq(a: r, b: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "export_cleared")))) == 1,
+      w_cleared_with(d: permit.evidence.prohibited_use_standing, expected: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "prohibited_use_cleared"))
+        && w_cleared_with(d: permit.evidence.sanctions_standing, expected: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "sanctions_cleared"))
+        && w_cleared_with(d: permit.evidence.export_standing, expected: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "export_cleared")),
   }
 }
