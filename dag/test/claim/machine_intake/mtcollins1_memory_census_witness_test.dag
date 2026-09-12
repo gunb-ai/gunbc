@@ -234,11 +234,43 @@ test fn the_unit_presents_one_hundred_and_sixty_processors() -> Bool {
 // witness bounds drift between fields, not fidelity to the bytes.
 
 // The subject binding is the claim that makes every serial in this module a fact about UNIT 1
-// rather than about some Mt. Collins, so an empty or placeholder serial must not pass.
-test fn the_capture_is_bound_to_unit_one_by_board_serial() -> Bool {
-  mtcollins1_subject_binding.smbios_board_serial == "02030A800TEXFT02L"
-    && mtcollins1_subject_binding.smbios_system_serial != ""
-    && mtcollins1_subject_binding.smbios_system_uuid != ""
+// rather than about some Mt. Collins.
+//
+// THE PREVIOUS VERSION WAS A CHANGE DETECTOR AND REVIEW 64267 WAS RIGHT. It asserted
+// smbios_board_serial == "02030A800TEXFT02L", a literal hand-copied from the declaration under
+// test in this same PR, so an author editing the serial in both places stayed green and nothing
+// about unit identity was under test. DESIGN section 5: "A measurement copied from the same current
+// tree is not an oracle ... if automating the literal's update collapses the assertion to
+// measure() == measure(), the manual update was the test's entire content." The two companion
+// clauses were the SAME DECORATION CLASS as the frontier test review 64253 rejected -- both fields
+// are NonEmptyStr, so != "" had no authorable RED anywhere it ran.
+//
+// WHAT IS ACTUALLY LOAD-BEARING is the corroboration: the host reads its board serial from SMBIOS
+// Type 2 under Linux, the controller reads it from IPMI FRU, and the two AGREE. Two transports, two
+// agents, one serial -- which is what makes this an observation of a UNIT rather than of an address.
+// That equality was previously prose on both ends (a String field here, a // annotation there) and
+// is now a fold across two independently-declared typed rows.
+//
+// THE RED IS AUTHORABLE IN BOTH DIRECTIONS, which is the whole point: changing the serial in ONE
+// module and not the other goes red, whichever module an author edits. A self-copy cannot do that.
+test fn the_capture_is_bound_to_unit_one_by_two_transports_agreeing() -> Bool {
+  mtcollins1_subject_binding.smbios_board_serial
+      == mtcollins1_subject_binding.corroborating_controller_read.board_serial
+    && mtcollins1_subject_binding.smbios_system_serial
+      == mtcollins1_subject_binding.corroborating_controller_read.product_serial
+}
+
+// A SECOND CONTROL, because the fold above would also pass if BOTH sides were the same placeholder.
+// The controller row is a separate module's declaration, so this asserts the two rows are not
+// trivially equal to each other as whole values -- the host carries a UUID and a baseboard product
+// string the controller row does not, and the controller carries a part number and manufacturer the
+// host row does not. If a future edit collapses the two rows into one carrier, this goes red and the
+// corroboration claim must be re-earned rather than silently becoming a self-comparison.
+test fn the_two_transports_remain_independently_declared() -> Bool {
+  !(mtcollins1_subject_binding.baseboard_product
+      == mtcollins1_subject_binding.corroborating_controller_read.board_part_number)
+    && !(mtcollins1_subject_binding.smbios_system_uuid
+      == mtcollins1_subject_binding.corroborating_controller_read.board_serial)
 }
 
 // EDAC-clean is only meaningful beside the load that was run. A workload whose write failed, or

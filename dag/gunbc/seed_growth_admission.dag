@@ -30,6 +30,7 @@ import gunbc.bootstrap_operation_seed_growth {
 import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
 import gunbc.joint_claim_join_seed_growth { joint_claim_join_seed_growth_justification }
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
+import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
@@ -246,6 +247,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     cli_dispatch_host_boundary_seed_growth_justification,
     generated_artifact_boundary_seed_growth_justification,
     regen_convergence_seed_growth_justification,
+    dag_artifact_identity_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
     keyed_declaration_read_seed_growth_justification,
     cli_wire_host_seed_growth_justification,

@@ -6,6 +6,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 
 data regen_convergence_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.required_regen_host.regen_round_cost_tests", decl_name: "live_module_mirrors_have_owners_and_removed_shell_owner_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "REGEN_CONVERGENCE_SCHEMA", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "REGEN_CONVERGENCE_BOUND", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "REGEN_CONVERGENCE_JOURNAL_REL", field: WholeDeclaration },

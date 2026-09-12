@@ -1,8 +1,13 @@
 # Mt. Collins BMC — what this controller can and cannot do, read from its own UI source
 
-Answers three questions that were being guessed at: why SOL is silent, whether UEFI settings
-are reachable, and whether any mechanical console capture exists. All from the controller's own
-`source.min.js`, not from probing endpoint names.
+Answers two questions that were being guessed at: whether UEFI settings are reachable, and
+whether any mechanical console capture exists. All from the controller's own `source.min.js`,
+not from probing endpoint names.
+
+A THIRD QUESTION WAS ASKED HERE AND SHOULD NOT HAVE BEEN: "why is SOL silent". It presupposed its
+own answer. SOL was never silent — a broken collector was — so the section that answered it is
+withdrawn below rather than revised, and nothing in this document may be read as establishing a
+cause for an absence that did not exist.
 
 ## Provenance
 
@@ -16,15 +21,35 @@ was read from it and then withdrawn from the receipt because the bytes were neve
 bytes are now committed, so any future reading of this controller's behaviour has a resolvable
 source.
 
-## Why SOL is silent — not a BMC defect
+## SOL IS NOT SILENT — the collector was, and this section's original claim is withdrawn
 
-BMC side is healthy: `sol info` reports `Enabled: true`, 115.2 kbps volatile and non-volatile,
-channel 1, port 623. Sessions establish and accept keystrokes.
+**SUPERSEDED BY MEASUREMENT.** This section was headed "Why SOL is silent — not a BMC defect" and
+stated flatly that "the cause is host-side console routing". Both the premise and the cause are
+withdrawn. SOL on this controller delivers host console bytes: a repaired collector captured 3764
+bytes of firmware output across a failing DRAM training boot, including a 16-row per-DIMM table and
+typed failure lines. Review 64316 found that this section contradicted the ledger row added in the
+same change, and it was right — the corpus cannot answer "what causes SOL silence" two ways.
 
-The cause is host-side console routing. Every boot-parameter readback carried
-`Console Redirection control : Console redirection occurs per BIOS configuration setting`,
-i.e. the request byte was `00` — DEFER TO BIOS — on every actuation. The BIOS evidently routes
-console to video, which is why the KVM renders output while SOL carries none.
+**THE MEASURED CAUSE, which is not this one.** The collector ran `ipmitool sol activate` with stdin
+not a terminal, which warns, then its receive loop reached stdin EOF and it exited `rc=0` after
+roughly three seconds of a four-hundred-and-twenty second window, while the wrapper slept out the
+remainder and reported the unchanged file. Eight captures across eight hardware configurations were
+86 bytes of the instrument's own warning and banner, seven of them byte-identical. Held under a pty
+with stdin open, the same client stayed connected 645 seconds and captured host output on the first
+attempt. Authority: `gunbc.recurring_failure_mode` `empty_capture_read_as_clean_result`, seventh
+instance.
+
+**WHAT SURVIVES, AT ITS ACTUAL STRENGTH.** The BMC-side readings stand and were never in dispute:
+`sol info` reports `Enabled: true`, 115.2 kbps volatile and non-volatile, channel 1, port 623, and
+sessions establish and accept keystrokes. The boot-parameter readback also stands as a READING —
+every actuation carried `Console Redirection control : Console redirection occurs per BIOS
+configuration setting`, i.e. request byte `00`, defer to BIOS.
+
+What does NOT follow from that reading is that it explains anything, because there was no silence
+to explain. "The BIOS evidently routes console to video" was an inference consumed as a cause
+(DESIGN section 4d), built to account for an absence that the instrument manufactured. It is
+withdrawn, not merely softened: byte `00` is consistent with a console that prints over SOL
+perfectly well, which is what was subsequently observed while that byte's successor was in effect.
 
 IPMI boot parameter 5 data byte 3, bits 1:0 control this: `00` defer, `01` suppress, `10`
 request enabled. Set to `0x02` and verified: the readback now renders

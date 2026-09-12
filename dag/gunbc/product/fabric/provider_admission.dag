@@ -71,8 +71,29 @@ import product.fabric.provider_route {
 // decision anything at all and it would neither read it nor record it - dangling inputs on the
 // subject of the decision (DESIGN section 3c), and worse, an unresolved sanctions case would have
 // been indistinguishable from a cleared one. A standing has to say which it is.
+// THE FOURTH ARM IS "THE PROGRAM HAS NO SUBJECT HERE", AND IT IS A DIFFERENT CLAIM FROM CLEARED.
+// The distinction is the one product.fabric.provider_route already draws one type over, in the same
+// vocabulary and for the same reason: ProviderPathAbsent (a fact that can support an admission) is
+// kept apart from ProviderPathUnread (an obligation that must refuse), because collapsing them is
+// how an unexamined path reads as a clean one. Cleared and NotEngaged are the two ADMITTING
+// standings and they are equally not each other -- Cleared says a program ran and resolved in our
+// favour, NotEngaged says the program has no subject on this route at all, which is the honest
+// standing for a route with no counterparty, no transfer and no recipient.
+//
+// WITHOUT THIS ARM THE ONLY WAY TO ADMIT SUCH A ROUTE WAS TO WRITE A CLEARANCE NOBODY ISSUED, which
+// is the fabricated legal finding this gate exists to close, arriving through the gate itself. It
+// was written that way once, in gunbc.spark.first_party_serving, with the honesty carried in prose
+// fields nothing matches on -- and prose cannot discharge a machine claim (DESIGN 4c), which is
+// exactly review 63981's finding. With the arm, a not-engaged standing is expressible AS ITSELF, a
+// future real clearance is distinguishable from it BY MATCHING rather than by reading a string, and
+// a permit records which of the two admitted it.
+//
+// WHAT THE ARM DOES NOT DO. It does not establish that a program genuinely has no subject; that
+// stays a boundary obligation on whoever writes the basis, exactly as the honesty of a clearance
+// stays with whoever issued it. What it buys is that the two claims stop being one value.
 type DispositionStanding
   = DispositionCleared { evidence: DeclarationRef }
+  | DispositionNotEngaged { basis: DeclarationRef }
   | DispositionRefused { cause: DeclarationRef }
   | DispositionUnresolved { obligation: DeclarationRef }
 
@@ -84,23 +105,20 @@ type DispositionStanding
 fn disposition_obligation(d: DispositionStanding) -> List<DeclarationRef> {
   match d {
     DispositionCleared { evidence } => [],
+    DispositionNotEngaged { basis } => [],
     DispositionRefused { cause } => [cause],
     DispositionUnresolved { obligation } => [obligation],
   }
 }
 
-// The cleared evidence, as zero-or-one, for the same reason. This was an evidence_or with a
-// fallback, and although the fallback sat on the admitted path where all three dispositions are
-// cleared by the gate above, an unreachable value that names a customer profile where a clearance
-// evidence belongs is still a lie waiting for the guard to move. A list cannot lie: on the
-// admitted path it is exactly one element by construction, and empty is unproducible there.
-fn disposition_evidence(d: DispositionStanding) -> List<DeclarationRef> {
-  match d {
-    DispositionCleared { evidence } => [evidence],
-    DispositionRefused { cause } => [],
-    DispositionUnresolved { obligation } => [],
-  }
-}
+// disposition_evidence IS GONE, AND ITS DISSOLUTION IS THE CLIMB RATHER THAN A DELETION (DESIGN
+// 4b(4)). It projected a zero-or-one DeclarationRef out of the standing so the permit could record
+// "what the gate saw" without a fabricable seed, and the list shape was the right answer to that
+// question. The question stops existing once the permit records the STANDING ITSELF: a reference
+// alone cannot say which arm admitted the route, so two materially different admissions -- a
+// clearance and a not-engaged -- reached ProviderUseEvidence as the same shape and an auditor
+// reading a permit could not tell them apart. Carrying the standing is one value, not two
+// representations of one, and it cannot lose the arm on the way.
 
 // OUR ROSTER, NOT THE SUPPLIER'S. gunbc.fabric_executor_class already establishes the shape: we
 // keep the sanction, an unclassified executor refuses, and the sanction is evaluated before
@@ -140,18 +158,21 @@ type ProviderUseScope<P> {
 // Folding them into one scope would give the partition a single refused population and lose which
 // of the two a caller must go fix.
 
-// Every revision and clearance the decision actually read, recorded on the permit. This is what
-// makes a permit re-derivable rather than merely historical. The three disposition evidences are
-// here because a permit that gated on them and did not record them would be unauditable - the
-// gate would have run and left no trace of what it saw.
+// Every revision and standing the decision actually read, recorded on the permit. This is what
+// makes a permit re-derivable rather than merely historical. The three dispositions are here
+// because a permit that gated on them and did not record them would be unauditable - the gate would
+// have run and left no trace of what it saw - and they are the STANDINGS rather than projections of
+// them, so a permit says whether each program was cleared or had no subject. Only the two admitting
+// arms are reachable here: a refused or unresolved standing cannot pass the gate above, and this
+// type does not restate that, because restating it would be a second representation of the gate.
 type ProviderUseEvidence {
   posture_revision: ContentHash
   route_facts_revision: ContentHash
   customer_profile: DeclarationRef
   agreement: DeclarationRef
-  prohibited_use_evidence: List<DeclarationRef>
-  sanctions_evidence: List<DeclarationRef>
-  export_evidence: List<DeclarationRef>
+  prohibited_use_standing: DispositionStanding
+  sanctions_standing: DispositionStanding
+  export_standing: DispositionStanding
   decision_receipt: DeclarationRef
 }
 
@@ -452,9 +473,9 @@ fn admit_provider_use<P>(
           route_facts_revision: facts.facts_revision,
           customer_profile: scope.customer_profile,
           agreement: scope.agreement,
-          prohibited_use_evidence: disposition_evidence(d: scope.prohibited_use_disposition),
-          sanctions_evidence: disposition_evidence(d: scope.sanctions_disposition),
-          export_evidence: disposition_evidence(d: scope.export_disposition),
+          prohibited_use_standing: scope.prohibited_use_disposition,
+          sanctions_standing: scope.sanctions_disposition,
+          export_standing: scope.export_disposition,
           decision_receipt: decision_receipt,
         },
       },
