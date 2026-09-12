@@ -1,5 +1,0 @@
-module v2.test.fixture.declaring_identity_spelling.canonical
-
-type Marker {}
-
-data row: v2.test.fixture.declaring_identity_spelling.canonical.Marker = Marker {}

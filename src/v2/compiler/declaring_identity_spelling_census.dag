@@ -48,9 +48,10 @@ import v2.std.logic { Bool }
 //
 // WHAT THIS ROUTE CANNOT SEE is measured, not speculated.
 // The usable XL-3 class is a QUALIFIED CROSS-MODULE mention. It is absent with no
-// call (InvisibleUntilQualifiedCrossModuleMentionSurvives). Body-lowering (#11207)
-// restores call arguments and callees only. Empty rows on the usable class is today's
-// loss, not Clear. A parse-tree walker is not a workaround.
+// call (v2.test.claim.declaring_identity_spelling.production_ingest
+// a_qualified_cross_module_mention_is_absent_from_the_census_today). Body-lowering
+// (#11207) restores call arguments and callees only. Empty rows on the usable class
+// is today's loss, not Clear. A parse-tree walker is not a workaround.
 
 type DeclaringIdentitySpellingCensus {
   rows: FreeMonoid<DeclaringIdentitySpelling>
