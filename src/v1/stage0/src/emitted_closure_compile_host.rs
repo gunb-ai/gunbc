@@ -1880,6 +1880,56 @@ pub(crate) fn run_append_concat_form_discrimination(probe_root: &Path) -> Fixtur
     }
 }
 
+/// THE SHELL PROJECTION'S RETURN CONVENTION, AND WHY THIS PAIR'S RED IS A KNOWN HOLE
+/// (`gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`).
+///
+/// THE SUBJECT IS ONE EMITTER DECISION: `v1.compiler.emit_rust` `emit_shell_return` wraps a shell
+/// operation's value in `Ok(..)` only when the declared output carries MORE THAN ONE field, while the
+/// same declaration signs the emitted method `Result<.., Box<dyn Error>>`. A single-field output
+/// therefore answers its channel bare and the emitted body violates its own emitted type — rustc
+/// `E0308`, with gunbc reporting zero blocking diagnostics on the source.
+///
+/// THE RED IS A KNOWN HOLE AND NOT A WALL WORKING, stated so nobody cites it as coverage. It is this
+/// row's own specimen committed as a runnable file, which is the thing its sibling class records
+/// having lacked. Per DESIGN §4b(4), when the class climbs this arm flips to compiling and is KEPT as
+/// the regression control on the direction it established; the pair's EXPECTATION changes then, not
+/// the fixtures' existence.
+///
+/// THE TWO ARMS DIFFER IN ONE AUTHORED THING — how many fields the output block declares — so this
+/// pair does isolate its variable, which the phantom-marker pair beside it explicitly does not. Three
+/// plausible co-causes were measured and ruled out before the arms were cut this way: the exit block
+/// is not load-bearing (a one-field operation WITH one is refused at the same grain, because the exit
+/// arm reaches the same projection), the channel is not (a lone `stdout` is refused exactly as a lone
+/// `exit_success`), and the boundary is at ONE rather than at some larger shape (two fields already
+/// emit `Ok((..))` and compile, which is why the control declares two and not three).
+///
+/// NO REPAIR ACCOMPANIES THIS PAIR, deliberately. It was found by a different fixture being wrong —
+/// an earlier cut of the argv splice probe simplified its operations to a single output and came back
+/// red for a reason it does not name — and repairing it inside that subject's change would have made
+/// one fixture carry two defects, which adjudicates neither.
+#[cfg(test)]
+const FIXTURE_SHELL_SINGLE_FIELD_PROJECTION_RED_PATH: &str =
+    "fixtures/fixture_closure_rustc/shell_single_field_projection_probe.dag";
+
+/// The control. See `FIXTURE_SHELL_SINGLE_FIELD_PROJECTION_RED_PATH`.
+#[cfg(test)]
+const FIXTURE_SHELL_MULTI_FIELD_PROJECTION_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/shell_multi_field_projection_probe.dag";
+
+/// The projection-arity pair, assembled from the SAME arm runner and adjudicated by the SAME
+/// predicate the route's own pair uses. Unlike the three emitter-arm pairs above, BOTH arms here are
+/// this pair's own: the claim is about the difference between them, so borrowing the route's red
+/// would measure nothing about the arity.
+#[cfg(test)]
+pub(crate) fn run_shell_projection_arity_discrimination(
+    probe_root: &Path,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_SHELL_MULTI_FIELD_PROJECTION_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_SHELL_SINGLE_FIELD_PROJECTION_RED_PATH, probe_root),
+    }
+}
+
 /// The pair passes only when BOTH directions hold: the control compiled, and the meaning-level
 /// fixture was refused BY RUSTC, in its own emitted module, WITH THE ERROR CLASS THE ARM CLAIMS.
 ///
