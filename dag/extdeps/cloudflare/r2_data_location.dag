@@ -1,9 +1,16 @@
 module extdeps.cloudflare.r2_data_location
 
-import std.types { Bool, NonEmptyStr, List }
+import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.cloudflare.r2 {
+  R2Jurisdiction,
+  R2JurisdictionDefault,
+  R2JurisdictionEu,
+  R2JurisdictionFedramp,
+  R2JurisdictionUs,
+}
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -129,105 +136,131 @@ data cloudflare_inc: CloudflareLegalEntity = CloudflareLegalEntity {
   reading: r2_data_location_reading,
 }
 
-// LOCATION HINTS ARE A ROSTER OF CHOICES, NOT A ROSTER OF PLACES THE BYTES ARE. Upstream names them
-// hints, says they are a best effort and not a guarantee, and uses them to optimize performance.
-// A consumer that treated one as a residency location would be reading a different document than
-// the one cited here.
+// LOCATION HINTS ARE A CLOSED COPRODUCT OF CHOICES, NOT A ROSTER OF PLACES THE BYTES ARE.
+// Upstream names them hints, says they are a best effort and not a guarantee, and uses them to
+// optimize performance. The tag set lives here because extdeps.cloudflare.r2 does not declare it;
+// the wire spelling is produced from the coproduct rather than stored as a second stringly name.
+type R2LocationHint
+  = R2HintWnam
+  | R2HintEnam
+  | R2HintWeur
+  | R2HintEeur
+  | R2HintApac
+  | R2HintOc
+
+fn r2_location_hint_wire(hint: R2LocationHint) -> String {
+  match hint {
+    R2HintWnam => "wnam"
+    R2HintEnam => "enam"
+    R2HintWeur => "weur"
+    R2HintEeur => "eeur"
+    R2HintApac => "apac"
+    R2HintOc => "oc"
+  }
+}
+
+fn r2_location_hint_is_residency_guarantee(hint: R2LocationHint) -> Bool {
+  match hint {
+    R2HintWnam => false
+    R2HintEnam => false
+    R2HintWeur => false
+    R2HintEeur => false
+    R2HintApac => false
+    R2HintOc => false
+  }
+}
+
 type R2LocationHintRow {
-  hint: NonEmptyStr
+  hint: R2LocationHint
   description: NonEmptyStr
   reading: CloudflarePublishedReading
 }
 
 data r2_hint_wnam: R2LocationHintRow = R2LocationHintRow {
-  hint: "wnam",
+  hint: R2HintWnam,
   description: "Western North America",
   reading: r2_data_location_reading,
 }
 
 data r2_hint_enam: R2LocationHintRow = R2LocationHintRow {
-  hint: "enam",
+  hint: R2HintEnam,
   description: "Eastern North America",
   reading: r2_data_location_reading,
 }
 
 data r2_hint_weur: R2LocationHintRow = R2LocationHintRow {
-  hint: "weur",
+  hint: R2HintWeur,
   description: "Western Europe",
   reading: r2_data_location_reading,
 }
 
 data r2_hint_eeur: R2LocationHintRow = R2LocationHintRow {
-  hint: "eeur",
+  hint: R2HintEeur,
   description: "Eastern Europe",
   reading: r2_data_location_reading,
 }
 
 data r2_hint_apac: R2LocationHintRow = R2LocationHintRow {
-  hint: "apac",
+  hint: R2HintApac,
   description: "Asia-Pacific",
   reading: r2_data_location_reading,
 }
 
 data r2_hint_oc: R2LocationHintRow = R2LocationHintRow {
-  hint: "oc",
+  hint: R2HintOc,
   description: "Oceania",
   reading: r2_data_location_reading,
 }
 
-fn r2_location_hints() -> List<R2LocationHintRow> {
-  [r2_hint_wnam, r2_hint_enam, r2_hint_weur, r2_hint_eeur, r2_hint_apac, r2_hint_oc]
+// JURISDICTIONAL RESTRICTIONS CITE extdeps.cloudflare.r2 R2Jurisdiction, WHICH IS THE CONSUMED
+// AUTHORITY FOR THE FOUR WIRE VALUES. Re-spelling them as NonEmptyStr here would be a second name
+// for one concept (DESIGN section 3). Default is in that coproduct and is NOT a restriction;
+// the guarantee is derived by matching the existing type, so a fifth arm fails to compile rather
+// than silently inheriting a string.
+fn r2_jurisdiction_is_residency_guarantee(jurisdiction: R2Jurisdiction) -> Bool {
+  match jurisdiction {
+    R2JurisdictionDefault => false
+    R2JurisdictionEu => true
+    R2JurisdictionFedramp => true
+    R2JurisdictionUs => true
+  }
 }
 
-// JURISDICTIONAL RESTRICTIONS ARE THE ONLY ARM UPSTREAM CALLS A GUARANTEE. They are listed so a
-// reader can see what was available and not taken; they are not this repository's durable origin.
 type R2JurisdictionRestrictionRow {
-  jurisdiction: NonEmptyStr
-  description: NonEmptyStr
+  jurisdiction: R2Jurisdiction
   reading: CloudflarePublishedReading
 }
 
 data r2_jurisdiction_eu: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
-  jurisdiction: "eu",
-  description: "European Union",
+  jurisdiction: R2JurisdictionEu,
   reading: r2_data_location_reading,
 }
 
 data r2_jurisdiction_fedramp: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
-  jurisdiction: "fedramp",
-  description: "FedRAMP",
+  jurisdiction: R2JurisdictionFedramp,
   reading: r2_data_location_reading,
 }
 
 data r2_jurisdiction_us: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
-  jurisdiction: "us",
-  description: "United States",
+  jurisdiction: R2JurisdictionUs,
   reading: r2_us_jurisdiction_changelog_reading,
 }
 
-fn r2_jurisdiction_restrictions() -> List<R2JurisdictionRestrictionRow> {
-  [r2_jurisdiction_eu, r2_jurisdiction_fedramp, r2_jurisdiction_us]
+data r2_jurisdiction_default_standing: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
+  jurisdiction: R2JurisdictionDefault,
+  reading: r2_tokens_default_jurisdiction_reading,
 }
 
 // AUTOMATIC IS A CHOICE MECHANISM, AND THAT IS WHAT THIS ROW RECORDS. It is the region a route
 // cites when a bucket was created without a jurisdictional restriction: not a country, not a
 // data-center park, and not a residency commitment. Treating R2JurisdictionDefault, a dashboard
 // Location label, or a Location Hint as the place the bytes live is the reading this row exists
-// to make unusable as a location fact.
+// to make unusable as a location fact. Automatic is not an arm of R2Jurisdiction — that type's
+// corresponding non-guarantee is R2JurisdictionDefault, cited above.
 type R2PlacementModeRow {
-  mode: NonEmptyStr
-  is_residency_guarantee: Bool
   reading: CloudflarePublishedReading
 }
 
 data r2_placement_automatic: R2PlacementModeRow = R2PlacementModeRow {
-  mode: "Automatic",
-  is_residency_guarantee: false,
   reading: r2_data_location_reading,
-}
-
-data r2_jurisdiction_wire_default: R2PlacementModeRow = R2PlacementModeRow {
-  mode: "default",
-  is_residency_guarantee: false,
-  reading: r2_tokens_default_jurisdiction_reading,
 }

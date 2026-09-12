@@ -26,9 +26,32 @@ import product.supplier.cloudflare_r2 {
 }
 import extdeps.cloudflare.r2_data_location {
   r2_placement_automatic,
-  r2_jurisdiction_wire_default,
-  r2_location_hints,
-  r2_jurisdiction_restrictions,
+  r2_jurisdiction_default_standing,
+  r2_jurisdiction_eu,
+  r2_jurisdiction_fedramp,
+  r2_jurisdiction_us,
+  r2_hint_wnam,
+  r2_hint_enam,
+  r2_hint_weur,
+  r2_hint_eeur,
+  r2_hint_apac,
+  r2_hint_oc,
+  r2_jurisdiction_is_residency_guarantee,
+  r2_location_hint_is_residency_guarantee,
+  r2_location_hint_wire,
+  R2HintWnam,
+  R2HintEnam,
+  R2HintWeur,
+  R2HintEeur,
+  R2HintApac,
+  R2HintOc,
+}
+import extdeps.cloudflare.r2 {
+  r2_jurisdiction_wire,
+  R2JurisdictionDefault,
+  R2JurisdictionEu,
+  R2JurisdictionFedramp,
+  R2JurisdictionUs,
 }
 
 data r2_witness_customer_profile: NonEmptyStr = "r2-witness-customer-profile"
@@ -258,10 +281,54 @@ test fn every_r2_route_in_the_population_refuses() -> Bool {
 }
 
 test fn automatic_placement_is_not_a_residency_guarantee() -> Bool {
-  !r2_placement_automatic.is_residency_guarantee
-    && !r2_jurisdiction_wire_default.is_residency_guarantee
+  !r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_default_standing.jurisdiction)
+    && r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_eu.jurisdiction)
+    && r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_fedramp.jurisdiction)
+    && r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_us.jurisdiction)
+    && (r2_jurisdiction_wire(jurisdiction: r2_jurisdiction_default_standing.jurisdiction) as String) == "default"
 }
 
-test fn the_hint_roster_has_six_choices_and_three_jurisdiction_guarantees() -> Bool {
-  count(r2_location_hints()) == 6 && count(r2_jurisdiction_restrictions()) == 3
+test fn restriction_rows_are_the_existing_jurisdiction_arms() -> Bool {
+  match r2_jurisdiction_eu.jurisdiction {
+    R2JurisdictionEu => true
+    R2JurisdictionDefault => false
+    R2JurisdictionFedramp => false
+    R2JurisdictionUs => false
+  }
+    && match r2_jurisdiction_fedramp.jurisdiction {
+      R2JurisdictionFedramp => true
+      R2JurisdictionDefault => false
+      R2JurisdictionEu => false
+      R2JurisdictionUs => false
+    }
+    && match r2_jurisdiction_us.jurisdiction {
+      R2JurisdictionUs => true
+      R2JurisdictionDefault => false
+      R2JurisdictionEu => false
+      R2JurisdictionFedramp => false
+    }
+    && match r2_jurisdiction_default_standing.jurisdiction {
+      R2JurisdictionDefault => true
+      R2JurisdictionEu => false
+      R2JurisdictionFedramp => false
+      R2JurisdictionUs => false
+    }
+}
+
+test fn published_hints_are_choices_not_locations() -> Bool {
+  !r2_location_hint_is_residency_guarantee(hint: r2_hint_wnam.hint)
+    && !r2_location_hint_is_residency_guarantee(hint: r2_hint_enam.hint)
+    && !r2_location_hint_is_residency_guarantee(hint: r2_hint_weur.hint)
+    && !r2_location_hint_is_residency_guarantee(hint: r2_hint_eeur.hint)
+    && !r2_location_hint_is_residency_guarantee(hint: r2_hint_apac.hint)
+    && !r2_location_hint_is_residency_guarantee(hint: r2_hint_oc.hint)
+    && (r2_location_hint_wire(hint: r2_hint_wnam.hint) as String) == "wnam"
+    && match r2_hint_wnam.hint {
+      R2HintWnam => true
+      R2HintEnam => false
+      R2HintWeur => false
+      R2HintEeur => false
+      R2HintApac => false
+      R2HintOc => false
+    }
 }
