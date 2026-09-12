@@ -10,6 +10,7 @@ import gunbc.roadmap_status {
   TicketLine, DerivableLine, TicketFields,
   RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
 }
+import gunbc.roadmap_execution_contract {
   ExecutionContractUnspecified, ExecutionContract,
   CargoFmtValidation,
   PathsUnrestricted, PublicWorktreeLayout,
