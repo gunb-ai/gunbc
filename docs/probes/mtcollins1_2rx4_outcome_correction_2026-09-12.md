@@ -108,3 +108,51 @@ SO THE POPULATION-LEVEL READBACK REMAINS UNOBTAINED, and by a capability gap rat
 choice: this platform exposes no per-DIMM telemetry out-of-band, and the in-band route requires
 a console that does not work. Closing it needs either a working console, a diagnostic image that
 writes to the share instead of the console, or host network reachability.
+
+## SECOND ADDENDUM — the KVM console, and a kernel actually executing
+
+Operator read the host console over the BMC's KVM (not SOL) and supplied verbatim:
+
+```
+EFI stub: Booting Linux Kernel...
+EFI stub: WARNING: Working around broken SetVirtualAddressMap()
+EFI stub: ERROR: Failed to load initrd: 0x8000000000000001
+EFI stub: Generating empty DTB
+EFI stub: Exiting boot services...
+```
+
+### This is the strongest memory evidence of the night, and it is not telemetry
+
+To reach `Booting Linux Kernel` the platform must have completed DRAM training, completed POST,
+selected the virtual CD, run GRUB from it, and loaded a kernel image into RAM. Control then
+transferred -- `Exiting boot services`. CODE EXECUTED ON THIS MEMORY.
+
+That retires the objection to the round-3 record properly. Not "no restart for 373 seconds",
+not "10.4 W", not "44 C" -- an executing kernel. The correction above stands as written, and
+this is the observation it said was missing.
+
+### And it identifies the real failure as BOOT DELIVERY, not memory
+
+`Failed to load initrd: 0x8000000000000001` is EFI_LOAD_ERROR, and it is BYTE-IDENTICAL to the
+attempt-3 failure recorded at `mtcollins1_attempt3_failure` on 2026-09-10. Reproduced.
+
+This WEAKENS the earlier stored hypothesis for that failure -- that the host was reset while the
+redirection had not reached its ready state. Tonight the media was confirmed attached
+(`cd_active_sessions` 129, the bit-31 flag set) before the reset, and the initrd load still
+failed. The competing reading in that same record -- GRUB's small reads succeeding where the
+larger initrd read does not -- is correspondingly STRENGTHENED, though still not established.
+
+Note the route has worked at least once: the 2026-09-11 01:26 capture produced a 270,880-byte
+host census. So this is INTERMITTENT rather than categorical, which is itself a fact about the
+delivery route's reliability.
+
+### The observability finding that matters most for the fleet
+
+SOL returned 86 bytes -- the session banner -- through EVERY capture tonight, across eight
+configurations, four power states and two controllers' worth of resets. The KVM was rendering
+real console output the entire time.
+
+So `SolSilent` never meant the host was silent. It meant the SOL channel was dead while an
+alternative console worked. Every inference tonight that leaned on console silence was leaning
+on a broken instrument, and the corpus should carry the KVM as a distinct observation capability
+rather than treating SOL as the console.
