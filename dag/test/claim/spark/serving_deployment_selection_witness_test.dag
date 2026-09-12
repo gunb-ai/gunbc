@@ -49,26 +49,28 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentEvidenceSnapshot, serving_evidence_snapshot,
   ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
-  ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy,
+  ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy, NoFeasibleServingDeployment,
   select_serving_deployment,
   v4_1_profile_standings_from, v4_1_candidate_field_from_sm12, v4_1_decision_input_from_sm12,
   v4_1_declared_profile_standings, ServingProfileReady, ServingProfileSm12JoinFailed,
+  v4_1_profile_from_standing, serving_deployment_domain_over_standings, derived_candidates_for,
+  serving_evidence_current, id_v4_1_constraint_authority,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
   deepseek_v4_1_selection_policy,
   deepseek_v4_1_quality_requirement,
   derived_candidate_identity, v4_1_profile_at, v4_1_runtime_vllm_gb10_lead,
-  ax_no_redundancy,
+  ax_no_redundancy, ax_authorized_runtime, authorized_v4_1_runtime_holds,
   glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
-  unique_constraint_identities, constraint_native_quality, constraint_no_redundancy,
+  unique_constraint_identities, constraint_native_quality, constraint_no_redundancy, constraint_authorized_runtime,
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
   kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
   VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
-  NoFeasibleServingDeployment, v4_1_selection_frontier, kv_layout_wire,
+  v4_1_selection_frontier, kv_layout_wire,
 }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
@@ -124,6 +126,55 @@ test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
         wire: v41_sm12_kv_layout,
         admitted: v41_sm12_admitted_kv_cache_dtypes,
       ))
+}
+
+fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDeploymentDecisionInput {
+  let standings = [v4_1_profile_from_standing(runtime: runtime, standing: v4_1_gb10_kv_layout)]
+  let domain = serving_deployment_domain_over_standings(
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+    standings: standings,
+  )
+  serving_decision_input(
+    field: serving_candidate_field(
+      identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: stem),
+      domain: domain,
+      candidates: derived_candidates_for(stem: stem, domain: domain),
+    ),
+    evidence: serving_evidence_current,
+    quality_requirement: deepseek_v4_1_quality_requirement,
+    selection_policy: deepseek_v4_1_selection_policy,
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_v4_1_constraint_authority,
+    axes: v4_1_selection_axes,
+  )
+}
+
+fn causes_name_authorized_runtime(cs: List<NonEmptyStr>) -> Bool {
+  any(cs, s => string_contains(s: s as String, pattern: declaration_ref_display_key(ref: ax_authorized_runtime)))
+}
+
+test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
+  match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_vllm_gb10_lead, stem: "plant_gb10_lead")) {
+    NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+    _ => false
+  }
+    && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: spark_runtime, stem: "plant_spark_runtime")) {
+      NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+      _ => false
+    }
+    && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "plant_published_arm64")) {
+      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+      _ => false
+    }
+    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+      _ => false
+    }
+    && match v4_1_runtime_published_arm64.vllm_source {
+      VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => true
+      VllmSourceRevisionEstablished { git: _ } => false
+    }
 }
 
 // ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
@@ -862,6 +913,8 @@ test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_fac
 test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
   !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
     && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
+    && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_authorized_runtime))
+    && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_authorized_runtime))
     && match kv_bytes_per_token_standing(c: cand(name: "glm_kv", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))) {
       KvBytesPerTokenNotThisSubject => true
       KvBytesPerTokenUnestablished { layout: _, obligation: _ } => false
@@ -886,9 +939,10 @@ test fn assessment_dispositions_join_the_constraint_identities_on_the_input() ->
   count(glm_ids) == 2
     && any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_native_quality))
     && !any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))
-    && count(v41_ids) == 3
+    && count(v41_ids) == 4
     && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_native_quality))
     && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))
+    && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_authorized_runtime))
 }
 
 test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool {

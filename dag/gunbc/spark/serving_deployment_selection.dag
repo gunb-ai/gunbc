@@ -921,6 +921,13 @@ fn no_redundancy_holds(c: DeploymentCandidate) -> Bool {
   c.topology.replica_count == 1
 }
 
+// OPERATOR RULING: this V4.1 deployment uses the published arm64 image by digest. Matching
+// that digest does not establish vLLM source; published stays VllmSourceRevisionUnestablished.
+// Diagnostic alternative runtimes remain in the field and are excluded here before Pareto.
+fn authorized_v4_1_runtime_holds(c: DeploymentCandidate) -> Bool {
+  (c.profile.runtime.image as String) == (v41_published_arm64_reference() as String)
+}
+
 // ENGRAM OFFLOAD DOES NOT GROW THE SPARK POOL. vLLM Engram offload uses pinned host memory via
 // UVA. On GB10, host and GPU memory are one unified pool, so placing Engram in "host" memory does
 // not add capacity. Do not model a placement axis that increases the fit fact on this fleet.
@@ -1035,6 +1042,7 @@ data ax_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_dep
 data ax_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_native_quality")
 data ax_weight_fit: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_weight_fit")
 data ax_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_no_redundancy")
+data ax_authorized_runtime: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_authorized_runtime")
 data ax_kv_bytes_per_token: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_kv_bytes_per_token")
 data ax_runtime_feasible: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_runtime_feasible")
 data ax_context_covered: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "ax_context_covered")
@@ -1078,6 +1086,7 @@ data serving_selection_axes: List<SelectionAxis> = [
 data id_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "serving_selection_constraints")
 data constraint_native_quality: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "constraint_native_quality")
 data constraint_no_redundancy: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "constraint_no_redundancy")
+data constraint_authorized_runtime: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "constraint_authorized_runtime")
 data id_v4_1_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "v4_1_selection_constraints")
 
 data serving_selection_constraints: List<HardConstraint> = [
@@ -1092,10 +1101,12 @@ data serving_selection_constraints: List<HardConstraint> = [
 
 data v4_1_selection_constraints: List<HardConstraint> = concat(serving_selection_constraints, [
   HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 1 },
+  HardConstraint { identity: constraint_authorized_runtime, axis: ax_authorized_runtime, bound_micro: 1 },
 ])
 
 data v4_1_selection_axes: List<SelectionAxis> = concat(serving_selection_axes, [
   SelectionAxis { identity: ax_no_redundancy, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_authorized_runtime, goal: HigherIsBetter },
   SelectionAxis { identity: ax_kv_bytes_per_token, goal: LowerIsBetter },
 ])
 
@@ -1464,6 +1475,7 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
     [
       reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
       reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c))),
+      reading(axis: ax_authorized_runtime, v: flag(b: authorized_v4_1_runtime_holds(c: c))),
       reading(axis: ax_context_covered, v: flag(b: covers_demand(p: p, demand: e.workload))),
       reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
       reading(axis: ax_independent_replicas, v: c.topology.replica_count),
