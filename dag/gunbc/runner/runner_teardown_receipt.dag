@@ -11,8 +11,11 @@ import gunbc.runner.runner_usage_receipt {
 }
 
 // Expected resources come from the launch allocation, not the observer's discovered population.
-// A product makes omission of one resource class unwritable. The VMM identity includes boot and
-// start time; names and exit status cannot prove its absence. The cgroup covers its descendants.
+// The product requires all eight declared inventory fields at construction. Coverage of the
+// teardown fold is checked separately by the independent resource fixtures; adding a resource
+// class requires extending both the inventory/readback and that coverage contract. The VMM
+// identity includes boot and start time; names and exit status cannot prove its absence.
+// The cgroup covers its descendants.
 type RunnerEnvironmentInventory {
   vmm: ProcessIdentity
   cgroup: NonEmptyStr
@@ -34,6 +37,16 @@ type RunnerResourceClass
   | RunnerTap
   | RunnerFirewallTable
 
+// Parallel representation of RunnerResourceClass, not compiler-enforced enumeration.
+// Adding a variant and a readback_reading arm while omitting this roster can compile and
+// skip the new resource during teardown. The independent eight-class residue/unreadable
+// witness catches omission of a CURRENT class; it does not automatically cover future variants.
+// As in gunbc.systemd_property_directive_overlap.systemd_unit_property_members, a .dag source
+// module has no declared-coproduct variant-enumeration surface. Coverage is mitigated by the
+// independent fixtures, not mechanically prevented by the record or the exhaustive match.
+// NEXT-RUNG TRIGGER: a variant-enumeration surface over a declared coproduct, consumed here
+// to derive RunnerResourceClass coverage and delete this hand-authored roster. Preserve the
+// independent residue/unreadable witnesses after that migration; they establish refusal behavior.
 data runner_resource_classes: List<RunnerResourceClass> = [
   RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
 ]
