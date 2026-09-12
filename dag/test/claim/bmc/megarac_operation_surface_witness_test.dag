@@ -8,15 +8,12 @@ import extdeps.boards.types { AmpereMtCollins }
 import extdeps.bmc.megarac {
   BiosUefiSettingsSurfaceAbsent,
   CdActiveSessionsFlagByteIsNotACount,
-  ChannelPresentDelivering,
-  ChannelPresentNotDelivering,
   DiesOnReset,
   GenIdDoesNotIdentifyASender,
   MegaRacBmcIsNfsClientHostSeesVirtualCd,
   MegaRacIpmiSelPayloadPreserved,
-  MegaRacSolSessionChannel,
   MegaRacWebEventLogOemEmptySelData,
-  OemSelDecodeAbsentFromControllerRenderer,
+  MegaRacWebEventLogOemDescriptionUnknown,
   PerDimmFruAndTelemetryAbsentFromServedUi,
   RedirectionConnecting,
   RedirectionStartedConnectionAccepted,
@@ -27,7 +24,6 @@ import extdeps.bmc.megarac {
   RedfishServiceAbsentFromServedUi,
   ServedUiFactFirmwareUncatalogued,
   ServedUiFactKnown,
-  SilentChannelRefusedAsHostFact,
   SurvivesHostAndControllerReset,
   megarac_bios_adjacent_paths_at_0_32,
   megarac_cd_active_sessions_flag_byte,
@@ -43,28 +39,44 @@ import extdeps.bmc.megarac {
   megarac_redirection_status_of_wire,
   megarac_remote_media_role,
   megarac_served_ui_absence_standing,
-  megarac_silent_sol_is_host_fact,
   megarac_sol_recorder_reset_survival,
   megarac_sol_trigger_power_on_field_wire,
   megarac_video_trigger_power_on_field_wire,
   megarac_web_event_log_layout,
 }
+import extdeps.ampere.oem_sel {
+  ampere_iana_private_enterprise_number,
+  ampere_oem_sel_manufacturer_id_byte0,
+  ampere_oem_sel_manufacturer_id_byte1,
+  ampere_oem_sel_manufacturer_id_byte2,
+  ampere_oem_sel_pen_matches_le_bytes,
+  ampere_oem_sel_producer_layout,
+}
 import gunbc.machine_intake_pre_os_observation_capabilities {
   AggregateMemoryPowerExposed,
+  CollectorTerminatedExitZeroStdinEof,
   HostCallbackIntendedNotDemonstrated,
   LocalizationUnavailableFromExposedTelemetry,
   NoManagedAcActuator,
   OemDecodeControllerDeclaredUnknown,
   PreOsObservationCapabilities,
   SelStandardDecoded,
-  SolPresentEmitting,
-  SolPresentSilent,
+  SolCollectorDidNotEstablishCoverage,
+  SolCoverageComplete,
+  SolCoverageNeverEstablished,
+  SolHostPayloadAdmitted,
+  SolHostPayloadNotReceived,
+  SolHostPayloadReceived,
+  SolHostProducedNoConsoleBytes,
+  SolSessionActivationAcknowledged,
+  SolCollectorObservation,
   WebEventLogAvailable,
-  console_silence_is_informative,
+  sol_activation_acknowledged_without_coverage,
+  sol_host_fact_from_collector,
 }
 import gunbc.machine_intake_megarac_pre_os_channel {
-  megarac_sol_host_observation,
-  megarac_sol_silent_refuses_host_fact,
+  megarac_incomplete_sol_coverage_is_not_a_host_fact,
+  megarac_sol_host_fact,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -134,7 +146,7 @@ test fn served_ui_absences_are_first_class_at_0_32() -> Bool {
         ServedUiFactKnown { firmware: _, holds: true } =>
           match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: PerDimmFruAndTelemetryAbsentFromServedUi) {
             ServedUiFactKnown { firmware: _, holds: true } =>
-              match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: OemSelDecodeAbsentFromControllerRenderer) {
+              match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: MegaRacWebEventLogOemDescriptionUnknown) {
                 ServedUiFactKnown { firmware: _, holds: true } =>
                   path_roster_contains(xs: megarac_bios_adjacent_paths_at_0_32, s: "/api/maintenance/hpm/getbiosversions" as NonEmptyStr)
                 _ => false
@@ -164,11 +176,16 @@ test fn web_event_log_empties_oem_payload_and_genid_is_not_a_sender() -> Bool {
     }
 }
 
-fn silent_sol_profile() -> PreOsObservationCapabilities {
+fn collector_without_coverage_profile() -> PreOsObservationCapabilities {
   PreOsObservationCapabilities {
     baseboard: AmpereMtCollins,
     controller_firmware: megarac_firmware_0_32,
-    console: SolPresentSilent,
+    console: SolCollectorObservation {
+      activation: SolSessionActivationAcknowledged,
+      coverage: SolCoverageNeverEstablished,
+      termination: CollectorTerminatedExitZeroStdinEof,
+      host_payload: SolHostPayloadNotReceived,
+    },
     sel: SelStandardDecoded,
     oem_sel_decode: OemDecodeControllerDeclaredUnknown,
     web_event_log: WebEventLogAvailable,
@@ -179,11 +196,16 @@ fn silent_sol_profile() -> PreOsObservationCapabilities {
   }
 }
 
-fn emitting_sol_profile() -> PreOsObservationCapabilities {
+fn collector_with_host_payload_profile() -> PreOsObservationCapabilities {
   PreOsObservationCapabilities {
     baseboard: AmpereMtCollins,
     controller_firmware: megarac_firmware_0_32,
-    console: SolPresentEmitting,
+    console: SolCollectorObservation {
+      activation: SolSessionActivationAcknowledged,
+      coverage: SolCoverageComplete,
+      termination: CollectorTerminatedExitZeroStdinEof,
+      host_payload: SolHostPayloadReceived,
+    },
     sel: SelStandardDecoded,
     oem_sel_decode: OemDecodeControllerDeclaredUnknown,
     web_event_log: WebEventLogAvailable,
@@ -194,15 +216,34 @@ fn emitting_sol_profile() -> PreOsObservationCapabilities {
   }
 }
 
-test fn present_silent_sol_refuses_as_a_host_fact() -> Bool {
-  !megarac_silent_sol_is_host_fact(delivery: ChannelPresentNotDelivering)
-    && megarac_silent_sol_is_host_fact(delivery: ChannelPresentDelivering)
-    && !console_silence_is_informative(profile: silent_sol_profile())
-    && console_silence_is_informative(profile: emitting_sol_profile())
-    && megarac_sol_silent_refuses_host_fact(profile: silent_sol_profile())
-    && !megarac_sol_silent_refuses_host_fact(profile: emitting_sol_profile())
-    && match megarac_sol_host_observation(profile: silent_sol_profile()) {
-      SilentChannelRefusedAsHostFact { channel: MegaRacSolSessionChannel } => true
+test fn incomplete_sol_coverage_is_not_a_host_silence_fact() -> Bool {
+  sol_activation_acknowledged_without_coverage(obs: collector_without_coverage_profile().console)
+    && megarac_incomplete_sol_coverage_is_not_a_host_fact(profile: collector_without_coverage_profile())
+    && !megarac_incomplete_sol_coverage_is_not_a_host_fact(profile: collector_with_host_payload_profile())
+    && match megarac_sol_host_fact(profile: collector_without_coverage_profile()) {
+      SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished } => true
       _ => false
     }
+    && match megarac_sol_host_fact(profile: collector_with_host_payload_profile()) {
+      SolHostPayloadAdmitted => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorObservation {
+      activation: SolSessionActivationAcknowledged,
+      coverage: SolCoverageComplete,
+      termination: CollectorTerminatedExitZeroStdinEof,
+      host_payload: SolHostPayloadNotReceived,
+    }) {
+      SolHostProducedNoConsoleBytes => true
+      _ => false
+    }
+}
+
+test fn ampere_oem_sel_pen_is_the_le_manufacturer_id_bytes() -> Bool {
+  ampere_oem_sel_pen_matches_le_bytes(
+    pen: ampere_iana_private_enterprise_number,
+    b0: ampere_oem_sel_manufacturer_id_byte0,
+    b1: ampere_oem_sel_manufacturer_id_byte1,
+    b2: ampere_oem_sel_manufacturer_id_byte2,
+  ) && ampere_oem_sel_producer_layout.iana_pen == ampere_iana_private_enterprise_number
 }

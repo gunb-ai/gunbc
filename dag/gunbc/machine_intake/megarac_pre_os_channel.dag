@@ -1,49 +1,22 @@
 module gunbc.machine_intake_megarac_pre_os_channel
 
 import gunbc.machine_intake_pre_os_observation_capabilities {
-  ConsoleObservationCapability,
   PreOsObservationCapabilities,
-  SolAbsent,
-  SolPresentEmitting,
-  SolPresentSilent,
-  console_silence_is_informative,
-}
-import extdeps.bmc.megarac {
-  ChannelAbsentFromServedUi,
-  ChannelPresentDelivering,
-  ChannelPresentNotDelivering,
-  MegaRacChannelDelivery,
-  MegaRacHostObservationFromChannel,
-  MegaRacSolSessionChannel,
-  SilentChannelRefusedAsHostFact,
-  megarac_host_observation_from_channel,
+  SolCollectorDidNotEstablishCoverage,
+  SolHostFactFromCollector,
+  sol_host_fact_from_collector,
 }
 
-// JOIN, NOT A SECOND CAPABILITY PROFILE. gunbc.machine_intake_pre_os_observation_capabilities
-// owns whether a platform's SOL channel is present-and-silent; extdeps.bmc.megarac owns the
-// MegaRAC channel identity and the refusal that a silent present channel is not a host fact.
-// This fold is the executing route that consumes both.
+// JOIN: MegaRAC names the SOL session as a channel on the served UI; whether captured bytes
+// are a HOST fact is the collector observation, never a platform "present-but-silent" row.
 
-fn megarac_sol_delivery_from_pre_os(console: ConsoleObservationCapability) -> MegaRacChannelDelivery {
-  match console {
-    SolAbsent => ChannelAbsentFromServedUi
-    SolPresentSilent => ChannelPresentNotDelivering
-    SolPresentEmitting => ChannelPresentDelivering
-  }
+fn megarac_sol_host_fact(profile: PreOsObservationCapabilities) -> SolHostFactFromCollector {
+  sol_host_fact_from_collector(obs: profile.console)
 }
 
-fn megarac_sol_host_observation(
-  profile: PreOsObservationCapabilities,
-) -> MegaRacHostObservationFromChannel {
-  megarac_host_observation_from_channel(
-    channel: MegaRacSolSessionChannel,
-    delivery: megarac_sol_delivery_from_pre_os(console: profile.console),
-  )
-}
-
-fn megarac_sol_silent_refuses_host_fact(profile: PreOsObservationCapabilities) -> Bool {
-  match megarac_sol_host_observation(profile: profile) {
-    SilentChannelRefusedAsHostFact { channel: _ } => !console_silence_is_informative(profile: profile)
+fn megarac_incomplete_sol_coverage_is_not_a_host_fact(profile: PreOsObservationCapabilities) -> Bool {
+  match megarac_sol_host_fact(profile: profile) {
+    SolCollectorDidNotEstablishCoverage { coverage: _ } => true
     _ => false
   }
 }

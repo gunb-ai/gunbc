@@ -1,0 +1,90 @@
+module extdeps.ampere.oem_sel
+
+import std.types { Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// OEM SYSTEM-EVENT PAYLOADS WHOSE MANUFACTURER ID IS AMPERE'S IANA PEN. The MegaRAC web renderer
+// answering 'unknown' is a fact about THAT CONTROLLER (extdeps.bmc.megarac); it is not a fact
+// about these records. The producing vendor publishes the layout.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/enterprise-numbers",
+  }
+}
+
+data ampere_altra_soc_bmc_interface_spec_v1_43: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/customer-connect/products/altra-family-software",
+  }
+}
+
+data ampere_openbmc_dimm_train_fail_log: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/openbmc/blob/master/meta-ampere/recipes-ampere/host/ac01-boot-progress/dimm_train_fail_log.sh",
+  }
+}
+
+data ampere_misc_altra_host_error_monitor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ampere-openbmc/ampere-misc",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.oem_sel",
+      decl_name: "ampere_oem_sel_producer_layout",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ampere_altra_soc_bmc_interface_spec_v1_43,
+    ampere_openbmc_dimm_train_fail_log,
+    ampere_misc_altra_host_error_monitor,
+  ]
+}
+
+// IANA PRIVATE ENTERPRISE NUMBER 52538, Ampere Computing. Wire order on the IPMI OEM
+// timestamped record is the three manufacturer-ID bytes 3A CD 00 (Ampere Altra Family SoC BMC
+// Interface Specification v1.43 Table 3), which is PEN 0x00CD3A little-endian.
+data ampere_iana_private_enterprise_number: Int = 52538
+
+data ampere_oem_sel_manufacturer_id_byte0: Int = 58
+
+data ampere_oem_sel_manufacturer_id_byte1: Int = 205
+
+data ampere_oem_sel_manufacturer_id_byte2: Int = 0
+
+type AmpereOemSelProducerLayout {
+  iana_pen: Int
+  manufacturer_id_byte0: Int
+  manufacturer_id_byte1: Int
+  manufacturer_id_byte2: Int
+  interface_spec: ExternalAuthority
+  openbmc_emitters: List<ExternalAuthority>
+}
+
+data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelProducerLayout {
+  iana_pen: ampere_iana_private_enterprise_number,
+  manufacturer_id_byte0: ampere_oem_sel_manufacturer_id_byte0,
+  manufacturer_id_byte1: ampere_oem_sel_manufacturer_id_byte1,
+  manufacturer_id_byte2: ampere_oem_sel_manufacturer_id_byte2,
+  interface_spec: ampere_altra_soc_bmc_interface_spec_v1_43,
+  openbmc_emitters: [
+    ampere_openbmc_dimm_train_fail_log,
+    ampere_misc_altra_host_error_monitor,
+  ],
+}
+
+fn ampere_oem_sel_pen_matches_le_bytes(pen: Int, b0: Int, b1: Int, b2: Int) -> Bool {
+  pen == (b0 + (b1 * 256) + (b2 * 65536))
+}

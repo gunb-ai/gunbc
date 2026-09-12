@@ -1,41 +1,80 @@
 module gunbc.machine_intake_pre_os_observation_capabilities
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.boards.types { BaseboardModel }
 
 // WHAT A PLATFORM LETS AN OBSERVER SEE BEFORE AN OPERATING SYSTEM EXISTS, one profile per
-// (baseboard, controller firmware release). Every field is a MEASURED capability standing, not a
-// hope: a reader deciding what a bring-up verdict may claim consults this profile first, and a
-// claim the profile says cannot be seen has no constructor downstream.
-//
-// WHY THIS IS A PROFILE AND NOT A LIST OF BOOLEANS. Each axis answers in its own vocabulary, and
-// most have a middle state a Bool would absorb toward the permissive side
-// (gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission): a console that
-// is PRESENT AND SILENT is neither "SOL: yes" nor "SOL: no", and reading it as yes is exactly how
-// silence got promoted to a firmware verdict on 2026-09-11.
+// (baseboard, controller firmware release). Collector coverage is not a property of the host
+// console: a collector that never established coverage produced no host payload, and that is
+// not an observation that SOL is silent.
 
-// THE CONSOLE. SolPresentSilent is the arm the Mt. Collins unit inhabits: the controller accepts
-// the session, prints its own banner, accepts keystrokes, and returns no host bytes under any
-// power condition measured. It is separate from SolAbsent because the remedies differ -- a silent
-// console may be a firmware console-redirection setting; an absent one is a controller capability.
-type ConsoleObservationCapability
-  = SolAbsent
-  | SolPresentSilent
-  | SolPresentEmitting
+// THE CONSOLE AXIS IS A COLLECTOR OBSERVATION, NOT A HOST VERDICT. Session activation acknowledged,
+// coverage complete vs interrupted vs never established, host payload received vs not, and
+// termination reason are independent. Readiness at activation cannot stand in for coverage
+// afterward. Local client banner bytes (ipmitool tcgetattr / SOL Session operational) are not
+// host payload.
 
-// THE EVENT LOG, three rungs. Raw records readable; standard (section 42.2) sensor events decoded
-// by the controller's renderer; and OEM records, which section 32.2 hands to the manufacturer.
+type SolSessionActivationStanding
+  = SolSessionActivationAcknowledged
+  | SolSessionActivationNotAcknowledged
+
+type SolCollectorCoverageStanding
+  = SolCoverageNeverEstablished
+  | SolCoverageInterrupted
+  | SolCoverageComplete
+
+type SolCollectorTermination
+  = CollectorStillRunning
+  | CollectorTerminatedExitZeroStdinEof
+  | CollectorTerminatedOtherwise { exit_status: Int }
+
+type SolHostPayloadStanding
+  = SolHostPayloadReceived
+  | SolHostPayloadNotReceived
+
+type SolCollectorObservation {
+  activation: SolSessionActivationStanding
+  coverage: SolCollectorCoverageStanding
+  termination: SolCollectorTermination
+  host_payload: SolHostPayloadStanding
+}
+
+type SolHostFactFromCollector
+  = SolHostPayloadAdmitted
+  | SolHostProducedNoConsoleBytes
+  | SolCollectorDidNotEstablishCoverage { coverage: SolCollectorCoverageStanding }
+
+fn sol_host_fact_from_collector(obs: SolCollectorObservation) -> SolHostFactFromCollector {
+  match obs.coverage {
+    SolCoverageComplete =>
+      match obs.host_payload {
+        SolHostPayloadReceived => SolHostPayloadAdmitted
+        SolHostPayloadNotReceived => SolHostProducedNoConsoleBytes
+      }
+    SolCoverageNeverEstablished => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+    SolCoverageInterrupted => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+  }
+}
+
+fn sol_activation_acknowledged_without_coverage(obs: SolCollectorObservation) -> Bool {
+  match obs.activation {
+    SolSessionActivationNotAcknowledged => false
+    SolSessionActivationAcknowledged =>
+      match obs.coverage {
+        SolCoverageComplete => false
+        SolCoverageNeverEstablished => true
+        SolCoverageInterrupted => true
+      }
+  }
+}
+
 type SelReadCapability
   = SelUnreadable
   | SelRawOnly
   | SelStandardDecoded
 
-// WHETHER THE MANUFACTURER'S OWN REALIZATION DECODES ITS OEM RECORDS. ControllerDeclaredUnknown is
-// a MEASURED answer -- the controller was asked and answered "unknown" -- and it is distinct from
-// OemDecodeNotProbed, where nobody asked. Only OemDecodeAvailable licenses a downstream decode, and
-// it must name the declaration that carries the decode table so the citation is checkable.
 type OemSelDecodeCapability
   = OemDecodeAvailable { decode_authority: DeclarationRef }
   | OemDecodeControllerDeclaredUnknown
@@ -45,12 +84,6 @@ type WebEventLogCapability
   = WebEventLogAvailable
   | WebEventLogAbsent
 
-// WHETHER THE PLATFORM CAN NAME A DIMM SLOT AS THE SUBJECT OF A PRE-OS FAULT. When it cannot, a
-// remediation verdict may say "physical remediation required" and may NOT say which slot; deriving
-// a slot from timing or from an opaque payload is forbidden, and the downstream carrier has no
-// constructor for a slot when this arm is LocalizationUnavailableFromExposedTelemetry. The Exposed
-// arm carries the declaration that exposes the per-slot evidence -- a pointer to what would be
-// read, never a slot -- because localizing is a later consumer's fold over that source.
 type DimmLocalizationCapability
   = LocalizationUnavailableFromExposedTelemetry
   | PerSlotLocalizationExposed { source: DeclarationRef }
@@ -59,22 +92,10 @@ type MemoryPowerTelemetryCapability
   = AggregateMemoryPowerExposed
   | MemoryPowerNotExposed
 
-// MANAGED AC CARRIES NO OUTLET. This fleet has no managed PDU, and authoring an arm that names an
-// outlet would be DESIGN section 3c's dangling declaration -- a constructor no realization
-// reaches. The other arm, like PerSlotLocalizationExposed, carries only the DECLARATION of the
-// realization that would perform the cycle, never the hardware; it exists so a platform that
-// gains an actuator can say so without this type growing a PDU model, and the attempt module
-// keeps AcPowerCycle a typed human-attended barrier until such a realization lands with its own
-// executed receipt.
 type ManagedAcActuationCapability
   = NoManagedAcActuator
   | ManagedAcActuatorDeclared { realization: DeclarationRef }
 
-// A HOST CALLBACK -- the delivered image phoning home -- is the subject-originating attestation
-// gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect names as the only
-// thing that can construct a subject-level terminal. IntendedNotDemonstrated is the state of this
-// fleet today: the mechanism is designed and has not executed end to end, so no verdict may lean
-// on it yet.
 type HostCallbackCapability
   = HostCallbackDemonstrated
   | HostCallbackIntendedNotDemonstrated
@@ -83,7 +104,7 @@ type HostCallbackCapability
 type PreOsObservationCapabilities {
   baseboard: BaseboardModel
   controller_firmware: BmcFirmwareReleaseIdentity
-  console: ConsoleObservationCapability
+  console: SolCollectorObservation
   sel: SelReadCapability
   oem_sel_decode: OemSelDecodeCapability
   web_event_log: WebEventLogCapability
@@ -93,22 +114,7 @@ type PreOsObservationCapabilities {
   host_callback: HostCallbackCapability
 }
 
-// THE ONE QUESTION THIS CHANGE'S EXECUTING READER ASKS OF THE CONSOLE AXIS.
-// The remaining profile axes (sel, oem_sel_decode, web_event_log, dimm_localization,
-// memory_power, managed_ac, host_callback) are a declared frontier: they are consumed by
-// gunbc.machine_intake_pre_os_bringup_verdict when that module lands (gunbc#11110). Until
-// that consumer is in the same closure they are not dangling — they are the home still-dove-458
-// owns — and this change must not mint a second reading of them. Trigger: that verdict
-// module resolving and matching oem_sel_decode / dimm_localization directly.
-
-// May a console capture that contains nothing beyond the session banner be read as evidence about
-// the HOST? Only when the console is known to emit: on a silent-console platform the same bytes
-// arrive whatever the host does, so they carry no host information
-// (gunbc.recurring_failure_mode.absent_reads_identically_to_never_looked).
-fn console_silence_is_informative(profile: PreOsObservationCapabilities) -> Bool {
-  match profile.console {
-    SolAbsent => false
-    SolPresentSilent => false
-    SolPresentEmitting => true
-  }
-}
+// Remaining profile axes other than console are a declared frontier: consumed by
+// gunbc.machine_intake_pre_os_bringup_verdict when that module lands (gunbc#11110). Trigger: that
+// verdict module resolving and matching oem_sel_decode / dimm_localization directly. The console
+// axis is consumed here by sol_host_fact_from_collector.

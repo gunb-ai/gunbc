@@ -358,18 +358,19 @@ data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = SurvivesHostAnd
 data megarac_live_sol_activate_reset_survival: MegaRacResetSurvival = DiesOnReset
 
 // WHAT THIS SERVED UI CANNOT DO. Absences are first-class, keyed to the 0.32 catalog. They are
-// not omissions and not unit telemetry.
+// not omissions and not unit telemetry. MegaRacWebEventLogOemDescriptionUnknown is the controller
+// renderer answering unknown; Ampere OEM SEL producer layout is extdeps.ampere.oem_sel.
 type MegaRacServedUiAbsence
   = RedfishServiceAbsentFromServedUi
   | BiosUefiSettingsSurfaceAbsent
   | PerDimmFruAndTelemetryAbsentFromServedUi
-  | OemSelDecodeAbsentFromControllerRenderer
+  | MegaRacWebEventLogOemDescriptionUnknown
 
 data megarac_served_ui_absences_at_0_32: List<MegaRacServedUiAbsence> = [
   RedfishServiceAbsentFromServedUi,
   BiosUefiSettingsSurfaceAbsent,
   PerDimmFruAndTelemetryAbsentFromServedUi,
-  OemSelDecodeAbsentFromControllerRenderer,
+  MegaRacWebEventLogOemDescriptionUnknown,
 ]
 
 data megarac_bios_adjacent_paths_at_0_32: List<NonEmptyStr> = [
@@ -427,45 +428,22 @@ data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOem
 
 data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
 
-// CHANNEL PRESENCE VERSUS DELIVERY. A channel listed on the served UI is PRESENT. Whether it
-// delivers host bytes is a separate standing. Per-platform inhabitance of that standing lives in
-// gunbc.machine_intake_pre_os_observation_capabilities (ConsoleObservationCapability); this module
-// owns the MegaRAC channel identities and the refusal that forbids reading a silent present
-// channel as a fact about the host.
+// CHANNELS ON THE SERVED UI. Presence of an endpoint is not delivery of host bytes. Delivery is
+// a collector coverage observation (gunbc.machine_intake_pre_os_observation_capabilities); this
+// module does not inhabit a present-but-silent host standing.
+
 type MegaRacObservationChannel
   = MegaRacSolSessionChannel
   | MegaRacKvmFramebufferChannel
   | MegaRacFramebufferRecorderChannel
   | MegaRacSolRecorderChannel
 
-type MegaRacChannelDelivery
-  = ChannelAbsentFromServedUi
-  | ChannelPresentNotDelivering
-  | ChannelPresentDelivering
-
-type MegaRacHostObservationFromChannel
-  = HostBytesAdmittedFromChannel { channel: MegaRacObservationChannel }
-  | SilentChannelRefusedAsHostFact { channel: MegaRacObservationChannel }
-  | ChannelUnavailableForHostObservation { channel: MegaRacObservationChannel }
-
-fn megarac_host_observation_from_channel(
-  channel: MegaRacObservationChannel,
-  delivery: MegaRacChannelDelivery,
-) -> MegaRacHostObservationFromChannel {
-  match delivery {
-    ChannelAbsentFromServedUi => ChannelUnavailableForHostObservation { channel: channel }
-    ChannelPresentNotDelivering => SilentChannelRefusedAsHostFact { channel: channel }
-    ChannelPresentDelivering => HostBytesAdmittedFromChannel { channel: channel }
-  }
-}
-
-fn megarac_silent_sol_is_host_fact(delivery: MegaRacChannelDelivery) -> Bool {
-  match megarac_host_observation_from_channel(channel: MegaRacSolSessionChannel, delivery: delivery) {
-    HostBytesAdmittedFromChannel { channel: _ } => true
-    SilentChannelRefusedAsHostFact { channel: _ } => false
-    ChannelUnavailableForHostObservation { channel: _ } => false
-  }
-}
+data megarac_observation_channels: List<MegaRacObservationChannel> = [
+  MegaRacSolSessionChannel,
+  MegaRacKvmFramebufferChannel,
+  MegaRacFramebufferRecorderChannel,
+  MegaRacSolRecorderChannel,
+]
 
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
 // paths and contract notes and carries no transport, so nothing in this repository could invoke the
