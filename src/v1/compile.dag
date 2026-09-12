@@ -926,11 +926,20 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
     "}")
 }
 
+// THE KEY LISTS ARE ORDERED AT THE KEY, WHICH IS WHY BOTH SITES READ `sorted_map_keys` AND
+// NOTHING SORTS THE EMITTED TEXT. `item_registry` is a host-ordered map; feeding `map_keys` of it
+// into the artifact made `dag-artifact.json` run-to-run unstable -- same graph, same `$ref`s, the
+// same key SET in a different order on every run (measured on main, gunbc#11072). An artifact
+// whose identity moves without its input moving makes every byte-equality oracle over it -- regen
+// fixed points, drift observers, emitted-closure identity -- unable to tell changed from
+// reordered. `sorted_map_keys` carries `CanonicalOrder` in `std.primitive_identity`; `map_keys`
+// carries `HostUnspecifiedOrder`, and that fact is the choice between them at any site whose
+// result reaches an emitted byte.
 fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"module\": ", serialize_node_ref(node: module.module, key_to_id: key_to_id),
     ", \"items\": ", json_list(items: module.items |> map(item => serialize_node_ref(node: item, key_to_id: key_to_id))),
-    ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => json_quote(s: k))),
+    ", \"item_registry_keys\": ", json_list(items: sorted_map_keys(module.item_registry) |> map(k => json_quote(s: k))),
     "}")
 }
 
@@ -970,7 +979,7 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
   let modules_json = typed.modules |> map(m => serialize_typed_module(module: m, key_to_id: key_to_id)) |> join(separator: ", ")
   let diagnostics_json = typed.diagnostics |> map(d => serialize_diagnostic(diagnostic: d)) |> join(separator: ", ")
-  let item_registry_json = map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
+  let item_registry_json = sorted_map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
   let json = concat(
     "{\n  \"version\": \"0.2.0\",\n  \"nodes\": {", nodes_json,
     "},\n  \"modules\": [", modules_json,

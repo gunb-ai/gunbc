@@ -7,67 +7,67 @@ data refusal_names_a_comparison_and_prints_neither_side: RecurringFailureMode = 
   identity: "refusal_names_a_comparison_and_prints_neither_side" as NonEmptyStr,
 
   receipts: [
-    "**a typed refusal names a threshold comparison as its cause and emits neither the threshold in force nor the measured quantity, so the reader cannot reproduce the verdict or size the gap** (INVALID STATE: a mechanism performs a comparison, refuses on it, and reports the comparison's NAME while discarding both of its operands. ",
+    "**a typed refusal names a threshold comparison as its cause and emits neither the threshold in force nor the measured quantity, so the reader cannot reproduce the verdict or size the gap** (INVALID STATE: a mechanism performs a comparison, refuses on it, and reports the comparison's NAME while discarding both of its operands.",
 
-    "The refusal is fail-closed, typed, located and correct; what it cannot do is tell anyone how far over the line the subject was. ",
+    "The refusal is fail-closed, typed, located and correct; what it cannot do is tell anyone how far over the line the subject was.",
 
-    "**A refusal that names a budget and reports neither the budget in force nor the measured entry cannot distinguish over-by-a-percent from over-by-two-orders, and those prescribe different repairs.** ",
+    "**A refusal that names a budget and reports neither the budget in force nor the measured entry cannot distinguish over-by-a-percent from over-by-two-orders, and those prescribe different repairs.**",
 
-    "The first is a tuning question, the second says the subject is the wrong shape entirely -- and a reader with only the cause string will pick between them by intuition. ",
+    "The first is a tuning question, the second says the subject is the wrong shape entirely -- and a reader with only the cause string will pick between them by intuition.",
 
-    "SPECIMEN, 2026-09-07, measured while pricing a share-roster candidate: dispatch run 34088508298, job 101637093369 (`required-witnesses-floor`), refused with `REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored producer=v2.lens.common.outside_modeled_guarantee_join.witness_layer_decl_index -- the rostered producer evaluated but its value was refused by the cross-claim store: ByteBudgetExceeded`. ",
+    "SPECIMEN, 2026-09-07, measured while pricing a share-roster candidate: dispatch run 34088508298, job 101637093369 (`required-witnesses-floor`), refused with `REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored producer=v2.lens.common.outside_modeled_guarantee_join.witness_layer_decl_index -- the rostered producer evaluated but its value was refused by the cross-claim store: ByteBudgetExceeded`.",
 
-    "The budget's authority is `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET` in `v1_interpreter`, whose own doc comment carries the figure and its derivation; the measured size is computed by `portable_value_size_bytes` over the total reification, AT PUBLICATION, which is precisely the moment the refusal is decided. ",
+    "The budget's authority is `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET` in `v1_interpreter`, whose own doc comment carries the figure and its derivation; the measured size is computed by `portable_value_size_bytes` over the total reification, AT PUBLICATION, which is precisely the moment the refusal is decided.",
 
-    "So BOTH operands are in hand at the decision point and NEITHER survives into the log: the store retains only an `overflow` COUNT, and the refusal message carries the cause string alone. ",
+    "So BOTH operands are in hand at the decision point and NEITHER survives into the log: the store retains only an `overflow` COUNT, and the refusal message carries the cause string alone.",
 
-    "The per-producer `[floor-phase] phase=pure-producer-share-warm` line, which would have carried a disposition, was emitted with `disposition=Stored` for the two producers that stored and NOT AT ALL for the one that refused -- so the instrument that reports dispositions goes quiet on exactly the disposition a reader is looking for. ",
+    "The per-producer `[floor-phase] phase=pure-producer-share-warm` line, which would have carried a disposition, was emitted with `disposition=Stored` for the two producers that stored and NOT AT ALL for the one that refused -- so the instrument that reports dispositions goes quiet on exactly the disposition a reader is looking for.",
 
-    "HARM: the repair chosen after such a refusal is chosen without the one number that discriminates between the available repairs, and the cheapest wrong answer is always available -- raise the budget. ",
+    "HARM: the repair chosen after such a refusal is chosen without the one number that discriminates between the available repairs, and the cheapest wrong answer is always available -- raise the budget.",
 
-    "Raising a budget to admit one oversized value is the absorbing fallback of DESIGN section 5 wearing the mechanism's own vocabulary, and a log that cannot show the magnitude is a log that cannot argue against it. ",
+    "Raising a budget to admit one oversized value is the absorbing fallback of DESIGN section 5 wearing the mechanism's own vocabulary, and a log that cannot show the magnitude is a log that cannot argue against it.",
 
-    "WHY IT IS NOT `instrument_blind_spot_anti_correlated_with_severity`, filed the same night and genuinely adjacent: that class goes blind by DROPPING a subject whose observation never completed, so the record is ABSENT and reads as `never happened`. ",
+    "WHY IT IS NOT `instrument_blind_spot_anti_correlated_with_severity`, filed the same night and genuinely adjacent: that class goes blind by DROPPING a subject whose observation never completed, so the record is ABSENT and reads as `never happened`.",
 
-    "This class emits the record. ",
+    "This class emits the record.",
 
-    "It goes blind by PRINTING A COMPARISON WITH NEITHER SIDE, so the record is PRESENT and reads as `happened, magnitude unknowable`. ",
+    "It goes blind by PRINTING A COMPARISON WITH NEITHER SIDE, so the record is PRESENT and reads as `happened, magnitude unknowable`.",
 
-    "The two also differ in what the fix is: there the mechanism must retain something it currently discards at a boundary it never reaches, here it must print two values it is already holding. ",
+    "The two also differ in what the fix is: there the mechanism must retain something it currently discards at a boundary it never reaches, here it must print two values it is already holding.",
 
-    "WHY IT IS NOT `artifact_declares_a_threshold_it_is_not_measured_against`, which is the closer neighbour of the two: that class PRINTS a threshold and prints the WRONG one, so a consumer computes a well-formed population against a line nobody enforces. ",
+    "WHY IT IS NOT `artifact_declares_a_threshold_it_is_not_measured_against`, which is the closer neighbour of the two: that class PRINTS a threshold and prints the WRONG one, so a consumer computes a well-formed population against a line nobody enforces.",
 
-    "Here nothing wrong is printed -- nothing is printed. ",
+    "Here nothing wrong is printed -- nothing is printed.",
 
-    "The two are the same defect at different arities and that neighbour's own amended trigger already names the general form one level up: a row from which the verdict cannot be recomputed is the defect, and line-versus-column-versus-nothing are ways to have it rather than distinct defects. ",
+    "The two are the same defect at different arities and that neighbour's own amended trigger already names the general form one level up: a row from which the verdict cannot be recomputed is the defect, and line-versus-column-versus-nothing are ways to have it rather than distinct defects.",
 
-    "This row is the ARITY-ZERO case, and it is filable separately because the neighbour's remedy -- emit the line ACTUALLY applied -- is satisfied vacuously by a refusal that emits no line at all. ",
+    "This row is the ARITY-ZERO case, and it is filable separately because the neighbour's remedy -- emit the line ACTUALLY applied -- is satisfied vacuously by a refusal that emits no line at all.",
 
-    "RUNG FOUND AT: 1, mitigatable. ",
+    "RUNG FOUND AT: 1, mitigatable.",
 
-    "The line stops, the refusal is typed and located and names the producer, so nothing proceeds on a wrong value; the containment is real and only the magnitude is lost. ",
+    "The line stops, the refusal is typed and located and names the producer, so nothing proceeds on a wrong value; the containment is real and only the magnitude is lost.",
 
-    "CEILING: 4, structurally impossible, and it is available today rather than aspirational. ",
+    "CEILING: 4, structurally impossible, and it is available today rather than aspirational.",
 
-    "The refusal is CONSTRUCTED at the site that performed the comparison and therefore holds both operands; a refusal value carrying the threshold and the measured quantity as fields cannot be constructed without them, so the omission has no constructor. ",
+    "The refusal is CONSTRUCTED at the site that performed the comparison and therefore holds both operands; a refusal value carrying the threshold and the measured quantity as fields cannot be constructed without them, so the omission has no constructor.",
 
-    "That is DESIGN section 5's correctness-by-construction rather than a check that the message was complete -- and the tell that today's shape is validation-shaped is that the cause is an authored `&'static str` chosen beside the comparison instead of derived from it. ",
+    "That is DESIGN section 5's correctness-by-construction rather than a check that the message was complete -- and the tell that today's shape is validation-shaped is that the cause is an authored `&'static str` chosen beside the comparison instead of derived from it.",
 
-    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **the per-producer warm line is emitted for EVERY rostered producer including refused ones, carrying its disposition and the measured entry bytes against the budget in force** -- sufficient for a reader to reproduce the store's verdict from the log alone, demonstrated by a discriminating red on a fixture whose producer refuses and whose emitted line permits the refusal to be recomputed. ",
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **the per-producer warm line is emitted for EVERY rostered producer including refused ones, carrying its disposition and the measured entry bytes against the budget in force** -- sufficient for a reader to reproduce the store's verdict from the log alone, demonstrated by a discriminating red on a fixture whose producer refuses and whose emitted line permits the refusal to be recomputed.",
 
-    "A CONSEQUENCE FOR A NEIGHBOURING TYPE, RECORDED HERE SO THE NEXT LANE INHERITS IT RATHER THAN REDISCOVERING IT (this row does not author the change; `v2.workflow.floor_pure_producer_share` owns that type and a second lane editing it is how the conflict happens). ",
+    "A CONSEQUENCE FOR A NEIGHBOURING TYPE, RECORDED HERE SO THE NEXT LANE INHERITS IT RATHER THAN REDISCOVERING IT (this row does not author the change; `v2.workflow.floor_pure_producer_share` owns that type and a second lane editing it is how the conflict happens).",
 
-    "`ShareRefusalVerdict` today has three arms -- `MeasuredServeAboveRecompute`, `NoMeasuredEffectOverItsConsumers`, `SupersededBySingleAuthorityRepair` -- and all three answer a COST question: is serving cheaper than recomputing. ",
+    "`ShareRefusalVerdict` today has three arms -- `MeasuredServeAboveRecompute`, `NoMeasuredEffectOverItsConsumers`, `SupersededBySingleAuthorityRepair` -- and all three answer a COST question: is serving cheaper than recomputing.",
 
-    "A `ByteBudgetExceeded` store refusal answers a CAPACITY question -- can this value be a shared value AT ALL -- and it is decided at publication, BEFORE any serving cost exists to compare. ",
+    "A `ByteBudgetExceeded` store refusal answers a CAPACITY question -- can this value be a shared value AT ALL -- and it is decided at publication, BEFORE any serving cost exists to compare.",
 
-    "Recording it under a cost arm would be a MEANING FORK rather than a rounding error, and an INFLATING one: a capacity refusal filed as `MeasuredServeAboveRecompute` reads as `we measured and sharing lost` when the truth is `sharing was never available`, and the first ranks for a cost repair while the second ranks for a shape repair. ",
+    "Recording it under a cost arm would be a MEANING FORK rather than a rounding error, and an INFLATING one: a capacity refusal filed as `MeasuredServeAboveRecompute` reads as `we measured and sharing lost` when the truth is `sharing was never available`, and the first ranks for a cost repair while the second ranks for a shape repair.",
 
-    "Worse, `refused_row_carriers_transfer` treats `MeasuredServeAboveRecompute` as a measured cost that TRAVELS to other producers' consumers, so the fork would refuse unrelated candidates on a harm nobody observed. ",
+    "Worse, `refused_row_carriers_transfer` treats `MeasuredServeAboveRecompute` as a measured cost that TRAVELS to other producers' consumers, so the fork would refuse unrelated candidates on a harm nobody observed.",
 
-    "So that type needs a fourth arm for capacity, and until it exists a candidate refused this way is left PENDING rather than filed under a verdict that does not fit it. ",
+    "So that type needs a fourth arm for capacity, and until it exists a candidate refused this way is left PENDING rather than filed under a verdict that does not fit it.",
 
-    "AND THE READING THAT MAKES THIS MORE THAN A LOGGING DEFECT: the specimen's refusal is the evidence that the value was never a sharing candidate. ",
+    "AND THE READING THAT MAKES THIS MORE THAN A LOGGING DEFECT: the specimen's refusal is the evidence that the value was never a sharing candidate.",
 
     "A value too large to be a shared value is a value that should not have been built to answer one question -- the producer materializes an entire corpus declaration index so that one declaration reference can be resolved -- so the missing magnitude was hiding a SHAPE finding behind a CAPACITY message.)",
   ],

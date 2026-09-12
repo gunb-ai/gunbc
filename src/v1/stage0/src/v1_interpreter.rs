@@ -4189,6 +4189,65 @@ pub struct PreparedScopeIndexes {
 }
 
 impl PreparedScopeIndexes {
+    /// THE SITE-RELATIVE TIERS, AND THE ONLY IMPLEMENTATION OF THEM.
+    ///
+    /// A bare reference resolves first through the site file's OWN module's qualified
+    /// declaration, then through the module that file explicitly imported the name FROM — and
+    /// both only for a name the shared slot cannot represent unambiguously, which is the
+    /// condition that makes the tiers worth consulting at all. `None` means no tier answered and
+    /// the reference reaches the shared bare slot below.
+    ///
+    /// `InterpContext::lookup_fn_from` IS this method plus that slot, and the bare-name
+    /// ambiguity census asks this same method whether a reference falls through to it. They
+    /// cannot drift, because there is nothing to drift from: an earlier revision stated "one
+    /// rule, one home" while leaving the interpreter its own copy, and the two copies had
+    /// already disagreed on this gate.
+    ///
+    /// `ResolvedFuncEnv.parents` is exactly wrong for the second tier and was tried — this
+    /// carrier's own `file_import_bindings` note says why: it is the FLATTENED TRANSITIVE
+    /// closure, which "does not separate a direct import from a transitively reachable module".
+    /// A wildcard import binds no names and contributes nothing here, which is the residue the
+    /// census exists to find.
+    fn site_resolved_fn(&self, site_file: &str, name: &str) -> Option<&Rc<Node>> {
+        if name.contains('.')
+            || site_file.is_empty()
+            || !self.ambiguous_bare_function_names.contains(name)
+        {
+            return None;
+        }
+        if let Some(module_path) = self.file_module_paths.get(site_file) {
+            if let Some(node) = self.fn_nodes.get(&format!("{module_path}.{name}")) {
+                return Some(node);
+            }
+        }
+        if let Some(source_module) = self
+            .file_import_bindings
+            .get(&(site_file.to_string(), name.to_string()))
+        {
+            if let Some(node) = self.fn_nodes.get(&format!("{source_module}.{name}")) {
+                return Some(node);
+            }
+        }
+        None
+    }
+
+    /// DOES A BARE VALUE REFERENCE AT THIS SITE FALL THROUGH TO THE SHARED SLOT? The census's
+    /// question and the wall's, answered by the resolution the interpreter performs rather than
+    /// by a restatement of it.
+    pub fn falls_through_to_shared_slot(&self, site_file: &str, name: &str) -> bool {
+        self.site_resolved_fn(site_file, name).is_none()
+    }
+
+    /// AND WHICH MODULE ANSWERED, when one did. The census's negative — a pair that has left the
+    /// ambiguous-read list — proves only that the list moved; this says what the reference now
+    /// resolves TO, which is what a qualification is actually for. Derived from the resolved
+    /// declaration's own source file through the same `file_module_paths` the first tier reads,
+    /// so it names the module that answered rather than the module the census hoped would.
+    pub fn site_resolved_module(&self, site_file: &str, name: &str) -> Option<String> {
+        let node = self.site_resolved_fn(site_file, name)?;
+        self.file_module_paths.get(node.span.file.as_str()).cloned()
+    }
+
     /// EVERY RESOLUTION THIS INDEX SET CAN ANSWER, rendered at identity grain and sorted, so
     /// two index sets can be compared for equality of ANSWERS rather than of construction path.
     /// Items are identified by `Rc` address: the same declaration node, not merely an equal
@@ -4979,33 +5038,20 @@ impl InterpContext {
     /// subject and retires with namespace-only resolution, where a reference has exactly one
     /// declarer by construction.
     fn lookup_fn_from(&self, name: &str, site_file: &str) -> Option<&Rc<Node>> {
-        if !name.contains('.')
-            && !site_file.is_empty()
-            && self.indexes.ambiguous_bare_function_names.contains(name)
-        {
-            if let Some(module_path) = self.indexes.file_module_paths.get(site_file) {
-                let qualified = format!("{}.{}", module_path, name);
-                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
-                    return Some(node);
-                }
-            }
-            // THEN WHERE THE AUTHOR SAID IT COMES FROM: an explicitly imported name resolves to
-            // the module it was imported FROM, a fact the shared slot discards. Without this tier
-            // `import a.b.c { anchor }` is inert whenever another module in scope declares
-            // `anchor` -- the reference lands on the precedence winner and the import line reads
-            // as though it decided something.
-            if let Some(source_module) = self
-                .indexes
-                .file_import_bindings
-                .get(&(site_file.to_string(), name.to_string()))
-            {
-                let qualified = format!("{}.{}", source_module, name);
-                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
-                    return Some(node);
-                }
-            }
-        }
-        self.indexes.fn_nodes.get(name)
+        // WHERE THE REFERENCE WAS WRITTEN ANSWERS FIRST: the site file's own module's
+        // declaration, then where the author said the name comes from -- an explicitly imported
+        // name resolves to the module it was imported FROM, a fact the shared slot discards.
+        // Without that tier `import a.b.c { anchor }` is inert whenever another module in scope
+        // declares `anchor`: the reference lands on the precedence winner and the import line
+        // reads as though it decided something.
+        //
+        // Both tiers live in `PreparedScopeIndexes::site_resolved_fn`, which is also what the
+        // bare-name ambiguity census asks whether a reference falls through to the slot below.
+        // One implementation, so the population the census names is the population execution
+        // resolves.
+        self.indexes
+            .site_resolved_fn(site_file, name)
+            .or_else(|| self.indexes.fn_nodes.get(name))
     }
 
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
@@ -5144,11 +5190,20 @@ fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     Ok(Env::extend(&Env::empty(), bindings))
 }
 
+// Both helpers classify the node they evaluate, not the bare-name registry entry, so the kind can
+// no longer describe a different declaration from the node (see `eval_var`'s slow path). THAT IS
+// ALL THIS REPAIRS HERE, stated because the rung is the minimum across paths: unlike `eval_var`,
+// these helpers are asked by bare name with no referring file, so they still SELECT the node
+// through `lookup_fn`'s shared bare slot, whose owner for a colliding spelling is chosen by walk
+// order, not by declaration. For a data name that collides with a same-spelled item elsewhere they
+// can therefore still evaluate -- or, now consistently, decline -- the wrong declaration. That
+// residue is the shared-slot ambiguity the next layer refuses
+// (gunbc.recurring_failure_mode surface_shorthand_preempts_resolved_identity).
 pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Value>> {
     let mut out = Vec::new();
-    for (name, info) in ctx.item_registry.iter() {
-        if info.kind == ItemKind::DataItem {
-            if let Some(node) = ctx.lookup_fn(name) {
+    for name in ctx.item_registry.keys() {
+        if let Some(node) = ctx.lookup_fn(name) {
+            if item_kind(node.clone()) == ItemKind::DataItem {
                 if let Some(ref body) = node.body {
                     out.push(eval_expr(body, &Env::empty(), ctx)?);
                 }
@@ -5159,15 +5214,12 @@ pub fn eval_data_initializer_values(ctx: &InterpContext) -> InterpResult<Vec<Val
 }
 
 pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResult<Option<Value>> {
-    let Some(info) = ctx.item_registry.get(item_name) else {
-        return Ok(None);
-    };
-    if info.kind != ItemKind::DataItem {
-        return Ok(None);
-    }
     let Some(node) = ctx.lookup_fn(item_name) else {
         return Ok(None);
     };
+    if item_kind(node.clone()) != ItemKind::DataItem {
+        return Ok(None);
+    }
     let Some(body) = node.body.as_ref() else {
         return Ok(None);
     };
@@ -6023,11 +6075,16 @@ fn eval_var(
         return Ok(val.clone());
     }
 
-    // Slow path (not a bound variable): materialize the name string for the registry lookup.
+    // Slow path (not a bound variable). WHAT THIS NAME DENOTES IS ONE FACT, READ FROM ONE
+    // LOOKUP: the file-aware resolver picks the node, and the node's own shape gives its kind
+    // (`item_kind`, the same function that computed the registry's `ItemInfo.kind`). The kind used
+    // to come from `item_registry`, a bare-name projection that collapses homonyms last-write-wins
+    // in hash-seed order, so a `data` reference could be classified by a same-spelled `fn` in
+    // another module and evaluate as `Value::Fn` on some runs and not others.
     let name = ctx.resolve(sym);
-    if let Some(info) = v1_rt::map_get(&ctx.item_registry, name.clone()) {
-        if info.kind == ItemKind::DataItem {
-            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
+    if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
+        match item_kind(fn_node.clone()) {
+            ItemKind::DataItem => {
                 if let Some(ref body) = fn_node.body {
                     if let ExprData::ExprVar { .. } = &*body.expr_data {
                         if expr_var_name_at(body.clone(), ctx.si()) == name {
@@ -6050,13 +6107,12 @@ fn eval_var(
                     return Ok(v);
                 }
             }
-        }
-        if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
-            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
+            ItemKind::FuncItem | ItemKind::FnItem => {
                 return Ok(Value::Fn {
                     node: fn_node.clone(),
                 });
             }
+            _ => {}
         }
     }
 
@@ -9919,18 +9975,35 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(v);
     }
 
+    // A refused cast names the DECLARED source type the typechecker admitted, beside the runtime
+    // carrier the interpreter actually holds. Printing only the carrier made `Nat as Int` read as
+    // "cannot cast Int to Int" -- a diagnostic that could not name what it rejected.
+    let refused = |v: &Value, target: &str| InterpError::TypeError {
+        msg: cast_refusal_message(&source_name, v.type_label(), target),
+    };
+
+    // The "Int"/"Float" arms convert between runtime CARRIERS, so a value already on the target's
+    // carrier is an identity cast whatever its declared type: Nat (grounded onto Int by the numeric
+    // tower, std.coercion grounded_primitive_coproduct_identities), Milliseconds, Octet, Int8, ...
+    // The carrier is the authority here, not a kernel-name comparison: Nat's grounding is not an
+    // alias chain (`type Nat = CommutativeSemiring<Magnitude>`), so a name walk cannot reach Int.
+    // This sheds a BRAND, never a UNIT: `Milliseconds = Int where brand(..)` already flows into any
+    // Int position without a cast, so `as Int` removes nothing a position enforced. A unit-bearing
+    // type is a `std.measure` Measure, carried as a Record, and still refuses here.
+    //
+    // Cast admissibility is decided ONLY here: validate_cast abstains whenever either side is
+    // outside std.coercion's dag_cast_rules domain, so this runtime arm is the sole wall, and
+    // std.coercion admits `Int as Nat` and `Bool as Int` while this fold refuses both.
     match target_name.as_str() {
         "Float" => match val {
+            Value::Float(n) => Ok(Value::Float(n)),
             Value::Int(n) => Ok(Value::Float(n as f64)),
-            v => Err(InterpError::TypeError {
-                msg: format!("cannot cast {} to Float", v.type_label()),
-            }),
+            v => Err(refused(&v, "Float")),
         },
         "Int" => match val {
+            Value::Int(n) => Ok(Value::Int(n)),
             Value::Float(n) => Ok(Value::Int(n as i64)),
-            v => Err(InterpError::TypeError {
-                msg: format!("cannot cast {} to Int", v.type_label()),
-            }),
+            v => Err(refused(&v, "Int")),
         },
         "String" => match val {
             Value::Int(n) => Ok(str_value(n.to_string())),
@@ -9940,13 +10013,20 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             // Corpus wire/debug casts for structured values — not the blanket Display
             // fallback that silently stringified List/Map (§5 fabricated plausible output).
             Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
-            v => Err(InterpError::TypeError {
-                msg: format!("cannot cast {} to String", v.type_label()),
-            }),
+            v => Err(refused(&v, "String")),
         },
-        t => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", val.type_label(), t),
-        }),
+        t => Err(refused(&val, t)),
+    }
+}
+
+fn cast_refusal_message(declared_source: &str, carrier: &str, target: &str) -> String {
+    if declared_source.is_empty() || declared_source == carrier {
+        format!("cannot cast {} to {}", carrier, target)
+    } else {
+        format!(
+            "cannot cast {} (runtime carrier {}) to {}",
+            declared_source, carrier, target
+        )
     }
 }
 
@@ -13023,6 +13103,15 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
 
 /// When a whole-receipt wall deadline is armed, put the child in its own process
 /// group so a mid-wait kill reaps cargo→rustc descendants, not only the parent.
+///
+/// `process_group(0)`, NEVER a `pre_exec` closure. A `pre_exec` forces std off `posix_spawn`
+/// onto a real `fork()` of this whole process, and the kernel's page-table copy and the
+/// parent's copy-on-write faults are SYSTEM time charged to the calling thread -- the quantity
+/// `CLOCK_THREAD_CPUTIME_ID` reports as evaluation CPU. On a multi-GB serve process, system time
+/// was nearly all of a dispatch's thread CPU, so the evaluation budget was bounding how often the
+/// process forked, not how much it evaluated (gunbc.recurring_failure_mode
+/// metered_clock_charges_a_cost_the_budget_does_not_intend_to_bound names the instrument).
+/// `process_group(0)` sets the same group through `POSIX_SPAWN_SETPGROUP` with no fork.
 fn configure_shell_process_group_for_wall_kill(
     cmd: &mut std::process::Command,
     ctx: &InterpContext,
@@ -13033,16 +13122,7 @@ fn configure_shell_process_group_for_wall_kill(
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        // SAFETY: runs in the child after fork, before exec — setpgid(0,0) is the
-        // standard isolate-for-kill pattern; no shared mutable state is touched.
-        unsafe {
-            cmd.pre_exec(|| {
-                if libc::setpgid(0, 0) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
+        cmd.process_group(0);
     }
     #[cfg(not(unix))]
     {
@@ -15824,13 +15904,15 @@ pub(crate) fn resolve_published_mock_keys(
     ctx: &InterpContext,
 ) -> InterpResult<std::collections::HashSet<String>> {
     let mut keys = std::collections::HashSet::new();
-    for (name, info) in ctx.item_registry.iter() {
-        if info.kind != ItemKind::DataItem {
-            continue;
-        }
+    // Classify the node evaluated, not the bare-name registry entry (see `eval_var`'s slow path);
+    // selection is still the shared bare slot, as in `eval_data_item_value`.
+    for name in ctx.item_registry.keys() {
         let Some(node) = ctx.lookup_fn(name) else {
             continue;
         };
+        if item_kind(node.clone()) != ItemKind::DataItem {
+            continue;
+        }
         let Some(ty) = node.type_annotation.as_ref() else {
             continue;
         };
@@ -21220,6 +21302,7 @@ mod wall_deadline_kill_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
+        configure_shell_process_group_for_wall_kill, kill_shell_process_group,
         map_budget_error_to_witness_refusal, wait_child_honoring_wall_deadline, EvaluationClock,
         ExecutionMode, InterpContext, InterpError,
     };
@@ -21416,6 +21499,51 @@ mod wall_deadline_kill_tests {
     fn evaluation_clock_keys_match_dag_authority() {
         assert_eq!(EvaluationClock::ThreadCpu.key(), "thread_cpu");
         assert_eq!(EvaluationClock::MonotonicWall.key(), "monotonic_wall");
+    }
+
+    /// The kill-group property survives the move off `pre_exec`: with a wall deadline armed, the
+    /// configured child leads its own process group (pgid == pid), which is what lets
+    /// `kill_shell_process_group` reach its descendants. Unarmed, it stays in ours.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn armed_wall_deadline_spawns_the_child_as_its_own_process_group_leader() {
+        fn pgid_of(pid: u32) -> i32 {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("stat");
+            let rest = &stat[stat.rfind(')').expect("comm") + 2..];
+            rest.split_whitespace()
+                .nth(2)
+                .expect("pgrp")
+                .parse()
+                .expect("int")
+        }
+        let armed = wet_ctx();
+        armed.arm_wall_deadline(60_000);
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        configure_shell_process_group_for_wall_kill(&mut cmd, &armed);
+        let mut child = cmd.spawn().expect("spawn sleep");
+        let pid = child.id();
+        assert_eq!(
+            pgid_of(pid),
+            pid as i32,
+            "armed: the child must lead its own group"
+        );
+        kill_shell_process_group(pid);
+        let _ = child.wait();
+
+        let unarmed = wet_ctx();
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        configure_shell_process_group_for_wall_kill(&mut cmd, &unarmed);
+        let mut child = cmd.spawn().expect("spawn sleep");
+        let pid = child.id();
+        assert_eq!(
+            pgid_of(pid),
+            pgid_of(std::process::id()),
+            "unarmed: the child stays in our group"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]

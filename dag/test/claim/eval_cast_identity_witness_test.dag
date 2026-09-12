@@ -2,6 +2,7 @@ module test.claim.eval_cast_identity
 
 import std.logic { Bool }
 import std.types { List }
+import std.nat { Nat }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -14,10 +15,23 @@ fn int_identity(x: Int) -> Int {
   x as Int
 }
 
+// Nat is carried as Int at runtime, so `as Int` is an identity on the carrier. The interpreter's
+// "Int" arm used to accept only a Float, so this typechecked and died as "cannot cast Int to Int"
+// (gunbc.harness harness_seat, `harness_interactive_quality_seats as Int`).
+fn nat_to_int(n: Nat) -> Int {
+  n as Int
+}
+
+data one_nat: Nat = 1
+
 test fn list_identity_cast_holds() -> Bool {
   list_identity([1, 2, 3]) == [1, 2, 3]
 }
 
 test fn int_identity_cast_holds() -> Bool {
   int_identity(42) == 42
+}
+
+test fn nat_to_int_cast_is_carrier_identity() -> Bool {
+  nat_to_int(one_nat) == 1 && (one_nat as Int) + 1 == 2
 }

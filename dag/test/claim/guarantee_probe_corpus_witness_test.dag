@@ -622,7 +622,7 @@ test fn migrated_receipt_joins_its_v1_compile_path() -> Bool {
       )
       receipt_joins_v1_compile_path(receipt: receipt)
         && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
-        && (receipt.path as String) == (v1_compile_rust_path_id as String)
+        && (receipt.anchor.path as String) == (v1_compile_rust_path_id as String)
     Absent => false
   }
 }
@@ -838,8 +838,8 @@ test fn receipt_probe_set_digest_matches_executed_probe_set() -> Bool {
         subject_revision: synthetic_program_subject_revision(source: call_mislabel_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      (receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
-        && !((receipt.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))
+      (receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: executed) as String)
+        && !((receipt.anchor.probe_set_digest as String) == (probe_set_digest(probe_ids: guarantee_probe_ids()) as String))
     Absent => false
   }
 }

@@ -2279,7 +2279,7 @@ pub fn serialize_typed_module(
             ),
             json_list(Rc::new({
                 let mut __result = Vec::new();
-                for k in Rc::new(v1_rt::map_keys(&module.item_registry.clone()))
+                for k in Rc::new(v1_rt::sorted_map_keys(&module.item_registry.clone()))
                     .iter()
                     .cloned()
                 {
@@ -2414,7 +2414,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         .join(&", ".to_string());
         let item_registry_json = Rc::new({
             let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::map_keys(&typed.item_registry.clone()))
+            for k in Rc::new(v1_rt::sorted_map_keys(&typed.item_registry.clone()))
                 .iter()
                 .cloned()
             {
