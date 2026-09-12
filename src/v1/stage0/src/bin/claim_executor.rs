@@ -1903,8 +1903,14 @@ fn report_wave_admission_outcome(
             base,
             head,
             report,
-            roster_touched: _,
+            roster_touched,
         } => {
+            if base != head
+                && !roster_touched
+                && (!report.stale_admissions.is_empty() || !report.consumed_admissions.is_empty())
+            {
+                eprintln!("required-ci: namespace-wave-admission inherited roster debt — reported here; deletion refuses on main or a roster-source edit");
+            }
             let p = &report.population;
             eprintln!(
                 "required-ci: namespace-wave-admission base={base} head={head} \

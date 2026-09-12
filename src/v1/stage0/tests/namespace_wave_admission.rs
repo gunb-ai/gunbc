@@ -955,7 +955,7 @@ fn adjudicated_with_a_consumed_row(name: &str, roster_touched: bool) -> WaveAdmi
 /// The verdict is asked of `wave_admission_refusal`, which is the function the executor now calls,
 /// so this runs on the acceptance path rather than restating it.
 #[test]
-fn a_consumed_row_comes_due_on_the_roster_touching_run_and_on_no_other() {
+fn a_consumed_row_comes_due_on_the_roster_touching_pr() {
     let due = wave_admission_refusal(&adjudicated_with_a_consumed_row("consumed_due", true));
     let refusal = due.expect(
         "a consumed row standing on a change that touches the roster file must refuse: this is \
@@ -963,7 +963,7 @@ fn a_consumed_row_comes_due_on_the_roster_touching_run_and_on_no_other() {
          roster path out of the side `roster_touched` reads",
     );
     assert!(
-        refusal.contains("due for deletion on this roster-touching change"),
+        refusal.contains("due for deletion on main or this roster-touching change"),
         "the refusal must name the obligation rather than a count alone: {refusal}"
     );
 
@@ -1987,4 +1987,72 @@ fn an_ambiguous_base_binding_is_not_consumption() {
         "the unprovable row must still refuse: {:?}",
         report.stale_admissions
     );
+}
+
+#[test]
+fn landing_refuses_consumed_rows_without_a_roster_diff() {
+    let mut outcome = adjudicated_with_a_consumed_row("landing_consumed", false);
+    if let WaveAdmissionOutcome::Adjudicated { base, head, .. } = &mut outcome {
+        *base = head.clone();
+    }
+    let refusal = wave_admission_refusal(&outcome).expect("landing owes deletion");
+    assert!(refusal.contains("delete these rows"));
+    assert!(refusal.contains(ADMISSION_ROSTER_REL_PATH));
+    if let WaveAdmissionOutcome::Adjudicated { report, .. } = &outcome {
+        assert!(refusal.contains(&report.consumed_admissions[0]));
+    }
+}
+
+#[test]
+fn stale_roster_debt_belongs_to_landing_and_roster_edits_but_delta_debt_always_refuses() {
+    let base = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+    ];
+    let moved = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let admissions = [TransitionAdmission {
+        label: "gunbc#11137 unmatched inherited row",
+        subject: AdmissionSubject::Binding {
+            module: "probe.consumer",
+            in_declaration: "use_it",
+            spelling: "gadget",
+            target: "probe.other",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    }];
+    for (name, head_sources, same_revision, roster_touched, refuses) in [
+        ("inherited_stale", &base, false, false, false),
+        ("edited_stale", &base, false, true, true),
+        ("landing_stale", &base, true, false, true),
+        ("inherited_stale_with_delta", &moved, false, false, true),
+    ] {
+        let report = compare_with(name, &base, head_sources, &admissions);
+        assert_eq!(report.stale_admissions.len(), 1);
+        assert_eq!(
+            !report_unadjudicated(&report).is_empty(),
+            name == "inherited_stale_with_delta"
+        );
+        let outcome = WaveAdmissionOutcome::Adjudicated {
+            base: "base".into(),
+            head: if same_revision { "base" } else { "head" }.into(),
+            report,
+            roster_touched,
+        };
+        assert_eq!(
+            wave_admission_refusal(&outcome).is_some(),
+            refuses,
+            "{name}"
+        );
+        if same_revision || roster_touched {
+            let refusal = wave_admission_refusal(&outcome).unwrap();
+            assert!(refusal.contains("gunbc#11137 unmatched inherited row"));
+            assert!(refusal.contains("delete these rows"));
+            assert!(refusal.contains(ADMISSION_ROSTER_REL_PATH));
+        }
+    }
 }

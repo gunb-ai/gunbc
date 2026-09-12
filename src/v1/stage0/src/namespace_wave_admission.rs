@@ -2479,7 +2479,8 @@ use crate::cli_run::{workspace_root, DAG_PARSE_SWEEP_ROOTS};
 pub enum WaveAdmissionOutcome {
     /// The baseline resolves to the head, so there is no diff. A push to `main` after a squash
     /// merge is the whole population. NOT an admission: nothing was compared, and the phase
-    /// reports it under its own name.
+    /// reports it under its own name. Only an empty roster may take this arm: landing still
+    /// adjudicates and refuses stale or consumed rows when there is no diff.
     NoSubject { head: String },
     /// The baseline could not be observed. Refuses.
     NotEvaluated { reason: String },
@@ -2487,11 +2488,8 @@ pub enum WaveAdmissionOutcome {
         base: String,
         head: String,
         report: WaveAdmissionReport,
-        /// Whether this run's diff touches the admission roster's own source file. Consumed
-        /// rows are inert receipts for every other run; on this path their deletion is DUE, and
-        /// the executor refuses until the touching change removes them. This is what moves the
-        /// cleanup bill from bystanders to the roster: the next relocation PR by construction
-        /// touches this file and therefore cannot land while consumed rows stand.
+        /// Whether this diff touches the roster source. Main (base == head) owns roster
+        /// defects independently; unrelated PRs report inherited debt without refusing it.
         roster_touched: bool,
     },
 }
@@ -2511,15 +2509,10 @@ pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_ad
 /// The executor keeps the receipts — it is the thing with a stderr — and asks this for the verdict,
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
-/// AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a permission standing
-/// over nothing — author error, and leaving it means the roster stops being a fact about the
-/// corpus.
-///
-/// A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already holds at the
-/// base (a positive proof), so for an unrelated run it is an inert typed receipt; billing its
-/// cleanup to that run was the externalized degradation eight dissolution PRs paid for. The
-/// deletion is due — and enforced — on the first change that touches the roster file itself,
-/// which every future relocation PR does by construction.
+/// Roster defects refuse at landing (base == head) or on a roster-source edit. The unchanged
+/// source is the inheritance proof, not a claim that every stale row is consumed. Unadjudicated
+/// deltas always refuse, regardless of who owns the roster debt. Policy authority:
+/// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
     match outcome {
         WaveAdmissionOutcome::NoSubject { head: _ } => None,
@@ -2527,24 +2520,41 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             Some("namespace-wave-admission (NotEvaluated)".to_string())
         }
         WaveAdmissionOutcome::Adjudicated {
-            base: _,
-            head: _,
+            base,
+            head,
             report,
             roster_touched,
         } => {
             let unadjudicated = report_unadjudicated(report);
-            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
-            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
+            let roster_due = base == head || *roster_touched;
+            let consumed_due = roster_due && !report.consumed_admissions.is_empty();
+            let stale_due = roster_due && !report.stale_admissions.is_empty();
+            if unadjudicated.is_empty() && !stale_due && !consumed_due {
                 return None;
             }
+            let remedy = if stale_due || consumed_due {
+                let rows = report
+                    .stale_admissions
+                    .iter()
+                    .chain(&report.consumed_admissions)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                format!(
+                    "; delete these rows from {ADMISSION_ROSTER_REL_PATH}; declared transition \
+                     labels (including their trigger PR where authored): {rows}"
+                )
+            } else {
+                String::new()
+            };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){})",
+                 consumed admission(s){}){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
-                if consumed_due {
-                    " due for deletion on this roster-touching change"
+                if consumed_due || stale_due {
+                    " due for deletion on main or this roster-touching change"
                 } else {
                     ""
                 }
@@ -2736,7 +2746,16 @@ pub fn run_required_wave_admission(
         }
     };
     if base == head {
-        return Ok(WaveAdmissionOutcome::NoSubject { head });
+        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
+            return Ok(WaveAdmissionOutcome::NoSubject { head });
+        }
+        // Landing owns roster debt even though it has no namespace delta to compare.
+        return Ok(WaveAdmissionOutcome::Adjudicated {
+            base,
+            head,
+            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
+            roster_touched: false,
+        });
     }
 
     let name_status = git_stdout(
