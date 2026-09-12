@@ -68,9 +68,9 @@ fn gi_baseline() -> GenerationIdentity {
   }
 }
 
-// One perturbation per axis. Each moves EXACTLY one fact and holds the other five
-// fixed, so a carrier that folded the six into a single scalar would be unable to
-// tell these six apart — which is precisely what the per-axis assertions below
+// One perturbation per axis. Each moves EXACTLY one fact and holds every other
+// fixed, so a carrier that folded the axes into a single scalar would be unable to
+// tell them apart — which is precisely what the per-axis assertions below
 // falsify.
 fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
   let base = gi_baseline()
@@ -153,8 +153,8 @@ test fn generation_identity_agrees_with_itself() -> Bool {
   generation_identity_agrees(left: gi_baseline(), right: gi_baseline())
 }
 
-// THE KEYSTONE DISCRIMINATING RED, stated as a conjunction rather than six separate greens so a
-// silently-dropped arm cannot pass unnoticed. For each of the six axes, perturbing it alone must
+// THE KEYSTONE DISCRIMINATING RED, stated as a conjunction over the roster rather than one green per
+// axis so a silently-dropped arm cannot pass unnoticed. For each axis, perturbing it alone must
 // (a) break overall agreement, (b) report exactly ONE mismatched axis, and (c) name THAT axis.
 // Clause (c) is what a single opaque compiler_identity scalar cannot satisfy — it fails (b) and
 // (c) together with an undifferentiated mismatch.
@@ -185,10 +185,10 @@ test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
   )
 }
 
-// The five axes NOT perturbed must still agree, so a perturbation cannot be reported
+// The axes NOT perturbed must still agree, so a perturbation cannot be reported
 // as a whole-identity smear. Without this, an implementation that marked every axis
 // mismatched on any change would pass the naming assertion above by accident.
-test fn perturbing_one_axis_leaves_the_other_five_agreeing() -> Bool {
+test fn perturbing_one_axis_leaves_the_others_agreeing() -> Bool {
   for_all(
     xs: generation_axes,
     predicate: fn(moved_axis) {
@@ -350,11 +350,10 @@ test fn empty_member_identity_refuses() -> Bool {
   }
 }
 
-// The six axis symbols must be pairwise distinct. If two axes shared a symbol, the
+// The axis symbols must be pairwise distinct. If two axes shared a symbol, the
 // naming assertion above would still pass while a stale refusal pointed a reader at
 // the wrong fact — the defect this whole carrier exists to prevent.
-// THE LITERAL IS A COMPLETENESS PROXY, AND IT MOVED FROM 6 TO 7 WITH THE REQUIRED-LENS-CONTRACT
-// AXIS. It is here because the pairwise-distinctness fold below passes perfectly well over a SHORT
+// THE LITERAL IS A COMPLETENESS PROXY, AND IT MOVES WITH THE COPRODUCT. It is here because the pairwise-distinctness fold below passes perfectly well over a SHORT
 // roster: a coproduct arm omitted from `generation_axes` is invisible to every check that folds the
 // roster, and the language cannot enumerate a coproduct's arms to derive the expected size. So the
 // count stands in for "the roster covers the type", and it is grounded in a closed authored

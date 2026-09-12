@@ -124,11 +124,12 @@ type GenerationIdentity {
   materialized_artifact: GeneratedArtifactIdentity
 }
 
-// THE PRE-MATERIALIZATION PROJECTION: the five CAUSAL axes, without the artifact.
+// THE PRE-MATERIALIZATION PROJECTION: the CAUSAL axes, without the artifact.
 //
 // A consumer that must key a compiler build BEFORE the artifact exists -- a materialization request
 // for the native compiler (std.materialization_provider NativeCompilerArtifactRequest) is the first
-// one -- needs exactly the axes that CAUSE the build, and cannot have the sixth: materialized_artifact
+// one -- needs exactly the axes that CAUSE the build, and cannot have the earned one:
+// materialized_artifact
 // is EARNED from observed bytes and joined back afterwards, so admitting it into a pre-build lookup
 // key would let a caller author the very fact the build is supposed to produce.
 //
@@ -137,12 +138,12 @@ type GenerationIdentity {
 // hypothetical: a key over only {source closure, toolchain, target} leaves a changed PRODUCER
 // COMPILER or BUILD CONFIGURATION invisible, so two different generations read as one computation
 // and the differing artifact reads as a same-key content conflict rather than a changed input.
-// Adding a seventh causal axis therefore changes this projection and every key derived from it,
+// Adding a causal axis therefore changes this projection and every key derived from it,
 // which is the property a second list cannot offer.
 //
 // NO COMPOSITE IS STORED, exactly as the head of this module requires: the digest is a projection
 // derived on demand, folded in the declared axis order under a tag of its own so it cannot collide
-// with any other fold over the same five digests.
+// with any other fold over the same digests.
 // THE PRE-MATERIALIZATION PROJECTION CARRIES THE CONTRACT TOO, and omitting it would be the
 // sharper defect rather than a smaller one: this projection is the materialization KEY, so a
 // generation comparison that distinguished two contracts while the key called them the same input
