@@ -1,0 +1,37 @@
+module fixture.closure.rustc_shell_single_field_projection_probe
+
+import std.types { Bool, String }
+
+// A KNOWN HOLE, NOT A DESIRED BEHAVIOUR, and it is named as one so nobody reads its red as a wall
+// working. The subject is v1.compiler.emit_rust emit_shell_return: a shell operation's emitted method
+// is signed `Result<.., Box<dyn Error>>`, and the projection wraps its value in `Ok(..)` only when the
+// declared output carries MORE THAN ONE field. A single-field output answers the channel expression
+// bare, so the emitted body returns the field where its own declared signature wants the Result --
+// rustc E0308. gunbc accepts the source with zero blocking diagnostics.
+//
+// THE ARITY IS THE WHOLE MECHANISM, MEASURED RATHER THAN ASSUMED. This file and its control differ in
+// ONE authored thing: how many fields the output block declares. Three things that look like they
+// might matter were measured and do not. The exit block does not: an operation with one output AND an
+// exit block emits `0 => { output.status.success() }` and is refused at the same grain. The channel
+// does not: a single `stdout: String from "stdout"` is refused exactly as a single
+// `success: Bool from "exit_success"` is. And two fields are already enough to repair it -- the
+// control declares two, not three -- so the boundary is at one, not at some larger shape.
+//
+// HOW IT WAS FOUND, because it is worth keeping: it was not looked for. An earlier cut of
+// argv_word_list_splice_probe.dag beside this one simplified its operations to a single
+// `success: Bool` output, and that fixture went red with four E0308s that had nothing to do with the
+// argv splice it exists to adjudicate. A fixture carrying two defects adjudicates neither, so that
+// one was widened to the output shape extdeps.rust.cargo_build actually declares and this pair was
+// split off to carry the shape it accidentally exposed.
+//
+// DO NOT REPAIR THIS FILE BY ADDING A SECOND OUTPUT FIELD -- that would delete the subject. Per
+// DESIGN section 4b(4), when the class climbs this arm flips to compiling and is KEPT as the
+// regression control on the direction it established; what changes then is the pair's expectation,
+// not this file's existence.
+service fixture.SingleFieldProjection {
+  operation OneFieldExitSuccess {
+    input { word: String }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["echo", word] }
+  }
+}

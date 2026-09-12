@@ -1,0 +1,22 @@
+module extdeps.google.sheets_mock_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+
+data sheets_spreadsheets_mock_case_get_values: PublishedMockCase = PublishedMockCase {
+  operation_key: "sheets.Spreadsheets.GetValues",
+  service: "sheets.Spreadsheets",
+  operation: "GetValues",
+  case_id: 0
+}
+
+data sheets_spreadsheets_mock_case_batch_update_values: PublishedMockCase = PublishedMockCase {
+  operation_key: "sheets.Spreadsheets.BatchUpdateValues",
+  service: "sheets.Spreadsheets",
+  operation: "BatchUpdateValues",
+  case_id: 0
+}
+
+data sheets_published_mock_corpus: List<PublishedMockCase> = [
+  sheets_spreadsheets_mock_case_get_values,
+  sheets_spreadsheets_mock_case_batch_update_values
+]
