@@ -22,11 +22,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // MEASUREMENTS OF TODAY'S XL-4 ROUTE: module_roots_from_source_root_ingest then
 // normalized_tree_roots_to_nodes (via located_roots_from_source_root_ingest), then the one
-// collector. Not a second parse_module ingest. A qualified cross-module mention is missing
-// with or without a call; a type-position name with no call is missing independently. A bare
-// same-module name yields no dependency edge, so a non-empty site list is not a usable graph.
-// Trigger: eager-raven-113 lowering widened to type positions (parent escalation to
-// fierce-lark/eager-raven), then this same ingest of the repaired tree.
+// collector. Not a second parse_module ingest.
+// Call-argument and type-position-with-no-call: tree-side; go red when eager-raven-113 lowering
+// widened to type positions lands, then this same ingest.
+// Qualified cross-module body mention: enrolled as absent, NOT hardened as tree-loss. A body
+// qualified name is dag_field_access_body_node (Transform of a dot atom plus operands). The
+// collector currently emits those as separate bare sites. That pair of rows retires when the
+// collector reassembles the chain into one ReferenceSite, not when body-lowering lands.
 
 data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
 
@@ -105,6 +107,7 @@ fn production_edge_count(path: String, target: String) -> Int {
   }
 }
 
+// Absent today. Trigger is collector reassembly of dag_field_access_body_node, not body-lowering.
 test fn production_route_reference_only_plain_value_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_reference_only_path, target: provider_module) == 0
 }
@@ -113,18 +116,22 @@ test fn production_route_import_only_has_no_reference_edge_holds() -> Bool {
   production_edge_count(path: consumer_import_only_path, target: provider_module) == 0
 }
 
+// Absent today. Same trigger as the reference-only qualified body mention, not body-lowering.
 test fn production_route_both_plain_value_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_both_path, target: provider_module) == 0
 }
 
+// Tree-side. Trigger: eager-raven-113 lowering, then this ingest.
 test fn production_route_call_contents_are_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
 }
 
+// Tree-side, no call anywhere. Trigger: eager-raven-113 lowering widened to type positions.
 test fn production_route_type_position_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_type_only_path, target: provider_module) == 0
 }
 
+// Tree-side (whole call expression). Trigger: eager-raven-113 lowering, then this ingest.
 test fn production_route_callee_with_no_arguments_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_callee_only_path, target: provider_module) == 0
 }
