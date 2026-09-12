@@ -74,10 +74,10 @@ data rec_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen
 
 data rec_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_record_beta"
 
-// POSITIVE CONTROL — NOT enrolled expected-red, and it must stay green. It establishes that
+// POSITIVE CONTROL — never expected-red, and it must stay green. It establishes that
 // decl_facts_at resolves all six qualified names and that every projected node yields a
-// non-empty atom population, so the three reds below report a projection that DROPS VALUES
-// rather than a lookup that found nothing or a reader that returns nothing.
+// non-empty atom population, so the three regression controls below report whether the
+// projection DISTINGUISHES VALUES rather than a lookup that found nothing.
 test fn every_specimen_resolves_and_projects_a_nonempty_atom_population() -> Bool {
   for_all(
     xs: [bare_a, bare_b, list_a, list_b, rec_a, rec_b],
@@ -88,12 +88,12 @@ test fn every_specimen_resolves_and_projects_a_nonempty_atom_population() -> Boo
   )
 }
 
-// EXPECTED RED 1 — bare String initializer position.
+// REGRESSION CONTROL 1 — bare String initializer position.
 test fn bare_string_rows_with_different_values_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: bare_a, b: bare_b)
 }
 
-// EXPECTED RED 2 — list-literal element position. Both specimens hold TWO elements and share
+// REGRESSION CONTROL 2 — list-literal element position. Both specimens hold TWO elements and share
 // their second, so arity and element count are held fixed and only the first element's characters
 // differ; an earlier revision paired a two-element list against an EMPTY one, which a projection
 // carrying cardinality alone could have greened (review 64012).
@@ -101,7 +101,7 @@ test fn list_rows_with_different_elements_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: list_a, b: list_b)
 }
 
-// EXPECTED RED 3 — string values inside a record initializer, constructor held fixed.
+// REGRESSION CONTROL 3 — string values inside a record initializer, constructor held fixed.
 test fn record_rows_with_different_string_fields_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: rec_a, b: rec_b)
 }
