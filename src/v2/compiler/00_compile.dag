@@ -821,10 +821,33 @@ fn validated_from_compile_output(
 // used to be appended to the root roster whatever grain they belonged to, which made the grain a
 // comment rather than a fact; they are partitioned by their own declared grain now, exactly like
 // registrations. The required roster still fires on every call regardless of caller lenses.
-// THE COVERAGE JOIN IS A GATE, NOT A REPORT. It is derived from the witnesses the door actually
-// collected and refuses the compile by name when the roster and the observations disagree, so an
-// obligation that silently stopped executing stops the line rather than producing a Validated whose
-// name is the only evidence that anything was validated (DESIGN sections 4b, 5).
+// THE COVERAGE JOIN RUNS AT THIS DOOR, AND WHAT IT CATCHES HERE IS NARROWER THAN THE JOIN ITSELF.
+// It is a gate rather than a report -- a refusal by name fails the compile -- but this annotation
+// used to say that "an obligation that silently stopped executing stops the line", and that is
+// FALSE at this door (review 64196). Both sides of the join are derived from
+// `required_compile_lens_roster()` inside one call: `run_required_lens_gates` folds the roster and
+// stamps each witness with the `identity` and `grain` of the very row it is folding, so the
+// observation list is a structural image of the roster rather than an independent reading of it.
+// `required_lens_observations` then drops any witness whose identity is not a registration before
+// the join is even asked. So `RegistrationUnobserved`, `ObservedAtWrongGrain`,
+// `RootLensObservedMoreThanOnce` and `ObservationUnregistered` have NO authorable RED on this path.
+// What can fire here is `RegistrationDuplicated` -- two roster rows sharing an identity -- and
+// `RequiredLensRosterEmpty`. An obligation that stops executing does so by LEAVING THE ROSTER, and
+// a join whose both sides come from the roster cannot see that by construction.
+//
+// The arms are not decoration, because they are discriminated where their REDs are authorable: a
+// fixture may hand the join an observation set this door cannot produce, and
+// `v2.test.lens_application.required_lens_coverage_join` does exactly that for every arm. DESIGN
+// section 4b is explicit that a state unrepresentable in the accepted corpus may still be
+// representable as source handed to the compiler by a fixture, and that declining the evidence
+// there would be specification-without-execution. The honest statement is therefore about grain:
+// fixture-grain the join discriminates six ways; door-grain it catches a duplicated or empty roster.
+//
+// TRIGGER for the door-grain claim to become the one this annotation used to make: an INDEPENDENT
+// observation channel -- a receipt carried out of the runner that executed the gates, rather than a
+// list re-derived from the roster it is compared against. Until an observation can disagree with a
+// registration at this door, no wording here may claim it would be caught (DESIGN sections 4b(1),
+// 4b(2), 5).
 fn validate_then_compile(
   source: CoreNode,
   lenses: List<CompileLens>,

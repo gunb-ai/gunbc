@@ -32,6 +32,7 @@ import v2.compiler.compile {
   CompileLensGrain,
   CompileLensRoot,
   CompileLensSubtree,
+  compile_lens_grain_eq,
   RequiredLensCoverageRow,
   LensGateWitness,
   ObservationUnregistered,
@@ -74,16 +75,9 @@ import v2.std.witness { Holds, Witness }
 // is coverage claimed for something the roster does not require. Grain is part of the key rather
 // than a separate assertion -- a lens covered at the wrong grain is a different fact from a lens
 // covered, and the join's own ObservedAtWrongGrain arm exists because that distinction matters.
-fn grain_key(g: CompileLensGrain) -> String {
-  match g {
-    CompileLensRoot => "root"
-    CompileLensSubtree => "subtree"
-  }
-}
-
 fn row_matches_registration(row: RequiredLensCoverageRow, lens: CompileLens) -> Bool {
   declaration_ref_eq(a: row.lens, b: lens.identity)
-    && grain_key(g: row.grain) == grain_key(g: lens.grain)
+    && compile_lens_grain_eq(a: row.grain, b: lens.grain)
 }
 
 fn some_row_covers(rows: List<RequiredLensCoverageRow>, lens: CompileLens) -> Bool {
