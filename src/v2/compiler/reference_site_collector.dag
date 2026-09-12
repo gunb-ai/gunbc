@@ -21,7 +21,6 @@ import v2.std.qualified_name {
   qualified_name_snoc
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
-import v2.compiler.namespace_graft { namespace_graft_parse_projection_edge }
 import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom,
   dag_surface_module_header_metadata_edge,
@@ -49,13 +48,31 @@ import v2.extdeps.languages.dag {
 // appears as a node. An Atom node is therefore a reference by construction rather than by a filter
 // that could be wrong -- there is no declaration-shaped Atom for this walk to have to exclude.
 //
-// TWO DELIBERATE EXCLUSIONS, BOTH STATED RATHER THAN SILENT, AND NEITHER IS A FILTER ON
-// ELIGIBILITY. Module-header metadata subtrees carry the module's OWN qualified name, which is a
-// declaration of position and not a mention of anything; and a `_node_projection` edge carries a
-// parse projection of source this walk has already visited, so descending into one would report
-// every mention in the module twice. Both are recognised by the SAME predicates
-// v2.compiler.symbol_index_fill consults, never by a second spelling of them.
+// ONE DELIBERATE EXCLUSION, AND IT IS NOT A FILTER ON ELIGIBILITY. Module-header metadata subtrees
+// carry the module's OWN qualified name, which is a declaration of position and not a mention of
+// anything. It is recognised by the SAME predicate v2.compiler.symbol_index_fill consults, never by
+// a second spelling of it.
+//
+// A SECOND EXCLUSION STOOD HERE AND WAS DELETED BY MEASUREMENT. It skipped every `_node_projection`
+// edge, on the reasoning that such an edge carries a parse projection of source already visited and
+// descending would double-count. THAT DOUBLE-COUNT WAS NEVER DEMONSTRATED, and the guard's real
+// effect was the opposite of its intent: on the tree the production ingest yields, a module's
+// content hangs under exactly those edges, so the exclusion returned ZERO sites for the whole
+// corpus while hand-built fixtures -- which carry no such edge -- stayed green. Isolated by
+// disabling the arm and re-running the same fixture. The lesson is kept here rather than in a
+// commit message because the guard looks obviously correct in isolation: a speculative exclusion
+// over a shape the author has not observed is indistinguishable from a blackout until something
+// executes against the real tree.
 
+// SPINE UNWRAPPING IS A MODULE-BOUNDARY MOVE AND IS DONE ONCE, AT THE ROOT, IN
+// module_reference_sites BELOW. It used to run on EVERY node, which was wrong for a reason worth
+// stating: namespace_graft_spine_segment_edge_optional recognises ANY single named edge targeting a
+// Conj, not specifically a module-prefix spine segment, so applying it recursively silently dropped
+// ordinary nested declaration and field labels from the position while continuing to walk -- which
+// yields a mention recorded at a containment chain it does not sit at, and therefore resolved
+// against the wrong lexical scope. A mislocated mention is worse than a missing one: it is a
+// fabricated plausible answer (DESIGN section 5) rather than an absence someone can count.
+//
 // POSITION IS THE CONTAINMENT CHAIN OF THE MENTION, AND IT IS NOT THE INDEX'S PATH RULE.
 // v2.compiler.symbol_index_fill specialises Disj (variant paths) and Arrow (domain only) because
 // it is deciding WHERE A BINDING LIVES. This walk is deciding where a MENTION SITS, and a mention
@@ -72,8 +89,6 @@ fn reference_sites_in_edge(
   match edge.label {
     Named { name: sym } =>
       if dag_surface_module_header_metadata_edge(name: sym) {
-        acc
-      } else if namespace_graft_parse_projection_edge(name: sym) {
         acc
       } else {
         reference_sites_in_node(
@@ -114,36 +129,31 @@ fn reference_sites_in_node(
   position: QualifiedName,
   node: Node
 ) -> FreeMonoid<ReferenceSite> {
-  match namespace_graft_spine_segment_edge_optional(node: node) {
-    Present { value: spine_edge } =>
-      reference_sites_in_node(acc: acc, position: position, node: spine_edge.target)
-    Absent =>
-      match qualified_name_from_node(root: node) {
-        Accepted { value: qn, diagnostics: _ } =>
-          if is_empty(xs: qn) {
-            reference_sites_in_children(acc: acc, position: position, node: node)
+  match qualified_name_from_node(root: node) {
+    Accepted { value: qn, diagnostics: _ } =>
+      if is_empty(xs: qn) {
+        reference_sites_in_children(acc: acc, position: position, node: node)
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: ReferenceSite { position: position, spelling: qn }
+        )
+      }
+    Rejected { diagnostics: _ } =>
+      match node.kind {
+        TypeNode { connective: Atom { identity: sym } } =>
+          if dag_node_is_int_literal_atom(node: node) {
+            acc
           } else {
             list_snoc_item(
               xs: acc,
-              item: ReferenceSite { position: position, spelling: qn }
+              item: ReferenceSite {
+                position: position,
+                spelling: Cons { head: sym, tail: Empty }
+              }
             )
           }
-        Rejected { diagnostics: _ } =>
-          match node.kind {
-            TypeNode { connective: Atom { identity: sym } } =>
-              if dag_node_is_int_literal_atom(node: node) {
-                acc
-              } else {
-                list_snoc_item(
-                  xs: acc,
-                  item: ReferenceSite {
-                    position: position,
-                    spelling: Cons { head: sym, tail: Empty }
-                  }
-                )
-              }
-            _ => reference_sites_in_children(acc: acc, position: position, node: node)
-          }
+        _ => reference_sites_in_children(acc: acc, position: position, node: node)
       }
   }
 }
@@ -152,13 +162,24 @@ fn reference_sites_in_node(
 // it contributes none. That is a refusal to answer rather than a widened answer: the same module
 // is absent from the roster v2.compiler.resolution_provenance resolves owners against, so a site
 // collected at a guessed position could only have produced a mis-attributed owner.
+fn module_spine_unwrapped(root: Node) -> Node {
+  match namespace_graft_spine_segment_edge_optional(node: root) {
+    Present { value: spine_edge } => spine_edge.target
+    Absent => root
+  }
+}
+
 fn module_reference_sites(
   acc: FreeMonoid<ReferenceSite>,
   root: Node
 ) -> FreeMonoid<ReferenceSite> {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      reference_sites_in_node(acc: acc, position: module_qn, node: root)
+      reference_sites_in_node(
+        acc: acc,
+        position: module_qn,
+        node: module_spine_unwrapped(root: root)
+      )
     Rejected { diagnostics: _ } => acc
   }
 }

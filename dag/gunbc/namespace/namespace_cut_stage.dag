@@ -166,28 +166,33 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
   ReferenceGraphInstrumentDelivered,
 ]
 
-// XL-0 DELIVERED (2026-09-12). The row names the producer a reader re-runs and the witness that
-// showed the producer can report the wrong answer -- DESIGN section 6, name the instrument rather
-// than transcribing its output -- and it carries NO BASE, because a delivery receipt makes no
-// claim about one. The ACT-0 activation receipt over a pinned base is a different object and is
-// still outstanding below.
+// XL-0 IS NOT DELIVERED. THE RECEIPT THAT STOOD HERE WAS WITHDRAWN, BY EXECUTION, BEFORE IT EVER
+// LANDED ON MAIN.
 //
-// XL-0 IS DELIVERED ON THE v2 ROUTE AND THE SIX v1 CHANNELS ARE NOT PORTED. The denominator
-// std.repair_input_origin's first half tags is six collectors inside v1.compiler.emit_rust's Rust
-// use-line planner; the v2 route emits no use lines and has no such planner, so those channels
-// have no analogue and reproducing them would have minted a dying emitter's artifact on a route
-// that never carried the surface. What survives the route change is the QUESTION -- what an
-// import-to-containment repair takes as input -- and on v2 it is answered by the resolver:
-// v2.compiler.reference_site_collector enumerates every mention at its containment position and
-// v2.compiler.repair_input_origin_roster folds the resolver's four answers into
-// std.repair_input_origin's DeclarationRef-carrying source-declaration carrier.
-data held_stage_delivery_receipts: List<StageDeliveryReceipt> = [
-  StageDeliveryReceipt {
-    kind: DenominatorRosterInstrumentDelivered,
-    producer: "v2.compiler.repair_input_origin_roster repair_input_origin_roster_over_roots, over the mentions v2.compiler.reference_site_collector collect_reference_sites enumerates" as NonEmptyStr,
-    discriminated_by: "v2.test.claim.namespace_xl0.repair_input_origin_denominator -- four discriminating arms: a declared name or module header reported as a mention, a dotted mention counted per segment, a mention stamped with its module instead of its containment position, and an unanswerable mention dropped instead of carried as a row" as NonEmptyStr,
-  },
-]
+// WHAT IT CLAIMED: that v2.compiler.repair_input_origin_roster had been delivered and discriminated
+// once. WHAT WAS TRUE: it had been discriminated against HAND-BUILT Node trees, and on the tree the
+// production route actually yields it produced an EMPTY denominator -- zero mentions for a module
+// that plainly contains them. A green witness over a universe the corpus never produces is DESIGN
+// section 5's specification-without-execution wearing the costume of real execution, and a stage
+// reading CLEAR off it would have reported a denominator that does not exist.
+//
+// ESTABLISHED BY EXECUTION, not by review: a substrate-only fixture drives the real ingest
+// (v2.compiler.program_assembly module_roots_from_source_root_ingest, projected through
+// v2.compiler.normalized_tree normalized_tree_roots_to_nodes), and the collector returns no sites
+// at all. Independently reproduced by warm-ibex-518 over real .dag files, with and without
+// normalize. The producer is named here so the next reader re-runs it rather than trusting this
+// sentence: v2.test.claim.namespace_xl0.call_argument_mention_survival.
+//
+// TWO SEPARATE CAUSES, both isolated by mutation, and only the first is XL-0's to fix:
+//   1. the collector's own parse-projection exclusion skipped the subtree that carries a real
+//      module's content -- a speculative guard against double-counting that was never demonstrated,
+//      which blacked out the corpus while synthetic fixtures stayed green;
+//   2. with that removed, a reference occurring only inside a CALL is still invisible, because v2
+//      normalize erases call expressions (XL-2's finding, gunbc#11207). That half is not XL-0's and
+//      is triggered by the body-lowering repair, not by anything this stage can do.
+//
+// Empty by construction again, and honestly so: no stage delivery instrument exists yet.
+data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
   required_stage_delivery_evidence_kinds

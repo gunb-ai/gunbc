@@ -1,0 +1,195 @@
+module v2.test.claim.namespace_xl0.call_argument_mention_survival
+
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.reference_site_collector { collect_module_reference_sites }
+import v2.compiler.resolution_provenance { ReferenceSite }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// XL-0 / XL-4's SILENT-UNDERCOUNT PROBE, ASKED OF THE REAL PIPELINE RATHER THAN A SYNTHETIC TREE.
+//
+// WHY THIS EXISTS. The XL-0 denominator witness beside this one builds module roots by hand, which
+// proves the collector's WALK is correct and proves nothing about the TREE a production caller
+// hands it. The canonical route is v2.compiler.program_assembly
+// module_roots_from_source_root_ingest, and its return type is FreeMonoid<NormalizedTree> -- so a
+// production caller walks a NORMALIZED tree. If normalization erases call expressions, then every
+// reference that occurs only inside a call argument is invisible to the collector, and the XL-0
+// denominator and the XL-4 reference graph both undercount exactly that class WITHOUT SAYING SO.
+// That is DESIGN section 5 silent wrongness, which is outside the ladder and forbidden outright,
+// so it is asked here by execution instead of being reasoned about.
+//
+// THE PROJECTION OUT OF THE SEALED CARRIER IS THE MODELED ROUTE, NOT A DODGE. NormalizedTree is a
+// sole_constructor carrier over a Node, and v2.compiler.normalized_tree normalized_tree_roots_to_nodes
+// is its declared projection "for consumers genuinely about Node structure, not admission -- the
+// symbol-index fill, for one". A reference-site walk is exactly that kind of consumer, and it is the
+// same projection v2.compiler.symbol_index_fill consumes, so this probe reaches the collector the
+// way a production caller would rather than by unwrapping the carrier by hand.
+//
+// THE FIXTURE IS SUBSTRATE-ONLY AND STILL EXERCISES THE REAL PARSE AND NORMALIZE. The source text
+// is inline in a DagSourceReadWitness, so no host read happens, but the bytes go through the same
+// ingest the compiler uses.
+//
+// THE DISCRIMINATOR IS A MATCHED PAIR, AND THE FIRST VERSION OF IT WAS BROKEN. It used one type
+// named CallArgumentOnlyMention, which the fixture then mentioned TWICE -- once as a parameter type
+// and once as a call argument -- so it was never call-only, and its absence could not distinguish
+// "calls are erased" from "this collector finds nothing in this tree at all". A negative result
+// does not defend itself. The pair below fixes that by varying ONE thing:
+//
+//   xl0_no_call    is referenced exactly once, in a body, OUTSIDE any call
+//   xl0_call_only  is referenced exactly once, as a CALL ARGUMENT and nowhere else
+//
+// Both are module-level data declarations of the same type, both are referenced exactly once, and
+// the only difference between them is whether that reference sits inside a call. So a green on the
+// first with a red on the second isolates call erasure and nothing else, while a red on BOTH says
+// the collector is blind to this tree generally and the probe is uninformative.
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n"
+
+fn call_argument_fixture_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: call_argument_fixture_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^xl0_call_argument_fixture_read,
+      file_path: "src/v2/test/fixture/namespace_xl0/call_argument_fixture.dag"
+    },
+    compilation_unit: ^xl0_call_argument_fixture_cu,
+    source_root: DagTree
+  }
+}
+
+data call_argument_fixture_ingest: SourceRootIngest = Cons {
+  head: call_argument_fixture_read(),
+  tail: Empty
+}
+
+fn fixture_ingest_accepted() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn fixture_root_count() -> Int {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => length(xs: roots)
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn fixture_sites() -> FreeMonoid<ReferenceSite> {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: normalized_tree_roots_to_nodes(roots: roots),
+        empty: Empty,
+        cons: fn(acc, root) { collect_module_reference_sites(root: root) }
+      )
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
+  fold_list(
+    xs: sites,
+    empty: false,
+    cons: fn(acc, site) { acc || qualified_name_to_dotted_string(qn: site.spelling) == spelling }
+  )
+}
+
+// WHAT THE COLLECTOR ACTUALLY SEES ON THE PRODUCTION ROUTE, MEASURED, AS ENROLLED TESTS.
+//
+// These are not aspirations. Each asserts what executing the real ingest ACTUALLY produces today,
+// so the file is green while the deficiency stands and goes RED the moment the deficiency is
+// repaired -- which is the point: the repair must come back here and re-state what is true, rather
+// than silently widening a denominator nobody re-measured. DESIGN section 4b(4) keeps a class's
+// discriminating evidence enrolled after the climb; this is the same discipline applied before it.
+//
+// THE POPULATION THAT SURVIVES: a value reference outside any call, and a parameter reference.
+// THE POPULATION THAT DOES NOT: a call argument, a callee name, and a type-position name.
+// RESTORATION TRIGGER for every red-stated row below: the v2 body-lowering repair that stops
+// normalize erasing call expressions (XL-2's finding, gunbc#11207, owned by eager-raven-113). Until
+// it lands, XL-0's denominator is incomplete by exactly these classes and gunbc.namespace_cut_stage
+// StageXL0Denominator must stay NotDerivable.
+
+test fn the_call_argument_fixture_ingests_holds() -> Bool {
+  fixture_ingest_accepted()
+}
+
+test fn the_call_argument_fixture_yields_one_module_root_holds() -> Bool {
+  fixture_root_count() == 1
+}
+
+// THE CONTROL THAT MAKES EVERY ROW BELOW MEAN SOMETHING: a mention outside any call, found by the
+// same walk over the same tree. If this ever reds, the collector is blind generally and every
+// deficiency row below is uninformative rather than a measurement.
+test fn a_mention_outside_any_call_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "xl0_no_call")
+}
+
+test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "probe")
+}
+
+// MEASURED DEFICIENCY 1: a reference occurring only as a call ARGUMENT does not reach the
+// collector. Asserted as absent so this reds when the lowering repair lands.
+test fn a_call_argument_mention_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
+}
+
+// MEASURED DEFICIENCY 2: the CALLEE name of a call does not reach the collector either, so the
+// erasure is of the whole call expression rather than of its arguments alone.
+test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
+}
+
+// MEASURED DEFICIENCY 3, AND THE ONE THAT WIDENS THE CLAIM BEYOND CALLS: a TYPE-POSITION name does
+// not reach the collector. This is the class the XL-0 denominator most needs, because an
+// import-to-containment repair is largely about type references, so its absence is why XL-0 cannot
+// claim a denominator at all yet rather than merely a smaller one.
+test fn a_type_position_name_is_absent_from_the_denominator_today() -> Bool {
+  !sites_mention(sites: fixture_sites(), spelling: "Bool")
+}
+
+test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: call_argument_fixture_ingest,
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: normalized_tree_roots_to_nodes(roots: roots),
+        empty: false,
+        cons: fn(acc, root) {
+          match qualified_name_from_module_node(root: root) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        }
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}

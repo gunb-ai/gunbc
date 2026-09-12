@@ -64,7 +64,6 @@ import gunbc.namespace_cut_stage {
   namespace_cut_stage_label,
   stage_prerequisites,
   act0_release_milestones,
-  DenominatorRosterInstrumentDelivered,
   StageDeliveryEvidenceKind,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
@@ -166,6 +165,7 @@ type MissingInstrument
   = PhaseCargoExecutionFact
   | PersistedLegacyBaselineObservation
   | DeclaringIdentitySpellingCensus
+  | RepairInputOriginRosterProducer
   | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
@@ -176,6 +176,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
     PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
     DeclaringIdentitySpellingCensus => "a census of occurrences not spelled at their declaring identity (XL-3's population)"
+    RepairInputOriginRosterProducer => "a repair-input origin roster producer that yields a NON-EMPTY denominator over the tree the production ingest actually yields: source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition (XL-0's population)"
     ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
@@ -250,6 +251,7 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
     PhaseCargoExecutionFact => NotBuilt
     PersistedLegacyBaselineObservation => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
+    RepairInputOriginRosterProducer => NotBuilt
     ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
@@ -694,6 +696,7 @@ data all_missing_instruments: List<MissingInstrument> = [
   PhaseCargoExecutionFact,
   PersistedLegacyBaselineObservation,
   DeclaringIdentitySpellingCensus,
+  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
@@ -867,12 +870,6 @@ fn act0_release_standing() -> MilestoneStanding {
   }
 }
 
-// XL-0 DERIVES NOW, AND IT DERIVES FROM THE STAGE'S OWN DELIVERABLE. The StageXL0Denominator arm
-// below used to be NotDerivable on a missing producer; before that it read
-// gunbc.namespace_cut_subject_roster's probes, which answered a different question entirely. It now
-// reads the same delivery-receipt channel XL-2 and XL-4 read, which is the channel that means "the
-// instrument exists and has been discriminated once" -- so a repair to probe observability still
-// cannot move it, and only delivering the producer can.
 fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
   match s {
     StageF0 =>
@@ -883,12 +880,10 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
         )
       )
     StageXL0Denominator =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "XL-0: the repair-input origin roster instrument delivered and discriminated once" as NonEmptyStr,
-          outstanding: stage_delivery_kind_outstanding(kind: DenominatorRosterInstrumentDelivered, held: held_stage_delivery_receipts)
-        )
-      )
+      NotDerivable {
+        why: "XL-0 is the REPAIR-INPUT ORIGIN DENOMINATOR, and the producer built for it does not yet answer over the tree production yields. THIS ARM BRIEFLY READ CLEAR OFF A DELIVERY RECEIPT AND THAT WAS WRONG: the receipt was earned against HAND-BUILT Node trees, while a substrate-only fixture driving the real ingest -- v2.compiler.program_assembly module_roots_from_source_root_ingest, projected through v2.compiler.normalized_tree normalized_tree_roots_to_nodes -- showed the collector returning NO sites at all for a module that plainly contains them. Independently reproduced by the XL-4 lane over real .dag files. A stage that reads CLEAR off a green-on-fixtures, empty-on-corpus instrument is reporting a denominator that does not exist, which is DESIGN section 5 silent wrongness rather than an incomplete measurement, so the honest standing is NOT DERIVABLE and the instrument stays outstanding. Re-run rather than trust this sentence: v2.test.claim.namespace_xl0.call_argument_mention_survival. TWO CAUSES WERE ISOLATED BY MUTATION AND ONLY THE FIRST IS THIS STAGE'S: the collector's parse-projection exclusion skipped the subtree carrying a real module's content, and separately, a reference occurring only inside a CALL stays invisible because v2 normalize erases call expressions (XL-2, gunbc#11207) -- that half is triggered by the body-lowering repair, not by anything XL-0 can build. Derivable once the producer answers non-empty over the production route." as NonEmptyStr,
+        cause: needs(i: RepairInputOriginRosterProducer)
+      }
     StageXL1BaselineCapture =>
       standing_from_evidence(
         e: observe_outstanding(
