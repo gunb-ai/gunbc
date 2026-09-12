@@ -1,0 +1,153 @@
+module test.claim.marker_argument_not_consulted_witness_test
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESS PROVES, AND WHY THE OBVIOUS ONE-ARM VERSION PROVES THE OPPOSITE.
+//
+// A phantom type argument -- a marker carried in a type's parameter list and never in its runtime
+// value, as std.measure carries a Quantity on Measure<Q, S, M> -- looks like it buys dimensional
+// safety. std.measure's ApparentPower annotation said so outright until gunbc#11190: that Watt and
+// VoltAmpere do not typecheck against each other BECAUSE they are different dimensions. They do not
+// typecheck against each other. The stated mechanism is wrong, and the difference decides whether
+// anyone may mint a marker to buy a wall.
+//
+// THE ONE-ARM PROBE IS A FALSE POSITIVE AND IS HOW THIS SURVIVED. Two NAMED aliases over different
+// markers refuse each other. Stop there and enforcement looks real. It is not the marker doing the
+// work, and two further fixtures are what show it:
+//
+//   NAMED_DISTINCT   -- two aliases, DIFFERENT markers, feed one to the other. Must REFUSE.
+//                       On its own this arm is compatible with structural dimension enforcement and
+//                       with pure nominal naming; it discriminates nothing and is enrolled only so
+//                       the pair below is read against a working refusal rather than a dead harness.
+//   NAMED_IDENTICAL  -- two aliases, THE SAME marker, same feed. Must REFUSE. Identical dimension,
+//                       identical scale, identical carrier, refused anyway -- so the refusal cannot
+//                       be tracking the marker.
+//   INLINE_DISTINCT  -- the same two DIFFERENT markers with NO alias, spelled structurally at both
+//                       ends. Must be ACCEPTED. The marker differs and nothing refuses.
+//
+// NAMED_IDENTICAL and INLINE_DISTINCT are the load-bearing pair and neither is redundant. Identical
+// markers refusing rules out the marker being sufficient; distinct markers accepting rules out the
+// marker being necessary. Together they say the equality decision reads the NOMINAL HEAD and does
+// not consult the argument at all.
+//
+// INLINE_DISTINCT IS A PINNED LIMITATION, NOT AN ENDORSEMENT. Its expect_blocking: false records
+// what the compiler does today, so the claim stays falsifiable. If structural marker enforcement
+// ever lands, this arm goes RED -- and that red is correct and wants a human: it means the
+// guarantee changed, and every annotation reasoning from nominality needs re-reading. Per DESIGN
+// section 4b(4) the refusing arms do not retire when anything climbs; they become the regression
+// controls that keep the higher rung real.
+//
+// WHY THE FIXTURES DECLARE THEIR OWN GENERIC RATHER THAN IMPORTING std.measure. The claim is about
+// the type system, not about one module, so the subject is a bare phantom parameter. Importing
+// std.measure would make the witness red for reasons belonging to std.measure and would narrow a
+// general property to one of its instances.
+
+type MarkerArm {
+  name: String
+  source: String
+  expect_blocking: Bool
+  expect_class: String
+}
+
+data marker_arms: List<MarkerArm> = [
+  MarkerArm {
+    name: "named_distinct",
+    source: "module marker_probe\ntype MarkerQ = MqA | MqB\ntype Carrier<Q> { count: Int }\ntype NamedA = Carrier<MqA>\ntype NamedB = Carrier<MqB>\nfn take_a(a: NamedA) -> Int { a.count }\nfn feed(b: NamedB) -> Int { take_a(a: b) }\n",
+    expect_blocking: true,
+    expect_class: "TypeMismatch"
+  },
+  MarkerArm {
+    name: "named_identical",
+    source: "module marker_probe\ntype MarkerQ = MqA | MqB\ntype Carrier<Q> { count: Int }\ntype NamedA = Carrier<MqA>\ntype NamedB = Carrier<MqA>\nfn take_a(a: NamedA) -> Int { a.count }\nfn feed(b: NamedB) -> Int { take_a(a: b) }\n",
+    expect_blocking: true,
+    expect_class: "TypeMismatch"
+  },
+  MarkerArm {
+    name: "inline_distinct",
+    source: "module marker_probe\ntype MarkerQ = MqA | MqB\ntype Carrier<Q> { count: Int }\nfn take_a(a: Carrier<MqA>) -> Int { a.count }\nfn feed(b: Carrier<MqB>) -> Int { take_a(a: b) }\n",
+    expect_blocking: false,
+    expect_class: ""
+  }
+]
+
+// A NEGATIVE COUNT IS THE COULD-NOT-MEASURE ARM AND NEVER A ZERO: folding an unrunnable probe to 0
+// would make a broken harness read as an accepted source, which is the top-as-answer conflation
+// DESIGN section 5 forbids. Every expectation below is non-negative, so an unrunnable probe reds.
+
+fn arm_blocking_count(a: MarkerArm) -> Int {
+  match compile_dag_diagnostic_census(a.source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn arm_class_blocking_count(a: MarkerArm) -> Int {
+  match compile_dag_diagnostic_census(a.source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: a.expect_class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// COUNT THE INTENDED CLASS, AND DELIBERATELY NOT THE TOTAL. gunbc.compile_diagnostic_census states
+// that the row set is the WHOLE COMPILE's, so a bare "blocking >= 1" would let ANY refusal carry an
+// arm. brand_nominal_identity_witness_test answers that by also requiring targeted == total, which
+// is exact and is the stronger form -- ITS fixtures reach that bar because they are built from
+// String alone and drag in no closure. These fixtures need Int, and the closure that arrives with it
+// contributes blocking rows this fixture does not author and cannot suppress: measured, the intended
+// TypeMismatch count is exactly 1 while the total blocking count is not. Asserting targeted == total
+// here would red on rows belonging to somebody else's module.
+//
+// WHAT THE NARROWER FORM STILL CATCHES, which is the whole question: if the nominal check regressed,
+// the TypeMismatch count on a refusing arm drops to 0 and the arm reds; if structural marker
+// enforcement ever lands, the count on the accepting arm rises to 1 and THAT arm reds. Both
+// directions of the property remain falsifiable. What is given up is only the guarantee that nothing
+// ELSE refuses in the same fixture, which is not this property's subject.
+fn arm_agrees(a: MarkerArm) -> Bool {
+  let targeted = arm_class_blocking_count(a: a)
+  if a.expect_blocking { targeted == 1 } else { marker_typemismatch_count(a: a) == 0 }
+}
+
+// The accepting arm must ask about the class this property emits, not about a blank string: an
+// expect_class of "" would count rows of no class and read as zero however the compiler behaved.
+fn marker_typemismatch_count(a: MarkerArm) -> Int {
+  match compile_dag_diagnostic_census(a.source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: "TypeMismatch"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn m_all_three_arms_are_enrolled() -> Bool {
+  let total = marker_arms |> count
+  let refusing = marker_arms |> filter(a => a.expect_blocking) |> count
+  let accepting = marker_arms |> filter(a => !a.expect_blocking) |> count
+  total == 3 && refusing == 2 && accepting == 1 && refusing + accepting == total
+}
+
+test fn m_every_arm_behaves_as_declared() -> Bool {
+  marker_arms |> all(a => arm_agrees(a: a))
+}
+
+// THE PROPERTY ITSELF, AS ONE CONJUNCTION. Split into two tests, a compiler that refused everything
+// would green the identical-marker half while the inline half reddened elsewhere in the report, and
+// a reader consulting either alone would draw the opposite conclusion from the one the pair
+// supports. Joined, the only way to pass is for the line to sit exactly where these fixtures put it.
+test fn m_equality_reads_the_name_and_not_the_marker() -> Bool {
+  let identical_refuses =
+    marker_arms |> filter(a => a.name == "named_identical") |> all(a => arm_agrees(a: a))
+  let inline_accepts =
+    marker_arms |> filter(a => a.name == "inline_distinct") |> all(a => arm_agrees(a: a))
+  identical_refuses && inline_accepts
+}

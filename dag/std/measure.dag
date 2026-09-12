@@ -399,28 +399,23 @@ type Milliwatt = Measure<Power, Milli, Nat>
 // WHAT ENFORCES THAT SEPARATION IS THE ALIAS NAME, NOT THE DIMENSION, AND AN EARLIER VERSION OF THIS
 // ANNOTATION SAID OTHERWISE. It read that carrying both on the Power dimension would make Watt and
 // VoltAmpere interchangeable at the type level, and that they do not typecheck against each other
-// BECAUSE they are different dimensions. The conclusion is right and the mechanism is wrong, which
-// is the dangerous combination: a reader takes the stated mechanism as a general licence to buy
-// dimensional safety by minting a Quantity arm, and does not get it. Measured 2026-09-12 against the
-// local interpreter, three probes:
+// BECAUSE they are different dimensions. The conclusion is right and the mechanism is wrong, which is
+// the dangerous combination: a reader takes the stated mechanism as a general licence to buy
+// dimensional safety by minting a Quantity arm, and does not get it.
 //
-//   (1) two NAMED aliases over DIFFERENT dimensions - Measure<Time,One,Nat> and Measure<Memory,One,Nat> -
-//       REFUSE each other, rc=1, "type mismatch: expected Node(Minute<...>), got Node(Bytes<...>)".
-//   (2) the SAME two dimensions spelled INLINE with no alias ACCEPT each other, rc=0, no diagnostic:
-//       a Memory-dimensioned value flows into a Time-dimensioned parameter silently.
-//   (3) two differently-named aliases over the IDENTICAL dimension REFUSE each other, rc=1.
+// THE PROPERTY IS WITNESSED, NOT TRANSCRIBED HERE. test.claim.marker_argument_not_consulted_witness
+// carries it as three enrolled fixtures -- two named aliases over DIFFERENT markers must refuse, two
+// named aliases over the SAME marker must ALSO refuse, and the same two different markers spelled
+// INLINE with no alias must be ACCEPTED. The last two are the load-bearing pair: identical markers
+// refusing rules out the marker being sufficient, and distinct markers accepting rules out its being
+// necessary, so the equality decision reads the NOMINAL HEAD and does not consult the argument. Run
+// that witness for the current answer rather than trusting this paragraph; per DESIGN section 4c no
+// Accepted program can read an annotation, so this sentence is rationale and the witness is evidence.
 //
-// (2) and (3) together settle it: alias comparison is NOMINAL, and the phantom marker argument is
-// carried into the type but takes no part in the equality decision. So Watt and VoltAmpere refuse
-// each other because they are two NAMES; they would refuse exactly as hard if both sat on Power, and
-// they would not refuse at all if both were spelled inline. THE SEPARATION THIS PARAGRAPH ARGUES FOR
-// IS REAL AND IS WORTH KEEPING - apparent power genuinely is not power - but it is bought by the
-// named alias, and every consumer that wants the wall must spell the alias rather than the shape.
-//
-// WHAT IS STILL OWED, stated rather than implied: nothing in the corpus executes the three probes
-// above, so this paragraph is prose about the compiler and DESIGN section 4c is explicit that no
-// Accepted program can read it. A discriminating witness over cases (2) and (3) is the enrolment
-// this claim needs before anyone may cite dimensional separation as a guarantee.
+// SO THE SEPARATION THIS PARAGRAPH ARGUES FOR IS REAL AND IS WORTH KEEPING -- apparent power genuinely
+// is not power -- but it is bought by the NAMED ALIAS, and every consumer that wants the wall must
+// spell the alias rather than the shape. Minting a Quantity arm documents a dimension and gives the
+// alias somewhere to hang; it does not by itself refuse anything.
 type VoltAmpere = Measure<ApparentPower, One, Nat>
 
 type Volt = Measure<ElectricPotentialDifference, One, Nat>
