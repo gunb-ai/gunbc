@@ -1755,20 +1755,15 @@ pub struct TransitionAdmission {
 ///
 /// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
 /// stops being producible, and CONSUMED comes due on the roster's next touch.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-    // The rationale, the safety adjudication and the trigger are in the doc comment on this
-    // const rather than repeated here. In one line: the bare `import
-    // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-    // spelling's candidate set without changing what it resolves to.
-    subject: AdmissionSubject::Binding {
-        module: "extdeps.tools.sha256sum",
-        in_declaration: "extdeps_external_authority_anchor",
-        spelling: "extdeps_external_authority_anchor",
-        target: "extdeps.tools.sha256sum",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+///
+/// TWENTY-SECOND DISSOLUTION (2026-09-12). #11137 merged as 34d2a8db32, so base and head of every
+/// pull_request build carry the named import, the delta is not producible, and the row reported
+/// `STALE ADMISSION ... matches no delta in this run` on gunbc#11110 (run 34683609723:
+/// `0 unadjudicated delta(s), 1 stale admission(s)`) -- refusing an unrelated PR, the shape this
+/// ledger has recorded on every shrink above. Removed by its trigger, in the first PR cut from the
+/// main carrying the move. The roster is EMPTY and empty is not permissive: a run carrying a real
+/// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
