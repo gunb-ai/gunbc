@@ -34,6 +34,7 @@ import gunbc.spark.serving_offer {
   ServingRouteServiceUnidentified,
   spark_serving_route_standing, spark_serving_route_region_obligation,
   spark_serving_route_hosts_unreadable_obligation, spark_serving_route_service_identity_obligation,
+  spark_realization_identity_cause,
   bind_spark_serving_offer,
 }
 
@@ -200,6 +201,28 @@ test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
 // IT ASSERTS THE DIAGNOSIS, NOT MERELY THE ARM. A refusal that said "unreadable" here would be the
 // wrong reason and would hide that the match was the case being refused, so this pins the obligation
 // to the configuration-agreement sentence.
+// TWO CHECKS, AND NEITHER IS REDUNDANT -- READ THIS BEFORE DELETING ONE. The typed helper asks the
+// UPSTREAM producer what the cause is; the string comparison asks whether the REFUSAL THIS STANDING
+// RETURNED actually carries that cause's diagnosis. An earlier spelling had only the first, and it
+// was a coverage regression rather than an improvement: both helpers computed the cause from
+// spark_serving_usage_stats_unread_cause independently, joined to the route standing by nothing but
+// a shared realization argument. The decisive counterexample needs no execution -- delete the
+// diagnostic suffix from the obligation spark_serving_route_standing builds, and every assertion
+// still passed, because the helpers were never looking at the returned value. A correct result from
+// a NEIGHBOURING producer does not establish that the CONSUMER carried it.
+//
+// WHY THE EXPECTED TEXT IS NOT A LITERAL: it is spark_realization_identity_cause's own output for
+// the same realization, so this compares the standing's obligation against the renderer that is
+// supposed to have populated it -- two producers, a real join -- rather than against a copy of the
+// sentence, which would agree with itself through any rewording. ServingRouteServiceUnidentified
+// transports its diagnosis as text, so the output boundary is where this can be checked at all; a
+// typed diagnosis field on that carrier would let the arm carry it structurally instead, and that is
+// the shape to reach for if this needs to get stronger.
+//
+// THE TYPED HELPER STAYS because it pins WHICH cause obtained without depending on wording, and the
+// string join stays because it pins that the refusal actually reported it. Fragile-about-wording and
+// silent-about-the-object are different weaknesses, and dropping either one reintroduces the other.
+//
 // THE DIAGNOSIS IS ASSERTED ON THE TYPED CAUSE, not by grepping the refusal sentence. The telemetry
 // causes were typed for exactly this reason and the route rows were left grepping prose, which is
 // the same asymmetry one seam over -- a sentence can be reworded without the arm changing, and a
@@ -236,6 +259,10 @@ test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bo
     ServingRouteServiceUnidentified { allocation: _, obligation: o } =>
       t_cause_is_configuration_matched(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6]))
         && string_contains(s: o as String, pattern: spark_serving_route_service_identity_obligation as String)
+        && string_contains(
+             s: o as String,
+             pattern: spark_realization_identity_cause(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6])) as String,
+           )
   }
 }
 
@@ -300,6 +327,10 @@ test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_th
       (a.decided_on as String) == "2026-09-11"
         && string_contains(s: o as String, pattern: "the REGION is established")
         && t_cause_is_readback_unresolved(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))
+        && string_contains(
+             s: o as String,
+             pattern: spark_realization_identity_cause(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6])) as String,
+           )
         && !string_contains(s: o as String, pattern: "srv5")
   }
 }
