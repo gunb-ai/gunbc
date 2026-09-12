@@ -20,11 +20,13 @@ import v2.compiler.compile {
   required_lens_roster_digest_of
 }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key, declaration_ref_eq }
+import std.content_hash { content_hash_of_value }
+import std.types { NonEmptyStr }
 import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Hash, Symbol }
 import v2.std.text { String }
 
 // WHAT THIS MODULE DELIBERATELY CANNOT DO.
@@ -121,28 +123,26 @@ type GenerationProvenanceReceipt {
 // own build and behavioral evidence, because "the candidate builds" and "the thing
 // the candidate produced builds" are different facts, and a compiler that builds but
 // cannot reproduce itself has not self-hosted.
-// COVERAGE IS PAIRED WITH THE OBLIGATIONS IT WAS JUDGED AGAINST, and the pairing is the whole
-// carrier. A `RequiredLensCoverage` alone answers "did the join close for the roster that ran",
-// which is a question about THAT run's roster -- so a generation compiled against a shrunken roster
-// reports closed and says nothing about what it failed to run. Reading the live roster here instead
-// would be worse: the required set would then move with the tree this admission executes in rather
-// than with the generation it judges, so a roster that lost a row would retroactively make old
-// candidates admissible. The required set is therefore carried, FIXED, beside the observation.
+// THE COVERAGE RECEIPT NAMES ITS GENERATION AND ITS CONTRACT MATERIAL, and both halves exist
+// because the earlier revision shipped without them and could be satisfied by a submitter alone.
 //
-// AND IT CARRIES THE REGISTRATIONS RATHER THAN THEIR IDENTITIES, WHICH IS THE DIFFERENCE BETWEEN A
-// JOIN AND A PAIR OF PEERS. An earlier revision of this type carried `List<DeclarationRef>` beside
-// an observation whose `RequiredLensCoverageClosed` arm already contains `roster_digest` -- the
-// identity OF the roster the join ran against, produced by `required_lens_roster_digest_of` over the
-// registration sequence. That is a value beside a summary of it with no arm relating them, and
-// `gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters` enumerates this
-// exact construction -- `roster_identities` beside `roster_digest` -- as one of its invalid states.
-// Its prescribed repair is to DERIVE the digest from the value rather than accept it as a peer, so
-// `required` now carries the `CompileLens` rows the digest is computed over and
-// `lens_coverage_digest_causes` re-derives it and refuses on disagreement. The digest authority is
-// unchanged and unforked: this calls `required_lens_roster_digest_of`, the same function the door
-// calls.
+// SUBJECT. Every other receipt here carries a GenerationIdentity checked against the generation
+// being promoted; this one did not, so coverage from an older compiler could be attached to both
+// new generations and pass every check whenever the lens identities happened to match. Naming a
+// field `successor_lens_coverage` does not perform that join -- `subject` and `stale_causes_for` do,
+// exactly as `build_receipt_causes` has always done.
+//
+// CONTRACT MATERIAL, AND WHY A DIGEST ALONE WOULD NOT DO. The obligations have to be FOLDED -- a
+// required identity must be reported by name when it is uncovered -- and a digest is not an
+// enumerable population. So the material is supplied, and its BINDING is verified: the digest of the
+// supplied registrations must equal the `required_lens_contract` axis of the generation being
+// promoted. That axis comes from the promotion subject, never from this receipt, which is what makes
+// the obligations independent of the submitter. Measured on the revision that lacked it: coverage
+// whose required set and rows were shortened together, and coverage that was entirely empty, both
+// promoted.
 type GenerationLensCoverage {
-  required: List<CompileLens>
+  subject: GenerationIdentity
+  contract_material: List<CompileLens>
   observed: RequiredLensCoverage
 }
 
@@ -231,7 +231,7 @@ type PromotionRefusalCause
   | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
   | RequiredLensCoverageNotClosed { receipt: Symbol, cause: Symbol }
   | RequiredLensObligationNotCovered { receipt: Symbol, lens: String }
-  | RequiredLensRosterDigestMismatch { receipt: Symbol, required: String, observed: String }
+  | RequiredLensContractMaterialUnbound { receipt: Symbol, derived: String }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -495,63 +495,81 @@ fn lens_coverage_uncovered_causes(
   )
 }
 
-// THE JOIN THE EARLIER REVISION DID NOT COMPUTE. `required` is the registration sequence and
-// `roster_digest` is a summary of one; deriving the summary from the value is what makes the
-// observation's roster and the generation's obligations the SAME roster rather than two lists that
-// happen to sit in one record. It fires only on the closed arm because a refused join carries no
-// digest -- there is nothing to disagree with, and the refusal is already reported by its own arm.
-fn lens_coverage_digest_causes(
+// ONE DIGEST AUTHORITY, LIFTED RATHER THAN REIMPLEMENTED. The axis is a Hash and the roster digest
+// authority returns its serialized text, so this lifts that text with the SAME content_hash_of_value
+// the authority itself uses. Writing a second hash over the registrations here would be a competing
+// identity for one fact, which is the fork the axis exists to prevent.
+fn contract_axis_of_material(lenses: List<CompileLens>) -> Hash {
+  content_hash_of_value(value: required_lens_roster_digest_of(lenses: lenses) as NonEmptyStr)
+}
+
+// THE BINDING, AND IT IS CHECKED AGAINST THE GENERATION RATHER THAN AGAINST THE RECEIPT. The
+// previous revision derived a digest from the submitted registrations and compared it to a digest
+// submitted beside them -- two values from one submitter, which agree by construction however short
+// they are. This compares the derived digest to the `required_lens_contract` axis of the EXPECTED
+// generation, so shortening the material changes the derived digest and no longer matches a contract
+// the submitter does not control.
+//
+// AN UNBOUND MATERIAL IS NOT A COVERAGE COMPLAINT, which is why it is its own cause: the obligations
+// this generation owes are then unknown, and reporting "these were uncovered" over a population that
+// was never established would be answering a question the receipt cannot pose.
+fn lens_contract_binding_cause(
   receipt: Symbol,
-  coverage: GenerationLensCoverage
+  coverage: GenerationLensCoverage,
+  expected: GenerationIdentity
 ) -> List<PromotionRefusalCause> {
-  match coverage.observed {
-    RequiredLensCoverageRefused { cause: _ } => freemonoid_empty()
-    RequiredLensCoverageClosed { roster_digest: digest, rows: _ } => {
-      let derived = required_lens_roster_digest_of(lenses: coverage.required)
-      if derived == digest {
-        freemonoid_empty()
-      } else {
-        list_snoc_item(
-          xs: freemonoid_empty(),
-          item: RequiredLensRosterDigestMismatch {
-            receipt: receipt,
-            required: derived,
-            observed: digest
-          }
-        )
-      }
-    }
+  let derived = required_lens_roster_digest_of(lenses: coverage.contract_material)
+  if contract_axis_of_material(lenses: coverage.contract_material) == expected.required_lens_contract {
+    freemonoid_empty()
+  } else {
+    list_snoc_item(
+      xs: freemonoid_empty(),
+      item: RequiredLensContractMaterialUnbound { receipt: receipt, derived: derived }
+    )
   }
 }
 
 fn lens_coverage_causes(
   receipt: Symbol,
-  coverage: GenerationLensCoverage
+  coverage: GenerationLensCoverage,
+  expected: GenerationIdentity
 ) -> List<PromotionRefusalCause> {
-  match coverage.observed {
-    RequiredLensCoverageRefused { cause: cause } =>
-      list_snoc_item(
-        xs: lens_coverage_uncovered_causes(
-          receipt: receipt,
-          required: coverage.required,
-          rows: freemonoid_empty()
-        ),
-        item: RequiredLensCoverageNotClosed {
-          receipt: receipt,
-          cause: required_lens_join_cause_reason(cause: cause)
-        }
-      )
-    RequiredLensCoverageClosed { roster_digest: _, rows: rows } =>
-      concat_causes(
-        parts: [
-          lens_coverage_digest_causes(receipt: receipt, coverage: coverage),
+  let subject_causes = stale_causes_for(
+    receipt: receipt,
+    subject: coverage.subject,
+    expected: expected
+  )
+  let binding = lens_contract_binding_cause(
+    receipt: receipt,
+    coverage: coverage,
+    expected: expected
+  )
+  if length(xs: binding) > 0 {
+    concat_causes(parts: [subject_causes, binding])
+  } else {
+    concat_causes(parts: [
+      subject_causes,
+      match coverage.observed {
+        RequiredLensCoverageRefused { cause: cause } =>
+          list_snoc_item(
+            xs: lens_coverage_uncovered_causes(
+              receipt: receipt,
+              required: coverage.contract_material,
+              rows: freemonoid_empty()
+            ),
+            item: RequiredLensCoverageNotClosed {
+              receipt: receipt,
+              cause: required_lens_join_cause_reason(cause: cause)
+            }
+          )
+        RequiredLensCoverageClosed { roster_digest: _, rows: rows } =>
           lens_coverage_uncovered_causes(
             receipt: receipt,
-            required: coverage.required,
+            required: coverage.contract_material,
             rows: rows
           )
-        ]
-      )
+      }
+    ])
   }
 }
 
@@ -628,11 +646,13 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
       ),
       lens_coverage_causes(
         receipt: ^receipt_candidate_lens_coverage,
-        coverage: c.candidate_lens_coverage
+        coverage: c.candidate_lens_coverage,
+        expected: candidate_identity
       ),
       lens_coverage_causes(
         receipt: ^receipt_successor_lens_coverage,
-        coverage: c.successor_lens_coverage
+        coverage: c.successor_lens_coverage,
+        expected: successor_identity
       )
     ]
   )
@@ -688,8 +708,8 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_required_lens_coverage_not_closed
     RequiredLensObligationNotCovered { receipt: _, lens: _ } =>
       ^refusal_required_lens_obligation_not_covered
-    RequiredLensRosterDigestMismatch { receipt: _, required: _, observed: _ } =>
-      ^refusal_required_lens_roster_digest_mismatch
+    RequiredLensContractMaterialUnbound { receipt: _, derived: _ } =>
+      ^refusal_required_lens_contract_material_unbound
   }
 }
 
