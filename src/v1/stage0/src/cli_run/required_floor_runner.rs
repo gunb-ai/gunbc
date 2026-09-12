@@ -467,6 +467,9 @@ pub fn run_claim_measured(
         crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
+    // Drained here so a row recorded outside any claim (a warm, a policy read) is not billed
+    // to the first claim that happens to run after it.
+    drop(crate::coproduct_reflection::take_reflection_resolve_ledger());
     // PER-CLAIM, NOT PER-RUN: reach is a fact about THIS claim's evaluation, so it is cleared
     // here beside the profile and the subject rather than at floor start. The armed surface
     // survives the reset -- disarming per claim would make every claim report `SurfaceUnarmed`.
@@ -571,6 +574,7 @@ pub fn run_claim_measured(
             last_name.unwrap_or_else(|| "<none>".to_string()),
         );
     }
+    emit_reflection_resolve_line(function);
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
@@ -589,6 +593,69 @@ pub fn run_claim_measured(
         eval_steps,
     );
     (outcome, receipt)
+}
+
+/// THE REFLECTION COST SPLIT FOR ONE CLAIM, printed only when the claim resolved a type
+/// through `resolve_type_node` (`gunbc.coproduct_reflection` `ReflectionResolveLedger`).
+///
+/// Every quantity is reported as it was measured: `lookup_cpu_us` and `marshal_cpu_us` are
+/// two separately bracketed thread-CPU intervals, summed over the claim's calls, and are
+/// NOT two shares of one total -- the wrapper evaluation around them is charged to neither.
+/// `visited_items` is the host scan work `eval_steps` does not count, which is the
+/// quantity that separates "the claim did more" from "the scan walked further". Each row
+/// names the type asked for, the module that answered and its position in the scope's
+/// precedence order, and how many modules/items were walked to reach it, so a reader can
+/// see whether a cost moved because the scope grew or because the answer moved later in it.
+///
+/// The instrument's own cost is stated once per process on the calibration line:
+/// `clock_read_ns` is the measured cost of one thread-CPU read on this host, and every call
+/// pays four of them.
+fn emit_reflection_resolve_line(function: &str) {
+    static CALIBRATED: std::sync::Once = std::sync::Once::new();
+    let ledger = crate::coproduct_reflection::take_reflection_resolve_ledger();
+    if ledger.rows.is_empty() {
+        return;
+    }
+    CALIBRATED.call_once(|| {
+        eprintln!(
+            "[floor-reflection-resolve-calibration] clock_read_ns={} reads_per_call=4",
+            crate::coproduct_reflection::reflection_clock_read_nanos()
+        );
+    });
+    let lookup_cpu_nanos: u128 = ledger.rows.iter().map(|r| r.lookup_cpu_nanos).sum();
+    let marshal_cpu_nanos: u128 = ledger.rows.iter().map(|r| r.marshal_cpu_nanos).sum();
+    let visited_modules: usize = ledger.rows.iter().map(|r| r.visited_modules).sum();
+    let visited_items: usize = ledger.rows.iter().map(|r| r.visited_items).sum();
+    let rows: Vec<String> = ledger
+        .rows
+        .iter()
+        .map(|r| {
+            let (module, position) = match &r.matched_module {
+                Some((module, position)) => (module.as_str(), position.to_string()),
+                None => ("<unresolved>", "-".to_string()),
+            };
+            format!(
+                "{}@{}#{}:modules={},items={},lookup_us={},marshal_us={}",
+                r.type_name,
+                module,
+                position,
+                r.visited_modules,
+                r.visited_items,
+                r.lookup_cpu_nanos / 1_000,
+                r.marshal_cpu_nanos / 1_000
+            )
+        })
+        .collect();
+    eprintln!(
+        "[floor-reflection-resolve] claim={function} calls={} lookup_cpu_us={} \
+         marshal_cpu_us={} visited_modules={} visited_items={} rows={}",
+        ledger.rows.len(),
+        lookup_cpu_nanos / 1_000,
+        marshal_cpu_nanos / 1_000,
+        visited_modules,
+        visited_items,
+        rows.join("+"),
+    );
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {

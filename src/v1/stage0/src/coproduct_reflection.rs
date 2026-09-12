@@ -134,13 +134,87 @@ pub fn eval_symbol_lexeme(
     Ok(str_value(sym))
 }
 
+/// One `resolve_type_node` host call, as the reflection ledger records it: what was asked
+/// for, where the scan stopped, and how much of the prepared scope it walked to get there.
+#[derive(Debug, Clone)]
+pub struct ReflectionResolveRow {
+    pub type_name: String,
+    /// Module whose item answered, and its position in the scope's precedence order; `None`
+    /// when the scan ran to the end and refused.
+    pub matched_module: Option<(String, usize)>,
+    /// Modules and items visited before the scan stopped -- the host work `eval_steps` does
+    /// not count.
+    pub visited_modules: usize,
+    pub visited_items: usize,
+    pub lookup_cpu_nanos: u128,
+    pub marshal_cpu_nanos: u128,
+}
+
+/// THE REFLECTION COST LEDGER, per evaluating thread, drained once per claim by
+/// `run_claim_measured` (`[floor-reflection-resolve]`).
+///
+/// WHY IT EXISTS. `eval_resolve_type_node` is two host operations of different shape: a
+/// linear scan over every item of every module in the prepared scope (`type_item_by_name`,
+/// bounded by the scope) and a marshal of one declaration (`marshal_disj_type_item`, bounded
+/// by that declaration's arity). Both run under the claim's CPU ceiling and neither advances
+/// `eval_steps`, so a row whose steps are byte-identical across runs can still move by
+/// hundreds of milliseconds here with nothing in the receipt saying which half moved. The
+/// two halves are recorded as SEPARATELY MEASURED quantities on the thread-CPU clock the
+/// ceiling itself is enforced on; they are never reported as shares of one total.
+///
+/// WHAT THE INSTRUMENT COSTS. Four `thread_cpu_nanos` reads per call plus one ledger push;
+/// `reflection_clock_read_nanos` measures the read on the executing host so the reader can
+/// price `4 * calls` reads against the figures beside them rather than assume.
+#[derive(Debug, Default)]
+pub struct ReflectionResolveLedger {
+    pub rows: Vec<ReflectionResolveRow>,
+}
+
+thread_local! {
+    static REFLECTION_RESOLVE_LEDGER: RefCell<ReflectionResolveLedger> =
+        RefCell::new(ReflectionResolveLedger::default());
+}
+
+/// Drain the ledger: returns every row recorded since the previous drain and leaves it empty.
+pub fn take_reflection_resolve_ledger() -> ReflectionResolveLedger {
+    REFLECTION_RESOLVE_LEDGER.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
+}
+
+/// The cost of one `thread_cpu_nanos` read on this host, as the median of 1001 back-to-back
+/// reads. Stated once beside the ledger lines so the instrument's own cost is measured, not
+/// assumed.
+pub fn reflection_clock_read_nanos() -> u128 {
+    let mut samples = Vec::with_capacity(1001);
+    let mut prev = crate::v1_interpreter::thread_cpu_nanos();
+    for _ in 0..1001 {
+        let now = crate::v1_interpreter::thread_cpu_nanos();
+        samples.push(now.saturating_sub(prev));
+        prev = now;
+    }
+    samples.sort_unstable();
+    samples[samples.len() / 2]
+}
+
+pub(crate) struct TypeItemLookup<'a> {
+    pub(crate) item: &'a Rc<Node>,
+    pub(crate) matched_module: (String, usize),
+    pub(crate) visited_modules: usize,
+    pub(crate) visited_items: usize,
+}
+
+/// The scan, with its visit counts carried out on both arms: a refusal reports how far it
+/// walked before running out of scope exactly as a hit reports where it stopped.
 pub(crate) fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
-) -> InterpResult<(&'a Rc<Node>, String)> {
+) -> Result<TypeItemLookup<'a>, (InterpError, usize, usize)> {
     let si = ctx.source_indices();
-    for module in ctx.modules.iter() {
+    let mut visited_modules = 0usize;
+    let mut visited_items = 0usize;
+    for (position, module) in ctx.modules.iter().enumerate() {
+        visited_modules += 1;
         for item in module.items.iter() {
+            visited_items += 1;
             let name = authored_name_at(si.clone(), item.clone());
             if name != type_name {
                 continue;
@@ -156,13 +230,22 @@ pub(crate) fn type_item_by_name<'a>(
                     .map(|info| info.kind == ItemKind::TypeItem)
                     .unwrap_or(false);
             if is_type {
-                return Ok((item, item.span.file.clone()));
+                return Ok(TypeItemLookup {
+                    item,
+                    matched_module: (module.func_env.name.clone(), position),
+                    visited_modules,
+                    visited_items,
+                });
             }
         }
     }
-    Err(InterpError::TypeError {
-        msg: format!("resolve_type_node: unknown closed type `{type_name}`"),
-    })
+    Err((
+        InterpError::TypeError {
+            msg: format!("resolve_type_node: unknown closed type `{type_name}`"),
+        },
+        visited_modules,
+        visited_items,
+    ))
 }
 
 fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
@@ -341,8 +424,43 @@ pub fn eval_resolve_type_node(
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "resolve_type_node")?;
-    let (item, _) = type_item_by_name(ctx, type_name)?;
-    marshal_disj_type_item(ctx, &ctx.source_indices(), item)
+    // TWO CLOCKS, TWO QUANTITIES. The lookup is bracketed on its own and the marshal on its
+    // own; a refused lookup still records its row (with what it visited) before the error
+    // propagates, so a scan that ran the whole scope and found nothing is not invisible.
+    let lookup_started = crate::v1_interpreter::thread_cpu_nanos();
+    let found = type_item_by_name(ctx, type_name);
+    let lookup_cpu_nanos = crate::v1_interpreter::thread_cpu_nanos().saturating_sub(lookup_started);
+    let found = match found {
+        Ok(found) => found,
+        Err((err, visited_modules, visited_items)) => {
+            REFLECTION_RESOLVE_LEDGER.with(|cell| {
+                cell.borrow_mut().rows.push(ReflectionResolveRow {
+                    type_name: type_name.to_string(),
+                    matched_module: None,
+                    visited_modules,
+                    visited_items,
+                    lookup_cpu_nanos,
+                    marshal_cpu_nanos: 0,
+                })
+            });
+            return Err(err);
+        }
+    };
+    let marshal_started = crate::v1_interpreter::thread_cpu_nanos();
+    let marshaled = marshal_disj_type_item(ctx, &ctx.source_indices(), found.item);
+    let marshal_cpu_nanos =
+        crate::v1_interpreter::thread_cpu_nanos().saturating_sub(marshal_started);
+    REFLECTION_RESOLVE_LEDGER.with(|cell| {
+        cell.borrow_mut().rows.push(ReflectionResolveRow {
+            type_name: type_name.to_string(),
+            matched_module: Some(found.matched_module),
+            visited_modules: found.visited_modules,
+            visited_items: found.visited_items,
+            lookup_cpu_nanos,
+            marshal_cpu_nanos,
+        })
+    });
+    marshaled
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
