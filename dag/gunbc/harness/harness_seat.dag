@@ -436,11 +436,23 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
   HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable }
 }
 
-// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER YET, AND THE MISSING PIECE HAS MOVED ONE WALL BACK.
-// Two of the three obstacles are now gone: spark_serving_route_standing carries the operator's
-// dated site allocation rather than refusing, and gunbc.spark.first_party_serving
-// spark_first_party_admission is the provider-use admission producer this note used to say did not
-// exist. What remains is the offer's OTHER seal.
+// NO CANDIDATE IS PRODUCED FROM A BOUND OFFER, AND THE WALL HAS MOVED BACK RATHER THAN FALLEN.
+// An earlier spelling of this note said two of the three obstacles were gone and that
+// spark_serving_route_standing "carries the operator's dated site allocation RATHER THAN REFUSING".
+// That is no longer true and the change that made it untrue is the one that rewired this function:
+// the standing refuses on every input, because host coverage establishes the REGION and nothing
+// available establishes WHICH DEPLOYMENT ANSWERED. It does carry the allocation -- on the refusing
+// arm, which is the point of that arm -- so the region assertion survives a refusal about the
+// service. gunbc.spark.first_party_serving spark_first_party_admission does exist, which is the one
+// half of that old sentence still standing.
+//
+// SO THE SparkOfferBound ARM BELOW IS CURRENTLY UNREACHABLE, and it is named here for the same
+// reason the two retained SparkServingRoute arms are named in gunbc.spark.serving_offer: an arm
+// that quietly cannot occur is the decoration DESIGN 4b warns will later be cited as coverage.
+// Nothing reaches it while the service is unestablished, so its note -- the one that says the
+// serving offer bound and provider-use admission has not run -- cannot currently be emitted. It is
+// retained because it is the right handling once an offer can bind, and it becomes reachable again
+// when evidence identifies the deployment that answered as the offered launch.
 //
 // A CandidateOffer is sole_constructor through product.fabric.selection bind_candidate, which takes
 // a DEMAND IDENTITY and a WORK IDENTITY and compares the permit against both. A WorkKey comes from

@@ -221,18 +221,28 @@ fn spark_serving_route_uncovered_obligation(uncovered: List<HostIdentity>) -> No
 // the region, resting on evidence of a different kind, survives untouched.
 data spark_serving_route_service_identity_obligation: NonEmptyStr = "gunbc.spark.serving_offer: gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED. Nothing available here establishes it: host coverage says only where the machines sit, and the models-route readback establishes at most that the process reports the configuration we declared, which two deployments can share. THE CAPABILITY THAT DISCHARGES THIS is evidence identifying the deployment that answered as the offered launch -- an observation or convergence receipt bound to that launch, not a wider comparison of what it reports. Until then the region is asserted from the operator's dated allocation and the service is refused."
 
-// THE CAUSE THE IDENTITY JOIN REPORTS, carried into the refusal so a reader learns WHICH of the two
-// situations obtained -- an unreadable or different-path readback, or a configuration that matched
-// and still did not establish the deployment. The refusal is the same either way; the diagnosis is
-// not, and a reader who cannot tell them apart will go looking for the wrong evidence.
+// THE CAUSE THE IDENTITY JOIN REPORTS, carried into the refusal so a reader learns WHICH situation
+// obtained. The refusal is the same for all of them; the diagnosis is not, and a reader who cannot
+// tell them apart goes looking for the wrong evidence. The matched-configuration case gets its own
+// sentence here because it is the one that reads like success -- everything a consumer might mistake
+// for identity is present -- and every other case renders through the telemetry obligation, which
+// already says what it says. An earlier spelling of this note said "which of the TWO situations":
+// there are six causes now that they are typed, and the count was left behind by the change that
+// typed them.
+//
+// THE CAUSE IS COMPUTED ONCE. An earlier spelling called spark_serving_usage_stats_unread_cause in
+// the scrutinee AND again inside the fallback arm, so the whole identity join ran twice to answer
+// one question -- DESIGN 2's authored duplication, and the kind that is invisible because both calls
+// return the same value.
 fn spark_realization_identity_cause(realization: SparkServingRealization) -> NonEmptyStr {
-  match spark_serving_usage_stats_unread_cause(realization: realization) {
+  let cause = spark_serving_usage_stats_unread_cause(realization: realization)
+  match cause {
     TelemetryConfigurationMatchedButUnread { configured_model_path: p } =>
       join([
         "the engine reports the model path this launch is declared to serve (", p as String,
         "), which is configuration agreement and not identity -- a second deployment configured the same way reports the same string",
       ], "") as NonEmptyStr
-    _ => spark_telemetry_unread_obligation(cause: spark_serving_usage_stats_unread_cause(realization: realization))
+    _ => spark_telemetry_unread_obligation(cause: cause)
   }
 }
 
