@@ -70,12 +70,14 @@ data memory_population_revision_basis: NonEmptyStr = "Issue 1.00 was the first c
 data memory_population_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
 
 
-// DIMM connectors are named J1..J32 on the board: J1..J16 serve socket 0 and J17..J32
-// serve socket 1. The supported 1DPC population uses the odd-numbered member of every channel
+// The guide identifies DIMM connectors as J1..J32 (not a silkscreen reading):
+// J1..J16 serve socket 0 and J17..J32 serve socket 1. The supported 1DPC population uses the odd-numbered member of every channel
 // pair. That is derived from the population rows themselves - Table 11's 16-DIMM sequence and
 // the one-per-channel row of Tables 12-13 both select exactly the odd connectors - and it
 // deliberately stops short of calling that member the "first DIMM" position, a semantic label
-// this guide never applies. Which member is populated at 1DPC is carried as its own fact by
+// these tables never apply. Figure 8 separately names slot#0/slot#1; its diagram legend is
+// modelled by extdeps.ampere.mt_collins_getting_started_guide.dimm_layout.
+// Which member is populated at 1DPC is carried as its own fact by
 // mt_collins_channel_population_roles, never as an ordering baked into the pair.
 type MtCollinsDimmSocketSpan {
   processor_socket: Nat
@@ -217,7 +219,7 @@ data mt_collins_channel_connector_pairs: List<MtCollinsChannelConnectorPair> = c
 // of each pair, and the full row adds the other. That establishes a configuration relation and
 // nothing more, so the fields are named for exactly what was observed. "First" is avoided
 // deliberately: it reads as either temporal installation order or a vendor-defined primary slot,
-// and this guide states neither.
+// and these tables state neither.
 //
 // Keeping this apart from the pair is what stops a mistaken read of the pair geometry from
 // silently manufacturing an installation-priority claim - the failure this file already made
