@@ -1,0 +1,44 @@
+module test.claim.pre_os_replay_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor }
+import gunbc.fleet_observation_capture_chunk { ContinuityEstablished, DownstreamNotOffered }
+import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_committed }
+import gunbc.machine_intake_pre_os_replay { pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
+
+fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> ObservationEnvelope {
+  let base = t_envelope(ownership: t_owner(fencing: t_unfenced), chunk: t_chunk(seq: seq, generation: 4, payload: "identical-payload", first: 0, len: 100),
+    local_commit: t_committed, continuity: ContinuityEstablished { verified_through: 100 }, downstream: DownstreamNotOffered)
+  ObservationEnvelope { binding: base.binding, source_generation: SourceGenerationObserved { generation: generation }, native_cursor: NativeCursor { record_identity: record },
+    ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received, local_commit: base.local_commit,
+    downstream: base.downstream, continuity: base.continuity }
+}
+
+fn baseline_text() -> String { "685 | 09/12/2026 | 10:59:50 AM | Fan #0x1 | Device Present | Asserted" }
+fn stimulus_text() -> String { concat(baseline_text(), "\n686 | 09/12/2026 | 10:59:51 AM | System Boot Initiated #0x0 | Initiated by power up | Asserted") }
+
+test fn w_generation_change_retained_without_new_stimulus() -> Bool {
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let positive = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-a", record: "686"), payload: stimulus_text())
+  let reset = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-b", record: "686"), payload: stimulus_text())
+  count(first.new_records) == 0 && count(positive.new_records) == 1 && count(reset.new_records) == 0
+    && reset.payload == stimulus_text()
+    && match reset.continuity { ObservationRefused { cause: _ } => true _ => false }
+}
+
+test fn w_duplicate_application_is_idempotent_but_equal_payload_occurrences_survive() -> Bool {
+  let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let b = replay_fixture(seq: 2, generation: "sel-a", record: "685")
+  let once = pre_os_unique_occurrences(envelopes: [a, b])
+  count(once) == 2 && count(pre_os_unique_occurrences(envelopes: [a, b, a, b])) == 2
+    && count(pre_os_unique_occurrences(envelopes: once)) == 2
+}
+
+test fn w_same_occurrence_changed_source_generation_is_conflict() -> Bool {
+  let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let b = replay_fixture(seq: 1, generation: "sel-b", record: "685")
+  count(pre_os_unique_occurrences(envelopes: [a, b])) == 2
+    && pre_os_occurrence_conflicts(envelopes: [a, b], subject: a)
+}

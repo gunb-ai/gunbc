@@ -113,3 +113,19 @@ fn pre_os_host_population_statement(text: String) -> ObservationAttempt<NonEmpty
       else { ObservationRefused { cause: "multiple DMI population statements require occurrence association" } }
   }
 }
+
+// PXE selection is firmware-produced evidence, not an OS boot and not a decode
+// of CP/checkpoint numbers. The archive's cat -v CR spelling is accepted only
+// at the end of a line. Boot-option errors remain independently unrecognized
+// by the training-statement roster; this fact does not green that assessment.
+fn pre_os_firmware_boot_selection(text: String, rendered_host_mac: NonEmptyStr) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+  let lines = map(split(s: text, delimiter: "\n"), line => {
+    let clean = trim(line)
+    if ends_with(s: clean, suffix: "^M") { substring(s: clean, start: 0, end: clean.length() - 2) } else { clean }
+  })
+  match filter(lines, line => line == concat(">>Start PXE over IPv4 on MAC: ", rendered_host_mac as String, ".")
+    || line == concat(">>Start PXE over IPv6 on MAC: ", rendered_host_mac as String, ".")).first() {
+    Present { value: line } => ObservationEstablished { observed: line as NonEmptyStr }
+    Absent => ObservationRefused { cause: "no host-bound firmware PXE selection statement" }
+  }
+}

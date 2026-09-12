@@ -1,0 +1,151 @@
+module gunbc.machine_intake_pre_os_replay
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.content_hash { ContentHashEqual, compare_content_hash }
+import std.decl_ref { declaration_ref_eq }
+import gunbc.fleet_observation_observation_envelope {
+  ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, NoNativeCursor,
+}
+import gunbc.fleet_observation_capture_chunk {
+  StreamContinuity, ContinuityEstablished, ContinuityGap, ContinuityUnknown,
+  chunk_occurrence_eq, range_end, chunk_is_locally_committed,
+}
+import gunbc.machine_intake_sel_stimulus_listener {
+  SelWatermark, sel_read, sel_after, sel_record_id, sel_field, sel_rendered_record,
+}
+import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent }
+import gunbc.fleet_observation_collector_ownership { OwnerRecording, ownership_generation }
+
+// A cursor binds the rendered prefix to the actual source generation. It never
+// binds a SEL event to a console attempt, an actuation, or a kernel boot.
+type PreOsSelCursor { envelope: ObservationEnvelope, watermark: SelWatermark }
+type PreOsSelIngestion {
+  envelope: ObservationEnvelope
+  payload: String
+  cursor: ObservationAttempt<PreOsSelCursor, NonEmptyStr>
+  new_records: List<SelWindowEvent>
+  continuity: ObservationAttempt<Bool, NonEmptyStr>
+}
+
+fn pre_os_envelope_binding_consistent(envelope: ObservationEnvelope) -> Bool {
+  let occurrence = envelope.chunk.occurrence
+  envelope.binding.enrolled_machine == occurrence.session.enrolled_machine
+    && envelope.received.observed_by == occurrence.session
+    && match envelope.ownership {
+      OwnerRecording { session, lease, fencing: _ } => session == occurrence.session
+        && ownership_generation(lease: lease) == occurrence.ownership_generation
+      _ => false
+    }
+}
+
+fn pre_os_same_source(a: ObservationEnvelope, b: ObservationEnvelope) -> Bool {
+  a.binding.enrolled_machine == b.binding.enrolled_machine
+    && a.binding.source_identity == b.binding.source_identity
+    && a.binding.source_implementation == b.binding.source_implementation
+    && a.binding.source_version == b.binding.source_version
+    && declaration_ref_eq(a: a.binding.authenticated_by, b: b.binding.authenticated_by)
+}
+
+fn pre_os_same_source_generation(a: ObservationEnvelope, b: ObservationEnvelope) -> Bool {
+  pre_os_same_source(a: a, b: b) && match a.source_generation {
+    SourceGenerationUnavailable { reason: _ } => false
+    SourceGenerationObserved { generation: ga } => match b.source_generation {
+      SourceGenerationObserved { generation: gb } => ga == gb
+      SourceGenerationUnavailable { reason: _ } => false
+    }
+  }
+}
+
+// This is a range question, not merely a match on the continuity variant.
+fn pre_os_continuity_covers_chunk(envelope: ObservationEnvelope) -> Bool {
+  match envelope.continuity {
+    ContinuityEstablished { verified_through } => verified_through >= range_end(range: envelope.chunk.range)
+    ContinuityGap { gap: _, cause: _ } => false
+    ContinuityUnknown { detail: _ } => false
+  }
+}
+
+fn pre_os_sel_native_id(envelope: ObservationEnvelope) -> String {
+  match envelope.native_cursor {
+    NoNativeCursor => ""
+    NativeCursor { record_identity } => {
+      let text = record_identity as String
+      if starts_with(s: text, prefix: "0x") { substring(s: text, start: 2, end: text.length()) } else { text }
+    }
+  }
+}
+
+// The native cursor must describe the final row in this snapshot. Caller wall
+// and monotonic receive instants remain on the retained envelope, unread here.
+fn pre_os_sel_cursor(envelope: ObservationEnvelope, payload: String) -> ObservationAttempt<PreOsSelCursor, NonEmptyStr> {
+  if !pre_os_envelope_binding_consistent(envelope: envelope) || !chunk_is_locally_committed(standing: envelope.local_commit) {
+    ObservationRefused { cause: "source/owner/receiver binding or local durable commit unavailable" }
+  } else { match envelope.source_generation {
+    SourceGenerationUnavailable { reason } => ObservationRefused { cause: reason }
+    SourceGenerationObserved { generation: _ } => match sel_read(text: payload) {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: watermark } => match watermark.records.skip(n: if count(watermark.records) == 0 { 0 } else { count(watermark.records) - 1 }).first() {
+        Absent => ObservationRefused { cause: "empty SEL snapshot has no native cursor anchor" }
+        Present { value: last } => match sel_rendered_record(line: last) {
+          ObservationRefused { cause } => ObservationRefused { cause: cause }
+          ObservationEstablished { observed: event } => match sel_record_id(text: pre_os_sel_native_id(envelope: envelope)) {
+            Present { value: id } => if id == event.record_id { ObservationEstablished { observed: PreOsSelCursor { envelope: envelope, watermark: watermark } } }
+              else { ObservationRefused { cause: "native SEL cursor does not name the snapshot final record" } }
+            Absent => ObservationRefused { cause: "native SEL cursor absent or malformed" }
+          }
+        }
+      }
+    }
+  }
+  }
+}
+
+// Every input survives, including source resets and malformed/uncertain reads.
+// After a gap a valid new-generation snapshot is a baseline, NOT new stimulus.
+// Only a subsequent same-generation append can produce new_records. No empty
+// list returned here is a host-success assessment.
+fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, NonEmptyStr>, envelope: ObservationEnvelope, payload: String) -> PreOsSelIngestion {
+  let cursor = pre_os_sel_cursor(envelope: envelope, payload: payload)
+  let delta = match cursor {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: next } => match previous {
+      ObservationRefused { cause: _ } => ObservationRefused { cause: "initial or recovered SEL baseline; historical rows are not a newly observed stimulus" }
+      ObservationEstablished { observed: before } =>
+        if !pre_os_same_source_generation(a: before.envelope, b: envelope) {
+          ObservationRefused { cause: "source generation or binding changed; retain both snapshots without association" }
+        } else if !pre_os_continuity_covers_chunk(envelope: envelope) {
+          ObservationRefused { cause: "source reports a gap or insufficient verified range" }
+        } else { sel_after(watermark: before.watermark, text: payload) }
+    }
+  }
+  PreOsSelIngestion {
+    envelope: envelope, payload: payload, cursor: cursor,
+    new_records: match delta { ObservationEstablished { observed: d } => d.events ObservationRefused { cause: _ } => [] },
+    continuity: match delta { ObservationEstablished { observed: _ } => ObservationEstablished { observed: true } ObservationRefused { cause } => ObservationRefused { cause: cause } },
+  }
+}
+
+// Idempotent application uses occurrence identity, never payload identity. A
+// repeated occurrence whose binding/content changed is a conflict, not a retry.
+// Its caller retains the conflicting envelopes and withholds their assessments.
+fn pre_os_same_occurrence_content(a: ObservationEnvelope, b: ObservationEnvelope) -> Bool {
+  chunk_occurrence_eq(a: a.chunk.occurrence, b: b.chunk.occurrence)
+    && pre_os_same_source(a: a, b: b)
+    && a.source_generation == b.source_generation
+    && a.native_cursor == b.native_cursor
+    && a.chunk.range == b.chunk.range
+    && a.chunk.artifact_ref == b.chunk.artifact_ref
+    && match compare_content_hash(left: a.chunk.payload_digest, right: b.chunk.payload_digest) { ContentHashEqual => true _ => false }
+}
+
+fn pre_os_occurrence_conflicts(envelopes: List<ObservationEnvelope>, subject: ObservationEnvelope) -> Bool {
+  any(envelopes, e => chunk_occurrence_eq(a: e.chunk.occurrence, b: subject.chunk.occurrence)
+    && !pre_os_same_occurrence_content(a: e, b: subject))
+}
+
+fn pre_os_unique_occurrences(envelopes: List<ObservationEnvelope>) -> List<ObservationEnvelope> {
+  fold(envelopes, init: [], f: (retained, e) =>
+    if any(retained, before => pre_os_same_occurrence_content(a: before, b: e)) { retained }
+    else { concat(retained, [e]) })
+}
