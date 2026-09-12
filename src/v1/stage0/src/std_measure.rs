@@ -302,26 +302,36 @@ pub fn measure_add<Q, S>(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum MeasureSubtraction<Q, S> {
-    MeasureDifference {
-        value: Rc<Measure<Q, S, i64>>,
-    },
+    MeasureDifference { value: Rc<Measure<Q, S, i64>> },
     MeasureSubtrahendExceedsMinuend,
+}
+impl<Q: Clone, S: Clone> MeasureSubtraction<Q, S> {
+    pub fn value(&self) -> Rc<Measure<Q, S, i64>> {
+        match self {
+            MeasureSubtraction::MeasureDifference { value: __val, .. } => __val.clone(),
+            MeasureSubtraction::MeasureSubtrahendExceedsMinuend => {
+                panic!("no value on unit variant")
+            }
+        }
+    }
 }
 
 pub fn measure_sub<Q, S>(
     a: Rc<Measure<Q, S, i64>>,
     b: Rc<Measure<Q, S, i64>>,
-) -> MeasureSubtraction<Q, S> {
-    if a.count.clone() < b.count.clone() {
-        MeasureSubtraction::MeasureSubtrahendExceedsMinuend
+) -> Rc<MeasureSubtraction<Q, S>> {
+    if (a.count.clone() < b.count.clone()) {
+        Rc::new(MeasureSubtraction::MeasureSubtrahendExceedsMinuend)
     } else {
-        MeasureSubtraction::MeasureDifference {
+        Rc::new(MeasureSubtraction::MeasureDifference {
             value: Rc::new(Measure {
-                count: a.count.clone() - b.count.clone(),
+                count: (a.count.clone() - b.count.clone()),
                 _phantom: std::marker::PhantomData,
             }),
-        }
+        })
     }
 }
 
