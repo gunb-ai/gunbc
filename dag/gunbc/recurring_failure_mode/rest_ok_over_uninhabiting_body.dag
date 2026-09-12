@@ -7,21 +7,21 @@ data rest_ok_over_uninhabiting_body: RecurringFailureMode = RecurringFailureMode
   identity: "rest_ok_over_uninhabiting_body" as NonEmptyStr,
 
   receipts: [
-    "**a REST 200 whose body does not inhabit the declared output is still reported as RestOk** (INVALID STATE: the performer maps a success-status body into the operation output, leaves required payload fields Null or fills them from a fabricated decode, then attaches RestOk. ",
+    "**a REST 200 whose body does not inhabit the declared output is still reported as RestOk** (INVALID STATE: the performer maps a success-status body into the operation output, leaves required payload fields Null or fills them from a fabricated decode, then attaches RestOk.",
 
-    "HARM: callers treat RestOk as inhabitance of T and proceed on Null or on a String-as-body stand-in; the silent-wrongness DESIGN section 5 forbids, paid later when a List, file, or page shape is consumed. ",
+    "HARM: callers treat RestOk as inhabitance of T and proceed on Null or on a String-as-body stand-in; the silent-wrongness DESIGN section 5 forbids, paid later when a List, file, or page shape is consumed.",
 
-    "SPECIMEN, gunbc PR 11030: GitHub puts the payload at the JSON root. Adding outcome: RestOutcome made the old single-child whole-root wrap miss, so keyed lookup missed, fields were Null, and RestOk was still attached. The same performer decoded unreadable JSON with unwrap_or_else into Value::String(body). ",
+    "SPECIMEN, gunbc PR 11030: GitHub puts the payload at the JSON root. Adding outcome: RestOutcome made the old single-child whole-root wrap miss, so keyed lookup missed, fields were Null, and RestOk was still attached. The same performer decoded unreadable JSON with unwrap_or_else into Value::String(body).",
 
-    "RECOGNITION RULE: when an HTTP 2xx is RestOk, ask whether every required non-outcome output field inhabits its declared type. If RestOk and a required field is Null, or if a decode failure became a plausible Value, the outcome is not an observation of T. ",
+    "RECOGNITION RULE: when an HTTP 2xx is RestOk, ask whether every required non-outcome output field inhabits its declared type. If RestOk and a required field is Null, or if a decode failure became a plausible Value, the outcome is not an observation of T.",
 
-    "THIS IS NOT transport_mock_success_independent_of_request: that class is a mock answering success without consulting the request. Here the wire is real and the status is honest; the lie is inhabitance. ",
+    "THIS IS NOT transport_mock_success_independent_of_request: that class is a mock answering success without consulting the request. Here the wire is real and the status is honest; the lie is inhabitance.",
 
-    "RUNG FOUND AT, historically: silent wrongness on the interpreter RestBodyRead path. After PR 11030: mechanically preventable for JSON 2xx whose mapped Record has Null at a required non-outcome field, when the operation declares RestOutcome -- enrolled RED rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok and rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok, with CardOptional as the accepted positive control that Null may remain. ",
+    "RUNG FOUND AT, historically: silent wrongness on the interpreter RestBodyRead path. After PR 11030: mechanically preventable for JSON 2xx whose mapped Record has Null at a required non-outcome field, when the operation declares RestOutcome -- enrolled RED rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok and rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok, with CardOptional as the accepted positive control that Null may remain.",
 
-    "THE WALL IS HONESTLY PARTIAL: rest_payload_null_fields is a Null scan after json_to_value, not inhabitance of T. A 200 whose JSON is the wrong shape but not Null at those top-level fields, a Text body, or an operation that declares no RestOutcome, is outside that scan. ",
+    "THE WALL IS HONESTLY PARTIAL: rest_payload_null_fields is a Null scan after json_to_value, not inhabitance of T. A 200 whose JSON is the wrong shape but not Null at those top-level fields, a Text body, or an operation that declares no RestOutcome, is outside that scan.",
 
-    "CEILING: structurally guaranteed when 200 maps as inhabitance of the declared output (one procedure, 200 => T at the JSON root or from-path), so RestOk has no constructor for an uninhabiting body. ",
+    "CEILING: structurally guaranteed when 200 maps as inhabitance of the declared output (one procedure, 200 => T at the JSON root or from-path), so RestOk has no constructor for an uninhabiting body.",
 
     "NEXT-RUNG TRIGGER, a capability: REST success mapping is inhabitance of declared T rather than Null-after-json_to_value, sufficient that an uninhabiting 2xx cannot construct RestOk.)",
   ],
