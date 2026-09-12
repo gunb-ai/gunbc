@@ -70,20 +70,14 @@ fn accounted(s: EnrollmentAccountingStanding) -> Bool {
 
 // PAIR ONE, ADMITTING HALF - an enrollment citing the real standing row is accounted.
 test fn w_enrollment_citing_a_standing_drop_is_accounted() -> Bool {
-  accounted(s: enrollment_accounting(
-    enrollment: enrollment_citing(drop: real_standing_drop()),
-    roster: standing_rung_drops(),
-  ))
+  accounted(s: enrollment_accounting(enrollment: enrollment_citing(drop: real_standing_drop())))
 }
 
 // PAIR ONE, REFUSING HALF - the SAME enrollment citing a drop that is in no roster row is
 // unaccounted. Only the reference moves. Without this the row above is satisfied by a check that
 // accounts for everything, which is the wall that stands nothing down.
 test fn w_enrollment_citing_an_absent_drop_is_unaccounted() -> Bool {
-  !accounted(s: enrollment_accounting(
-    enrollment: enrollment_citing(drop: absent_drop()),
-    roster: standing_rung_drops(),
-  ))
+  !accounted(s: enrollment_accounting(enrollment: enrollment_citing(drop: absent_drop())))
 }
 
 // PAIR TWO - a RETIRED row is not a standing accounting. This is the half a check joining on mere
@@ -91,10 +85,7 @@ test fn w_enrollment_citing_an_absent_drop_is_unaccounted() -> Bool {
 // authorise has already been declared over. A retired drop must take every enrollment citing it out
 // of accounting with no edit to the enrollment.
 test fn w_enrollment_citing_a_retired_drop_is_unaccounted() -> Bool {
-  !accounted(s: enrollment_accounting(
-    enrollment: enrollment_citing(drop: retired_drop()),
-    roster: standing_rung_drops(),
-  ))
+  !accounted(s: enrollment_accounting(enrollment: enrollment_citing(drop: retired_drop())))
 }
 
 // The set form reports EVERY offender rather than the first, and reports the offending REFERENCE
@@ -106,11 +97,9 @@ test fn w_unaccounted_set_names_the_offending_references() -> Bool {
       enrollment_citing(drop: absent_drop()),
       enrollment_citing(drop: retired_drop()),
     ],
-    roster: standing_rung_drops(),
   )) == 2
     && count(unaccounted_enrollments(
       enrollments: [enrollment_citing(drop: real_standing_drop())],
-      roster: standing_rung_drops(),
     )) == 0
 }
 

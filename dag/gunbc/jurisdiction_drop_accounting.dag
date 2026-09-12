@@ -1,9 +1,8 @@
 module gunbc.jurisdiction_drop_accounting
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List }
 import std.decl_ref { DeclarationRef }
 import product.fabric.provider_route { JurisdictionDropEnrollment, CompliancePostureRevision }
-import gunbc.rung_drop { RungDrop }
 import gunbc.rung_drop.roster { standing_rung_drops }
 
 // THE ACCOUNTING JOIN FOR A JURISDICTION DROP ENROLLMENT, AND WHY IT LIVES HERE RATHER THAN IN THE
@@ -46,11 +45,22 @@ type EnrollmentAccountingStanding
 // remedy: declare one, or stop suppressing. standing_rung_drops is the roster's own filter, so a
 // row retiring makes every enrollment citing it unaccounted with no edit here, which is the
 // behaviour a retired drop must have.
+//
+// THERE IS NO ROSTER PARAMETER, AND ITS ABSENCE IS THE CONSTRUCTION RATHER THAN AN OMISSION. The
+// first spelling took one and then called standing_rung_drops() inside the fold, so a caller could
+// pass a roster that was silently discarded -- review 64716 caught it, and it is the fabricated
+// answer DESIGN section 5 forbids: the argument named the join input and did not supply it. Passing
+// it through would have fixed that and left a worse hazard standing, because the parameter's
+// admitting value is the FULL roster: a caller handing over rung_drop_roster rather than
+// standing_rung_drops() would account for a RETIRED drop, which is this gate's whole subject. A
+// parameter with a plausible wrong value that fails open is validation where construction was
+// available. Reading the standing roster directly removes the argument and the hazard together:
+// there is one authority for "which drops are still standing", it is gunbc.rung_drop.roster's own
+// filter, and no call site can disagree with it.
 fn enrollment_accounting(
   enrollment: JurisdictionDropEnrollment,
-  roster: List<RungDrop>,
 ) -> EnrollmentAccountingStanding {
-  if count(filter(roster, d => d.identity == enrollment.drop.decl_name)) > 0 {
+  if count(filter(standing_rung_drops(), d => d.identity == enrollment.drop.decl_name)) > 0 {
     EnrollmentAccounted { drop: enrollment.drop }
   } else {
     EnrollmentDropUnrostered { drop: enrollment.drop }
@@ -62,13 +72,12 @@ fn enrollment_accounting(
 // caller shopping for the cheapest. An empty result reads as "none unaccounted" and needs no seed.
 fn unaccounted_enrollments(
   enrollments: List<JurisdictionDropEnrollment>,
-  roster: List<RungDrop>,
 ) -> List<DeclarationRef> {
   fold(
     enrollments,
     init: [],
     f: fn(acc, e) {
-      match enrollment_accounting(enrollment: e, roster: standing_rung_drops()) {
+      match enrollment_accounting(enrollment: e) {
         EnrollmentAccounted { drop } => acc
         EnrollmentDropUnrostered { drop } => concat(acc, [drop])
       }
@@ -79,10 +88,7 @@ fn unaccounted_enrollments(
 // THE POSTURE-LEVEL QUESTION, which is what a gate asks: does every suppression this posture carries
 // name a standing accounting row? An empty list is the admitting answer.
 fn posture_unaccounted_enrollments(posture: CompliancePostureRevision) -> List<DeclarationRef> {
-  unaccounted_enrollments(
-    enrollments: posture.jurisdiction_drop_enrollments,
-    roster: standing_rung_drops(),
-  )
+  unaccounted_enrollments(enrollments: posture.jurisdiction_drop_enrollments)
 }
 
 // WHICH OF THE THREE HOLES THIS CLOSES, STATED SO A GREEN IS NOT READ AS MORE THAN IT IS. Review

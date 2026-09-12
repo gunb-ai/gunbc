@@ -130,19 +130,28 @@ type PermittedJurisdictionPopulation
 // constructor, and because ProviderUsePermit records the whole posture, an auditor holding a permit
 // reaches the cited row's reason, bounded population and restoration trigger.
 //
-// WHAT NO CODE READS: the reference itself. jurisdiction_drop_enrolled below matches path_evidence
-// and jurisdiction and ignores drop, so nothing joins it to gunbc.rung_drop, nothing establishes
-// that the named row EXISTS in the roster, and nothing establishes that the row's population names
-// this path. An enrollment citing a row that resolves to nothing, or to a row describing something
-// else, stands the wall down with no diagnostic and no count -- and an enrollment's whole effect IS
-// that TransferOrLocationUnresolved does not fire, which is the shape DESIGN section 5 names as an
-// escape hatch. The accounting is therefore ASSERTED HERE AND EXECUTED NOWHERE, and saying otherwise
-// would be rung inflation (4b(1)) about this very field.
+// WHAT EXECUTES, AND AT WHICH RUNG. gunbc.jurisdiction_drop_accounting joins the reference to our
+// rung-drop roster and refuses an enrollment whose drop names no rostered row or names one that is
+// no longer STANDING, and test.claim.fabric.jurisdiction_drop_accounting_witness runs that join over
+// the production postures. That is rung 2: the invalid state stays writable and the wall holds only
+// while the gate executes and the posture is in its enumerated population.
 //
-// NEXT-RUNG TRIGGER: a gate that REFUSES an enrollment whose drop does not resolve to a
-// gunbc.rung_drop roster row whose own population names that path_evidence -- sufficient for the
-// bounded, declared half of the 4b(3) exception to be checked rather than read, at which point this
-// annotation states a guarantee instead of a gap.
+// WHAT STILL DOES NOT EXECUTE, and it is the half that matters most at the moment of decision:
+// jurisdiction_drop_enrolled below matches path_evidence and jurisdiction and IGNORES drop, so the
+// admission fold suppresses TransferOrLocationUnresolved without consulting the accounting at all.
+// An unaccounted enrollment is therefore caught by a corpus gate and not by the decision it
+// suppresses -- the difference between a wall and a wall with a check standing beside it.
+//
+// AND THE POPULATION IS STILL UNCHECKED: nothing establishes that the cited row's own population
+// names THIS path, so an enrollment citing a real standing row that accounts for something else
+// still stands the wall down. The module path is not compared either, since the join is on the row's
+// declared identity.
+//
+// NEXT-RUNG TRIGGER: gunbc.rung_drop RungDropDeclaration carrying its enrolled subjects as
+// DECLARATION REFERENCES rather than prose -- sufficient for an enrollment to be checked against the
+// drop row's actual population, and sufficient for the admission fold itself to consult the
+// accounting rather than leaving it to a gate beside the decision. A population sentence that
+// mentions a path does NOT discharge it: that is the artifact, not the capability.
 type JurisdictionDropEnrollment {
   path_evidence: DeclarationRef
   jurisdiction: DeclarationRef
