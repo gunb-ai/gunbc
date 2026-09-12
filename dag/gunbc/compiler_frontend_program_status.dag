@@ -419,8 +419,10 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 // subject dying is invisible to this fold alone.
 // The native-route milestone's population, parameterized on the drop row so both arms are
 // authorable at fixture grain. A standing drop is outstanding at its own identity, and a retired
-// drop is empty. The drop retires by its restoration trigger and by nothing else, so this standing
-// is derived and never authored.
+// drop is empty. Rung, stated honestly: this reads the drop row's hand-authored standing field and
+// joins nothing that observes the lane. A row flipped to Retired reads Clear whether or not the
+// native route is in gunbc.witness_floor_workflow required_lanes_roster. It is review diligence
+// at best until that join exists.
 fn native_route_required_lane_outstanding(drop: RungDrop) -> List<String> {
   match drop.standing {
     Standing => [drop.identity as String]
