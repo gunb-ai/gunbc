@@ -121,11 +121,25 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
 // the equality that carries the whole claim was unfoldable, and the census witness had substituted
 // a literal copied from the declaration it was testing.
 //
-// Re-read from the controller at 2026-09-12T03:1xZ rather than transcribed from the older capture,
-// and committed as artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt, sha256
-// dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c, whose first lines carry the
-// argv and whose last line carries exit=0 -- so a missing read is distinguishable from a zero one.
-// Both serials corroborate, not just the board serial the review asked for.
+// Re-read from the controller rather than transcribed from the older capture. The capture carries
+// its argv on the first lines and exit=0 on the last, so a missing read is distinguishable from a
+// zero one, and both serials corroborate rather than only the board serial.
+//
+// THE CAPTURE'S PATH AND DIGEST ARE DELIBERATELY NOT DECLARED HERE. Review 64291 found that the two
+// rows I first added for them were dangling: no fold read either one, which is DESIGN section 3c's
+// own tell for a data row, and being well-formed evidence rows does not excuse it. The review
+// offered a frontier or removal; removal is the smaller change. A frontier carrier for artifact
+// identity already exists in the census module, but its constructor fixes the module path to that
+// module, so admitting rows HERE would mean generalizing that carrier -- more machinery than two
+// unconsumed rows are worth, and DESIGN section 2 is explicit that net concepts must not grow by
+// re-invention. The artifact lands with its digest in its own evidence PR, where the bytes and the
+// hash are reviewed together; when a modelled capture producer exists it can mint these rows with
+// its own consumer, which is the trigger that would make declaring them earn something.
+//
+// NOT FIXED HERE, and stated rather than silently left: mtcollins1_intake_capture_artifact_path and
+// mtcollins1_write_exercise_artifact_path above are dangling by the same test. They predate this
+// change, the review correctly scoped to the rows this PR adds, and sweeping them would widen a
+// review fix into an unrelated cleanup.
 type MtCollins1ControllerFruIdentity {
   board_serial: NonEmptyStr
   product_serial: NonEmptyStr
@@ -140,11 +154,6 @@ data mtcollins1_controller_fru_identity: MtCollins1ControllerFruIdentity = MtCol
   board_manufacturer: "FOXCONN",
 }
 
-data mtcollins1_controller_fru_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt"
-
-data mtcollins1_controller_fru_digest: ContentHash = Sha256Hash(Sha256Digest {
-  hex: "dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c",
-})
 
 // THE OBSERVATION'S raw_response NAMES A MANIFEST, NOT ONE CAPTURE, and that is a correction rather
 // than a refinement. It previously named the intake capture alone, while the observation's own
