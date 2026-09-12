@@ -20,8 +20,9 @@ import product.fabric.provider_admission {
 import product.supplier.hetzner {
   hetzner_helsinki_route, hetzner_nuremberg_route,
   hetzner_helsinki_route_facts, hetzner_nuremberg_route_facts,
-  hetzner_helsinki_downstream, hetzner_route_admission,
+  hetzner_helsinki_downstream, hetzner_route_admission, hetzner_route_facts_population,
 }
+import extdeps.cloud.hetzner { hetzner_subcontractors_for_server_location }
 
 // WHAT THESE ROWS ARE FOR. product.supplier.hetzner answers the nine-path closure for two rented
 // routes and BOTH refuse, so the whole module is a claim about refusals -- and a compliance gate
@@ -285,4 +286,31 @@ test fn a_resolved_closure_with_an_unread_downstream_still_refuses() -> Bool {
     tag: "downstream-unassessed",
     located: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_downstream_obligation"),
   )
+}
+
+// ── THE CENSUS ROW, AND THE COVERAGE WALL UNDER THE ONE ENUMERATED POPULATION ─────────────────
+//
+// EVERY HETZNER ROUTE THIS REPOSITORY CARRIES REFUSES, ASSERTED OVER THE POPULATION RATHER THAN
+// ROUTE BY ROUTE. A per-route row says nothing about a route added tomorrow; folding the population
+// means a third region cannot be added without either resolving its paths or reddening this row,
+// which is what stops the census from quietly acquiring an admitting member nobody looked at.
+fn t_refuses(a: ProviderUseAdmission<NonEmptyStr>) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } => true,
+  }
+}
+
+test fn every_hetzner_route_in_the_population_refuses() -> Bool {
+  count(hetzner_route_facts_population()) == 2
+    && count(filter(hetzner_route_facts_population(), f => !t_refuses(a: t_decide(facts: f)))) == 0
+}
+
+// THE ENUMERATED POPULATION IS ONLY AS GOOD AS THE ROW COUNT IT WAS WRITTEN AGAINST. The Helsinki
+// route answers DownstreamProvidersEnumerated with ONE subcontractor and an empty further list, which
+// is true of Appendix 3 version 1.0 of August 08, 2024 and is a claim that expires the moment upstream
+// adds a second Finland row. This folds the vendor's own table and reds exactly then, which sends the
+// author to extend the population rather than leaving an enumeration that silently stopped covering.
+test fn the_finland_subcontractor_table_still_has_exactly_one_row() -> Bool {
+  count(hetzner_subcontractors_for_server_location(location: "Finland" as NonEmptyStr)) == 1
 }

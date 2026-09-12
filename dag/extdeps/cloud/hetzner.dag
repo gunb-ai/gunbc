@@ -496,13 +496,6 @@ data hetzner_location_nuremberg: HetznerServerLocationRow = HetznerServerLocatio
   reading: hetzner_locations_reading,
 }
 
-// THE OTHER eu-central LOCATION THIS REPOSITORY HAS NOT PRICED, declared because a snapshot's
-// placement is bounded by the ZONE and not by the two regions we happen to buy in. Leaving it out
-// would make the zone look like a two-element set and would quietly narrow every statement about
-// where a snapshot of a Helsinki server can land.
-
-data hetzner_eu_central_zone_locations: List<NonEmptyStr> = ["fsn1 (DE Falkenstein)", "nbg1 (DE Nuremberg)", "hel1 (FI Helsinki)"]
-
 // SUPPORT IS AN ORGANISATION, NOT A LOCATION, and it is a separate row for exactly that reason. The
 // tempting shortcut is to answer a support-access question with the server's location row, which is
 // the vendor-region-label error the route model exists to refuse: the technicians are where upstream
