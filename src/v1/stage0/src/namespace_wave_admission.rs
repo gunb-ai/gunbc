@@ -1702,7 +1702,7 @@ pub struct TransitionAdmission {
 /// guessing: those three rows are already satisfied at the base -- consumed by their own merge --
 /// and a roster-touching change owes that deletion. This change is the toucher, so the deletion is
 /// paid here rather than deferred. The sizing rows below retire the same way, by their own merge.
-
+///
 /// The resting state was empty again as of THAT change, and this one authors rows back into it,
 /// which is the ordinary motion rather than a regression: empty is not permissive and non-empty is
 /// not permission, because a run with any delta no row names still refuses it as UNADJUDICATED.
