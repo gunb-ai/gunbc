@@ -82,12 +82,9 @@ fn retained_module_identity_prefix(source_file: String) -> String {
   concat(retained_module_path(source_file: source_file), "::")
 }
 
-fn retained_module_has_a_discovered_test_among(source_file: String, ids: List<String>) -> Bool {
-  ids |> any(id => string_contains(s: id, pattern: retained_module_identity_prefix(source_file: source_file)))
-}
-
 fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
-  retained_module_has_a_discovered_test_among(source_file: source_file, ids: discovered_legacy_behavior_ids())
+  discovered_legacy_behavior_ids()
+    |> any(id => string_contains(s: id, pattern: retained_module_identity_prefix(source_file: source_file)))
 }
 
 fn every_retained_module_has_a_test() -> Bool {
