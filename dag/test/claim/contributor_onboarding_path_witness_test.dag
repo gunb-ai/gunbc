@@ -15,7 +15,14 @@ import gunbc.contributor_onboarding_path {
   onboarding_steps,
   onboarding_obstacles,
   onboarding_design_reading,
-  onboarding_required_bins,
+  DesignReading,
+  DesignReadingPriority,
+  FirstDay,
+  BeforeFirstCommit,
+  WhenItBites,
+  readings_have_a_first_day,
+  first_day_readings,
+  reading_priority_is_first_day,
   ordinals_are_gapless,
   step_ordinals_are_gapless,
   obstacles_with_undeclared_step,
@@ -29,6 +36,7 @@ import gunbc.contributor_onboarding_path {
   expected_contributor_onboarding_md
 }
 import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.witness_floor_workflow { witness_floor_required_bins }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   ContributorOnboardingArtifact,
@@ -161,7 +169,7 @@ test fn the_roster_carries_obstacles_the_error_text_does_not_explain() -> Bool {
 // here while every arm above stays green.
 test fn the_rendered_page_carries_the_authority_build_argv() -> Bool {
   let md = expected_contributor_onboarding_md()
-  let argv = repo_self_build_command(bins: onboarding_required_bins)
+  let argv = repo_self_build_command(bins: witness_floor_required_bins)
   string_contains_marker(haystack: md, marker: argv)
 }
 
@@ -176,8 +184,47 @@ test fn the_rendered_page_names_every_declared_step() -> Bool {
 
 // THE READING ORDER COVERS THE FIRST DAY AT ALL. The item's obstacle is that DESIGN.md is not a
 // first-day document; a reading order with nothing marked first-day would restate the problem.
+// THE FIRST-DAY ARM, WITH A DISCRIMINATING FIXTURE (review 64627). The previous form asserted
+// only that the roster was non-empty, so a reading order with nothing marked first-day stayed
+// green -- which is the exact state the item's obstacle describes, passed off as covered.
+data fixture_readings_without_a_first_day: List<DesignReading> = [
+  DesignReading {
+    section: "a fixture section" as NonEmptyStr,
+    priority: BeforeFirstCommit,
+    why: "needed before a first commit" as NonEmptyStr,
+  },
+  DesignReading {
+    section: "another fixture section" as NonEmptyStr,
+    priority: WhenItBites,
+    why: "deferrable" as NonEmptyStr,
+  },
+]
+
+data fixture_readings_with_a_first_day: List<DesignReading> = [
+  DesignReading {
+    section: "a first-day section" as NonEmptyStr,
+    priority: FirstDay,
+    why: "needed before a build" as NonEmptyStr,
+  },
+]
+
 test fn the_reading_order_has_a_first_day() -> Bool {
-  count(onboarding_design_reading) > 0
+  readings_have_a_first_day(readings: onboarding_design_reading)
+    && count(first_day_readings()) > 0
+}
+
+test fn a_reading_order_with_no_first_day_is_refused() -> Bool {
+  readings_have_a_first_day(readings: fixture_readings_with_a_first_day)
+    && !readings_have_a_first_day(readings: fixture_readings_without_a_first_day)
+    && count(fixture_readings_without_a_first_day) > 0
+}
+
+// AND THE PRIORITY DISCRIMINATOR ITSELF IS NOT TRUE-FOR-EVERYTHING, which is what would make
+// both arms above satisfiable by a predicate that answers first-day to any row.
+test fn only_the_first_day_priority_answers_first_day() -> Bool {
+  reading_priority_is_first_day(pr: FirstDay)
+    && !reading_priority_is_first_day(pr: BeforeFirstCommit)
+    && !reading_priority_is_first_day(pr: WhenItBites)
 }
 
 // DERIVED MEMBERSHIP: THE POSITIVE CONTROL. Every docs-located artifact in the registry has a

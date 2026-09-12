@@ -9,6 +9,7 @@ import extdeps.exec.command { argv_words }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.witness_floor_workflow { witness_floor_required_bins }
 import tools.docs_projection_agreement { docs_projection_regen_command }
 
 // THE PATH A NEW ENGINEER WALKS, MODELED SO THE COMMANDS CANNOT ROT AWAY FROM THEIR AUTHORITIES.
@@ -96,14 +97,21 @@ fn source_root_flags() -> List<String> {
   fold(witness_layer_roots, init: [], f: fn(acc, root) { append(acc, items: ["--source-root", root]) })
 }
 
-// THE BINS A NEWCOMER NEEDS, WHICH IS THE SAME PAIR THE REQUIRED BUILD LANE NEEDS AND IS NOT
-// RESTATED FROM IT: gunbc runs an entry, claim_executor runs the lanes. A newcomer who builds
-// only gunbc cannot run the witnesses, which is the most common way the path stops after a
-// successful build.
-data onboarding_required_bins: List<String> = ["claim_executor", "gunbc"]
-
+// THE BINS A NEWCOMER NEEDS ARE THE REQUIRED BUILD LANE'S OWN ROSTER, CONSUMED (review 64627).
+//
+// gunbc runs an entry and claim_executor runs the lanes, so a newcomer who builds only gunbc
+// cannot run the witnesses -- the most common way the path stops after a successful build. That
+// pair is not this module's fact to hold: `gunbc.witness_floor_workflow` `witness_floor_required_bins`
+// already declares it, and the required lane builds from it.
+//
+// AN EARLIER REVISION DECLARED THE PAIR HERE UNDER A COMMENT CLAIMING IT WAS NOT RESTATED FROM
+// THAT ROSTER, which is worth recording rather than quietly deleting: the prose asserted the
+// single-authority property while the line beneath it minted the second authority, so the comment
+// was the only thing standing between a reader and the fork. Two independently writable lists for
+// one membership is the DESIGN section 3 nicknaming violation, and a module whose whole claim is
+// that its commands come from their authorities is the worst place to keep one.
 fn onboarding_build_command() -> String {
-  repo_self_build_command(bins: onboarding_required_bins)
+  repo_self_build_command(bins: witness_floor_required_bins)
 }
 
 fn onboarding_witness_command() -> String {
@@ -384,6 +392,27 @@ fn disposition_is_operator_gated(d: ObstacleDisposition) -> Bool {
     DocumentedRemedy { remedy: _ } => false
     OperatorGated { who_must_act: _ } => true
   }
+}
+
+fn reading_priority_is_first_day(pr: DesignReadingPriority) -> Bool {
+  match pr {
+    FirstDay => true
+    BeforeFirstCommit => false
+    WhenItBites => false
+  }
+}
+
+// A READING ORDER WITH NOTHING MARKED FIRST-DAY RESTATES THE PROBLEM INSTEAD OF ANSWERING IT
+// (review 64627). The item's obstacle is that DESIGN.md is not a first-day document, so a roster
+// of only BeforeFirstCommit and WhenItBites rows leaves a reader with nothing to read before
+// their first build -- and a count-greater-than-zero check stays green over exactly that roster.
+// The predicate takes the list so the discriminating input can be authored.
+fn readings_have_a_first_day(readings: List<DesignReading>) -> Bool {
+  fold(readings, init: false, f: fn(acc, r) { acc || reading_priority_is_first_day(pr: r.priority) })
+}
+
+fn first_day_readings() -> List<DesignReading> {
+  filter(onboarding_design_reading, r => reading_priority_is_first_day(pr: r.priority))
 }
 
 fn priority_rendered(pr: DesignReadingPriority) -> String {
