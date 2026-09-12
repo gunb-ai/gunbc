@@ -18,7 +18,6 @@ import gunbc.fleet_physical_inventory {
 }
 import gunbc.fleet_acquisition_census {
   fleet_acquisition_ledgers,
-  fleet_lot_tax_evidence,
   fleet_tax_join_covers_every_ledger,
   fleet_acquisition_census_standing,
   CensusFloor,
@@ -29,13 +28,20 @@ import gunbc.fleet_acquisition_census {
 }
 import gunbc.fleet_host_assembly {
   srv_assembly_components,
-  board_components_bound_to_the_four_board_lot,
-  cooler_components_bound_to_their_lots,
+  srv_assembly_containments,
+  every_board_component_is_from_the_four_board_lot,
+  every_cooler_component_is_from_its_lot,
   every_recorded_component_lot_is_admitted,
+  assembly_covers_component_roster,
+  assembly_containments_join,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sum_lot_quantities(evidence: List<InventoryLotEvidence>) -> Nat {
+  fold(evidence, init: 0, f: fn(acc, e) { acc + e.lot.quantity_acquired })
+}
 
 fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: Nat, owned: Nat) -> Bool {
   match admit_ledger_evidence(evidence: evidence) {
@@ -59,12 +65,11 @@ data without_mt_collins: List<InventoryLotEvidence> = concat(
   fleet_acquisition_ledgers.skip(n: 4),
 )
 
-// 32 DIMM + 6 Spark + 2 Spark + 20 Mt. Collins + 62 Q80 + 4 boards + 8 peripherals = 134.
+// Quantities are summed from the named lots, not transcribed as a census-size literal.
 test fn w_joined_lots_derive_one_population() -> Bool {
-  fleet_acquisition_ledgers.length() == 14
-    && fleet_lot_tax_evidence.length() == 14
-    && fleet_tax_join_covers_every_ledger()
-    && population_is(evidence: fleet_acquisition_ledgers, acquired: 134, received: 134, owned: 134)
+  let q = sum_lot_quantities(evidence: fleet_acquisition_ledgers)
+  fleet_tax_join_covers_every_ledger()
+    && population_is(evidence: fleet_acquisition_ledgers, acquired: q, received: q, owned: q)
     && match fleet_acquisition_census_standing {
       CensusFloor { close_by: c } => (c as String).length() > 0
       CensusClosed => false
@@ -72,8 +77,15 @@ test fn w_joined_lots_derive_one_population() -> Bool {
 }
 
 test fn w_omitting_the_mt_collins_lot_changes_the_derived_population() -> Bool {
-  population_is(evidence: fleet_acquisition_ledgers, acquired: 134, received: 134, owned: 134)
-    && population_is(evidence: without_mt_collins, acquired: 114, received: 114, owned: 114)
+  let q = sum_lot_quantities(evidence: fleet_acquisition_ledgers)
+  let omitted = mt_collins_twenty_lot.quantity_acquired
+  population_is(evidence: fleet_acquisition_ledgers, acquired: q, received: q, owned: q)
+    && population_is(
+      evidence: without_mt_collins,
+      acquired: q - omitted,
+      received: q - omitted,
+      owned: q - omitted,
+    )
 }
 
 test fn w_q80_and_boards_are_independent_of_spark() -> Bool {
@@ -86,8 +98,9 @@ test fn w_q80_and_boards_are_independent_of_spark() -> Bool {
 }
 
 test fn w_assembly_binds_boards_and_coolers_to_their_lots() -> Bool {
-  board_components_bound_to_the_four_board_lot(rows: srv_assembly_components) == 4
-    && cooler_components_bound_to_their_lots(rows: srv_assembly_components) == 2
+  every_board_component_is_from_the_four_board_lot(rows: srv_assembly_components)
+    && every_cooler_component_is_from_its_lot(rows: srv_assembly_components)
     && every_recorded_component_lot_is_admitted(rows: srv_assembly_components)
-    && srv_assembly_components.length() == 26
+    && assembly_covers_component_roster(rows: srv_assembly_components)
+    && assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
 }

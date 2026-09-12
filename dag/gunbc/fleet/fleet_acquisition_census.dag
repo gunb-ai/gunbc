@@ -43,9 +43,10 @@ import product.lot_sales_tax {
   LedgerMissingTax,
   TaxWithoutLedger,
   LotTaxJoinRepeatedLot,
-  residual_owed_lot_count,
-  attested_lot_count,
-  unread_or_unrecorded_lot_count,
+  lot_identities_cover,
+  residual_owed_lots,
+  attested_lots,
+  unread_or_unrecorded_lots,
 }
 import extdeps.tax.new_jersey_sales_and_use {
   nj_statewide_sales_tax_rate,
@@ -362,12 +363,35 @@ fn fleet_ledger_identities() -> List<InventoryLotIdentity> {
   map(fleet_acquisition_ledgers, e => e.lot.identity)
 }
 
+data fleet_residual_owed_lots: List<InventoryLotIdentity> = [
+  dgx_spark_micro_center_lot.identity,
+  mt_collins_lot_identity,
+]
+
+data fleet_attested_lots: List<InventoryLotIdentity> = [
+  q80_lot_identity,
+  altrad8ud_board_lot_identity,
+]
+
+data fleet_unread_tax_lots: List<InventoryLotIdentity> = [
+  dimm_lot_64gib_32x.identity,
+  dgx_spark_ebay_pair_lot.identity,
+  switch_lot_identity,
+  printer_01_lot_identity,
+  printer_02_lot_identity,
+  ams_lot_identity,
+  pdu_lot_identity,
+  pi_controller_lot_identity,
+  cooler_srv3_lot_identity,
+  cooler_srv4_lot_identity,
+]
+
 fn fleet_tax_join_covers_every_ledger() -> Bool {
   match lot_tax_covers_ledgers(lots: fleet_ledger_identities(), tax: fleet_lot_tax_evidence) {
     LotTaxJoinCovered { rows: rows } =>
-      residual_owed_lot_count(rows: rows) == 2
-        && attested_lot_count(rows: rows) == 2
-        && unread_or_unrecorded_lot_count(rows: rows) == 10
+      lot_identities_cover(held: residual_owed_lots(rows: rows), expected: fleet_residual_owed_lots)
+        && lot_identities_cover(held: attested_lots(rows: rows), expected: fleet_attested_lots)
+        && lot_identities_cover(held: unread_or_unrecorded_lots(rows: rows), expected: fleet_unread_tax_lots)
     LedgerMissingTax { lot: _ } => false
     TaxWithoutLedger { lot: _ } => false
     LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false

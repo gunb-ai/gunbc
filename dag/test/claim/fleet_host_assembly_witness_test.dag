@@ -17,9 +17,11 @@ import gunbc.fleet_host_assembly {
   processor_srv1,
   ComponentAcquiredFromLot,
   ComponentAcquisitionUnrecorded,
-  board_components_bound_to_the_four_board_lot,
-  cooler_components_bound_to_their_lots,
+  every_board_component_is_from_the_four_board_lot,
+  every_cooler_component_is_from_its_lot,
   every_recorded_component_lot_is_admitted,
+  assembly_covers_component_roster,
+  assembly_containments_join,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -37,10 +39,10 @@ fn first_containment_is_chassis(c: PhysicalContainment) -> Bool {
 
 test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
   every_recorded_component_lot_is_admitted(rows: srv_assembly_components)
-    && board_components_bound_to_the_four_board_lot(rows: srv_assembly_components) == 4
-    && cooler_components_bound_to_their_lots(rows: srv_assembly_components) == 2
-    && srv_assembly_components.length() == 26
-    && srv_assembly_containments.length() == 24
+    && every_board_component_is_from_the_four_board_lot(rows: srv_assembly_components)
+    && every_cooler_component_is_from_its_lot(rows: srv_assembly_components)
+    && assembly_covers_component_roster(rows: srv_assembly_components)
+    && assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
     && match srv_assembly_containments.first() {
       Absent => false
       Present { value: c } => first_containment_is_chassis(c: c)

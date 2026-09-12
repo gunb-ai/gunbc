@@ -99,24 +99,32 @@ type LotTaxPopulation
   = LotTaxPopulationComplete { rows: List<LotTaxEvidence> }
   | LotTaxPopulationRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
 
+type LotTaxOrdinalScan {
+  next_ordinal: Nat
+  hit: Nat?
+}
+
+fn first_seen_ordinal(seen: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Nat? {
+  fold(seen, init: LotTaxOrdinalScan { next_ordinal: 0, hit: none }, f: fn(acc, prior) {
+    match acc.hit {
+      Present { value: p } => LotTaxOrdinalScan { next_ordinal: acc.next_ordinal + 1, hit: Present { value: p } }
+      Absent =>
+        if inventory_lot_identity_eq(left: prior.lot, right: lot) {
+          LotTaxOrdinalScan { next_ordinal: acc.next_ordinal + 1, hit: Present { value: acc.next_ordinal } }
+        } else {
+          LotTaxOrdinalScan { next_ordinal: acc.next_ordinal + 1, hit: none }
+        }
+    }
+  }).hit
+}
+
 fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
   fold(rows, init: LotTaxPopulationComplete { rows: [] }, f: fn(acc, row) {
     match acc {
       LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b } =>
         LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b }
-      LotTaxPopulationComplete { rows: seen } => {
-        let found = fold(seen, init: none, f: fn(hit, prior) {
-          match hit {
-            Present { value: p } => Present { value: p }
-            Absent =>
-              if inventory_lot_identity_eq(left: prior.lot, right: row.lot) {
-                Present { value: seen.length() }
-              } else {
-                none
-              }
-          }
-        })
-        match found {
+      LotTaxPopulationComplete { rows: seen } =>
+        match first_seen_ordinal(seen: seen, lot: row.lot) {
           Present { value: first } =>
             LotTaxPopulationRepeatedLot {
               lot: row.lot,
@@ -125,7 +133,6 @@ fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
             }
           Absent => LotTaxPopulationComplete { rows: list_push(seen, row) }
         }
-      }
     }
   })
 }
@@ -151,6 +158,29 @@ fn unread_or_unrecorded_lot_count(rows: List<LotTaxEvidence>) -> Nat {
 fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
   fold(lots, init: false, f: fn(acc, id) {
     acc || inventory_lot_identity_eq(left: id, right: lot)
+  })
+}
+
+fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<InventoryLotIdentity>) -> Bool {
+  fold(expected, init: true, f: fn(acc, e) { acc && identities_contain(lots: held, lot: e) })
+    && fold(held, init: true, f: fn(acc, h) { acc && identities_contain(lots: expected, lot: h) })
+}
+
+fn residual_owed_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if lot_tax_residual_is_owed(standing: row.standing) { list_push(acc, row.lot) } else { acc }
+  })
+}
+
+fn attested_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if lot_tax_is_attested_not_read(standing: row.standing) { list_push(acc, row.lot) } else { acc }
+  })
+}
+
+fn unread_or_unrecorded_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIdentity> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if lot_tax_jurisdiction_is_unread(standing: row.standing) { list_push(acc, row.lot) } else { acc }
   })
 }
 
