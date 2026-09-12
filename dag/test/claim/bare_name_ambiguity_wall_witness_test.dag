@@ -10,7 +10,8 @@ import tools.multi_module_compile_fixture {
   claim_scope_fixture,
   claim_scope_was_refused,
   claim_scope_refusal_names,
-  claim_scope_was_accepted
+  claim_scope_was_accepted,
+  claim_scope_compile_refusal_has_class
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -29,67 +30,100 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // that the language sanctions and precedence settles, so a manifest where the user imports a
 // module that imports both claimants produces NO ambiguity and every arm here would come back
 // accepted. The claimants therefore appear in no import line at all: they are pulled in by the
-// REFERENCE closure, because the user module bare-references the name they share. That is also
-// the real corpus geometry this campaign measured -- extdeps.tools.hostname reached
-// std.string_type and v2.std.text by reference, never by import.
+// REFERENCE closure. That is also the real corpus geometry this campaign measured --
+// extdeps.tools.hostname reached std.string_type and v2.std.text by reference, never by import.
 //
+// EACH CLAIMANT NEEDS A UNIQUELY-NAMED PULLER, and this was measured rather than reasoned. A
+// manifest whose user module references ONLY the contested name pulls in ONE claimant -- the one
+// the reference index resolved the name to -- so the scope holds a single declaration, nothing
+// collides, and the arm comes back ACCEPTED for a reason that has nothing to do with the wall.
+// `only_amb` and `only_elsewhere` exist for that and for nothing else: each is declared by exactly
+// one claimant and read by the user, so both claimant modules enter the scope and the contested
+// name has two declarations to be ambiguous BETWEEN.
+//
+// AND THE READER IS A CONTAINMENT DESCENDANT OF ONE CLAIMANT (`amb.user` under `amb`), which is
+// what lets the manifest COMPILE at all. v1 already refuses a bare read whose claimants it cannot
+// rank: `global_bare_policy_candidate` picks the nearest containment ancestor, and where no
+// candidate is an ancestor the compile emits a blocking `AmbiguousReference` and no scope is ever
+// built -- measured, on the first spelling of these fixtures. So the class this wall covers is
+// precisely the one the compile SETTLES SILENTLY: a nearest-ancestor pick that ranks two
+// declarations by where their modules sit rather than by anything the author wrote. The fixture
+// reproduces that settlement exactly, and `claim_scope_for` refuses what it settled.
+
 // NO std.types IMPORT IN ANY FIXTURE, and that is load-bearing rather than terseness. The
 // instrument compiles the supplied manifest with NO corpus roots, so `import std.types { Int }`
 // names a module the subject does not contain and refuses the whole compile -- including the
 // controls that must be ACCEPTED. `Int` needs no import: it is in kernel_type_set and every
 // module sees it.
 
-// The two claimants, byte-identical apart from the value, and present in EVERY manifest below.
-// Deleting one is not a simplification: with a single declarer the name is unambiguous, every
-// arm goes accepted, and the file would be green for a reason that has nothing to do with this
-// wall.
-data amb_claimant_x_source: String = "module amb.x\n\ndata shared_thing: Int = 1\n"
-data amb_claimant_y_source: String = "module amb.y\n\ndata shared_thing: Int = 2\n"
+// The two claimants. Each declares the contested `shared_thing` AND one name only it declares, so
+// the user's read of that second name is what pulls its module into the scope. Deleting either is
+// not a simplification: with a single declarer the name is unambiguous, every arm goes accepted,
+// and the file would be green for a reason that has nothing to do with this wall.
+data amb_claimant_x_source: String = "module amb\n\nfn only_amb() -> Int {\n  1\n}\n\nfn shared_thing() -> Int {\n  1\n}\n"
+data amb_claimant_y_source: String = "module elsewhere.y\n\nfn only_elsewhere() -> Int {\n  2\n}\n\nfn shared_thing() -> Int {\n  2\n}\n"
 
 // ROW 1 -- THE SUBJECT. A genuine bare value read of the contested name. MUST REFUSE.
-data amb_bare_read_user_source: String = "module amb.user\n\nfn probe() -> Int {\n  shared_thing\n}\n"
+data amb_bare_read_user_source: String = "module amb.user\n\nfn probe() -> Int {\n  only_amb() + only_elsewhere() + shared_thing()\n}\n"
 
 // ROW 2 -- FIELD LABEL. `shared_thing` appears only as a RECORD FIELD LABEL, never as a value
-// read. MUST NOT REFUSE. This is the control that separates the value-position projection from
-// the raw free-reference set: that raw set unions field labels, so a wall keyed on it would
-// refuse this manifest, and would refuse `Foo { observation: o }` in the corpus the day a second
-// `observation` were declared.
-data amb_field_label_user_source: String = "module amb.user\n\ntype Row {\n  shared_thing: Int\n}\n\nfn probe() -> Row {\n  Row { shared_thing: 5 }\n}\n"
+// read, while both claimants are still pulled in by the two puller reads. MUST NOT REFUSE. This
+// is the control that separates the value-position projection from the raw free-reference set:
+// that raw set unions field labels, so a wall keyed on it would refuse this manifest, and would
+// refuse `Foo { observation: o }` in the corpus the day a second `observation` were declared.
+data amb_field_label_user_source: String = "module amb.user\n\ntype Row {\n  shared_thing: Int\n}\n\nfn probe() -> Row {\n  Row { shared_thing: only_amb() + only_elsewhere() }\n}\n"
 
 // ROW 3 -- LOCAL PARAMETER. `shared_thing` is the function's OWN parameter, so the reference in
 // the body is a bound occurrence rather than a free one. MUST NOT REFUSE.
-data amb_local_param_user_source: String = "module amb.user\n\nfn probe(shared_thing: Int) -> Int {\n  shared_thing\n}\n"
+data amb_local_param_user_source: String = "module amb.user\n\nfn probe(shared_thing: Int) -> Int {\n  shared_thing + only_amb() + only_elsewhere()\n}\n"
 
 // ROWS 4 AND 5 -- THE VARIANT ARM TIER, over a name two modules declare as TOP-LEVEL types while
 // the reading site means an ARM that merely shares the spelling. This is the shape that made five
 // corpus sites read as defects when they were correctly written: `property: Unit` meaning the
 // systemd `Unit=` property, `spelling: Int` meaning a C++ surface spelling.
-data amb_marker_x_source: String = "module amb.x\n\ntype Marker\n"
-data amb_marker_y_source: String = "module amb.y\n\ntype Marker\n"
+data amb_marker_x_source: String = "module amb\n\nfn only_amb() -> Int {\n  1\n}\n\ntype Marker\n"
+data amb_marker_y_source: String = "module elsewhere.y\n\nfn only_elsewhere() -> Int {\n  2\n}\n\ntype Marker\n"
 data amb_marker_coproduct_source: String = "module amb.z\n\ntype Pick\n  = Marker\n  | Other\n"
 
 // ROW 4 -- SINGLY-DECLARED ARM, explicitly imported. EXACTLY ONE visible coproduct declares
 // `Marker`, so the read is answered and MUST NOT REFUSE.
-data amb_single_arm_user_source: String = "module amb.user\n\nimport amb.z { Marker, Pick }\n\nfn probe() -> Pick {\n  Marker\n}\n"
+data amb_single_arm_user_source: String = "module amb.user\n\nimport amb.z { Marker, Pick }\n\nfn pull() -> Int {\n  only_amb() + only_elsewhere()\n}\n\nfn probe() -> Pick {\n  Marker\n}\n"
 
-// ROW 5 -- TWO VISIBLE COPRODUCTS. The user declares its OWN coproduct carrying an arm spelled
-// `Marker` AND imports another that also carries one. Nothing the author wrote ranks them, so
-// this MUST REFUSE.
+// ROW 4b -- THE ARM IS DECLARED BY THE SITE'S OWN COPRODUCT, named by nobody else. MUST NOT
+// REFUSE, and it is a separate row from ROW 4 because it exercises the other half of the tier's
+// visibility test: the site's own module rather than its import binding.
 //
-// THIS ROW IS WHY THE TIER IS KEYED ON (module, COPRODUCT) AND NOT ON THE MODULE ALONE. Under a
-// module-only key the arm index cannot tell one coproduct from two, and the read would resolve to
-// whichever matched first -- silencing exactly the class this wall exists to catch. It is also
-// why the tier gives the site's OWN coproduct no precedence, unlike the two tiers above it: a
-// top-level declaration in one's own module is the authored answer by construction, whereas an
-// arm of one's own coproduct and an arm of an imported one are named with equal standing.
-data amb_two_coproducts_user_source: String = "module amb.user\n\nimport amb.z { Marker, Pick }\n\ntype Mine\n  = Marker\n  | Extra\n\nfn probe() -> Pick {\n  Marker\n}\n"
+// BOTH ARM ROWS WERE RED BEFORE THE TIER'S `item.inferred` BRANCH CAME OUT, and that is what they
+// are really enrolled for. An item's inferred node is its TYPE: for `fn probe() -> Pick` it is
+// the `Disj` of `Pick`, so every function returning a coproduct registered as a second declarer
+// of that coproduct's arms, the tier saw two owners where the source has one, and the read the
+// author named perfectly well refused. Nothing in the corpus could have shown that -- the
+// phantom owner needs a coproduct-returning function and a contested arm name in one scope --
+// which is the §4b argument for a fixture harness stated as a receipt rather than as a plan.
+data amb_own_coproduct_user_source: String = "module amb.user\n\ntype Pick\n  = Marker\n  | Other\n\nfn pull() -> Int {\n  only_amb() + only_elsewhere()\n}\n\nfn probe() -> Pick {\n  Marker\n}\n"
+
+// ROW 5 -- TWO VISIBLE COPRODUCTS, AND THE COMPILE REFUSES IT BEFORE THIS WALL CAN.
+//
+// The user declares its OWN coproduct carrying an arm spelled `Marker` AND imports another that
+// also carries one. The tier's strict arm -- exactly one visible coproduct, or nothing -- was
+// written for this shape, on the ground that an arm of one's own coproduct and an arm of an
+// imported one are named with equal standing and nothing ranks them.
+//
+// MEASURED: NO SCOPE IS EVER BUILT OVER THIS MANIFEST. v1 already walls the shape at compile
+// grain and refuses it as `VariantCollision`, so the strict arm is unreachable through any
+// manifest the compile accepts. That is worth stating rather than quietly keeping a row that
+// asserts a refusal this wall did not produce: a control satisfied by SOME refusal goes green on
+// a cause it never observed. So this row asserts what actually happens -- the compile refusal and
+// its class -- and the strict arm stays as the fail-closed direction with its evidence named
+// honestly: the compile wall below it, not a control of its own.
+data amb_two_coproducts_user_source: String = "module amb.user\n\nimport amb.z { Marker, Pick }\n\ntype Mine\n  = Marker\n  | Extra\n\nfn pull() -> Int {\n  only_amb() + only_elsewhere()\n}\n\nfn probe() -> Pick {\n  Marker\n}\n"
 
 fn amb_scope_over(user_source: String) -> ClaimScopeFixtureOutcome {
   claim_scope_fixture(
     MultiModuleCompileFixture {
       sources: [
-        fixture_source("amb/x.dag", amb_claimant_x_source),
-        fixture_source("amb/y.dag", amb_claimant_y_source),
+        fixture_source("amb.dag", amb_claimant_x_source),
+        fixture_source("elsewhere/y.dag", amb_claimant_y_source),
         fixture_source("amb/user.dag", user_source)
       ],
       entry: "amb/user.dag"
@@ -102,8 +136,8 @@ fn amb_marker_scope_over(user_source: String) -> ClaimScopeFixtureOutcome {
   claim_scope_fixture(
     MultiModuleCompileFixture {
       sources: [
-        fixture_source("amb/x.dag", amb_marker_x_source),
-        fixture_source("amb/y.dag", amb_marker_y_source),
+        fixture_source("amb.dag", amb_marker_x_source),
+        fixture_source("elsewhere/y.dag", amb_marker_y_source),
         fixture_source("amb/z.dag", amb_marker_coproduct_source),
         fixture_source("amb/user.dag", user_source)
       ],
@@ -129,8 +163,15 @@ test fn a_singly_declared_variant_arm_read_does_not_refuse() -> Bool {
   claim_scope_was_accepted(o: amb_marker_scope_over(user_source: amb_single_arm_user_source))
 }
 
-test fn an_arm_declared_by_two_visible_coproducts_refuses() -> Bool {
-  claim_scope_was_refused(o: amb_marker_scope_over(user_source: amb_two_coproducts_user_source))
+test fn an_arm_of_the_sites_own_coproduct_does_not_refuse() -> Bool {
+  claim_scope_was_accepted(o: amb_marker_scope_over(user_source: amb_own_coproduct_user_source))
+}
+
+test fn an_arm_declared_by_two_visible_coproducts_is_refused_by_the_compile() -> Bool {
+  claim_scope_compile_refusal_has_class(
+    o: amb_marker_scope_over(user_source: amb_two_coproducts_user_source),
+    wanted: "VariantCollision"
+  )
 }
 
 // ROW 6 -- THE REFUSAL MUST CARRY ITS REMEDY, AND THE REMEDY MUST NAME A DECLARING MODULE.
@@ -142,13 +183,13 @@ test fn an_arm_declared_by_two_visible_coproducts_refuses() -> Bool {
 // re-exporting module gets named instead of a declaring one. `import std.types { String }` binds
 // nothing and appears in ~1951 modules, which is what that mistake looks like at corpus scale.
 //
-// So this row asserts the refusal TEXT names a declaring module -- here `amb.x`, one of the two
+// So this row asserts the refusal TEXT names a declaring module -- here `elsewhere.y`, one of the two
 // modules that declare the contested `shared_thing`. It is deliberately a claim about the message
 // rather than about the refusal: the other rows already establish THAT it refuses, and this one
 // exists so the remedy cannot quietly rot out of the message later while those rows stay green.
 test fn the_refusal_names_a_declaring_module() -> Bool {
   claim_scope_refusal_names(
-    cause_marker: "amb.x",
+    cause_marker: "elsewhere.y",
     o: amb_scope_over(user_source: amb_bare_read_user_source)
   )
 }
@@ -159,7 +200,7 @@ test fn the_refusal_names_a_declaring_module() -> Bool {
 // while it is cheap to assert.
 test fn the_refusal_carries_a_pasteable_import_line() -> Bool {
   claim_scope_refusal_names(
-    cause_marker: "import amb.x { shared_thing }",
+    cause_marker: "import elsewhere.y { shared_thing }",
     o: amb_scope_over(user_source: amb_bare_read_user_source)
   )
 }

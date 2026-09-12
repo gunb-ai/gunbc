@@ -385,19 +385,25 @@ fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>>
     None
 }
 
-/// The NODE-LOCAL half of [`coproduct_disj_node`]: the coproduct this item itself is, or the one
-/// its inference resolved to. Deliberately does NOT follow an alias right-hand side, because that
-/// tier needs an `InterpContext` and this runs during fragment derivation, before any scope
-/// exists. Missing such an arm is the safe direction -- the read stays in the ambiguous
-/// population rather than being excused by a resolution nothing verified.
+/// The NODE-LOCAL half of [`coproduct_disj_node`]: the coproduct THIS ITEM ITSELF IS.
+///
+/// Deliberately does NOT follow an alias right-hand side, because that tier needs an
+/// `InterpContext` and this runs during fragment derivation, before any scope exists. Missing
+/// such an arm is the safe direction -- the read stays in the ambiguous population rather than
+/// being excused by a resolution nothing verified.
+///
+/// AND IT DOES NOT READ `item.inferred` EITHER, which it did until a fixture measured what that
+/// costs. An item's resolved node is its TYPE, not its declaration: for `fn probe() -> Pick`, the
+/// inferred node is the `Disj` of `Pick`, so every function returning a coproduct registered
+/// itself as a second declarer of that coproduct's arms. The tier then saw two visible owners --
+/// the real `type Pick` and the phantom `probe` -- and refused a read the author had named
+/// perfectly well. Measured on `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`: both
+/// arm controls were RED with the branch and are green without it, in the site's own module and
+/// through an explicit import alike. Reading a declaration off an inferred type is the same
+/// category error in miniature that this whole wall exists to refuse.
 fn fragment_coproduct_disj_node(item: &Rc<Node>) -> Option<Rc<Node>> {
     if item.connective == Connective::Disj && !item.children.is_empty() {
         return Some(item.clone());
-    }
-    if let Some(InferredNode::Resolved { node }) = item.inferred.as_deref() {
-        if node.connective == Connective::Disj && !node.children.is_empty() {
-            return Some(node.clone());
-        }
     }
     None
 }

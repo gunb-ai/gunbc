@@ -291,11 +291,13 @@ fn claim_scope_was_refused(o: ClaimScopeFixtureOutcome) -> Bool {
 // coverage for a cause it never observed. This reader matches the arm AND requires the cause to
 // name the expected refusal, so a red has to be the red the caller meant.
 //
-// Substring scan via the ambient split, the idiom the corpus already uses for this: a marker is
-// contained when splitting on it yields more than one piece.
+// The containment predicate is `string_contains` from `std.methods`, the corpus's single authority
+// for this question. An earlier spelling hand-rolled it as `(split(s, marker) |> count) > 1` and
+// defended that as the corpus idiom on a sample of one; it is a second answer to a question
+// `std.methods` already answers (DESIGN section 2).
 fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) -> Bool {
   match o {
-    ClaimScopeRefused { cause: c } => (split(s: c, delimiter: cause_marker) |> count) > 1
+    ClaimScopeRefused { cause: c } => string_contains(s: c, pattern: cause_marker)
     ClaimScopeAccepted { module_count: n } => false
     ClaimScopeCompileRefused { blocking_count: n, diagnostics: d } => false
     ClaimScopeInstrumentRefused { cause: c } => false
