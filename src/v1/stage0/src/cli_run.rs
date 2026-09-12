@@ -23516,6 +23516,8 @@ pub fn measure_selected_entry_closure_overlap(
         &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
+        None,
+        &std::collections::HashMap::new(),
     )?;
     let declared_paths = index.module_graph_facts.declared_repo_paths();
 
@@ -24333,20 +24335,13 @@ fn collect_sorted_decl_lines_for_file(
 pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
     edited_test_fns: HashSet<(String, String)>,
-    /// Test fns declared in a path whose DECLARATION SET IS ESTABLISHED FRESH at NEW — a wholly
-    /// added file or a rename destination, exactly the population
-    /// `parse_unified_diff_added_paths` already rules on. These identities have never executed
-    /// under their current qualified spelling, so they are the NEWLY ENROLLED set the enrolment
-    /// margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
-    ///
-    /// A STRICT SUBSET OF `edited_test_fns`, AND DELIBERATELY NARROWER THAN "NEWLY ENROLLED"
-    /// IN FULL. A brand-new `test fn` added to an EXISTING file is also newly enrolled and is
-    /// NOT in this set: distinguishing it from a modified sibling needs the base revision's
-    /// declaration names, which no observation in this tree produces today. The narrower set is
-    /// the sound one — every member provably did not exist before, so the gate cannot refuse a
-    /// PR for a witness it did not author, which is the property that makes a merge-blocking
-    /// conjunct safe. The residual is a declared gap with a named trigger, not silence; see the
-    /// gate module's own header.
+    /// Test fns declared now and not declared at the resolved diff base — the NEWLY ENROLLED
+    /// set the enrolment margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
+    /// Names at the base come from `v2.workflow.floor_diff_observe`
+    /// `floor_run_base_test_decl_census`, path-keyed. Enrolment subtracts names at the
+    /// `rename from` path when git detected a rename, so a move does not enrol every fn.
+    /// A wholly added file and a brand-new `test fn` in an existing file are new; a
+    /// modified sibling whose name was already at the lookup path is not.
     enrolled_test_fns: HashSet<(String, String)>,
     /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
     touched_entry_files: HashSet<String>,
@@ -25304,6 +25299,26 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     added
 }
 
+/// Dest → source for git-detected renames (`rename from` / `rename to`). The base-declaration
+/// census is path-keyed and rename-blind: names at the NEW path are absent at the base by
+/// construction. Enrolment looks up the SOURCE path so a move does not enrol every fn as new.
+fn parse_unified_diff_rename_sources(diff_text: &str) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    let mut from: Option<String> = None;
+    for line in diff_text.lines() {
+        if line.starts_with("diff --git ") {
+            from = None;
+        } else if let Some(rest) = line.strip_prefix("rename from ") {
+            from = Some(normalize_repo_path(rest.trim()));
+        } else if let Some(rest) = line.strip_prefix("rename to ") {
+            if let Some(src) = from.take() {
+                out.insert(normalize_repo_path(rest.trim()), src);
+            }
+        }
+    }
+    out
+}
+
 /// True when `name` is declared as a `data` item at `file_norm`, verified against the entry's
 /// own resolved import closure (`ctx.modules`) rather than by bare name — `item_registry` is
 /// flat-namespace-keyed (name only, no origin file), so a homonym declared in some unrelated
@@ -25925,9 +25940,10 @@ impl ShardStyle {
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        list_value_from_vec, parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
-        parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, scan_test_decl_lines,
-        FileLineRange,
+        floor_diff_edits_from_diff_text_with_base_names, list_value_from_vec,
+        parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
+        parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
@@ -26179,6 +26195,175 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             enrolled,
             HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
             "an in-place edit inside one declaration enrolls that declaration and no sibling"
+        );
+    }
+
+    fn machine_shape_in_place_green_diff() -> (String, String) {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the renamed wall entry is in the tree");
+        let green_line = content
+            .lines()
+            .position(|l| l.starts_with("test fn gate_green_synthetic_shape_from_catalog_call"))
+            .expect("green sibling declared")
+            + 1;
+        (
+            dest.to_string(),
+            unified_diff_for_line(dest, green_line as i64 + 1),
+        )
+    }
+
+    // THE WIDENING: a test fn whose name is absent from the base census is newly enrolled
+    // even in a modified file. Without the census this was indistinguishable from a
+    // touched sibling and was not gated.
+    #[test]
+    fn new_test_fn_in_existing_file_is_enrolled_when_absent_from_base() {
+        let (dest, diff) = machine_shape_in_place_green_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            dest.clone(),
+            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("in-place modify with a base census must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == &dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled,
+            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
+            "a name the base census does not carry is newly enrolled"
+        );
+    }
+
+    // THE OTHER DIRECTION, so the widening cannot be satisfied by enrolling every edited
+    // test fn. The touched name WAS at the base, so it is a modified sibling and must
+    // not enter the margin gate's population.
+    #[test]
+    fn modified_test_fn_in_existing_file_is_not_enrolled_when_present_at_base() {
+        let (dest, diff) = machine_shape_in_place_green_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            dest.clone(),
+            HashSet::from([
+                "gate_green_synthetic_shape_from_catalog_call".to_string(),
+                "gate_red_synthetic_machine_shape_call".to_string(),
+            ]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("in-place modify with a base census must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == &dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert!(
+            enrolled.is_empty(),
+            "a name the base census already carries is a modified sibling, not a new enrolment; got {enrolled:?}"
+        );
+    }
+
+    fn machine_shape_rename_diff() -> (&'static str, &'static str, String) {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let src = "dag/test/claim/machine_shape_construction_wall_test.dag";
+        let diff = "\
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+similarity index 97%
+rename from dag/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+--- a/dag/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+@@ -1 +1 @@
+-module test.claim.machine_shape_construction_wall
++module v2.test.claim.machine_shape_construction_wall
+@@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
+-
+";
+        (src, dest, diff.to_string())
+    }
+
+    // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
+    // SOURCE path or every moved fn is gated as new.
+    #[test]
+    fn rename_does_not_enrol_names_already_declared_at_source() {
+        let (src, dest, diff) = machine_shape_rename_diff();
+        assert_eq!(
+            parse_unified_diff_rename_sources(&diff).get(dest),
+            Some(&src.to_string()),
+            "fixture must carry git's rename-from so this control can fail the dest-only lookup"
+        );
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            src.to_string(),
+            HashSet::from([
+                "gate_green_synthetic_shape_from_catalog_call".to_string(),
+                "gate_red_synthetic_machine_shape_call".to_string(),
+            ]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("a rename-destination diff must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert!(
+            enrolled.is_empty(),
+            "names declared at the rename source are a move, not a new enrolment; got {enrolled:?}"
+        );
+    }
+
+    // THE OTHER DIRECTION: following rename-from must not swallow a name the source
+    // never declared.
+    #[test]
+    fn rename_still_enrols_a_name_absent_from_the_source() {
+        let (src, dest, diff) = machine_shape_rename_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            src.to_string(),
+            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("a rename-destination diff must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled,
+            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
+            "a name the source census does not carry is newly enrolled even across a rename"
+        );
+    }
+
+    // THE SUPERSEDED RUNG MUST NOT ANSWER ENROLMENT. A rename destination is an added path;
+    // the old production rule would enrol every test fn from that fact alone. Without a
+    // census, `enrolled_test_fns` is empty — attribution still sees them as edited.
+    #[test]
+    fn floor_diff_edits_from_diff_text_does_not_enrol_without_a_census() {
+        let (_src, dest, diff) = machine_shape_rename_diff();
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("a rename-destination diff must attribute, not refuse");
+        assert!(
+            edits.enrolled_test_fns.is_empty(),
+            "no census means no enrolment answer, including for added/rename paths; got {:?}",
+            edits.enrolled_test_fns
+        );
+        assert!(
+            edits.edited_test_fns.iter().any(|(file, _)| file == dest),
+            "attribution of edited test fns must still run without a census"
         );
     }
 
