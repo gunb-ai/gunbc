@@ -1,0 +1,54 @@
+module test.claim.machine_intake_predictive_claim_construction_witness_test
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn prediction_construction_refuses(source: String, class: String) -> Bool {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: class) {
+    Present { value: n } => n > 0
+    Absent => false
+  }
+}
+
+test fn predictive_model_cannot_be_forged_or_have_its_receipts_erased() -> Bool {
+  prediction_construction_refuses(
+    source: "module predictive_forge_probe\nimport std.predictive_claim { PredictiveModel }\nfn forge(old: PredictiveModel<Int, Int>) -> PredictiveModel<Int, Int> { PredictiveModel { prediction: old.prediction, tests: [], superseded: [] } }\n",
+    class: "SoleConstructorViolation",
+  )
+}
+
+test fn a_started_test_cannot_be_forged_without_ordering_admission() -> Bool {
+  prediction_construction_refuses(
+    source: "module predictive_start_forge_probe\nimport std.predictive_claim { StartedPredictiveTest }\nfn forge(old: StartedPredictiveTest<Int, Int>) -> StartedPredictiveTest<Int, Int> { StartedPredictiveTest { committed: old.committed, configuration: old.configuration, discrimination: old.discrimination, started_at: 0 } }\n",
+    class: "SoleConstructorViolation",
+  )
+}
+
+test fn the_internal_append_cannot_bypass_registration_admission() -> Bool {
+  prediction_construction_refuses(
+    source: "module predictive_append_forge_probe\nimport std.predictive_claim { PredictiveModel, PredictiveModelResult, PredictionTestReceipt, append_predictive_observation }\nfn forge(model: PredictiveModel<Int, Int>, receipt: PredictionTestReceipt<Int, Int>) -> PredictiveModelResult<Int, Int> { append_predictive_observation(model: model, configuration: receipt.configuration, observation: receipt.observation, source: receipt.source, registration: receipt.registration, discrimination: receipt.discrimination) }\n",
+    class: "ConstructorCallAdmissionRefused",
+  )
+}
+
+test fn the_same_model_is_readable_through_the_public_boundary() -> Bool {
+  match compile_dag_diagnostic_census("module predictive_read_probe\nimport std.predictive_claim { PredictiveModel }\nfn read(model: PredictiveModel<Int, Int>) -> Int { count(model.tests) }\n") {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn predictive_construction_probe() -> ProcessExit {
+  if predictive_model_cannot_be_forged_or_have_its_receipts_erased()
+    && a_started_test_cannot_be_forged_without_ordering_admission()
+    && the_internal_append_cannot_bypass_registration_admission()
+    && the_same_model_is_readable_through_the_public_boundary() {
+    return ExitSuccess
+  }
+  return exit_failure(reason: "predictive constructor boundary failed")
+}

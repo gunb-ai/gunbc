@@ -1,0 +1,290 @@
+module test.claim.materialization_store_local_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
+import std.materialization_provider {
+  DeclaredInput, ArtifactRequest,
+  UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
+  RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
+  request_key,
+  output_module_test_verdicts, output_module_preparation_diagnostics,
+  output_universe_test_identity_population, output_universe_module_import_closures,
+}
+import std.materialization_store_grant { MaterializationStoreRoot, WitnessScratchRoot, DurableHostVolumeRoot }
+import std.materialization_object {
+  ArtifactPayload,
+  OpenedMaterializationStore,
+  StoreLookup, StoreCommit, StoreCommitSettled, StoreCommitRefused,
+  StoreCommitPrepared, StoreCommitNotPrepared,
+  store_commit_prepare, store_object_name,
+  store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
+  store_commit_refusal_tag, store_commit_fold,
+}
+import extdeps.realization.materialization_store_local {
+  LocalStoreOpening, LocalStoreOpened, LocalStoreUnavailable,
+  LocalStoreInitialization, LocalStoreInitialized, LocalStoreInitializationRefused,
+  LocalStoreNotInitialized, LocalStoreGrantRefused,
+  LocalStoreBatchLookup, LocalStoreBatchLooked, LocalStoreBatchUnavailable,
+  local_store_initialize, local_store_open, local_store_lookup, local_store_commit,
+  local_store_lookup_batch, store_path, materialization_store_marker_name,
+}
+
+// WET CONTROLS FOR THE LOCAL PERSISTENT REALIZATION: every control of the provider-spine brief,
+// executed against a REAL filesystem through extdeps.realization.materialization_store_local. Each
+// test owns a fresh store under a throwaway /tmp/gunbc_matstore.* directory (the WitnessScratchRoot
+// arm, whose durability is derived ephemeral -- this file never touches the durable root) and
+// removes it before returning. Effects: shell.Mktemp.DirWithTemplate, Filesystem.Read /
+// WriteCreateNew / Write (the Write is the corruption injector, never the store's own path),
+// shell.Test.IsFile, shell.Remove.RecursiveForce. No network, no cargo, no remote host.
+//
+// The hermetic decision evidence is test.claim.materialization_store_witness; this file is the
+// transport's evidence: that the real Filesystem observations reach those decisions with the
+// meanings the realization claims (NotFound is absent, AlreadyExists is occupied, the marker gates
+// the store) and that the bytes a commit publishes are the bytes a later read verifies.
+//
+// Concurrency: the second writer here is SEQUENTIAL, which exercises exactly the loser's arm -- a
+// create-new that answers already_exists, then a read-back -- because WriteCreateNew's publication
+// is one link(2), so a racing loser observes the identical AlreadyExists. The race itself is
+// executed at the primitive by v1_interpreter write_file_create_new_tests
+// concurrent_same_target_creates_produce_one_winner_and_no_residue, which also pins every loser to
+// the already_exists channel value.
+
+fn h(v: String) -> Fnv1a64Structural {
+  content_hash_atom(value: v as NonEmptyStr)
+}
+
+fn bundle_req(module: String) -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: h(v: "route-binary-1"),
+    module_identity: h(v: module),
+    canonical_module_import_closure_identity: h(v: "closure-1"),
+    ordered_test_identity_population: h(v: "t1,t2"),
+    eval_interpretation_identity: h(v: "eval-1")
+  })
+}
+
+fn universe_req() -> ArtifactRequest {
+  UniverseArtifactRequest {
+    tested_tree_identity: h(v: "tree-1"),
+    route_binary: DeclaredInput { ref: "route_binary_identity", digest: h(v: "route-binary-1") }
+  }
+}
+
+fn verdicts(text: String) -> List<ArtifactPayload> {
+  [
+    ArtifactPayload { id: output_module_test_verdicts, content: text },
+    ArtifactPayload { id: output_module_preparation_diagnostics, content: "" },
+  ]
+}
+
+fn universe_payloads() -> List<ArtifactPayload> {
+  [
+    ArtifactPayload { id: output_universe_test_identity_population, content: "v2.test.alpha.t1" },
+    ArtifactPayload { id: output_universe_module_import_closures, content: "v2.test.alpha: v2.std.logic" },
+  ]
+}
+
+fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
+  match store_commit_prepare(req: req, payloads: payloads) {
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _ } => o
+    StoreCommitNotPrepared { commit: _ } => ""
+  }
+}
+
+fn object_path(root_path: String, req: ArtifactRequest) -> String {
+  store_path(root_path: root_path, name: store_object_name(key: request_key(req: req)))
+}
+
+fn commit_tag(c: StoreCommit) -> String {
+  store_commit_refusal_tag(c: c)
+}
+
+fn fresh_root_path() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+}
+
+fn opened(root: MaterializationStoreRoot) -> OpenedMaterializationStore? {
+  match local_store_initialize(root: root, instance_label: "wet-witness") {
+    LocalStoreInitialized { opening: o } => match o {
+      LocalStoreOpened { root: _, store: s, durability: _ } => Present { value: s }
+      LocalStoreUnavailable { root_path: _, cause: _ } => none
+    }
+    LocalStoreInitializationRefused { root_path: _, cause: _ } => none
+  }
+}
+
+// commit + exact read-back; a fresh read of the committed name serves the same bytes.
+test fn commit_then_read_back_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass\na.t2 fail")))
+      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
+      let bytes_ok = match store_lookup_payload(l: read, id: output_module_test_verdicts) {
+        Present { value: v } => v == "a.t1 pass\na.t2 fail"
+        Absent => false
+      }
+      committed == "committed" && store_lookup_is_hit(l: read) && bytes_ok
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// corruption -> integrity refusal, and the refusal is not a miss (nothing may recompute past it).
+test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass")))
+      let good = Filesystem.Read(path: object_path(root_path: root_path, req: bundle_req(module: "a")))
+      let corrupt = Filesystem.Write(path: object_path(root_path: root_path, req: bundle_req(module: "a")), content: replace(good.content, "a.t1%20pass", "a.t1%20PASS"))
+      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
+      committed == "committed" && good.success && corrupt.success
+        && store_lookup_refusal_tag(l: read) == "contract_wrong_content"
+        && store_lookup_is_miss(l: read) == false
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// wrong kind: a universe artifact's object planted at the verdict bundle's name.
+test fn wrong_kind_refuses_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let planted = Filesystem.WriteCreateNew(path: object_path(root_path: root_path, req: bundle_req(module: "a")), content: prepared_object(req: universe_req(), payloads: universe_payloads()))
+      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
+      planted.success && store_lookup_refusal_tag(l: read) == "contract_kind_mismatch"
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// incomplete: the stored manifest omits a part the kind requires.
+// drop the diagnostics part line and its payload line
+test fn incomplete_refuses_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let full = prepared_object(req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"))
+      let lines = split(s: full, delimiter: "\n")
+      let kept = lines |> filter(l => (string_contains(s: l, pattern: output_module_preparation_diagnostics as String)) == false)
+      let planted = Filesystem.WriteCreateNew(path: object_path(root_path: root_path, req: bundle_req(module: "a")), content: join(kept, "\n"))
+      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
+      planted.success && (kept |> count()) == (lines |> count()) - 2
+        && store_lookup_refusal_tag(l: read) == "contract_incomplete"
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// concurrent writers of one key: the second converges on the first's commit, and every reader sees
+// the one verified content.
+test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"))
+      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"))
+      let same_content = match first {
+        StoreCommitSettled { receipt: r1 } => match second {
+          StoreCommitSettled { receipt: r2 } => r1.content_digest == r2.content_digest && r1.request_key == r2.request_key
+          StoreCommitRefused { key: _, refusal: _ } => false
+        }
+        StoreCommitRefused { key: _, refusal: _ } => false
+      }
+      commit_tag(c: first) == "committed" && commit_tag(c: second) == "converged_on_prior_commit" && same_content
+        && store_lookup_is_hit(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "a")))
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// a second writer with DIFFERENT content for the same key is a conflict; the committed artifact is
+// untouched and is what every reader gets.
+test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"))
+      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 fail"))
+      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
+      let still_first = match store_lookup_payload(l: read, id: output_module_test_verdicts) {
+        Present { value: v } => v == "a.t1 pass"
+        Absent => false
+      }
+      commit_tag(c: first) == "committed" && commit_tag(c: second) == "conflict" && still_first
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// provider unavailable: an uninitialized root is not a store. Open, batch and lookup all refuse,
+// nothing is answered as a miss, and nothing is written anywhere to stand in for it.
+test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let open_refused = match local_store_open(root: root) {
+    LocalStoreUnavailable { root_path: _, cause: c } => match c {
+      LocalStoreNotInitialized { marker_path: _ } => true
+      _ => false
+    }
+    LocalStoreOpened { root: _, store: _, durability: _ } => false
+  }
+  let batch_refused = match local_store_lookup_batch(root: root, reqs: [bundle_req(module: "a"), bundle_req(module: "b")]) {
+    LocalStoreBatchUnavailable { root_path: _, cause: _ } => true
+    LocalStoreBatchLooked { store: _, lookups: _ } => false
+  }
+  let ungranted = match local_store_open(root: WitnessScratchRoot { root: "/tmp/not_a_gunbc_store_root" }) {
+    LocalStoreUnavailable { root_path: _, cause: c } => match c {
+      LocalStoreGrantRefused { verb: _, target: _, frame: _ } => true
+      _ => false
+    }
+    LocalStoreOpened { root: _, store: _, durability: _ } => false
+  }
+  let no_marker = shell.Test.IsFile(path: store_path(root_path: root_path, name: materialization_store_marker_name))
+  let no_object = shell.Test.IsFile(path: object_path(root_path: root_path, req: bundle_req(module: "a")))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  open_refused && batch_refused && ungranted && !no_marker.is_file && !no_object.is_file && removed.success
+}
+
+// batch: one open, one exact read per request -- a committed request hits, an uncommitted one misses.
+test fn a_batch_answers_each_request_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass")))
+      match local_store_lookup_batch(root: root, reqs: [bundle_req(module: "a"), bundle_req(module: "b")]) {
+        LocalStoreBatchUnavailable { root_path: _, cause: _ } => false
+        LocalStoreBatchLooked { store: _, lookups: ls } =>
+          committed == "committed" && (ls |> count()) == 2
+            && match get(xs: ls, index: 0) { Present { value: l } => store_lookup_is_hit(l: l), Absent => false }
+            && match get(xs: ls, index: 1) { Present { value: l } => store_lookup_is_miss(l: l), Absent => false }
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}

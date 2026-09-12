@@ -1,0 +1,471 @@
+module test.claim.machine_intake_predictive_claim_witness_test
+
+import std.types { Bool, CommitSha, EpochMs, Int, NonEmptyStr }
+import std.claim_evidence { Claim, ClaimId, RecordedFact, RecordedFactId }
+import std.decl_ref { decl_ref }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.predictive_claim {
+  AdversarialTestingObligation, Prediction, PredictionRestriction,
+  PredictionObservationWindow, BoundedPredictionWindow, ApproximatePredictionWindow, PredictionWindowNotRecorded,
+  PredictionTestDiscrimination, IsolatedMechanism, ConfoundedMechanisms,
+  ConversationOnly, PreregisteredPrediction, CommittedPredictionWithoutWitnessedOrder, PostOutcomeArchivedPrediction,
+  PredictiveModel, PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
+  PredictiveClaimRefusal, PredictionNotRecordedBeforeStart, PredictionObservationBeforeStart,
+  PredictionSnapshotPredatesItsEvidence,
+  PredictionObservationBeyondBound, PredictionWindowRequired, PredictionRequiresNarrowing,
+  PredictionScopeExcluded, PredictionNotFalsified, PredictionRevisionReused,
+  NarrowingRetainsCounterexample, NarrowingHasNoRetainedSubject, DuplicatePredictionObservation,
+  IndistinguishablePredictionAndFalsifier,
+  CommittedPredictionObservation, PredictiveTestStarted, PredictiveTestStartRefused,
+  UntestedPrediction, NarrowedPredictionAwaitingTest, TestedPrediction,
+  FalsifiedPredictionNeedsNarrowing,
+  begin_predictive_model, start_predictive_test, observe_predictive_test,
+  record_conversation_prediction_test, record_committed_prediction_test, record_archived_prediction_test, narrow_predictive_model,
+  predictive_standing, predictive_scope_admits,
+  predictive_next_obligation, AdversarialTestRequired, CounterexampleNarrowingRequired,
+}
+import gunbc.machine_intake_mtcollins1_memory_prediction {
+  memory_prediction_review, memory_prediction_cli, MemoryPredictionReported, MemoryPredictionReviewRefused,
+}
+import gunbc.machine_intake_mtcollins1_spare_screen_prediction {
+  spare_screen_prediction_review, spare_screen_prediction_cli, SpareScreenPredictionReported, SpareScreenPredictionRefused,
+  spare_screen_configuration, original_screen_configuration, spare_screen_prediction_commit,
+  spare_screen_prediction, spare_screen_archive_receipt, SpareScreenConfiguration, SpareScreenOutcome, TrainingAndPostObserved,
+  RestartInsideDeclaredWindow, SpareScreenOutcomeUnknown, SpareScreenOutcomeReport,
+  spare_screen_restart_outcome, spare_screen_model_from_report, spare_screen_outcome_report,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_obligation() -> AdversarialTestingObligation {
+  AdversarialTestingObligation {
+    owner: decl_ref(module_path: "std.predictive_claim", decl_name: "predictive_standing"),
+    next_discriminator: "Probe the next integer at the scope boundary; fixture only.",
+  }
+}
+
+fn fixture_prediction(window: PredictionObservationWindow, falsifier: Int) -> Prediction<Int, Int> {
+  Prediction {
+    claim: Claim {
+      id: "fixture-v1" as ClaimId,
+      subject: decl_ref(module_path: "std.types", decl_name: "kernel_type_set"),
+      target: decl_ref(module_path: "std.types", decl_name: "kernel_type_set"),
+      proposition: 0,
+      scope: [PredictionRestriction { reason: "positive fixture domain", admits: fn(n) { n > 0 } }],
+      bound: window,
+    },
+    statement: "All positive fixture inputs produce zero.",
+    factual_basis: decl_ref(module_path: "std.types", decl_name: "kernel_type_set"),
+    further_factual_basis: [],
+    falsifier: falsifier,
+    obligation: fixture_obligation(),
+  }
+}
+
+fn fixture_model() -> PredictiveModelResult<Int, Int> {
+  begin_predictive_model(prediction: fixture_prediction(window: BoundedPredictionWindow { duration: 1000 }, falsifier: 1))
+}
+
+fn fixture_discrimination(isolated: Bool) -> PredictionTestDiscrimination {
+  if isolated {
+    IsolatedMechanism { isolation_evidence: decl_ref(module_path: "std.types", decl_name: "kernel_type_set") }
+  } else {
+    ConfoundedMechanisms { first_confound: "two fixture mechanisms can produce zero", further_confounds: [] }
+  }
+}
+
+// Synthetic clocks and commits belong only to the controlled fixture. They are never imported
+// into the real machine receipt. Both constructors under test receive the same supplied evidence.
+fn fixture_observe(
+  result: PredictiveModelResult<Int, Int>, configuration: Int, value: Int, id: NonEmptyStr,
+  registered: Bool, isolated: Bool, recorded_at: EpochMs, started_at: EpochMs, observed_at: EpochMs,
+) -> PredictiveModelResult<Int, Int> {
+  match result {
+    PredictiveModelRefused { cause: cause } => PredictiveModelRefused { cause: cause }
+    PredictiveModelAccepted { model: model } => {
+      let observation = RecordedFact { id: id as RecordedFactId, value: value }
+      let source = decl_ref(module_path: "std.types", decl_name: "kernel_type_set")
+      let discrimination = fixture_discrimination(isolated: isolated)
+      if registered {
+        match start_predictive_test(
+          committed: CommittedPredictionObservation {
+            snapshot: model, commit: "1111111111111111111111111111111111111111" as CommitSha,
+            declaration: source, recorded_at: recorded_at,
+          },
+          configuration: configuration, discrimination: discrimination, started_at: started_at,
+        ) {
+          PredictiveTestStartRefused { cause: cause } => PredictiveModelRefused { cause: cause }
+          PredictiveTestStarted { test: test } => observe_predictive_test(
+            test: test, observation: observation, source: source, observed_at: observed_at,
+          )
+        }
+      } else {
+        record_conversation_prediction_test(
+          model: model, configuration: configuration, observation: observation,
+          report: source, discrimination: discrimination,
+        )
+      }
+    }
+  }
+}
+
+fn fixture_run(result: PredictiveModelResult<Int, Int>, configuration: Int, value: Int, id: NonEmptyStr) -> PredictiveModelResult<Int, Int> {
+  let completed = match result {
+    PredictiveModelRefused { cause: _ } => 0
+    PredictiveModelAccepted { model: model } => count(model.tests)
+      + fold(model.superseded, init: 0, f: (n, version) => n + count(version.tests))
+  }
+  let base = completed * 1000
+  fixture_observe(result: result, configuration: configuration, value: value, id: id,
+    registered: true, isolated: true, recorded_at: base + 100, started_at: base + 200, observed_at: base + 300)
+}
+
+fn fixture_narrow(result: PredictiveModelResult<Int, Int>, revision: NonEmptyStr, threshold: Int) -> PredictiveModelResult<Int, Int> {
+  match result {
+    PredictiveModelRefused { cause: cause } => PredictiveModelRefused { cause: cause }
+    PredictiveModelAccepted { model: model } => narrow_predictive_model(
+      model: model, revision: revision as ClaimId, statement: "Only inputs above the new boundary predict zero.",
+      restriction: PredictionRestriction { reason: "exclude the observed boundary counterexample", admits: fn(n) { n > threshold } },
+      retained_configuration: threshold + 1,
+      obligation: fixture_obligation(),
+    )
+  }
+}
+
+fn fixture_refused(result: PredictiveModelResult<Int, Int>, expected: PredictiveClaimRefusal) -> Bool {
+  match result {
+    PredictiveModelAccepted { model: _ } => false
+    PredictiveModelRefused { cause: cause } => cause == expected
+  }
+}
+
+test fn prediction_must_have_a_distinguishable_falsifier() -> Bool {
+  fixture_refused(
+    result: begin_predictive_model(prediction: fixture_prediction(window: BoundedPredictionWindow { duration: 1000 }, falsifier: 0)),
+    expected: IndistinguishablePredictionAndFalsifier,
+  )
+}
+
+test fn commitment_must_strictly_precede_start() -> Bool {
+  all([200, 201], at => fixture_refused(
+    result: fixture_observe(result: fixture_model(), configuration: 1, value: 0, id: "late",
+      registered: true, isolated: true, recorded_at: at, started_at: 200, observed_at: 300),
+    expected: PredictionNotRecordedBeforeStart,
+  ))
+}
+
+test fn observation_must_follow_start_and_respect_committed_bound() -> Bool {
+  fixture_refused(result: fixture_observe(result: fixture_model(), configuration: 1, value: 0, id: "early",
+    registered: true, isolated: true, recorded_at: 100, started_at: 200, observed_at: 199),
+    expected: PredictionObservationBeforeStart)
+  && fixture_refused(result: fixture_observe(result: fixture_model(), configuration: 1, value: 0, id: "late",
+    registered: true, isolated: true, recorded_at: 100, started_at: 200, observed_at: 1201),
+    expected: PredictionObservationBeyondBound)
+}
+
+test fn a_snapshot_cannot_be_committed_before_the_evidence_it_contains() -> Bool {
+  fixture_refused(result: fixture_observe(
+    result: fixture_run(result: fixture_model(), configuration: 1, value: 0, id: "earlier"),
+    configuration: 2, value: 0, id: "later", registered: true, isolated: true,
+    recorded_at: 100, started_at: 200, observed_at: 300), expected: PredictionSnapshotPredatesItsEvidence)
+}
+
+test fn a_missing_approximate_or_zero_window_cannot_be_preregistered() -> Bool {
+  all([PredictionWindowNotRecorded, ApproximatePredictionWindow { duration: 1000 }, BoundedPredictionWindow { duration: 0 }], window =>
+    fixture_refused(result: fixture_run(
+      result: begin_predictive_model(prediction: fixture_prediction(window: window, falsifier: 1)),
+      configuration: 1, value: 0, id: "invalid-window"), expected: PredictionWindowRequired))
+}
+
+test fn no_tests_and_five_surviving_tests_are_different_standings() -> Bool {
+  let initial = fixture_model()
+  let tested = fold([1, 2, 3, 4, 5], init: initial, f: (acc, n) =>
+    fixture_run(result: acc, configuration: n, value: 0, id: concat("test-", to_string(n))))
+  match initial {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
+      UntestedPrediction => match tested {
+        PredictiveModelRefused { cause: _ } => false
+        PredictiveModelAccepted { model: tested_model } => match predictive_standing(model: tested_model) {
+          TestedPrediction { preregistered_isolated_matches: n, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
+            n == 5 && weak == 0 && unknown == 0 && revisions == 0
+          _ => false
+        }
+      }
+      _ => false
+    }
+  }
+}
+
+test fn confounding_and_missing_preregistration_each_weaken_a_match() -> Bool {
+  all([true, false], registered => {
+    let result = fixture_observe(result: fixture_model(), configuration: 1, value: 0, id: "weak",
+      registered: registered, isolated: !registered, recorded_at: 100, started_at: 200, observed_at: 300)
+    match result {
+      PredictiveModelRefused { cause: _ } => false
+      PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
+          strong == 0 && weak == 1 && unknown == 0
+        _ => false
+      }
+    }
+  })
+}
+
+test fn unknown_outcome_is_not_confirmation() -> Bool {
+  match fixture_run(result: fixture_model(), configuration: 1, value: 2, id: "unknown") {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
+      TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
+        strong == 0 && weak == 0 && unknown == 1
+      _ => false
+    }
+  }
+}
+
+test fn falsification_blocks_further_testing_until_narrowing() -> Bool {
+  let killed = fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "counterexample")
+  fixture_refused(result: fixture_run(result: killed, configuration: 2, value: 0, id: "ignore-counterexample"),
+    expected: PredictionRequiresNarrowing)
+  && fixture_refused(result: fixture_observe(result: killed, configuration: 2, value: 0, id: "historical-bypass",
+    registered: false, isolated: false, recorded_at: 100, started_at: 200, observed_at: 300),
+    expected: PredictionRequiresNarrowing)
+}
+
+test fn narrowing_must_exclude_the_counterexample_and_change_revision() -> Bool {
+  let killed = fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "counterexample")
+  fixture_refused(result: fixture_narrow(result: killed, revision: "fixture-v2", threshold: 0), expected: NarrowingRetainsCounterexample)
+  && fixture_refused(result: fixture_narrow(result: killed, revision: "fixture-v1", threshold: 1), expected: PredictionRevisionReused)
+  && fixture_refused(result: fixture_narrow(result: fixture_model(), revision: "fixture-v2", threshold: 1), expected: PredictionNotFalsified)
+}
+
+test fn twice_narrowed_lineage_preserves_both_killed_versions_and_cannot_widen() -> Bool {
+  let first = fixture_narrow(result: fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "first"), revision: "fixture-v2", threshold: 1)
+  let second = fixture_narrow(result: fixture_run(result: first, configuration: 2, value: 1, id: "second"), revision: "fixture-v3", threshold: 2)
+  match second {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => {
+      let standing_ok = match predictive_standing(model: model) {
+        NarrowedPredictionAwaitingTest { revisions: n } => n == 2
+        _ => false
+      }
+      standing_ok && count(model.tests) == 0 && count(model.superseded) == 2
+        && any(model.superseded, version => version.prediction.claim.id == "fixture-v1"
+          && version.falsifying_receipt.observation.id == "first" && count(version.tests) == 1)
+        && any(model.superseded, version => version.prediction.claim.id == "fixture-v2"
+          && version.falsifying_receipt.observation.id == "second" && count(version.tests) == 1)
+        && !predictive_scope_admits(model: model, configuration: 0)
+        && !predictive_scope_admits(model: model, configuration: 1)
+        && !predictive_scope_admits(model: model, configuration: 2)
+        && predictive_scope_admits(model: model, configuration: 3)
+        && fixture_refused(result: fixture_run(result: second, configuration: 1, value: 0, id: "out-of-scope"), expected: PredictionScopeExcluded)
+        && fixture_refused(result: fixture_run(result: second, configuration: 3, value: 0, id: "first"), expected: DuplicatePredictionObservation)
+    }
+  }
+}
+
+test fn a_replayed_receipt_cannot_be_counted_twice() -> Bool {
+  fixture_refused(result: fixture_run(
+    result: fixture_run(result: fixture_model(), configuration: 1, value: 0, id: "same"),
+    configuration: 1, value: 0, id: "same"), expected: DuplicatePredictionObservation)
+}
+
+test fn narrowing_cannot_erase_the_entire_scope() -> Bool {
+  match fixture_run(result: fixture_model(), configuration: 1, value: 1, id: "counterexample") {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => fixture_refused(
+      result: narrow_predictive_model(model: model, revision: "empty-v2" as ClaimId,
+        statement: "vacuous prediction", restriction: PredictionRestriction {
+          reason: "exclude everything", admits: fn(n) { false },
+        }, retained_configuration: 2, obligation: fixture_obligation()),
+      expected: NarrowingHasNoRetainedSubject,
+    )
+  }
+}
+
+test fn a_surviving_test_never_discharges_the_standing_obligation() -> Bool {
+  all([0, 1], outcome => match fixture_run(result: fixture_model(), configuration: 1, value: outcome, id: "obligation") {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match predictive_next_obligation(model: model) {
+      AdversarialTestRequired { obligation: _ } => outcome == 0
+      CounterexampleNarrowingRequired { obligation: _ } => outcome == 1
+    }
+  })
+}
+
+test fn tonight_is_one_weak_conversation_match_and_not_preregistered() -> Bool {
+  match memory_prediction_review() {
+    MemoryPredictionReviewRefused { result: _ } => false
+    MemoryPredictionReported { model: result, standing: standing, next_obligation: _, report: report, census_frontier: _ } => {
+      let weak = match standing {
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak_count, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
+          strong == 0 && weak_count == 1 && unknown == 0 && revisions == 0
+        _ => false
+      }
+      weak && report.restart_after_power_on == 304000 && match result {
+        PredictiveModelRefused { cause: _ } => false
+        PredictiveModelAccepted { model: model } => count(model.tests) == 1
+          && all(model.tests, receipt => match receipt.registration {
+            ConversationOnly { report: _ } => true
+            CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => false
+            PostOutcomeArchivedPrediction { archive: _ } => false
+            PreregisteredPrediction { commit: _, declaration: _, recorded_at: _, started_at: _, observed_at: _ } => false
+          })
+      }
+    }
+  }
+}
+
+test fn a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration() -> Bool {
+  match fixture_model() {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match record_committed_prediction_test(
+      model: model, configuration: 1, observation: RecordedFact { id: "committed" as RecordedFactId, value: 0 },
+      commit: "1111111111111111111111111111111111111111" as CommitSha,
+      artifact: "fixture/prediction.md", report: decl_ref(module_path: "std.types", decl_name: "kernel_type_set"),
+      discrimination: fixture_discrimination(isolated: true),
+    ) {
+      PredictiveModelRefused { cause: _ } => false
+      PredictiveModelAccepted { model: committed } => match predictive_standing(model: committed) {
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: partial, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
+          strong == 0 && weak == 1 && partial == 1 && unknown == 0
+        _ => false
+      }
+    }
+  }
+}
+
+test fn spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass() -> Bool {
+  match spare_screen_prediction_review() {
+    SpareScreenPredictionRefused { cause: _ } => false
+    SpareScreenPredictionReported { model: model, standing: standing, next_obligation: obligation, outcome_report: report } => {
+      let narrowed = match standing { NarrowedPredictionAwaitingTest { revisions: n } => n == 1, _ => false }
+      let still_due = match obligation { AdversarialTestRequired { obligation: _ } => true, _ => false }
+      narrowed && still_due && count(model.tests) == 0 && count(model.superseded) == 1
+        && report.restart_after_power_on == 290000
+        && !predictive_scope_admits(model: model, configuration: spare_screen_configuration)
+        && predictive_scope_admits(model: model, configuration: original_screen_configuration)
+        && all(model.superseded, version => version.prediction.claim.proposition == TrainingAndPostObserved
+          && version.falsifying_receipt.observation.value == RestartInsideDeclaredWindow
+          && match version.falsifying_receipt.registration {
+            PostOutcomeArchivedPrediction { archive: archive } => archive.commit == spare_screen_prediction_commit
+            _ => false
+          })
+    }
+  }
+}
+
+test fn a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen() -> Bool {
+  let original = spare_screen_outcome_report
+  let late = SpareScreenOutcomeReport {
+    message_id: original.message_id, restart_after_power_on: 400000,
+    oem_payload_quotation: original.oem_payload_quotation,
+    socket0_memory_power: original.socket0_memory_power, socket1_memory_power: original.socket1_memory_power,
+    original_each_socket_memory_power: original.original_each_socket_memory_power,
+    original_reported_clean_duration: original.original_reported_clean_duration,
+  }
+  let no_window = spare_screen_restart_outcome(report: original, window: PredictionWindowNotRecorded) == SpareScreenOutcomeUnknown
+  let shortened = spare_screen_restart_outcome(report: original, window: ApproximatePredictionWindow { duration: 280000 }) == SpareScreenOutcomeUnknown
+  no_window && shortened && match spare_screen_model_from_report(report: late) {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
+      TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
+        strong == 0 && weak == 0 && unknown == 1 && revisions == 0
+          && all(model.tests, receipt => receipt.observation.value == SpareScreenOutcomeUnknown)
+      _ => false
+    }
+  }
+}
+
+test fn training_instead_of_restart_would_not_falsify_the_spare_screen() -> Bool {
+  match begin_predictive_model(prediction: spare_screen_prediction()) {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match record_committed_prediction_test(
+      model: model, configuration: spare_screen_configuration,
+      observation: RecordedFact { id: "counterfactual-training-fixture" as RecordedFactId, value: TrainingAndPostObserved },
+      commit: "1111111111111111111111111111111111111111" as CommitSha,
+      artifact: "fixture/prediction.md", report: decl_ref(module_path: "std.types", decl_name: "kernel_type_set"),
+      discrimination: fixture_discrimination(isolated: false),
+    ) {
+      PredictiveModelRefused { cause: _ } => false
+      PredictiveModelAccepted { model: survived } => match predictive_standing(model: survived) {
+        TestedPrediction { preregistered_isolated_matches: _, weak_matches: weak, committed_unwitnessed_matches: partial, post_outcome_archived_matches: _, inconclusive: _, narrowed_revisions: revisions } =>
+          weak == 1 && partial == 1 && revisions == 0
+        _ => false
+      }
+    }
+  }
+}
+
+test fn archival_publication_never_earns_committed_or_preregistered_match_standing() -> Bool {
+  match begin_predictive_model(prediction: spare_screen_prediction()) {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match record_archived_prediction_test(
+      model: model, configuration: spare_screen_configuration,
+      observation: RecordedFact { id: "archived-training-fixture" as RecordedFactId, value: TrainingAndPostObserved },
+      source: decl_ref(module_path: "std.types", decl_name: "kernel_type_set"),
+      archive: spare_screen_archive_receipt(), discrimination: fixture_discrimination(isolated: true),
+    ) {
+      PredictiveModelRefused { cause: _ } => false
+      PredictiveModelAccepted { model: survived } => match predictive_standing(model: survived) {
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak,
+          committed_unwitnessed_matches: committed, post_outcome_archived_matches: archived,
+          inconclusive: unknown, narrowed_revisions: revisions } =>
+          strong == 0 && weak == 1 && committed == 0 && archived == 1 && unknown == 0 && revisions == 0
+        _ => false
+      }
+    }
+  }
+}
+
+test fn operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() -> Bool {
+  let conversation_visible = match memory_prediction_cli() {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: bytes, exit: exit } => match exit {
+      ExitSuccess => bytes.contains("conversation-only") && bytes.contains("CONFOUNDED")
+        && bytes.contains("TESTING STILL DUE") && bytes.contains("0fde70330502")
+      _ => false
+    }
+  }
+  let falsifier_visible = match spare_screen_prediction_cli() {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: bytes, exit: exit } => match exit {
+      ExitSuccess => bytes.contains("NARROWED, awaiting a new test")
+        && bytes.contains("SUPERSEDED: mtcollins1-supported-shape-suffices-v1")
+        && bytes.contains("FALSIFIES prediction") && bytes.contains("post-outcome archive; ordering asserted only")
+        && bytes.contains("e72f8930cf647ef15abed0da676853e2c3ce51c2")
+        && bytes.contains("0fde70331102") && bytes.contains("TESTING STILL DUE")
+      _ => false
+    }
+  }
+  conversation_visible && falsifier_visible
+}
+
+fn predictive_claim_contract_probe() -> ProcessExit {
+  if prediction_must_have_a_distinguishable_falsifier()
+    && commitment_must_strictly_precede_start()
+    && observation_must_follow_start_and_respect_committed_bound()
+    && a_snapshot_cannot_be_committed_before_the_evidence_it_contains()
+    && a_missing_approximate_or_zero_window_cannot_be_preregistered()
+    && no_tests_and_five_surviving_tests_are_different_standings()
+    && confounding_and_missing_preregistration_each_weaken_a_match()
+    && unknown_outcome_is_not_confirmation()
+    && falsification_blocks_further_testing_until_narrowing()
+    && narrowing_must_exclude_the_counterexample_and_change_revision()
+    && twice_narrowed_lineage_preserves_both_killed_versions_and_cannot_widen()
+    && a_replayed_receipt_cannot_be_counted_twice()
+    && narrowing_cannot_erase_the_entire_scope()
+    && a_surviving_test_never_discharges_the_standing_obligation()
+    && tonight_is_one_weak_conversation_match_and_not_preregistered()
+    && a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration()
+    && spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass()
+    && a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen()
+    && training_instead_of_restart_would_not_falsify_the_spare_screen()
+    && archival_publication_never_earns_committed_or_preregistered_match_standing()
+    && operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() {
+    return ExitSuccess
+  }
+  return exit_failure(reason: "predictive claim contract failed")
+}

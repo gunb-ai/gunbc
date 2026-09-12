@@ -28,7 +28,7 @@ test fn wave1_gate1_c1_derived_list_append_index_witness_holds() -> Bool {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_append.arrow
   ) {
-    Present { value: idx } => idx == 0
+    Present { value: idx } => idx == 1
     Absent => false
   }
 }

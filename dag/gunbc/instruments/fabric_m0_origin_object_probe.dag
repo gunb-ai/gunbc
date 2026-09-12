@@ -1,0 +1,139 @@
+module tools.fabric_m0_origin_object_probe
+
+import std.types { Bool, NonEmptyStr, String, FilePath }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
+import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken }
+import gunbc.auth.gcp_secret_access { SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token }
+import gunbc.fabric_m0_origin_readback {
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+  origin_reading_digest,
+  origin_reading_path,
+}
+import gunbc.cloudflare.r2_origin_object {
+  OriginPutOutcome,
+  OriginObjectStored,
+  OriginObjectAlreadyPresent,
+  OriginPutRefused,
+  OriginPutOutcomeUnknown,
+  put_origin_object,
+  fetch_origin_object,
+}
+
+// THE LIVE ORIGIN, EXERCISED END TO END -- AN INSTRUMENT, NOT A FLOOR WITNESS, for the same reason
+// tools.fabric_m0_origin_readback_probe gives: under the hermetic envelope the transport is a mock,
+// mktemp is a mock and sha256sum replays one constant, so nothing a per-PR witness could observe
+// distinguishes a fetch that staged the origin's bytes from one that staged nothing. Only a run
+// against the allocated bucket, with the read credential in custody, shows the signing chain
+// (custody fetch -> owner-only token file -> sha256sum -> netrc -> curl --aws-sigv4) reaching R2.
+//
+// RECIPE, from the repository root, with GUNBC_GCP_ACCESS_TOKEN_FILE naming a file holding a GCP
+// access token that can read the fleet secrets project (the same variable the mint entries use):
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_m0_origin_object_probe.dag --function fetch_absent
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_m0_origin_object_probe.dag --function roundtrip
+//
+// TWO ENTRIES BECAUSE THEY HAVE TWO PRECONDITIONS. fetch_absent needs only the READ credential,
+// which is pinned today: it asks the origin for a key nothing has written and expects the origin
+// to SAY it is absent -- a 404 signed and answered, which is the whole GET chain short of a body.
+// roundtrip needs the WRITE credential as well: it PUTs a committed fixture at a probe key, fetches
+// it back through the self-staging read, and checks that the digest the reading carries is the
+// digest of the FIXTURE'S bytes -- the controlled oracle, chosen in the committed file rather than
+// measured off the origin. Until run_object_write has executed and its pin has landed, roundtrip
+// refuses at put_origin_object with the cause naming that entry; that refusal is the declared
+// state, not a broken probe.
+//
+// THE PROBE KEY IS FIXED AND THE PUT IS CREATE-IF-ABSENT, so a second roundtrip finds the object
+// already present -- reported as its own arm and accepted here, because for a content-addressed
+// object "already there" and "stored" are the same durable fact, and the fetch that follows is what
+// establishes it either way.
+//
+// STANDING: hand-run by the recipe, and nothing else. Its per-PR complement is
+// test.claim.cloudflare_r2_origin_object, which establishes the verdict algebra over fixtures.
+data probe_fixture_path: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/other_object.txt"
+
+data probe_key: NonEmptyStr = "probe/fabric-m0-origin-object/other_object.txt"
+
+data absent_key: NonEmptyStr = "probe/fabric-m0-origin-object/never-written"
+
+fn expected_fixture_digest() -> Sha256Digest {
+  Sha256Digest { hex: "087a9dd54ce8aef4192f5b49cf09666244a10dd5751370d6e7295e968e77642f" as Sha256DigestHex }
+}
+
+type ProbeCredential
+  = ProbeCredentialReady { source: AccessTokenSource }
+  | ProbeCredentialUnavailable { cause: NonEmptyStr }
+
+fn probe_token_source() -> ProbeCredential {
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause: cause } =>
+      ProbeCredentialUnavailable { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
+    SuppliedTokenReady { token: gcp_token } =>
+      ProbeCredentialReady { source: OperatorSuppliedToken { token: gcp_token } }
+  }
+}
+
+fn fetch_absent() -> ProcessExit uses net: Network {
+  match probe_token_source() {
+    ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
+    ProbeCredentialReady { source: source } =>
+      match fetch_origin_object(key: absent_key, token_source: source) {
+        OriginObjectAbsent { key: k } =>
+          if k == absent_key { ExitSuccess } else { exit_failure(reason: "the absence names another key") }
+        OriginObjectStaged { key: _, reading: r } =>
+          exit_failure(reason: concat("THE ORIGIN RETURNED AN OBJECT FOR A KEY NOTHING WROTE, staged at ", origin_reading_path(reading: r) as String))
+        OriginFetchUnavailable { key: _, cause: cause } =>
+          exit_failure(reason: concat("THE FETCH DID NOT REACH A VERDICT: ", cause as String))
+      }
+  }
+}
+
+fn put_admitted(outcome: OriginPutOutcome) -> Bool {
+  match outcome {
+    OriginObjectStored { key: _ } => true
+    OriginObjectAlreadyPresent { key: _ } => true
+    OriginPutRefused { key: _, cause: _ } => false
+    OriginPutOutcomeUnknown { key: _, cause: _ } => false
+  }
+}
+
+fn put_cause(outcome: OriginPutOutcome) -> String {
+  match outcome {
+    OriginObjectStored { key: _ } => "stored"
+    OriginObjectAlreadyPresent { key: _ } => "already present"
+    OriginPutRefused { key: _, cause: cause } => concat("PUT REFUSED: ", cause as String)
+    OriginPutOutcomeUnknown { key: _, cause: cause } => concat("PUT OUTCOME UNKNOWN: ", cause as String)
+  }
+}
+
+fn roundtrip() -> ProcessExit uses net: Network {
+  match probe_token_source() {
+    ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
+    ProbeCredentialReady { source: source } => {
+      let put = put_origin_object(local_path: probe_fixture_path as FilePath, key: probe_key, token_source: source)
+      if put_admitted(outcome: put) == false {
+        exit_failure(reason: put_cause(outcome: put))
+      } else {
+        match fetch_origin_object(key: probe_key, token_source: source) {
+          OriginObjectAbsent { key: _ } =>
+            exit_failure(reason: concat("THE PUT WAS ", concat(put_cause(outcome: put), " AND THE FETCH FOUND NOTHING AT THE KEY")))
+          OriginFetchUnavailable { key: _, cause: cause } =>
+            exit_failure(reason: concat("THE FETCH DID NOT REACH A VERDICT: ", cause as String))
+          OriginObjectStaged { key: _, reading: r } =>
+            if content_hash_eq_cryptographic(left: origin_reading_digest(reading: r), right: expected_fixture_digest()) {
+              ExitSuccess
+            } else {
+              exit_failure(reason: concat(
+                "THE STAGED BYTES DIGEST DIFFERENTLY FROM THE FIXTURE; staged at ",
+                origin_reading_path(reading: r) as String))
+            }
+        }
+      }
+    }
+  }
+}

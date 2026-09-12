@@ -1,0 +1,140 @@
+module gunbc.cloudflare.r2_s3_netrc
+
+import std.types { String, NonEmptyStr, Secret, Bool, FilePath }
+import std.resources { Network }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.crypto.hash
+import extdeps.crypto.hash { sha256sum_line_digest }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential,
+  SecretCredentialReady,
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused,
+  SecretCredentialFetchRefused,
+  SecretCredentialResolvedVersionMismatch,
+}
+import gunbc.auth.netrc_binding {
+  NetrcBinding,
+  NetrcBindingPlaced,
+  NetrcBindingRefused,
+  NetrcBindingRefusedResidueRemains,
+  place_netrc_binding,
+}
+
+// HOW AN R2 TOKEN BECOMES A SIGV4 CREDENTIAL ON DISK, AND WHY THAT IS A BRACKET RATHER THAN A PAIR
+// OF STRINGS. extdeps.cloudflare.r2 cites the derivation: the S3 access key id IS the token id and
+// the S3 secret IS the SHA-256 of the token value (R2S3AccessPair). The token value lives in Secret
+// Manager under the locus gunbc.cloudflare.r2_origin names; it never appears in argv
+// (gunbc.credential_argv_exposure) and this repository has no in-substrate bytes-to-digest, so the
+// derivation is performed the one way the tree already knows how to digest -- sha256sum over a file
+// path (extdeps.crypto.hash crypto.Sha256Sum.File) -- with the file created owner-only in a private
+// directory and removed before the netrc that replaces it is written.
+//
+// THE ORDER IS: mint a 0700 directory; write the token value there at 0600; digest that file;
+// remove it; place the netrc (login = access key id, password = hex digest) in the same directory
+// through gunbc.auth.netrc_binding's sealed placement. Each step's failure is an arm, and the
+// residue arm is honest about what it can and cannot say: a directory that could not be removed
+// may still hold either the token file or the netrc, and the refusal says material may remain
+// WITHOUT naming the path, for the reason gunbc.auth.netrc_binding states above NetrcPlacement.
+//
+// echo -n IS THE CITED RECIPE AND WriteOwnerOnly WRITES EXACTLY THE BYTES IT IS GIVEN (write_all, no
+// newline), so the digest is of the token value alone. A trailing newline would derive a secret R2
+// has never seen, and the refusal would arrive as a 403 that reads exactly like a revoked token.
+//
+// THE CONSUMER SHREDS THE WORKSPACE ON EVERY ARM OUT OF ITS BRACKET, the same discipline
+// gunbc.fleet.printer_project_delivery follows; shred_r2_s3_netrc below removes the directory, not
+// only the file, because the directory is the unit this placement minted.
+type R2S3NetrcPlacement
+  = R2S3NetrcPlaced { binding: NetrcBinding, workspace: FilePath }
+  | R2S3NetrcRefused { cause: NonEmptyStr }
+  | R2S3NetrcRefusedResidueRemains { cause: NonEmptyStr }
+
+fn r2_s3_netrc_fetch_refusal(cause: String) -> R2S3NetrcPlacement {
+  R2S3NetrcRefused { cause: concat("THE ORIGIN TOKEN COULD NOT BE READ FROM CUSTODY: ", cause) as NonEmptyStr }
+}
+
+// THE WORKSPACE IS REMOVED ON THE FAILING ARMS HERE, so a refusal from this function means no
+// credential material is on disk unless the residue arm says otherwise.
+fn r2_s3_netrc_workspace_refusal(cause: String, removed: Bool) -> R2S3NetrcPlacement {
+  if removed {
+    R2S3NetrcRefused { cause: cause as NonEmptyStr }
+  } else {
+    R2S3NetrcRefusedResidueRemains {
+      cause: concat(cause, "; AND the private directory could not be removed, so credential material may remain and requires cleanup") as NonEmptyStr,
+    }
+  }
+}
+
+fn place_r2_s3_netrc(
+  host: NonEmptyStr,
+  access_key_id: NonEmptyStr,
+  token_value: SecretRef,
+  token_source: AccessTokenSource,
+) -> R2S3NetrcPlacement uses net: Network {
+  match fetch_secret_ref_credential(secret_ref: token_value, token_source: token_source) {
+    SecretCredentialAccessUpsertRequired { plan: _ } =>
+      r2_s3_netrc_fetch_refusal(cause: "the access ensure requires an interactive authentication this run cannot perform")
+    SecretCredentialFetchRefused { reason: reason } =>
+      r2_s3_netrc_fetch_refusal(cause: reason as String)
+    SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+      r2_s3_netrc_fetch_refusal(cause: "the access response did not decode")
+    SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+      r2_s3_netrc_fetch_refusal(cause: join(["asked for version ", requested, ", answered about ", resolved], ""))
+    SecretCredentialReady { credential: token, resolved_version: _ } => {
+      let created = shell.Mktemp.Dir()
+      if created.success == false {
+        R2S3NetrcRefused { cause: "no private directory could be created for the origin credential, so none was placed" }
+      } else {
+        let workspace = created.path
+        let token_path = concat(workspace as String, "/token") as FilePath
+        if Filesystem.WriteOwnerOnly(path: token_path as String, content: token as String).success == false {
+          r2_s3_netrc_workspace_refusal(
+            cause: "the token value could not be written owner-only for digesting",
+            removed: shell.Remove.RecursiveForce(path: workspace).success)
+        } else {
+          let digested = crypto.Sha256Sum.File(path: token_path as String)
+          let token_file_removed = shell.Remove.FileForce(path: token_path).success
+          if token_file_removed == false {
+            r2_s3_netrc_workspace_refusal(
+              cause: "the token file could not be removed after digesting",
+              removed: shell.Remove.RecursiveForce(path: workspace).success)
+          } else if digested.success == false {
+            r2_s3_netrc_workspace_refusal(
+              cause: "sha256sum could not digest the token value, so no S3 secret could be derived",
+              removed: shell.Remove.RecursiveForce(path: workspace).success)
+          } else {
+            match sha256sum_line_digest(line: digested.line) {
+              Absent =>
+                r2_s3_netrc_workspace_refusal(
+                  cause: "sha256sum printed no digest field for the token value, so no S3 secret could be derived",
+                  removed: shell.Remove.RecursiveForce(path: workspace).success)
+              Present { value: d } =>
+                match place_netrc_binding(
+                  path: concat(workspace as String, "/netrc") as FilePath,
+                  machine: host,
+                  login: access_key_id,
+                  password: (d.hex as String) as Secret,
+                ) {
+                  NetrcBindingPlaced { binding: binding } =>
+                    R2S3NetrcPlaced { binding: binding, workspace: workspace }
+                  NetrcBindingRefused { cause: cause } =>
+                    r2_s3_netrc_workspace_refusal(
+                      cause: cause as String,
+                      removed: shell.Remove.RecursiveForce(path: workspace).success)
+                  NetrcBindingRefusedResidueRemains { cause: cause } =>
+                    R2S3NetrcRefusedResidueRemains { cause: cause }
+                }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn shred_r2_s3_netrc(workspace: FilePath) -> Bool {
+  shell.Remove.RecursiveForce(path: workspace).success
+}

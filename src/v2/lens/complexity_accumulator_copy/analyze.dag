@@ -158,7 +158,7 @@ fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
 }
 
 fn append_findings(fresh: List<v2.lens.complexity_accumulator_copy.Finding>, acc: List<v2.lens.complexity_accumulator_copy.Finding>) -> List<v2.lens.complexity_accumulator_copy.Finding> {
-  v2.std.algebra.list_append(left: fresh, right: acc)
+  v2.std.algebra.list_append(left: acc, right: fresh)
 }
 
 fn let_expr_capture(node: Node) -> Optional<Node> {
