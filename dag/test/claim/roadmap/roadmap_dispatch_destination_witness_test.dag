@@ -114,6 +114,9 @@ test fn spawn_origin_json_records_known_public_gunbc_from_the_standing() -> Bool
       spawn_origin_is_public_gunbc(origin: origin)
         && destination_is_known_public(identity: identity)
         && (dispatch_spawn_origin_json(origin: origin)).contains("\"known_public_gunbc\": true")
+        && (dispatch_spawn_origin_json(origin: origin))
+          .contains("\"default_branch_standing\": \"observed\"")
+        && (dispatch_spawn_origin_json(origin: origin)).contains("\"default_branch\": \"main\"")
     }
   }
 }
@@ -123,13 +126,18 @@ test fn spawn_origin_json_records_a_named_destination_as_not_known_public_gunbc(
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason: _ } => false
     DispatchDestinationResolved { identity } =>
-      (dispatch_spawn_origin_json(
-        origin: DispatchSpawnOrigin {
-          identity: identity,
-          base_ref: "main" as NonEmptyStr,
-          base_sha: dest_head as NonEmptyStr,
-        },
-      )).contains("\"known_public_gunbc\": false")
+      {
+        let wire = dispatch_spawn_origin_json(
+          origin: DispatchSpawnOrigin {
+            identity: identity,
+            base_ref: "main" as NonEmptyStr,
+            base_sha: dest_head as NonEmptyStr,
+          },
+        )
+        wire.contains("\"known_public_gunbc\": false")
+          && wire.contains("\"default_branch_standing\": \"unobserved\"")
+          && !wire.contains("\"default_branch\":")
+      }
   }
 }
 
@@ -148,6 +156,8 @@ test fn spawn_origin_json_escapes_a_quote_in_the_repository_name() -> Bool {
   let wire = dispatch_spawn_origin_json(origin: origin)
   wire.contains("\\\"")
     && !wire.contains("\"repository\":\"example/o\"ther\"")
+    && wire.contains("\"default_branch_standing\": \"unobserved\"")
+    && !wire.contains("\"default_branch\":")
 }
 
 test fn a_named_destination_does_not_claim_privacy_or_default_branch_from_a_slug() -> Bool {

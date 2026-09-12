@@ -251,10 +251,17 @@ fn destination_privacy_json_members(privacy: DestinationPrivacyStanding) -> List
   }
 }
 
-fn destination_default_branch_json_value(standing: DestinationDefaultBranchStanding) -> JsonValue {
+fn destination_default_branch_json_members(
+  standing: DestinationDefaultBranchStanding,
+) -> List<JsonKeyValue> {
   match standing {
-    DestinationDefaultBranchObserved { branch } => json_string(s: branch)
-    DestinationDefaultBranchUnobserved => json_string(s: "unobserved")
+    DestinationDefaultBranchObserved { branch } =>
+      [
+        json_kv(key: "default_branch_standing", value: json_string(s: "observed")),
+        json_kv(key: "default_branch", value: json_string(s: branch)),
+      ]
+    DestinationDefaultBranchUnobserved =>
+      [json_kv(key: "default_branch_standing", value: json_string(s: "unobserved"))]
   }
 }
 
@@ -264,18 +271,17 @@ fn dispatch_spawn_origin_json_value(origin: DispatchSpawnOrigin) -> JsonValue {
       [json_kv(key: "repository", value: json_string(s: origin.identity.full_name))],
       concat(
         destination_privacy_json_members(privacy: origin.identity.privacy),
-        [
-          json_kv(
-            key: "default_branch",
-            value: destination_default_branch_json_value(standing: origin.identity.default_branch),
-          ),
-          json_kv(
-            key: "known_public_gunbc",
-            value: json_bool(b: spawn_origin_is_public_gunbc(origin: origin)),
-          ),
-          json_kv(key: "base_ref", value: json_string(s: origin.base_ref as String)),
-          json_kv(key: "base_sha", value: json_string(s: origin.base_sha as String)),
-        ],
+        concat(
+          destination_default_branch_json_members(standing: origin.identity.default_branch),
+          [
+            json_kv(
+              key: "known_public_gunbc",
+              value: json_bool(b: spawn_origin_is_public_gunbc(origin: origin)),
+            ),
+            json_kv(key: "base_ref", value: json_string(s: origin.base_ref as String)),
+            json_kv(key: "base_sha", value: json_string(s: origin.base_sha as String)),
+          ],
+        ),
       ),
     ),
   )
