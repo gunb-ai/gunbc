@@ -818,9 +818,9 @@ fn belt_persist_spawn_origin_for_instance(
 // turn, the provider process. An earlier ask against instance.repo_root is NOT the same
 // observation: the controller tree and the admitted-base worktree can disagree, which is
 // the #11021 class (the guard protects a different object than the harm travels through).
-// belt_spawn_oracle_pin_standing is the declared-frontier fold for that boundary (trigger
-// on BeltSpawnOraclePinStanding); it is not a controller-tree gate and is not the live
-// spawn caller. Verify-side validation_oracle_gate is unchanged.
+// belt_spawn_oracle_pin_standing_production_consumer_frontier is the typed standing for that
+// admitted-base-before-enqueue consumer; the fold is not a controller-tree gate and is not
+// the live spawn caller. Verify-side validation_oracle_gate is unchanged.
 type AttemptOraclePinCapture
   = OraclePinRecorded {
       identity: ContentHash,
