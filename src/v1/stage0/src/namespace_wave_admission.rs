@@ -1716,7 +1716,12 @@ pub struct TransitionAdmission {
 /// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
 /// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
 /// Empty is the resting state; this touch deletes the row rather than inheriting it.
-/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11137). The `gunbc#11137
+/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
+/// CONSUMED outcome is authored here.
+/// THE SAME DISSOLUTION, WITH THE DISPOSITION WRITTEN DOWN -- a continuation of the paragraph
+/// above rather than a second ordinal for one event. Main recorded the retirement and cited the
+/// floor run that reported the row stale; what follows is why the disposition was nearly the
+/// wrong one, which is the part that generalises. The `gunbc#11137
 /// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
 /// description that stood above it goes with it. Its trigger, authored as "this row goes when
 /// #11137 merges", FIRED: #11137 merged as 34d2a8db32 ("Qualify the extdeps.tools bare-name reads
@@ -1754,13 +1759,6 @@ pub struct TransitionAdmission {
 /// in the same pair. DISSOLVE-ON: this PR merging, after which the base binds these spellings to
 /// exactly these targets and the rows read as consumed.
 ///
-/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
-/// CONSUMED outcome is authored here. The old sentence predicted CONSUMED for a two-member
-/// result that the singleton proof could never accept.
-/// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
-/// The EMPTY DOES NOT MEAN PERMISSIVE rule above makes this shrink fail-closed. This is the
-/// same instance deletion carried by the other cleanup PRs; the landing-incidence repair
-/// must itself discharge the roster debt it now enforces.
 /// THIS PR AUTHORS 181 ROWS INTO A ROSTER MAIN LEFT EMPTY, and they arrive in #11165's vocabulary
 /// rather than the one they were written in. Each row carried `target: "X"` -- the single module
 /// the spelling now binds. #11165 replaced that with `expected_candidates`, THE EXACT CANDIDATE SET
