@@ -47,6 +47,15 @@ fn generated_lookup_covers_representative_spellings_per_site() {
     all_eval_algebra_variants_reachable();
     all_bridge_variants_reachable();
     assert!(lookup_try_v2_std_collection_map_primitive_grounding("map_insert").is_some());
+    assert!(
+        lookup_try_v2_std_collection_map_primitive_grounding("map_insert_primitive_delegate")
+            .is_some()
+    );
+    assert!(lookup_try_v2_std_collection_map_primitive_grounding("map_lookup").is_some());
+    assert!(
+        lookup_try_v2_std_collection_map_primitive_grounding("map_lookup_primitive_delegate")
+            .is_some()
+    );
     assert!(lookup_eval_call_native_intercept("fold_list").is_some());
     assert!(lookup_try_parse_table_memo_dispatch("parse_table_lookup").is_some());
 }

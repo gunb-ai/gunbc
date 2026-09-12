@@ -663,6 +663,7 @@ macro_rules! eval_call_bridge__v2_std_data_index_arm {
 pub enum TryV2StdCollectionMapPrimitiveGroundingArm {
     MapGroundingEmptyMap,
     MapGroundingMapInsert,
+    MapGroundingLookup,
 }
 
 #[rustfmt::skip]
@@ -671,6 +672,9 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
         "empty_map_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap),
         "empty_map" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap),
         "map_insert" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
+        "map_insert_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
+        "map_lookup_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
+        "map_lookup" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
         _ => None,
     }
 }
@@ -679,6 +683,7 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
 macro_rules! try_v2_std_collection_map_primitive_grounding_arm {
     ("map_grounding.empty_map") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap };
     ("map_grounding.map_insert") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert };
+    ("map_grounding.lookup") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
