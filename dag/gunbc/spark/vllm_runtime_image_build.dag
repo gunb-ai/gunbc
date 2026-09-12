@@ -10,7 +10,7 @@ import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_uncommitted_host }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_uncommitted_host, spark_uncommitted_hosts }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker { DockerMount, BindMount }
@@ -145,11 +145,12 @@ import gunbc.typed_argv_exec {
 // ADMISSIBILITY IS A SUBTRACTION FROM THE MODELED FLEET, not a written list, AND THE SUBTRACTION IS
 // NO LONGER THIS MODULE'S. It used to be: `spark_build_host_excluded` folded the unit roster against
 // the actively-claimed serving groups and the undischarged llama.cpp RPC reservations right here, and
-// `admissible_spark_build_hosts` filtered by it. That was correct and it was one consumer's private
-// copy of a fleet-wide fact. When serving selection needed the same question -- which Sparks is
-// nobody else already using -- the choice was a second derivation or one authority, and two
-// derivations of that differing by two hosts is the §3 fork that is invisible precisely because each
-// side is locally right. So the fold moved to gunbc.spark.host_commitment at its root and this lane
+// `admissible_spark_build_hosts` filtered by it. It was one consumer's private copy of a fleet-wide
+// fact, and it was NOT correct -- it read claimed serving groups and held reservations and missed the
+// serving-arm placement, so it answered four free hosts where three was the truth, and would have
+// admitted a build onto the host the GLM canary serves from. That is the §3 fork in its expensive
+// form: invisible precisely because the private copy was locally reasonable. So the fold moved to
+// gunbc.spark.host_commitment at its root and this lane
 // consumes it; the reasoning it was carrying moved with it, including the correction the witness
 // caught here (a FabricGroup is a 400G cage of four hosts, so subtracting every group subtracts the
 // fleet -- a cage is where a group COULD serve, spark_pair_serving_groups is where one DOES).

@@ -181,20 +181,51 @@ fn spark_host_commitments_in(
   }
 }
 
+// THE PER-HOST STANDING PRODUCER IS ROSTER-BOUNDED, AND THAT IS THE WHOLE REPAIR.
+//
+// THE SHAPE THIS REPLACES took a host and four commitment lists and answered a STANDING. Handed a
+// machine that is not a DGX Spark unit at all -- or any string -- it found no cause in any list and
+// answered `SparkHostUncommitted`, which reads as "the fleet has looked and nothing has claimed it".
+// The fleet had not looked; the host was not in its universe. That is absence-as-fact in the one
+// module written to refuse it, and the public admission seam having its own roster check did not fix
+// it, because this helper was reachable on its own and produced the same value type.
+//
+// So there is no unchecked per-host standing producer any more. This one takes the unit population,
+// answers Absent for anything outside it, and the roster fold below destructures the causes itself
+// rather than routing through a per-host answer. `spark_host_commitments_in` stays public and stays
+// unchecked ON PURPOSE: it answers which of the lists you handed it name this host, which is a
+// question about the lists rather than a claim about the fleet, and it cannot be mistaken for one
+// because its result is a cause monoid rather than a standing.
 fn spark_host_standing_in(
+  units: List<HostIdentity>,
   assignments: List<SparkCellRoleAssignment>,
   claimed_serving_hosts: List<HostIdentity>,
   arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
   host: HostIdentity,
-) -> SparkHostStanding {
-  match spark_host_commitments_in(
-    assignments: assignments,
-    claimed_serving_hosts: claimed_serving_hosts,
-    arm_claims: arm_claims,
-    held_reservation_hosts: held_reservation_hosts,
-    host: host,
-  ) {
+) -> SparkHostStanding? {
+  if !any(units, u => host_identity_eq(a: u, b: host)) {
+    none
+  } else {
+    Present {
+      value: spark_standing_from_causes(
+        host: host,
+        causes: spark_host_commitments_in(
+          assignments: assignments,
+          claimed_serving_hosts: claimed_serving_hosts,
+          arm_claims: arm_claims,
+          held_reservation_hosts: held_reservation_hosts,
+          host: host,
+        ),
+      ),
+    }
+  }
+}
+
+// THE MINT, AND IT IS THE ONLY PLACE A STANDING IS CONSTRUCTED. Agreement and commitment are decided
+// by the same destructure that supplies the payload, so an empty commitment has no constructor.
+fn spark_standing_from_causes(host: HostIdentity, causes: FreeMonoid<SparkHostCommitment>) -> SparkHostStanding {
+  match causes {
     Empty => SparkHostUncommitted { host: host }
     Cons { head: first, tail: rest } =>
       SparkHostCommitted { host: host, commitments: FreeSemigroup { head: first, tail: rest } }
@@ -208,12 +239,15 @@ fn spark_host_standings_in(
   arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
 ) -> List<SparkHostStanding> {
-  map(units, h => spark_host_standing_in(
-    assignments: assignments,
-    claimed_serving_hosts: claimed_serving_hosts,
-    arm_claims: arm_claims,
-    held_reservation_hosts: held_reservation_hosts,
+  map(units, h => spark_standing_from_causes(
     host: h,
+    causes: spark_host_commitments_in(
+      assignments: assignments,
+      claimed_serving_hosts: claimed_serving_hosts,
+      arm_claims: arm_claims,
+      held_reservation_hosts: held_reservation_hosts,
+      host: h,
+    ),
   ))
 }
 
