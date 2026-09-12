@@ -981,10 +981,7 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
 // LocalRepoWetLane exclusion on megarac_spx_ui_surface_artifact_integrity_witness_test.dag.
 // The catalog-contents Read of the same checkout path is hermetic input, not a route gap.
 fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
-  Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_four_real_captures_retain_statement_inventory_and_missing_receipts", operation: "DigestFile", ground: NoMockResponse {} }, tail:
-  Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_truncated_configuration_cannot_support_absence", operation: "DigestFile", ground: NoMockResponse {} }, tail:
-  Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_real_host_userspace_positive_and_truncated_negative", operation: "DigestFile", ground: NoMockResponse {} }, tail:
-  Cons {
+  Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_four_real_captures_retain_statement_inventory_and_missing_receipts", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_truncated_configuration_cannot_support_absence", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_real_host_userspace_positive_and_truncated_negative", operation: "DigestFile", ground: NoMockResponse {} }, tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_spx_ui_surface_hashes_to_the_catalog_identity", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_sol_host_payload_hashes_to_the_positive_control_identity", operation: "Dir", ground: NoMockResponse {} },
