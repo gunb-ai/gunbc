@@ -14,6 +14,21 @@ import gunbc.fabric_m0_origin_readback {
   origin_reading_digest,
   origin_reading_path,
 }
+import std.measure { hardware_thread_count }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, work_for,
+  OutputObligation, OutputArtifactObligation, DeclaredOutputObligations,
+}
+import gunbc.fabric_m0_completion {
+  ComputationSucceeded, CommittedOutput, ManifestMember, OriginObservation, ObligationSubject,
+}
+import gunbc.fabric_m0_commit { CommitNamespace, commit_slot_key }
+import gunbc.fabric_m0_origin_commit { OriginCommitObservation, commit_manifest_to_origin, commit_object_to_origin }
+import gunbc.fabric_m0_job_ending { end_required_job, process_exit_of_job_ending }
 import gunbc.cloudflare.r2_origin_object {
   OriginPutOutcome,
   OriginObjectStored,
@@ -134,6 +149,99 @@ func roundtrip() -> ProcessExit uses net: Network {
             }
         }
       }
+    }
+  }
+}
+
+// THE CANARY ENDING: ONE IDENTIFIED JOB WHOSE PROCESS CONCLUSION FOLLOWS ITS JobPublication.
+//
+// This is the production-consumer conjunct of fabric-M0 commissioned on one path rather than on
+// every required-CI job, and it is the first ending in the corpus whose exit is NOT decided by the
+// phases' exit code: the manifest is PUT at the slot derived from the attempt, fetched back through
+// the self-staging read, the required object is committed and fetched the same way, and
+// gunbc.fabric_m0_job_ending end_required_job decides the conclusion from the JobPublication the
+// completion authority returns. process_exit_of_job_ending is the whole exit -- there is no
+// try-the-gate-then-return-old-success arm, and pending exits non-zero naming the reconciliation.
+//
+// PRECONDITIONS ARE roundtrip's: the WRITE credential must be pinned, or both PUTs refuse at
+// put_origin_object and the ending concludes Failure through PublishFinalizationFailed with the
+// refusal's cause -- a decided refusal, which is the declared state until the write pin lands.
+// Nothing here consults a cache; every reading on the confirming side is the fetch's own.
+//
+// THE OBJECT'S PUT ANSWER IS CONSUMED, NOT DISCARDED. An earlier cut dropped it and let the fetch
+// alone decide, so an UNKNOWN PUT followed by a 404 became required-artifact-absent -- the same
+// 5xx-as-refused arm gunbc.cloudflare.r2_origin_object already classifies as OUTCOME UNKNOWN.
+// gunbc.fabric_m0_origin_commit commit_object_to_origin folds PUT and fetch together, exactly as
+// the manifest transport does one line below.
+//
+// THE COMPUTATION IS DECLARED SUCCEEDED because the canary's computation IS the fixture: the two
+// committed files are what the job produced. A real job substitutes its build verdict there and
+// nothing else changes.
+data canary_manifest_path: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
+
+data canary_namespace: NonEmptyStr = "probe/fabric-m0-canary/v1/commit"
+
+data canary_attempt: NonEmptyStr = "attempt-1"
+
+fn expected_manifest_digest() -> Sha256Digest {
+  Sha256Digest { hex: "47e3f235ff09282e7d5f556dd41b39f95ea05f4f04f643ff65740b7f28cd55ba" as Sha256DigestHex }
+}
+
+fn canary_object() -> OutputObligation {
+  OutputObligation { id: "canary-object", kind: OutputArtifactObligation {} }
+}
+
+fn canary_work() -> Work<NonEmptyStr> {
+  work_for(
+    principal: "gunbc" as NonEmptyStr,
+    contract: WorkContract {
+      program: "gunbc.fabric-m0.canary:1",
+      steps: [WorkStep { step_id: "fabric-m0-canary", resumability: ReceiptSatisfiable }],
+      source: "source:1", inputs: "inputs:1", runtime_closure: "runtime:1",
+      effect_contract: "effects:1", output_contract: "outputs:1",
+      output_obligations: DeclaredOutputObligations { required: [canary_object()] },
+    },
+    requirements: ExecutionRequirements {
+      capacity_class: ControlPlaneCapacity,
+      shape: Shape { hard: HardRequirements { threads: hardware_thread_count(8) }, envelope: unstated_envelope() },
+      capabilities: "linux-arm64", trust_domain: "fleet-owned", isolation: shared_kernel_sandbox_profile(),
+    },
+  )
+}
+
+// The required object's own slot, derived the same way the manifest's is so the two cannot collide
+// and neither is spelled twice.
+fn canary_object_key() -> NonEmptyStr {
+  commit_slot_key(namespace: (canary_namespace + "/objects") as CommitNamespace, attempt: canary_attempt as AttemptIdentity)
+}
+
+func canary_ending() -> ProcessExit uses net: Network {
+  match probe_token_source() {
+    ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
+    ProbeCredentialReady { source: source } => {
+      let attempt = canary_attempt as AttemptIdentity
+      let object_readback = commit_object_to_origin(local_path: probe_fixture_path as FilePath, key: canary_object_key(), token_source: source)
+      let commit = commit_manifest_to_origin(
+        namespace: canary_namespace as CommitNamespace,
+        attempt: attempt,
+        manifest_path: canary_manifest_path as FilePath,
+        manifest_digest: expected_manifest_digest(),
+        token_source: source,
+      )
+      process_exit_of_job_ending(
+        ending: end_required_job(
+          work: canary_work(),
+          attempt: attempt,
+          computation: ComputationSucceeded,
+          committed: [CommittedOutput { obligation: canary_object(), attempt: attempt, recorded_digest: expected_fixture_digest() }],
+          observations: [OriginObservation { subject: ObligationSubject { obligation: canary_object() }, readback: object_readback }],
+          namespace: canary_namespace as CommitNamespace,
+          manifest_digest: expected_manifest_digest(),
+          members: [ManifestMember { obligation: canary_object(), content: expected_fixture_digest() }],
+          transport: commit.transport,
+          observed: commit.observed,
+        )
+      )
     }
   }
 }
