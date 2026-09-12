@@ -1717,8 +1717,10 @@ pub struct TransitionAdmission {
 /// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
 /// Empty is the resting state; this touch deletes the row rather than inheriting it.
 // gunbc#11182 moves the shared evidence carrier and admission fold from filament_supply
-// to product.inventory. These seven measured bindings follow their canonical owner;
-// no additional candidate is admitted. Retire when that relocation is present at base.
+// to product.inventory so Spark procurement lots and filament supply inhabit the same
+// inventory evidence authority; a second copy would fork that authority (DESIGN section 3).
+// These seven measured bindings follow their canonical owner; no additional candidate
+// is admitted. Retire when that relocation is present at base.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "gunbc#11182 inventory evidence authority relocation: assess_filament_supply/AllLedgersAdmitted",
