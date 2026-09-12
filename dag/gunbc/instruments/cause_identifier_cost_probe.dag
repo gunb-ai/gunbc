@@ -1,0 +1,27 @@
+module tools.cause_identifier_cost_probe
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.compilers.lexing { Token }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { empty_map }
+import tools.cause_assertion_census { cause_identifier_counts }
+fn tokens_for_count(n: Int, tokens: List<Token>) -> List<Token> {
+  if n == 0 { tokens } else {
+    tokens_for_count(n: n - 1, tokens: list_snoc_item(xs: tokens, item: Token {
+      class: ^ShIdent, lexeme: to_string(n), file: ^cost_fixture, start: n, end: n + 1
+    }))
+  }
+}
+fn measure(n: Int, report: String) -> Bool {
+  let tokens = tokens_for_count(n: n, tokens: [])
+  let begin = Filesystem.Write(path: join([report, to_string(n), "begin"], "."), content: "BEGIN")
+  let counts = cause_identifier_counts(tokens: tokens, counts: empty_map())
+  let end = Filesystem.Write(path: join([report, to_string(n), "end"], "."), content: to_string(count(sorted_map_keys(counts))))
+  begin.success && end.success && count(sorted_map_keys(counts)) == n
+}
+fn probe(report: String) -> ProcessExit {
+  if measure(n: 256, report: report) && measure(n: 512, report: report) && measure(n: 1024, report: report) {
+    ExitSuccess
+  } else { exit_failure(reason: "cost probe output refused") }
+}

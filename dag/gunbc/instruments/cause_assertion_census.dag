@@ -6,6 +6,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, F
 import gunbc.parsed_import_statement_production { parsed_import_observation_live }
 import v2.std.compilers.lexing { Token }
 import v2.workflow.floor_discovery_producer { FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory }
+import v2.workflow.floor_naming_hygiene { floor_entry_requires_test_sidecar }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_snoc_item }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
@@ -306,7 +307,7 @@ fn cause_module_import_members(tokens: List<Token>, imports: List<ParsedImportSt
 fn cause_witness_module(path: String) -> Bool {
   string_contains(s: path, pattern: "/test/")
     || string_contains(s: path, pattern: "/tests/")
-    || ends_with(s: path, suffix: "_test.dag")
+    || floor_entry_requires_test_sidecar(entry_path: path)
     || ends_with(s: path, suffix: "_witness.dag")
 }
 
@@ -598,7 +599,7 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
 }
 
 // On-demand only. Whole-corpus acquisition must not enter ordinary witness discovery.
-// gunbc run --source-root dag --source-root src/v2 \
+// GUNBC_EVAL_MEMO=0 gunbc run --source-root dag --source-root src/v2 \
 //   --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=/tmp/causes.tsv
 fn census(report: String) -> ProcessExit {
   let roots = ["dag", "src/v2"]
@@ -611,7 +612,8 @@ fn census(report: String) -> ProcessExit {
         let acquisition = cause_corpus_acquire(subjects: subjects, modules: module_declaration_facts_live(pool_roots: roots))
         let complete = count(acquisition.refusals) == 0
         let content = if complete {
-          cause_complete_report(acquisition: acquisition, declarations: data_decl_type_facts(pool_roots: roots))
+          join([join(["rederive with selected realization: GUNBC_EVAL_MEMO=0 gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=", report], ""),
+            cause_complete_report(acquisition: acquisition, declarations: data_decl_type_facts(pool_roots: roots))], "\n")
         } else {
           join(["ACQUISITION_REFUSED: no negative coverage conclusions are available",
             cause_acquisition_disposition_report(acquisition: acquisition)], "\n")
@@ -622,6 +624,34 @@ fn census(report: String) -> ProcessExit {
         } else if !complete {
           exit_failure(reason: "cause census acquisition refused; see the report for each source refusal")
         } else { ExitSuccess }
+      }
+    }
+  }
+}
+
+// Select a bounded control by module identity from the same source ingress as census.
+// This entry does not select an evaluator realization; the invoking process does.
+fn bounded_census(production_module: String, witness_module: String, report: String) -> ProcessExit {
+  let roots = ["dag", "src/v2"]
+  match floor_discovery_source_inventory(pool_roots: roots) {
+    FloorDiscoverySourcesRefused { reason: reason } => exit_failure(reason: reason)
+    FloorDiscoverySourcesObserved { sources: subjects } => {
+      let selected = filter(subjects, s => s.module_path == production_module || s.module_path == witness_module)
+      if count(selected) != 2 {
+        exit_failure(reason: "bounded cause census requires two distinct source module identities")
+      } else {
+        let acquisition = cause_corpus_acquire(subjects: selected, modules: module_declaration_facts_live(pool_roots: roots))
+        if count(acquisition.refusals) != 0 {
+          exit_failure(reason: cause_acquisition_disposition_report(acquisition: acquisition))
+        } else {
+          let declarations = filter(data_decl_type_facts(pool_roots: roots), d =>
+            d.module_path == production_module || d.module_path == witness_module)
+          let content = join(["BOUNDED CONTROL: conclusions apply only to the selected module identities",
+            production_module, witness_module,
+            cause_complete_report(acquisition: acquisition, declarations: declarations)], "\n")
+          let written = Filesystem.Write(path: report, content: content)
+          if written.success { ExitSuccess } else { exit_failure(reason: written.error) }
+        }
       }
     }
   }

@@ -1,0 +1,15 @@
+module gunbc.recurring_failure_mode.memo_key_rehashes_a_growing_persistent_value
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data memo_key_rehashes_a_growing_persistent_value: RecurringFailureMode = RecurringFailureMode {
+  identity: "memo_key_rehashes_a_growing_persistent_value" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a memoized pure fold carries a growing persistent Map, but the memo demand key recursively hashes the contents of each fresh root. Sharing inside the value does not share its content hash across roots. A constant-cost map update is surrounded by a growing key-construction cost, and successive keys retain successive argument values. HARM: an otherwise incremental census becomes quadratic in identifier count before it can report its first corpus result.",
+    "INSTANCE: v1_interpreter.eval_pure_named_call constructs eval_recompute_key before lookup or admission. Composite argument identity is content-hashed with allocation-local hash reuse; a new persistent Map root is a new allocation. tools.cause_assertion_census.cause_identifier_counts exposes this cost while consuming the parser's already-acquired Token stream. INSTRUMENT: tools.cause_identifier_cost_probe.probe, invoked with gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/cause_identifier_cost_probe.dag --function probe --arg report=/tmp/cause-identifier-cost. Each begin/end output pair brackets identifier counting after fixture construction; its file modification times expose the cost curve and its payload verifies the resulting key cardinality. Timings are derived from this instrument, not transcribed here.",
+    "REALIZATION SELECTION: extdeps.realization.eval_memo declares GUNBC_EVAL_MEMO=0 a diagnostic recompute realization with identical semantics. The census invocation discloses that selection. tools.cause_assertion_census.bounded_census supplies the bounded module-identity control: run the same production and witness subjects under both realizations and compare complete rows by declaration identity, including all fields and identity refusals. Agreement of counts alone is not semantic agreement.",
+    "CEILING: boundary obligation dissolved by interpreter retirement. gunbc.v1_maintenance_standing's PURPOSE admission serves v2 self-hosting; repairing this seed evaluator's cache would extend work destined to be removed. This row admits no new cache, evaluator patch, or census-specific bypass. NEXT-RUNG TRIGGER: tools.cause_assertion_census.census executes through the native route and v1_interpreter.eval_pure_named_call no longer lies on its demand path. The native route is the next lane's work, not an implementation claim made by this census.",
+  ],
+  evidence: [],
+}
