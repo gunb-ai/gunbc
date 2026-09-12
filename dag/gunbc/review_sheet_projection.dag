@@ -7,7 +7,7 @@ import std.keyed_roster {
   KeyedRosterBuilt,
   KeyedRosterBuildDuplicateKey,
 }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
@@ -411,15 +411,8 @@ fn header_key_rows(headers: List<String>) -> List<KeyedRow<String, Int>> {
   map(headers |> enumerate, pair => KeyedRow { row_key: pair.second, value: pair.first })
 }
 
-fn review_sheet_listing_identity(listing_id: NonEmptyStr) -> NonEmptyStr {
-  listing_id
-}
-
 fn projection_key_rows(projection: ReviewSheetProjection) -> List<KeyedRow<String, ProjectionRow>> {
-  map(projection.rows, row => KeyedRow {
-    row_key: review_sheet_listing_identity(listing_id: row.listing_id) as String,
-    value: row,
-  })
+  map(projection.rows, row => KeyedRow { row_key: row.listing_id as String, value: row })
 }
 
 fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List<KeyedRow<String, Bool>> {
@@ -430,14 +423,11 @@ fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List
 }
 
 fn erasure_key_rows(erasures: List<DerivedPayloadErasure>) -> List<KeyedRow<String, DerivedPayloadErasure>> {
-  map(erasures, e => KeyedRow {
-    row_key: review_sheet_listing_identity(listing_id: e.listing_id) as String,
-    value: e,
-  })
+  map(erasures, e => KeyedRow { row_key: e.listing_id as String, value: e })
 }
 
 fn listing_has_erasure(erasure_by_id: Map<String, DerivedPayloadErasure>, listing_id: NonEmptyStr) -> Bool {
-  match erasure_by_id.lookup(review_sheet_listing_identity(listing_id: listing_id) as String) {
+  match erasure_by_id.lookup(listing_id as String) {
     Present { value: _ } => true
     Absent => false
   }
@@ -527,7 +517,7 @@ fn first_erasure_not_on_sheet(
   observed_by_id: Map<String, Bool>,
 ) -> NonEmptyStr? {
   erasures
-    |> filter(e => match observed_by_id.lookup(review_sheet_listing_identity(listing_id: e.listing_id) as String) {
+    |> filter(e => match observed_by_id.lookup(e.listing_id as String) {
       Present { value: _ } => false
       Absent => true
     })
@@ -683,14 +673,14 @@ fn write_plan_touches_column(plan: ReviewSheetWritePlan, column: NonEmptyStr) ->
 }
 
 fn operator_column_names(schema: ReviewSheetSchema) -> List<NonEmptyStr> {
-  fold(schema.columns, init: [], f: fn(acc, col) {
-    match col.kind {
-      OperatorEntered => concat(acc, [col.name])
-      DerivedField { source_field: _ } => acc
-      ListingStanding => acc
-      DerivedErasureMark => acc
-    }
-  })
+  schema.columns
+    |> filter(c => match c.kind {
+      OperatorEntered => true
+      DerivedField { source_field: _ } => false
+      ListingStanding => false
+      DerivedErasureMark => false
+    })
+    |> map(c => c.name)
 }
 
 fn write_plan_covers_column_letter(plan: ReviewSheetWritePlan, letter: String) -> Bool {
@@ -1483,15 +1473,6 @@ data buyer_review_judgement_read_frontier: Disposition = Scaffold {
   bind: DeclarationRef {
     module_path: "gunbc.review_sheet_projection",
     decl_name: "judgement_for_listing",
-    field: WholeDeclaration
-  }
-}
-
-data buyer_review_identity_split_frontier: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.review_sheet_projection",
-    decl_name: "review_sheet_listing_identity",
     field: WholeDeclaration
   }
 }

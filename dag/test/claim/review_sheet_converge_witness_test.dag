@@ -34,7 +34,6 @@ import gunbc.review_sheet_projection {
   columns_by_name,
   judgement_for_listing,
   buyer_review_judgement_read_frontier,
-  buyer_review_identity_split_frontier,
   JudgementBlank,
   JudgementEntered,
   JudgementUnreadable,
@@ -1273,14 +1272,6 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
     Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
     Terminal { reason: _ } => false
   }
-    && match buyer_review_identity_split_frontier {
-      Scaffold { dissolves_to: SingleAuthority, bind: b } =>
-        (b.module_path as String) == "gunbc.review_sheet_projection"
-          && (b.decl_name as String) == "review_sheet_listing_identity"
-      Scaffold { dissolves_to: RealizationDispatch, bind: _ } => false
-      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
-      Terminal { reason: _ } => false
-    }
     && match buyer_review_judgement_read_frontier {
       Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
         (b.module_path as String) == "gunbc.review_sheet_projection"
