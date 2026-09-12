@@ -57,6 +57,9 @@ type ReviewSheetProjection {
 // they wrote buy, and a labelled stub does not carry that. The buyer loop still has
 // identity plus the operator cell and can refuse to re-ask. We gave something up; we did
 // not never have it.
+// Durability: ListingGone plus empty DerivedField cells is the record that an erasure
+// occurred. A later projection that would rewrite those cells or flip standing back to
+// Observed refuses; it does not restore the payload the caller asked to have erased.
 type DerivedPayloadErasure {
   listing_id: NonEmptyStr
 }
@@ -456,6 +459,56 @@ fn erasure_refuse_at_identity_cell(
   }
 }
 
+fn column_is_derived_field(column: ReviewColumn) -> Bool {
+  match column.kind {
+    DerivedField { source_field: _ } => true
+    OperatorEntered => false
+    ListingStanding => false
+  }
+}
+
+fn derived_field_cells_are_empty(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+) -> Bool {
+  let derived_cols = schema.columns |> filter(c => column_is_derived_field(column: c))
+  if (derived_cols |> count) == 0 {
+    false
+  } else {
+    all(derived_cols, c => match header_by_name.lookup(c.name as String) {
+      Absent => false
+      Present { value: idx } => cell_at(cells: row.cells, index: idx) == ""
+    })
+  }
+}
+
+fn row_holds_derived_payload_erasure(
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  row: ObservedSheetRow,
+) -> Bool {
+  match read_row_listing_standing(schema: schema, header_by_name: header_by_name, row: row) {
+    Absent => false
+    Present { value: standing_read } =>
+      match standing_read {
+        StandingKnown { state: standing_state } =>
+          listing_standing_eq(a: standing_state, b: StandingGone)
+            && derived_field_cells_are_empty(
+              schema: schema,
+              header_by_name: header_by_name,
+              row: row,
+            )
+        StandingBlank => false
+        StandingForeign { raw: _ } => false
+      }
+  }
+}
+
+fn restore_after_erasure_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
+  concat("cannot restore derived payload after erasure listing=", listing_id as String) as NonEmptyStr
+}
+
 fn derived_by_column(row: ProjectionRow) -> Map<String, String> {
   fold(row.derived, init: empty_map(), f: fn(acc, cell) {
     map_insert(acc, cell.column as String, cell.value)
@@ -715,16 +768,29 @@ fn classify_existing_row_after_erasure_auth(
         plan: plan,
       )
     ErasureNotRequested =>
-      fold_columns_for_row(
-        schema: schema,
-        header_by_name: header_by_name,
-        row: row,
-        listing_id: listing_id,
-        in_projection: in_projection,
-        derived: derived,
-        erase_derived: false,
-        plan: plan,
-      )
+      if in_projection
+        && row_holds_derived_payload_erasure(
+          schema: schema,
+          header_by_name: header_by_name,
+          row: row,
+        ) {
+        erasure_refuse_at_identity_cell(
+          identity_index: identity_index,
+          data_index: row.data_index,
+          reason: restore_after_erasure_reason(listing_id: listing_id),
+        )
+      } else {
+        fold_columns_for_row(
+          schema: schema,
+          header_by_name: header_by_name,
+          row: row,
+          listing_id: listing_id,
+          in_projection: in_projection,
+          derived: derived,
+          erase_derived: false,
+          plan: plan,
+        )
+      }
   }
 }
 
