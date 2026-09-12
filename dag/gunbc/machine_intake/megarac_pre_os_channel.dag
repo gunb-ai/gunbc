@@ -1,14 +1,39 @@
 module gunbc.machine_intake_megarac_pre_os_channel
 
+import std.types { Int, NonEmptyStr, Duration }
 import gunbc.machine_intake_pre_os_observation_capabilities {
+  CollectorStillRunning,
   PreOsObservationCapabilities,
   SolCollectorDidNotEstablishCoverage,
+  SolCoverageStillRunningPastDeadline,
   SolHostFactFromCollector,
+  SolHostPayloadReceived,
+  SolSessionActivationAcknowledged,
+  SolCollectorObservation,
   sol_host_fact_from_collector,
 }
 
 // JOIN: MegaRAC names the SOL session as a channel on the served UI; whether captured bytes
-// are a HOST fact is the collector observation, never a platform "present-but-silent" row.
+// are a HOST fact is the collector observation. The 2026-09-12 DRAM-training capture is the
+// positive control that this controller delivers host console bytes over SOL. Its contents
+// (per-DIMM table, CP lines, mixture ERROR) are firmware console text, not MegaRAC interface
+// facts.
+
+data megarac_sol_host_payload_positive_control_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt" as NonEmptyStr
+
+data megarac_sol_host_payload_positive_control_sha256: NonEmptyStr = "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c" as NonEmptyStr
+
+data megarac_sol_host_payload_positive_control_byte_count: Int = 3764
+
+data megarac_sol_collector_terminate_deadline_seconds: Duration = 645
+
+data megarac_sol_host_payload_positive_control: SolCollectorObservation = SolCollectorObservation {
+  activation: SolSessionActivationAcknowledged,
+  coverage: SolCoverageStillRunningPastDeadline,
+  termination: CollectorStillRunning,
+  host_payload: SolHostPayloadReceived,
+  terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
+}
 
 fn megarac_sol_host_fact(profile: PreOsObservationCapabilities) -> SolHostFactFromCollector {
   sol_host_fact_from_collector(obs: profile.console)

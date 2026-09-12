@@ -1,6 +1,6 @@
 module gunbc.machine_intake_pre_os_observation_capabilities
 
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool, Int, Duration }
 import std.decl_ref { DeclarationRef }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.boards.types { BaseboardModel }
@@ -8,13 +8,14 @@ import extdeps.boards.types { BaseboardModel }
 // WHAT A PLATFORM LETS AN OBSERVER SEE BEFORE AN OPERATING SYSTEM EXISTS, one profile per
 // (baseboard, controller firmware release). Collector coverage is not a property of the host
 // console: a collector that never established coverage produced no host payload, and that is
-// not an observation that SOL is silent.
+// not an observation that SOL is silent. Host payload received is independent of coverage
+// complete: bytes captured while the client is still attached are a host fact.
 
 // THE CONSOLE AXIS IS A COLLECTOR OBSERVATION, NOT A HOST VERDICT. Session activation acknowledged,
-// coverage complete vs interrupted vs never established, host payload received vs not, and
-// termination reason are independent. Readiness at activation cannot stand in for coverage
-// afterward. Local client banner bytes (ipmitool tcgetattr / SOL Session operational) are not
-// host payload.
+// coverage, host payload received vs not, termination reason, and terminate_deadline_seconds
+// are independent. A window that elapses while the client stays attached is not coverage
+// complete. The deadline must terminate the client. Local client banner bytes (ipmitool
+// tcgetattr / SOL Session operational) are not host payload.
 
 type SolSessionActivationStanding
   = SolSessionActivationAcknowledged
@@ -24,10 +25,12 @@ type SolCollectorCoverageStanding
   = SolCoverageNeverEstablished
   | SolCoverageInterrupted
   | SolCoverageComplete
+  | SolCoverageStillRunningPastDeadline
 
 type SolCollectorTermination
   = CollectorStillRunning
   | CollectorTerminatedExitZeroStdinEof
+  | CollectorTerminatedByDeadline
   | CollectorTerminatedOtherwise { exit_status: Int }
 
 type SolHostPayloadStanding
@@ -39,6 +42,7 @@ type SolCollectorObservation {
   coverage: SolCollectorCoverageStanding
   termination: SolCollectorTermination
   host_payload: SolHostPayloadStanding
+  terminate_deadline_seconds: Duration
 }
 
 type SolHostFactFromCollector
@@ -47,14 +51,15 @@ type SolHostFactFromCollector
   | SolCollectorDidNotEstablishCoverage { coverage: SolCollectorCoverageStanding }
 
 fn sol_host_fact_from_collector(obs: SolCollectorObservation) -> SolHostFactFromCollector {
-  match obs.coverage {
-    SolCoverageComplete =>
-      match obs.host_payload {
-        SolHostPayloadReceived => SolHostPayloadAdmitted
-        SolHostPayloadNotReceived => SolHostProducedNoConsoleBytes
+  match obs.host_payload {
+    SolHostPayloadReceived => SolHostPayloadAdmitted
+    SolHostPayloadNotReceived =>
+      match obs.coverage {
+        SolCoverageComplete => SolHostProducedNoConsoleBytes
+        SolCoverageNeverEstablished => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+        SolCoverageInterrupted => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+        SolCoverageStillRunningPastDeadline => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
       }
-    SolCoverageNeverEstablished => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
-    SolCoverageInterrupted => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
   }
 }
 
@@ -66,6 +71,7 @@ fn sol_activation_acknowledged_without_coverage(obs: SolCollectorObservation) ->
         SolCoverageComplete => false
         SolCoverageNeverEstablished => true
         SolCoverageInterrupted => true
+        SolCoverageStillRunningPastDeadline => true
       }
   }
 }

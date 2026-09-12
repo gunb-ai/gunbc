@@ -4,6 +4,10 @@ import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.tools.sha256sum { Sha256Matches, sha256sum_verify_via_shell }
 import extdeps.bmc.megarac { megarac_spx_ui_surface_path, megarac_spx_ui_surface_sha256 }
+import gunbc.machine_intake_megarac_pre_os_channel {
+  megarac_sol_host_payload_positive_control_path,
+  megarac_sol_host_payload_positive_control_sha256,
+}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -14,5 +18,12 @@ test fn committed_spx_ui_surface_hashes_to_the_catalog_identity() -> Bool {
   sha256sum_verify_via_shell(
     path: megarac_spx_ui_surface_path,
     expected_digest: megarac_spx_ui_surface_sha256,
+  ) == Sha256Matches
+}
+
+test fn committed_sol_host_payload_hashes_to_the_positive_control_identity() -> Bool {
+  sha256sum_verify_via_shell(
+    path: megarac_sol_host_payload_positive_control_path,
+    expected_digest: megarac_sol_host_payload_positive_control_sha256,
   ) == Sha256Matches
 }

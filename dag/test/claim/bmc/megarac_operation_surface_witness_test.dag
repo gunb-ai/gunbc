@@ -51,9 +51,13 @@ import extdeps.ampere.oem_sel {
   ampere_oem_sel_manufacturer_id_byte2,
   ampere_oem_sel_pen_matches_le_bytes,
   ampere_oem_sel_producer_layout,
+  ampere_oem_sel_producer_layout_covers_sensor,
+  ampere_openbmc_boot_syndrome_sensor_number,
 }
 import gunbc.machine_intake_pre_os_observation_capabilities {
   AggregateMemoryPowerExposed,
+  CollectorStillRunning,
+  CollectorTerminatedByDeadline,
   CollectorTerminatedExitZeroStdinEof,
   HostCallbackIntendedNotDemonstrated,
   LocalizationUnavailableFromExposedTelemetry,
@@ -64,6 +68,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   SolCollectorDidNotEstablishCoverage,
   SolCoverageComplete,
   SolCoverageNeverEstablished,
+  SolCoverageStillRunningPastDeadline,
   SolHostPayloadAdmitted,
   SolHostPayloadNotReceived,
   SolHostPayloadReceived,
@@ -76,7 +81,9 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
 }
 import gunbc.machine_intake_megarac_pre_os_channel {
   megarac_incomplete_sol_coverage_is_not_a_host_fact,
+  megarac_sol_collector_terminate_deadline_seconds,
   megarac_sol_host_fact,
+  megarac_sol_host_payload_positive_control,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -185,6 +192,7 @@ fn collector_without_coverage_profile() -> PreOsObservationCapabilities {
       coverage: SolCoverageNeverEstablished,
       termination: CollectorTerminatedExitZeroStdinEof,
       host_payload: SolHostPayloadNotReceived,
+      terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
     },
     sel: SelStandardDecoded,
     oem_sel_decode: OemDecodeControllerDeclaredUnknown,
@@ -205,6 +213,7 @@ fn collector_with_host_payload_profile() -> PreOsObservationCapabilities {
       coverage: SolCoverageComplete,
       termination: CollectorTerminatedExitZeroStdinEof,
       host_payload: SolHostPayloadReceived,
+      terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
     },
     sel: SelStandardDecoded,
     oem_sel_decode: OemDecodeControllerDeclaredUnknown,
@@ -233,6 +242,7 @@ test fn incomplete_sol_coverage_is_not_a_host_silence_fact() -> Bool {
       coverage: SolCoverageComplete,
       termination: CollectorTerminatedExitZeroStdinEof,
       host_payload: SolHostPayloadNotReceived,
+      terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
     }) {
       SolHostProducedNoConsoleBytes => true
       _ => false
@@ -246,4 +256,42 @@ test fn ampere_oem_sel_pen_is_the_le_manufacturer_id_bytes() -> Bool {
     b1: ampere_oem_sel_manufacturer_id_byte1,
     b2: ampere_oem_sel_manufacturer_id_byte2,
   ) && ampere_oem_sel_producer_layout.iana_pen == ampere_iana_private_enterprise_number
+    && ampere_oem_sel_producer_layout_covers_sensor(
+      layout: ampere_oem_sel_producer_layout,
+      sensor_number: ampere_openbmc_boot_syndrome_sensor_number,
+    )
+    && !ampere_oem_sel_producer_layout_covers_sensor(
+      layout: ampere_oem_sel_producer_layout,
+      sensor_number: 222,
+    )
+}
+
+test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> Bool {
+  match sol_host_fact_from_collector(obs: megarac_sol_host_payload_positive_control) {
+    SolHostPayloadAdmitted => true
+    _ => false
+  }
+    && megarac_sol_host_payload_positive_control.coverage == SolCoverageStillRunningPastDeadline
+    && megarac_sol_host_payload_positive_control.termination == CollectorStillRunning
+    && sol_activation_acknowledged_without_coverage(obs: megarac_sol_host_payload_positive_control)
+    && match sol_host_fact_from_collector(obs: SolCollectorObservation {
+      activation: SolSessionActivationAcknowledged,
+      coverage: SolCoverageComplete,
+      termination: CollectorTerminatedByDeadline,
+      host_payload: SolHostPayloadReceived,
+      terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
+    }) {
+      SolHostPayloadAdmitted => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorObservation {
+      activation: SolSessionActivationAcknowledged,
+      coverage: SolCoverageStillRunningPastDeadline,
+      termination: CollectorStillRunning,
+      host_payload: SolHostPayloadNotReceived,
+      terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
+    }) {
+      SolCollectorDidNotEstablishCoverage { coverage: SolCoverageStillRunningPastDeadline } => true
+      _ => false
+    }
 }
