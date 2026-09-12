@@ -17,7 +17,7 @@ import v2.workflow.compile_door_cause_ownership {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -491,7 +491,7 @@ type NativeRouteOldRouteControl
 // crate compiled on one and refused with status 101 on the other with the receipt unable to say
 // why. The five facts here are the ones that decide whether one run's "compiled" can be compared
 // with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that spawn
-// (never inherited -- the value is the repository's own row, gunbc.repo_self_build
+// (never inherited -- the value is the repository's own row, gunbc.repo_self_warning_policy
 // repo_self_warning_denial_rustflags, applied at the invocation, on BOTH channels cargo reads),
 // the one compiler executable cargo was BOUND to (RUSTC set on the spawn, both wrapper channels
 // disabled there -- a receipt naming a compiler cargo was free to replace via config or a

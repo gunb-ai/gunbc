@@ -30,7 +30,7 @@ import gunbc.witness_v2_native_route {
   NativeRouteCauseTally,
   native_route_file_refusal_tally
 }
-import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import v2.compiler.compile {
   NativeLaneSourceFacts,
   NativeLaneUniverse,

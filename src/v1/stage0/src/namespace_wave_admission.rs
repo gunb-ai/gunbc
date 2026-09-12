@@ -1743,6 +1743,66 @@ pub struct TransitionAdmission {
 /// as unadjudicated; they are admitted here by the same exact identity as the rest.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_emitted_build_warnings_denied",
+            spelling: "repo_self_warning_denial_rustflags",
+            target: "gunbc.repo_self_warning_policy",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "clean_emitted_build",
+            spelling: "repo_self_warning_denial_rustflags",
+            target: "gunbc.repo_self_warning_policy",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "an_unrecorded_rustc_identity_is_refused",
+            spelling: "repo_self_warning_denial_rustflags",
+            target: "gunbc.repo_self_warning_policy",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "rustflags_without_the_exact_denial_are_refused",
+            spelling: "repo_self_warning_denial_rustflags",
+            target: "gunbc.repo_self_warning_policy",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused",
+            spelling: "repo_self_warning_denial_rustflags",
+            target: "gunbc.repo_self_warning_policy",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.repo_self_build",
+            in_declaration: "repo_self_clippy_command",
+            spelling: "repo_self_warning_denial",
+            target: "gunbc.repo_self_warning_policy",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
         label: "v2-native-route module split: FloorDiscoveryWalkState",
         subject: AdmissionSubject::Binding {
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
