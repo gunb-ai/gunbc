@@ -15,7 +15,8 @@ import gunbc.spark.fabric_switch_observed { fabric_group_wire }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.first_party_serving {
   spark_first_party_route, spark_fleet_site_allocation, spark_site_uncovered_units,
-  SparkServingRealization,
+  SparkServingRealization, spark_realization_identity,
+  RealizationIsPairServing, RealizationUnidentified,
 }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key,
@@ -125,9 +126,18 @@ type SparkServingReadiness
 // and the divergence (DESIGN section 3b) would then have been readable only in prose; as its own
 // arm, every consumer that cares can tell the two apart by matching, and the offer records which
 // kind of fact its region rests on.
+// A FOURTH ARM, AND IT EXISTS BECAUSE THE TWO HALVES OF A ROUTE ARE ESTABLISHED BY DIFFERENT
+// EVIDENCE. The region comes from the operator's dated site allocation, which is about WHERE THE
+// MACHINES ARE and is established independently of whatever answered on them. The service is a claim
+// about WHICH DEPLOYMENT ANSWERED, and nothing about host coverage establishes it. Until this arm
+// existed the standing had no way to say the first without also asserting the second, so an
+// unreadable readback on covered hosts received the pair-serving service by default -- the same
+// declaration-standing-in-for-a-realization defect this module was changed to remove, surviving in
+// the half nobody had looked at.
 type SparkServingRoute
   = ServingRouteObserved { route: ProviderRoute }
   | ServingRouteOperatorAsserted { route: ProviderRoute, allocation: OperatorAllocation }
+  | ServingRouteServiceUnidentified { allocation: OperatorAllocation, obligation: NonEmptyStr }
   | ServingRouteRegionUnobserved { obligation: NonEmptyStr }
 
 // THE SINGLE PLACE THE STANDING IS RECORDED, which is why the 2026-09-11 restoration replaced one
@@ -185,9 +195,21 @@ fn spark_serving_route_standing(realization: SparkServingRealization) -> SparkSe
     if count(uncovered) > 0 {
       ServingRouteRegionUnobserved { obligation: spark_serving_route_uncovered_obligation(uncovered: uncovered) }
     } else {
-      ServingRouteOperatorAsserted {
-        route: spark_first_party_route(),
-        allocation: spark_fleet_site_allocation.allocation,
+      match spark_realization_identity(realization: realization) {
+        RealizationIsPairServing { configured_model_path: _ } =>
+          ServingRouteOperatorAsserted {
+            route: spark_first_party_route(),
+            allocation: spark_fleet_site_allocation.allocation,
+          }
+        RealizationUnidentified { cause: why } =>
+          ServingRouteServiceUnidentified {
+            allocation: spark_fleet_site_allocation.allocation,
+            obligation: join([
+              "the operator's dated site allocation covers every host of this realization, so the REGION is established and is not in question. The SERVICE is not: ",
+              why as String,
+              ". gunbc.spark.first_party_serving spark_first_party_route names gunbc.spark.pair_serving_desired spark_pair_serving_desired as the service, which is a claim about WHICH DEPLOYMENT ANSWERED, and host coverage establishes only where the machines sit. Returning that service here would attribute a specific declared deployment to a process this repository cannot identify.",
+            ], "") as NonEmptyStr,
+          }
       }
     }
   }
@@ -228,6 +250,8 @@ fn bind_spark_serving_offer<P>(
 ) -> SparkOfferBinding<P> {
   match route {
     ServingRouteRegionUnobserved { obligation: why } =>
+      SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
+    ServingRouteServiceUnidentified { allocation: _, obligation: why } =>
       SparkOfferBindingRefused { group_wire: fabric_group_wire(g: launch.group), cause: why }
     ServingRouteOperatorAsserted { route: asserted, allocation: _ } =>
       bind_spark_serving_offer_on_route(

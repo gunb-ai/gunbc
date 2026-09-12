@@ -113,16 +113,34 @@ fn t_foreign_realization() -> SparkServingRealization {
 
 // POSITIVE CONTROL. The first-party scope admits, and the permit carries the route and posture it
 // was admitted under rather than merely existing.
-test fn the_first_party_scope_admits_and_the_permit_names_its_posture() -> Bool {
+// THIS WITNESS USED TO ASSERT THAT THE FIRST-PARTY SCOPE ADMITS, AND IT NO LONGER CAN. It is kept
+// rather than deleted because it is the executed statement of what this repair COSTS: the work item
+// this module was built for asks that the dev end-to-end run PASS the two spark serving walls, and
+// after this change it does not. The route refuses, for a reason nothing here can retire -- the only
+// environment the corpus holds for a serving container is the one it declares the container is
+// CREATED with, and no producer reads a running one. The refusal is therefore unconditional rather
+// than situational, and it stands until the capability named at
+// spark_serving_usage_stats_declared_environment_obligation exists.
+//
+// IT ASSERTS THE CAUSE AND NOT MERELY THE ARM. A denial is easy to keep green by denying for the
+// wrong reason -- an expired posture, an uncovered site -- so this pins the refusal to the route
+// facts being incomplete. Everything else about the scope is still right and is still asserted by
+// its own witnesses: the posture is current, the site allocation covers these hosts, and every use
+// program is NotEngaged. The one thing missing is a reading of the environment of the process that
+// answered.
+test fn the_first_party_scope_refuses_while_its_environment_is_declared_not_read() -> Bool {
   match spark_first_party_admission(
     realization: t_pair_realization(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
-    ProviderUseDenied { decision: _, cause: _ } => false
-    ProviderUseAdmitted { permit: p } =>
-      declaration_ref_eq(a: p.route.region, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation"))
-        && declaration_ref_eq(a: p.posture.authority, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"))
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } =>
+      match c {
+        ProviderRouteFactsIncomplete { route: _, obligation: o } =>
+          declaration_ref_eq(a: o, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"))
+        _ => false
+      }
   }
 }
 
@@ -199,32 +217,59 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "posture stale"
   }
 }
+// THE DROP'S POSITIVE CONTROL IS DELETED HERE, AND THE DELETION IS THE HONEST MOVE RATHER THAN A
+// GAP. It asserted that the launch leaves usage reporting ON, which is what
+// gunbc.rung_drop.provider_path_jurisdiction_unread_admits was declared against. That standing no
+// longer exists to assert: the deciding producer does not read the declared environment at all, so
+// there is no arm that concludes reporting is on or off for this launch, and the drop's population
+// is empty pending attribution evidence. A control whose subject has no producer is not a weak
+// control, it is a permanently green one, and DESIGN 4b is explicit that such a check is worse than
+// absent because it will be cited as coverage.
+//
+// WHAT REPLACES IT IS NOT NOTHING. The same input is now driven by the first control below, which
+// asserts the opposite and correct result -- that a matching readback establishes no telemetry
+// standing at all. The drop keeps its record in its own row; what it does not keep is a witness
+// claiming a live population it no longer has.
 
 
-// THE DROP'S POPULATION AND THE CODE MOVE TOGETHER, WHICH IS WHAT THIS ROW IS FOR. The rung drop
-// gunbc.rung_drop.provider_path_jurisdiction_unread_admits is declared against a telemetry path that
-// exists only while the serving launch leaves usage reporting on. That standing is now DERIVED from
-// gunbc.spark.pair_serving_realization's container environment, so the day somebody adds
-// VLLM_NO_USAGE_STATS=1 the path becomes ProviderPathAbsent and the drop is declared against nothing
-// -- and this row goes red and says so, rather than leaving a rostered drop describing a path that
-// no longer exists.
+// THE THREE RESULTS THIS REPAIR HAS TO ESTABLISH, each at the seam that owns it. They are separate
+// witnesses rather than one because an earlier refusal at an earlier seam must not be presented as
+// evidence for a later one: if the standing refused for a foreign path or for missing membership,
+// that would say nothing about whether the telemetry attribution was closed.
 //
-// IT IS NOT A CHANGE DETECTOR: it asserts the arm the fold selects, and the fold reads a declaration
-// in another module, so what goes red is a real divergence between the launch and the drop roster
-// rather than a number someone has to keep in step by hand.
+// AND THE NAME OF THE FIRST ONE IS DELIBERATE. It is NOT "a foreign launch is detected". With no
+// input distinguishing two launches that share a configuration, this producer CANNOT detect that
+// distinction -- it can only decline to infer it. Naming it detection would claim a capability the
+// code does not have, which is the class this PR mints a row for.
 //
-// AND IT ASSERTS THE PATH THE IDENTITY JOIN MATCHED ON, not merely the arm. The arm alone says a
-// deployment was identified; naming the path says WHICH ONE, which is what an auditor reading the
-// standing needs and what makes the identity payload load-bearing rather than carried (review
-// 64492). The expected value comes from the same producer the module compares against, so this
-// cannot drift into agreeing with itself.
-test fn the_launch_leaves_usage_reporting_on_which_is_what_the_drop_is_declared_against() -> Bool {
+// 1. MATCHING REPORTED CONFIGURATION DOES NOT ESTABLISH THE EFFECTIVE TELEMETRY CONFIGURATION.
+// Nonempty hosts, every one lane-covered, readback matching the declared launch -- and the standing
+// still returns Unread, for the missing-launch-bound-evidence reason rather than for either of the
+// two earlier causes. Before this repair this exact input produced an established standing.
+test fn a_matching_readback_does_not_establish_the_effective_telemetry_configuration() -> Bool {
   match spark_serving_usage_stats_standing(realization: t_pair_realization()) {
-    UsageStatsEnabledByDefault { basis: b } => string_contains(s: b as String, pattern: t_declared_path())
+    UsageStatsEnabledByDefault { basis: _ } => false
     UsageStatsDisabledByLaunch { mechanism: _ } => false
-    UsageStatsLaunchUnread { obligation: _ } => false
+    UsageStatsLaunchUnread { obligation: o } =>
+      string_contains(s: o as String, pattern: "MATCHING REPORTED CONFIGURATION DOES NOT ESTABLISH")
+        && string_contains(s: o as String, pattern: "EFFECTIVE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED")
+        && !string_contains(s: o as String, pattern: "no environment model for the deployment that answered")
+        && !string_contains(s: o as String, pattern: "no set of machines whose serving container environment could be read")
   }
 }
+
+// 2. THE REFUSAL SURVIVES THE PATH CONVERSION. Neither Located nor Absent may be produced from it.
+// Both are established answers, and the earlier defect was that the metadata-only branch produced
+// Located -- which product.fabric.provider_route first_unresolved_obligation counts as RESOLVED, so
+// the route admitted.
+test fn the_missing_evidence_refusal_produces_an_unread_telemetry_path() -> Bool {
+  match spark_usage_stats_telemetry_path(realization: t_pair_realization()) {
+    ProviderPathUnread { obligation: _ } => true
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+    ProviderPathAbsent { evidence: _ } => false
+  }
+}
+
 
 
 // RED -- A DEPLOYMENT THIS MODULE HAS NO ENVIRONMENT MODEL FOR DOES NOT INHERIT PAIR-SERVING'S
