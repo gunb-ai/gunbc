@@ -38,10 +38,12 @@ import product.lot_sales_tax {
   ResidualUseTaxOwed,
   ResidualUseTaxNone,
   UseTaxResidualStanding,
-  sales_tax_rate_millionths,
-  admit_lot_tax_population,
-  LotTaxPopulationComplete,
-  LotTaxPopulationRepeatedLot,
+  sales_tax_rate,
+  lot_tax_covers_ledgers,
+  LotTaxJoinCovered,
+  LedgerMissingTax,
+  TaxWithoutLedger,
+  LotTaxJoinRepeatedLot,
   residual_owed_lot_count,
   attested_lot_count,
   unread_or_unrecorded_lot_count,
@@ -74,7 +76,7 @@ data fleet_acquisition_census_standing: AcquisitionCensusStanding = CensusFloor 
 
 data nyc_use_tax_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
   destination_jurisdiction: "New York City" as NonEmptyStr,
-  destination_combined_rate: sales_tax_rate_millionths(millionths: nyc_combined_sales_tax_rate_millionths_of_unity),
+  destination_combined_rate: sales_tax_rate(count: nyc_combined_sales_tax_rate_millionths_of_unity),
 }
 
 fn private_received_lot(
@@ -290,7 +292,7 @@ data spark_micro_center_lot_tax: LotTaxEvidence = LotTaxEvidence {
   standing: SalesTaxCollected {
     collection: RateTranscribedFromNamedReceiptLine {
       jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
-      rate: sales_tax_rate_millionths(millionths: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
+      rate: sales_tax_rate(count: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
       receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
     },
     residual: nyc_use_tax_residual,
@@ -309,7 +311,7 @@ data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
       jurisdiction: "New Jersey statewide" as NonEmptyStr,
-      rate: sales_tax_rate_millionths(millionths: nj_statewide_sales_tax_rate_millionths_of_unity),
+      rate: sales_tax_rate(count: nj_statewide_sales_tax_rate_millionths_of_unity),
     },
     residual: nyc_use_tax_residual,
   },
@@ -357,21 +359,18 @@ data fleet_lot_tax_evidence: List<LotTaxEvidence> = [
   unrecorded_tax(lot: cooler_srv4_lot_identity),
 ]
 
-fn fleet_acquisition_ledger_count() -> Nat {
-  fleet_acquisition_ledgers.length()
-}
-
-fn fleet_lot_tax_row_count() -> Nat {
-  fleet_lot_tax_evidence.length()
+fn fleet_ledger_identities() -> List<InventoryLotIdentity> {
+  map(fleet_acquisition_ledgers, e => e.lot.identity)
 }
 
 fn fleet_tax_join_covers_every_ledger() -> Bool {
-  fleet_acquisition_ledgers.length() == fleet_lot_tax_evidence.length()
-    && match admit_lot_tax_population(rows: fleet_lot_tax_evidence) {
-      LotTaxPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
-      LotTaxPopulationComplete { rows: rows } =>
-        residual_owed_lot_count(rows: rows) == 2
-          && attested_lot_count(rows: rows) == 2
-          && unread_or_unrecorded_lot_count(rows: rows) == 10
-    }
+  match lot_tax_covers_ledgers(lots: fleet_ledger_identities(), tax: fleet_lot_tax_evidence) {
+    LotTaxJoinCovered { rows: rows } =>
+      residual_owed_lot_count(rows: rows) == 2
+        && attested_lot_count(rows: rows) == 2
+        && unread_or_unrecorded_lot_count(rows: rows) == 10
+    LedgerMissingTax { lot: _ } => false
+    TaxWithoutLedger { lot: _ } => false
+    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+  }
 }

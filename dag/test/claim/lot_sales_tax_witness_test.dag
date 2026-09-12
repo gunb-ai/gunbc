@@ -28,8 +28,13 @@ import product.lot_sales_tax {
   unread_or_unrecorded_lot_count,
   lot_tax_is_attested_not_read,
   lot_tax_residual_is_owed,
-  sales_tax_rate_millionths,
-  sales_tax_rate_millionths_eq,
+  sales_tax_rate,
+  sales_tax_rate_eq,
+  lot_tax_covers_ledgers,
+  LotTaxJoinCovered,
+  LedgerMissingTax,
+  TaxWithoutLedger,
+  LotTaxJoinRepeatedLot,
 }
 import extdeps.tax.new_jersey_sales_and_use {
   nj_statewide_sales_tax_rate_millionths_of_unity,
@@ -55,7 +60,7 @@ data lot_unrecorded: InventoryLotIdentity = mint_inventory_lot_identity(alloc: t
 
 data nyc_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
   destination_jurisdiction: "New York City" as NonEmptyStr,
-  destination_combined_rate: sales_tax_rate_millionths(millionths: nyc_combined_sales_tax_rate_millionths_of_unity),
+  destination_combined_rate: sales_tax_rate(count: nyc_combined_sales_tax_rate_millionths_of_unity),
 }
 
 data fixture_population: List<LotTaxEvidence> = [
@@ -64,7 +69,7 @@ data fixture_population: List<LotTaxEvidence> = [
     standing: SalesTaxCollected {
       collection: RateDerivedFromReceiptBaseAndTax {
         jurisdiction: "New Jersey statewide" as NonEmptyStr,
-        rate: sales_tax_rate_millionths(millionths: nj_statewide_sales_tax_rate_millionths_of_unity),
+        rate: sales_tax_rate(count: nj_statewide_sales_tax_rate_millionths_of_unity),
       },
       residual: nyc_residual,
     },
@@ -74,7 +79,7 @@ data fixture_population: List<LotTaxEvidence> = [
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
         jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
-        rate: sales_tax_rate_millionths(millionths: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
+        rate: sales_tax_rate(count: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
         receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
       },
       residual: nyc_residual,
@@ -103,17 +108,17 @@ data fixture_population: List<LotTaxEvidence> = [
 ]
 
 test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
-  sales_tax_rate_millionths_eq(
-    left: sales_tax_rate_millionths(millionths: nj_statewide_sales_tax_rate_millionths_of_unity),
-    right: sales_tax_rate_millionths(millionths: 66250),
+  sales_tax_rate_eq(
+    left: sales_tax_rate(count: nj_statewide_sales_tax_rate_millionths_of_unity),
+    right: sales_tax_rate(count: 66250),
   )
-    && sales_tax_rate_millionths_eq(
-      left: sales_tax_rate_millionths(millionths: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
-      right: sales_tax_rate_millionths(millionths: 33125),
+    && sales_tax_rate_eq(
+      left: sales_tax_rate(count: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
+      right: sales_tax_rate(count: 33125),
     )
-    && sales_tax_rate_millionths_eq(
-      left: sales_tax_rate_millionths(millionths: nyc_combined_sales_tax_rate_millionths_of_unity),
-      right: sales_tax_rate_millionths(millionths: 88750),
+    && sales_tax_rate_eq(
+      left: sales_tax_rate(count: nyc_combined_sales_tax_rate_millionths_of_unity),
+      right: sales_tax_rate(count: 88750),
     )
     && nj_uez_reduced_sales_tax_rate_millionths_of_unity * 2 == nj_statewide_sales_tax_rate_millionths_of_unity
 }
@@ -156,9 +161,34 @@ test fn w_unread_residual_is_not_a_known_owe() -> Bool {
   !lot_tax_residual_is_owed(standing: SalesTaxCollected {
     collection: RateTranscribedFromNamedReceiptLine {
       jurisdiction: "elsewhere" as NonEmptyStr,
-      rate: sales_tax_rate_millionths(millionths: 1),
+      rate: sales_tax_rate(count: 1),
       receipt_line_label: "tax" as NonEmptyStr,
     },
     residual: ResidualUseTaxUnread { read_obligation: "destination rate unread" as NonEmptyStr },
   })
+}
+
+test fn w_equal_length_is_not_tax_coverage() -> Bool {
+  let lots = [lot_mt_collins, lot_spark_uez, lot_marketplace]
+  let tax = [
+    LotTaxEvidence {
+      lot: lot_mt_collins,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "a" as NonEmptyStr },
+    },
+    LotTaxEvidence {
+      lot: lot_spark_uez,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "b" as NonEmptyStr },
+    },
+    LotTaxEvidence {
+      lot: lot_unrecorded,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "orphan" as NonEmptyStr },
+    },
+  ]
+  lots.length() == tax.length()
+    && match lot_tax_covers_ledgers(lots: lots, tax: tax) {
+      LotTaxJoinCovered { rows: _ } => false
+      LedgerMissingTax { lot: l } => inventory_lot_identity_eq(left: l, right: lot_marketplace)
+      TaxWithoutLedger { lot: _ } => false
+      LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+    }
 }

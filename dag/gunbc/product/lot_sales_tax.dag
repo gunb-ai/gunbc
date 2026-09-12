@@ -2,6 +2,7 @@ module product.lot_sales_tax
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { Measure, Dimensionless, Micro, measure_count }
 import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
@@ -18,33 +19,33 @@ import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 // marketplace collection, and an unrecorded treatment are different states with different
 // next reads. Collapsing them is the defect this type exists to make unwritable as a Bool.
 
-type SalesTaxRateMillionthsOfUnity {
-  millionths: Nat
+// A sales-tax rate is a dimensionless ratio at Micro scale: count 66250 is 6.625 percent of
+// unity. Percent/BasisPoint already occupy Dimensionless at One with incompatible count
+// meanings; this is the Micro scale of the same Measure authority, not a third nickname
+// and not a product-module unit. Dissolve-on: Ratio<Scale> in std.measure.
+fn sales_tax_rate(count: Nat) -> Measure<Dimensionless, Micro, Nat> {
+  Measure { count: count }
 }
 
-fn sales_tax_rate_millionths(millionths: Nat) -> SalesTaxRateMillionthsOfUnity {
-  SalesTaxRateMillionthsOfUnity { millionths: millionths }
-}
-
-fn sales_tax_rate_millionths_eq(left: SalesTaxRateMillionthsOfUnity, right: SalesTaxRateMillionthsOfUnity) -> Bool {
-  left.millionths == right.millionths
+fn sales_tax_rate_eq(left: Measure<Dimensionless, Micro, Nat>, right: Measure<Dimensionless, Micro, Nat>) -> Bool {
+  measure_count(m: left) == measure_count(m: right)
 }
 
 type CollectedTaxRateStanding
   = RateTranscribedFromNamedReceiptLine {
       jurisdiction: NonEmptyStr
-      rate: SalesTaxRateMillionthsOfUnity
+      rate: Measure<Dimensionless, Micro, Nat>
       receipt_line_label: NonEmptyStr
     }
   | RateDerivedFromReceiptBaseAndTax {
       jurisdiction: NonEmptyStr
-      rate: SalesTaxRateMillionthsOfUnity
+      rate: Measure<Dimensionless, Micro, Nat>
     }
 
 type UseTaxResidualStanding
   = ResidualUseTaxOwed {
       destination_jurisdiction: NonEmptyStr
-      destination_combined_rate: SalesTaxRateMillionthsOfUnity
+      destination_combined_rate: Measure<Dimensionless, Micro, Nat>
     }
   | ResidualUseTaxNone
   | ResidualUseTaxUnread { read_obligation: NonEmptyStr }
@@ -157,4 +158,58 @@ fn unread_or_unrecorded_lot_count(rows: List<LotTaxEvidence>) -> Nat {
   fold(rows, init: 0, f: fn(acc, row) {
     if lot_tax_jurisdiction_is_unread(standing: row.standing) { acc + 1 } else { acc }
   })
+}
+
+fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
+  fold(lots, init: false, f: fn(acc, id) {
+    acc || inventory_lot_identity_eq(left: id, right: lot)
+  })
+}
+
+fn tax_covers_lot(rows: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Bool {
+  fold(rows, init: false, f: fn(acc, row) {
+    acc || inventory_lot_identity_eq(left: row.lot, right: lot)
+  })
+}
+
+type LotTaxJoin
+  = LotTaxJoinCovered { rows: List<LotTaxEvidence> }
+  | LedgerMissingTax { lot: InventoryLotIdentity }
+  | TaxWithoutLedger { lot: InventoryLotIdentity }
+  | LotTaxJoinRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
+
+fn first_uncovered_ledger(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
+  fold(lots, init: none, f: fn(hit, id) {
+    match hit {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        if tax_covers_lot(rows: tax, lot: id) { none } else { Present { value: id } }
+    }
+  })
+}
+
+fn first_orphaned_tax(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
+  fold(tax, init: none, f: fn(hit, row) {
+    match hit {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        if identities_contain(lots: lots, lot: row.lot) { none } else { Present { value: row.lot } }
+    }
+  })
+}
+
+fn lot_tax_covers_ledgers(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> LotTaxJoin {
+  match admit_lot_tax_population(rows: tax) {
+    LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b } =>
+      LotTaxJoinRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b }
+    LotTaxPopulationComplete { rows: rows } =>
+      match first_uncovered_ledger(lots: lots, tax: rows) {
+        Present { value: lot } => LedgerMissingTax { lot: lot }
+        Absent =>
+          match first_orphaned_tax(lots: lots, tax: rows) {
+            Present { value: lot } => TaxWithoutLedger { lot: lot }
+            Absent => LotTaxJoinCovered { rows: rows }
+          }
+      }
+  }
 }
