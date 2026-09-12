@@ -354,6 +354,14 @@ test fn w_the_numeric_readbacks_are_measures_that_can_be_compared() -> Bool {
 // a malformed entry is worse than no decode, because it fills a carrier whose annotation says the
 // path it holds is evidence about intent. The positive control is what stops the reds from being
 // satisfied by a producer that refuses everything.
+//
+// NONE OF THESE ROWS TOUCHES THE NETWORK, AND THAT IS DELIBERATE RATHER THAN INCIDENTAL. Every one
+// decodes a fixture string, so they establish what the decode DOES with a document and nothing about
+// whether any route is up; they pass with every Spark endpoint refusing connections, which is the
+// state the fleet was in when this was written. The one thing a live route contributed is the shape
+// of w_live_models_body: it was captured from group A at 192.168.1.225:30000 on 2026-09-12, before
+// that endpoint stopped answering, and trimmed. So a future red here is a defect in the decode, and
+// never a dead endpoint -- which is the confusion this note exists to prevent.
 fn w_models_doc(body: String) -> JsonValue {
   match parse_json_document(s: body) {
     JsonDocumentParsed { value: v } => v

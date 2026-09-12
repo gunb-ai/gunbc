@@ -326,6 +326,11 @@ data vllm_front_door_scope_2026_09_03: VllmHistoricalFrontDoorScope = vllm_histo
   front_door_host: operator_host_srv6,
   observed_on: "2026-09-03" as NonEmptyStr)
 
+// WHAT IS RETURNED NOW IS NOT THIS ROW'S QUESTION. vllm_models_route_standing reads the live
+// /v1/models document on every dashboard dispatch and produces VllmModelsRouteReadback from it; this
+// bundle is the 2026-09-03 reading and stays a dated receipt of that day's deployment. A reader
+// after a current path or context length wants the live producer, and a reader asking what this
+// fleet looked like on 2026-09-03 wants this.
 data vllm_readback_2026_09_03: VllmHistoricalReadbackBundle = vllm_historical_readback_bundle(
   scope: vllm_front_door_scope_2026_09_03,
   models_route: vllm_models_route_readback(
@@ -387,6 +392,12 @@ fn vllm_served_id_is_not_derivable_from_configured_path(
 // reading of configured_model_path is the same kind of fact as a transcribed one: the path the
 // server was CONFIGURED with, strong evidence about intent and no evidence about bytes. Making the
 // producer live raises the freshness of the reading, not its grade.
+//
+// THE 2026-09-03 ROWS ABOVE ARE NOT SUPERSEDED BY THIS AND ARE NOT A SECOND ANSWER TO ITS QUESTION.
+// They are an observation of a PAST deployment -- they record max_model_len 262144, where the route
+// observed on 2026-09-12 reports 1048576, so they describe a different state rather than disagreeing
+// about this one. This producer answers "what is the engine reporting NOW"; those rows answer "what
+// did it report then", which nothing else in the corpus can answer once they are gone.
 
 // THE THREE OUTCOMES ARE SEPARATE BECAUSE THEY ARE DIFFERENT THINGS TO GO AND DO. An entry that is
 // absent from the document is a route that did not advertise the model at all; a field the entry
