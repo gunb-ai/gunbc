@@ -162,8 +162,12 @@ data vllm_07b75534_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
 // a merged commit on main. The evidence upstream reports for it is NVFP4 at TP4 on SM120 with a 65,536
 // context, which is a different quantisation and a different context ceiling from this fleet's native FP8
 // at 262,144 on GB10 -- so it establishes that the repair approach works and nothing about this tuple.
+// THE REPOSITORY FIELD IS SCHEME-FREE AND THAT IS A CONTRACT, NOT A STYLE. `vllm_clone_url` prepends
+// "https://", so a row carrying the scheme composes to `https://https://github.com/...`. The cited V4.1
+// row above spells it scheme-free, and this one did not -- a divergence that no reader would catch by
+// looking at either row alone, and that the older path masks because it never clones from the new one.
 data vllm_glm53_nope_repair_revision: VllmSourceRevision = vllm_source_revision(
-  repository: "https://github.com/vllm-project/vllm" as NonEmptyStr,
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
   full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
 )
 

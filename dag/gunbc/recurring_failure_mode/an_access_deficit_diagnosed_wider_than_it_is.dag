@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.an_access_deficit_diagnosed_wider_than_it_is
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_access_deficit_diagnosed_wider_than_it_is: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_access_deficit_diagnosed_wider_than_it_is" as NonEmptyStr,
+
+  receipts: [
+    "**an access deficit diagnosed wider than it is** (one real access gap is observed, generalised to the whole route that touches it, and the generalisation is then used to justify leaving the modelled route entirely. The observation is true, the conclusion is broader than the observation, and what the conclusion authorises is a second implementation nobody will maintain. ",
+
+    "THE INSTANCE (2026-09-12). The managed executor principal was observed to be in no docker group on any host -- true, and checked on four hosts. From that: `the modelled builder ssh's as that principal, so the modelled build route is unusable`, and from THAT: an hour of hand-written ssh performing the build out of band. ",
+
+    "THE MODELLED ROUTE DID NOT DO WHAT THE DIAGNOSIS SAID. Its git legs run as the managed key-authenticated principal; its DOCKER legs call a modelled privileged performer that derives the endpoint, uses the bootstrap principal and trust policy, and supplies the administrator credential to `sudo -S` through the materialised-secret path. The two halves were separated in the model precisely because they need different access. The docker-group observation was true of the principal that does not run docker. ",
+
+    "AND THE SAME HOSTS ANSWERED THE QUESTION THE OTHER WAY WITHIN THE HOUR. `sudo docker` succeeded on all four serving hosts under the operator account, which is the same privileged shape the modelled performer uses. The evidence that the route was viable was collected by the same session that had already abandoned it. ",
+
+    "WHAT MAKES THIS DIFFERENT FROM AN ORDINARY WRONG GUESS is the direction the error points. A too-NARROW access diagnosis fails closed: the route refuses, somebody looks, the gap gets fixed. A too-WIDE one fails open into a parallel implementation -- the work still gets done, it looks like progress, and the modelled route silently stops being the thing that executes. Nothing refuses, because the refusal was routed around rather than hit. ",
+
+    "THE SCRIPTS ARE THE COST AND THEY ARE INVISIBLE AT THE TIME. Each one is defensible alone: values derived from the model, arguments transcribed from a modelled recipe, a credential used as authorised. Together they are a second build system with no receipts, no reuse, no refusals, and a lifetime of one session -- and the next person to need this reconstructs it from a transcript, if there is one. ",
+
+    "RECOGNITION RULE: AN ACCESS REFUSAL IS ABOUT ONE OPERATION, ONE PRINCIPAL AND ONE HOST, AND MAY NOT BE GENERALISED TO A ROUTE WITHOUT READING WHAT THE ROUTE ACTUALLY DOES FOR THAT OPERATION. Before concluding that a modelled path cannot run, name the specific leg that would fail, the principal it executes as, and the line in the model that binds them -- a route that separates privileged from unprivileged legs will not be described correctly by any single principal's permissions. ",
+
+    "AND THE SECOND HALF: NOTICING THAT A ROUTE IS BEING ROUTED AROUND IS ITSELF THE LINE-STOP SIGNAL, which DESIGN section 5 already says about workarounds and which applies with more force here, because the thing being worked around is not a parse error but the repository's own execution path. The question to ask out loud is not `can I get this done another way` but `what would the modelled route need, and is that smaller than what I am about to write`. In this instance it was much smaller. ",
+
+    "RUNG FOUND AT: mitigatable, and caught by an outside reviewer reading the route's source rather than by anything in the corpus. The session that made the error had every fact needed to catch it and had collected several of them itself. ",
+
+    "ATTAINABLE CEILING: mechanically preventable. Which principal each leg executes as is a modelled fact -- the privileged performer and the managed session are different callables with different signatures -- so `this route needs docker as X` is checkable against the route rather than asserted about it. A lens over a route's legs can report the principal population it actually uses, which turns a diagnosis into a lookup. It does not reach structural impossibility: nothing can prevent an author from working outside the route entirely, which is why the second half of the recognition rule is about noticing rather than about a wall. ",
+
+    "NEXT TRIGGER: a per-leg principal projection over the build and converge routes, so that a claim about a route's access requirements is derived from its legs instead of inferred from one principal's group membership. Until then this row is review diligence.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.spark.vllm_runtime_image_build", decl_name: "vllm_docker_leg", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.spark.vllm_runtime_image_build", decl_name: "vllm_image_leg", field: WholeDeclaration },
+  ],
+}

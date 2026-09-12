@@ -166,6 +166,94 @@ data flashinfer_0_7_0_dev20260910_wheels: List<FlashInferWheel> = [
   },
 ]
 
+// ── RESOLVING A FILENAME TO A LOCATOR, WHICH IS AN OPERATION AND NOT A STRING CONCATENATION ───
+//
+// THE MISSING OPERATION IS EXACTLY THE ONE THAT FAILED. The rows above carry a package, a filename and
+// a digest, and nothing that says WHERE those bytes are. A caller holding them still has to turn a
+// filename into a URL, and the obvious way to do that -- join the index URL, the package name and the
+// filename -- is wrong: the simple repository API does not require files to live under the index. Its
+// links may be absolute or relative and may point at another host entirely, which is precisely how
+// this project publishes: the nightly index's own hrefs point at release assets on a different domain.
+//
+// SO THE INDEX'S LINK IS THE DOWNLOAD LOCATION, and resolution is reading that link rather than
+// predicting it. The constructed form returned a 404 page whose bytes failed the digest check, which is
+// the good ending; the same mistake against an index that serves a 200 for unknown paths, or against a
+// package whose digest nobody pinned, ends with the wrong bytes installed.
+//
+// THE OUTCOMES ARE SEPARATE BECAUSE THEY OWE DIFFERENT WORK. An index that cannot be read is a network
+// or availability problem. An index that was read and holds no matching file is a pin that has been
+// withdrawn or misspelled -- and on a nightly channel, withdrawal is expected rather than exceptional.
+// Two different files matching one requirement is a resolution this module must not make silently:
+// `head -1` over candidates that are not the same artifact is a coin flip with a digest check behind it,
+// which turns a wrong choice into a confusing failure instead of a located one.
+type WheelResolution
+  = WheelResolved { filename: NonEmptyStr, locator: NonEmptyStr, expected_sha256: NonEmptyStr }
+  | WheelIndexUnreadable { index: NonEmptyStr, cause: NonEmptyStr }
+  | WheelNotInIndex { index: NonEmptyStr, filename: NonEmptyStr }
+  | WheelCandidatesConflict { filename: NonEmptyStr, locators: List<NonEmptyStr> }
+
+// THE MATCH IS ON THE EXACT FILENAME, which is what makes the wheel's own name load-bearing rather
+// than decorative: the architecture, the CUDA version and the ABI all live in it, and a match on the
+// package name alone would accept the x86_64 wheel that sits beside the aarch64 one at the same version.
+fn wheel_matches_requirement(href: NonEmptyStr, w: FlashInferWheel) -> Bool {
+  string_contains(s: href as String, pattern: w.filename as String)
+}
+
+// MULTIPLE LINKS TO THE SAME BYTES ARE NOT A CONFLICT. An index may legitimately list one artifact
+// under several mirrors, and refusing that would make an ordinary republication look like ambiguity.
+// What must never be silently resolved is two DIFFERENT locators for one filename, which is why the
+// distinct population is what the decision reads.
+fn resolve_wheel_from_hrefs(w: FlashInferWheel, index: NonEmptyStr, hrefs: List<NonEmptyStr>) -> WheelResolution {
+  let matching = filter(hrefs, h => wheel_matches_requirement(href: h, w: w))
+  let distinct = fold(matching, init: [], f: (acc, h) =>
+    if any(acc, seen => (seen as String) == (h as String)) { acc } else { concat(acc, [h]) })
+  if count(distinct) == 0 {
+    WheelNotInIndex { index: index, filename: w.filename }
+  } else {
+    if count(distinct) > 1 {
+      WheelCandidatesConflict { filename: w.filename, locators: distinct }
+    } else {
+      match distinct.first() {
+        Present { value: loc } =>
+          WheelResolved { filename: w.filename, locator: loc, expected_sha256: w.sha256 }
+        Absent =>
+          WheelNotInIndex { index: index, filename: w.filename }
+      }
+    }
+  }
+}
+
+// AND A RESOLUTION IS NOT AN ACQUISITION. This says where the bytes are and what they must hash to; it
+// does not fetch, verify or publish them -- gunbc.artifact_acquisition owns that fold, and binding to
+// it is what keeps this module from growing a second download-and-check loop.
+fn wheel_resolution_is_resolved(r: WheelResolution) -> Bool {
+  match r {
+    WheelResolved { filename: _, locator: _, expected_sha256: _ } => true
+    WheelIndexUnreadable { index: _, cause: _ } => false
+    WheelNotInIndex { index: _, filename: _ } => false
+    WheelCandidatesConflict { filename: _, locators: _ } => false
+  }
+}
+
+// THE INDEX EACH PACKAGE IS PUBLISHED TO, which is per-package rather than per-acquisition: this
+// project puts the two pure-python wheels on one nightly index and the CUDA-specific jit-cache on a
+// per-CUDA-version one, so a single index URL on the acquisition would be wrong for at least one of
+// the three.
+fn flashinfer_nightly_index_for(package: NonEmptyStr) -> NonEmptyStr {
+  if (package as String) == "flashinfer-jit-cache" {
+    "https://flashinfer.ai/whl/nightly/cu130/flashinfer-jit-cache/" as NonEmptyStr
+  } else {
+    join(["https://flashinfer.ai/whl/nightly/", package as String, "/"], "") as NonEmptyStr
+  }
+}
+
+// SELECTING ONE WHEEL BY PACKAGE, because a caller wanting the jit-cache should not be indexing into a
+// list by position. The result is optional: a package this acquisition does not carry has no wheel, and
+// that is a question worth being able to ask rather than an impossible state.
+fn flashinfer_wheel_for(wheels: List<FlashInferWheel>, package: NonEmptyStr) -> FlashInferWheel? {
+  (filter(wheels, w => (w.package as String) == (package as String))).first()
+}
+
 // ── WHAT PREBUILT KERNELS DO AND DO NOT ESTABLISH ─────────────────────────────────────────────
 //
 // THE CLAIM WORTH MAKING IS NARROW. A jit-cache wheel built for cu130 aarch64 means the ahead-of-time

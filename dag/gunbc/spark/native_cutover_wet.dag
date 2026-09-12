@@ -741,12 +741,16 @@ func glm53_nope_conformance_wet(artifact: RuntimeArtifactIdentity) -> ProcessExi
                     MaterializedSshKeyFileBracketCompleted { value: standing } =>
                       match standing {
                         NopeConformanceHeld { image_key: _, passed: _ } => ExitSuccess
-                        NopeConformancePartial { image_key: k, passed: p, unrun: u, obligations: obs } =>
-                          exit_failure(reason: join([
-                            "MANDATORY PROBES PASSED BUT COVERAGE IS INCOMPLETE, so this is not a green: ", to_string(p),
-                            " passed and ", to_string(u), " could not be executed against ", k,
-                            ". Remaining for the engine run: ", join(map(obs, o => o as String), " | "),
+                        NopeConformancePartial { image_key: k, passed: p, unrun: u, obligations: obs } => {
+                          let _ = Stdout.Write(content: join([
+                            "PREFLIGHT PASSED, COVERAGE INCOMPLETE: ", to_string(p),
+                            " mandatory probe(s) passed and ", to_string(u),
+                            " propert(ies) remain unrun against ", k,
+                            ". This LICENSES a bounded authorised experiment and does NOT license normal serving. ",
+                            "Remaining for the engine run: ", join(map(obs, o => o as String), " | "), "\n",
                           ], ""))
+                          ExitSuccess
+                        }
                         NopeConformanceRefused { image_key: k, first_refusal: r } =>
                           exit_failure(reason: join(["REFUSED against ", k, ": ", r], ""))
                         NopeConformanceUnestablished { cause: c } =>

@@ -263,6 +263,59 @@ fn every_mandatory_probe_passed(outcomes: List<ProbeOutcome>) -> Bool {
     }))
 }
 
+// ── WHAT A PARTIAL STANDING LICENSES, WHICH IS NOT NOTHING ────────────────────────────────────
+//
+// THIS GATE DEADLOCKED ITSELF AND THE DEADLOCK WAS AUTHORED BY TIGHTENING IT. The capacity property is
+// reachable only during the engine's attention-backend initialisation, so it is carried as an
+// engine-run obligation. Then the mandatory population was named and the operator root was made to fail
+// on anything short of Held. Put together: the two cheap probes pass, coverage is incomplete, the
+// standing is Partial, the entry exits failure -- and if a green conformance command is what authorises
+// spending an engine run, the ONLY operation that can discharge the outstanding obligation is the one
+// the gate forbids. The obligation could never retire.
+//
+// SO ELIGIBILITY IS TWO QUESTIONS AND THEY ARE ASKED SEPARATELY. A bounded, authorised EXPERIMENT needs
+// the cheap preflight to have passed -- it is what stops a wasted 300 GiB load on bytes a kernel call
+// would have refused in seconds. NORMAL SERVING needs everything, including what only the engine can
+// establish. Partial licenses the first and refuses the second, which is exactly what a partial result
+// should mean.
+//
+// AND THE OBLIGATIONS TRAVEL WITH THE ELIGIBILITY rather than being dropped at the boundary: the arm
+// carries what remains unestablished, so the run that discharges them knows what it is being asked to
+// observe, and a receipt from that run can be matched against them.
+type NopeRunEligibility
+  = EligibleForBoundedExperiment { passed: Nat, outstanding: List<NonEmptyStr> }
+  | EligibleForNormalServing { image_key: String }
+  | NotEligible { cause: NonEmptyStr }
+
+fn nope_run_eligibility(standing: NopeConformanceStanding) -> NopeRunEligibility {
+  match standing {
+    NopeConformanceHeld { image_key: k, passed: _ } => EligibleForNormalServing { image_key: k }
+    NopeConformancePartial { image_key: _, passed: p, unrun: _, obligations: obs } =>
+      EligibleForBoundedExperiment { passed: p, outstanding: obs }
+    NopeConformanceRefused { image_key: _, first_refusal: r } =>
+      NotEligible { cause: join(["a probe refused on these bytes: ", r], "") as NonEmptyStr }
+    NopeConformanceUnestablished { cause: c } => NotEligible { cause: c }
+  }
+}
+
+// A BOUNDED EXPERIMENT IS LICENSED BY A PARTIAL STANDING AND NORMAL SERVING IS NOT, which is the whole
+// content of the split and the one thing a caller must not blur.
+fn may_run_bounded_experiment(standing: NopeConformanceStanding) -> Bool {
+  match nope_run_eligibility(standing: standing) {
+    EligibleForBoundedExperiment { passed: _, outstanding: _ } => true
+    EligibleForNormalServing { image_key: _ } => true
+    NotEligible { cause: _ } => false
+  }
+}
+
+fn may_serve_normally(standing: NopeConformanceStanding) -> Bool {
+  match nope_run_eligibility(standing: standing) {
+    EligibleForNormalServing { image_key: _ } => true
+    EligibleForBoundedExperiment { passed: _, outstanding: _ } => false
+    NotEligible { cause: _ } => false
+  }
+}
+
 fn assess_nope_conformance(artifact: RuntimeArtifactIdentity, outcomes: List<ProbeOutcome>) -> NopeConformanceStanding {
   match first_probe_refusal(outcomes: outcomes) {
     Present { value: refusal } =>
