@@ -1,6 +1,8 @@
 module gunbc.mtcollins_memory_change
 
 import std.types { Bool, String, NonEmptyStr, List }
+import std.integer { UInt8 }
+import extdeps.numeric.base16 { byte_hex_lower }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
@@ -19,15 +21,14 @@ import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKA
 import product.placement_supply { HostIdentity }
 import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import gunbc.memory_configuration {
+  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, memory_module_capacity,
   MemoryPosition, MemoryPackageEvidence, MemoryDeliveryVariant, PositionedMemoryModule,
   MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, RetainedMemoryUnit, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
 }
-import gunbc.memory_observation { MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population }
+import gunbc.memory_observation { MemoryCollectorReceipt, MemoryCaptureInterval, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population, read_verified_memory_capture }
 import gunbc.memory_change_report { MemoryChangeExplanation, explain_memory_change }
 import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 
 // The capture is owned by the observing layer. The replay reads its bytes,
 // verifies the committed artifact identity, and joins catalog and layout facts.
@@ -59,7 +60,7 @@ fn mtcollins_memory_module(position: MemoryPosition, ads: Bool) -> PositionedMem
   PositionedMemoryModule {
     position: position,
     part: if ads { mtcollins_ads_part } else { mtcollins_hynix_part },
-    catalog: if ads { mta36ads2g72pz_2g1a1_catalog } else { hma82gr7afr4n_vk_catalog },
+    identity: CatalogMemoryModule { catalog: if ads { mta36ads2g72pz_2g1a1_catalog } else { hma82gr7afr4n_vk_catalog } },
     alternatives: mtcollins_memory_variants(ads: ads),
     origin: if ads { AcquireMemoryUnit } else { RetainedMemoryUnit { serial: none } },
   }
@@ -92,8 +93,8 @@ fn mtcollins_replay_proposal(configuration: MemoryConfiguration) -> MemoryChange
 fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: String) -> MemoryCollectorReceipt {
   MemoryCollectorReceipt { source: mtcollins_training_capture_source,
     printed_parts: [
-      MemoryPrintedPartBinding { part: mtcollins_ads_part, printed: "36ADS2G72PZ-2G1A1" },
-      MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK" },
+      MemoryPrintedPartBinding { part: mtcollins_ads_part, printed: "36ADS2G72PZ-2G1A1", required_descriptors: [] },
+      MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK", required_descriptors: [] },
     ],
     printed_positions: map(configuration.population, dimm => MemoryPrintedPositionBinding {
       position: dimm.position, printed: concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":") as NonEmptyStr,
@@ -102,7 +103,7 @@ fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: Str
     session: "mtcollins1 SOL 2026-09-12T02:37:23Z",
     expected_stimulus: "2026-09-12T02:37:23Z failing boot",
     observed_stimulus: Present { value: "2026-09-12T02:37:23Z failing boot" },
-    required_start: 0, required_end: 645, collector_start: 0, collector_end: 645,
+    coverage: MemoryCaptureInterval { required_start: 0, required_end: 645, collector_start: 0, collector_end: 645 },
     exit_code: 0, payload: payload, capture_digest: mtcollins_training_capture_sha256,
     previous_capture_digest: none,
   }
@@ -111,6 +112,7 @@ fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: Str
 // Recognizer for this witnessed attempt only. The transcript tokens, roster,
 // firmware and compared pair are observing facts, not universal firmware rules.
 fn mtcollins_training_mixture_finding(
+  expected_byte: UInt8,
   attempt: NonEmptyStr,
   configuration: MemoryConfiguration,
   collector: MemoryCollectorReceipt,
@@ -123,12 +125,12 @@ fn mtcollins_training_mixture_finding(
       } else if !memory_capture_covers_population(configuration: configuration, collector: collector) {
         ObservationRefused { cause: "positioned inventory incomplete or printed-part catalog binding missing or ambiguous" }
       } else if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
-        || !contains(collector.payload, "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]")
+        || !contains(collector.payload, concat("ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[", byte_hex_lower(v: expected_byte), "] @MCU[4]"))
         || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
         || !contains(collector.payload, "ERROR:   SK[0]: 00110010")
         || configuration.platform.firmware != "210525"
       {
-        ObservationRefused { cause: "transcript does not establish the bounded socket-0 00/91 firmware finding" }
+        ObservationRefused { cause: "transcript does not establish the bounded socket-0 firmware finding" }
       } else {
         let positions = filter(configuration.population, dimm => dimm.position.socket == 0 && dimm.position.controller == 4 && dimm.position.slot == 0)
         if count(positions) != 1 {
@@ -138,7 +140,7 @@ fn mtcollins_training_mixture_finding(
           Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
             attempt: attempt, configuration: configuration, collector: collector,
             comparison_socket: 0, mismatch_position: dimm.position,
-            expected_byte: 145, actual_byte: 0,
+            expected_byte: expected_byte, actual_byte: 0,
           } }
         } }
       }
@@ -147,8 +149,8 @@ fn mtcollins_training_mixture_finding(
 
 fn mtcollins_memory_evidence_from_capture(configuration: MemoryConfiguration, payload: String) -> MemoryEvaluationEvidence {
   MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
-    mixture: mtcollins_training_mixture_finding(attempt: "2026-09-12T02:37:23Z", configuration: configuration,
-      collector: mtcollins_training_collector(configuration: configuration, payload: payload)),
+    mixtures: [mtcollins_training_mixture_finding(expected_byte: 145, attempt: "2026-09-12T02:37:23Z", configuration: configuration,
+      collector: mtcollins_training_collector(configuration: configuration, payload: payload))],
     qualifications: [], training_failures: [],
   }
 }
@@ -158,18 +160,11 @@ func replay_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeAssessme
     PopulationRolesRefused { refusals } => ObservationRefused { cause: refusals }
     PopulationRolesResolved { roles } => {
       let configuration = mtcollins_witnessed_configuration(roles: roles)
-      let read = Filesystem.Read(path: mtcollins_training_capture_path as String)
-      let hash = sha256sum_file_digest_via_shell(path: mtcollins_training_capture_path)
-      let valid_hash = match hash {
-        Sha256FileDigest { digest } => digest.hex == mtcollins_training_capture_sha256
-        Sha256FileDigestUnavailable { path: _, reason: _ } => false
+      let evidence = match read_verified_memory_capture(path: mtcollins_training_capture_path, expected_sha256: mtcollins_training_capture_sha256) {
+        ObservationEstablished { observed: payload } => mtcollins_memory_evidence_from_capture(configuration: configuration, payload: payload)
+        ObservationRefused { cause } => MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
+          mixtures: [ObservationRefused { cause: cause }], qualifications: [], training_failures: [] }
       }
-      let evidence = if read.success && valid_hash {
-        mtcollins_memory_evidence_from_capture(configuration: configuration, payload: read.content)
-      } else { MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
-        mixture: ObservationRefused { cause: "committed capture could not be read and verified" },
-        qualifications: [], training_failures: [],
-      } }
       ObservationEstablished { observed: evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: configuration), evidence: evidence) }
     }
   }

@@ -1,0 +1,348 @@
+module test.claim.memory_multiple_findings_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.integer { UInt8 }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalDiverged, GoalIndeterminate, GoalSatisfied }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelPopulationRole, mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused,
+}
+import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
+import gunbc.memory_configuration {
+  MemoryConfiguration, MemoryPlatform, PositionedMemoryModule, MemoryDeliveryVariant, MemoryPackageEvidence, ObservedMemoryModule,
+  MemoryOperatingObligation, MemoryPackageMixture, MemoryCatalogBinding, MemorySocketCapacity, MemoryBoot, MemoryFirmwareScopeCoverage,
+  memory_module_label,
+}
+import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding }
+import gunbc.memory_configuration_evaluation {
+  MemoryConfigurationAssessment, evaluate_memory_configuration, memory_read_mixture_findings,
+  MemoryCapturedMixtureConflict, MemoryProcurementCondition,
+}
+import gunbc.mtcollins_memory_change { mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_training_mixture_finding }
+import gunbc.mtcollins_3ds_memory_change {
+  mtcollins_3ds_configuration, mtcollins_3ds_collector, mtcollins_two_capture_evidence, mtcollins_samsung_observed_part,
+}
+import test.claim.memory_change_evaluation_witness { memory_test_payload, memory_test_has_unknown, memory_test_recipe, memory_test_market }
+import product.build_fulfillment { SupplyRow, CompatibilityRefutedForPlatform, memory_screened_rows, NodeRecipe, resolve_build, LineRefused, MemoryProposalNotAdmitted }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Controlled transcript stimuli; these fixtures never read or drive hardware.
+// The production replay independently verifies both committed capture hashes.
+fn multiple_test_cycle(configuration: MemoryConfiguration) -> String {
+  concat("NOTICE:  DRAM FW version 210525\nDRAM populated DIMMs:\n",
+    join(map(configuration.population, dimm => concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S0: ",
+      if declaration_ref_eq(a: dimm.part, b: mtcollins_samsung_observed_part) { "RDIMM[ce:80] 3DS 64GB 2133 ECC 8R x4 RCD[b3:80] " } else { "" },
+      memory_module_label(dimm: dimm) as String)), "\n"),
+    "\nERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[b2] @MCU[4]\nERROR:   SK[0]: 00110010\nERROR:   Non-identical DIMM mixture NOT supported!\n")
+}
+
+fn multiple_test_evidence(roles: List<MtCollinsChannelPopulationRole>) -> MemoryEvaluationEvidence {
+  let second = mtcollins_3ds_configuration(roles: roles)
+  let cycle = multiple_test_cycle(configuration: second)
+  mtcollins_two_capture_evidence(first_configuration: mtcollins_witnessed_configuration(roles: roles), second_configuration: second,
+    first_capture: ObservationEstablished { observed: memory_test_payload(fixture_roles: roles) },
+    second_capture: ObservationEstablished { observed: concat(cycle, cycle) })
+}
+
+fn multiple_test_with_mixtures(evidence: MemoryEvaluationEvidence, mixtures: List<ObservationAttempt<MemoryMixtureFinding, NonEmptyStr>>) -> MemoryEvaluationEvidence {
+  MemoryEvaluationEvidence { revision: "controlled collection change", mixtures: mixtures,
+    qualifications: evidence.qualifications, training_failures: evidence.training_failures }
+}
+
+// Hypothetical independent SPD values exercise the production pair evaluator.
+// They do not claim any Samsung unit or catalog SKU actually supplied the byte.
+fn multiple_test_package(configuration: MemoryConfiguration, byte: UInt8, optional_zero: Bool) -> MemoryConfiguration {
+  MemoryConfiguration { platform: configuration.platform, population: map(configuration.population, dimm =>
+    if declaration_ref_eq(a: dimm.part, b: mtcollins_samsung_observed_part) {
+      PositionedMemoryModule { position: dimm.position, part: dimm.part, identity: dimm.identity, origin: dimm.origin,
+        alternatives: map(if optional_zero { [byte, 0] } else { [byte] }, b => MemoryDeliveryVariant {
+          identity: concat("hypothetical SPD ", to_string(b)) as NonEmptyStr,
+          package: Present { value: MemoryPackageEvidence { value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT { Data: b },
+            source: decl_ref(module_path: "test.claim.memory_multiple_findings_witness", decl_name: "multiple_test_package") } }, register_vendor: none,
+        }),
+      }
+    } else { dimm }
+  ) }
+}
+
+fn multiple_test_violates(a: MemoryConfigurationAssessment, obligation: MemoryOperatingObligation) -> Bool {
+  any(a.results, r => r.obligation == obligation && match r.assessment {
+    GoalDiverged { deviations: _ } => true
+    GoalIndeterminate { known_deviations, unknowns: _ } => count(known_deviations) > 0
+    _ => false
+  })
+}
+
+fn multiple_test_satisfies(a: MemoryConfigurationAssessment, obligation: MemoryOperatingObligation) -> Bool {
+  any(a.results, r => r.obligation == obligation && match r.assessment { GoalSatisfied { evidence: _ } => true, _ => false })
+}
+
+test fn w_both_observations_survive_with_distinct_values_and_sources() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let read = memory_read_mixture_findings(evidence: multiple_test_evidence(roles: roles))
+      count(read.findings) == 2 && all([145, 178], expected => any(read.findings, finding => finding.expected_byte == expected && finding.actual_byte == 0))
+        && count(filter(read.findings, a => any(read.findings, b => a.collector.source != b.collector.source && a.attempt != b.attempt))) == 2
+    }
+  }
+}
+
+test fn w_both_captured_configurations_are_rejected_without_catalog_suffix_invention() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let evidence = multiple_test_evidence(roles: roles)
+      let first = evaluate_memory_configuration(configuration: mtcollins_witnessed_configuration(roles: roles), evidence: evidence, additional: [])
+      let second = evaluate_memory_configuration(configuration: mtcollins_3ds_configuration(roles: roles), evidence: evidence, additional: [])
+      multiple_test_violates(a: first, obligation: MemoryPackageMixture)
+        && multiple_test_violates(a: second, obligation: MemoryPackageMixture)
+        && multiple_test_violates(a: second, obligation: MemorySocketCapacity)
+        && memory_test_has_unknown(a: second, obligation: MemoryCatalogBinding)
+        && memory_test_has_unknown(a: second, obligation: MemoryBoot)
+        && any(second.results, r => r.obligation == MemoryPackageMixture && match r.assessment {
+          GoalDiverged { deviations } => match deviations.head {
+            MemoryCapturedMixtureConflict { finding } => finding.expected_byte == 178 && finding.actual_byte == 0 && finding.mismatch_position.controller == 4
+            _ => false
+          }
+          _ => false
+        })
+    }
+  }
+}
+
+test fn w_each_observed_pair_rejects_through_the_production_variant_evaluator() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => all([145, 178], byte => {
+      let a = evaluate_memory_configuration(configuration: multiple_test_package(configuration: mtcollins_3ds_configuration(roles: roles), byte: byte, optional_zero: false),
+        evidence: multiple_test_evidence(roles: roles), additional: [])
+      multiple_test_violates(a: a, obligation: MemoryPackageMixture) && !memory_test_has_unknown(a: a, obligation: MemoryPackageMixture)
+    })
+  }
+}
+
+test fn w_unobserved_byte_pair_is_not_generalized_into_a_rejection() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let a = evaluate_memory_configuration(configuration: multiple_test_package(configuration: mtcollins_3ds_configuration(roles: roles), byte: 179, optional_zero: false),
+        evidence: multiple_test_evidence(roles: roles), additional: [])
+      memory_test_has_unknown(a: a, obligation: MemoryPackageMixture) && !multiple_test_violates(a: a, obligation: MemoryPackageMixture)
+    }
+  }
+}
+
+test fn w_duplicate_findings_do_not_turn_delivery_uncertainty_into_certain_rejection() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let e = multiple_test_evidence(roles: roles)
+      let a = evaluate_memory_configuration(configuration: multiple_test_package(configuration: mtcollins_3ds_configuration(roles: roles), byte: 178, optional_zero: true),
+        evidence: multiple_test_with_mixtures(evidence: e, mixtures: concat(e.mixtures, e.mixtures)), additional: [])
+      !multiple_test_violates(a: a, obligation: MemoryPackageMixture) && any(a.results, r => r.obligation == MemoryPackageMixture && match r.assessment {
+        GoalIndeterminate { known_deviations: _, unknowns } => any(concat([unknowns.head], unknowns.tail), u => match u {
+          MemoryProcurementCondition { counterexample: _, condition: _ } => true
+          _ => false
+        })
+        _ => false
+      })
+    }
+  }
+}
+
+test fn w_reordering_findings_preserves_the_decision() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let e = multiple_test_evidence(roles: roles)
+      all([e.mixtures, reverse(e.mixtures)], mixtures => multiple_test_violates(a: evaluate_memory_configuration(
+        configuration: multiple_test_package(configuration: mtcollins_3ds_configuration(roles: roles), byte: 178, optional_zero: false),
+        evidence: multiple_test_with_mixtures(evidence: e, mixtures: mixtures), additional: []), obligation: MemoryPackageMixture))
+    }
+  }
+}
+
+test fn w_empty_finding_collection_cannot_answer_package_or_scope_coverage() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let e = multiple_test_evidence(roles: roles)
+      let a = evaluate_memory_configuration(configuration: mtcollins_witnessed_configuration(roles: roles),
+        evidence: multiple_test_with_mixtures(evidence: e, mixtures: []), additional: [])
+      memory_test_has_unknown(a: a, obligation: MemoryPackageMixture) && memory_test_has_unknown(a: a, obligation: MemoryFirmwareScopeCoverage)
+    }
+  }
+}
+
+test fn w_failed_second_capture_preserves_first_finding_without_proving_the_new_pair() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let first = mtcollins_witnessed_configuration(roles: roles)
+      let second = mtcollins_3ds_configuration(roles: roles)
+      let e = mtcollins_two_capture_evidence(first_configuration: first, second_configuration: second,
+        first_capture: ObservationEstablished { observed: memory_test_payload(fixture_roles: roles) },
+        second_capture: ObservationRefused { cause: "controlled failed hash read" })
+      count(memory_read_mixture_findings(evidence: e).findings) == 1
+        && multiple_test_violates(a: evaluate_memory_configuration(configuration: first, evidence: e, additional: []), obligation: MemoryPackageMixture)
+        && memory_test_has_unknown(a: evaluate_memory_configuration(configuration: multiple_test_package(configuration: second, byte: 178, optional_zero: false), evidence: e, additional: []), obligation: MemoryPackageMixture)
+    }
+  }
+}
+
+test fn w_each_captured_cycle_must_cover_the_whole_claimed_inventory() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let configuration = mtcollins_3ds_configuration(roles: roles)
+      let partial = concat(multiple_test_cycle(configuration: configuration),
+        "NOTICE:  DRAM FW version 210525\nDRAM populated DIMMs:\nERROR:   Non-identical DIMM mixture NOT supported!\n")
+      match mtcollins_training_mixture_finding(expected_byte: 178, attempt: "controlled partial second cycle", configuration: configuration,
+        collector: mtcollins_3ds_collector(configuration: configuration, payload: partial)) {
+        ObservationRefused { cause: _ } => true
+        ObservationEstablished { observed: _ } => false
+      }
+    }
+  }
+}
+
+test fn w_one_cycle_or_banner_only_cannot_claim_two_complete_stimuli() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let configuration = mtcollins_3ds_configuration(roles: roles)
+      all([multiple_test_cycle(configuration: configuration), "[SOL Session operational]\n[SOL Session operational]\n"], payload =>
+        match mtcollins_training_mixture_finding(expected_byte: 178, attempt: "controlled insufficient stimuli", configuration: configuration,
+          collector: mtcollins_3ds_collector(configuration: configuration, payload: payload)) {
+          ObservationRefused { cause: _ } => true
+          ObservationEstablished { observed: _ } => false
+        })
+    }
+  }
+}
+
+// Uniform within each socket clears the documented capacity requirement even
+// when socket capacities differ. It does not establish catalog identity or boot.
+test fn w_socket_capacity_is_independent_of_package_binding_and_boot() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let source = mtcollins_3ds_configuration(roles: roles)
+      let candidates = filter(source.population, dimm => declaration_ref_eq(a: dimm.part, b: mtcollins_samsung_observed_part))
+      all(candidates, samsung => {
+        let uniform = MemoryConfiguration { platform: source.platform, population: map(source.population, dimm =>
+          if dimm.position.socket == 0 { PositionedMemoryModule { position: dimm.position, part: samsung.part, identity: samsung.identity,
+            alternatives: samsung.alternatives, origin: samsung.origin } } else { dimm }) }
+        let a = evaluate_memory_configuration(configuration: uniform, evidence: multiple_test_evidence(roles: roles), additional: [])
+        multiple_test_satisfies(a: a, obligation: MemorySocketCapacity) && memory_test_has_unknown(a: a, obligation: MemoryCatalogBinding)
+          && memory_test_has_unknown(a: a, obligation: MemoryBoot) && memory_test_has_unknown(a: a, obligation: MemoryPackageMixture)
+      })
+    }
+  }
+}
+
+test fn w_missing_observed_capacity_is_unresolved() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let source = mtcollins_3ds_configuration(roles: roles)
+      let configuration = MemoryConfiguration { platform: source.platform, population: map(source.population, dimm =>
+        PositionedMemoryModule { position: dimm.position, part: dimm.part, origin: dimm.origin, alternatives: dimm.alternatives,
+          identity: match dimm.identity {
+            ObservedMemoryModule { printed_part, capacity: _, source, missing_catalog_binding } => ObservedMemoryModule {
+              printed_part: printed_part, capacity: none, source: source, missing_catalog_binding: missing_catalog_binding }
+            _ => dimm.identity
+          },
+        }) }
+      memory_test_has_unknown(a: evaluate_memory_configuration(configuration: configuration, evidence: multiple_test_evidence(roles: roles), additional: []), obligation: MemorySocketCapacity)
+    }
+  }
+}
+
+test fn w_second_configuration_withholds_actual_production_fulfillment() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let template = memory_test_recipe(fixture_roles: roles, configuration: mtcollins_3ds_configuration(roles: roles), production: true)
+      let recipe = NodeRecipe { label: template.label, sockets: template.sockets, processor: template.processor,
+        processor_label: template.processor_label, baseboard: template.baseboard, baseboard_label: template.baseboard_label,
+        memory: template.memory, memory_evidence: multiple_test_evidence(roles: roles), memory_purchase: template.memory_purchase, inclusions: template.inclusions }
+      let resolved = resolve_build(recipe: recipe, rows: [])
+      count(resolved.lines) > 0 && all(resolved.lines, line => match line {
+        LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment, reason: _ } } =>
+          count(assessment.final_configuration.evidence.mixtures) == 2 && multiple_test_violates(a: assessment.final_configuration, obligation: MemoryPackageMixture)
+        _ => false
+      })
+    }
+  }
+}
+
+test fn w_changed_firmware_does_not_reuse_either_observed_pair() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let original = multiple_test_package(configuration: mtcollins_3ds_configuration(roles: roles), byte: 178, optional_zero: false)
+      let p = original.platform
+      let configuration = MemoryConfiguration { platform: MemoryPlatform { host: p.host, board: p.board, board_part: p.board_part,
+        processor: p.processor, firmware: "unobserved replacement firmware", settings: p.settings }, population: original.population }
+      let a = evaluate_memory_configuration(configuration: configuration, evidence: multiple_test_evidence(roles: roles), additional: [])
+      memory_test_has_unknown(a: a, obligation: MemoryPackageMixture) && !multiple_test_violates(a: a, obligation: MemoryPackageMixture)
+        && memory_test_has_unknown(a: a, obligation: MemoryFirmwareScopeCoverage)
+    }
+  }
+}
+
+test fn w_moving_the_mixture_to_an_unobserved_socket_rechecks_scope() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let source = multiple_test_package(configuration: mtcollins_3ds_configuration(roles: roles), byte: 178, optional_zero: false)
+      let samples = filter(source.population, dimm => declaration_ref_eq(a: dimm.part, b: mtcollins_samsung_observed_part))
+      count(samples) == 4 && all(samples, sample => {
+        let moved = MemoryConfiguration { platform: source.platform, population: map(source.population, dimm =>
+          if dimm.position.socket == 1 && dimm.position.controller < 4 {
+            PositionedMemoryModule { position: dimm.position, part: sample.part, identity: sample.identity,
+              alternatives: sample.alternatives, origin: sample.origin }
+          } else { mtcollins_memory_module(position: dimm.position, ads: false) }) }
+        let a = evaluate_memory_configuration(configuration: moved, evidence: multiple_test_evidence(roles: roles), additional: [])
+        multiple_test_satisfies(a: a, obligation: MemoryPackageMixture) && memory_test_has_unknown(a: a, obligation: MemoryFirmwareScopeCoverage)
+      })
+    }
+  }
+}
+
+test fn w_uniform_hypothetical_b2_clears_only_the_known_package_scope() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let source = multiple_test_package(configuration: mtcollins_3ds_configuration(roles: roles), byte: 178, optional_zero: false)
+      let samples = filter(source.population, dimm => declaration_ref_eq(a: dimm.part, b: mtcollins_samsung_observed_part))
+      count(samples) == 4 && all(samples, sample => {
+        let uniform = MemoryConfiguration { platform: source.platform, population: map(source.population, dimm =>
+          if dimm.position.socket == 0 { PositionedMemoryModule { position: dimm.position, part: sample.part, identity: sample.identity,
+            alternatives: sample.alternatives, origin: sample.origin } } else { dimm }) }
+        let a = evaluate_memory_configuration(configuration: uniform, evidence: multiple_test_evidence(roles: roles), additional: [])
+        multiple_test_satisfies(a: a, obligation: MemoryPackageMixture) && multiple_test_satisfies(a: a, obligation: MemorySocketCapacity)
+          && memory_test_has_unknown(a: a, obligation: MemoryCatalogBinding) && memory_test_has_unknown(a: a, obligation: MemoryBoot)
+      })
+    }
+  }
+}
+
+test fn w_unknown_catalog_binding_preserves_an_existing_supplier_refusal() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let recipe = memory_test_recipe(fixture_roles: roles, configuration: mtcollins_3ds_configuration(roles: roles), production: true)
+      let rows = map(memory_test_market(recipe: recipe), row => SupplyRow { part: row.part,
+        compatibility: CompatibilityRefutedForPlatform { reason: "independent supplier/platform refusal" }, owned: row.owned, market: row.market })
+      count(rows) > 0 && all(memory_screened_rows(recipe: recipe, rows: rows), row => match row.compatibility {
+        CompatibilityRefutedForPlatform { reason } => reason == "independent supplier/platform refusal"
+        _ => false
+      })
+    }
+  }
+}

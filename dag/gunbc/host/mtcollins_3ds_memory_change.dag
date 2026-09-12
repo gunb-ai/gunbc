@@ -1,0 +1,121 @@
+module gunbc.mtcollins_3ds_memory_change
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { byte_size }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelPopulationRole, MtCollinsPopulationRoleRefusal,
+  PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles,
+}
+import gunbc.memory_configuration {
+  MemoryModuleIdentity, ObservedMemoryModule, MemoryConfiguration, PositionedMemoryModule,
+  MemoryDeliveryVariant, AcquireMemoryUnit,
+}
+import gunbc.memory_observation {
+  MemoryCollectorReceipt, MemoryCaptureCycles, MemoryPrintedPartBinding, MemoryPrintedPositionBinding,
+  MemoryEvaluationEvidence, read_verified_memory_capture,
+}
+import gunbc.mtcollins_memory_change {
+  mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_hynix_part,
+  mtcollins_training_mixture_finding, mtcollins_memory_evidence_from_capture,
+  mtcollins_training_capture_path, mtcollins_training_capture_sha256, mtcollins_replay_proposal,
+}
+import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
+import gunbc.memory_change_report { explain_memory_change }
+
+// PR #11189 / 4f9f6e7c305. Observed tokens are not a Samsung catalog guarantee.
+data mtcollins_3ds_capture_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-3ds-mixture-refusal-2026-09-12.txt"
+data mtcollins_3ds_capture_sha256: NonEmptyStr = "de1af941fee140e0280b77722b68c338111441c567fff570ce9065f6a72258d8"
+data mtcollins_3ds_capture_source: DeclarationRef = decl_ref(module_path: "gunbc.mtcollins_3ds_memory_change", decl_name: "mtcollins_3ds_capture_path")
+
+data mtcollins_samsung_observed_identity: MemoryModuleIdentity = ObservedMemoryModule {
+  printed_part: "M393A8G40D40-CRB", capacity: Present { value: byte_size(count: 68719476736) }, source: mtcollins_3ds_capture_source,
+  missing_catalog_binding: "The printed token omits the catalog's 0Q suffix. Obtain an SPD/physical-label read or Samsung suffix-decoder evidence; matching capacity/rate/ranks/width alone does not identify the SKU.",
+}
+data mtcollins_samsung_observed_part: DeclarationRef = decl_ref(module_path: "gunbc.mtcollins_3ds_memory_change", decl_name: "mtcollins_samsung_observed_identity")
+
+// The inventory's 64GB is the firmware's DRAM-capacity notation (64 GiB).
+// Expected b2 is group-level diagnostic evidence, not an individual SPD dump.
+fn mtcollins_3ds_configuration(roles: List<MtCollinsChannelPopulationRole>) -> MemoryConfiguration {
+  let first = mtcollins_witnessed_configuration(roles: roles)
+  MemoryConfiguration { platform: first.platform, population: map(first.population, dimm =>
+    if dimm.position.socket == 0 && dimm.position.controller < 4 {
+      PositionedMemoryModule { position: dimm.position, part: mtcollins_samsung_observed_part,
+        identity: mtcollins_samsung_observed_identity, origin: AcquireMemoryUnit,
+        alternatives: [MemoryDeliveryVariant { identity: "captured unsuffixed Samsung identity; individual package byte unmeasured", package: none, register_vendor: none }],
+      }
+    } else { mtcollins_memory_module(position: dimm.position, ads: false) }
+  ) }
+}
+
+// Coverage is two complete captured boot cycles, not continuous attachment or
+// a duration inferred from the script wrapper. No SEL clock correlation is used.
+fn mtcollins_3ds_collector(configuration: MemoryConfiguration, payload: String) -> MemoryCollectorReceipt {
+  MemoryCollectorReceipt {
+    source: mtcollins_3ds_capture_source,
+    printed_parts: [
+      MemoryPrintedPartBinding { part: mtcollins_samsung_observed_part, printed: "M393A8G40D40-CRB", required_descriptors: ["3DS 64GB 2133 ECC 8R x4"] },
+      MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK", required_descriptors: [] },
+    ],
+    printed_positions: map(configuration.population, dimm => MemoryPrintedPositionBinding {
+      position: dimm.position, printed: concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":") as NonEmptyStr,
+    }),
+    expected_payload_token: "DRAM populated DIMMs:", session: "mtcollins1 SOL 2026-09-12T18:31:43Z",
+    expected_stimulus: "two complete captured firmware-210525 boot cycles",
+    observed_stimulus: Present { value: "two complete captured firmware-210525 boot cycles" },
+    coverage: MemoryCaptureCycles { required_cycles: 2, start_token: "NOTICE:  DRAM FW version 210525", completion_token: "ERROR:   Non-identical DIMM mixture NOT supported!" },
+    exit_code: 0, payload: payload, capture_digest: mtcollins_3ds_capture_sha256, previous_capture_digest: none,
+  }
+}
+
+// Collection order never replaces or overrides an earlier observation.
+fn mtcollins_two_capture_evidence(
+  first_configuration: MemoryConfiguration, second_configuration: MemoryConfiguration,
+  first_capture: ObservationAttempt<String, NonEmptyStr>, second_capture: ObservationAttempt<String, NonEmptyStr>,
+) -> MemoryEvaluationEvidence {
+  let first = match first_capture {
+    ObservationEstablished { observed: payload } => mtcollins_memory_evidence_from_capture(configuration: first_configuration, payload: payload).mixtures
+    ObservationRefused { cause } => [ObservationRefused { cause: cause }]
+  }
+  let second = match second_capture {
+    ObservationEstablished { observed: payload } => mtcollins_training_mixture_finding(expected_byte: 178,
+      attempt: "2026-09-12T18:31:43Z two captured cycles", configuration: second_configuration,
+      collector: mtcollins_3ds_collector(configuration: second_configuration, payload: payload))
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+  }
+  MemoryEvaluationEvidence { revision: concat(mtcollins_training_capture_sha256, ";", mtcollins_3ds_capture_sha256) as NonEmptyStr,
+    mixtures: concat(first, [second]), qualifications: [], training_failures: [] }
+}
+
+func replay_mtcollins_two_configurations() -> ObservationAttempt<List<MemoryChangeAssessment>, List<MtCollinsPopulationRoleRefusal>> {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals } => ObservationRefused { cause: refusals }
+    PopulationRolesResolved { roles } => {
+      let first = mtcollins_witnessed_configuration(roles: roles)
+      let second = mtcollins_3ds_configuration(roles: roles)
+      let evidence = mtcollins_two_capture_evidence(first_configuration: first, second_configuration: second,
+        first_capture: read_verified_memory_capture(path: mtcollins_training_capture_path, expected_sha256: mtcollins_training_capture_sha256),
+        second_capture: read_verified_memory_capture(path: mtcollins_3ds_capture_path, expected_sha256: mtcollins_3ds_capture_sha256))
+      ObservationEstablished { observed: map([first, second], configuration =>
+        evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: configuration), evidence: evidence)) }
+    }
+  }
+}
+
+// Read-only report; failure is withheld production admission, not a newly
+// executed physical trial. Each explanation retains its own proposal/evidence.
+func assess_mtcollins_two_configurations() -> ProcessExit {
+  match replay_mtcollins_two_configurations() {
+    ObservationRefused { cause } => exit_failure(reason: concat("UNEVALUATED: population-role authority refused: ", to_string(cause)))
+    ObservationEstablished { observed: assessments } => {
+      let refused = filter(assessments, a => match memory_change_admission_refusal(a: a, purpose: ProductionMemoryPurchase) {
+        Absent => false
+        Present { value: _ } => true
+      })
+      if count(refused) == 0 { ExitSuccess }
+      else { exit_failure(reason: join(flat_map(refused, a => map(explain_memory_change(assessment: a).lines, line => line as String)), "\n")) }
+    }
+  }
+}

@@ -1,7 +1,8 @@
 module extdeps.ampere.mt_collins_product_brief.memory_population
 
-import std.types { String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { ByteSize }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
 import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority }
@@ -163,10 +164,17 @@ data mt_collins_population_32_dimms_completion: MtCollinsPopulationCorrection = 
 // configuration, and Table 11 gives a connector sequence for neither; its two-DIMM row enumerates
 // the MCU0-alone one-channel configuration. So these rows are not a fill-in-any-order suggestion,
 // and equally they are not an exhaustive statement of what Table 10 supports - a width absent here
-// is unenumerated by Table 11, not unsupported. DIMMs on all populated channels of one socket must
-// be identically sized; socket 0 and socket 1 may differ from each other. Max data rate at these
+// is unenumerated by Table 11, not unsupported. The capacity rule is projected by
+// mt_collins_socket_dimm_sizes_supported below. Max data rate at these
 // populations is the platform row's DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC
 // downclock is unstated by this source rather than absent.
+
+// GSG Issue 1.05, page 10, paragraph immediately above Table 10. Equal DIMM
+// size is required within one socket; different sockets may use different sizes.
+// Consumer: gunbc.memory_configuration_evaluation's separate capacity obligation.
+fn mt_collins_socket_dimm_sizes_supported(left_socket: Nat, left_capacity: ByteSize, right_socket: Nat, right_capacity: ByteSize) -> Bool {
+  left_socket != right_socket || left_capacity == right_capacity
+}
 
 // TABLES 12-13: WHICH MEMORY CONTROLLER EACH CONNECTOR PAIR BELONGS TO. The population
 // sequences above say WHICH connectors a configuration fills; they do not say which channel any
