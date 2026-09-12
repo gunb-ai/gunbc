@@ -6,10 +6,10 @@ import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
 import product.fabric.job_admission {
-  JobAdmission, JobClassification, JobAdmissionReceipt, JobAdmitted, JobHeld, JobRefused,
+  JobAdmission, JobClassification, JobClassificationReceipt, JobAdmitted, JobHeld, JobRefused,
   DeclaredNonEphi, DeclaredEphi, ClassificationUnresolved,
-  EphiHandlingAuthorityHasNoProducer, AdmissionReceiptMissing,
-  AdmissionReceiptSubjectMismatch, classify_job, admit_job,
+  EphiHandlingAuthorityHasNoProducer, ClassificationReceiptMissing,
+  ClassificationReceiptSubjectMismatch, classify_job, admit_job,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -19,7 +19,7 @@ data subject: FabricIdentity<NonEmptyStr, WorkKey> = FabricIdentity {
   key: "job-a" as WorkKey,
 }
 
-fn receipt() -> JobAdmissionReceipt<NonEmptyStr>? {
+fn receipt() -> JobClassificationReceipt<NonEmptyStr>? {
   match classify_job(subject: subject, classification: DeclaredNonEphi) {
     JobAdmitted { receipt: r } => Present { value: r }
     _ => Absent
@@ -27,7 +27,7 @@ fn receipt() -> JobAdmissionReceipt<NonEmptyStr>? {
 }
 
 // A receipt is present in both classification controls, so neither can pass
-// collaterally through AdmissionReceiptMissing.
+// collaterally through ClassificationReceiptMissing.
 test fn declared_ephi_refuses_for_absent_handling_authority() -> Bool {
   match admit_job(subject: subject, classification: DeclaredEphi, receipt: receipt()) {
     JobRefused { subject: s, reason: EphiHandlingAuthorityHasNoProducer } => fabric_identity_eq(left: s, right: subject)
@@ -44,7 +44,7 @@ test fn unresolved_classification_holds_with_a_receipt() -> Bool {
 
 test fn ordinary_job_without_receipt_refuses_for_missing_receipt() -> Bool {
   match admit_job(subject: subject, classification: DeclaredNonEphi, receipt: Absent) {
-    JobRefused { subject: s, reason: AdmissionReceiptMissing } => fabric_identity_eq(left: s, right: subject)
+    JobRefused { subject: s, reason: ClassificationReceiptMissing } => fabric_identity_eq(left: s, right: subject)
     _ => false
   }
 }
@@ -65,20 +65,36 @@ test fn unresolved_without_receipt_still_holds() -> Bool {
 
 test fn receipt_cannot_cross_customer_boundary() -> Bool {
   match admit_job(subject: FabricIdentity { principal: "other-customer", key: subject.key }, classification: DeclaredNonEphi, receipt: receipt()) {
-    JobRefused { subject: _, reason: AdmissionReceiptSubjectMismatch } => true
+    JobRefused { subject: _, reason: ClassificationReceiptSubjectMismatch } => true
     _ => false
   }
 }
 
 // Controlled USD fixture, not the billing model. billing-receipts replaces
 // this integration boundary with its metered gross/credit/net invoice carrier.
+// The fixture exercises no credit and a credit exactly equal to gross. Excess
+// credit has no constructor here; the real invoice policy belongs to billing.
+type FixturePromotionalCredit
+  = NoFixtureCredit
+  | FullFixtureCredit
+
 type InvoiceFixture {
   gross_charge: MoneyAmountMicro
-  promotional_credit: MoneyAmountMicro
+  promotional_credit: FixturePromotionalCredit
+}
+
+fn applied_credit(invoice: InvoiceFixture) -> MoneyAmountMicro {
+  match invoice.promotional_credit {
+    NoFixtureCredit => money_amount_micro(count: 0)
+    FullFixtureCredit => invoice.gross_charge
+  }
 }
 
 fn net_due(invoice: InvoiceFixture) -> MoneyAmountMicro {
-  money_amount_micro(count: money_amount_micro_count(m: invoice.gross_charge) - money_amount_micro_count(m: invoice.promotional_credit))
+  match invoice.promotional_credit {
+    NoFixtureCredit => invoice.gross_charge
+    FullFixtureCredit => money_amount_micro(count: 0)
+  }
 }
 
 type InvoiceAdmissionFixture {
@@ -86,7 +102,7 @@ type InvoiceAdmissionFixture {
   admission: JobAdmission<NonEmptyStr>
 }
 
-fn submit_invoice_fixture(invoice: InvoiceFixture, classification: JobClassification, admission_receipt: JobAdmissionReceipt<NonEmptyStr>?) -> InvoiceAdmissionFixture {
+fn submit_invoice_fixture(invoice: InvoiceFixture, classification: JobClassification, admission_receipt: JobClassificationReceipt<NonEmptyStr>?) -> InvoiceAdmissionFixture {
   InvoiceAdmissionFixture {
     invoice: invoice,
     admission: admit_job(subject: subject, classification: classification, receipt: admission_receipt),
@@ -97,11 +113,11 @@ fn submit_invoice_fixture(invoice: InvoiceFixture, classification: JobClassifica
 // handling is ordinary, and a receipt EXISTS. It belongs to another job. A pilot
 // bypass on net == 0 would turn this precise refusal into admission.
 test fn zero_dollar_net_invoice_cannot_admit_a_job_with_another_jobs_receipt() -> Bool {
-  let invoice = InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: money_amount_micro(count: 12000000) }
+  let invoice = InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: FullFixtureCredit }
   let other_job = FabricIdentity { principal: subject.principal, key: "job-b" as WorkKey }
   match classify_job(subject: other_job, classification: DeclaredNonEphi) {
     JobAdmitted { receipt: r } => match submit_invoice_fixture(invoice: invoice, classification: DeclaredNonEphi, admission_receipt: Present { value: r }).admission {
-      JobRefused { subject: s, reason: AdmissionReceiptSubjectMismatch } =>
+      JobRefused { subject: s, reason: ClassificationReceiptSubjectMismatch } =>
         money_amount_micro_count(m: invoice.gross_charge) > 0 && net_due(invoice: invoice) == money_amount_micro(count: 0) && fabric_identity_eq(left: s, right: subject)
       _ => false
     }
@@ -110,7 +126,7 @@ test fn zero_dollar_net_invoice_cannot_admit_a_job_with_another_jobs_receipt() -
 }
 
 test fn zero_dollar_invoice_keeps_an_admitted_customer_admitted() -> Bool {
-  let invoice = InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: money_amount_micro(count: 12000000) }
+  let invoice = InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: FullFixtureCredit }
   match submit_invoice_fixture(invoice: invoice, classification: DeclaredNonEphi, admission_receipt: receipt()).admission {
     JobAdmitted { receipt: r } => net_due(invoice: invoice) == money_amount_micro(count: 0) && fabric_identity_eq(left: r.subject, right: subject)
     _ => false
@@ -118,24 +134,25 @@ test fn zero_dollar_invoice_keeps_an_admitted_customer_admitted() -> Bool {
 }
 
 test fn zero_dollar_invoice_does_not_resolve_classification() -> Bool {
-  match submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: money_amount_micro(count: 12000000) }, classification: ClassificationUnresolved, admission_receipt: receipt()).admission {
+  match submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: FullFixtureCredit }, classification: ClassificationUnresolved, admission_receipt: receipt()).admission {
     JobHeld { subject: s } => fabric_identity_eq(left: s, right: subject)
     _ => false
   }
 }
 
 test fn paid_invoice_does_not_supply_an_admission_receipt() -> Bool {
-  match submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: money_amount_micro(count: 0) }, classification: DeclaredNonEphi, admission_receipt: Absent).admission {
-    JobRefused { subject: _, reason: AdmissionReceiptMissing } => true
+  match submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: NoFixtureCredit }, classification: DeclaredNonEphi, admission_receipt: Absent).admission {
+    JobRefused { subject: _, reason: ClassificationReceiptMissing } => true
     _ => false
   }
 }
 
 // Changing only the invoice preserves all three dispositions, including the
 // missing-receipt and ePHI refusals. This prevents a zero-only pilot exception.
-fn credit_preserves_admission(classification: JobClassification, admission_receipt: JobAdmissionReceipt<NonEmptyStr>?) -> Bool {
-  let paid = submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: money_amount_micro(count: 0) }, classification: classification, admission_receipt: admission_receipt)
-  let credited = submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: money_amount_micro(count: 12000000) }, classification: classification, admission_receipt: admission_receipt)
+fn credit_preserves_admission(classification: JobClassification, admission_receipt: JobClassificationReceipt<NonEmptyStr>?) -> Bool {
+  let paid = submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: NoFixtureCredit }, classification: classification, admission_receipt: admission_receipt)
+  let credited = submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: FullFixtureCredit }, classification: classification, admission_receipt: admission_receipt)
+  applied_credit(invoice: paid.invoice) == money_amount_micro(count: 0) && applied_credit(invoice: credited.invoice) == credited.invoice.gross_charge &&
   net_due(invoice: paid.invoice) == money_amount_micro(count: 12000000) && net_due(invoice: credited.invoice) == money_amount_micro(count: 0) && paid.admission == credited.admission
 }
 

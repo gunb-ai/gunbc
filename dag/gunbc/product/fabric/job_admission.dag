@@ -1,8 +1,19 @@
 module product.fabric.job_admission
 
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
 import v2.std.optional { Present, Absent }
 import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
 
+// Customer declaration admission precedes provider-route selection. This is a
+// stated divergence from product.fabric.provider_admission: its ProviderUseScope
+// and data_handling_profile establish permission for a chosen route under a
+// posture revision, with agreement and program dispositions. This fold has no
+// route or posture and establishes only whether a declaration can advance to
+// that gate. Its receipt is not a ProviderUsePermit and cannot replace one.
+// Unresolved customer classification HOLDS before a route is selected; provider
+// disposition uncertainty retains provider_admission's own refusal semantics.
 // These are declarations at the customer boundary, not a compliance regime.
 // No producer currently supplies authority to handle declared ePHI. A declaration
 // of ordinary data is not evidence of a broader handling authority.
@@ -13,15 +24,24 @@ type JobClassification
 
 type JobAdmissionRefusal
   = EphiHandlingAuthorityHasNoProducer
-  | AdmissionReceiptMissing
-  | AdmissionReceiptSubjectMismatch
+  | ClassificationReceiptMissing
+  | ClassificationReceiptSubjectMismatch
 
-type JobAdmissionReceipt<P> sole_constructor {
+type JobClassificationReceipt<P> sole_constructor {
   subject: FabricIdentity<P, WorkKey>
+  issuer_frontier: FrontierRow
 }
 
+// Explicitly deferred by cool-crane-190 for the pre-regime admission spine.
+// Carried by each receipt so its missing authority cannot disappear in transport.
+data classification_receipt_issuer_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(module_path: "product.fabric.job_admission", decl_name: "JobClassificationReceipt"),
+  reason: "This self-issued receipt establishes that classification was performed, not that an authenticated principal authorized admission. An independently authorized issuer is owed.",
+  dissolution: unbound_dissolution(description: "An issuer authority binds admission evidence to an authenticated customer principal and refuses self-issued evidence on the deployed admission path. A declared issuer type alone does not discharge this frontier."),
+)
+
 type JobAdmission<P>
-  = JobAdmitted { receipt: JobAdmissionReceipt<P> }
+  = JobAdmitted { receipt: JobClassificationReceipt<P> }
   | JobHeld { subject: FabricIdentity<P, WorkKey> }
   | JobRefused { subject: FabricIdentity<P, WorkKey>, reason: JobAdmissionRefusal }
 
@@ -29,7 +49,7 @@ type JobAdmission<P>
 // remains distinguishable even if the caller has no receipt yet.
 fn classify_job<P>(subject: FabricIdentity<P, WorkKey>, classification: JobClassification) -> JobAdmission<P> {
   match classification {
-    DeclaredNonEphi => JobAdmitted { receipt: JobAdmissionReceipt { subject: subject } }
+    DeclaredNonEphi => JobAdmitted { receipt: JobClassificationReceipt { subject: subject, issuer_frontier: classification_receipt_issuer_frontier } }
     DeclaredEphi => JobRefused { subject: subject, reason: EphiHandlingAuthorityHasNoProducer }
     ClassificationUnresolved => JobHeld { subject: subject }
   }
@@ -42,18 +62,22 @@ fn classify_job<P>(subject: FabricIdentity<P, WorkKey>, classification: JobClass
 // do not establish that deployed enforcement.
 // An invoice is not an input to admission. This boundary rechecks the current
 // declaration: a previously admitted subject does not authorize changed handling.
-// The receipt is sealed on source acceptance; external authenticity remains the
-// responsibility of the transport that supplies it, not of a branded string.
-fn admit_job<P>(subject: FabricIdentity<P, WorkKey>, classification: JobClassification, receipt: JobAdmissionReceipt<P>?) -> JobAdmission<P> {
+// sole_constructor confines receipt literals to this file. It does not establish
+// caller identity or truth of a customer's declaration: classify_job is a public
+// decision producer. This receipt records that decision, not authenticated consent.
+// Transport provenance and issuer authorization remain a consumption frontier:
+// the deployed admission ingress must supply those before a receipt crosses an
+// untrusted boundary. No authenticated-issuer guarantee is claimed by this fold.
+fn admit_job<P>(subject: FabricIdentity<P, WorkKey>, classification: JobClassification, receipt: JobClassificationReceipt<P>?) -> JobAdmission<P> {
   match classify_job(subject: subject, classification: classification) {
     JobHeld { subject: s } => JobHeld { subject: s }
     JobRefused { subject: s, reason: r } => JobRefused { subject: s, reason: r }
     JobAdmitted { receipt: _ } => match receipt {
-      Absent => JobRefused { subject: subject, reason: AdmissionReceiptMissing }
+      Absent => JobRefused { subject: subject, reason: ClassificationReceiptMissing }
       Present { value: r } => if fabric_identity_eq(left: subject, right: r.subject) {
         JobAdmitted { receipt: r }
       } else {
-        JobRefused { subject: subject, reason: AdmissionReceiptSubjectMismatch }
+        JobRefused { subject: subject, reason: ClassificationReceiptSubjectMismatch }
       }
     }
   }
