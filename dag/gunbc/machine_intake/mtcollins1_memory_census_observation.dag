@@ -180,8 +180,13 @@ data mtcollins1_edac_clean_at_capture: Bool = true
 
 data mtcollins1_edac_uptime_at_capture_seconds: Second = second(count: 20)
 
+// THE WORKLOAD'S SHAPE IS AN ANNOTATION, NOT A FIELD: 4 x 16 GiB tmpfs chunks seeded from
+// /dev/urandom, sha256 hashed twice with the passes compared, EDAC tree read immediately before
+// and immediately after. It was a `description: NonEmptyStr` and review 64332 found it unread --
+// every OTHER field of this type is folded by the witness, which is what made the odd one out
+// visible. Prose restating the typed fields beside it is section 4c's misplaced data and section 3's
+// one-fact-two-places at once.
 type MtCollins1MemoryWorkload {
-  description: NonEmptyStr
   bytes_exercised: ByteSize
   write_exit_status: Int
   digest_stable_across_passes: Bool
@@ -192,7 +197,6 @@ type MtCollins1MemoryWorkload {
 }
 
 data mtcollins1_memory_workload: MtCollins1MemoryWorkload = MtCollins1MemoryWorkload {
-  description: "4 x 16 GiB tmpfs chunks seeded from /dev/urandom, sha256 hashed twice and the passes compared; EDAC tree read immediately before and immediately after.",
   bytes_exercised: byte_size(count: 68719476736),
   write_exit_status: 0,
   digest_stable_across_passes: true,
@@ -375,18 +379,36 @@ data mtcollins1_firmware_channel_bindings: List<MtCollins1FirmwareChannelBinding
 // this repository calls J11, as Ampere's tables define it, is the one carrying the CJR8N module.
 // A physical-label check is a photograph, not a software reading, and is out of scope here.
 type MtCollins1ConnectorIdentificationBasis {
-  smbios_to_connector_rule: NonEmptyStr
-  discriminating_witness: NonEmptyStr
-  corroborating_checks: NonEmptyStr
-  not_established: NonEmptyStr
   upstream_pair_authority: DeclarationRef
 }
 
+// THE IDENTIFICATION ARGUMENT, AS RATIONALE RATHER THAN AS DATA. SMBIOS Type 17 DeviceLocator
+// "DIMM n" is connector Jn for socket 0 and J(16+n) for socket 1, in Type 17 structure order --
+// SMBIOS prints no J-number, so this is a JOIN and not a reading. The discriminator is that
+// HMA82GR7CJR8N-VK occurs exactly once in the unit: firmware places it at SK0 MC5, SMBIOS at
+// "DIMM 11", and the Getting Started Guide's pair table puts MCU5's 1DPC member at J11. A
+// one-of-sixteen part agreeing with the pair table at the single position carrying it is not
+// reproduced by any shift or reversal of the sequence. Corroborating: SMBIOS Rank reads match the
+// firmware's 1R/2R column field-for-field in MCU order, and the populated set is exactly the odd
+// connectors, which the guide's 16-DIMM row specifies.
+//
+// FOUR OF THESE FIELDS WERE `NonEmptyStr` PARAGRAPHS AND REVIEW 64332 WAS RIGHT TO REJECT THEM. No
+// fold read any of them -- the witness touches only upstream_pair_authority.module_path -- and
+// not_established was a near-verbatim restatement of the WHAT IS NOT CLAIMED annotation above it,
+// one rationale in two carriers. Worse, this module ALREADY records deleting a six-hundred-character
+// paragraph in a String for exactly this reason and then re-committed the shape here. The rule it
+// states about itself is the one that applies: a data row no fold reads is a prose TODO wearing a
+// type, section 3c's dangling declaration and section 4c's misplaced prose at once.
+//
+// WHAT IS NOT ESTABLISHED, kept because it is the load-bearing limit and not because it was a field:
+// that the physical board silkscreen reads J11 at that connector. Nobody has inspected the board;
+// that is a photograph, not a software reading. The claim this row supports is a JOIN over software
+// readings, and it must not be consumed as a silkscreen observation.
+//
+// The discriminator itself IS exercised, by the witness fold
+// `the_one_of_sixteen_discriminator_the_identification_rests_on_still_exists`, which reads the
+// actual population rather than this prose -- which is why deleting the prose loses no evidence.
 data mtcollins1_connector_identification_basis: MtCollins1ConnectorIdentificationBasis = MtCollins1ConnectorIdentificationBasis {
-  smbios_to_connector_rule: "SMBIOS Type 17 DeviceLocator \"DIMM n\" is connector Jn for socket 0 and J(16+n) for socket 1, in Type 17 structure order. SMBIOS prints no J-number; this is a join, not a reading.",
-  discriminating_witness: "HMA82GR7CJR8N-VK occurs exactly once in the unit. Firmware places it at SK0 MC5; SMBIOS places it at \"DIMM 11\"; the Getting Started Guide's pair table places MCU5's 1DPC member at J11. A one-of-sixteen part agreeing with the pair table at the single position that carries it is not reproduced by any shift or reversal of the sequence.",
-  corroborating_checks: "SMBIOS Rank reads 1,2,1,1,2,2,1,2 (socket 0) and 1,1,2,1,1,1,1,2 (socket 1) across populated slots in order, matching the firmware's 1R/2R column in MCU order field-for-field; and the populated set is exactly the odd connectors, which the guide's 16-DIMM row specifies and the firmware corroborates by reporting every module at slot S0 of its channel.",
-  not_established: "That the physical board silkscreen reads J11 at that connector. No one has inspected the board; that is a photograph, not a software reading.",
   upstream_pair_authority: DeclarationRef {
     module_path: "extdeps.ampere.mt_collins_product_brief.memory_population",
     decl_name: "mt_collins_channel_connector_pairs",
@@ -853,12 +875,25 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
 // buy a subject binding and a workload is not a trade worth making against the risk of losing that
 // path. The run was stopped, the boot override cleared to "No override", and the controller left
 // verified healthy over IPMI (ARP REACHABLE at the expected MAC, mc info firmware 0.32).
+// THE FOUR PROSE FIELDS THIS TYPE CARRIED ARE GONE, same finding as the identification basis
+// (review 64332). No fold read intent, observed_failure, preserved_artifacts or why_not_retried.
+// preserved_artifacts was the worst of them: it buried two artifact PATHS inside an English
+// sentence while this module declares paths as typed rows, which is section 2's anemic-modeling tell
+// -- a String leaf hiding named parts.
+//
+// WHAT THE ATTEMPT ESTABLISHED, as rationale. Attempt 3 aimed to close the subject-binding gap and
+// add a named memory workload with EDAC counters either side. It never produced a host capture: the
+// host reached the CD's GRUB and started the EFI kernel, then failed at the initrd load with
+// "EFI stub: ERROR: Failed to load initrd: 0x8000000000000001" and "VFS: Unable to mount root fs on
+// unknown-block(0,0)". NOT a media drop -- a vanished medium could not have served GRUB and a kernel
+// first. The host was reset while observed redirection status was still 100 where successful boots
+// had reached 1; these artifacts do NOT establish that the difference caused the failure, and that
+// gap is the point of recording it. A further attempt was declined rather than driving a degraded
+// remote-media subsystem harder on the only out-of-band path to the canary: stop-media and
+// start-media each answered HTTP 500 with an UNCHANGED readback, so neither transition was
+// established as applied and the HTTP status decided nothing either way.
 type MtCollins1CaptureAttemptFailure {
   attempt: Nat
-  intent: NonEmptyStr
-  observed_failure: NonEmptyStr
-  preserved_artifacts: NonEmptyStr
-  why_not_retried: NonEmptyStr
 }
 
 // THIS ATTEMPT'S srv2-SIDE ARTIFACT RETAINS THE BMC CREDENTIAL IN argv, DELIBERATELY. Two
@@ -878,8 +913,4 @@ type MtCollins1CaptureAttemptFailure {
 // a password file; that belongs in the producer, not in a post-hoc edit of captured bytes.
 data mtcollins1_attempt3_failure: MtCollins1CaptureAttemptFailure = MtCollins1CaptureAttemptFailure {
   attempt: 3,
-  intent: "Close the subject-binding gap (dmidecode type 1/2/3), record per-section argv and exit status, and add a named memory workload with EDAC counters read before and after, so the health reading would be a load-based one rather than a snapshot.",
-  observed_failure: "The host reached the CD's GRUB, started the EFI kernel, and then failed at the INITRD load: \"EFI stub: ERROR: Failed to load initrd: 0x8000000000000001\", followed by \"VFS: Unable to mount root fs on unknown-block(0,0)\". NOT a media drop — a medium that had vanished could not have served GRUB and a kernel first. The host was reset while the observed redirection status was still 100, whereas the boots that produced a host capture had already reached status 1; these artifacts do not establish whether that difference caused the initrd failure. No host capture was produced.",
-  preserved_artifacts: "artifacts/bmc/mtcollins1-attempt3-sol.log (the console, carrying the panic) and artifacts/bmc/mtcollins1-attempt3-srv2-side.txt (the pre-boot ARP observation with a typed verdict against the expected MAC, plus the boot artifact digest). A failed attempt whose bytes are discarded reproduces the exact failure mode this census exists to end.",
-  why_not_retried: "A further attempt refused before booting: stop-media and start-media each answered HTTP 500 and the subsequent configurations readback was UNCHANGED, so neither requested transition was established as applied; the HTTP status decided nothing either way. This controller is the only out-of-band path to the M1 canary, so driving a degraded remote-media subsystem harder was declined in favour of leaving the path intact. Boot override was cleared and the controller verified healthy over IPMI.",
 }
