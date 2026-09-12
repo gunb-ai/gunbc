@@ -39,6 +39,17 @@ type ClaimSourceRootLayout
   = PublicWorktreeLayout
   | PinnedPublicPlusLocalRoot { public_prefix: NonEmptyStr }
 
+// PinnedPublicPlusLocalRoot is DECLARED FRONTIER, not dangling. claim_source_root_args matches
+// the arm and the destination witness constructs it; no production constructor emits it.
+// agent_execution_contract and contract_source_roots on every non-ExecutionContract arm bind
+// PublicWorktreeLayout. NAMED CONSUMER: a live RoadmapNode.execution the belt looks up, whose
+// ExecutionContract.source_roots is PinnedPublicPlusLocalRoot, so spawn/verify argv is
+// claim_source_root_args of that arm rather than the public-only pair. TRIGGER: such a node is
+// constructed on this public authority or on a plan supplied as a parameter, and a production
+// tick (POST /dispatch or belt verify) reads those args. A witness that constructs the arm in
+// isolation does not satisfy this trigger. Binding every contract to PublicWorktreeLayout does
+// not satisfy it either.
+
 // WorkItemExecutionContract is the per-node execution fact. ExecutionContractUnspecified and
 // ExecutionContract have live producers in gunbc.roadmap_authority. OperatorExclusive, ExternalLead
 // and CalendarObservation are DECLARED FRONTIER, not dangling: launch admission, serve 409,
