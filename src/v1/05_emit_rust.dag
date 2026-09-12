@@ -17030,7 +17030,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        cargo_argv.push(host_fact(&facts, &format!(\"cargo_argv_\{index\}\")));", "\n",
       "    \}", "\n",
       "    let emitted_build = NativeRouteEmittedBuild \{", "\n",
-      "        cargo_argv: Rc::new(cargo_argv),", "\n",
+      "        cargo_argv: Rc::new(cargo_argv.into()),", "\n",
       "        rustflags: host_fact(&facts, \"rustflags\"),", "\n",
       "        compiler_path: host_fact(&facts, \"compiler_path\"),", "\n",
       "        rustc_identity: host_fact(&facts, \"rustc_identity\"),", "\n",
