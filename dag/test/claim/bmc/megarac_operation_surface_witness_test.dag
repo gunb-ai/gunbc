@@ -4,7 +4,6 @@ import std.types { Bool, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
-import extdeps.boards.types { AmpereMtCollins }
 import extdeps.bmc.megarac {
   BiosUefiSettingsSurfaceAbsent,
   DiesOnReset,
@@ -46,17 +45,10 @@ import extdeps.ampere.oem_sel {
   ampere_oem_sel_producer_layout_covers_sensor,
   ampere_openbmc_boot_syndrome_sensor_number,
 }
-import gunbc.machine_intake_pre_os_observation_capabilities {
-  AggregateMemoryPowerExposed,
+import gunbc.machine_intake_sol_collector_observation {
   CollectorStillRunning,
   CollectorTerminatedByDeadline,
   CollectorTerminatedExitZeroStdinEof,
-  HostCallbackIntendedNotDemonstrated,
-  LocalizationUnavailableFromExposedTelemetry,
-  NoManagedAcActuator,
-  OemDecodeControllerDeclaredUnknown,
-  PreOsObservationCapabilities,
-  SelStandardDecoded,
   SolCollectorDidNotEstablishCoverage,
   SolCoverageComplete,
   SolCoverageNeverEstablished,
@@ -67,7 +59,6 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   SolHostProducedNoConsoleBytes,
   SolSessionActivationAcknowledged,
   SolCollectorObservation,
-  WebEventLogAvailable,
   sol_activation_acknowledged_without_coverage,
   sol_host_fact_from_collector,
 }
@@ -157,57 +148,35 @@ test fn web_and_ipmi_event_log_layouts_are_distinct() -> Bool {
     && megarac_web_event_log_layout != megarac_ipmi_sel_layout
 }
 
-fn collector_without_coverage_profile() -> PreOsObservationCapabilities {
-  PreOsObservationCapabilities {
-    baseboard: AmpereMtCollins,
-    controller_firmware: megarac_firmware_0_32,
-    console: SolCollectorObservation {
-      activation: SolSessionActivationAcknowledged,
-      coverage: SolCoverageNeverEstablished,
-      termination: CollectorTerminatedExitZeroStdinEof,
-      host_payload: SolHostPayloadNotReceived,
-      terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
-    },
-    sel: SelStandardDecoded,
-    oem_sel_decode: OemDecodeControllerDeclaredUnknown,
-    web_event_log: WebEventLogAvailable,
-    dimm_localization: LocalizationUnavailableFromExposedTelemetry,
-    memory_power: AggregateMemoryPowerExposed,
-    managed_ac: NoManagedAcActuator,
-    host_callback: HostCallbackIntendedNotDemonstrated,
+fn collector_without_coverage() -> SolCollectorObservation {
+  SolCollectorObservation {
+    activation: SolSessionActivationAcknowledged,
+    coverage: SolCoverageNeverEstablished,
+    termination: CollectorTerminatedExitZeroStdinEof,
+    host_payload: SolHostPayloadNotReceived,
+    terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
   }
 }
 
-fn collector_with_host_payload_profile() -> PreOsObservationCapabilities {
-  PreOsObservationCapabilities {
-    baseboard: AmpereMtCollins,
-    controller_firmware: megarac_firmware_0_32,
-    console: SolCollectorObservation {
-      activation: SolSessionActivationAcknowledged,
-      coverage: SolCoverageComplete,
-      termination: CollectorTerminatedExitZeroStdinEof,
-      host_payload: SolHostPayloadReceived,
-      terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
-    },
-    sel: SelStandardDecoded,
-    oem_sel_decode: OemDecodeControllerDeclaredUnknown,
-    web_event_log: WebEventLogAvailable,
-    dimm_localization: LocalizationUnavailableFromExposedTelemetry,
-    memory_power: AggregateMemoryPowerExposed,
-    managed_ac: NoManagedAcActuator,
-    host_callback: HostCallbackIntendedNotDemonstrated,
+fn collector_with_host_payload() -> SolCollectorObservation {
+  SolCollectorObservation {
+    activation: SolSessionActivationAcknowledged,
+    coverage: SolCoverageComplete,
+    termination: CollectorTerminatedExitZeroStdinEof,
+    host_payload: SolHostPayloadReceived,
+    terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
   }
 }
 
 test fn incomplete_sol_coverage_is_not_a_host_silence_fact() -> Bool {
-  sol_activation_acknowledged_without_coverage(obs: collector_without_coverage_profile().console)
-    && megarac_incomplete_sol_coverage_is_not_a_host_fact(profile: collector_without_coverage_profile())
-    && !megarac_incomplete_sol_coverage_is_not_a_host_fact(profile: collector_with_host_payload_profile())
-    && match megarac_sol_host_fact(profile: collector_without_coverage_profile()) {
+  sol_activation_acknowledged_without_coverage(obs: collector_without_coverage())
+    && megarac_incomplete_sol_coverage_is_not_a_host_fact(obs: collector_without_coverage())
+    && !megarac_incomplete_sol_coverage_is_not_a_host_fact(obs: collector_with_host_payload())
+    && match megarac_sol_host_fact(obs: collector_without_coverage()) {
       SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished } => true
       _ => false
     }
-    && match megarac_sol_host_fact(profile: collector_with_host_payload_profile()) {
+    && match megarac_sol_host_fact(obs: collector_with_host_payload()) {
       SolHostPayloadAdmitted => true
       _ => false
     }

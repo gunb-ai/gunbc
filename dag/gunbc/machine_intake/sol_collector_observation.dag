@@ -1,0 +1,76 @@
+module gunbc.machine_intake_sol_collector_observation
+
+import std.types { Bool, Int, Duration }
+
+// ATTEMPT OBSERVATION: what one SOL collector covered and received. Platform capability
+// (what an implementation can provide: SolAbsent | SolPresentSilent | SolPresentEmitting,
+// SEL, OEM-decode, and the other PreOs axes) is gunbc.machine_intake_pre_os_observation_capabilities
+// on gunbc#11110. This module does not mint that file.
+
+// Activation, coverage, host payload, termination, and terminate_deadline_seconds are
+// independent. A window that elapses while the client stays attached is not coverage complete.
+// The deadline must terminate the client. Local client banner bytes (ipmitool tcgetattr /
+// SOL Session operational) are not host payload.
+
+type SolSessionActivationStanding
+  = SolSessionActivationAcknowledged
+  | SolSessionActivationNotAcknowledged
+
+type SolCollectorCoverageStanding
+  = SolCoverageNeverEstablished
+  | SolCoverageInterrupted
+  | SolCoverageComplete
+  | SolCoverageStillRunningPastDeadline
+
+type SolCollectorTermination
+  = CollectorStillRunning
+  | CollectorTerminatedExitZeroStdinEof
+  | CollectorTerminatedByDeadline
+  | CollectorTerminatedOtherwise { exit_status: Int }
+
+type SolHostPayloadStanding
+  = SolHostPayloadReceived
+  | SolHostPayloadNotReceived
+
+type SolCollectorObservation {
+  activation: SolSessionActivationStanding
+  coverage: SolCollectorCoverageStanding
+  termination: SolCollectorTermination
+  host_payload: SolHostPayloadStanding
+  terminate_deadline_seconds: Duration
+}
+
+type SolHostFactFromCollector
+  = SolHostPayloadAdmitted
+  | SolHostProducedNoConsoleBytes
+  | SolCollectorDidNotEstablishCoverage { coverage: SolCollectorCoverageStanding }
+
+fn sol_host_fact_from_collector(obs: SolCollectorObservation) -> SolHostFactFromCollector {
+  match obs.host_payload {
+    SolHostPayloadReceived => SolHostPayloadAdmitted
+    SolHostPayloadNotReceived =>
+      match obs.coverage {
+        SolCoverageComplete => SolHostProducedNoConsoleBytes
+        SolCoverageNeverEstablished => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+        SolCoverageInterrupted => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+        SolCoverageStillRunningPastDeadline => SolCollectorDidNotEstablishCoverage { coverage: obs.coverage }
+      }
+  }
+}
+
+fn sol_activation_acknowledged_without_coverage(obs: SolCollectorObservation) -> Bool {
+  match obs.activation {
+    SolSessionActivationNotAcknowledged => false
+    SolSessionActivationAcknowledged =>
+      match obs.coverage {
+        SolCoverageComplete => false
+        SolCoverageNeverEstablished => true
+        SolCoverageInterrupted => true
+        SolCoverageStillRunningPastDeadline => true
+      }
+  }
+}
+
+// Frontier after #11110 lands: ConsoleSessionHeldPastActivation derives from a
+// SolCollectorObservation whose activation is Acknowledged and whose termination is not
+// yet decided; SolBannerOnly / SolHostBytesObserved derive from host_payload standing.
