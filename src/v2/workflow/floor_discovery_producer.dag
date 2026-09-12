@@ -39,6 +39,22 @@ import v2.std.logic { Bool }
 import std.types { String, Int, List }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
+// Source ingress shared with required-floor preparation. This is the full ingress inventory,
+// before witness policy or closure selection; consumers must retain per-source dispositions.
+type FloorDiscoverySource {
+  module_path: String
+  repo_path: String
+  content: String
+}
+
+type FloorDiscoverySourceInventory
+  = FloorDiscoverySourcesObserved { sources: List<FloorDiscoverySource> }
+  | FloorDiscoverySourcesRefused { reason: String }
+
+fn floor_discovery_source_inventory(pool_roots: List<String>) -> FloorDiscoverySourceInventory {
+  floor_discovery_source_inventory(pool_roots: pool_roots)
+}
+
 // THE CORPUS WALK AND ITS ROW-ADMISSION POLICY. This module is discovery's EFFECTFUL consumer:
 // it walks the declared roots with Filesystem.List/Read, folds the per-file authority
 // (v2.workflow.floor_discovery_source_authority) over every non-excluded `.dag` file, applies the

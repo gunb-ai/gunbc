@@ -1,0 +1,196 @@
+module test.claim.cause_assertion_census_witness
+
+import std.types { Bool, Int, List, String, SourceSpan }
+import std.import { ParsedImportStatement }
+import tools.cause_assertion_census {
+  CauseModuleSyntax, CauseDeclarationJoined, CauseDeclarationMissing, CauseDeclarationAmbiguous,
+  CauseCaretOccurrence,
+  CauseSourceObserved, CauseSourceExcluded, CauseSourceLexicalRefused, cause_source_observation_from_content,
+  cause_caret_occurrences, cause_import_members, cause_declarations_by_name, cause_join_declaration,
+  cause_row_evidence, cause_row_record_use, cause_census_join, cause_all_joined_rows, cause_standing_rows,
+  CauseCorpusAcquisition, cause_complete_report, cause_corpus_acquire, CauseSourceIndexRefused
+}
+import v2.workflow.floor_discovery_producer { FloorDiscoverySource }
+import v2.lens.module_graph { ModuleDeclarationFact }
+import v2.std.compilers.lexing { Token }
+import v2.std.decl_index { DataDeclTypeFact }
+import v2.std.collection { empty_map, map_insert }
+
+fn cause_census_token(class: Symbol, lexeme: String, at: Int) -> Token {
+  Token { class: class, lexeme: lexeme, file: ^cause_census_fixture, start: at, end: at + 1 }
+}
+
+test fn cause_census_retains_caret_spelling_and_argument_coordinate() -> Bool {
+  let tokens = [
+    cause_census_token(class: ^ShIdent, lexeme: "cause", at: 0),
+    cause_census_token(class: ^ShColon, lexeme: ":", at: 1),
+    cause_census_token(class: ^ShCaret, lexeme: "^", at: 2),
+    cause_census_token(class: ^ShIdent, lexeme: "first_cause", at: 3),
+    cause_census_token(class: ^ShEqEq, lexeme: "==", at: 4),
+    cause_census_token(class: ^ShCaret, lexeme: "^", at: 5),
+    cause_census_token(class: ^ShIdent, lexeme: "second_cause", at: 6)
+  ]
+  let occurrences = cause_caret_occurrences(tokens: tokens)
+  count(occurrences) == 2
+    && any(occurrences, o => o.spelling == "first_cause" && o.cause_argument)
+    && any(occurrences, o => o.spelling == "second_cause" && !o.cause_argument)
+}
+
+test fn cause_census_string_token_cannot_mint_an_assertion() -> Bool {
+  count(cause_caret_occurrences(tokens: [
+    cause_census_token(class: ^ShLitStr, lexeme: "cause: ^fake", at: 0)
+  ])) == 0
+}
+
+test fn cause_census_import_projection_preserves_dotted_member_identity() -> Bool {
+  let members = cause_import_members(tokens: [
+    cause_census_token(class: ^ShLBrace, lexeme: "{", at: 2),
+    cause_census_token(class: ^ShIdent, lexeme: "child", at: 3),
+    cause_census_token(class: ^ShDot, lexeme: ".", at: 4),
+    cause_census_token(class: ^ShIdent, lexeme: "cause", at: 5),
+    cause_census_token(class: ^ShComma, lexeme: ",", at: 6),
+    cause_census_token(class: ^ShIdent, lexeme: "other", at: 7),
+    cause_census_token(class: ^ShRBrace, lexeme: "}", at: 8),
+    cause_census_token(class: ^ShIdent, lexeme: "outside", at: 9)
+  ], statement: ParsedImportStatement {
+    span: SourceSpan { file: "fixture.dag", start: 0, end: 9 }, imported_module: "fixture"
+  })
+  count(members) == 2
+    && any(members, m => m.module == "fixture" && m.member == "child.cause")
+    && any(members, m => m.member == "other")
+    && !any(members, m => m.member == "cause" || m.member == "outside")
+}
+
+fn cause_census_declaration(owner: String) -> DataDeclTypeFact {
+  DataDeclTypeFact { module_path: owner, decl_name: "fixture_cause", type_name: "String", rel_path: join([owner, "dag"], ".") }
+}
+
+fn cause_census_witness_source() -> CauseModuleSyntax {
+  CauseModuleSyntax {
+    module: "test.fixture", path: "dag/test/fixture_test.dag", witness: true,
+    carets: [], import_modules: empty_map(), import_members: empty_map()
+  }
+}
+
+test fn cause_census_missing_and_ambiguous_declarations_are_separate_refusals() -> Bool {
+  let subject = cause_census_witness_source()
+  let missing = cause_join_declaration(source: subject, spelling: "fixture_cause", declarations: cause_declarations_by_name(declarations: []))
+  let ambiguous = cause_join_declaration(source: subject, spelling: "fixture_cause", declarations: cause_declarations_by_name(declarations: [
+    cause_census_declaration(owner: "first"), cause_census_declaration(owner: "second")
+  ]))
+  let missing_holds = match missing {
+    CauseDeclarationMissing { path: _, spelling: _ } => true
+    CauseDeclarationJoined { declaration: _ } => false
+    CauseDeclarationAmbiguous { path: _, spelling: _, candidates: _ } => false
+  }
+  let ambiguous_holds = match ambiguous {
+    CauseDeclarationAmbiguous { path: _, spelling: _, candidates: candidates } => count(candidates) == 2
+    CauseDeclarationMissing { path: _, spelling: _ } => false
+    CauseDeclarationJoined { declaration: _ } => false
+  }
+  missing_holds && ambiguous_holds
+}
+
+test fn cause_census_import_by_name_repairs_only_its_own_declaration() -> Bool {
+  let unimported = cause_census_witness_source()
+  let imported = CauseModuleSyntax {
+    module: unimported.module, path: unimported.path, witness: true, carets: [],
+    import_modules: map_insert(m: empty_map(), key: "first", value: true),
+    import_members: map_insert(m: empty_map(), key: "first.fixture_cause", value: true)
+  }
+  let first = cause_row_evidence(declaration: cause_census_declaration(owner: "first"))
+  let second = cause_row_evidence(declaration: cause_census_declaration(owner: "second"))
+  count(sorted_map_keys(cause_row_record_use(row: first, source: unimported).missing_import_files)) == 1
+    && count(sorted_map_keys(cause_row_record_use(row: first, source: imported).missing_import_files)) == 0
+    && count(sorted_map_keys(cause_row_record_use(row: second, source: imported).missing_import_files)) == 1
+}
+
+fn cause_census_source(owner: String, witness: Bool, argument: Bool) -> CauseModuleSyntax {
+  CauseModuleSyntax {
+    module: owner, path: join([owner, "dag"], "."), witness: witness,
+    carets: [CauseCaretOccurrence { spelling: "fixture_cause", start: 0, cause_argument: argument }],
+    import_modules: empty_map(), import_members: empty_map()
+  }
+}
+
+test fn cause_census_ambiguous_assertion_cannot_become_no_assertion() -> Bool {
+  let joined = cause_census_join(sources: [
+    cause_census_source(owner: "first", witness: false, argument: true),
+    cause_census_source(owner: "second", witness: false, argument: true),
+    cause_census_source(owner: "test.fixture", witness: true, argument: false)
+  ], declarations: [cause_census_declaration(owner: "first"), cause_census_declaration(owner: "second")])
+  count(joined.refusals) == 1 && count(cause_standing_rows(joined: joined, rows: cause_all_joined_rows(joined: joined))) == 0
+}
+
+test fn cause_census_deleted_production_cause_keeps_witness_refusal() -> Bool {
+  let joined = cause_census_join(sources: [
+    cause_census_source(owner: "first", witness: false, argument: true),
+    cause_census_source(owner: "test.fixture", witness: true, argument: false)
+  ], declarations: [])
+  count(joined.refusals) == 2 && count(cause_standing_rows(joined: joined, rows: cause_all_joined_rows(joined: joined))) == 0
+}
+
+test fn cause_census_ambiguity_does_not_erase_a_separate_import_gap() -> Bool {
+  let known = CauseModuleSyntax {
+    module: "test.known", path: "known.dag", witness: true,
+    carets: [CauseCaretOccurrence { spelling: "fixture_cause", start: 0, cause_argument: false }],
+    import_modules: map_insert(m: empty_map(), key: "first", value: true),
+    import_members: empty_map()
+  }
+  let report = cause_complete_report(acquisition: CauseCorpusAcquisition {
+    sources: [
+      cause_census_source(owner: "first", witness: false, argument: true),
+      cause_census_source(owner: "second", witness: false, argument: true),
+      known,
+      cause_census_source(owner: "test.ambiguous", witness: true, argument: false)
+    ],
+    excluded: [], refusals: [], identifier_counts: empty_map()
+  }, declarations: [cause_census_declaration(owner: "first"), cause_census_declaration(owner: "second")])
+  string_contains(s: report, pattern: "missing_import_files\tknown.dag\n")
+    && string_contains(s: report, pattern: "first.fixture_cause\tfirst.dag\ttrue\t\tknown.dag\tknown.dag")
+}
+
+test fn cause_census_acquired_projection_keeps_raw_lexeme_and_seed_class() -> Bool {
+  match cause_source_observation_from_content(path: "cause_projection_fixture.dag", source: "module fixture\n// Ω shifts bytes, not scalar spans\nimport std.types { String }\ndata note: String = \"cause: ^fake\"\nfn value() -> Symbol { ^real_cause }\n") {
+    CauseSourceObserved { tokens: tokens, imports: imports } => {
+      let occurrences = cause_caret_occurrences(tokens: tokens)
+      count(occurrences) == 1
+        && any(occurrences, c => c.spelling == "real_cause")
+        && any(tokens, t => t.class == ^ShLitStr && t.lexeme == "\"cause: ^fake\"")
+        && any(cause_import_members(tokens: tokens, statement: imports[0]), m => m.module == "std.types" && m.member == "String")
+    }
+    _ => false
+  }
+}
+
+test fn cause_census_moduleless_source_is_explicitly_excluded() -> Bool {
+  match cause_source_observation_from_content(path: "fragment.dag", source: "type Fragment { value: String }\n") {
+    CauseSourceExcluded { path: path, cause: _ } => path == "fragment.dag"
+    _ => false
+  }
+}
+
+test fn cause_census_unknown_token_cannot_report_no_causes() -> Bool {
+  match cause_source_observation_from_content(path: "broken.dag", source: "module fixture\n@\n") {
+    CauseSourceLexicalRefused { path: path } => path == "broken.dag"
+    _ => false
+  }
+}
+
+test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
+  let source = FloorDiscoverySource {
+    module_path: "fixture", repo_path: "fixture.dag",
+    content: "module fixture\nimport std.types { String }\nfn value() -> Symbol { ^fixture_cause }\n"
+  }
+  let observed = cause_corpus_acquire(subjects: [source], modules: [
+    ModuleDeclarationFact { module: "fixture", path: "fixture.dag" }
+  ])
+  let refused = cause_corpus_acquire(subjects: [source], modules: [])
+  count(observed.sources) == 1 && count(observed.refusals) == 0
+    && count(sorted_map_keys(observed.identifier_counts)) > 0
+    && count(refused.sources) == 0 && count(refused.refusals) == 1
+    && match refused.refusals[0] {
+      CauseSourceIndexRefused { path: path, module_path: owner } => path == "fixture.dag" && owner == "fixture"
+      _ => false
+    }
+}
