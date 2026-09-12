@@ -2,7 +2,7 @@ module gunbc.fabric_event_log_host
 
 import std.types { String, NonEmptyStr, FilePath, EpochSecs }
 import std.algebra { trim }
-import extdeps.clock
+import extdeps.clock { Clock }
 import product.placement_supply { HostIdentity }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host, dashboard_instance_event_log_root }
 import gunbc.fabric_event_log { fabric_event_log_placement, event_log_remote_for, EventLogLayout, event_log_layout }

@@ -49,7 +49,7 @@ import extdeps.http.client
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.llm.codex_app_server { CodexAppServerExecutable }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.npm
 import gunbc.host_cli_dependency {
   observe_host_cli_dependency,
