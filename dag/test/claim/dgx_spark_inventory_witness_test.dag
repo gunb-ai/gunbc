@@ -30,8 +30,8 @@ fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: 
   match admit_ledger_evidence(evidence: evidence) {
     AllLedgersAdmitted { ledgers: ledgers } => {
       match sum_inventory_balances(ledgers: ledgers) {
-        InventoryPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
-        InventoryPopulationSummed { balance: b, lot_positions: _ } =>
+        InventoryPopulationRepeatedLot { repetition: _ } => false
+        InventoryPopulationSummed { balance: b } =>
           b.acquired == acquired && b.received == received && b.owned == owned
       }
     }
@@ -99,8 +99,8 @@ test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
   match admit_ledger_evidence(evidence: dgx_spark_procurement_ledgers) {
     AllLedgersAdmitted { ledgers: ledgers } => {
       match sum_inventory_balances(ledgers: ledgers) {
-        InventoryPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
-        InventoryPopulationSummed { balance: b, lot_positions: _ } =>
+        InventoryPopulationRepeatedLot { repetition: _ } => false
+        InventoryPopulationSummed { balance: b } =>
           unique(xs: dgx_spark_asset_identities, eq: physical_asset_identity_eq)
             && dgx_spark_asset_identities.length() == b.received && b.received == b.owned
       }
@@ -180,9 +180,9 @@ test fn w_repeated_acquisition_identity_refuses_population_total() -> Bool {
         LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
         AllLedgersAdmitted { ledgers: ledgers } =>
           match sum_inventory_balances(ledgers: ledgers) {
-            InventoryPopulationSummed { balance: _, lot_positions: _ } => false
-            InventoryPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: n } =>
-              inventory_lot_identity_eq(left: l, right: dgx_spark_micro_center_lot.identity) && first == 0 && n == 2
+            InventoryPopulationSummed { balance: _ } => false
+            InventoryPopulationRepeatedLot { repetition: r } =>
+              inventory_lot_identity_eq(left: r.lot, right: dgx_spark_micro_center_lot.identity) && r.first_ordinal == 0 && r.ledger_ordinal == 2
           }
       }
   })

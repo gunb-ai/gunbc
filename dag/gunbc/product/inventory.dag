@@ -546,7 +546,7 @@ fn departure_origin_position(origin: DepartureOrigin) -> StockPosition {
 type AdmittedInventoryLedger sole_constructor {
   lot: ProcurementLot
   events: List<InventoryEvent>
-  balance: InventoryBalance
+  distribution: StockDistribution
 }
 
 type InventoryLedgerAdmission
@@ -562,7 +562,7 @@ fn admit_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> 
   match fold_inventory_ledger(lot: lot, events: events) {
     LedgerSettled { state: s } =>
       LedgerAdmitted { admitted: AdmittedInventoryLedger {
-        lot: lot, events: events, balance: inventory_balance_from_state(state: s),
+        lot: lot, events: events, distribution: s.distribution,
       } }
     LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l } =>
       LedgerAdmissionRefused { lot: lot.identity, cause: c, event_ordinal: o, event_label: l }
@@ -1178,8 +1178,8 @@ fn fold_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> L
   })
 }
 
-// InventoryBalance is derived from the settled ledger state (or summed over admitted
-// ledgers); no field of ProcurementLot holds one and no event carries one.
+// InventoryBalance is derived from StockDistribution by one projection and never
+// authored elsewhere; no field of ProcurementLot holds one and no event carries one.
 // Its nine buckets are three different kinds of reading over the same partition and it is worth
 // saying which is which, because a reader who takes them all for disjoint tallies will double
 // count. owned, received and qualified are AGGREGATES over several positions; unqualified,
@@ -1209,10 +1209,10 @@ type InventoryBalanceProjection
       event_label: NonEmptyStr,
     }
 
-// Retain the balance when admission already holds the settled state. A population
-// consumer must not replay the same events to recover a result admission discarded.
-fn inventory_balance_from_state(state: LedgerState) -> InventoryBalance {
-  let d = state.distribution
+// Both single-ledger and population readings use this one projection. Admission
+// retains the settled distribution, so neither consumer needs to replay events.
+fn inventory_balance_from_distribution(distribution: StockDistribution) -> InventoryBalance {
+  let d = distribution
   InventoryBalance {
     acquired: stock_distribution_total(distribution: d),
     owned: stock_distribution_total(distribution: d) - d.departed,
@@ -1234,7 +1234,7 @@ fn derive_inventory_balance(
   match admit_inventory_ledger(lot: lot, events: events) {
     LedgerAdmissionRefused { lot: _, cause: c, event_ordinal: o, event_label: l } =>
       BalanceRefused { cause: c, event_ordinal: o, event_label: l }
-    LedgerAdmitted { admitted: a } => BalanceDerived { balance: a.balance }
+    LedgerAdmitted { admitted: a } => BalanceDerived { balance: inventory_balance_from_distribution(distribution: a.distribution) }
   }
 }
 
@@ -1246,45 +1246,66 @@ fn derive_inventory_balance(
 // deliberately retain repeated evidence to diagnose asset-source conflicts.
 // Consumers: test.claim.dgx_spark_inventory_witness and
 // test.claim.inventory_ledger_witness through the required witness lane.
+type InventoryLotRepetition {
+  lot: InventoryLotIdentity
+  first_ordinal: Nat
+  ledger_ordinal: Nat
+}
+
 type InventoryPopulationBalance
-  = InventoryPopulationSummed { balance: InventoryBalance, lot_positions: Map<InventoryLotIdentity, Nat> }
-  | InventoryPopulationRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
+  = InventoryPopulationSummed { balance: InventoryBalance }
+  | InventoryPopulationRepeatedLot { repetition: InventoryLotRepetition }
+
+// Internal fold state: positions are consumed by the repeated-lot diagnostic and
+// are not published as part of a successful population reading.
+type InventoryPopulationFold {
+  distribution: StockDistribution
+  lot_positions: Map<InventoryLotIdentity, Nat>
+  repetition: InventoryLotRepetition?
+}
 
 fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPopulationBalance {
-  fold(ledgers, init: InventoryPopulationSummed {
-    balance: inventory_balance_from_state(state: initial_ledger_state()),
+  let settled = fold(ledgers, init: InventoryPopulationFold {
+    distribution: empty_stock_distribution(),
     lot_positions: empty_map(),
+    repetition: none,
   }, f: fn(acc, ledger) {
-    match acc {
-      InventoryPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: n } =>
-        InventoryPopulationRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: n }
-      InventoryPopulationSummed { balance: total, lot_positions: seen } => {
-        match lookup(seen, ledger.lot.identity) {
-          Present { value: first } => InventoryPopulationRepeatedLot {
-            lot: ledger.lot.identity, first_ordinal: first, ledger_ordinal: seen.length(),
-          }
-          Absent => {
-            let b = ledger.balance
-            InventoryPopulationSummed {
-              lot_positions: map_insert(seen, ledger.lot.identity, seen.length()),
-              balance: InventoryBalance {
-                acquired: total.acquired + b.acquired,
-                owned: total.owned + b.owned,
-                received: total.received + b.received,
-                unqualified: total.unqualified + b.unqualified,
-                qualified: total.qualified + b.qualified,
-                available: total.available + b.available,
-                reserved: total.reserved + b.reserved,
-                installed: total.installed + b.installed,
-                quarantined: total.quarantined + b.quarantined,
-                departed: total.departed + b.departed,
-              },
-            }
+    match acc.repetition {
+      Present { value: _ } => acc
+      Absent => match lookup(acc.lot_positions, ledger.lot.identity) {
+        Present { value: first } => InventoryPopulationFold {
+          distribution: acc.distribution,
+          lot_positions: acc.lot_positions,
+          repetition: Present { value: InventoryLotRepetition {
+            lot: ledger.lot.identity, first_ordinal: first, ledger_ordinal: acc.lot_positions.length(),
+          } },
+        }
+        Absent => {
+          let d = ledger.distribution
+          let total = acc.distribution
+          InventoryPopulationFold {
+            lot_positions: map_insert(acc.lot_positions, ledger.lot.identity, acc.lot_positions.length()),
+            repetition: none,
+            distribution: StockDistribution {
+              awaiting_receipt: total.awaiting_receipt + d.awaiting_receipt,
+              unqualified: total.unqualified + d.unqualified,
+              quarantined: total.quarantined + d.quarantined,
+              available: total.available + d.available,
+              reserved: total.reserved + d.reserved,
+              installed: total.installed + d.installed,
+              departed: total.departed + d.departed,
+            },
           }
         }
       }
     }
   })
+  match settled.repetition {
+    Present { value: repeated } => InventoryPopulationRepeatedLot { repetition: repeated }
+    Absent => InventoryPopulationSummed {
+      balance: inventory_balance_from_distribution(distribution: settled.distribution),
+    }
+  }
 }
 
 // There is deliberately NO balance_reconciles_to_acquired function, and the reason is worth the row

@@ -596,60 +596,11 @@ fn dimm_lot_intent_fits_the_lot() -> Bool {
     <= dimm_lot_64gib_32x.quantity_acquired
 }
 
-// ---------------------------------------------------------------------------
-// DGX Spark procurement population, independently evidenced on 2026-09-12:
-// Micro Center's receipt contains six one-unit lines, description
-// "NVIDIADGX DGX SPARK GB10/128/4/L", and the six serials bound below.
-// The eBay PAIR is a separate acquisition. The recalled six was one lot, not
-// the whole population. Neither quantity is back-solved from eight.
-//
-// The Micro Center North Jersey transaction date is 2026-09-01. Obtaining the
-// receipt refuted BOTH proposed acquisition dates (2026-08-19 and 2026-08-15);
-// neither was selected or averaged. This is a transaction date, not an inferred
-// receipt date or service date. No financial receipt contents are published.
-//
-// These are procurement events, not the 2 + 2 + 3 + 1 LAN arrival batches in
-// gunbc.spark.dgx_procurement. The receipt identifies six inventory labels by
-// serial. No serial has been matched to a router label or
-// host identity. The dates support a hypothesis that the earlier LAN pair is
-// the eBay pair, but there is no observed unit-to-unit arrival join here.
-//
-// MODELING GAPS (explicitly retained, not resolved by omission):
-// - Receipt-time serialization has no InventoryEvent arm. The serials are known
-//   from the Micro Center receipt, but asset_source_lot_standing can only read
-//   installation events and therefore returns AssetSourceLotUnobserved for them.
-//   There is no parallel asset-to-lot field here and no fabricated installation.
-//   Trigger: model receipt-time identification in product.inventory and consume
-//   it in the existing admitted-ledger provenance scan. Until then the receipt's
-//   source-lot evidence is documented, not available through the canonical query.
-// - ProcurementLot / InventoryEvent has no transaction/receipt-date field or
-//   unsettled-date arm. The eBay pair was delivered 2026-08-06. Micro Center's
-//   transaction is dated above; its receipt/service dates are not inferred.
-//   Date-sensitive acquisition chronology cannot be derived from these ledgers.
-//   LotReceived records receipt, not its date.
-// - InventoryEvent has no ordered-then-cancelled arm. A separate eBay order was
-//   CANCELLED and acquired nothing. It has no ProcurementLot or LotAcquired event;
-//   this model cannot distinguish that cancelled order from never ordering.
-// - The eBay storage SKU remains unobserved. The operator attests 4 TB for the
-//   fleet, while extdeps.systems.nvidia's cited source transcribes two storage
-//   configurations. The obligation is to identify THESE units, not settle what
-//   NVIDIA manufactures. Micro Center's receipt discharges only its own SKU.
-// - dgx_spark_procurement_intent.unit_count is an authored intent literal, not an
-//   acquisition fold. Its aggregate 4 TB catalog binding is not per-lot evidence.
-//   That pre-existing row and the arrival model remain outside this change.
-//
-// CONSUMPTION: the acquisition witness passes the two lots to the shared
-// product.inventory.admit_ledger_evidence and sums the admitted balances through
-// sum_inventory_balances. The serialized asset witness reads the six PhysicalAsset
-// rows and exercises the canonical provenance query's unobserved standing.
-// The executing route is `gunbc run
-// --source-root dag --source-root src/v2 --entry
-// dag/test/claim/dgx_spark_inventory_witness_test.dag --function
-// w_independent_acquisitions_reconcile_eight --claim-run`, also discovered as a
-// test fn by the required witness lane. This is an executing acquisition witness,
-// not a production asset-register consumer: no production consumer yet reads the
-// derived count. The private register integration is outside this public change.
-// ---------------------------------------------------------------------------
+// Procurement grain is independent of LAN arrival grain. One vendor receipt
+// cannot establish another acquisition's SKU or a serial-to-host binding.
+// Receipt facts and capability gaps are carried by gunbc.recurring_failure_mode
+// inventory_history_has_no_dated_evidence, inventory_order_cancellation_is_unrepresentable
+// and inventory_receipt_cannot_identify_assets.
 
 data dgx_spark_micro_center_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dimm_lot).id
 
@@ -657,8 +608,7 @@ data fleet_lot_allocator_after_dgx_spark_micro_center: InventoryLotAllocator = m
 
 data dgx_spark_ebay_pair_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).id
 
-// Receipt description GB10/128/4/L establishes the 4 TB configuration for this
-// acquisition only. CatalogRowExact still means cited, not mechanically resolved.
+// An exact catalog citation is scoped to its evidenced acquisition.
 data dgx_spark_micro_center_catalog_reference: DeclarationRef = DeclarationRef {
   module_path: "extdeps.systems.nvidia",
   decl_name: "nvidia_dgx_spark_4tb_catalog",

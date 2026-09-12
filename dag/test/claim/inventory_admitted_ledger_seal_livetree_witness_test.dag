@@ -45,9 +45,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // passing. Either outcome is louder than the silence the deleted arm produced, and neither one is
 // established by a sentence here.
 
-data forged_source: String = "module probe_ledger_forged_admitted\nimport product.inventory { AdmittedInventoryLedger, ProcurementLot, InventoryBalance }\nfn forged(lot: ProcurementLot, balance: InventoryBalance) -> AdmittedInventoryLedger {\n  AdmittedInventoryLedger { lot: lot, events: [], balance: balance }\n}\n"
+data forged_source: String = "module probe_ledger_forged_admitted\nimport product.inventory { AdmittedInventoryLedger, ProcurementLot, StockDistribution }\nfn forged(lot: ProcurementLot, distribution: StockDistribution) -> AdmittedInventoryLedger {\n  AdmittedInventoryLedger { lot: lot, events: [], distribution: distribution }\n}\n"
 
-data lawful_source: String = "module probe_ledger_lawful_admitted\nimport product.inventory { AdmittedInventoryLedger, ProcurementLot, InventoryBalance }\nfn lawful(lot: ProcurementLot, balance: InventoryBalance, value: AdmittedInventoryLedger) -> AdmittedInventoryLedger {\n  value\n}\n"
+data lawful_source: String = "module probe_ledger_lawful_admitted\nimport product.inventory { AdmittedInventoryLedger, ProcurementLot, StockDistribution }\nfn lawful(lot: ProcurementLot, distribution: StockDistribution, value: AdmittedInventoryLedger) -> AdmittedInventoryLedger {\n  value\n}\n"
 
 fn ledger_rows_of_subject(rows: List<CompileDiagnosticCensusRow>, wanted: String) -> List<CompileDiagnosticCensusRow> {
   rows |> filter(r => r.subject_name == wanted)
