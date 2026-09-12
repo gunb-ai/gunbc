@@ -1,5 +1,6 @@
 module gunbc.runner.runner_teardown_receipt
 
+import v2.std.optional { Optional, Present, Absent }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { ObservationInstant }
 import std.decl_ref { declaration_ref_eq }
@@ -115,16 +116,16 @@ fn runner_resource_transitions(before: RunnerEnvironmentReadback, after: RunnerE
   ]
 }
 
-fn runner_resource_transition_refusal(row: RunnerResourceTransition) -> RunnerTeardownRefusal? {
+fn runner_resource_transition_refusal(row: RunnerResourceTransition) -> Optional<RunnerTeardownRefusal> {
   match row.before {
     RunnerResourceUnreadable { cause: c } =>
-      Some(TeardownResourceUnreadable { resource: row.resource, cause: c })
-    RunnerResourceAbsent => Some(TeardownPositiveControlMissing { resource: row.resource })
+      Present { value: TeardownResourceUnreadable { resource: row.resource, cause: c } }
+    RunnerResourceAbsent => Present { value: TeardownPositiveControlMissing { resource: row.resource } }
     RunnerResourcePresent => match row.after {
-      RunnerResourcePresent => Some(TeardownResourceSurvived { resource: row.resource })
+      RunnerResourcePresent => Present { value: TeardownResourceSurvived { resource: row.resource } }
       RunnerResourceUnreadable { cause: c } =>
-        Some(TeardownResourceUnreadable { resource: row.resource, cause: c })
-      RunnerResourceAbsent => None
+        Present { value: TeardownResourceUnreadable { resource: row.resource, cause: c } }
+      RunnerResourceAbsent => Absent
     }
   }
 }
@@ -159,15 +160,15 @@ fn runner_teardown_from_observations<P>(
     RunnerTeardownRefused { cause: TeardownObservationUnorderedOrIncomparable }
   } else {
     let refusal = runner_resource_transitions(before: before.readback, after: after.readback)
-      |> fold(init: None as RunnerTeardownRefusal?, f: fn(found, row) {
+      |> fold(init: Absent, f: fn(found, row) {
         match found {
-          Some(_) => found
-          None => runner_resource_transition_refusal(row: row)
+          Present { value: _ } => found
+          Absent => runner_resource_transition_refusal(row: row)
         }
       })
     match refusal {
-      Some(c) => RunnerTeardownRefused { cause: c }
-      None => RunnerTeardownProduced { receipt: RunnerTeardownReceipt {
+      Present { value: c } => RunnerTeardownRefused { cause: c }
+      Absent => RunnerTeardownProduced { receipt: RunnerTeardownReceipt {
         request: request, before: before, after: after,
       } }
     }
