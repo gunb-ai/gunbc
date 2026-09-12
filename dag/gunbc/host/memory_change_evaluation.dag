@@ -1,0 +1,162 @@
+module gunbc.memory_change_evaluation
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+import gunbc.memory_configuration {
+  MemoryChangeProposal, MemoryConfiguration, MemoryOperatingObligation,
+  MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
+  memory_configuration_same, memory_operating_obligations,
+}
+import gunbc.memory_observation { MemoryEvaluationEvidence }
+import gunbc.memory_configuration_evaluation { MemoryConfigurationAssessment, evaluate_memory_configuration }
+
+// Pure workflow evaluation, not execution. These values have no constructor
+// path to MemoryCollectorReceipt or ConfigurationQualificationReceipt.
+type MemoryInitializationAssessment {
+  action_ordinal: Int
+  assessment: MemoryConfigurationAssessment
+}
+
+type MemoryWorkflowState {
+  configuration: MemoryConfiguration
+  powered_off: Bool
+  ordinal: Int
+  readback_planned: Bool
+  initializations: List<MemoryInitializationAssessment>
+  violations: List<NonEmptyStr>
+}
+
+// Parent ruling msg_7e3cee0f: these consumers do not exist in the corpus.
+// Their absence is returned alongside each assessment, not hidden behind a
+// pretend actuator or a simulated readback receipt.
+data memory_change_consumer_frontiers: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
+    reason: "production-order consumer absent: no order actuator exists in this corpus",
+    dissolution: unbound_dissolution(description: "product.memory_order production-order actuator consumes the exact proposal and evidence-bound fulfillment admission before releasing an order"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
+    reason: "physical-memory convergence consumer absent: software/cgroup convergence cannot confirm DIMM placement",
+    dissolution: unbound_dissolution(description: "gunbc.host_memory_converge independently reads actual serials, catalog bindings, connector/socket/controller/slot placement, board, processor, firmware and settings; joins them to this assessed proposal and re-evaluates changed inputs before convergence"),
+  ),
+]
+
+type MemoryChangeAssessment {
+  proposal: MemoryChangeProposal
+  consumer_frontiers: List<FrontierRow>
+  final_configuration: MemoryConfigurationAssessment
+  workflow: MemoryWorkflowState
+}
+
+fn evaluate_memory_change(proposal: MemoryChangeProposal, evidence: MemoryEvaluationEvidence) -> MemoryChangeAssessment {
+  let workflow = fold(proposal.actions, init: MemoryWorkflowState {
+    configuration: proposal.initial, powered_off: false, ordinal: 0,
+    readback_planned: false, initializations: [], violations: [],
+  }, f: (state, action) => match action {
+    MemoryPowerOff => MemoryWorkflowState {
+      configuration: state.configuration, powered_off: true, ordinal: state.ordinal + 1,
+      readback_planned: false, initializations: state.initializations, violations: state.violations,
+    }
+    MemoryReplacePopulation { population } => MemoryWorkflowState {
+      configuration: MemoryConfiguration { platform: state.configuration.platform, population: population },
+      powered_off: state.powered_off, ordinal: state.ordinal + 1, readback_planned: false,
+      initializations: state.initializations,
+      violations: if state.powered_off { state.violations }
+        else { concat(state.violations, ["memory replacement scheduled while powered on"]) },
+    }
+    MemoryInitialize => MemoryWorkflowState {
+      configuration: state.configuration, powered_off: false, ordinal: state.ordinal + 1,
+      readback_planned: false, violations: state.violations,
+      initializations: concat(state.initializations, [MemoryInitializationAssessment {
+        action_ordinal: state.ordinal,
+        assessment: evaluate_memory_configuration(configuration: state.configuration, evidence: evidence, additional: proposal.additional_requirements),
+      }]),
+    }
+    MemoryReadbackRequired => MemoryWorkflowState {
+      configuration: state.configuration, powered_off: state.powered_off, ordinal: state.ordinal + 1,
+      readback_planned: true, initializations: state.initializations, violations: state.violations,
+    }
+  })
+  MemoryChangeAssessment {
+    proposal: proposal,
+    consumer_frontiers: memory_change_consumer_frontiers,
+    final_configuration: evaluate_memory_configuration(configuration: proposal.proposed, evidence: evidence, additional: proposal.additional_requirements),
+    workflow: workflow,
+  }
+}
+
+// Policy is outside the remedy-free assessment. Qualification carries the
+// planned population (in the enclosing proposal), a bounded unit count and
+// explicit completion obligations. It never creates production admission.
+type MemoryPurchasePurpose
+  = ProductionMemoryPurchase
+  | QualificationMemoryPurchase { maximum_units: Int, completion: List<MemoryOperatingObligation> }
+
+fn memory_assessment_coverage_present(a: MemoryConfigurationAssessment) -> Bool {
+  fold(memory_operating_obligations, init: true, f: (ok, obligation) => ok && any(a.required, r => r == obligation))
+    && count(a.required) == count(a.results)
+    && fold(a.required, init: true, f: (ok, required) => ok
+      && count(filter(a.results, r => r.obligation == required)) == 1)
+}
+
+fn memory_configuration_admission_refusal(a: MemoryConfigurationAssessment, purpose: MemoryPurchasePurpose) -> NonEmptyStr? {
+  if !memory_assessment_coverage_present(a: a) {
+    Present { value: "required memory obligations were not uniquely included and evaluated" as NonEmptyStr }
+  } else if any(a.results, r => match r.assessment {
+    GoalDiverged { deviations: _ } => true
+    GoalIndeterminate { known_deviations, unknowns: _ } => count(known_deviations) > 0
+    _ => false
+  }) {
+    Present { value: "mandatory memory requirement violated; see configuration counterexample" as NonEmptyStr }
+  } else {
+    fold(a.results, init: none, f: (refusal, r) => match refusal {
+      Present { value: _ } => refusal
+      Absent => match r.assessment {
+        GoalAssessmentRefused { cause } => Present { value: cause }
+        GoalDiverged { deviations: _ } => Present { value: "mandatory memory requirement violated; see configuration counterexample" as NonEmptyStr }
+        GoalIndeterminate { known_deviations, unknowns: _ } =>
+          if count(known_deviations) > 0 { Present { value: "mandatory memory requirement violated with additional unresolved evidence" as NonEmptyStr } }
+          else { match purpose {
+            ProductionMemoryPurchase => Present { value: "production memory admission withheld: required evidence or model unresolved" as NonEmptyStr }
+            QualificationMemoryPurchase { maximum_units: _, completion } =>
+              if any(completion, o => o == r.obligation) { none }
+              else { Present { value: "qualification plan omits an unresolved completion obligation" as NonEmptyStr } }
+          } }
+        GoalSatisfied { evidence: _ } => none
+      }
+    })
+  }
+}
+
+fn memory_change_admission_refusal(a: MemoryChangeAssessment, purpose: MemoryPurchasePurpose) -> NonEmptyStr? {
+  if !memory_configuration_same(a: a.final_configuration.configuration, b: a.proposal.proposed) {
+    Present { value: "assessment is bound to a different proposed configuration" as NonEmptyStr }
+  } else if count(a.workflow.violations) > 0 { a.workflow.violations.first() }
+  else if !memory_configuration_same(a: a.workflow.configuration, b: a.proposal.proposed) {
+    Present { value: "workflow does not reach the assessed final configuration" as NonEmptyStr }
+  } else if !a.workflow.readback_planned {
+    Present { value: "workflow must require independent readback after its last change or initialization" as NonEmptyStr }
+  } else {
+    let policy_refusal = match purpose {
+      ProductionMemoryPurchase => none
+      QualificationMemoryPurchase { maximum_units, completion } =>
+        if maximum_units <= 0 || count(a.proposal.proposed.population) > maximum_units || count(completion) == 0 {
+          Present { value: "qualification experiment lacks a sufficient finite population bound or completion criteria" as NonEmptyStr }
+        } else { none }
+    }
+    match policy_refusal {
+      Present { value: _ } => policy_refusal
+      Absent => fold(a.workflow.initializations,
+        init: memory_configuration_admission_refusal(a: a.final_configuration, purpose: purpose),
+        f: (refusal, initialization) => match refusal {
+          Present { value: _ } => refusal
+          Absent => memory_configuration_admission_refusal(a: initialization.assessment, purpose: purpose)
+        }
+      )
+    }
+  }
+}

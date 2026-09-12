@@ -1,0 +1,123 @@
+module gunbc.memory_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import gunbc.memory_configuration { MemoryConfiguration, MemoryPosition }
+import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
+
+// Transcript ingestion boundary, not a hardware actuator. Times are offsets
+// from the attempt's stimulus. Wrapper lifetime is not collector lifetime.
+// Identical hashes alone never reject: positive stimulus/payload and interval
+// coverage are required on every capture, repeated or otherwise.
+type MemoryCollectorReceipt {
+  source: DeclarationRef
+  session: NonEmptyStr
+  expected_stimulus: NonEmptyStr
+  observed_stimulus: NonEmptyStr?
+  required_start: Int
+  required_end: Int
+  collector_start: Int
+  collector_end: Int
+  exit_code: Int
+  payload: String
+  capture_digest: NonEmptyStr
+  previous_capture_digest: NonEmptyStr?
+}
+
+fn memory_collector_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
+  if c.exit_code != 0 { Present { value: "collector process failed" as NonEmptyStr } }
+  else if c.required_end <= c.required_start || c.collector_start > c.required_start || c.collector_end < c.required_end {
+    Present { value: "collector did not cover the required stimulus interval" as NonEmptyStr }
+  } else {
+    match c.observed_stimulus {
+      Absent => Present { value: "expected stimulus was not observed in this session" as NonEmptyStr }
+      Present { value: stimulus } =>
+        if stimulus != c.expected_stimulus { Present { value: "observed stimulus belongs to another attempt" as NonEmptyStr } }
+        else if !contains(c.payload, "DRAM populated DIMMs:") {
+          Present { value: "no positive host memory payload; session banner is not host observation" as NonEmptyStr }
+        } else { none }
+    }
+  }
+}
+
+fn memory_capture_repetition_suspected(c: MemoryCollectorReceipt) -> Bool {
+  match c.previous_capture_digest {
+    Absent => false
+    Present { value: previous } => previous == c.capture_digest
+  }
+}
+
+// Require the positioned inventory in addition to a syndrome. A header or a
+// partial table cannot bind this finding to a whole captured configuration.
+fn memory_capture_covers_population(configuration: MemoryConfiguration, payload: String) -> Bool {
+  count(configuration.population) == 16 && fold(configuration.population, init: true, f: (covered, dimm) => {
+    let coordinate = concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":")
+    // This firmware prints the ADS SPD part field without the MTA prefix.
+    let printed_part = if dimm.catalog.part_number == "MTA36ADS2G72PZ-2G1A1" { "36ADS2G72PZ-2G1A1" }
+      else { dimm.catalog.part_number as String }
+    covered && any(split(s: payload, delimiter: "\n"), line => contains(line, coordinate) && contains(line, printed_part))
+  })
+}
+
+// This row records a comparison observed in one attempt. The group is a
+// socket, explicitly named, and only the observed pair is a rejection fact.
+// Scope expansion to another firmware, board, setting or socket is not implicit.
+type MemoryMixtureFinding {
+  attempt: NonEmptyStr
+  configuration: MemoryConfiguration
+  collector: MemoryCollectorReceipt
+  comparison_socket: Nat
+  mismatch_position: MemoryPosition
+  expected_byte: Int
+  actual_byte: Int
+}
+
+fn memory_mixture_finding(
+  attempt: NonEmptyStr,
+  configuration: MemoryConfiguration,
+  collector: MemoryCollectorReceipt,
+) -> ObservationAttempt<MemoryMixtureFinding, NonEmptyStr> {
+  match memory_collector_refusal(c: collector) {
+    Present { value: cause } => ObservationRefused { cause: cause }
+    Absent =>
+      if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
+        || !contains(collector.payload, "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]")
+        || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
+        || !contains(collector.payload, "ERROR:   SK[0]: 00110010")
+        || configuration.platform.firmware != "210525"
+        || !memory_capture_covers_population(configuration: configuration, payload: collector.payload)
+      {
+        ObservationRefused { cause: "transcript does not establish the bounded socket-0 00/91 firmware finding" }
+      } else {
+        let positions = filter(configuration.population, dimm => dimm.position.socket == 0 && dimm.position.controller == 4 && dimm.position.slot == 0)
+        if count(positions) != 1 {
+          ObservationRefused { cause: "observed mismatch coordinate does not identify one DIMM in the captured configuration" }
+        } else { match positions.first() {
+          Absent => ObservationRefused { cause: "observed mismatch coordinate is absent" }
+          Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
+            attempt: attempt, configuration: configuration, collector: collector,
+            comparison_socket: 0, mismatch_position: dimm.position,
+            expected_byte: 145, actual_byte: 0,
+          } }
+        } }
+      }
+  }
+}
+
+// Standings remain four independent facts. This binding makes a receipt about
+// a whole configuration; neither a simulated initialization nor a passed
+// mixture check can construct an observed standing.
+type ConfigurationQualificationReceipt {
+  configuration: MemoryConfiguration
+  collector: MemoryCollectorReceipt
+  standings: List<HostMemoryStanding>
+}
+
+type MemoryEvaluationEvidence {
+  revision: NonEmptyStr
+  mixture: ObservationAttempt<MemoryMixtureFinding, NonEmptyStr>
+  qualifications: List<ConfigurationQualificationReceipt>
+  training_failures: List<PlatformTrainingFailure>
+}

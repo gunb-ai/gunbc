@@ -1,6 +1,17 @@
 module test.claim.build_fulfillment_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.memory_configuration {
+  MemoryPlatform, MemoryPosition, PositionedMemoryModule, MemoryConfiguration, MemoryChangeProposal,
+  AcquireMemoryUnit, MemoryPowerOff, MemoryReadbackRequired, memory_operating_obligations,
+}
+import gunbc.memory_observation { MemoryEvaluationEvidence }
+import gunbc.memory_change_evaluation { QualificationMemoryPurchase }
+import std.goal_assessment { ObservationRefused }
+import product.installed_bom_reconcile { DimmSlotLocator }
+import product.placement_supply { HostIdentity }
+import extdeps.boards.types { AmpereMtCollins }
+import std.nat { nat_range_inclusive }
 import std.nat { Nat }
 import extdeps.currency.currency { Eur, Usd }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -131,24 +142,29 @@ data fixture_dimm: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 2,
 }
 
-// Eight modules, one per channel — the ALTRAD8UD's full population, which is
-// also what memory_provisioning derives for that geometry.
-data eight_module_population: PopulationOption = PopulationOption {
-  module: fixture_dimm,
-  dimm_count: 8,
-  coverage: FullChannel { topology: OneDimmPerChannel },
-  total_bytes: byte_size(count: 274877906944),
-  margin_bytes: byte_size(count: 0),
+// Supply arithmetic controls explicitly use qualification purpose. They do
+// not fabricate package/training/boot observations to regain production green.
+fn supply_fixture_memory(units: Nat) -> MemoryChangeProposal {
+  let configuration = MemoryConfiguration {
+    platform: MemoryPlatform {
+      host: "supply-fixture" as HostIdentity, board: if units == 8 { AsrockRackAltrad8ud1l2t } else { AmpereMtCollins },
+      board_part: if units == 8 { altrad8ud_ref } else { mt_collins_ref },
+      processor: if units == 8 { m12830_ref } else { q8030_ref }, firmware: "fixture", settings: [],
+    },
+    population: map(nat_range_inclusive(lo: 1, hi: units), n => PositionedMemoryModule {
+      position: MemoryPosition { connector: concat("J", to_string(n)) as DimmSlotLocator,
+        socket: (n - 1) / 16, controller: ((n - 1) % 16) / 2, slot: (n - 1) % 2, mapping: mt_collins_ref },
+      part: dimm_ref, catalog: fixture_dimm, alternatives: [], origin: AcquireMemoryUnit,
+    }),
+  }
+  MemoryChangeProposal { initial: configuration, proposed: configuration,
+    actions: [MemoryPowerOff, MemoryReadbackRequired], additional_requirements: [] }
 }
 
-// Sixteen per socket at two DIMMs per channel — the Mt. Collins per-socket
-// geometry, so a dual-socket recipe over it needs thirty-two modules.
-data sixteen_module_population: PopulationOption = PopulationOption {
-  module: fixture_dimm,
-  dimm_count: 16,
-  coverage: FullChannel { topology: TwoDimmsPerChannel },
-  total_bytes: byte_size(count: 549755813888),
-  margin_bytes: byte_size(count: 0),
+data supply_fixture_memory_evidence: MemoryEvaluationEvidence = MemoryEvaluationEvidence {
+  revision: "synthetic supply arithmetic fixture",
+  mixture: ObservationRefused { cause: "supply arithmetic fixture does not claim hardware observation" },
+  qualifications: [], training_failures: [],
 }
 
 fn nth_lot_identity(n: Nat) -> InventoryLotIdentity {
@@ -209,8 +225,9 @@ fn dual_socket_recipe() -> NodeRecipe {
     processor_label: "Ampere Altra Q80-30" as NonEmptyStr,
     baseboard: mt_collins_ref,
     baseboard_label: "Ampere Mt. Collins" as NonEmptyStr,
-    memory_module: dimm_ref,
-    population: sixteen_module_population,
+    memory: supply_fixture_memory(units: 32),
+    memory_evidence: supply_fixture_memory_evidence,
+    memory_purchase: QualificationMemoryPurchase { maximum_units: 32, completion: memory_operating_obligations },
     inclusions: [],
   }
 }
@@ -223,8 +240,9 @@ fn single_socket_recipe() -> NodeRecipe {
     processor_label: "Ampere Altra Max M128-30" as NonEmptyStr,
     baseboard: altrad8ud_ref,
     baseboard_label: "ASRock Rack ALTRAD8UD-1L2T" as NonEmptyStr,
-    memory_module: dimm_ref,
-    population: eight_module_population,
+    memory: supply_fixture_memory(units: 8),
+    memory_evidence: supply_fixture_memory_evidence,
+    memory_purchase: QualificationMemoryPurchase { maximum_units: 8, completion: memory_operating_obligations },
     inclusions: [],
   }
 }
@@ -282,7 +300,7 @@ fn labels_of(rows: List<SupplyRow>) -> List<NonEmptyStr> {
 // upstream geometry is per socket. A dual-socket Mt. Collins over a sixteen-slot
 // per-socket population is two processors and thirty-two modules, not one and
 // sixteen.
-test fn w_bom_multiplies_per_socket_lines_by_socket_count() -> Bool {
+test fn w_bom_counts_concrete_acquisition_positions() -> Bool {
   let bom = derive_bom(recipe: dual_socket_recipe())
   let cpu_line = fold(bom, init: 0, f: fn(acc, l) { match l.role { Processor => l.quantity_per_build, _ => acc } })
   let dimm_line = fold(bom, init: 0, f: fn(acc, l) { match l.role { MemoryModule => l.quantity_per_build, _ => acc } })
@@ -305,7 +323,7 @@ test fn w_owned_stock_resolves_to_a_reservation_against_the_lot() -> Bool {
   ]
   fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
     match r {
-      LineResolved { line: l, fulfillment: f } =>
+      LineResolved { memory_context: _, line: l, fulfillment: f } =>
         match f {
           OwnedInventory { lot: lot, quantity: q, reservation: res, available_after: after } =>
             acc || (inventory_lot_identity_eq(left: lot, right: cpu_lot_identity())
@@ -352,7 +370,7 @@ fn refuses_with_unreconciled_ledger(events: List<InventoryEvent>) -> Bool {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { LotLedgerDoesNotReconcile { cause: _, event_ordinal: _, event_label: _ } => true, _ => false }
-      LineResolved { line: _, fulfillment: _ } => acc
+      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -393,7 +411,7 @@ test fn w_two_lots_offering_one_component_refuse_rather_than_picking() -> Bool {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { MultipleLotsOfferOneComponent { part: _, lots_offering: n } => n == 2, _ => false }
-      LineResolved { line: _, fulfillment: _ } => acc
+      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -408,7 +426,7 @@ test fn w_insufficient_owned_stock_falls_through_to_the_market() -> Bool {
   ]
   fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
     match r {
-      LineResolved { line: l, fulfillment: f } =>
+      LineResolved { memory_context: _, line: l, fulfillment: f } =>
         match f {
           SupplyMissing { part: _, requested: req, owned_available: owned, market_units: mk } =>
             acc || (req == 2 && owned == 1 && mk == 0)
@@ -445,7 +463,7 @@ test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
   let rows = [owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62), unread, board_row_not_offered()]
   fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
     match r {
-      LineResolved { line: _, fulfillment: f } =>
+      LineResolved { memory_context: _, line: _, fulfillment: f } =>
         match f {
           CompatibilityUnread { part: _, obligation: o } =>
             o == "observe platform training evidence for PHY write leveling"
@@ -467,8 +485,9 @@ test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool {
     processor_label: "Ampere Altra Q80-30" as NonEmptyStr,
     baseboard: mt_collins_ref,
     baseboard_label: "Ampere Mt. Collins" as NonEmptyStr,
-    memory_module: dimm_ref,
-    population: sixteen_module_population,
+    memory: supply_fixture_memory(units: 32),
+    memory_evidence: supply_fixture_memory_evidence,
+    memory_purchase: QualificationMemoryPurchase { maximum_units: 32, completion: memory_operating_obligations },
     inclusions: [SystemInclusion { role: Processor, part: q8030_ref, quantity_included: 2 }],
   }
   let rows = [
@@ -479,7 +498,7 @@ test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool {
   let resolutions = resolve_build(recipe: recipe, rows: rows)
   let included = fold(resolutions, init: false, f: fn(acc, r) {
     match r {
-      LineResolved { line: _, fulfillment: f } =>
+      LineResolved { memory_context: _, line: _, fulfillment: f } =>
         match f { IncludedInSystem { part: _, quantity: q } => acc || q == 2, _ => acc }
       LineRefused { line: _, cause: _ } => acc
     }
@@ -540,7 +559,7 @@ test fn w_duplicate_supply_row_refuses() -> Bool {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { SupplyRowDuplicated { part: _ } => true, _ => false }
-      LineResolved { line: _, fulfillment: _ } => acc
+      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -551,7 +570,7 @@ test fn w_absent_supply_row_refuses_rather_than_reporting_missing() -> Bool {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { SupplyRowAbsent { part: _ } => true, _ => false }
-      LineResolved { line: _, fulfillment: _ } => acc
+      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -765,7 +784,7 @@ test fn w_unread_market_depth_refuses_the_line() -> Bool {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { MarketDepthNotRead { part: _, obligation: _ } => true, _ => false }
-      LineResolved { line: _, fulfillment: _ } => acc
+      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -780,8 +799,9 @@ test fn w_a_fully_included_build_is_unconstrained_by_any_line() -> Bool {
     processor_label: "Ampere Altra Q80-30" as NonEmptyStr,
     baseboard: mt_collins_ref,
     baseboard_label: "Ampere Mt. Collins" as NonEmptyStr,
-    memory_module: dimm_ref,
-    population: sixteen_module_population,
+    memory: supply_fixture_memory(units: 32),
+    memory_evidence: supply_fixture_memory_evidence,
+    memory_purchase: QualificationMemoryPurchase { maximum_units: 32, completion: memory_operating_obligations },
     inclusions: [
       SystemInclusion { role: Processor, part: q8030_ref, quantity_included: 2 },
       SystemInclusion { role: Baseboard, part: mt_collins_ref, quantity_included: 1 },

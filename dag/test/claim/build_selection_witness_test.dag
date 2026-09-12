@@ -1,5 +1,10 @@
 module test.claim.build_selection_witness
 
+import product.build_fulfillment { MemoryFulfillmentContext }
+import gunbc.memory_change_evaluation { evaluate_memory_change, ProductionMemoryPurchase }
+import gunbc.mtcollins_memory_change { mtcollins_replay_proposal, mtcollins_memory_evidence_from_capture }
+
+
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.currency.currency { Eur, Usd }
@@ -145,6 +150,10 @@ fn pending_build() -> BuildCandidate {
     memory_bandwidth: Bandwidth { count: 204800000000 },
     resolutions: [
       LineResolved {
+        memory_context: MemoryFulfillmentContext {
+          assessment: evaluate_memory_change(proposal: mtcollins_replay_proposal(), evidence: mtcollins_memory_evidence_from_capture(payload: "")),
+          purpose: ProductionMemoryPurchase,
+        },
         line: purchase_line(),
         fulfillment: CompatibilityUnread {
           part: part_ref,

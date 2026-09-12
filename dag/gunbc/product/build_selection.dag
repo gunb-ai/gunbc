@@ -1,6 +1,7 @@
 module product.build_selection
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.memory_change_evaluation { ProductionMemoryPurchase, QualificationMemoryPurchase }
 import std.nat { Nat }
 import extdeps.currency.currency { CurrencyCode }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
@@ -177,16 +178,22 @@ fn line_missing(acc: List<AxisGap>, r: LineResolution) -> List<AxisGap> {
   match r {
     LineRefused { line: l, cause: _ } =>
       concat(acc, line_gap(name: join(["line ", l.display_label as String, " refused"], "") as NonEmptyStr))
-    LineResolved { line: l, fulfillment: f } =>
+    LineResolved { memory_context: context, line: l, fulfillment: f } => {
+      let admitted = match context.purpose {
+        ProductionMemoryPurchase => acc
+        QualificationMemoryPurchase { maximum_units: _, completion: _ } =>
+          concat(acc, line_gap(name: "qualification experiment is not a production-admitted build"))
+      }
       match f {
         CompatibilityUnread { part: _, obligation: o } =>
           concat(acc, line_gap(name: join([l.display_label as String, ": ", o as String], "") as NonEmptyStr))
         SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } =>
           concat(acc, line_gap(name: join(["line ", l.display_label as String, " cannot be filled"], "") as NonEmptyStr))
-        OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => acc
-        NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => acc
-        IncludedInSystem { part: _, quantity: _ } => acc
+        OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => admitted
+        NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => admitted
+        IncludedInSystem { part: _, quantity: _ } => admitted
       }
+    }
   }
 }
 

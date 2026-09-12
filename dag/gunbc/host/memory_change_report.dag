@@ -1,0 +1,103 @@
+module gunbc.memory_change_report
+
+import std.types { String, NonEmptyStr, List, Int }
+import std.integer { UInt8 }
+import std.decl_ref { declaration_ref_display_key }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
+import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 {
+  SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT, spd4_primary_package_type,
+  spd4_primary_die_count_encoding, spd4_primary_signal_loading,
+}
+import gunbc.memory_configuration {
+  MemoryOperatingObligation, MemoryPlacement, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
+  MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
+  AdditionalMemoryRequirement,
+}
+import gunbc.memory_configuration_evaluation {
+  MemoryCounterexample, MemoryPackageConflict, MemoryStandingConflict,
+  MemoryTrainingScreenConflict, MemoryPositionConflict, MemoryUnknownFact,
+  MemoryPackageMissing, MemoryVariantsMissing, MemoryProcurementCondition,
+  MemoryFindingUnavailable, MemoryFirmwareScopeUnestablished, MemoryComparisonUnestablished,
+  MemoryStandingMissing, MemoryStandingEvidenceUnobserved, MemoryTrainingScreenUnresolved,
+  MemoryModelMissing, MemoryCollectorUnavailable,
+}
+import gunbc.memory_change_evaluation { MemoryChangeAssessment }
+
+fn memory_obligation_label(obligation: MemoryOperatingObligation) -> NonEmptyStr {
+  match obligation {
+    MemoryPlacement => "connector placement"
+    MemoryFirmwareScopeCoverage => "firmware comparison-scope coverage"
+    MemoryPackageMixture => "observed firmware package-mixture acceptance"
+    MemoryClassSupport => "board class support"
+    MemorySpecificPartQualification => "specific-part qualification"
+    MemoryTraining => "training observation"
+    MemoryBoot => "boot observation"
+    MemoryTrainingFailureScreen => "known training-failure screen"
+    AdditionalMemoryRequirement { authority } => declaration_ref_display_key(ref: authority) as NonEmptyStr
+  }
+}
+
+fn memory_package_fields(value: UInt8) -> String {
+  let package = SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT { Data: value }
+  concat("byte6(decimal)=", to_string(value), " [package-type bit=", to_string(spd4_primary_package_type(value: package)),
+    ", die-count encoding=", to_string(spd4_primary_die_count_encoding(value: package)),
+    ", signal-loading encoding=", to_string(spd4_primary_signal_loading(value: package)), "]")
+}
+
+fn memory_counterexample_text(counterexample: MemoryCounterexample) -> NonEmptyStr {
+  match counterexample {
+    MemoryPackageConflict { left, right, left_variant, right_variant, left_byte, right_byte, finding } =>
+      concat("socket ", to_string(left.position.socket), ": ", left.position.connector as String,
+        " (MCU ", to_string(left.position.controller), ", slot ", to_string(left.position.slot), ") ", left.catalog.part_number as String,
+        " / ", left_variant as String, " ", memory_package_fields(value: left_byte), " conflicts with ",
+        right.position.connector as String, " (MCU ", to_string(right.position.controller), ", slot ", to_string(right.position.slot), ") ",
+        right.catalog.part_number as String, " / ", right_variant as String, " ", memory_package_fields(value: right_byte),
+        "; observed DRAM firmware ", finding.configuration.platform.firmware as String,
+        ", attempt ", finding.attempt as String, ", source ", declaration_ref_display_key(ref: finding.collector.source),
+        ". This is the witnessed acceptance check, not a defect finding against either part family.") as NonEmptyStr
+    MemoryStandingConflict { standing } => concat("independent standing conflicts for ", standing.part_number as String) as NonEmptyStr
+    MemoryTrainingScreenConflict { dimm, implication: _ } => concat("training failure implicates ", dimm.catalog.part_number as String,
+      " at ", dimm.position.connector as String) as NonEmptyStr
+    MemoryPositionConflict { position } => concat("invalid or duplicate placement at ", position.connector as String) as NonEmptyStr
+  }
+}
+
+fn memory_unknown_text(fact: MemoryUnknownFact) -> NonEmptyStr {
+  match fact {
+    MemoryPackageMissing { position, variant } => concat("missing package byte at ", position.connector as String, " / ", variant as String) as NonEmptyStr
+    MemoryVariantsMissing { position } => concat("allowed delivery variants missing at ", position.connector as String) as NonEmptyStr
+    MemoryProcurementCondition { counterexample, condition } => concat(condition as String, ": ", memory_counterexample_text(counterexample: counterexample) as String) as NonEmptyStr
+    MemoryFindingUnavailable { cause } => cause
+    MemoryFirmwareScopeUnestablished { position } => concat("firmware comparison applicability unestablished at socket ", to_string(position.socket), " / ", position.connector as String) as NonEmptyStr
+    MemoryComparisonUnestablished { left, right } => concat("no observed rejection rule for byte pair ", to_string(left), "/", to_string(right)) as NonEmptyStr
+    MemoryStandingMissing { position, obligation } => concat("missing independent ", memory_obligation_label(obligation: obligation) as String, " at ", position.connector as String) as NonEmptyStr
+    MemoryStandingEvidenceUnobserved { standing, obligation } => concat("standing does not establish ", memory_obligation_label(obligation: obligation) as String, " for ", standing.part_number as String) as NonEmptyStr
+    MemoryTrainingScreenUnresolved { dimm, implication: _ } => concat("training screen requires evidence for ", dimm.catalog.part_number as String, " at ", dimm.position.connector as String) as NonEmptyStr
+    MemoryModelMissing { obligation } => concat("model capability missing: ", memory_obligation_label(obligation: obligation) as String) as NonEmptyStr
+    MemoryCollectorUnavailable { cause } => cause
+  }
+}
+
+type MemoryChangeExplanation {
+  assessment: MemoryChangeAssessment
+  lines: List<NonEmptyStr>
+}
+
+// Values are projected from the joined assessment; none is authored again in
+// the report. Unknown payloads remain available structurally in assessment.
+fn explain_memory_change(assessment: MemoryChangeAssessment) -> MemoryChangeExplanation {
+  MemoryChangeExplanation { assessment: assessment,
+    lines: fold(assessment.final_configuration.results, init: [], f: (lines, r) => {
+      let name = memory_obligation_label(obligation: r.obligation)
+      concat(lines, match r.assessment {
+        GoalSatisfied { evidence: _ } => [concat(name as String, ": SATISFIED for the modeled scope") as NonEmptyStr]
+        GoalDiverged { deviations } => concat([concat(name as String, ": VIOLATED") as NonEmptyStr],
+          map(concat([deviations.head], deviations.tail), d => memory_counterexample_text(counterexample: d)))
+        GoalIndeterminate { known_deviations, unknowns } => concat(
+          [concat(name as String, ": UNRESOLVED") as NonEmptyStr],
+          concat(map(concat([unknowns.head], unknowns.tail), u => memory_unknown_text(fact: u)),
+            map(known_deviations, d => memory_counterexample_text(counterexample: d))))
+        GoalAssessmentRefused { cause } => [concat(name as String, ": UNEVALUATED: ", cause as String) as NonEmptyStr]
+      })
+    }) }
+}
