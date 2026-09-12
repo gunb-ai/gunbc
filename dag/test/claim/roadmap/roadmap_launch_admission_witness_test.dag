@@ -29,7 +29,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchOperatorExclusive, LaunchExternalLead, LaunchCalendarObservation, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, launch_cause_label,

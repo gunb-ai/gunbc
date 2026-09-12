@@ -33,9 +33,17 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
+  OperatorExclusive,
+  ExternalLead,
+  CalendarObservation,
+  NonAgentWorkMode,
+  OperatorExclusiveMode,
+  ExternalLeadMode,
+  CalendarObservationMode,
   ClosingContractAuthoringValidation,
   closing_contract_authoring_entry,
   closing_contract_authoring_function,
+  non_agent_work_mode_label,
 }
 import gunbc.git_diff_change_window {
   ChangeWindowPreparationRefusal,
@@ -447,9 +455,7 @@ fn validation_oracle_set_observe(
 
 type ValidationRefusalCause
   = ValidationContractUnspecified
-  | ValidationOperatorExclusive
-  | ValidationExternalLead
-  | ValidationCalendarObservation
+  | ValidationNotAgentWork { mode: NonAgentWorkMode }
   | ValidationOracleUnpinnable {
       validation_label: String,
       reason: String,
@@ -647,11 +653,11 @@ fn validation_oracle_gate(
     ExecutionContractUnspecified =>
       ValidationOracleGateRefused { cause: ValidationContractUnspecified }
     OperatorExclusive =>
-      ValidationOracleGateRefused { cause: ValidationOperatorExclusive }
+      ValidationOracleGateRefused { cause: ValidationNotAgentWork { mode: OperatorExclusiveMode } }
     ExternalLead =>
-      ValidationOracleGateRefused { cause: ValidationExternalLead }
+      ValidationOracleGateRefused { cause: ValidationNotAgentWork { mode: ExternalLeadMode } }
     CalendarObservation =>
-      ValidationOracleGateRefused { cause: ValidationCalendarObservation }
+      ValidationOracleGateRefused { cause: ValidationNotAgentWork { mode: CalendarObservationMode } }
     ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } =>
       match validation_oracle_scopes(contract: contract)
         |> filter(s => match s {
@@ -760,9 +766,7 @@ fn change_window_preparation_refusal_detail(cause: ChangeWindowPreparationRefusa
 fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified => "contract-unspecified"
-    ValidationOperatorExclusive => "operator-exclusive"
-    ValidationExternalLead => "external-lead"
-    ValidationCalendarObservation => "calendar-observation"
+    ValidationNotAgentWork { mode } => non_agent_work_mode_label(mode: mode)
     ValidationOracleUnpinnable { validation_label: _, reason: _ } =>
       "oracle-unpinnable"
     ValidationOracleMissing { entry: _, function: _, detail: _ } =>
@@ -786,12 +790,8 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
   match cause {
     ValidationContractUnspecified =>
       "the node declares no execution contract, so there is no validation to run"
-    ValidationOperatorExclusive =>
-      "operator-exclusive: this work is not for an agent"
-    ValidationExternalLead =>
-      "external-lead: this work is not for an agent"
-    ValidationCalendarObservation =>
-      "calendar-observation: this work is not for an agent"
+    ValidationNotAgentWork { mode } =>
+      join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
     ValidationOracleUnpinnable { validation_label, reason } =>
       join([
         "declared validation ",
@@ -856,12 +856,12 @@ fn validation_refusal_cause_decode(
 ) -> ValidationRefusalCause? {
   if cause_kind == "contract-unspecified" {
     Present { value: ValidationContractUnspecified }
-  } else if cause_kind == "operator-exclusive" {
-    Present { value: ValidationOperatorExclusive }
-  } else if cause_kind == "external-lead" {
-    Present { value: ValidationExternalLead }
-  } else if cause_kind == "calendar-observation" {
-    Present { value: ValidationCalendarObservation }
+  } else if cause_kind == non_agent_work_mode_label(mode: OperatorExclusiveMode) {
+    Present { value: ValidationNotAgentWork { mode: OperatorExclusiveMode } }
+  } else if cause_kind == non_agent_work_mode_label(mode: ExternalLeadMode) {
+    Present { value: ValidationNotAgentWork { mode: ExternalLeadMode } }
+  } else if cause_kind == non_agent_work_mode_label(mode: CalendarObservationMode) {
+    Present { value: ValidationNotAgentWork { mode: CalendarObservationMode } }
   } else if cause_kind == "command-unrealized" {
     Present { value: ValidationCommandUnrealized }
   } else if cause_kind == "pin-receipt-unreadable" {

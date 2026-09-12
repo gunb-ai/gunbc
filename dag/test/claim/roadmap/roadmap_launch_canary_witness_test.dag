@@ -26,7 +26,7 @@ import gunbc.roadmap_dispatch_environment {
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission {
   LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchExecutionContractMissing,
-  LaunchOperatorExclusive, LaunchExternalLead, LaunchCalendarObservation,
+  LaunchNotAgentWork,
   launch_graph_of_document, Operator,
   launch_admission,
 }

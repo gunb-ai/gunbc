@@ -30,8 +30,8 @@ test fn witness_scale_well_formed() -> Bool {
 }
 
 // THE PIN MOVED 13 -> 14 WITH `DispatchTransitionInhibited`, 14 -> 22 WITH RLM-1, and 22 -> 25
-// WITH the three non-agent LaunchRefusal arms (operator_exclusive, external_lead,
-// calendar_observation). 25 = Spawned + SpawnFailed + one SpawnNotAdmitted per
+// WITH three LaunchNotAgentWork exemplars (one per NonAgentWorkMode; wire labels operator_exclusive,
+// external_lead, calendar_observation). 25 = Spawned + SpawnFailed + one SpawnNotAdmitted per
 // launch_refusal_exemplars. Maintenance rather than a loosening: the roster is one exemplar
 // per outcome variant over a CLOSED coproduct, so the literal pins a hand-enumerated fixture's
 // size and not a measured population. The two clauses above it are the ones with the failure

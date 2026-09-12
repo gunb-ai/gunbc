@@ -45,7 +45,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchOperatorExclusive, LaunchExternalLead, LaunchCalendarObservation, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
@@ -234,6 +234,9 @@ import gunbc.roadmap_execution_contract {
   OperatorExclusive,
   ExternalLead,
   CalendarObservation,
+  OperatorExclusiveMode,
+  ExternalLeadMode,
+  CalendarObservationMode,
   ClaimSourceRootLayout,
   ValidationOperation,
   ModeledValidationCommand,
@@ -243,7 +246,6 @@ import gunbc.roadmap_execution_contract {
   validation_consumes_affected_set_window,
   execution_contract_needs_diff_window,
 }
-import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publication_helper {
   PublicationAnswerStanding,
   AnswerReady, AnswerAwaited, AnswerSpoolRefused,
@@ -343,9 +345,7 @@ import gunbc.roadmap_validation_oracle {
   ValidationCommandRefused,
   ValidationChangeWindowRefused,
   ValidationContractUnspecified,
-  ValidationOperatorExclusive,
-  ValidationExternalLead,
-  ValidationCalendarObservation,
+  ValidationNotAgentWork,
   validation_oracle_scopes,
   validation_oracle_observe_from_source,
   validation_oracle_set_observe,
@@ -5415,17 +5415,17 @@ fn belt_verify_run_and_persist(
           OperatorExclusive =>
             BeltValidationRun {
               executions: [],
-              verdict: ValidationRefused { cause: ValidationOperatorExclusive },
+              verdict: ValidationRefused { cause: ValidationNotAgentWork { mode: OperatorExclusiveMode } },
             }
           ExternalLead =>
             BeltValidationRun {
               executions: [],
-              verdict: ValidationRefused { cause: ValidationExternalLead },
+              verdict: ValidationRefused { cause: ValidationNotAgentWork { mode: ExternalLeadMode } },
             }
           CalendarObservation =>
             BeltValidationRun {
               executions: [],
-              verdict: ValidationRefused { cause: ValidationCalendarObservation },
+              verdict: ValidationRefused { cause: ValidationNotAgentWork { mode: CalendarObservationMode } },
             }
           ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots } =>
             belt_run_validation_operations(
@@ -6443,9 +6443,7 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
     LaunchReviewRequired => BandFail
     LaunchDispatchBindingMissing => BandFail
     LaunchExecutionContractMissing { reason: _ } => BandFail
-    LaunchOperatorExclusive => BandFail
-    LaunchExternalLead => BandFail
-    LaunchCalendarObservation => BandFail
+    LaunchNotAgentWork { mode: _ } => BandFail
     LaunchDependenciesBlocked { blockers: _ } => BandFail
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => BandFail
     LaunchCauseNotPermitted { cause: _, mode: _ } => BandFail

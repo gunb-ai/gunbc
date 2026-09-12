@@ -69,8 +69,7 @@ type ClaimSourceRootLayout
 // public authority row that is not actually non-agent work would be a fake producer. TRIGGER: a
 // RoadmapNode the belt looks up (this public authority, or a plan supplied as a parameter) is
 // constructed with execution: OperatorExclusive, ExternalLead, or CalendarObservation, so
-// LaunchOperatorExclusive / LaunchExternalLead / LaunchCalendarObservation and the matching
-// Validation* arms fire on a production tick. A witness that constructs the arm in isolation does
+// LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. A witness that constructs the arm in isolation does
 // not satisfy this trigger. Inventing a public node whose work is not operator-exclusive,
 // external-lead, or calendar-observation does not satisfy it either.
 

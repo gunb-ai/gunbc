@@ -37,7 +37,7 @@ import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchOperatorExclusive, LaunchExternalLead, LaunchCalendarObservation, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
 }
@@ -405,9 +405,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchReviewRequired => 409
     LaunchDispatchBindingMissing => 409
     LaunchExecutionContractMissing { reason: _ } => 409
-    LaunchOperatorExclusive => 409
-    LaunchExternalLead => 409
-    LaunchCalendarObservation => 409
+    LaunchNotAgentWork { mode: _ } => 409
     LaunchDependenciesBlocked { blockers: _ } => 409
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
     LaunchCauseNotPermitted { cause: _, mode: _ } => 409

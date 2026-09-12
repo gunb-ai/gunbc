@@ -31,8 +31,6 @@ import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   RoadmapAcceptanceReceipt,
-  NotDispatchable,
-  Dispatchable,
   node_sizing_derivation,
   node_sizing_subject_id,
   node_accepted,
@@ -42,6 +40,7 @@ import gunbc.roadmap_sizing {
   SizingSubjectId,
   SizingDerived,
   SizingNotDerivable,
+  NodeSizingDerivation,
   node_sizing_eq,
 }
 import gunbc.roadmap_belt { BeltCapacity }
@@ -478,27 +477,6 @@ fn forecast_refusal_count(result: ScheduleForecastResult) -> Int {
   match result {
     ScheduleForecastKnown { forecast: _ } => 0
     ScheduleForecastRefused { refusals } => count(refusals)
-  }
-}
-
-fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
-  match result {
-    ScheduleForecastKnown { forecast: _ } => 0
-    ScheduleForecastRefused { refusals } => refusals |> fold(init: 0, f: (acc, refusal) =>
-      acc + match refusal {
-        NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps)
-        WorkerConcurrencyCapInvalid { declared_cap: _ } => 0
-        ForecastGraphEmpty => 0
-        DependencyCycle { nodes: _ } => 0
-        DependencyEndpointUnknown { nodes: _ } => 0
-        NodeUnsized { nodes: _ } => 0
-        CycleTimeObservationNonPositive { nodes: _ } => 0
-        CalibrationHistoryRefused { refusals: _ } => 0
-        ForecastRoadmapAuthorityRefused { detail: _ } => 0
-        ForecastBuildRefused { node: _ } => 0
-        SizingAssignmentRefused { refusals: _ } => 0
-      }
-    )
   }
 }
 

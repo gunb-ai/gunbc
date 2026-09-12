@@ -9,7 +9,9 @@ import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_unmet_parent_i
 import gunbc.roadmap_execution_contract {
   ContractDeclaresNoValidation, ContractClosesNothing, ContractCloses, ContractNotAgentWork,
   OperatorExclusiveMode, ExternalLeadMode, CalendarObservationMode,
+  NonAgentWorkMode,
   contract_closure,
+  non_agent_work_mode_label,
 }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -220,9 +222,7 @@ type LaunchRefusal
   | LaunchReviewRequired
   | LaunchDispatchBindingMissing
   | LaunchExecutionContractMissing { reason: String }
-  | LaunchOperatorExclusive
-  | LaunchExternalLead
-  | LaunchCalendarObservation
+  | LaunchNotAgentWork { mode: NonAgentWorkMode }
   | LaunchDependenciesBlocked { blockers: List<String> }
   | LaunchSessionsUnobservable { reason: String }
   | LaunchAlreadyLive { session_name: String }
@@ -242,6 +242,14 @@ type LaunchAdmission
 // the operator's reading do not change under the migration; the arms the plan added carry new words
 // in the same shape.
 
+fn launch_non_agent_work_wire_label(mode: NonAgentWorkMode) -> String {
+  fold(
+    split(s: non_agent_work_mode_label(mode: mode), delimiter: "-"),
+    init: "",
+    f: (acc, part) => if acc == "" { part } else { concat(concat(acc, "_"), part) },
+  )
+}
+
 fn launch_refusal_label(r: LaunchRefusal) -> String {
   match r {
     LaunchNoActuatingInstance { reason: _ } => "no_instance"
@@ -255,9 +263,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "review_required"
     LaunchDispatchBindingMissing => "dispatch_binding_missing"
     LaunchExecutionContractMissing { reason: _ } => "execution_contract_missing"
-    LaunchOperatorExclusive => "operator_exclusive"
-    LaunchExternalLead => "external_lead"
-    LaunchCalendarObservation => "calendar_observation"
+    LaunchNotAgentWork { mode } => launch_non_agent_work_wire_label(mode: mode)
     LaunchDependenciesBlocked { blockers: _ } => "dependencies_blocked"
     LaunchSessionsUnobservable { reason: _ } => "observe_refused"
     LaunchAlreadyLive { session_name: _ } => "already_live"
@@ -283,9 +289,8 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchReviewRequired => "node's implementation evidence is in review; acceptance, not a relaunch, is the next step"
     LaunchDispatchBindingMissing => "node carries no dispatch binding; a launch needs the repository the work happens in and the acceptance evidence it must return"
     LaunchExecutionContractMissing { reason } => reason
-    LaunchOperatorExclusive => "operator-exclusive: this work is not for an agent"
-    LaunchExternalLead => "external-lead: this work is not for an agent"
-    LaunchCalendarObservation => "calendar-observation: this work is not for an agent"
+    LaunchNotAgentWork { mode } =>
+      join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
     LaunchDependenciesBlocked { blockers } => join(["dependencies not closed: ", join(blockers, ", ")], "")
     LaunchSessionsUnobservable { reason } => join(["live session set could not be observed: ", reason], "")
     LaunchAlreadyLive { session_name } => join(["attempt already live in ", session_name], "")
@@ -311,9 +316,9 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchReviewRequired,
     LaunchDispatchBindingMissing,
     LaunchExecutionContractMissing { reason: "r" },
-    LaunchOperatorExclusive,
-    LaunchExternalLead,
-    LaunchCalendarObservation,
+    LaunchNotAgentWork { mode: OperatorExclusiveMode },
+    LaunchNotAgentWork { mode: ExternalLeadMode },
+    LaunchNotAgentWork { mode: CalendarObservationMode },
     LaunchDependenciesBlocked { blockers: ["p"] },
     LaunchSessionsUnobservable { reason: "r" },
     LaunchAlreadyLive { session_name: "s" },
@@ -748,11 +753,7 @@ fn launch_gate_contract(node: RoadmapNode) -> LaunchGateVerdict {
           reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit a launch",
         } }
       ContractNotAgentWork { mode } =>
-        match mode {
-          OperatorExclusiveMode => GateRefused { refusal: LaunchOperatorExclusive }
-          ExternalLeadMode => GateRefused { refusal: LaunchExternalLead }
-          CalendarObservationMode => GateRefused { refusal: LaunchCalendarObservation }
-        }
+        GateRefused { refusal: LaunchNotAgentWork { mode: mode } }
       ContractCloses { validations: _ } => GatePassed
     }
   }

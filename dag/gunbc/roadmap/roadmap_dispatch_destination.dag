@@ -16,7 +16,7 @@ import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_model { RoadmapNode, WorkItemDispatch, Dispatchable, NotDispatchable }
 
 // A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
-// It is read from WorkItemDispatch.repo. destination_from_sizing matches
+// It is read from WorkItemDispatch.repo. destination_from_dispatch matches
 // Dispatchable/NotDispatchable. The resolver itself does not change.
 //
 // THIS MODULE NAMES NO PRIVATE REPOSITORY. A node whose work lives elsewhere supplies its
@@ -181,7 +181,7 @@ fn repository_from_repo_slug(repo: String) -> DispatchDestination {
   }
 }
 
-fn destination_from_sizing(dispatch: WorkItemDispatch) -> DispatchDestination {
+fn destination_from_dispatch(dispatch: WorkItemDispatch) -> DispatchDestination {
   match dispatch {
     NotDispatchable =>
       DispatchDestinationMissing {
@@ -193,7 +193,7 @@ fn destination_from_sizing(dispatch: WorkItemDispatch) -> DispatchDestination {
 }
 
 fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
-  destination_from_sizing(dispatch: node.dispatch)
+  destination_from_dispatch(dispatch: node.dispatch)
 }
 
 // Destination identity and spawn actuation are different facts. repository_from_repo_slug
