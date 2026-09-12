@@ -428,17 +428,6 @@ type AttemptVerification
       mode: NonAgentWorkMode,
     }
 
-fn first_closing_validation(
-  contract: WorkItemExecutionContract,
-) -> ValidationOperation? {
-  match contract_closure(contract: contract) {
-    ContractDeclaresNoValidation => none
-    ContractClosesNothing => none
-    ContractNotAgentWork { mode: _ } => none
-    ContractCloses { validations } => first(validations)
-  }
-}
-
 fn verify_attempt(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -460,14 +449,9 @@ fn verify_attempt(
         node_id: node_id,
         reason: "the node declares no closing validation, so an attempt against it cannot be verified; author a contract before dispatching",
       }
-    ContractCloses { validations: _ } =>
-  match first_closing_validation(contract: node.execution) {
-    Absent =>
-      AttemptVerificationUnbound {
-        node_id: node_id,
-        reason: "the node declares no closing validation, so an attempt against it cannot be verified; author a contract before dispatching",
-      }
-    Present { value: validation } =>
+    ContractCloses { validations } =>
+      match first(validations) {
+        Present { value: validation } =>
       match validation_operation_command(
         validation: validation,
         environment: instance.execution_environment,
