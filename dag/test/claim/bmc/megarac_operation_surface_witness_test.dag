@@ -7,10 +7,7 @@ import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.bmc.megarac {
   BiosUefiSettingsSurfaceAbsent,
-  CdActiveSessionsFlagByteIsNotACount,
   DiesOnReset,
-  GenIdDoesNotIdentifyASender,
-  MegaRacBmcIsNfsClientHostSeesVirtualCd,
   MegaRacIpmiSelPayloadPreserved,
   MegaRacWebEventLogOemEmptySelData,
   MegaRacWebEventLogOemDescriptionUnknown,
@@ -26,18 +23,13 @@ import extdeps.bmc.megarac {
   ServedUiFactKnown,
   SurvivesHostAndControllerReset,
   megarac_bios_adjacent_paths_at_0_32,
-  megarac_cd_active_sessions_flag_byte,
-  megarac_cd_active_sessions_session_count,
   megarac_firmware_0_32,
   megarac_framebuffer_recorder_reset_survival,
-  megarac_gen_id_as_sender,
-  megarac_gen_id_standing,
   megarac_ipmi_sel_layout,
   megarac_live_sol_activate_reset_survival,
   megarac_redirection_is_connecting,
   megarac_redirection_is_started,
   megarac_redirection_status_of_wire,
-  megarac_remote_media_role,
   megarac_served_ui_absence_standing,
   megarac_sol_recorder_reset_survival,
   megarac_sol_trigger_power_on_field_wire,
@@ -90,21 +82,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn path_roster_contains(xs: List<NonEmptyStr>, s: NonEmptyStr) -> Bool {
   fold(xs, init: false, f: (acc, x) => acc || x == s)
-}
-
-test fn media_route_is_bmc_nfs_client_not_pxe() -> Bool {
-  match megarac_remote_media_role {
-    MegaRacBmcIsNfsClientHostSeesVirtualCd => true
-  }
-}
-
-test fn cd_active_sessions_cannot_be_read_as_a_count() -> Bool {
-  match megarac_cd_active_sessions_session_count(field: megarac_cd_active_sessions_flag_byte(wire: 128)) {
-    CdActiveSessionsFlagByteIsNotACount { field: _ } =>
-      match megarac_cd_active_sessions_session_count(field: megarac_cd_active_sessions_flag_byte(wire: 129)) {
-        CdActiveSessionsFlagByteIsNotACount { field: _ } => true
-      }
-  }
 }
 
 test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
@@ -174,13 +151,10 @@ test fn other_firmware_does_not_inherit_0_32_absences() -> Bool {
   }
 }
 
-test fn web_event_log_empties_oem_payload_and_genid_is_not_a_sender() -> Bool {
+test fn web_and_ipmi_event_log_layouts_are_distinct() -> Bool {
   megarac_web_event_log_layout == MegaRacWebEventLogOemEmptySelData
     && megarac_ipmi_sel_layout == MegaRacIpmiSelPayloadPreserved
     && megarac_web_event_log_layout != megarac_ipmi_sel_layout
-    && match megarac_gen_id_as_sender(standing: megarac_gen_id_standing(gen_id1: 62, gen_id2: 17)) {
-      GenIdDoesNotIdentifyASender { standing: _ } => true
-    }
 }
 
 fn collector_without_coverage_profile() -> PreOsObservationCapabilities {

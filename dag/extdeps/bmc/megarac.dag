@@ -125,7 +125,7 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_instance: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "GET",
   path: "/api/settings/media/instance",
-  contract_note: "cd_active_sessions is a FLAG BYTE, not a session count: 128 is 0x80 and 129 is 0x81. Neighbouring cd_port 0x80000050 is port 80 with bit 31 set. Reading the field as a count is unrepresentable (megarac_cd_active_sessions_session_count).",
+  contract_note: "cd_active_sessions is a FLAG BYTE, not a session count: 128 is 0x80 and 129 is 0x81. Neighbouring cd_port 0x80000050 is port 80 with bit 31 set. There is no session-count constructor on MegaRacCdActiveSessionsField.",
 }
 
 data megarac_op_video_triggers: MegaRacApiOperation = MegaRacApiOperation {
@@ -241,17 +241,14 @@ type MegaRacRemoteMediaRole
 
 data megarac_remote_media_role: MegaRacRemoteMediaRole = MegaRacBmcIsNfsClientHostSeesVirtualCd
 
+// 0.32 inhabitances with no fold in this PR (DESIGN §3c frontier): megarac_remote_media_role,
+// megarac_cd_active_sessions_flag_byte, megarac_gen_id_standing. Trigger: a media-attach or
+// instance/SEL-read workflow that selects those symbols. No one-arm witness stands in for that.
+
 // cd_active_sessions: FLAG BYTE, NOT A COUNT. There is no constructor that yields a session
 // count from this field.
 type MegaRacCdActiveSessionsField
   = CdActiveSessionsFlagByte { wire: Int }
-
-type MegaRacCdActiveSessionsIsNotACount
-  = CdActiveSessionsFlagByteIsNotACount { field: MegaRacCdActiveSessionsField }
-
-fn megarac_cd_active_sessions_session_count(field: MegaRacCdActiveSessionsField) -> MegaRacCdActiveSessionsIsNotACount {
-  CdActiveSessionsFlagByteIsNotACount { field: field }
-}
 
 fn megarac_cd_active_sessions_flag_byte(wire: Int) -> MegaRacCdActiveSessionsField {
   CdActiveSessionsFlagByte { wire: wire }
@@ -407,17 +404,10 @@ type MegaRacGenIdBytes {
 type MegaRacGenIdStanding
   = ManufacturerBytesRenderedThroughStandardEventTemplate { bytes: MegaRacGenIdBytes }
 
-type MegaRacGenIdIsNotASender
-  = GenIdDoesNotIdentifyASender { standing: MegaRacGenIdStanding }
-
 fn megarac_gen_id_standing(gen_id1: Int, gen_id2: Int) -> MegaRacGenIdStanding {
   ManufacturerBytesRenderedThroughStandardEventTemplate {
     bytes: MegaRacGenIdBytes { gen_id1: gen_id1, gen_id2: gen_id2 },
   }
-}
-
-fn megarac_gen_id_as_sender(standing: MegaRacGenIdStanding) -> MegaRacGenIdIsNotASender {
-  GenIdDoesNotIdentifyASender { standing: standing }
 }
 
 data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOemEmptySelData
