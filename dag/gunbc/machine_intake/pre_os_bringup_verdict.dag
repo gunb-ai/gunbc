@@ -18,10 +18,10 @@ import extdeps.bmc.ipmi_sel {
 import gunbc.machine_intake_pre_os_observation_capabilities {
   DimmLocalizationCapability,
   LocalizationUnavailableFromExposedTelemetry,
-  OemDecodeAvailable,
-  OemDecodeControllerDeclaredUnknown,
-  OemDecodeNotProbed,
-  OemDecodeRenderedUncited,
+  OemSelDecodeCapability,
+  SelRawOnly,
+  SelStandardDecoded,
+  SelUnreadable,
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
 }
@@ -39,7 +39,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
 //   sight, with the localization the firmware stated; the SEL-window bound is for hosts that say
 //   nothing.
 //
-//   AN OPAQUE OEM CODE STAYS OPAQUE. OemSelPayloadObserved, OemSelDecodeStanding and
+//   AN OPAQUE OEM CODE STAYS OPAQUE. OemSelPayloadObserved, the profile's OemSelDecodeCapability carried as-is, and
 //   OemSelEmpiricalAssociation are three carriers with no fold between them and the verdict. The
 //   verdict fold's signature does not take an OEM payload; a memory-training terminal has no
 //   constructor in this module; the association is a reportable fact that names what would decode
@@ -292,7 +292,8 @@ fn remediation_localization(profile: PreOsObservationCapabilities) -> Remediatio
 }
 
 type BringupUndeterminedCause
-  = FirmwareEmittedUndecodedErrorCodes { err_lines: Int }
+  = SelStandardDecodeUnavailable
+  | FirmwareEmittedUndecodedErrorCodes { err_lines: Int }
   | NoRestartInWindow
   | RestartsBelowTerminalThreshold { restarts_without_progress: Int }
   | NothingObservedBeyondActivation
@@ -344,8 +345,23 @@ fn pre_os_bringup_verdict(
   }
 }
 
-// THE VERDICT FOR A HOST THAT STATED NOTHING, from the SEL window alone.
+// THE VERDICT FOR A HOST THAT STATED NOTHING, from the SEL window alone -- which the profile must
+// say is STANDARD-DECODED, because the restart and firmware-progress rows the fold reads are the
+// controller's decoding of section 42.2 sensor events; a raw-only or unreadable SEL cannot have
+// produced them, and a window claiming otherwise is refused as undetermined rather than read.
 fn sel_window_verdict(
+  window: List<SelWindowEvent>,
+  console: SolCaptureReading,
+  profile: PreOsObservationCapabilities,
+) -> PreOsBringupVerdict {
+  match profile.sel {
+    SelUnreadable => BringupUndetermined { cause: SelStandardDecodeUnavailable }
+    SelRawOnly => BringupUndetermined { cause: SelStandardDecodeUnavailable }
+    SelStandardDecoded => decoded_sel_window_verdict(window: window, console: console, profile: profile)
+  }
+}
+
+fn decoded_sel_window_verdict(
   window: List<SelWindowEvent>,
   console: SolCaptureReading,
   profile: PreOsObservationCapabilities,
@@ -388,27 +404,9 @@ type OemSelPayloadObserved
   = OemPayloadAbsentFromWindow { payload: OemSelPayload }
   | OemPayloadSeen { payload: OemSelPayload, occurrences: Int, first_record_id: Int, last_record_id: Int }
 
-// FACT TWO: WHAT THE MANUFACTURER'S REALIZATION SAID WHEN ASKED TO DECODE IT. Derived from the
-// capability profile so it cannot be authored more generously than the profile measured.
-// WHETHER AN ASSOCIATION MAY BE READ AS A DECODE is answered by matching this standing where it
-// is consumed: only ControllerDecodes licenses it, and then the decode is THEIRS, cited by the
-// authority the arm carries -- never this module's. On every other arm the answer is no, however
-// many occurrences the association counts, which is the arity repair
-// gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission prescribes.
-type OemSelDecodeStanding
-  = ControllerDecodes { decode_authority: DeclarationRef }
-  | ControllerDeclaredUnknown
-  | ControllerRenderedUncited { rendering: NonEmptyStr }
-  | DecodeNotProbed
-
-fn oem_sel_decode_standing(profile: PreOsObservationCapabilities) -> OemSelDecodeStanding {
-  match profile.oem_sel_decode {
-    OemDecodeAvailable { decode_authority: a } => ControllerDecodes { decode_authority: a }
-    OemDecodeControllerDeclaredUnknown => ControllerDeclaredUnknown
-    OemDecodeRenderedUncited { rendering: r } => ControllerRenderedUncited { rendering: r }
-    OemDecodeNotProbed => DecodeNotProbed
-  }
-}
+// FACT TWO: WHAT THE MANUFACTURER'S REALIZATION SAID WHEN ASKED TO DECODE IT -- the profile's own
+// OemSelDecodeCapability, carried as-is rather than relabelled (review 64415), so it cannot be
+// authored more generously than the profile measured and cannot lag a new measured arm.
 
 // FACT THREE: WHAT THE PAYLOAD CO-OCCURS WITH. Computed over the window. `never_within_same_cycle_as`
 // holds only candidates that DO appear in the window and never share a cycle with the payload;
@@ -419,7 +417,7 @@ type OemSelEmpiricalAssociation {
   observed: OemSelPayloadObserved
   never_within_same_cycle_as: List<OemSelPayload>
   candidates_absent_from_window: List<OemSelPayload>
-  decode_standing: OemSelDecodeStanding
+  decode_standing: OemSelDecodeCapability
 }
 
 type OemPayloadCountFold {
@@ -522,6 +520,6 @@ fn oem_sel_empirical_association(
     observed: oem_payload_observed(window: window, payload: payload),
     never_within_same_cycle_as: filter(xs: partitioned.present, f: c => payloads_co_occur_in_a_cycle(window: window, a: payload, b: c) == false),
     candidates_absent_from_window: partitioned.absent,
-    decode_standing: oem_sel_decode_standing(profile: profile),
+    decode_standing: profile.oem_sel_decode,
   }
 }

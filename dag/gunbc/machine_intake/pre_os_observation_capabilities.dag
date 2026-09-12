@@ -2,6 +2,7 @@ module gunbc.machine_intake_pre_os_observation_capabilities
 
 import std.types { Bool, Int, NonEmptyStr }
 import std.content_hash { ContentHash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.boards.types { BaseboardModel }
@@ -81,6 +82,11 @@ data web_event_log_unknown_rendering: NonEmptyStr = "unknown"
 // DERIVED FROM THE FIELDS, NOT FROM THE COUNT (review 64251): no OEM records served is not a probe;
 // a uniform "unknown" description WITH empty OEM bytes is the controller declining; anything else
 // the surface rendered is carried as an uncited rendering, which licenses no decode.
+// THE WEB-LOG AXIS IS DERIVED FROM THE SAME RECEIPT: a surface that served records is available.
+fn web_event_log_capability_of(observation: WebEventLogDecodeObservation) -> WebEventLogCapability {
+  if observation.records_served > 0 { WebEventLogAvailable } else { WebEventLogAbsent }
+}
+
 fn oem_sel_decode_capability_of_web_log(observation: WebEventLogDecodeObservation) -> OemSelDecodeCapability {
   if observation.oem_records_served == 0 {
     OemDecodeNotProbed
@@ -138,3 +144,16 @@ type PreOsObservationCapabilities {
   managed_ac: ManagedAcActuationCapability
   host_callback: HostCallbackCapability
 }
+
+// TWO AXES ARE CARRIED FOR A CONSUMER THAT IS NOT IN THIS CHANGE, AND THIS ROW SAYS SO (DESIGN
+// section 3c). memory_power is the post-boot qualification's input -- whether a soak can read an
+// aggregate memory power figure -- and post-boot qualification is the explicitly separate second
+// change. host_callback is what gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect
+// names as the constructor input of a subject-level boot terminal; the boot-delivery model that
+// takes a host-originating attestation as a constructor argument is that row's own next-rung
+// trigger, and it is the consumer of this arm. Neither axis is read by a fold here, and neither
+// is invented: both were measured on 2026-09-11 and would otherwise be re-measured by the change
+// that consumes them.
+data pre_os_profile_deferred_axes_frontier: DissolutionCondition = unbound_dissolution(
+  description: "the post-boot memory qualification fold that reads memory_power, and the boot-delivery model that takes a host-originating attestation as a constructor argument and reads host_callback -- SUFFICIENT FOR every axis of PreOsObservationCapabilities to have an executing consumer",
+)

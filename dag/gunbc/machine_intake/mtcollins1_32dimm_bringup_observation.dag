@@ -19,13 +19,15 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   AggregateMemoryPowerExposed,
   HostCallbackIntendedNotDemonstrated,
   NoManagedAcActuator,
+  OemDecodeAvailable,
+  OemDecodeControllerDeclaredUnknown,
   PreOsObservationCapabilities,
   WebEventLogDecodeObservation,
   oem_sel_decode_capability_of_web_log,
+  web_event_log_capability_of,
   SelStandardDecoded,
   SolPresentEmitting,
   PerSlotLocalizationExposed,
-  WebEventLogAvailable,
 }
 import gunbc.machine_intake_pre_os_bringup_attempt {
   AcPowerCycle,
@@ -54,8 +56,6 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
 import gunbc.machine_intake_pre_os_bringup_verdict {
   BringupUndetermined,
   NothingObservedBeyondActivation,
-  ControllerDeclaredUnknown,
-  ControllerDecodes,
   FirmwareProgressObserved,
   OemPayloadAbsentFromWindow,
   OemPayloadSeen,
@@ -383,7 +383,7 @@ data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObserva
   },
   sel: SelStandardDecoded,
   oem_sel_decode: oem_sel_decode_capability_of_web_log(observation: mtcollins1_web_event_log_decode),
-  web_event_log: WebEventLogAvailable,
+  web_event_log: web_event_log_capability_of(observation: mtcollins1_web_event_log_decode),
   dimm_localization: PerSlotLocalizationExposed {
     source: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
   },
@@ -430,6 +430,7 @@ data mtcollins1_ac_cycle_collectors_as_required: List<CollectorStanding> = [
 fn mtcollins1_ac_cycle_readiness_as_run() -> CollectorsReadiness {
   collectors_ready(
     attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: mtcollins1_32dimm_artifact_dir },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningStale),
     collectors: mtcollins1_ac_cycle_collectors_as_run,
@@ -439,6 +440,7 @@ fn mtcollins1_ac_cycle_readiness_as_run() -> CollectorsReadiness {
 fn mtcollins1_ac_cycle_readiness_as_required() -> CollectorsReadiness {
   collectors_ready(
     attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: mtcollins1_32dimm_artifact_dir },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
     collectors: mtcollins1_ac_cycle_collectors_as_required,
@@ -506,11 +508,11 @@ fn check_collectors_before_actuation() -> ProcessExit {
     NotReady { gap: _ } =>
       exit_failure(reason: "collectors-before-actuation: the readiness a correct run would present was REFUSED, so the fold cannot distinguish the failed run from a correct one")
     Ready { ready: r } =>
-      match power_actuation_request(ready: r, kind: AcPowerCycle) {
+      match power_actuation_request(ready: r, profile: mtcollins1_pre_os_capabilities, kind: AcPowerCycle) {
         ActuatorRequest { ready: _, kind: _, realization: _ } =>
           exit_failure(reason: "collectors-before-actuation: an AC cycle was rendered as an actuator request, but this fleet has no managed AC actuator")
         HumanAttendedRequest { ready: rr, kind: _, barrier: _ } =>
-          if power_actuation_request_readiness(request: power_actuation_request(ready: rr, kind: HostWarmReset)).attempt == mtcollins1_ac_cycle_attempt {
+          if power_actuation_request_readiness(request: power_actuation_request(ready: rr, profile: mtcollins1_pre_os_capabilities, kind: HostWarmReset)).attempt == mtcollins1_ac_cycle_attempt {
             ExitSuccess
           } else {
             exit_failure(reason: "collectors-before-actuation: the request lost the attempt identity of the readiness it was minted from")
@@ -622,8 +624,8 @@ fn check_opaque_oem_stays_opaque() -> ProcessExit {
     exit_failure(reason: "opaque-oem: the completed-boot OEM pair -- present in the window at 0x3ec/0x3ed -- was found in a cycle beside 0fde70330102, or a candidate was dropped or reported absent")
   }
   let undecoded = match assoc.decode_standing {
-    ControllerDeclaredUnknown => ExitSuccess
-    ControllerDecodes { decode_authority: _ } => exit_failure(reason: "opaque-oem: an association over a payload the controller does not decode was read as decoded")
+    OemDecodeControllerDeclaredUnknown => ExitSuccess
+    OemDecodeAvailable { decode_authority: _ } => exit_failure(reason: "opaque-oem: an association over a payload the controller does not decode was read as decoded")
     _ => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
   }
   first_failure(checks: [seen, never_beside, undecoded])

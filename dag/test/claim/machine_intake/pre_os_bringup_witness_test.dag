@@ -20,7 +20,11 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   LocalizationUnavailableFromExposedTelemetry,
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
+  ConsoleObservationCapability,
+  SolAbsent,
   SolPresentEmitting,
+  SelRawOnly,
+  ManagedAcActuatorDeclared,
   WebEventLogDecodeObservation,
   oem_sel_decode_capability_of_web_log,
 }
@@ -38,6 +42,9 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   ControllerObservedReachable,
   ActuationAccepted,
   ActuatorRequest,
+  AcPowerCycle,
+  DeclaredAcActuator,
+  HumanAttendedRequest,
   EvidenceSinkAbsent,
   EvidenceSinkMissing,
   EvidenceSinkPresent,
@@ -58,6 +65,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   LocalizableFrom,
   FirmwareEmittedUndecodedErrorCodes,
   NoRestartInWindow,
+  SelStandardDecodeUnavailable,
   NothingObservedBeyondActivation,
   SolHostBytesObserved,
   OemPayloadAbsentFromWindow,
@@ -128,6 +136,7 @@ fn proven_collectors() -> List<CollectorStanding> {
 test fn an_absent_evidence_sink_refuses_before_the_lease_is_consulted() -> Bool {
   match collectors_ready(
     attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkAbsent,
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseAbsent),
     collectors: proven_collectors(),
@@ -140,6 +149,7 @@ test fn an_absent_evidence_sink_refuses_before_the_lease_is_consulted() -> Bool 
 test fn a_missing_liveness_watch_is_named_as_the_gap() -> Bool {
   match collectors_ready(
     attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: "sink" },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
     collectors: [
@@ -157,6 +167,7 @@ test fn a_missing_liveness_watch_is_named_as_the_gap() -> Bool {
 test fn a_console_deadline_not_after_the_alive_instant_refuses_readiness() -> Bool {
   match collectors_ready(
     attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: "sink" },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
     collectors: [
@@ -173,6 +184,7 @@ test fn a_console_deadline_not_after_the_alive_instant_refuses_readiness() -> Bo
 test fn the_positive_console_fixture_with_a_later_deadline_admits() -> Bool {
   match collectors_ready(
     attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: "sink" },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
     collectors: proven_collectors(),
@@ -185,13 +197,14 @@ test fn the_positive_console_fixture_with_a_later_deadline_admits() -> Bool {
 test fn an_accepted_actuator_request_mints_an_issued_receipt_and_nothing_stronger() -> Bool {
   match collectors_ready(
     attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: "sink" },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
     collectors: proven_collectors(),
   ) {
     NotReady { gap: _ } => false
     Ready { ready: r } =>
-      match power_actuation_outcome(request: power_actuation_request(ready: r, kind: BmcControllerReset), ack: ActuationAccepted { at: 7 }) {
+      match power_actuation_outcome(request: power_actuation_request(ready: r, profile: mtcollins1_pre_os_capabilities, kind: BmcControllerReset), ack: ActuationAccepted { at: 7 }) {
         Issued { issued: i } =>
           i.acknowledged_at == 7
             && match i.request {
@@ -200,6 +213,100 @@ test fn an_accepted_actuator_request_mints_an_issued_receipt_and_nothing_stronge
             }
         _ => false
       }
+  }
+}
+
+fn profile_with(console: ConsoleObservationCapability) -> PreOsObservationCapabilities {
+  PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: console,
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    web_event_log: mtcollins1_pre_os_capabilities.web_event_log,
+    dimm_localization: mtcollins1_pre_os_capabilities.dimm_localization,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+}
+
+// THE PROFILE DECIDES WHICH COLLECTORS ARE REQUIRED: with no console, the console proof is not
+// demanded and readiness admits on the two controller-side collectors.
+test fn a_platform_with_no_console_does_not_require_a_console_collector() -> Bool {
+  let no_console = profile_with(console: SolAbsent {
+    established_by: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "profile_with", field: WholeDeclaration },
+  })
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: no_console,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: [
+      CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+      CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
+    ],
+  ) {
+    Ready { ready: _ } => true
+    _ => false
+  }
+}
+
+// THE PROFILE DECIDES WHETHER AN AC CYCLE IS AN ACTUATOR REQUEST: only a declared actuator turns
+// it into one, and it carries the declared realization, never an outlet.
+test fn a_declared_ac_actuator_turns_the_ac_cycle_into_an_actuator_request() -> Bool {
+  let with_ac = PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: mtcollins1_pre_os_capabilities.console,
+    sel: mtcollins1_pre_os_capabilities.sel,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    web_event_log: mtcollins1_pre_os_capabilities.web_event_log,
+    dimm_localization: mtcollins1_pre_os_capabilities.dimm_localization,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: ManagedAcActuatorDeclared {
+      realization: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "profile_with", field: WholeDeclaration },
+    },
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: with_ac,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: _ } => false
+    Ready { ready: r } =>
+      match power_actuation_request(ready: r, profile: with_ac, kind: AcPowerCycle) {
+        ActuatorRequest { ready: _, kind: _, realization: DeclaredAcActuator { realization: d } } => d.decl_name == "profile_with"
+        _ => false
+      }
+  }
+}
+
+// A RAW-ONLY SEL CANNOT HAVE PRODUCED DECODED RESTART ROWS, so the window is refused as
+// undetermined rather than read.
+test fn a_raw_only_sel_profile_refuses_the_window_as_undetermined() -> Bool {
+  let raw = PreOsObservationCapabilities {
+    baseboard: mtcollins1_pre_os_capabilities.baseboard,
+    controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
+    console: mtcollins1_pre_os_capabilities.console,
+    sel: SelRawOnly,
+    oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
+    web_event_log: mtcollins1_pre_os_capabilities.web_event_log,
+    dimm_localization: mtcollins1_pre_os_capabilities.dimm_localization,
+    memory_power: mtcollins1_pre_os_capabilities.memory_power,
+    managed_ac: mtcollins1_pre_os_capabilities.managed_ac,
+    host_callback: mtcollins1_pre_os_capabilities.host_callback,
+  }
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: raw,
+  ) {
+    BringupUndetermined { cause: SelStandardDecodeUnavailable } => true
+    _ => false
   }
 }
 

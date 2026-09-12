@@ -3,6 +3,7 @@ module gunbc.machine_intake_pre_os_bringup_attempt
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.measure { ByteSize }
 import std.scoped_authorization { AttemptIdentity }
+import std.decl_ref { DeclarationRef }
 import std.temporal_effect { HeldLease, held_lease_observed_verdict }
 import std.upsert_decision { Converged, ObservationVerdict }
 import std.human_intervention {
@@ -11,6 +12,14 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.machine_intake_pre_os_observation_capabilities {
+  ManagedAcActuatorDeclared,
+  NoManagedAcActuator,
+  PreOsObservationCapabilities,
+  SolAbsent,
+  SolPresentEmitting,
+  SolPresentSilent,
+}
 
 // ONE PRE-OS BRING-UP ATTEMPT: THE COLLECTORS ARE A CONSTRUCTOR INPUT TO THE ACTUATION, NOT A
 // CHECKLIST BESIDE IT. The receipt that shaped this module (Mt. Collins unit 1, 2026-09-11, evidence
@@ -104,11 +113,19 @@ fn collector_kind_eq(a: CollectorKind, b: CollectorKind) -> Bool {
   }
 }
 
-// THE THREE COLLECTORS EVERY ATTEMPT REQUIRES. A roster rather than three fields so the readiness
-// fold can name WHICH is missing; a record with three proof fields would make the missing one a
-// hole the literal simply cannot express, and the diagnostic would be a type error at the wrong
-// layer.
-data required_collectors: List<CollectorKind> = [ConsoleCapture, SelCursorTail, ControllerLivenessWatch]
+// THE COLLECTORS AN ATTEMPT REQUIRES, DERIVED FROM THE PLATFORM PROFILE. A roster rather than
+// fields so the readiness fold can name WHICH is missing. The console collector is required only
+// where the profile says a console exists to collect from: on a platform whose console capability
+// is SolAbsent, demanding a console proof would make readiness unreachable for a reason that is
+// not a collector defect. SEL cursor and controller liveness are required on every platform this
+// model admits, because both are read over the controller itself.
+fn required_collectors(profile: PreOsObservationCapabilities) -> List<CollectorKind> {
+  match profile.console {
+    SolAbsent { established_by: _ } => [SelCursorTail, ControllerLivenessWatch]
+    SolPresentSilent { established_by: _ } => [ConsoleCapture, SelCursorTail, ControllerLivenessWatch]
+    SolPresentEmitting { established_by: _ } => [ConsoleCapture, SelCursorTail, ControllerLivenessWatch]
+  }
+}
 
 // ── the evidence sink and the console lease ────────────────────────────────────────────────────
 
@@ -179,9 +196,9 @@ fn collector_gap_for(kind: CollectorKind, collectors: List<CollectorStanding>) -
   }
 }
 
-fn first_collector_gap(collectors: List<CollectorStanding>) -> CollectorGap? {
+fn first_collector_gap(profile: PreOsObservationCapabilities, collectors: List<CollectorStanding>) -> CollectorGap? {
   fold(
-    required_collectors,
+    required_collectors(profile: profile),
     init: none,
     f: (acc, kind) => match acc {
       Present { value: _ } => acc
@@ -195,6 +212,7 @@ fn first_collector_gap(collectors: List<CollectorStanding>) -> CollectorGap? {
 // is decided with no knowledge of what will be done, so it cannot be relaxed for a "harmless" one.
 fn collectors_ready(
   attempt: AttemptIdentity,
+  profile: PreOsObservationCapabilities,
   sink: EvidenceSinkStanding,
   console_lease: HeldLease,
   collectors: List<CollectorStanding>,
@@ -205,7 +223,7 @@ fn collectors_ready(
       let verdict = held_lease_observed_verdict(observed: console_lease.observed)
       match verdict {
         Converged =>
-          match first_collector_gap(collectors: collectors) {
+          match first_collector_gap(profile: profile, collectors: collectors) {
             Present { value: gap } => NotReady { gap: gap }
             Absent =>
               Ready {
@@ -240,26 +258,35 @@ fn ac_cycle_barrier(ready: CollectorsReady) -> HumanIntervention {
   }
 }
 
-// WHAT AN ACTUATOR IS ASKED TO DO, for the three kinds an actuator can do. The wire words are IPMI
-// chassis-control actions for the two host actions (extdeps.bmc.ipmi ChassisPowerControl) and the
-// controller's own cold reset for the third; none is a literal in a call, so a second controller
-// family binds different words to the same request.
+// WHAT AN ACTUATOR IS ASKED TO DO. The wire words are IPMI chassis-control actions for the two
+// host actions (extdeps.bmc.ipmi ChassisPowerControl) and the controller's own cold reset for the
+// third; none is a literal in a call, so a second controller family binds different words to the
+// same request. DeclaredAcActuator carries the realization the profile's managed-AC arm named --
+// a pointer, never an outlet -- and is reachable only from that arm.
 type ActuatorRealization
   = ChassisControlAction { action_wire: NonEmptyStr }
   | ControllerColdReset
+  | DeclaredAcActuator { realization: DeclarationRef }
 
 type PowerActuationRequest
   = ActuatorRequest { ready: CollectorsReady, kind: PowerActuationKind, realization: ActuatorRealization }
   | HumanAttendedRequest { ready: CollectorsReady, kind: PowerActuationKind, barrier: HumanIntervention }
 
 // CONSTRUCTIBLE ONLY FROM A CollectorsReady, which is the law in one signature. There is no
-// overload taking a readiness verdict, a Bool, or nothing.
-fn power_actuation_request(ready: CollectorsReady, kind: PowerActuationKind) -> PowerActuationRequest {
+// overload taking a readiness verdict, a Bool, or nothing. Whether an AC cycle is an actuator
+// request or a human-attended barrier is decided by the PROFILE's managed-AC arm, not by this
+// module: NoManagedAcActuator is the only inhabited arm today, so the barrier is what every real
+// profile yields.
+fn power_actuation_request(ready: CollectorsReady, profile: PreOsObservationCapabilities, kind: PowerActuationKind) -> PowerActuationRequest {
   match kind {
     HostWarmReset => ActuatorRequest { ready: ready, kind: kind, realization: ChassisControlAction { action_wire: "reset" } }
     ChassisPowerCycle => ActuatorRequest { ready: ready, kind: kind, realization: ChassisControlAction { action_wire: "cycle" } }
     BmcControllerReset => ActuatorRequest { ready: ready, kind: kind, realization: ControllerColdReset }
-    AcPowerCycle => HumanAttendedRequest { ready: ready, kind: kind, barrier: ac_cycle_barrier(ready: ready) }
+    AcPowerCycle =>
+      match profile.managed_ac {
+        NoManagedAcActuator => HumanAttendedRequest { ready: ready, kind: kind, barrier: ac_cycle_barrier(ready: ready) }
+        ManagedAcActuatorDeclared { realization: r } => ActuatorRequest { ready: ready, kind: kind, realization: DeclaredAcActuator { realization: r } }
+      }
   }
 }
 
