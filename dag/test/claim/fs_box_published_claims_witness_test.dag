@@ -18,8 +18,6 @@ import product.fs_box_published_claims {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
 test fn v4_data_sheet_lists_qsfp28_and_qsfp_dd_but_not_qsfp56() -> Bool {
   sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 17))
     && sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 24))
@@ -67,8 +65,9 @@ test fn data_sheet_and_faq_spell_macos_differently() -> Bool {
       f: (hit, row) => hit || string_contains(s: row as String, pattern: "macOS"),
     )
 }
-  fs_box_v4_color_sku_count() == 2
-    && fs_box_v4_ordering_names_part(name: "FS BOX V3" as NonEmptyStr)
+
+test fn data_sheet_two_v4_colors_and_a_v3_ordering_line() -> Bool {
+  fs_box_v4_color_sku_count() == 2 && fs_box_v4_ordering_names_part(name: "FS BOX V3" as NonEmptyStr)
 }
 
 test fn data_sheet_battery_interrupt_is_endurance_not_write_recovery() -> Bool {
@@ -145,3 +144,5 @@ test fn both_publications_are_cited_to_their_pdfs() -> Bool {
       TranscribedUncited { read_obligation: o } => false
     }
 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
