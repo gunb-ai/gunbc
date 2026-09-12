@@ -3,15 +3,8 @@ module gunbc.machine_intake_pre_os_bringup_attempt
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.measure { ByteSize }
 import std.scoped_authorization { AttemptIdentity }
-import std.temporal_effect {
-  HeldLease,
-  HeldLeaseObservedState,
-  LeaseAbsent,
-  LeaseInaccessible,
-  LeasePortForeign,
-  LeaseRunningExpected,
-  LeaseRunningStale,
-}
+import std.temporal_effect { HeldLease, held_lease_observed_verdict }
+import std.upsert_decision { Converged, ObservationVerdict }
 import std.human_intervention {
   BreakGlassOnly,
   HumanIntervention,
@@ -121,19 +114,11 @@ type EvidenceSinkStanding
 // WHY THE CONSOLE IS A LEASE AND NOT A COLLECTOR ALONE. The controller admits ONE SOL session. Two
 // captures armed against it do not both run; the second steals the session or is refused, and the
 // first keeps writing a file that no longer receives bytes. std.temporal_effect HeldLease already
-// carries the states a held-session lease can be observed in, and LeaseRunningStale -- a holder
-// exists and is not the one this attempt expects -- is exactly the two-stale-processes receipt.
-// Reusing it rather than minting "SolSessionOwned" keeps one authority for exclusive use (DESIGN
-// section 3b, leasing domain).
-fn console_lease_is_held(lease: HeldLease) -> Bool {
-  match lease.observed {
-    LeaseRunningExpected => true
-    LeaseAbsent => false
-    LeaseRunningStale => false
-    LeasePortForeign => false
-    LeaseInaccessible => false
-  }
-}
+// carries the states a held-session lease can be observed in, and its own fold
+// held_lease_observed_verdict already says which of them is the held one (Converged) -- so
+// readiness consults that verdict rather than re-deriving it from the coproduct (review 64281).
+// The refusing arm carries the verdict, so a stale holder (Drifted, the two-stale-processes
+// receipt) and a foreign holder (Conflict) stay distinguishable to whoever repairs it.
 
 // ── readiness ──────────────────────────────────────────────────────────────────────────────────
 
@@ -142,7 +127,7 @@ fn console_lease_is_held(lease: HeldLease) -> Bool {
 // watcher to re-arm BEFORE the action.
 type CollectorGap
   = EvidenceSinkMissing
-  | ConsoleLeaseNotHeld { observed: HeldLeaseObservedState }
+  | ConsoleLeaseNotHeld { verdict: ObservationVerdict }
   | CollectorNotProven { kind: CollectorKind }
 
 // SEALED. The only producer is collectors_ready below, so a CollectorsReady in hand IS the fact
@@ -203,21 +188,22 @@ fn collectors_ready(
   match sink {
     EvidenceSinkAbsent => NotReady { gap: EvidenceSinkMissing }
     EvidenceSinkPresent { directory: dir } =>
-      if console_lease_is_held(lease: console_lease) == false {
-        NotReady { gap: ConsoleLeaseNotHeld { observed: console_lease.observed } }
-      } else {
-        match first_collector_gap(collectors: collectors) {
-          Present { value: gap } => NotReady { gap: gap }
-          Absent =>
-            Ready {
-              ready: CollectorsReady {
-                attempt: attempt,
-                evidence_sink: dir,
-                console_lease: console_lease,
-                collectors: collectors,
+      let verdict = held_lease_observed_verdict(observed: console_lease.observed)
+      match verdict {
+        Converged =>
+          match first_collector_gap(collectors: collectors) {
+            Present { value: gap } => NotReady { gap: gap }
+            Absent =>
+              Ready {
+                ready: CollectorsReady {
+                  attempt: attempt,
+                  evidence_sink: dir,
+                  console_lease: console_lease,
+                  collectors: collectors,
+                }
               }
-            }
-        }
+          }
+        _ => NotReady { gap: ConsoleLeaseNotHeld { verdict: verdict } }
       }
   }
 }

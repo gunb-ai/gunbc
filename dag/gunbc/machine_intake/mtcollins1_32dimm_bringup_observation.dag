@@ -149,8 +149,8 @@ fn mtcollins1_sol_reading(capture: SolCaptureUnderCondition) -> SolCaptureReadin
 
 // ── the held-session capture: the firmware's own training statement ────────────────────────────
 
-// THE FIRST CAPTURE FROM A CLIENT THAT HELD THE SESSION (eager-owl-205, 2026-09-12, 645 seconds
-// connected). Two DRAM-training passes, each printing the firmware's DRAM FW version, a
+// THE FIRST CAPTURE FROM A CLIENT THAT HELD THE SESSION (eager-owl-205, 2026-09-12; the client
+// stayed connected about eleven minutes). Two DRAM-training passes, each printing the firmware's DRAM FW version, a
 // checkpoint progression, the populated-DIMM table in the firmware's own SK<socket> MC<mcu>
 // S<slot> addressing, and a refusal. The population at that capture was sixteen modules --
 // four Micron 2R in SK0 MC0..MC3 and twelve Hynix 1R elsewhere -- not the thirty-two of the
@@ -164,7 +164,6 @@ type HeldSessionCapture {
   artifact_path: NonEmptyStr
   byte_count: ByteSize
   digest: ContentHash
-  seconds_connected: Int
   first_pass_error_lines: List<String>
 }
 
@@ -172,7 +171,6 @@ data mtcollins1_dram_training_capture: HeldSessionCapture = HeldSessionCapture {
   artifact_path: "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt",
   byte_count: byte_size(count: 3764),
   digest: Sha256Hash(Sha256Digest { hex: "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c" }),
-  seconds_connected: 645,
   first_pass_error_lines: [
     "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]",
     "ERR: 84f05923",
@@ -498,7 +496,7 @@ fn check_collectors_before_actuation() -> ProcessExit {
       exit_failure(reason: "collectors-before-actuation: the readiness reconstructed from 10-ac-meta.txt was ADMITTED, but its console lease was stale and its liveness watcher never saw the controller up")
     NotReady { gap: g } =>
       match g {
-        ConsoleLeaseNotHeld { observed: _ } => ExitSuccess
+        ConsoleLeaseNotHeld { verdict: _ } => ExitSuccess
         _ => exit_failure(reason: "collectors-before-actuation: refused, but not on the stale console lease, which is the first gap the fixture presents")
       }
   }
