@@ -26347,6 +26347,26 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         );
     }
 
+    // THE SUPERSEDED RUNG MUST NOT ANSWER ENROLMENT. A rename destination is an added path;
+    // the old production rule would enrol every test fn from that fact alone. Without a
+    // census, `enrolled_test_fns` is empty — attribution still sees them as edited.
+    #[test]
+    fn floor_diff_edits_from_diff_text_does_not_enrol_without_a_census() {
+        let (_src, dest, diff) = machine_shape_rename_diff();
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("a rename-destination diff must attribute, not refuse");
+        assert!(
+            edits.enrolled_test_fns.is_empty(),
+            "no census means no enrolment answer, including for added/rename paths; got {:?}",
+            edits.enrolled_test_fns
+        );
+        assert!(
+            edits.edited_test_fns.iter().any(|(file, _)| file == dest),
+            "attribution of edited test fns must still run without a census"
+        );
+    }
+
     #[test]
     fn parse_unified_diff_changed_new_lines_includes_deletions() {
         let diff = "\

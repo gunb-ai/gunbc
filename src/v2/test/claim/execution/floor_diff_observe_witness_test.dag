@@ -2,6 +2,7 @@ module v2.test.execution.floor_diff_observe_witness
 
 import std.logic { Bool }
 import std.types { List, String }
+import std.materialization_ladder { string_list_contains }
 import gunbc.ci_spec { DiffMergeBase }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
@@ -18,8 +19,7 @@ import v2.workflow.floor_diff_observe {
   floor_observe_git_diff_unified_for_ci,
   floor_observe_git_diff_name_status_for_ci,
   floor_run_base_test_decl_census,
-  floor_base_test_decl_names_for_path,
-  floor_base_test_decl_names_contain
+  floor_base_test_decl_names_for_path
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -99,18 +99,18 @@ test fn witness_present_path_yields_declared_test_fn_names() -> Bool {
   match census {
     BaseTestDeclCensusRefused { reason: _ } => false
     BaseTestDeclCensus { rows: _ } =>
-      floor_base_test_decl_names_contain(
-        names: floor_base_test_decl_names_for_path(
+      string_list_contains(
+        xs: floor_base_test_decl_names_for_path(
           census: census,
           path: base_census_present_path
         ),
-        name: base_census_known_test_fn
-      ) && !floor_base_test_decl_names_contain(
-        names: floor_base_test_decl_names_for_path(
+        wanted: base_census_known_test_fn
+      ) && !string_list_contains(
+        xs: floor_base_test_decl_names_for_path(
           census: census,
           path: base_census_present_path
         ),
-        name: base_census_unknown_test_fn
+        wanted: base_census_unknown_test_fn
       )
   }
 }

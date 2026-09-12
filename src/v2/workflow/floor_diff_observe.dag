@@ -459,13 +459,6 @@ fn floor_base_paths_present(paths_nul: String) -> Map<String, Bool> {
   )
 }
 
-fn floor_base_path_listed(paths_present: Map<String, Bool>, path: String) -> Bool {
-  match map_lookup(m: paths_present, key: path) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn floor_base_census_acc_append(
   acc: FloorBaseTestDeclCensus,
   path: String,
@@ -491,28 +484,29 @@ fn floor_base_census_step(
     BaseTestDeclCensusRefused { reason: reason } =>
       BaseTestDeclCensusRefused { reason: reason }
     BaseTestDeclCensus { rows: _ } =>
-      if !floor_base_path_listed(paths_present: paths_present, path: path) {
-        floor_base_census_acc_append(acc: acc, path: path, names: [])
-      } else {
-        let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
-        if !shown.success {
-          BaseTestDeclCensusRefused {
-            reason: join([
-              "git.Core.Show failed for a path the base tree lists: ",
-              base,
-              ":",
-              path,
-              " — ",
-              shown.stderr,
-              "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
-            ], "")
+      match map_lookup(m: paths_present, key: path) {
+        Absent => floor_base_census_acc_append(acc: acc, path: path, names: [])
+        Present { value: _ } => {
+          let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+          if !shown.success {
+            BaseTestDeclCensusRefused {
+              reason: join([
+                "git.Core.Show failed for a path the base tree lists: ",
+                base,
+                ":",
+                path,
+                " — ",
+                shown.stderr,
+                "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
+              ], "")
+            }
+          } else {
+            floor_base_census_acc_append(
+              acc: acc,
+              path: path,
+              names: floor_discovery_scan_test_decl_names(content: shown.content)
+            )
           }
-        } else {
-          floor_base_census_acc_append(
-            acc: acc,
-            path: path,
-            names: floor_discovery_scan_test_decl_names(content: shown.content)
-          )
         }
       }
   }
@@ -567,12 +561,3 @@ fn floor_base_test_decl_names_for_path(
   }
 }
 
-fn floor_base_test_decl_names_contain(names: List<String>, name: String) -> Bool {
-  fold(names, init: false, f: fn(acc, n) {
-    if acc {
-      true
-    } else {
-      n == name
-    }
-  })
-}

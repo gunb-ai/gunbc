@@ -898,6 +898,9 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
+    // No census: `enrolled_test_fns` stays empty. Attribution tests read `edited_test_fns` /
+    // `touched_entry_files` / data items from this wrapper; enrolment is only answered when
+    // `floor_diff_edits_from_diff_text_with_base_names` (or production) supplies the census.
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
@@ -1113,15 +1116,16 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                 // The census is path-keyed. A rename destination is absent at the NEW path, so
                 // looking up the dest would enrol every fn as new — the author's-only-moved
                 // case. Enrolment therefore reads the SOURCE path when `rename_from` names one.
-                // When the census is absent this falls back to the added-path rule so
-                // attribution unit tests that do not observe git keep their old enrolment set;
-                // production always passes the census.
-                let census_path = rename_from.get(&file_norm).unwrap_or(&file_norm);
+                // Without a census there is no enrolment answer: the added-path rule is the
+                // superseded rung and must not remain as a silent alternative (review 64246).
                 let newly_declared = match base_test_decl_names {
-                    Some(at_base) => !at_base
-                        .get(census_path)
-                        .is_some_and(|names| names.contains(name)),
-                    None => added_paths.contains(&file_norm),
+                    Some(at_base) => {
+                        let census_path = rename_from.get(&file_norm).unwrap_or(&file_norm);
+                        !at_base
+                            .get(census_path)
+                            .is_some_and(|names| names.contains(name))
+                    }
+                    None => false,
                 };
                 if newly_declared {
                     enrolled_test_fns.insert((file_norm.clone(), name.clone()));
