@@ -123,15 +123,19 @@ fn native_driver_cost_account(
 
 // DECLARED FRONTIER (DESIGN §3c) — not a live bind on this head.
 // native_driver_cost_row_standing has no executing consumer here: planted witnesses
-// prove the fold; they do not exercise the spawn. The named later consumer is #10940
-// run_native_binary after its relay: NativeDriverChildExited { stderr: the forwarded
-// child pipe } and refuse NativeDriverCostRowsUnobserved. Trigger: #10940 merges
-// (success-path child stderr is forwarded). Until then this PR stays off
-// native_lane_runner.rs (deep-cat-655 owns it). Observed is [native-cost-partition]
-// after exit; Unobserved is exited without that tag; Pending is the child still running.
-// On main, Command::output drops the pipe on success (eager-raven-113 #11060 universe
-// receipt: 15508s admitted, 3536 verdict rows, zero partition tags in host-captured
-// stderr). The relay is exit-gated, not streamed.
+// prove the fold; they do not exercise the spawn. Consumer: native_lane_runner
+// run_native_binary. Route: after the child exits, that spawn reads the relayed
+// stderr into NativeDriverChildExited and folds native_driver_cost_row_standing,
+// refusing NativeDriverCostRowsUnobserved. Trigger (DESIGN §4b(3) capability, not
+// an artifact): the host relays the child's stderr on successful exit
+// (native_lane_runner run_native_binary as changed by #10940). Kill condition: if
+// that relay lands and this standing is still unread, the row is dangling. Until
+// the capability holds, this PR stays off native_lane_runner (deep-cat-655 owns
+// it). Observed is [native-cost-partition] after exit; Unobserved is exited
+// without that tag; Pending is the child still running. On main, Command::output
+// drops the pipe on success (eager-raven-113 #11060 universe receipt: 15508s
+// admitted, 3536 verdict rows, zero partition tags in host-captured stderr). The
+// relay is exit-gated, not streamed.
 
 type NativeDriverChildStanding
   = NativeDriverChildExited { stderr: String }
