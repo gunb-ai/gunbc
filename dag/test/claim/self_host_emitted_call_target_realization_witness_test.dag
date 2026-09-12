@@ -899,3 +899,24 @@ test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
     ["if matches!(prev.as_ref()"]
   )
 }
+
+// REALIZATION IDENTITY FOR list_append'S CONCAT ROUTING. The probe CALLS production
+// list_append (the length-sibling pattern: the probe file must reach the declaration, not
+// inline a concat). The body surface is src/v2_std_algebra.rs: algebra.dag has one concat
+// call, list_append's `left |> concat(right)`, so a revert to fold_list_right drops
+// `v1_rt::concat` from that file. fold_list_right stays elsewhere in algebra, so it is not
+// a whole-file exclude. Not a doubling-ratio timing witness: both arms are linear.
+test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {
+  let source = "module test.claim.list_append_concat_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, list_append }\nfn probe(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: left, right: right) }\n"
+  compile_dag_rust_emit_check(
+    source,
+    "src/test_claim_list_append_concat_probe.rs",
+    ["crate::v2_std_algebra::list_append("],
+    ["v1_rt::concat", "fold_list_right"]
+  ) && compile_dag_rust_emit_check(
+    source,
+    "src/v2_std_algebra.rs",
+    ["v1_rt::concat"],
+    []
+  )
+}

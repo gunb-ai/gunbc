@@ -14,12 +14,17 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // DEVBOOT'S TEXT OBJECTS ARE THE BYTES DEVBOOT HELD, by real execution through both of its
-// repository addresses: the bare store (the lease claim, subject record and artifact digest, which
-// gunbc.devboot.produce hashes with git.Plumbing HashObjectWriteStdin at devboot_store_address) and
-// the worktree repository (the request and produced entries, through gunbc.devboot.build
-// stage_text_blob). These are CONSUMPTION controls for the
-// stdin route, not the mechanism's RED: the path-routed form no longer exists here, so nothing is
-// left to clobber. The RED for the mechanism is
+// repository addresses -- but only ONE of the two tests below consumes a production caller, and the
+// difference is load-bearing rather than incidental. The worktree test calls gunbc.devboot.build
+// stage_text_blob and reads back the object that function bound, so it is a CONSUMPTION control for
+// that site. The bare-store test hashes its own bytes from stdin at devboot_store_address; it
+// establishes that the stdin route through that address stores exactly what it is handed, and it
+// does NOT enter gunbc.devboot.produce devboot_produce_build, so it is a control on the ROUTE and
+// carries no evidence about that producer's lease claim, subject record or artifact digest. Why the
+// producer is not driven here, and what capability would let it be, are stated on
+// gunbc.recurring_failure_mode.identity_hashed_from_a_shared_mutable_path; do not cite this witness
+// as coverage for those three sites. Neither test is the mechanism's RED: the path-routed form no
+// longer exists here, so nothing is left to clobber. The RED for the mechanism is
 // test.claim.fabric_event_log_append_real_execution's red control, which asserts that a
 // path-routed hash under a clobbered path yields git's empty blob.
 
