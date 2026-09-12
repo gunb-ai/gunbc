@@ -1,6 +1,6 @@
 module test.claim.memory_change_evaluation_witness
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, Seconds }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, ObservationRefused, ObservationEstablished }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -190,11 +190,13 @@ test fn w_production_fulfillment_refuses_witnessed_configuration() -> Bool {
   }) && match incremental_cash_now(resolutions: lines, declared_currency: Usd) { CashRefused { cause: _ } => true, _ => false }
 }
 
+data memory_test_short_capture_seconds: Seconds = 3
+
 fn memory_test_broken_collector(failed: Bool) -> MemoryCollectorReceipt {
   let c = mtcollins_training_collector(payload: memory_test_payload())
   MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, session: c.session, expected_stimulus: c.expected_stimulus,
     observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
-    collector_start: c.collector_start, collector_end: if failed { c.collector_end } else { 3 },
+    collector_start: c.collector_start, collector_end: if failed { c.collector_end } else { memory_test_short_capture_seconds },
     exit_code: if failed { 1 } else { 0 }, payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
 }
 

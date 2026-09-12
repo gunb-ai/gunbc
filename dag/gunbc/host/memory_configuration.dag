@@ -1,6 +1,6 @@
 module gunbc.memory_configuration
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import extdeps.boards.types { BaseboardModel }
@@ -95,12 +95,4 @@ type MemoryChangeProposal {
   proposed: MemoryConfiguration
   actions: List<MemoryPlanAction>
   additional_requirements: List<MemoryOperatingObligation>
-}
-
-fn memory_platform_same(a: MemoryPlatform, b: MemoryPlatform) -> Bool {
-  a == b
-}
-
-fn memory_configuration_same(a: MemoryConfiguration, b: MemoryConfiguration) -> Bool {
-  a == b
 }

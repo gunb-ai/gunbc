@@ -1,6 +1,6 @@
 module gunbc.memory_configuration_evaluation
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { UInt8 }
 import std.algebra { FreeSemigroup }
@@ -12,8 +12,7 @@ import gunbc.memory_configuration {
   MemoryConfiguration, MemoryChangeProposal, MemoryPosition, PositionedMemoryModule,
   MemoryOperatingObligation, MemoryPlacement, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
   MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
-  AdditionalMemoryRequirement, memory_operating_obligations, memory_configuration_same,
-  memory_platform_same,
+  AdditionalMemoryRequirement, memory_operating_obligations,
 }
 import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, memory_collector_refusal, memory_capture_covers_population }
 import gunbc.host_memory_qualification {
@@ -44,7 +43,7 @@ type MemoryUnknownFact
   | MemoryProcurementCondition { counterexample: MemoryCounterexample, condition: NonEmptyStr }
   | MemoryFindingUnavailable { cause: NonEmptyStr }
   | MemoryFirmwareScopeUnestablished { position: MemoryPosition }
-  | MemoryComparisonUnestablished { left: Int, right: Int }
+  | MemoryComparisonUnestablished { left: UInt8, right: UInt8 }
   | MemoryStandingMissing { position: MemoryPosition, obligation: MemoryOperatingObligation }
   | MemoryStandingEvidenceUnobserved { standing: HostMemoryStanding, obligation: MemoryOperatingObligation }
   | MemoryTrainingScreenUnresolved { dimm: PositionedMemoryModule, implication: PartImplication }
@@ -139,7 +138,7 @@ fn memory_package_facts(configuration: MemoryConfiguration, evidence: MemoryEval
       match memory_collector_refusal(c: finding.collector) {
         Present { value: cause } => memory_unknown(fact: MemoryCollectorUnavailable { cause: cause })
         Absent => fold(configuration.population, init: memory_empty_facts, f: (acc, left) => {
-          let own = if !memory_platform_same(a: configuration.platform, b: finding.configuration.platform) {
+          let own = if !(configuration.platform == finding.configuration.platform) {
             memory_unknown(fact: MemoryFirmwareScopeUnestablished { position: left.position })
           } else if left.position.socket != finding.comparison_socket {
             memory_empty_facts
@@ -153,7 +152,7 @@ fn memory_package_facts(configuration: MemoryConfiguration, evidence: MemoryEval
               }
             )
           }
-          let pairs = if memory_platform_same(a: configuration.platform, b: finding.configuration.platform)
+          let pairs = if (configuration.platform == finding.configuration.platform)
             && left.position.socket == finding.comparison_socket {
             fold(configuration.population, init: memory_empty_facts, f: (a, right) =>
               if left.position.socket == right.position.socket && memory_position_precedes(a: left.position, b: right.position) {
@@ -173,7 +172,7 @@ fn memory_firmware_scope_facts(configuration: MemoryConfiguration, evidence: Mem
   match evidence.mixture {
     ObservationRefused { cause } => memory_unknown(fact: MemoryFindingUnavailable { cause: cause })
     ObservationEstablished { observed: finding } => fold(configuration.population, init: memory_empty_facts, f: (acc, dimm) =>
-      if memory_platform_same(a: configuration.platform, b: finding.configuration.platform)
+      if (configuration.platform == finding.configuration.platform)
         && dimm.position.socket == finding.comparison_socket { acc }
       else { memory_facts_join(a: acc, b: memory_unknown(fact: MemoryFirmwareScopeUnestablished { position: dimm.position })) }
     )
@@ -230,7 +229,7 @@ fn memory_standing_facts(obligation: MemoryOperatingObligation, standing: HostMe
 
 fn memory_qualification_facts(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence, obligation: MemoryOperatingObligation) -> MemoryCheckFacts {
   fold(configuration.population, init: memory_empty_facts, f: (acc, dimm) => {
-    let receipts = filter(evidence.qualifications, r => memory_configuration_same(a: configuration, b: r.configuration))
+    let receipts = filter(evidence.qualifications, r => (configuration == r.configuration))
     let matched = fold(receipts, init: false, f: (seen, r) => seen ||
       any(r.standings, s => s.host == configuration.platform.host && s.part_number == dimm.catalog.part_number
         && any(s.population, slot => slot == dimm.position.connector)))

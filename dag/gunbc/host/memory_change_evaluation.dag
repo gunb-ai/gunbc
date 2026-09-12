@@ -1,6 +1,6 @@
 module gunbc.memory_change_evaluation
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -8,7 +8,7 @@ import std.decl_ref { decl_ref }
 import gunbc.memory_configuration {
   MemoryChangeProposal, MemoryConfiguration, MemoryOperatingObligation,
   MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
-  memory_configuration_same, memory_operating_obligations,
+  memory_operating_obligations,
 }
 import gunbc.memory_observation { MemoryEvaluationEvidence }
 import gunbc.memory_configuration_evaluation { MemoryConfigurationAssessment, evaluate_memory_configuration }
@@ -138,10 +138,10 @@ fn memory_configuration_admission_refusal(a: MemoryConfigurationAssessment, purp
 }
 
 fn memory_change_admission_refusal(a: MemoryChangeAssessment, purpose: MemoryPurchasePurpose) -> NonEmptyStr? {
-  if !memory_configuration_same(a: a.final_configuration.configuration, b: a.proposal.proposed) {
+  if !(a.final_configuration.configuration == a.proposal.proposed) {
     Present { value: "assessment is bound to a different proposed configuration" as NonEmptyStr }
   } else if count(a.workflow.violations) > 0 { a.workflow.violations.first() }
-  else if !memory_configuration_same(a: a.workflow.configuration, b: a.proposal.proposed) {
+  else if !(a.workflow.configuration == a.proposal.proposed) {
     Present { value: "workflow does not reach the assessed final configuration" as NonEmptyStr }
   } else if !a.workflow.readback_planned {
     Present { value: "workflow must require independent readback after its last change or initialization" as NonEmptyStr }

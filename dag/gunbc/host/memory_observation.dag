@@ -1,6 +1,7 @@
 module gunbc.memory_observation
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, Seconds, List, NonEmptyStr, String }
+import std.integer { UInt8 }
 import std.nat { Nat }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs,
@@ -18,7 +19,7 @@ type MemoryPrintedPartBinding {
 }
 
 // Transcript ingestion boundary, not a hardware actuator. Times are offsets
-// from the attempt's stimulus. Wrapper lifetime is not collector lifetime.
+// in seconds from the attempt's stimulus. Wrapper lifetime is not collector lifetime.
 // Identical hashes alone never reject: positive stimulus/payload and interval
 // coverage are required on every capture, repeated or otherwise.
 type MemoryCollectorReceipt {
@@ -27,10 +28,10 @@ type MemoryCollectorReceipt {
   session: NonEmptyStr
   expected_stimulus: NonEmptyStr
   observed_stimulus: NonEmptyStr?
-  required_start: Int
-  required_end: Int
-  collector_start: Int
-  collector_end: Int
+  required_start: Seconds
+  required_end: Seconds
+  collector_start: Seconds
+  collector_end: Seconds
   exit_code: Int
   payload: String
   capture_digest: NonEmptyStr
@@ -80,8 +81,8 @@ type MemoryMixtureFinding {
   collector: MemoryCollectorReceipt
   comparison_socket: Nat
   mismatch_position: MemoryPosition
-  expected_byte: Int
-  actual_byte: Int
+  expected_byte: UInt8
+  actual_byte: UInt8
 }
 
 fn memory_mixture_finding(
