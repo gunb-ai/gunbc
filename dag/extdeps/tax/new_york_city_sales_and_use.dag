@@ -1,6 +1,5 @@
 module extdeps.tax.new_york_city_sales_and_use
 
-import std.types { NonEmptyStr }
 import std.measure { PartsPerMillion, parts_per_million }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -41,5 +40,3 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // (4 percent state + 4.5 percent city + 0.375 percent MCTD), reporting code 8081.
 // Percent is whole points; this is that published rate at Micro scale.
 data nyc_combined_sales_tax_rate: PartsPerMillion = parts_per_million(count: 88750)
-
-data nyc_combined_rate_composition: NonEmptyStr = "NYC Department of Finance: City 4.5 percent, New York State 4 percent, MCTD 0.375 percent, combined 8.875 percent on most personal property"
