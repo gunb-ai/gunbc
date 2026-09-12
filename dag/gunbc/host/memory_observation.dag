@@ -2,10 +2,20 @@ module gunbc.memory_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs,
+}
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.memory_configuration { MemoryConfiguration, MemoryPosition }
 import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
+
+// A catalog binding for a token actually printed by this captured firmware.
+// This is observing evidence, not a vendor promise about output formatting.
+type MemoryPrintedPartBinding {
+  part: DeclarationRef
+  printed: NonEmptyStr
+}
 
 // Transcript ingestion boundary, not a hardware actuator. Times are offsets
 // from the attempt's stimulus. Wrapper lifetime is not collector lifetime.
@@ -13,6 +23,7 @@ import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFai
 // coverage are required on every capture, repeated or otherwise.
 type MemoryCollectorReceipt {
   source: DeclarationRef
+  printed_parts: List<MemoryPrintedPartBinding>
   session: NonEmptyStr
   expected_stimulus: NonEmptyStr
   observed_stimulus: NonEmptyStr?
@@ -51,13 +62,12 @@ fn memory_capture_repetition_suspected(c: MemoryCollectorReceipt) -> Bool {
 
 // Require the positioned inventory in addition to a syndrome. A header or a
 // partial table cannot bind this finding to a whole captured configuration.
-fn memory_capture_covers_population(configuration: MemoryConfiguration, payload: String) -> Bool {
-  count(configuration.population) == 16 && fold(configuration.population, init: true, f: (covered, dimm) => {
+fn memory_capture_covers_population(configuration: MemoryConfiguration, collector: MemoryCollectorReceipt) -> Bool {
+  count(configuration.population) > 0 && fold(configuration.population, init: true, f: (covered, dimm) => {
     let coordinate = concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":")
-    // This firmware prints the ADS SPD part field without the MTA prefix.
-    let printed_part = if dimm.catalog.part_number == "MTA36ADS2G72PZ-2G1A1" { "36ADS2G72PZ-2G1A1" }
-      else { dimm.catalog.part_number as String }
-    covered && any(split(s: payload, delimiter: "\n"), line => contains(line, coordinate) && contains(line, printed_part))
+    let bindings = filter(collector.printed_parts, binding => declaration_ref_eq(a: binding.part, b: dimm.part))
+    covered && count(bindings) == 1 && any(bindings, binding =>
+      any(split(s: collector.payload, delimiter: "\n"), line => contains(line, coordinate) && contains(line, binding.printed as String)))
   })
 }
 
@@ -82,12 +92,15 @@ fn memory_mixture_finding(
   match memory_collector_refusal(c: collector) {
     Present { value: cause } => ObservationRefused { cause: cause }
     Absent =>
-      if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
+      if count(configuration.population) != count(concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs)) {
+        ObservationRefused { cause: "bounded Mt. Collins attempt requires one populated position per documented channel pair across both sockets" }
+      } else if !memory_capture_covers_population(configuration: configuration, collector: collector) {
+        ObservationRefused { cause: "positioned inventory incomplete or printed-part catalog binding missing or ambiguous" }
+      } else if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
         || !contains(collector.payload, "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]")
         || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
         || !contains(collector.payload, "ERROR:   SK[0]: 00110010")
         || configuration.platform.firmware != "210525"
-        || !memory_capture_covers_population(configuration: configuration, payload: collector.payload)
       {
         ObservationRefused { cause: "transcript does not establish the bounded socket-0 00/91 firmware finding" }
       } else {

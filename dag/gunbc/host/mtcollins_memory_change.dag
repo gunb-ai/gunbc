@@ -2,7 +2,7 @@ module gunbc.mtcollins_memory_change
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.goal_assessment { ObservationRefused }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
@@ -21,7 +21,7 @@ import gunbc.memory_configuration {
   MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, RetainedMemoryUnit, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
 }
-import gunbc.memory_observation { MemoryCollectorReceipt, MemoryEvaluationEvidence, memory_mixture_finding }
+import gunbc.memory_observation { MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryEvaluationEvidence, memory_mixture_finding }
 import gunbc.memory_change_report { MemoryChangeExplanation, explain_memory_change }
 import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -74,10 +74,11 @@ fn mtcollins_memory_module(position: MemoryPosition, ads: Bool) -> PositionedMem
 
 // The artifact does not contain serials. The replay therefore reconstructs
 // placement and part identities without fabricating retained unit serials.
+// Board identity cites the existing intake observation, not a fabricated vendor catalog.
 fn mtcollins_witnessed_configuration() -> MemoryConfiguration {
   MemoryConfiguration {
     platform: MemoryPlatform { host: "mtcollins1" as HostIdentity, board: AmpereMtCollins,
-      board_part: decl_ref(module_path: "gunbc.memory_provisioning", decl_name: "mt_collins_per_socket_geometry"),
+      board_part: decl_field_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "baseboard"),
       processor: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog"),
       firmware: "210525", settings: [MemoryFirmwareSetting { name: "ecc_en", value: "00000002" }],
     },
@@ -94,8 +95,14 @@ fn mtcollins_replay_proposal() -> MemoryChangeProposal {
 
 // Collector session duration is the operator's repaired-collector report,
 // attached to this attempt, not inferred from the script wrapper's timestamps.
+// Printed tokens are transcribed from this capture and bound to catalog symbols;
+// no rule about every ADS part or other firmware truncating an MTA prefix follows.
 fn mtcollins_training_collector(payload: String) -> MemoryCollectorReceipt {
   MemoryCollectorReceipt { source: mtcollins_training_capture_source,
+    printed_parts: [
+      MemoryPrintedPartBinding { part: mtcollins_ads_part, printed: "36ADS2G72PZ-2G1A1" },
+      MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK" },
+    ],
     session: "mtcollins1 SOL 2026-09-12T02:37:23Z",
     expected_stimulus: "2026-09-12T02:37:23Z failing boot",
     observed_stimulus: Present { value: "2026-09-12T02:37:23Z failing boot" },

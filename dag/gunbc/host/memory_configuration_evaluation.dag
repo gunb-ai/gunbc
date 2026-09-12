@@ -15,7 +15,7 @@ import gunbc.memory_configuration {
   AdditionalMemoryRequirement, memory_operating_obligations, memory_configuration_same,
   memory_platform_same,
 }
-import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, memory_collector_refusal }
+import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, memory_collector_refusal, memory_capture_covers_population }
 import gunbc.host_memory_qualification {
   HostMemoryStanding, PartImplication, PartEvidenceUnresolved, PartNotImplicated,
   PartSampleQualificationRequired, PartImplicatedByFailingStep, part_implication,
@@ -239,12 +239,16 @@ fn memory_qualification_facts(configuration: MemoryConfiguration, evidence: Memo
     } else {
       fold(receipts, init: acc, f: (a, r) => match memory_collector_refusal(c: r.collector) {
         Present { value: cause } => memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable { cause: cause }))
-        Absent => fold(r.standings, init: a, f: (a2, s) =>
+        Absent => if !memory_capture_covers_population(configuration: configuration, collector: r.collector) {
+          memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable {
+            cause: "qualification capture does not cover its claimed positioned inventory and catalog bindings",
+          }))
+        } else { fold(r.standings, init: a, f: (a2, s) =>
           if s.host == configuration.platform.host && s.part_number == dimm.catalog.part_number
             && any(s.population, slot => slot == dimm.position.connector) {
             memory_facts_join(a: a2, b: memory_standing_facts(obligation: obligation, standing: s))
           } else { a2 }
-        )
+        ) }
       })
     }
   })

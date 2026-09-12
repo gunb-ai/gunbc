@@ -34,6 +34,11 @@ type MemoryWorkflowState {
 // pretend actuator or a simulated readback receipt.
 data memory_change_consumer_frontiers: List<FrontierRow> = [
   frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.memory_provisioning", decl_name: "PopulationOption"),
+    reason: "node_power_envelope aggregate population path frozen: no per-connector mixed-population power model exists; its candidate envelope does not assess this selected configuration",
+    dissolution: unbound_dissolution(description: "product.node_power_envelope consumes MemoryConfiguration.population for channel coverage and per-module power with existing unsupported-density and missing-evidence refusals preserved; delete its PopulationOption input atomically, with no new host rows or callers before cutover"),
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
     reason: "production-order consumer absent: no order actuator exists in this corpus",
     dissolution: unbound_dissolution(description: "product.memory_order production-order actuator consumes the exact proposal and evidence-bound fulfillment admission before releasing an order"),

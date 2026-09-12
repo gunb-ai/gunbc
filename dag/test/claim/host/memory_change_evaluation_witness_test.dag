@@ -1,12 +1,12 @@
 module test.claim.memory_change_evaluation_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, ObservationRefused, ObservationEstablished }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.memory_configuration {
   MemoryConfiguration, MemoryChangeProposal, MemoryPlanAction, PositionedMemoryModule, MemoryDeliveryVariant,
-  MemoryOperatingObligation, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport, MemoryTraining, MemoryBoot,
+  MemoryOperatingObligation, MemoryTrainingFailureScreen, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport, MemoryTraining, MemoryBoot,
   AdditionalMemoryRequirement, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
   memory_operating_obligations,
 }
@@ -15,7 +15,7 @@ import gunbc.memory_observation {
   memory_mixture_finding, memory_capture_repetition_suspected,
 }
 import gunbc.memory_configuration_evaluation {
-  MemoryConfigurationAssessment, MemoryPackageConflict, MemoryProcurementCondition,
+  MemoryConfigurationAssessment, MemoryPackageConflict, MemoryProcurementCondition, MemoryTrainingScreenUnresolved,
   evaluate_memory_configuration,
 }
 import gunbc.memory_change_evaluation {
@@ -27,18 +27,19 @@ import gunbc.mtcollins_memory_change {
   mtcollins_training_collector, mtcollins_memory_position, mtcollins_ads_part,
 }
 import product.build_fulfillment {
-  NodeRecipe, SupplyRow, SystemInclusion, IncludedInSystem, MarketDepthCited, NoOwnedLot, CompatibilityEstablished,
+  NodeRecipe, SupplyRow, SystemInclusion, IncludedInSystem, MarketDepthCited, NoOwnedLot, CompatibilityEstablished, CompatibilityEvidenceUnread,
   LineRefused, LineResolved, MemoryProposalNotAdmitted, NewPurchase, CashRefused,
-  resolve_build, derive_bom, incremental_cash_now,
+  resolve_build, derive_bom, incremental_cash_now, memory_screened_rows,
 }
 import product.build_selection { line_missing }
 import extdeps.currency.currency { Usd }
+import extdeps.memory.training { PhyWriteLeveling }
 import extdeps.memory.micron { mta36ads2g72pz_2g1a1_catalog }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, File }
 import std.measure { money_amount_micro, MoneyOnce }
 import gunbc.host_memory_qualification {
-  HostMemoryStanding, ClassSupportedByBoard, PartQualificationUnobserved,
+  PartSampleQualificationRequired, PlatformTrainingFailure, InferredFromSequencePosition, HostMemoryStanding, ClassSupportedByBoard, PartQualificationUnobserved,
   TrainingOutcomeUnobserved, BootOutcomeUnobserved, ListedInVendorAvl, TrainingOperational, BootReachedOperatingSystem,
 }
 
@@ -46,11 +47,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Controlled transcript excerpt, not a receipt that this test drove hardware.
 // The production replay independently reads and verifies the full artifact.
-fn memory_test_payload() -> String {
-  let inventory = map(mtcollins_witnessed_configuration().population, dimm => concat(
+fn memory_test_inventory(configuration: MemoryConfiguration) -> String {
+  let inventory = map(configuration.population, dimm => concat(
     "  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S0: ",
-    if dimm.catalog.part_number == "MTA36ADS2G72PZ-2G1A1" { "36ADS2G72PZ-2G1A1" } else { dimm.catalog.part_number as String }))
-  concat("NOTICE:  DRAM FW version 210525\nDRAM populated DIMMs:\n", join(inventory, "\n"),
+    if declaration_ref_eq(a: dimm.part, b: mtcollins_ads_part) { "36ADS2G72PZ-2G1A1" } else { dimm.catalog.part_number as String }))
+  concat("DRAM populated DIMMs:\n", join(inventory, "\n"))
+}
+
+fn memory_test_payload() -> String {
+  concat("NOTICE:  DRAM FW version 210525\n", memory_test_inventory(configuration: mtcollins_witnessed_configuration()),
     "\nERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]\nERROR:   SK[0]: 00110010\nERROR:   Non-identical DIMM mixture NOT supported!")
 }
 
@@ -187,7 +192,7 @@ test fn w_production_fulfillment_refuses_witnessed_configuration() -> Bool {
 
 fn memory_test_broken_collector(failed: Bool) -> MemoryCollectorReceipt {
   let c = mtcollins_training_collector(payload: memory_test_payload())
-  MemoryCollectorReceipt { source: c.source, session: c.session, expected_stimulus: c.expected_stimulus,
+  MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, session: c.session, expected_stimulus: c.expected_stimulus,
     observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
     collector_start: c.collector_start, collector_end: if failed { c.collector_end } else { 3 },
     exit_code: if failed { 1 } else { 0 }, payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
@@ -245,7 +250,7 @@ test fn w_unknown_register_vendor_does_not_prevent_package_comparison() -> Bool 
 
 test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
   let c = mtcollins_training_collector(payload: memory_test_payload())
-  let repeated = MemoryCollectorReceipt { source: c.source, session: c.session, expected_stimulus: c.expected_stimulus,
+  let repeated = MemoryCollectorReceipt { source: c.source, printed_parts: c.printed_parts, session: c.session, expected_stimulus: c.expected_stimulus,
     observed_stimulus: c.observed_stimulus, required_start: c.required_start, required_end: c.required_end,
     collector_start: c.collector_start, collector_end: c.collector_end, exit_code: c.exit_code,
     payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: Present { value: c.capture_digest } }
@@ -300,7 +305,7 @@ fn memory_test_other_obligations_established(configuration: MemoryConfiguration)
     memory_purchase: r.memory_purchase, inclusions: r.inclusions,
     memory_evidence: MemoryEvaluationEvidence { revision: "controlled positive axes, not a machine observation", mixture: e.mixture,
       training_failures: [], qualifications: [ConfigurationQualificationReceipt {
-        configuration: configuration, collector: mtcollins_training_collector(payload: memory_test_payload()),
+        configuration: configuration, collector: mtcollins_training_collector(payload: memory_test_inventory(configuration: configuration)),
         standings: map(configuration.population, dimm => HostMemoryStanding {
           host: configuration.platform.host, part_number: dimm.catalog.part_number, population: [dimm.position.connector],
           class_support: ClassSupportedByBoard,
@@ -373,7 +378,7 @@ test fn w_workflow_without_independent_readback_requirement_is_withheld() -> Boo
 test fn w_supply_platform_must_match_the_assessed_board() -> Bool {
   let r = memory_test_recipe(configuration: memory_test_uniform(), production: false)
   let changed = NodeRecipe { label: r.label, sockets: r.sockets, processor: r.processor, processor_label: r.processor_label,
-    baseboard: decl_ref(module_path: "gunbc.memory_provisioning", decl_name: "asrock_altrad8ud_1l2t_geometry"),
+    baseboard: decl_ref(module_path: "extdeps.boards.asrock_rack", decl_name: "asrock_altrad8ud_1l2t_catalog"),
     baseboard_label: r.baseboard_label, memory: r.memory, memory_evidence: r.memory_evidence,
     memory_purchase: r.memory_purchase, inclusions: r.inclusions }
   let lines = resolve_build(recipe: changed, rows: memory_test_market(recipe: changed))
@@ -381,4 +386,79 @@ test fn w_supply_platform_must_match_the_assessed_board() -> Bool {
     LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment: _, reason } } => contains(reason as String, "board")
     _ => false
   })
+}
+
+// Review 64358's exact unresolved-sample scenario. A market's Established
+// field cannot override the mandatory production obligation; an explicitly
+// bounded experiment remains purchasable but visible as a selection gap.
+test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() -> Bool {
+  let uniform = memory_test_uniform()
+  let r = memory_test_other_obligations_established(configuration: MemoryConfiguration {
+    platform: uniform.platform, population: filter(uniform.population, dimm => dimm.position.socket == 0) })
+  fold([true, false], init: true, f: (ok, production) => {
+    let recipe = NodeRecipe { label: r.label, sockets: r.sockets, processor: r.processor, processor_label: r.processor_label,
+      baseboard: r.baseboard, baseboard_label: r.baseboard_label, memory: r.memory, inclusions: r.inclusions,
+      memory_purchase: if production { ProductionMemoryPurchase }
+        else { QualificationMemoryPurchase { maximum_units: 16, completion: [MemoryTrainingFailureScreen] } },
+      memory_evidence: MemoryEvaluationEvidence { revision: "sample-required control", mixture: r.memory_evidence.mixture,
+        qualifications: r.memory_evidence.qualifications,
+        training_failures: [PlatformTrainingFailure { board: uniform.platform.board, step: PhyWriteLeveling,
+          standing: InferredFromSequencePosition,
+          observed_population: [mta36ads2g72pz_2g1a1_catalog.part_number], observed_at: 0 }],
+      },
+    }
+    let lines = resolve_build(recipe: recipe, rows: memory_test_market(recipe: recipe))
+    let screened = filter(memory_screened_rows(recipe: recipe, rows: memory_test_market(recipe: recipe)),
+      row => declaration_ref_eq(a: row.part, b: mtcollins_ads_part))
+    ok && count(screened) == 1 && fold(screened, init: true, f: (passed, row) => passed && match row.compatibility {
+      CompatibilityEvidenceUnread { obligation: _ } => production
+      CompatibilityEstablished => !production
+      _ => false
+    }) && count(lines) > 0 && fold(lines, init: true, f: (passed, line) => passed &&
+      if production { match line {
+        LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment, reason: _ } } =>
+          any(assessment.final_configuration.results, result => result.obligation == MemoryTrainingFailureScreen && match result.assessment {
+            GoalIndeterminate { known_deviations, unknowns } => count(known_deviations) == 0 && match unknowns.head {
+              MemoryTrainingScreenUnresolved { dimm: _, implication: PartSampleQualificationRequired { step: _, standing: _ } } => true
+              _ => false
+            }
+            _ => false
+          })
+        _ => false
+      } } else { match line {
+        LineResolved { line: _, memory_context: _, fulfillment: NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } } =>
+          count(line_missing(acc: [], r: line)) > 0
+        _ => false
+      } })
+  })
+}
+
+test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool {
+  let c = mtcollins_training_collector(payload: memory_test_payload())
+  let unbound = MemoryCollectorReceipt { source: c.source, printed_parts: [], session: c.session,
+    expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
+    required_start: c.required_start, required_end: c.required_end, collector_start: c.collector_start,
+    collector_end: c.collector_end, exit_code: c.exit_code, payload: c.payload,
+    capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
+  match memory_mixture_finding(attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(), collector: unbound) {
+    ObservationRefused { cause } => contains(cause as String, "binding")
+    ObservationEstablished { observed: _ } => false
+  }
+}
+
+// Collector health alone cannot authenticate positive qualification standings:
+// the payload must also cover the configuration the receipt claims to qualify.
+test fn w_partial_inventory_cannot_establish_positive_qualification() -> Bool {
+  let uniform = memory_test_uniform()
+  let r = memory_test_other_obligations_established(configuration: MemoryConfiguration {
+    platform: uniform.platform, population: filter(uniform.population, dimm => dimm.position.socket == 0) })
+  let evidence = MemoryEvaluationEvidence { revision: "partial qualification capture", mixture: r.memory_evidence.mixture,
+    training_failures: [], qualifications: map(r.memory_evidence.qualifications, receipt => ConfigurationQualificationReceipt {
+      configuration: receipt.configuration, standings: receipt.standings,
+      collector: mtcollins_training_collector(payload: "DRAM populated DIMMs:\n  SK0 MC0 S0: 36ADS2G72PZ-2G1A1"),
+    }) }
+  let a = evaluate_memory_configuration(configuration: r.memory.proposed, evidence: evidence, additional: [])
+  memory_test_has_unknown(a: a, obligation: MemoryClassSupport)
+    && memory_test_has_unknown(a: a, obligation: MemoryTraining)
+    && memory_test_has_unknown(a: a, obligation: MemoryBoot)
 }

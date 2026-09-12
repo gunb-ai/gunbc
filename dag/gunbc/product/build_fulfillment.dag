@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
 import extdeps.external_authority { ExternalAuthority }
-import gunbc.memory_configuration { MemoryChangeProposal, RetainedMemoryUnit, AcquireMemoryUnit }
+import gunbc.memory_configuration { MemoryChangeProposal, RetainedMemoryUnit, AcquireMemoryUnit, MemoryTrainingFailureScreen }
 import gunbc.memory_observation { MemoryEvaluationEvidence }
 import gunbc.memory_change_evaluation {
   MemoryChangeAssessment, MemoryPurchasePurpose, ProductionMemoryPurchase, QualificationMemoryPurchase,
@@ -575,6 +575,8 @@ fn resolve_line(
 
 // compatibility_of is now called on the fulfillment route. A negative screen
 // can restrict an independently assessed proposal, never establish one.
+// With PartNotImplicated, the independently evaluated class, part, training
+// and boot obligations supply the positive authority.
 fn memory_screened_rows(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<SupplyRow> {
   map(rows, row => {
     let compatibility = fold(recipe.memory.proposed.population, init: row.compatibility, f: (acc, dimm) =>
@@ -585,7 +587,19 @@ fn memory_screened_rows(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<Suppl
         let screened = compatibility_of(implication: implication)
         match screened {
           CompatibilityRefutedForPlatform { reason: _ } => screened
-          _ => acc
+          CompatibilityEvidenceUnread { obligation: _ } => match acc {
+            CompatibilityRefutedForPlatform { reason: _ } => acc
+            _ => match implication {
+              PartNotImplicated => acc
+              _ => match recipe.memory_purchase {
+                ProductionMemoryPurchase => screened
+                QualificationMemoryPurchase { maximum_units: _, completion } =>
+                  if any(completion, obligation => obligation == MemoryTrainingFailureScreen) { acc }
+                  else { screened }
+              }
+            }
+          }
+          CompatibilityEstablished => acc
         }
       }
     )
@@ -734,7 +748,7 @@ fn owned_stock_consumed(resolutions: List<LineResolution>) -> List<LotDraw> {
 
 // product.inventory stores landed cost ONCE, at lot grain, and deliberately
 // carries no per-unit figure: assigning cost to individual units is a POLICY,
-// and its dimm says a policy has to be named by whoever applies it. This is
+// and its module says a policy has to be named by whoever applies it. This is
 // that naming. The policy is a type argument to the answer, not an assumption
 // inside it, and the answer refuses rather than rounding.
 type BasisAllocationPolicy

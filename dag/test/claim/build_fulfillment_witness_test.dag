@@ -14,7 +14,7 @@ import extdeps.boards.types { AmpereMtCollins }
 import std.nat { nat_range_inclusive }
 import std.nat { Nat }
 import extdeps.currency.currency { Eur, Usd }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_field_ref, DeclarationRef, decl_ref }
 import std.measure { ByteSize, MoneyOnce, byte_size, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.uri { Uri, File }
 import extdeps.external_authority { ExternalAuthority }
@@ -123,8 +123,8 @@ data fixture_market_authority: ExternalAuthority = ExternalAuthority {
 
 data q8030_ref: DeclarationRef = decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog")
 data m12830_ref: DeclarationRef = decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_max_m12830_catalog")
-data altrad8ud_ref: DeclarationRef = decl_ref(module_path: "gunbc.memory_provisioning", decl_name: "asrock_altrad8ud_1l2t_geometry")
-data mt_collins_ref: DeclarationRef = decl_ref(module_path: "gunbc.memory_provisioning", decl_name: "mt_collins_per_socket_geometry")
+data altrad8ud_ref: DeclarationRef = decl_ref(module_path: "extdeps.boards.asrock_rack", decl_name: "asrock_altrad8ud_1l2t_catalog")
+data mt_collins_ref: DeclarationRef = decl_field_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "baseboard")
 data dimm_ref: DeclarationRef = decl_ref(module_path: "extdeps.memory.types", decl_name: "DramModuleCatalogRow")
 
 data stick_32g: ByteSize = byte_size(count: 34359738368)
