@@ -5,9 +5,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.megarac {
+  AepDimmInventory,
+  BiosUefiSettings,
+  BiosVersionFlash,
   ChassisPowerOnEventsEnable,
   ChasisPowerOnEventsEnable,
   DiesOnReset,
+  FramebufferRecorder,
+  FruInventory,
   MegaRacIpmiSelPayloadPreserved,
   MegaRacWebEventLogOemEmptySelData,
   RedirectionConnecting,
@@ -19,9 +24,11 @@ import extdeps.bmc.megarac {
   RedirectionStatusKnown,
   RedirectionStopped,
   RedirectionWireUncatalogued,
-  RedfishServiceAbsentFromServedUi,
+  RedfishService,
   ServedUiFactFirmwareUncatalogued,
-  FramebufferRecorder,
+  ServedUiFactKnown,
+  ServedUiSurfaceAbsent,
+  ServedUiSurfacePresent,
   SolStreamRecorder,
   SurvivesHostAndControllerReset,
   megarac_firmware_0_32,
@@ -32,7 +39,7 @@ import extdeps.bmc.megarac {
   megarac_recorder_trigger_power_on_field,
   megarac_redirection_presentation_standing,
   megarac_redirection_status_of_wire,
-  megarac_served_ui_absence_standing,
+  megarac_served_ui_surface_standing,
   megarac_sol_recorder_reset_survival,
   megarac_sol_trigger_power_on_field,
   megarac_trigger_power_on_field_wire,
@@ -134,12 +141,35 @@ test fn recorders_survive_reset_and_live_sol_does_not() -> Bool {
       != megarac_trigger_power_on_field_wire(name: megarac_sol_trigger_power_on_field)
 }
 
-test fn other_firmware_does_not_inherit_0_32_absences() -> Bool {
+test fn other_firmware_does_not_inherit_0_32_surfaces() -> Bool {
   let other = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "1.00")
-  match megarac_served_ui_absence_standing(firmware: other, absence: RedfishServiceAbsentFromServedUi) {
+  match megarac_served_ui_surface_standing(firmware: other, surface: RedfishService) {
     ServedUiFactFirmwareUncatalogued { firmware: _ } => true
     _ => false
   }
+}
+
+test fn catalogued_firmware_discriminates_present_and_absent_surfaces() -> Bool {
+  match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: RedfishService) {
+    ServedUiFactKnown { firmware: _, presence: ServedUiSurfaceAbsent } => true
+    _ => false
+  }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: BiosUefiSettings) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfaceAbsent } => true
+      _ => false
+    }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: FruInventory) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => true
+      _ => false
+    }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: AepDimmInventory) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => true
+      _ => false
+    }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: BiosVersionFlash) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => true
+      _ => false
+    }
 }
 
 test fn web_and_ipmi_event_log_layouts_are_distinct() -> Bool {

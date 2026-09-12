@@ -3,7 +3,6 @@ module extdeps.bmc.megarac
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
 import std.string_type { String }
-import v2.std.algebra { any }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
 import extdeps.bmc.capability {
@@ -299,39 +298,53 @@ data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = megarac_recorde
 
 data megarac_live_sol_activate_reset_survival: MegaRacResetSurvival = DiesOnReset
 
-// WHAT THIS SERVED UI CANNOT DO, as PATH ABSENCE in the 0.32 catalog. They are not omissions
-// and not unit telemetry. Per-DIMM AEP inventory and api/fru ARE in the catalog
+// WHAT THIS SERVED UI CAN AND CANNOT DO, as PATH PRESENCE in the 0.32 catalog. They are not
+// omissions and not unit telemetry. Per-DIMM AEP inventory and api/fru ARE in the catalog
 // (api/aep_inventory/aep_dimm_info, api/fru); a controller answering nothing through those paths
-// is a unit observation, not a served-surface absence. MegaRacWebEventLogOemDescriptionUnknown
+// is a unit observation, not a served-surface absence. BIOS *settings* (`settings/bios`) are
+// absent; flash/version (`api/maintenance/hpm/getbiosversions`) is present. MegaRacWebEventLogOemDescriptionUnknown
 // was the same fork: the renderer answering unknown is not a missing path. Ampere OEM SEL
 // producer layout is extdeps.ampere.oem_sel.
 //
-// §3c frontier: megarac_served_ui_absence_standing. Consumer: the PreOs capability axes that
+// §3c frontier: megarac_served_ui_surface_standing. Consumer: the PreOs capability axes that
 // would claim Redfish or a BIOS/UEFI settings surface, on
 // gunbc.machine_intake_pre_os_observation_capabilities (gunbc#11110; this PR does not mint that
 // file). Until that lands, a firmware this decoder does not catalog cannot refuse an inherited
-// 0.32 absence.
-type MegaRacServedUiAbsence
-  = RedfishServiceAbsentFromServedUi
-  | BiosUefiSettingsSurfaceAbsent
+// 0.32 presence map. The coproduct carries present surfaces so Absent is not the only
+// constructible known answer: a Bool that can only be true is a decoration.
+type MegaRacServedUiSurface
+  = RedfishService
+  | BiosUefiSettings
+  | FruInventory
+  | AepDimmInventory
+  | BiosVersionFlash
 
-data megarac_served_ui_absences_at_0_32: List<MegaRacServedUiAbsence> = [
-  RedfishServiceAbsentFromServedUi,
-  BiosUefiSettingsSurfaceAbsent,
-]
+type MegaRacServedUiSurfacePresence
+  = ServedUiSurfacePresent
+  | ServedUiSurfaceAbsent
+
+fn megarac_served_ui_surface_presence_at_0_32(surface: MegaRacServedUiSurface) -> MegaRacServedUiSurfacePresence {
+  match surface {
+    RedfishService => ServedUiSurfaceAbsent
+    BiosUefiSettings => ServedUiSurfaceAbsent
+    FruInventory => ServedUiSurfacePresent
+    AepDimmInventory => ServedUiSurfacePresent
+    BiosVersionFlash => ServedUiSurfacePresent
+  }
+}
 
 type MegaRacServedUiFactLookup
-  = ServedUiFactKnown { firmware: BmcFirmwareReleaseIdentity, holds: Bool }
+  = ServedUiFactKnown { firmware: BmcFirmwareReleaseIdentity, presence: MegaRacServedUiSurfacePresence }
   | ServedUiFactFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
 
-fn megarac_served_ui_absence_standing(
+fn megarac_served_ui_surface_standing(
   firmware: BmcFirmwareReleaseIdentity,
-  absence: MegaRacServedUiAbsence,
+  surface: MegaRacServedUiSurface,
 ) -> MegaRacServedUiFactLookup {
   if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
     ServedUiFactKnown {
       firmware: firmware,
-      holds: megarac_served_ui_absences_at_0_32 |> any(x => x == absence),
+      presence: megarac_served_ui_surface_presence_at_0_32(surface: surface),
     }
   } else {
     ServedUiFactFirmwareUncatalogued { firmware: firmware }
