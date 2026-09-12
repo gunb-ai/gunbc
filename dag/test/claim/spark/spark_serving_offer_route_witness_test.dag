@@ -16,7 +16,7 @@ import gunbc.spark.vllm_observed {
 import gunbc.spark.pair_serving_realization {
   spark_pair_model_path_in_container, spark_pair_desired_snapshot,
 }
-import std.token_count { token_count }
+import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch {

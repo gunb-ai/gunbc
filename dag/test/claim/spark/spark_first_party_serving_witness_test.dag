@@ -4,7 +4,10 @@ import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
-import product.fabric.provider_route { CompliancePostureRevision }
+import product.fabric.provider_route {
+  CompliancePostureRevision,
+  ProviderPathUnread, ProviderPathLocated, ProviderPathAbsent,
+}
 import product.fabric.provider_admission {
   ProviderUseScope, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
   DispositionStanding, DispositionCleared, DispositionNotEngaged,
@@ -27,7 +30,7 @@ import gunbc.spark.vllm_observed {
   vllm_models_route_readback,
 }
 import gunbc.spark.first_party_serving {
-  SparkServingRealization, spark_serving_usage_stats_standing,
+  SparkServingRealization, spark_serving_usage_stats_standing, spark_usage_stats_telemetry_path,
   spark_first_party_use_scope, spark_first_party_admission,
   spark_first_party_sanction_roster, spark_first_party_route_facts, spark_first_party_posture,
   spark_sanctions_disposition, spark_export_disposition, spark_prohibited_use_disposition,
