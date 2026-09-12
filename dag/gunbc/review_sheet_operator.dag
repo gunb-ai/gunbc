@@ -14,30 +14,20 @@ import gunbc.gcp_service_enablement {
   ServiceEnablementDesire,
   ServiceDesiredEnabled,
   ServiceEnablementObservation,
-  ServiceEnablementUnobserved,
   EnableApiPlan,
   decide_service_enablement,
 }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
 import extdeps.google.workspace { google_workspace_product }
+import gunbc.gcp_estate_observation {
+  sheets_calling_home,
+  SheetsCallingHomeUnresolved,
+}
 
-// Sheets API project and calling identity are AwaitingIdentification — same standing as
-// SpreadsheetAwaitingCreation. This PR does not name a GCP project or a service account. Estate
-// inventory (not this lane) decides the automation project that holds the SA and the enabled API,
-// with credential custody remaining a separate job.
-
-type ReviewSheetGcpProjectStanding
-  = ReviewSheetGcpProjectAwaitingIdentification
-  | ReviewSheetGcpProjectIdentified { project: GcpProjectId }
-
-data review_sheet_gcp_project: ReviewSheetGcpProjectStanding = ReviewSheetGcpProjectAwaitingIdentification
-
-type ReviewSheetWriterStanding
-  = ReviewSheetWriterAwaitingIdentification
-  | ReviewSheetWriterIdentified { email: ServiceAccountEmail }
-
-data review_sheet_writer: ReviewSheetWriterStanding = ReviewSheetWriterAwaitingIdentification
+// Sheets API project and calling identity are the estate fact sheets_calling_home.
+// This module does not keep a second standing that can stay AwaitingIdentification after
+// that home resolves.
 
 data serviceusage_services_enable_permission: NonEmptyStr = "serviceusage.services.enable"
 
@@ -46,17 +36,10 @@ fn sheets_api_desired_enablement(project: GcpProjectId) -> ServiceEnablementDesi
 }
 
 fn sheets_api_enablement_decision(
-  project: ReviewSheetGcpProjectStanding,
+  project: GcpProjectId,
   observed: ServiceEnablementObservation,
 ) -> UpsertDecision<EnableApiPlan> {
-  match project {
-    ReviewSheetGcpProjectAwaitingIdentification =>
-      Refuse {
-        reason: "review sheet GCP project awaiting identification; estate inventory settles the automation project (not a custody-project default)" as NonEmptyStr
-      }
-    ReviewSheetGcpProjectIdentified { project: p } =>
-      decide_service_enablement(desired: sheets_api_desired_enablement(project: p), observed: observed)
-  }
+  decide_service_enablement(desired: sheets_api_desired_enablement(project: project), observed: observed)
 }
 
 fn serviceusage_enable_iam_grant_intervention(
@@ -163,23 +146,35 @@ type ReviewSheetOperatorAdmission
   | ReviewSheetEstateUnresolved { subject: NonEmptyStr, reason: NonEmptyStr }
   | ReviewSheetOperatorRefused { reason: NonEmptyStr }
 
-fn review_sheet_estate_unresolved_gcp_project() -> ReviewSheetOperatorAdmission {
-  ReviewSheetEstateUnresolved {
-    subject: "review_sheet_gcp_project" as NonEmptyStr,
-    reason: "API project awaiting identification; estate inventory settles the automation project (not a custody-project default)." as NonEmptyStr,
-  }
-}
-
-fn review_sheet_estate_unresolved_writer() -> ReviewSheetOperatorAdmission {
-  ReviewSheetEstateUnresolved {
-    subject: "review_sheet_writer" as NonEmptyStr,
-    reason: "calling identity awaiting identification; estate inventory names the SA. This PR does not pick one." as NonEmptyStr,
+fn review_sheet_estate_unresolved_calling_home() -> ReviewSheetOperatorAdmission {
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: surface,
+      refused_writer: writer,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
+    } =>
+      ReviewSheetEstateUnresolved {
+        subject: "sheets_calling_home" as NonEmptyStr,
+        reason: join(
+          [
+            "Sheets calling home unresolved; refused API surface ",
+            surface as String,
+            " refused writer ",
+            writer as String,
+            "; no selected project",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
   }
 }
 
 fn admit_review_sheet_operator(
-  project: ReviewSheetGcpProjectStanding,
-  writer: ReviewSheetWriterStanding,
+  project: GcpProjectId,
+  writer: ServiceAccountEmail,
   enablement: ServiceEnablementObservation,
   spreadsheet: BuyerReviewSpreadsheet,
   serviceusage_enable_iam: HumanIntervention,
@@ -187,18 +182,12 @@ fn admit_review_sheet_operator(
   sharing_policy: WorkspaceDomainSharingPolicy,
   tenancy: ReviewSheetAccountTenancy,
 ) -> ReviewSheetOperatorAdmission {
-  match project {
-    ReviewSheetGcpProjectAwaitingIdentification => review_sheet_estate_unresolved_gcp_project()
-    ReviewSheetGcpProjectIdentified { project: p } =>
-      match writer {
-        ReviewSheetWriterAwaitingIdentification => review_sheet_estate_unresolved_writer()
-        ReviewSheetWriterIdentified { email: sa } =>
-          match serviceusage_enable_iam.completion_evidence {
+  match serviceusage_enable_iam.completion_evidence {
             NoDischargeSiteModeled =>
               ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
             DischargedAt { evidence: _ } =>
             match decide_service_enablement(
-              desired: sheets_api_desired_enablement(project: p),
+              desired: sheets_api_desired_enablement(project: project),
               observed: enablement,
             ) {
               Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
@@ -247,8 +236,6 @@ fn admit_review_sheet_operator(
                     }
                 }
             }
-          }
-      }
   }
 }
 
@@ -264,25 +251,5 @@ fn share_intervention_for_spreadsheet(
 }
 
 fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
-  match review_sheet_gcp_project {
-    ReviewSheetGcpProjectAwaitingIdentification => review_sheet_estate_unresolved_gcp_project()
-    ReviewSheetGcpProjectIdentified { project: p } =>
-      match review_sheet_writer {
-        ReviewSheetWriterAwaitingIdentification => review_sheet_estate_unresolved_writer()
-        ReviewSheetWriterIdentified { email: sa } =>
-          admit_review_sheet_operator(
-            project: ReviewSheetGcpProjectIdentified { project: p },
-            writer: ReviewSheetWriterIdentified { email: sa },
-            enablement: ServiceEnablementUnobserved {
-              project: p,
-              service_id: sheets_serviceusage_api_id,
-            },
-            spreadsheet: buyer_review_spreadsheet,
-            serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(project: p, writer: sa),
-            share: share_intervention_for_spreadsheet(spreadsheet: buyer_review_spreadsheet, writer: sa),
-            sharing_policy: buyer_review_workspace_domain_sharing(),
-            tenancy: buyer_review_account_tenancy,
-          )
-      }
-  }
+  review_sheet_estate_unresolved_calling_home()
 }

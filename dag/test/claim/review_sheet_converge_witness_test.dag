@@ -112,17 +112,9 @@ import gunbc.review_sheet_operator {
   share_intervention_for_spreadsheet,
   sheets_api_enablement_decision,
   sheets_api_desired_enablement,
-  review_sheet_gcp_project,
-  review_sheet_writer,
   serviceusage_enable_iam_grant_intervention,
   SpreadsheetAwaitingCreation,
   SpreadsheetIdentified,
-  ReviewSheetGcpProjectAwaitingIdentification,
-  ReviewSheetGcpProjectIdentified,
-  ReviewSheetGcpProjectStanding,
-  ReviewSheetWriterAwaitingIdentification,
-  ReviewSheetWriterIdentified,
-  ReviewSheetWriterStanding,
   ReviewSheetWorkspaceDomain,
   ReviewSheetPlainGoogleAccount,
   AccountTenancyUnobserved,
@@ -149,6 +141,7 @@ import gunbc.gcp_service_enablement {
   ServiceEnablementStateForeign,
 }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
+import gunbc.gcp_estate_observation { sheets_calling_home, SheetsCallingHomeUnresolved }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId }
 
 fn w_schema() -> ReviewSheetSchema {
@@ -961,14 +954,6 @@ fn w_fixture_writer() -> ServiceAccountEmail {
   "writer@fixture.iam.gserviceaccount.com"
 }
 
-fn w_project_identified() -> ReviewSheetGcpProjectStanding {
-  ReviewSheetGcpProjectIdentified { project: w_fixture_project() }
-}
-
-fn w_writer_identified() -> ReviewSheetWriterStanding {
-  ReviewSheetWriterIdentified { email: w_fixture_writer() }
-}
-
 fn w_discharged_iam() -> HumanIntervention {
   HumanIntervention {
     identity: concat("gcp-serviceusage-enable-iam-", w_fixture_project() as String) as HumanInterventionIdentity,
@@ -1016,21 +1001,24 @@ fn w_observed_disabled() -> ServiceEnablementObservation {
 test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bool {
   match fleet_review_sheet_operator_admission() {
     ReviewSheetEstateUnresolved { subject: s, reason: r } =>
-      (s as String) == "review_sheet_gcp_project"
-        && string_contains(s: r as String, pattern: "awaiting identification")
+      (s as String) == "sheets_calling_home"
+        && match sheets_calling_home() {
+          SheetsCallingHomeUnresolved {
+            refused_api_surface_project: p,
+            refused_writer: w,
+            candidate_writer_in_secrets: _,
+            kitchen_sink_project: _,
+            pool_host_without_sts: _,
+            sts_host_without_sheets: _,
+          } =>
+            string_contains(s: r as String, pattern: p as String)
+              && string_contains(s: r as String, pattern: w as String)
+        }
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorRefused { reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
-    && match review_sheet_gcp_project {
-      ReviewSheetGcpProjectAwaitingIdentification => true
-      ReviewSheetGcpProjectIdentified { project: _ } => false
-    }
-    && match review_sheet_writer {
-      ReviewSheetWriterAwaitingIdentification => true
-      ReviewSheetWriterIdentified { email: _ } => false
-    }
     && match buyer_review_spreadsheet {
       SpreadsheetAwaitingCreation => true
       SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
@@ -1069,7 +1057,7 @@ test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bo
       ReviewSheetLiveNotAdmitted { admission: a } =>
         match a {
           ReviewSheetEstateUnresolved { subject: s, reason: _ } =>
-            (s as String) == "review_sheet_gcp_project"
+            (s as String) == "sheets_calling_home"
           ReviewSheetAwaitingHuman { intervention: _ } => false
           ReviewSheetOperatorRefused { reason: _ } => false
           ReviewSheetNeedsApiEnable { plan: _ } => false
@@ -1079,15 +1067,24 @@ test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bo
     }
 }
 
-test fn committed_enablement_decision_refuses_unresolved_project() -> Bool {
-  match sheets_api_enablement_decision(
-    project: ReviewSheetGcpProjectAwaitingIdentification,
-    observed: w_observed_disabled(),
-  ) {
-    Refuse { reason: r } =>
-      string_contains(s: r as String, pattern: "awaiting identification")
-    Apply { plan: _ } => false
-    Noop => false
+test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bool {
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: _,
+      refused_writer: _,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
+    } =>
+      match fleet_review_sheet_operator_admission() {
+        ReviewSheetEstateUnresolved { subject: s, reason: _ } =>
+          (s as String) == "sheets_calling_home"
+        ReviewSheetAwaitingHuman { intervention: _ } => false
+        ReviewSheetNeedsApiEnable { plan: _ } => false
+        ReviewSheetOperatorRefused { reason: _ } => false
+        ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+      }
   }
 }
 
@@ -1120,21 +1117,11 @@ test fn enablement_converge_never_disables() -> Bool {
   }
 }
 
-test fn writer_awaiting_identification_does_not_name_an_sa() -> Bool {
-  match admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: ReviewSheetWriterAwaitingIdentification,
-    enablement: w_observed_disabled(),
-    spreadsheet: SpreadsheetAwaitingCreation,
-    serviceusage_enable_iam: w_discharged_iam(),
-    share: w_pending_share(),
-    sharing_policy: DomainSharingAllowsServiceAccountShare,
-    tenancy: ReviewSheetWorkspaceDomain,
-  ) {
+test fn fleet_admission_does_not_admit_while_calling_home_is_unresolved() -> Bool {
+  match fleet_review_sheet_operator_admission() {
     ReviewSheetEstateUnresolved { subject: s, reason: r } =>
-      (s as String) == "review_sheet_writer"
-        && string_contains(s: r as String, pattern: "awaiting identification")
-        && !string_contains(s: r as String, pattern: "@")
+      (s as String) == "sheets_calling_home"
+        && string_contains(s: r as String, pattern: "refused writer")
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorRefused { reason: _ } => false
@@ -1144,8 +1131,8 @@ test fn writer_awaiting_identification_does_not_name_an_sa() -> Bool {
 
 test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> Bool {
   match admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: w_writer_identified(),
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
     enablement: w_observed_disabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
@@ -1165,8 +1152,8 @@ test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> B
 
 test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Bool {
   match admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: w_writer_identified(),
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetAwaitingCreation,
     serviceusage_enable_iam: w_discharged_iam(),
@@ -1192,8 +1179,8 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
 test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: w_writer_identified(),
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
@@ -1396,8 +1383,8 @@ test fn judgement_failures_are_unreadable_not_blank() -> Bool {
 test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: w_writer_identified(),
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
@@ -1416,8 +1403,8 @@ test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
 test fn unread_workspace_sharing_policy_refuses() -> Bool {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: w_writer_identified(),
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
@@ -1437,8 +1424,8 @@ test fn unread_workspace_sharing_policy_refuses() -> Bool {
 test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: w_writer_identified(),
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
@@ -1458,8 +1445,8 @@ test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
 test fn admitted_admission_opens_live_access() -> Bool {
   let id = "sheet-abc" as NonEmptyStr
   let admission = admit_review_sheet_operator(
-    project: w_project_identified(),
-    writer: w_writer_identified(),
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
     enablement: w_observed_enabled(),
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
     serviceusage_enable_iam: w_discharged_iam(),
