@@ -8,7 +8,7 @@ data concession_annotation_is_not_a_disposition: RecurringFailureMode = Recurrin
   identity: "concession_annotation_is_not_a_disposition" as NonEmptyStr,
 
   receipts: [
-    "**a sentence that admits an invalid construction is allowed to stand in for deleting it** (INVALID STATE: an author identifies a decoration -- a fold that ignores its argument, a published column that is identically one arm for every row, a constructor with no remaining inhabitant, a located cause computed and then discarded -- and writes an annotation conceding that fact while leaving the construction in the executing surface. The concession is treated as the disposition.",
+    "**a sentence that admits an invalid construction is allowed to stand in for deleting it** (INVALID STATE: an author identifies a decoration -- a fold that ignores its argument, a published column that is identically one arm for every row, or a located cause computed and then discarded -- and writes an annotation conceding that fact while leaving the construction in the executing surface. The concession is treated as the disposition.",
 
     "HARM, AND IT IS WORSE THAN NOT NOTICING.",
 
@@ -56,21 +56,23 @@ data concession_annotation_is_not_a_disposition: RecurringFailureMode = Recurrin
 
     "Both specimens survived until a reviewer joined the concession to the construction it left standing.",
 
-    "CEILING, STATED PER SUB-CASE BECAUSE THE SUB-CASES DO NOT SHARE ONE.",
+    "CEILING AND NEXT TRIGGER, STATED PER SUB-CASE, BECAUSE A PLURAL LOSS WITH A SINGULAR TRIGGER IS THE GRAIN MISMATCH DESIGN section 4b(3) NAMES.",
 
-    "THE ANNOTATION ITSELF CARRIES NO RUNG: whether a free-prose sentence is a concession rather than a description is not a property the source decides, so DESIGN section 4c puts that form in the adjacent column -- outside the modeled guarantee -- rather than at a low rung.",
+    "THE ANNOTATION ITSELF CARRIES NO RUNG: whether a free-prose sentence is offered as a disposition rather than a description is not a property the source decides, so DESIGN section 4c puts that form in the adjacent column -- outside the modeled guarantee -- rather than at a low rung.",
 
-    "THE STRUCTURED SUB-CASE DOES: a producer that ignores its argument, a published count that is identically one arm over a closed roster, a constructor with no call site in the tree.",
+    "SUB-CASE ONE, specimen one, ceiling mechanically preventable: a closed-roster producer that ignores its subject, or an axis identically fixed across the closed population.",
 
-    "Those are facts a fold over the Node tree can ask, so the ceiling is mechanically preventable -- a check that refuses a constant census column, or a type whose remaining constructor is uninhabited, reliably exposes the state.",
+    "NEXT TRIGGER FOR SUB-CASE ONE: ingestion refuses a producer that ignores its subject, or an axis identically fixed across the closed population, rather than leaving that decoration describable beside the column.",
 
-    "It is not structurally guaranteed while the decoration remains authorable as source handed to the compiler; the RED is fixture-authorable, which is why a check here is not a 4b decoration.",
+    "SUB-CASE TWO, specimen two, ceiling mechanically preventable: a located observation or cause is computed and then erased before it reaches the caller.",
 
-    "NEXT TRIGGER: a census or other closed-roster fold whose producer ignores its argument, or whose published column is identically one arm for every row, refuses at ingestion rather than being describable beside the column.",
+    "NEXT TRIGGER FOR SUB-CASE TWO: the located observation or cause must remain in the returned carrier to the caller; a projection that computes then erases it is refused or unwritable. `ProtocolSchemaIdentityObservation` is the repaired exemplar, not the trigger.",
 
-    "A grep for \"gone constant\" / \"next repair\" / \"for now\" does not fire this trigger; those phrases are how the concession is currently spelled, not the invalid state.",
+    "A constructor with no remaining inhabitant is not a third sub-case here: it has no measured owned trigger in this row, so it is not enumerated as a climb of this class. In specimen one it is a symptom of the axis having gone constant, owned by sub-case one, not a separate loss.",
 
-    "The capability is refusing the construction, which is what makes the concession have nothing left to stand in for.)",
+    "NONE OF THOSE CAPABILITIES RETIRES THE GENERAL CONCESSION CLASS. Sub-case one can make a constant census column unwritable; sub-case two can make a discarded cause unwritable; neither decides whether an annotation is being offered as the disposition, which stays outside the modeled guarantee.",
+
+    "A grep for \"gone constant\" / \"next repair\" / \"for now\" fires neither structured trigger; those phrases are how the concession is currently spelled, not the invalid state.)",
   ],
 
   evidence: [
