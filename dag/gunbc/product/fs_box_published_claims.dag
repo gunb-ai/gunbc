@@ -1,0 +1,70 @@
+module product.fs_box_published_claims
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.transceiver.sff_8636 {
+  TransceiverIdentifier, QsfpPlus, Qsfp28, QsfpDd, IdentifierUnmodelled,
+}
+import extdeps.instrument.fs_box_v4 {
+  fs_box_v4_data_sheet, fs_box_v4_data_sheet_lists_form_factor,
+}
+import extdeps.instrument.fs_box_v3_v4_v5_faq {
+  fs_box_v3_v4_v5_faq, fs_box_faq_lists_box_pro_field,
+}
+
+// JOIN OVER THE TWO CITED FS BOX PUBLICATIONS, NEVER A MERGED SUPPORT LIST.
+//
+// The 2023 V4 data sheet and the 2026 V3/V4/V5 FAQ disagree on browsers (Chrome-only vs
+// Chrome-and-Firefox) and spell the OS list differently. A single "supported" roster would be a
+// claim neither document makes. QSFP56 is the same shape: the data sheet omits it; the FAQ never
+// names it; this fleet's delivered legs report SFF identifier 0x11 (QSFP28), which the data sheet
+// DOES list. Sales correspondence that the QSFP56 legs are programmable stays in
+// product.breakout_leg_programming as TranscribedUncited. The fs.com catalog page is not a third
+// merged list: a fetch of www.fs.com/c/fs-box-3389 returned a JavaScript robot-check and no
+// form-factor table, so the page is unread, not silently listed.
+//
+// BOX Pro's writable fields are vendor-name / P/N / S/N / compatible-brand as the FAQ printed them.
+// They do not include an extended-compliance byte. That is why
+// product.breakout_leg_programming's 0x40 claim cannot climb off sales correspondence by reading
+// these two documents.
+
+fn qsfp56_named_on_v4_data_sheet() -> Bool {
+  fs_box_v4_data_sheet_lists_form_factor(name: "QSFP56" as NonEmptyStr)
+}
+
+fn sff_identifier_named_on_v4_data_sheet(id: TransceiverIdentifier) -> Bool {
+  match id {
+    QsfpPlus => fs_box_v4_data_sheet_lists_form_factor(name: "QSFP+" as NonEmptyStr)
+    Qsfp28 => fs_box_v4_data_sheet_lists_form_factor(name: "QSFP28" as NonEmptyStr)
+    QsfpDd => fs_box_v4_data_sheet_lists_form_factor(name: "QSFP-DD" as NonEmptyStr)
+    IdentifierUnmodelled { code: c } => false
+  }
+}
+
+fn browsers_name_firefox(browsers: List<NonEmptyStr>) -> Bool {
+  any(browsers, b => (b as String) == ("Firefox" as String))
+}
+
+fn faq_lists_firefox() -> Bool {
+  browsers_name_firefox(browsers: fs_box_v3_v4_v5_faq.browsers)
+}
+
+fn datasheet_lists_firefox() -> Bool {
+  browsers_name_firefox(browsers: fs_box_v4_data_sheet.browsers)
+}
+
+fn faq_attests_extended_compliance_rewrite() -> Bool {
+  fs_box_faq_lists_box_pro_field(name: "extended compliance" as NonEmptyStr)
+    || fs_box_faq_lists_box_pro_field(name: "byte 192" as NonEmptyStr)
+}
+
+fn fs_box_internet_constraint_instruction(works_offline: Bool) -> NonEmptyStr {
+  if works_offline {
+    "The FS BOX may be used offline. " as NonEmptyStr
+  } else {
+    "Keep a stable internet connection: the FS BOX V3/V4/V5 FAQ states the tool does not work offline. " as NonEmptyStr
+  }
+}
+
+fn current_fs_box_internet_constraint_instruction() -> NonEmptyStr {
+  fs_box_internet_constraint_instruction(works_offline: fs_box_v3_v4_v5_faq.works_offline)
+}
