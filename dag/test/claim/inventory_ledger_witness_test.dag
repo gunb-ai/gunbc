@@ -82,7 +82,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Synthetic fixtures only: one allocator, two lots, small quantities. Nothing here reads the live
+// Synthetic fixtures only, allocated in one identity space. Nothing here reads the live
 // tree or the fleet, so the whole file stays inside the fast-lane budget.
 
 fn first_lot_identity() -> InventoryLotIdentity {
@@ -810,4 +810,59 @@ test fn w_admitted_population_sum_preserves_all_stock_buckets() -> Bool {
       }
     }
   }
+}
+
+fn admitted_lot_at_is(ledgers: List<product.inventory.AdmittedInventoryLedger>, position: Nat, expected: InventoryLotIdentity) -> Bool {
+  match ledgers.skip(n: position).first() {
+    Absent => false
+    Present { value: ledger } => inventory_lot_identity_eq(left: ledger.lot.identity, right: expected)
+  }
+}
+
+fn synthetic_one_unit_lot(identity: InventoryLotIdentity) -> ProcurementLot {
+  ProcurementLot {
+    identity: identity,
+    receipt: ReceiptHeldPrivately,
+    catalog: ten_unit_lot().catalog,
+    display_label: "synthetic ordered admission lot" as NonEmptyStr,
+    quantity_acquired: 1,
+    landed_cost: LandedCostHeldPrivately,
+  }
+}
+
+// Three distinct identities in non-mint order make reversal and sorting visible.
+// Two different refusals make selecting the last refusal distinguishable from the first.
+test fn w_population_admission_preserves_order_and_first_refusal() -> Bool {
+  let first = mint_inventory_lot_identity(alloc: inventory_lot_allocator_initial())
+  let second = mint_inventory_lot_identity(alloc: first.alloc)
+  let third = mint_inventory_lot_identity(alloc: second.alloc)
+  let a = synthetic_one_unit_lot(identity: first.id)
+  let b = synthetic_one_unit_lot(identity: second.id)
+  let c = synthetic_one_unit_lot(identity: third.id)
+  let before = InventoryLotEvidence { lot: c, events: [LotAcquired { lot: c.identity }] }
+  let after = InventoryLotEvidence { lot: b, events: [LotAcquired { lot: b.identity }] }
+  let ordered = match admit_ledger_evidence(evidence: [
+    before,
+    InventoryLotEvidence { lot: a, events: [LotAcquired { lot: a.identity }] },
+    after,
+  ]) {
+    LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+    AllLedgersAdmitted { ledgers: rows } =>
+      rows.length() == 3
+        && admitted_lot_at_is(ledgers: rows, position: 0, expected: c.identity)
+        && admitted_lot_at_is(ledgers: rows, position: 1, expected: a.identity)
+        && admitted_lot_at_is(ledgers: rows, position: 2, expected: b.identity)
+  }
+  let first_refusal = match admit_ledger_evidence(evidence: [
+    before,
+    InventoryLotEvidence { lot: a, events: [LotAcquired { lot: a.identity }, LotAcquired { lot: a.identity }] },
+    after,
+    InventoryLotEvidence { lot: b, events: [LotReceived { lot: b.identity, quantity: 1 }] },
+  ]) {
+    AllLedgersAdmitted { ledgers: _ } => false
+    LedgerEvidenceRefused { lot: l, cause: cause, event_ordinal: n, event_label: label } =>
+      inventory_lot_identity_eq(left: l, right: a.identity) && n == 1 && label as String == "LotAcquired"
+        && match cause { LotAlreadyAcquired => true _ => false }
+  }
+  ordered && first_refusal
 }

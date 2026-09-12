@@ -597,7 +597,7 @@ fn admit_one_more_ledger(acc: LedgerEvidenceAdmission, row: InventoryLotEvidence
       LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
     AllLedgersAdmitted { ledgers: so_far } =>
       match admit_inventory_ledger(lot: row.lot, events: row.events) {
-        LedgerAdmitted { admitted: a } => AllLedgersAdmitted { ledgers: concat(so_far, [a]) }
+        LedgerAdmitted { admitted: a } => AllLedgersAdmitted { ledgers: list_push(so_far, a) }
         LedgerAdmissionRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
           LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
       }
