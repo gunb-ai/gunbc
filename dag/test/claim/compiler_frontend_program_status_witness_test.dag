@@ -357,14 +357,14 @@ fn milestone_in(ms: List<ProgramMilestone>, want: ProgramMilestone) -> Bool {
 
 // THE ORDER THE TWO RULINGS ADOPT, stated as edges. Grammar deletion runs last (2026-08-25), after
 // v1 is deleted on the native floor (2026-09-12). Seed retirement must not wait on grammar
-// retirement, and both the cutover and grammar retirement wait on the native floor. On main before
-// this change the first and third clauses are red: the interlock carried the edge that, combined
-// with the adopted order, forms the cycle.
+// retirement, seed retirement waits on the native floor, the cutover waits on seed retirement, and
+// grammar retirement waits on the cutover. On main before this change the first three clauses are
+// red: the interlock carried the edge that, combined with the adopted order, forms the cycle.
 test fn the_namespace_cutover_runs_on_the_native_floor_after_the_seed() -> Bool {
   !milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: NamespaceGrammarRetired)
     && milestone_in(ms: milestone_prerequisites(m: SelfHostSeedRetirement), want: SelfHostNativeRouteRequiredLane)
-    && milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostNativeRouteRequiredLane)
-    && milestone_in(ms: milestone_prerequisites(m: NamespaceGrammarRetired), want: SelfHostNativeRouteRequiredLane)
+    && milestone_in(ms: milestone_prerequisites(m: NamespaceFixForwardComplete), want: SelfHostSeedRetirement)
+    && milestone_in(ms: milestone_prerequisites(m: NamespaceGrammarRetired), want: NamespaceFixForwardComplete)
 }
 
 // STARTABILITY IS CHECKED AS A WIRING RELATION OVER EVERY MILESTONE, replacing two arms that each

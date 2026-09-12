@@ -264,8 +264,10 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // NamespaceGrammarRetired, while the adopted order runs the namespace cutover (XL-6) and grammar
 // deletion (XL-7) AFTER v1 is deleted, so that nobody teaches a seed being deleted import-free
 // source, and the cutover is validated once, natively. Carried together, those two orders are a
-// cycle. The edge now runs the other way: grammar retirement and the fix-forward cutover depend on
-// the native floor, and seed retirement no longer waits on the grammar. The native-route milestone
+// cycle. The edge now runs the other way: the fix-forward cutover depends on seed retirement
+// (which itself requires the native floor), grammar retirement follows the cutover, and seed
+// retirement no longer waits on the grammar. Direct edges only; the native floor reaches the
+// cutover through seed retirement, so it is not restated there. The native-route milestone
 // is NOT a re-pointed SelfHostRatchetGateEnrolled. That gate is the compile-phase regression gate
 // against the persisted frontier (gunbc.self_host_compile_phase_live_gate, merged in #9857, with its
 // enrolment parked by the operator), and native admission answers a different question. Re-pointing
@@ -279,8 +281,8 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     NamespaceWaveAdmissionEnrolled => []
     NamespaceBaselineObservationComplete => []
     NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled, NamespaceBaselineObservationComplete]
-    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave, SelfHostNativeRouteRequiredLane]
-    NamespaceGrammarRetired => [NamespaceFixForwardComplete, SelfHostNativeRouteRequiredLane]
+    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave, SelfHostSeedRetirement]
+    NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
     SelfHostBehavioralEquivalenceReestablished => [SelfHostCorpusEmitsCleanly]
     SelfHostEmitterProducesEveryRetainedArtifact => []
