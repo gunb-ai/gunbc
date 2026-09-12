@@ -135,6 +135,29 @@ type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 // the DeclarationRef of the gate authority that decides it and the GRAIN that gate is legitimate
 // at, and every witness is stamped with both -- so registration and observation form one closed,
 // machine-checkable join (required_lens_coverage) rather than two lists of equal length.
+//
+// WHAT THAT JOIN DOES NOT ESTABLISH, AND ITS RUNG (review 64177, DESIGN section 4b(2)). The join
+// closes over the identity FIELD. Nothing binds that field to the `gate` beside it: both are
+// authored on the same row by hand, so swapping two rows' gates, or repointing a `gate` at a
+// different wrapper while leaving `identity` alone, leaves the join closed and the roster digest
+// unchanged. Coverage is therefore closed over a NAME, and the claim it supports is "a gate
+// registered under this identity ran at this grain", not "the declaration this identity names ran".
+// The residual sits at MITIGATION: a typed field, authored and unverified.
+//
+// NO DISCRIMINATING RED IS AUTHORABLE TODAY, which is why this is a stated ceiling rather than a
+// missing test. A control would have to recover a declaration identity FROM a function value and
+// compare it to the authored one; a `CompileLensGate` is an opaque function value in this
+// substrate, and nothing about the declaration it came from survives into it. A control comparing
+// the authored identity to itself would be the decoration DESIGN section 4b warns about at the top
+// rung -- permanently green, and worse than absent because it would be cited as coverage of exactly
+// the gap it does not close.
+//
+// NEXT-RUNG TRIGGER: a reified declaration identity for function values -- the substrate carrying,
+// on a function value, the DeclarationRef of the declaration it was built from. With that, the
+// identity field stops being authored at all: it is DERIVED from the gate, the two cannot disagree
+// by construction, and this row's identity/gate pair collapses to one fact. That is the climb from
+// mitigation to structural impossibility, and it is a language-layer capability rather than
+// something this module can build.
 // ONE ROSTER, PARTITIONED BY GRAIN. The two grains stay semantically load-bearing (see
 // required_lens_grain_note) but they are no longer two registration surfaces: grain is a field and
 // required_lenses_at_grain derives each execution's roster from the single roster. A second list
@@ -337,8 +360,11 @@ fn required_lenses_at_grain(grain: CompileLensGrain) -> List<CompileLens> {
 
 // THE ROSTER DIGEST IS OVER IDENTITY AND GRAIN, IN ROSTER ORDER, and the order is part of it: two
 // consumers re-deriving from this one entry point see one order, so a receipt carrying a digest is
-// a claim about WHICH lenses were obliged, not merely how many. It deliberately does not cover the
-// gate function, which is named by the identity it is registered under.
+// a claim about WHICH IDENTITIES were obliged, not merely how many. It deliberately does not cover
+// the gate function -- and the honest reading is narrower than "the gate is named by the identity
+// it is registered under", which is what this sentence used to say: nothing verifies that pairing
+// (see the registration annotation above), so a digest is a claim about the registered names and
+// their grains, and is unchanged by a gate swap underneath them.
 fn required_lens_roster_digest_text(lenses: List<CompileLens>) -> String {
   fold_list(
     xs: lenses,

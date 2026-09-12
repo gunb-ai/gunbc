@@ -17,6 +17,12 @@ module v2.test.lens_application.required_lens_coverage_join
 // names neither compile_pipeline_not_realized nor compile_lens_gate_rejected. The door-grain
 // positive control is therefore a declared frontier whose trigger is a route that reaches Accepted
 // through validate_then_compile, which is the activation authority's Executed-to-Qualified step.
+// AND IT DOES NOT ESTABLISH THAT A REGISTERED GATE IS THE DECLARATION ITS IDENTITY NAMES (review
+// 64177). Every control here joins on the identity FIELD, which is authored on the row beside the
+// gate and bound to it by nothing, so a swapped gate leaves every witness below green. This module
+// is the wrong place to fix that and the right place to say it: the ceiling and its next-rung
+// trigger -- a reified declaration identity for function values -- are stated beside the field in
+// v2.compiler.compile, and no discriminating RED is authorable here until that lands.
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import v2.compiler.compile {
   CompileLens,
@@ -128,7 +134,19 @@ fn observations_dropping_first() -> List<LensGateWitness> {
   }
 }
 
-fn first_root_registration() -> CompileLens {
+// A ROOT-GRAIN ROW, AND DELIBERATELY NOT A POSITIONAL ONE. This was called
+// `first_root_registration` and returned the LAST root-grain row: the fold overwrites `acc` on
+// every `CompileLensRoot`, so the name asserted a position the code did not have (review 64177).
+// The controls below are unaffected -- they call this on both sides of their comparison, so which
+// row it is cannot change a verdict -- but a reader adding a row keyed on "first" would have got a
+// different subject than the name promised, which is the DESIGN section 3 defect of citing
+// something other than the thing you mean.
+//
+// IT IS NOT REPAIRED BY MAKING IT RETURN THE FIRST, because the contract genuinely does not care.
+// `unregistered_placeholder_lens()` is itself `CompileLensRoot`, so a keep-the-first fold would
+// latch onto the sentinel and never reach a real row; the honest name is one that claims no
+// position at all, and nothing here may depend on which root row arrives.
+fn a_root_grain_registration() -> CompileLens {
   match required_compile_lens_roster() {
     Cons { head: _, tail: _ } =>
       fold_list(
@@ -228,13 +246,13 @@ test fn required_lens_coverage_refuses_root_lens_observed_twice_holds() -> Bool 
     lenses: required_compile_lens_roster(),
     witnesses: list_append(
       left: complete_observations(),
-      right: [observation_of(lens: first_root_registration())]
+      right: [observation_of(lens: a_root_grain_registration())]
     )
   ) {
     RequiredLensCoverageRefused { cause: cause } =>
       match cause {
         RootLensObservedMoreThanOnce { lens: l } =>
-          declaration_ref_eq(a: l, b: first_root_registration().identity)
+          declaration_ref_eq(a: l, b: a_root_grain_registration().identity)
         RequiredLensRosterEmpty => false
         RegistrationDuplicated { lens: _ } => false
         RegistrationUnobserved { lens: _ } => false
@@ -373,14 +391,14 @@ test fn required_lens_coverage_refuses_duplicate_registration_holds() -> Bool {
   match join_required_lens_coverage(
     lenses: list_append(
       left: required_compile_lens_roster(),
-      right: [first_root_registration()]
+      right: [a_root_grain_registration()]
     ),
     witnesses: complete_observations()
   ) {
     RequiredLensCoverageRefused { cause: cause } =>
       match cause {
         RegistrationDuplicated { lens: l } =>
-          declaration_ref_eq(a: l, b: first_root_registration().identity)
+          declaration_ref_eq(a: l, b: a_root_grain_registration().identity)
         RequiredLensRosterEmpty => false
         RegistrationUnobserved { lens: _ } => false
         ObservationUnregistered { lens: _ } => false
