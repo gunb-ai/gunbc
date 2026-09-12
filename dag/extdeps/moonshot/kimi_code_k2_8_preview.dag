@@ -1,12 +1,12 @@
 module extdeps.moonshot.kimi_code_k2_8_preview
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, List }
 import std.measure { TokenCount, token_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.external_authority {
-  ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation,
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 }
 import extdeps.uri { Uri, Https }
 
@@ -126,54 +126,29 @@ data kimi_k3_256k_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment 
 
 data kimi_code_catalog_observed_as_of: NonEmptyStr = "2026-09-11" as NonEmptyStr
 
-data kimi_for_coding_k28_preview_assignment_citation: FactCitation = FactCitation {
-  fact: DeclarationRef {
-    module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
-    decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr,
-    field: WholeDeclaration,
-  },
-  authority: kimi_code_whats_new_authority,
-}
+type KimiCodeThinkingEffort
+  = KimiCodeEffortLow
+  | KimiCodeEffortHigh
+  | KimiCodeEffortMax
 
-data kimi_code_request_id_wires: List<NonEmptyStr> = [
-  kimi_code_request_id_wire(id: KimiForCoding),
-  kimi_code_request_id_wire(id: KimiK3),
-  kimi_code_request_id_wire(id: KimiK3_256k),
-  kimi_code_request_id_wire(id: KimiForCodingHighspeed),
-]
-
-fn kimi_code_is_request_model_id(spelling: NonEmptyStr) -> Bool {
-  kimi_code_request_id_wires |> any(w => (w as String) == (spelling as String))
-}
-
-type KimiK28ThinkingEffort
-  = KimiK28EffortLow
-  | KimiK28EffortHigh
-  | KimiK28EffortMax
-
-fn kimi_k28_thinking_effort_wire(effort: KimiK28ThinkingEffort) -> NonEmptyStr {
+// models.html documents reasoning_effort low/high/max for both K3 (k3, k3-256k) and
+// K2.8 Preview (kimi-for-coding). This is the Kimi Code product-wide thinking-on control,
+// not a K2.8-only vocabulary applied to K3.
+fn kimi_code_thinking_effort_wire(effort: KimiCodeThinkingEffort) -> NonEmptyStr {
   match effort {
-    KimiK28EffortLow => "low" as NonEmptyStr
-    KimiK28EffortHigh => "high" as NonEmptyStr
-    KimiK28EffortMax => "max" as NonEmptyStr
+    KimiCodeEffortLow => "low" as NonEmptyStr
+    KimiCodeEffortHigh => "high" as NonEmptyStr
+    KimiCodeEffortMax => "max" as NonEmptyStr
   }
 }
 
-data kimi_k28_thinking_effort_wires: List<NonEmptyStr> = [
-  kimi_k28_thinking_effort_wire(effort: KimiK28EffortLow),
-  kimi_k28_thinking_effort_wire(effort: KimiK28EffortHigh),
-  kimi_k28_thinking_effort_wire(effort: KimiK28EffortMax),
-]
-
-data kimi_k28_default_thinking_effort: KimiK28ThinkingEffort = KimiK28EffortMax
-
 type KimiCodeThinkingControl
-  = KimiThinkingOn { effort: KimiK28ThinkingEffort }
+  = KimiThinkingOn { effort: KimiCodeThinkingEffort }
   | KimiThinkingOff
   | KimiHighSpeedThinkingOn
 
 type KimiCodeThinkingOnPolicy
-  = ThinkingOnWithK28Effort
+  = ThinkingOnWithDocumentedEffort
   | HighSpeedThinkingOnOnly
 
 type KimiCodeThinkingOffPolicy
@@ -198,17 +173,17 @@ data kimi_code_catalog_as_of_2026_09_11: KimiCodeCatalogEpoch = KimiCodeCatalogE
   observed_as_of: kimi_code_catalog_observed_as_of,
   kimi_for_coding: KimiCodeCatalogRow {
     assignment: kimi_for_coding_k28_preview_assignment,
-    thinking_on: ThinkingOnWithK28Effort,
+    thinking_on: ThinkingOnWithDocumentedEffort,
     thinking_off: ThinkingOffServes { version: ServedK28Preview },
   },
   kimi_k3: KimiCodeCatalogRow {
     assignment: kimi_k3_assignment,
-    thinking_on: ThinkingOnWithK28Effort,
+    thinking_on: ThinkingOnWithDocumentedEffort,
     thinking_off: ThinkingOffServes { version: ServedK28Preview },
   },
   kimi_k3_256k: KimiCodeCatalogRow {
     assignment: kimi_k3_256k_assignment,
-    thinking_on: ThinkingOnWithK28Effort,
+    thinking_on: ThinkingOnWithDocumentedEffort,
     thinking_off: ThinkingOffServes { version: ServedK28Preview },
   },
   kimi_for_coding_highspeed: KimiCodeCatalogRow {
@@ -272,7 +247,7 @@ fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingContr
       }
     }
     KimiThinkingOn { effort: _ } => match row.thinking_on {
-      ThinkingOnWithK28Effort => KimiCodeRouteResolved {
+      ThinkingOnWithDocumentedEffort => KimiCodeRouteResolved {
         route: KimiCodeRoute {
           requested_id: requested,
           served_version: row.assignment.served_version,
@@ -292,7 +267,7 @@ fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingContr
           served_thinking: thinking,
         },
       }
-      ThinkingOnWithK28Effort => KimiCodeThinkingControlNotDocumented {
+      ThinkingOnWithDocumentedEffort => KimiCodeThinkingControlNotDocumented {
         requested_id: requested,
         thinking: thinking,
       }
@@ -322,8 +297,13 @@ data kimi_code_k28_preview_provider_integration_frontier: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "KIMI28-1 request admission consumes kimi_k28_declared_context_ceiling when binding an admitted Kimi Code request's context bound"),
   ),
   frontier_row_decl(
-    ref: kimi_code_k28_preview_fact(decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr),
-    reason: "CitedAvailableOn carries a Gregorian day as NonEmptyStr; v2.std.datetime CalendarDate has no corpus constructor (pin.dag pin_currency_gap dissolve names the same gap)",
-    dissolution: unbound_dissolution(description: "kimi_for_coding_k28_preview_assignment.effective_from is a v2.std.datetime CalendarDate constructed from the cited YMD 2026-09-11"),
+    ref: kimi_code_k28_preview_fact(decl_name: "KimiCodeEffectiveFrom" as NonEmptyStr),
+    reason: "CitedAvailableOn.on is a Gregorian day as NonEmptyStr; v2.std.datetime CalendarDate has no corpus constructor (pin.dag pin_currency_gap dissolve names the same gap)",
+    dissolution: unbound_dissolution(description: "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"),
+  ),
+  frontier_row_decl(
+    ref: kimi_code_k28_preview_fact(decl_name: "KimiCodeAliasEnd" as NonEmptyStr),
+    reason: "AliasEndPublished.on is the same Gregorian-day NonEmptyStr as CitedAvailableOn.on",
+    dissolution: unbound_dissolution(description: "CitedAvailableOn.on and AliasEndPublished.on are v2.std.datetime CalendarDate values"),
   ),
 ]
