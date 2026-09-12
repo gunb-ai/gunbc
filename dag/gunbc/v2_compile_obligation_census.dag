@@ -484,6 +484,25 @@ fn witness_subject(entry: String, function: String, module_path: String) -> Witn
 // 4b(4)). The sentence above is left standing rather than reworded because it was true when
 // written and is the reason this paragraph exists.
 //
+// TWO EDITS ARE JOINTLY SUFFICIENT HERE, NOT ONE, AND THE ADMISSION ROW NAMED THIS EXACT HAZARD --
+// "it is deliberately NOT keyed on this witness greening, since editing the specimen or the control
+// would green the witness without the capability." The same change also re-points the specimen,
+// because gunbc#11019 moved `list_append`'s copied port from the left operand to the right (the
+// concat realization copies the appended side; `v2.std.fn_index` records that `v1_rt::rc_list_concat`
+// make_muts the left and clones the right). On the OLD specimen the carrier sat on the NON-copied
+// port, so the analyzer repair alone could not have minted a suspect. Attributing the green to the
+// repair alone would therefore be the rung inflation section 4b(1) forbids, measured on the wrong
+// path.
+//
+// WHAT DISCHARGES THE HAZARD IS A THREE-CELL MEASUREMENT, not the assurance above, and the cell that
+// matters is the one the admission row feared. Corrected specimen on the PRE-FIX seed -- origin/main
+// carrying only the `.root` repair, this PR's lens change absent -- `gate_red_quadratic_rejects`
+// FAILS, with `gate_green_identity_accepts_clean` passing beside it. So EDITING THE SPECIMEN ALONE
+// DOES NOT GREEN THE WITNESS: the route the row excluded is refuted by execution rather than by
+// promise. Corrected specimen WITH the lens repair passes. Old specimen with the lens repair cannot
+// pass, by the copied-port citation above. The capability is what closes the gap between the first
+// cell and the second, which is the trigger discharged on its own terms.
+//
 // WHAT HOLDS THE RUNG DOWN IS A DIFFERENT POPULATION, NOT THE REPAIRED ONE, which is why restoring
 // on the strength of the repair would be the inflation DESIGN section 4b(1) names. That section
 // takes the MINIMUM across a class's in-scope paths, and
