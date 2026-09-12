@@ -1,7 +1,9 @@
 module v2.test.lens_application.apply_lens_introspect_rejection_is_advisory
 
+import std.decl_ref { decl_ref }
 import v2.compiler.compile {
   CompileLens,
+  CompileLensRoot,
   CompileLensEnforce,
   CompileLensIntrospect,
   apply_compile_lens,
@@ -37,7 +39,11 @@ fn apply_lens_mode_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>>
   )
 }
 
-data apply_lens_mode_rejecting_lens: CompileLens = CompileLens { gate: apply_lens_mode_rejecting_gate }
+data apply_lens_mode_rejecting_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.test.lens_application.apply_lens_introspect_rejection_is_advisory", decl_name: "apply_lens_mode_rejecting_gate"),
+  grain: CompileLensRoot,
+  gate: apply_lens_mode_rejecting_gate
+}
 
 fn apply_lens_mode_gate_rejects_enforce() -> Bool {
   match apply_compile_lens(
