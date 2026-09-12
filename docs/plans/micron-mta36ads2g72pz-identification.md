@@ -60,6 +60,17 @@ matching the catalogue SKU carried here plus process code `II`. The firmware's `
 `RCD[32:86]` per-module variation is the same variation Micron's record carries across process
 codes (bytes 133–135), which is why register vendor is not a field of the catalogue row.
 
+**Which of the three differing axes is operative — read carefully, because three bytes differ
+and only one is named.** The refusal quotes byte 6. Bytes 128 (height) and 130 (raw card)
+differ between the two parts just as much and are not mentioned. The strongest honest reading:
+the axis the firmware is known to compare is package type / die count / signal loading — the
+byte `DualDiePackage` is grounded on — and VLP height and raw card are not shown to matter.
+What the message does NOT establish is that they are unchecked: a comparator that stops at its
+first mismatch would print byte 6 whether or not it also compares 128 or 130 later in its
+order. So "VLP is a passenger" is the reading the evidence favours, at inference strength;
+proving it needs a population that differs at 128/130 but agrees at 6 (an `SS`/`DF`-coded part
+against a monolithic full-height one), which has not been run.
+
 **What Micron's data leaves as the only differences between the two quartets:** package
 construction (dual-die multi-load stack vs monolithic), PCB outline (18.75 vs 31.25 mm) and, with
 the outline, the JEDEC raw-card reference design (SPD byte 130 `0x08` vs `0x01`) and the
