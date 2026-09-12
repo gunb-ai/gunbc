@@ -21,7 +21,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // .neither_green_source_refuses_and_neither_mis_resolves, four census calls over two distinct
 // sources. That is the DESIGN section 6 bare-minimum-cost class, and its n stopped being small:
 // the row reached 5437ms CPU against the 5000ms
-// required_floor_claim_cpu_safety_limit_ms, which is a FAIL-STOP protecting the executor. The
+// required_floor_claim_work_envelope_ms, which is a FAIL-STOP protecting the executor. The
 // admissible repair is to stop recomputing, never to raise the line.
 //
 // POST-LANDING COST DISPOSITION (2026-08-28). The memo removed the duplicate call for each

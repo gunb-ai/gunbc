@@ -21,7 +21,7 @@ import v2.std.collection { List }
 //
 // Any identity enrolled here is withheld FOR COST, and in none of the three evidence classes is it
 // a known red. The PROVEN class passes and its measured marginal CPU exceeds
-// `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`; the CENSORED class was
+// `v2.workflow.required_floor` `required_floor_claim_work_envelope_ms`; the CENSORED class was
 // preempted before a verdict, so it asserts only that the row did not finish inside the ceiling
 // on the charged clock. NEITHER is a failure, which is the distinction that matters here.
 //
@@ -224,7 +224,7 @@ import v2.std.collection { List }
 
 // THE 500ms CEILING ITSELF IS JUDGED UNDER CONTENTION, AND THAT IS NOT THIS FILE'S ROW TO STATE.
 // Every release and hold reasoned about here compares a claim's cost against
-// `required_floor_claim_cpu_safety_limit_ms`, and the standing of that comparison -- its measured
+// `required_floor_claim_work_envelope_ms`, and the standing of that comparison -- its measured
 // inflation, its bounded population, and the capability that restores it -- is carried by
 // `gunbc.rung_drop floor_cost_claim_qualification_unavailable`. Cited rather than repeated: a second telling
 // would drift from the authority that retires it.
@@ -294,7 +294,7 @@ import v2.std.collection { List }
 // destroy the provenance and create two more numbers to rot.
 //
 // POPULATION A -- 225 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
-// CPU exceeded `required_floor_claim_cpu_safety_limit_ms`. Read from main run 33141550579's
+// CPU exceeded `required_floor_claim_work_envelope_ms`. Read from main run 33141550579's
 // per-claim cost receipt (`required_floor_claim_cost.tsv`, 12936 rows, `cost_basis=cpu`), so every
 // figure is that run's own and none is transcribed by hand. Measured range 511..3757ms. For these
 // rows the carrier's ordinary premise holds exactly: the witness works and costs too much.

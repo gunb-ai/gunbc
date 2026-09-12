@@ -493,10 +493,11 @@ fn witness_report_line(
     receipt: &v1_compiler::v1_interpreter::PerformanceReceipt,
 ) -> String {
     format!(
-        "[witness] {}: cpu={}ms wall={}ms subject={} eval_self={:.3}ms",
+        "[witness] {}: cpu={}ms wall={}ms eval_steps={} subject={} eval_self={:.3}ms",
         function,
         receipt.cpu_nanos / 1_000_000,
         receipt.wall_nanos / 1_000_000,
+        receipt.eval_steps,
         receipt.subject_key,
         receipt.eval_self_nanos as f64 / 1.0e6,
     )

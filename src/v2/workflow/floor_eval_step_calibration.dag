@@ -1,0 +1,130 @@
+module v2.workflow.floor_eval_step_calibration
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int, int_mul, int_ge }
+import std.types { NonEmptyStr }
+
+// THE CONTROLLED FIXTURE THAT GROUNDS THE REQUIRED FLOOR'S EVAL-STEP CEILING.
+//
+// WHY THIS MODULE EXISTS AT ALL. `v2.workflow.required_floor` declares, as POLICY, how much work
+// one required claim may perform. The policy is stated in milliseconds of ordinary interpreted
+// evaluation, because that is the unit an operator rules in and the unit every prior ruling over
+// this ceiling was written in. The floor MEASURES eval steps. Something must carry the conversion,
+// and the only honest place to take it is a specimen whose work is fixed by source rather than by
+// the corpus -- so this module holds one pinned reading and nothing else.
+//
+// WHAT IT IS NOT, STATED FIRST BECAUSE IT IS THE FAILURE THIS FILE EXISTS TO AVOID. It is not a
+// measurement of the live floor population. DESIGN section 5 rules that a merge-blocking literal
+// grounded in a measurement of the same current tree is a change detector rather than an oracle,
+// and every prior raise of this family of ceilings failed exactly there (see the two repudiated
+// raises recorded at `v2.workflow.required_floor`). The specimen below is a fixture: its recursion
+// depth is a literal in `test.claim.floor_eval_step_calibration_specimen_test`, so its step count
+// is a property of that file and is reproducible on any host, in any run, at any corpus size.
+//
+// THE TWO HALVES ARE OF DIFFERENT KINDS AND ARE CARRIED SEPARATELY.
+//
+//   `specimen_eval_steps` is DETERMINISTIC. It is what the interpreter performs for that source,
+//   and three consecutive executions returned the identical figure. It is not an environmental
+//   reading and is not a bet.
+//
+//   `specimen_cpu_ms` is ENVIRONMENTAL, and the whole reason this change exists is that such
+//   readings drift. It is therefore recorded as the SLOWEST of the readings taken, never the mean
+//   and never the fastest: a slower specimen yields FEWER steps per millisecond, which makes the
+//   derived ceiling TIGHTER. The fail-closed direction is chosen deliberately, so that drift in
+//   the calibration host cannot silently widen what a claim may spend.
+//
+// WHAT THE CONVERSION DOES AND DOES NOT CLAIM, and this is the honesty boundary a later reader
+// must not erase. It claims that one millisecond of PURE INTERPRETED EVALUATION on the named host
+// is about this many eval steps. It does NOT claim that every step in the corpus costs the same:
+// a claim whose time accrues inside an opaque host operation accumulates milliseconds without
+// accumulating steps at all, which is precisely the population
+// `v2.workflow.required_floor` `opaque_host_call_grandfather_population` already declares a
+// section 4b drop over. The conversion is therefore sound for the quantity the ceiling gates --
+// interpreted work -- and says nothing about host-realized cost, which is the CPU clock's subject
+// and is published as an observation rather than gated.
+type EvalStepCalibration = PinnedSpecimenCalibration {
+  specimen: NonEmptyStr
+  instrument: NonEmptyStr
+  host: NonEmptyStr
+  readings: Int
+  specimen_eval_steps: Int
+  specimen_cpu_ms: Int
+}
+
+// THE PINNED READING. `instrument` names the producer that re-derives both figures rather than
+// transcribing a run id beside them (DESIGN section 6: name the instrument). Re-deriving this row
+// is one command over one entry; it does not require a floor run, a CI run, or the corpus.
+data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibration {
+  specimen: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work" as NonEmptyStr,
+  instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/floor_eval_step_calibration_specimen_test.dag --function calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
+  host: "gunbc session container, linux aarch64, 31 GiB cap inside a shared 64 GiB slice; three consecutive executions read cpu=97ms, 110ms, 110ms at an identical eval_steps=110011" as NonEmptyStr,
+  readings: 3,
+  specimen_eval_steps: 110011,
+  specimen_cpu_ms: 110,
+}
+
+// THE GROUNDING VERDICT, AS A CLOSED COPRODUCT RATHER THAN A BOOL.
+//
+// The declared budget is a POLICY LITERAL, authored in `v2.workflow.required_floor`, and this is
+// the executing check that it still means what the calibration says it means. Cross-multiplication
+// is used instead of division on purpose: `int_div` is partial and would drag an `Outcome` and a
+// `Locus` through a pure policy predicate, and the exact ratio is not wanted -- only the band.
+//
+// THE BAND IS DECLARED, NOT DERIVED, AND IT IS A MAGNITUDE CHECK RATHER THAN AN EQUALITY. The
+// budget must sit within a FACTOR OF TWO of the calibrated worth of the envelope, either way.
+// Equality is refused deliberately: it would make the policy literal a transcription of the
+// calibration -- one figure mechanically derived from another and therefore not a policy at all --
+// and an operator who rounds the budget to a readable number would red the check for rounding it.
+// What the band establishes is that the two are stated in the same units and in the same
+// magnitude, which is the whole of what a grounding can honestly assert about a declared number.
+// Above two envelopes the policy is claiming materially more work than it measured; below half an
+// envelope it would refuse ordinary claims while still describing itself in the envelope's
+// milliseconds. Both refusal arms carry the two products so a reader sees what was compared.
+type EvalStepBudgetGrounding =
+    GroundedWithinCalibrationBand
+  | AboveCalibratedEnvelope { budget_work: Int, envelope_work: Int }
+  | BelowCalibratedBand { budget_work: Int, envelope_work: Int }
+
+fn eval_step_budget_grounding(
+  calibration: EvalStepCalibration,
+  budget_steps: Int,
+  envelope_ms: Int,
+) -> EvalStepBudgetGrounding {
+  match calibration {
+    PinnedSpecimenCalibration {
+      specimen: _,
+      instrument: _,
+      host: _,
+      readings: _,
+      specimen_eval_steps: steps,
+      specimen_cpu_ms: cpu_ms,
+    } =>
+      classify_eval_step_budget_grounding(
+        budget_work: int_mul(a: budget_steps, b: cpu_ms),
+        envelope_work: int_mul(a: steps, b: envelope_ms),
+      )
+  }
+}
+
+fn classify_eval_step_budget_grounding(budget_work: Int, envelope_work: Int) -> EvalStepBudgetGrounding {
+  if int_ge(a: budget_work, b: int_mul(a: envelope_work, b: 2)) {
+    AboveCalibratedEnvelope { budget_work: budget_work, envelope_work: envelope_work }
+  } else {
+    if int_ge(a: int_mul(a: budget_work, b: 2), b: envelope_work) {
+      GroundedWithinCalibrationBand {}
+    } else {
+      BelowCalibratedBand { budget_work: budget_work, envelope_work: envelope_work }
+    }
+  }
+}
+
+// A GROUNDING THAT IS NOT INSIDE THE BAND REFUSES. There is no arm that reports the mismatch and
+// proceeds: DESIGN section 5's failure arm must refuse rather than widen, and a ceiling whose
+// grounding has drifted is a ceiling nobody can read the units of.
+fn eval_step_budget_grounding_holds(grounding: EvalStepBudgetGrounding) -> Bool {
+  match grounding {
+    GroundedWithinCalibrationBand => true
+    AboveCalibratedEnvelope { budget_work: _, envelope_work: _ } => false
+    BelowCalibratedBand { budget_work: _, envelope_work: _ } => false
+  }
+}

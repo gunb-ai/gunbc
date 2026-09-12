@@ -1,0 +1,183 @@
+module test.claim.floor_eval_step_budget_witness_test
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int, int_add, int_mul, int_gt }
+import v2.workflow.required_floor {
+  ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
+  ClaimPreemptionReachability, CooperativelyPollable,
+  ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget,
+  claim_eval_step_standing, claim_eval_step_standing_blocks,
+  claim_safety_outcome, claim_safety_outcome_blocks,
+  required_floor_claim_eval_step_budget,
+  required_floor_claim_work_envelope_ms,
+  required_floor_claim_cost_line_ms,
+  required_floor_claim_wall_safety_limit_ms,
+  required_floor_eval_step_budget_grounding,
+}
+import v2.workflow.floor_eval_step_calibration {
+  EvalStepBudgetGrounding, GroundedWithinCalibrationBand,
+  AboveCalibratedEnvelope, BelowCalibratedBand,
+  floor_eval_step_calibration, eval_step_budget_grounding,
+  eval_step_budget_grounding_holds,
+}
+
+// THE REQUIRED FLOOR'S CLAIM CEILING GATES ON EVAL STEPS, AND ITS CPU READING IS OBSERVED ONLY
+// (operator ruling via fierce-lark-661, 2026-09-12). This module is that ruling's executing
+// evidence: a discriminating RED, a positive control in the opposite direction, and the grounding
+// of the declared budget against its controlled fixture.
+//
+// WHY A WITNESS AND NOT A REVIEW OF THE DIFF. DESIGN section 5 rules that a typecheck and a grep
+// are not consumers, and the specific thing that has to be refutable here is a DIRECTION: a
+// derivation collapsed to a constant refusal would satisfy a red-only fixture, and a derivation
+// collapsed to a constant pass would satisfy a control-only fixture. Both are here, over the same
+// function, differing in exactly the quantity the ruling moved.
+
+// ── RED: MORE WORK THAN THE BUDGET ALLOWS REFUSES ─────────────────────────────────────────
+//
+// The step figure is one above the declared budget rather than an order of magnitude above it,
+// deliberately. A fixture at ten times the budget passes against an off-by-one comparison, a
+// misread unit, or a budget accidentally scaled by the calibration; one step over discriminates
+// the boundary itself. The wall figure is 42ms so the wall clock cannot participate at any
+// setting of its own limit, which is the same isolation rule the preemption fixtures record.
+test fn a_claim_over_the_eval_step_budget_refuses() -> Bool {
+  match claim_safety_outcome(
+    reached_verdict: true,
+    observed_cpu_ms: 3,
+    observed_wall_ms: 42,
+    observed_eval_steps: int_add(a: required_floor_claim_eval_step_budget(), b: 1),
+    eval_step_budget: required_floor_claim_eval_step_budget(),
+    wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+    raised_by: "",
+    preemption: CooperativelyPollable,
+  ) {
+    CompletedWithinSafetyLimits => false
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+    CompletedPastSafetyLimit { observed_cpu: cpu, observed_wall: _, preemption: _ } =>
+      (cpu == 3)
+        && claim_safety_outcome_blocks(
+             CompletedPastSafetyLimit {
+               observed_cpu: 3,
+               observed_wall: 42,
+               preemption: CooperativelyPollable,
+             }
+           )
+  }
+}
+
+// THE SAME REFUSAL AT THE STANDING GRAIN, asserted separately because the standing is what carries
+// the two figures a reader needs. A `claim_safety_outcome` arm reports THAT a claim was over its
+// limits and reports its CPU and wall observations; only `ClaimEvalStepStanding` says by how much
+// work, against what budget. A collapse of that carrier into a bare Bool would leave the fixture
+// above green.
+test fn the_eval_step_standing_carries_both_figures_in_its_refusing_arm() -> Bool {
+  match claim_eval_step_standing(
+    observed_eval_steps: int_add(a: required_floor_claim_eval_step_budget(), b: 1),
+    budget_steps: required_floor_claim_eval_step_budget(),
+  ) {
+    EvalStepsWithinBudget { observed_steps: _, budget_steps: _ } => false
+    EvalStepsOverBudget { observed_steps: observed, budget_steps: budget } =>
+      (observed == int_add(a: required_floor_claim_eval_step_budget(), b: 1))
+        && (budget == required_floor_claim_eval_step_budget())
+        && claim_eval_step_standing_blocks(
+             standing: EvalStepsOverBudget { observed_steps: observed, budget_steps: budget }
+           )
+  }
+}
+
+// ── CONTROL: OVER THE CPU LINE, INSIDE THE STEP BUDGET, PASSES WITH THE CPU RECORDED ───────
+//
+// THIS IS THE DIRECTION THE RULING ACTUALLY CHANGED, and it is the fixture that would have been
+// RED before 2026-09-12. 4000ms of CPU is forty times `required_floor_claim_cost_line_ms` and eight
+// times the work envelope this floor declares; under the deleted CPU deadline it derived
+// `CompletedPastSafetyLimit` on the CPU comparison alone. It is drawn from the shape of
+// bright-boar-435's gunbc#11173 evidence rather than invented: an identity at an IDENTICAL
+// `eval_steps` of 2884 read 34ms, then 455ms, then 511ms across three prose-only heads, so the same
+// work crossed and re-crossed a 500ms line while the tree stood still.
+//
+// IT ASSERTS THE OBSERVATION SURVIVED, NOT ONLY THAT THE GATE STOOD DOWN. A mechanism that stopped
+// refusing and also stopped counting is the absorbing fallback DESIGN section 5 forbids, so the
+// control is not "it passes": it is "it passes AND the 4000ms is still reachable in the receipt".
+// The CPU figure travels into `CompletedPastSafetyLimit.observed_cpu` when some OTHER limit fires,
+// which is what the second half exercises -- the same claim, the same CPU, a wall crossing instead
+// of a clean pass, and the CPU still in the arm.
+test fn a_claim_over_the_cpu_line_with_in_budget_steps_passes() -> Bool {
+  match claim_safety_outcome(
+    reached_verdict: true,
+    observed_cpu_ms: 4000,
+    observed_wall_ms: 4200,
+    observed_eval_steps: 2884,
+    eval_step_budget: required_floor_claim_eval_step_budget(),
+    wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+    raised_by: "",
+    preemption: CooperativelyPollable,
+  ) {
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => false
+    CompletedWithinSafetyLimits =>
+      int_gt(a: 4000, b: required_floor_claim_cost_line_ms())
+        && int_gt(a: 4000, b: required_floor_claim_work_envelope_ms())
+        && (claim_safety_outcome_blocks(CompletedWithinSafetyLimits) == false)
+  }
+}
+
+test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool {
+  match claim_safety_outcome(
+    reached_verdict: true,
+    observed_cpu_ms: 4000,
+    observed_wall_ms: int_add(a: required_floor_claim_wall_safety_limit_ms(), b: 1),
+    observed_eval_steps: 2884,
+    eval_step_budget: required_floor_claim_eval_step_budget(),
+    wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
+    raised_by: "",
+    preemption: CooperativelyPollable,
+  ) {
+    CompletedWithinSafetyLimits => false
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => false
+    CompletedPastSafetyLimit { observed_cpu: cpu, observed_wall: wall, preemption: _ } =>
+      (cpu == 4000) && (wall == int_add(a: required_floor_claim_wall_safety_limit_ms(), b: 1))
+  }
+}
+
+// ── THE DECLARED BUDGET IS GROUNDED IN ITS CONTROLLED FIXTURE ──────────────────────────────
+//
+// The budget is policy and the calibration is a measurement; this is the executing join that says
+// they are stated in the same units and the same magnitude. It is the whole reason
+// `required_floor_claim_eval_step_budget` is not a literal nobody can read the units of.
+test fn the_declared_budget_is_grounded_by_the_pinned_calibration() -> Bool {
+  eval_step_budget_grounding_holds(grounding: required_floor_eval_step_budget_grounding())
+}
+
+// BOTH REFUSING ARMS OF THE GROUNDING ARE AUTHORABLE AND BOTH REFUSE, which is what keeps the
+// check above from being a decoration permanently green by construction (DESIGN section 4b: ask
+// whether the RED is authorable before writing the check). A budget four times the calibrated
+// envelope is above band; a budget a tenth of it is below. Both are computed against the SAME
+// pinned calibration the live budget is grounded against, so a grounding that had quietly become
+// total in one direction is caught here rather than in a floor run.
+test fn the_grounding_refuses_a_budget_out_of_band_in_either_direction() -> Bool {
+  match eval_step_budget_grounding(
+    calibration: floor_eval_step_calibration,
+    budget_steps: int_mul(a: required_floor_claim_eval_step_budget(), b: 4),
+    envelope_ms: required_floor_claim_work_envelope_ms(),
+  ) {
+    GroundedWithinCalibrationBand => false
+    BelowCalibratedBand { budget_work: _, envelope_work: _ } => false
+    AboveCalibratedEnvelope { budget_work: bw, envelope_work: ew } =>
+      int_gt(a: bw, b: ew)
+        && match eval_step_budget_grounding(
+             calibration: floor_eval_step_calibration,
+             budget_steps: 50000,
+             envelope_ms: required_floor_claim_work_envelope_ms(),
+           ) {
+             GroundedWithinCalibrationBand => false
+             AboveCalibratedEnvelope { budget_work: _, envelope_work: _ } => false
+             BelowCalibratedBand { budget_work: below_bw, envelope_work: below_ew } =>
+               int_gt(a: below_ew, b: below_bw)
+                 && (eval_step_budget_grounding_holds(
+                      grounding: BelowCalibratedBand {
+                        budget_work: below_bw,
+                        envelope_work: below_ew,
+                      }
+                    ) == false)
+           }
+  }
+}

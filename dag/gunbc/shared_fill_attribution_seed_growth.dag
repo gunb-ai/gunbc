@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //
 // WHAT THE CHANGE IS, AND WHAT IT IS NOT. It is an ATTRIBUTION correction on an existing
 // measurement, not a new budget, exemption or tolerance. run_claim_measured already measured a
-// claim's CPU and already compared it to required_floor_claim_cpu_safety_limit_ms; this branch
+// claim's CPU and already compared it to required_floor_claim_work_envelope_ms; this branch
 // changes WHICH WORK that number covers and changes neither the limit nor its fail-stop
 // semantics. Measured against the merge base, the whole cli_run delta is 72 added lines.
 //

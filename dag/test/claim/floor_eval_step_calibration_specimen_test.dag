@@ -1,0 +1,35 @@
+module test.claim.floor_eval_step_calibration_specimen_test
+
+import std.types { Bool, Int }
+
+// THE PINNED CALIBRATION SPECIMEN for the required floor's eval-step ceiling
+// (`v2.workflow.floor_eval_step_calibration`). Its whole purpose is to be a fixed, controlled
+// unit of interpreter work whose `eval_steps` is a property of THIS SOURCE and of nothing else:
+// the recursion depth is a literal in this file, so the step count is reproducible on any host
+// and in any run, while the milliseconds it takes are the environmental half the calibration
+// row records against a named machine.
+//
+// IT MUST NOT BE "REPRESENTATIVE" OF THE LIVE POPULATION, and that is the point rather than a
+// shortcoming: a specimen tuned to the corpus would make the budget a measurement of the corpus,
+// which is the oracle DESIGN section 5 forbids by name. What it establishes is the MAGNITUDE of
+// one millisecond of ordinary interpreted evaluation, so a declared policy stated in milliseconds
+// of work can be carried as a step count.
+//
+// DO NOT CHANGE `calibration_specimen_depth` WITHOUT RE-MEASURING. The calibration row names this
+// function and its depth; moving the depth without re-deriving the row silently re-scales the
+// ceiling of every claim in the floor.
+fn calibration_specimen_depth() -> Int {
+  10000
+}
+
+fn calibration_specimen_descend(n: Int, acc: Int) -> Int {
+  if n <= 0 {
+    acc
+  } else {
+    calibration_specimen_descend(n: n - 1, acc: acc + n)
+  }
+}
+
+test fn calibration_specimen_performs_its_declared_work() -> Bool {
+  calibration_specimen_descend(n: calibration_specimen_depth(), acc: 0) > 0
+}

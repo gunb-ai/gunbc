@@ -12,7 +12,7 @@ import v2.workflow.required_floor {
   claim_safety_outcome,
   claim_safety_outcome_blocks,
   claim_preemption_admission,
-  required_floor_claim_cpu_safety_limit_ms,
+  required_floor_claim_eval_step_budget,
   required_floor_claim_wall_safety_limit_ms,
   opaque_host_call_grandfather_population,
   grandfather_population_size,
@@ -29,7 +29,7 @@ import gunbc.v1_interpreter_opaque_host_call {
 
 // PREEMPTION-1 (gunbc#8584 REWORK): floor run 32301212975 recorded
 // root_d_checkpoint_scalar_declared_arity_witness_holds reaching a verdict at 60317ms CPU against
-// the then-current 5000ms required_floor_claim_cpu_safety_limit_ms, dominated by one
+// the then-current 5000ms required_floor_claim_work_envelope_ms, dominated by one
 // compile_dag_rust_emit_check call. THE MEASURED RECEIPT IS THE CPU FIGURE AND THE
 // VerdictReached/not-SafetyInterrupted FACT, AND NOTHING ELSE. The floor log reported no wall
 // figure for this occurrence, so this fixture invents none: observed_wall_ms is set to 100, a
@@ -54,12 +54,21 @@ import gunbc.v1_interpreter_opaque_host_call {
 // assertion here still passes. A fixture chosen to isolate one clock must carry a value for the
 // other that cannot participate at any setting, which 100 buys and any value near the limit cannot.
 
+// WHAT MOVED UNDER THIS FIXTURE ON 2026-09-12, AND WHY THE 60317 IS STILL HERE. The claim ceiling
+// stopped gating on CPU: `claim_safety_outcome` no longer takes a CPU limit, and 60317ms alone no
+// longer derives anything. The figure REMAINS in this fixture because its subject is unchanged --
+// it is the receipt's recorded CPU observation, and the arm below still asserts that the number
+// travels into `observed_cpu` rather than being dropped when it stopped deciding. What now drives
+// the classification is `observed_eval_steps` above the budget, which is the honest statement of
+// what a floor red means after the cut. The two are deliberately BOTH present: a fixture carrying
+// only the step overrun could not tell a reader whether the CPU observation survived the change.
 test fn w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption() -> Bool {
   match claim_safety_outcome(
     reached_verdict: true,
     observed_cpu_ms: 60317,
     observed_wall_ms: 100,
-    cpu_limit_ms: required_floor_claim_cpu_safety_limit_ms(),
+    observed_eval_steps: 600000,
+    eval_step_budget: required_floor_claim_eval_step_budget(),
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
     preemption: OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" },
@@ -102,7 +111,8 @@ test fn w_genuine_interrupt_is_not_relabelled_completed() -> Bool {
     reached_verdict: false,
     observed_cpu_ms: 5200,
     observed_wall_ms: 5200,
-    cpu_limit_ms: required_floor_claim_cpu_safety_limit_ms(),
+    observed_eval_steps: 600000,
+    eval_step_budget: required_floor_claim_eval_step_budget(),
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "CpuDeadlineRaised",
     preemption: CooperativelyPollable,
@@ -131,7 +141,8 @@ test fn w_within_limits_does_not_block() -> Bool {
     reached_verdict: true,
     observed_cpu_ms: 42,
     observed_wall_ms: 42,
-    cpu_limit_ms: required_floor_claim_cpu_safety_limit_ms(),
+    observed_eval_steps: 42,
+    eval_step_budget: required_floor_claim_eval_step_budget(),
     wall_limit_ms: required_floor_claim_wall_safety_limit_ms(),
     raised_by: "",
     preemption: CooperativelyPollable,
