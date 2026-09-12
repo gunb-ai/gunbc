@@ -3133,6 +3133,25 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
 /// a compiler is a thing whose regression probes are invalid programs.
 ///
+/// DECLARED FRONTIER (DESIGN §3c), named rather than gestured at. Every consumer of this type in
+/// THIS change is a row that witnesses the instrument itself; the consumer it was built for -- the
+/// bare-name-ambiguity refusal in `claim_scope_for` -- is not in this diff. §3c admits that state
+/// in exactly one form, "a named consumer that lands in a named later change, admissible only
+/// with the trigger stated beside it", so both are stated here:
+///
+///   CONSUMER: the `AmbiguousBareNameRead` refusal and its controls, on branch
+///   `session/witty-moth-510-wall2` (gunbc#11166), which uses `claim_scope_fixture` and
+///   `claim_scope_refusal_names` to author the refusal's discriminating RED.
+///
+///   TRIGGER: that refusal cannot land until the census population it governs reaches zero, which
+///   needs the qualification batches merged AND the variant-arm resolution tier that stops the
+///   census over-counting five correctly-written sites. Until then this type's only consumers are
+///   its own witness rows, and that is the state this frontier declares.
+///
+/// If that refusal is abandoned, this instrument has no remaining consumer and should be deleted
+/// rather than retained -- a declaration nothing consumes is §2's redundant work, and saying so
+/// here is what keeps the frontier from becoming a permanent resting state.
+///
 /// ONE DETECTOR, NOT TWO. This calls `claim_scope_for_with_memos` -- the SAME function the
 /// floor's own `claim_scope_for` entry point calls -- rather than re-deriving the ambiguity
 /// population, so a refusal a control observes IS the refusal the corpus floor would raise, out
