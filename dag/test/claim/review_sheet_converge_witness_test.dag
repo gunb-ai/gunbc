@@ -1012,11 +1012,16 @@ fn w_fixture_writer() -> ServiceAccountEmail {
 }
 
 fn w_discharged_iam() -> HumanIntervention {
+  w_discharged_iam_for(project: w_fixture_project(), writer: w_fixture_writer())
+}
+
+fn w_discharged_iam_for(project: GcpProjectId, writer: ServiceAccountEmail) -> HumanIntervention {
+  let pending = serviceusage_enable_iam_grant_intervention(project: project, writer: writer)
   HumanIntervention {
-    identity: concat("gcp-serviceusage-enable-iam-", w_fixture_project() as String) as HumanInterventionIdentity,
-    frequency: FleetOnce,
-    subject: "test-only discharged serviceusage enable iam",
-    instruction: "fixture",
+    identity: pending.identity,
+    frequency: pending.frequency,
+    subject: pending.subject,
+    instruction: pending.instruction,
     completion_evidence: DischargedAt {
       evidence: DeclarationRef {
         module_path: "test.claim.review_sheet_converge_witness",
@@ -1629,9 +1634,37 @@ test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool {
   ) {
     ReviewSheetAwaitingHuman { intervention: i } =>
       string_contains(s: i.identity as String, pattern: "gcp-serviceusage-enable-iam")
+        && string_contains(s: i.identity as String, pattern: "fixture-api-project")
+        && string_contains(s: i.identity as String, pattern: "writer@fixture.iam.gserviceaccount.com")
         && string_contains(s: i.instruction as String, pattern: "serviceusage.services.enable")
     ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn discharged_iam_for_another_project_does_not_need_enable() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_disabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetAwaitingCreation,
+    serviceusage_enable_iam: w_discharged_iam_for(
+      project: "other-api-project",
+      writer: w_fixture_writer(),
+    ),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "serviceusage enable iam intervention is not for project")
+        && string_contains(s: r as String, pattern: "fixture-api-project")
+        && string_contains(s: r as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }

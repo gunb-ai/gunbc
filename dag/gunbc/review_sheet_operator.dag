@@ -53,7 +53,15 @@ fn serviceusage_enable_iam_grant_intervention(
   writer: ServiceAccountEmail,
 ) -> HumanIntervention {
   HumanIntervention {
-    identity: concat("gcp-serviceusage-enable-iam-", project as String) as HumanInterventionIdentity,
+    identity: join(
+      [
+        "gcp-serviceusage-enable-iam-",
+        project as String,
+        "-",
+        writer as String,
+      ],
+      "",
+    ) as HumanInterventionIdentity,
     frequency: FleetOnce,
     subject: project as String,
     instruction: join(
@@ -263,6 +271,34 @@ fn admit_review_sheet_after_enablement_ready(
   }
 }
 
+fn admit_serviceusage_enable_iam_for_apply(
+  project: GcpProjectId,
+  writer: ServiceAccountEmail,
+  serviceusage_enable_iam: HumanIntervention,
+  plan: EnableApiPlan,
+) -> ReviewSheetOperatorAdmission {
+  let expected = serviceusage_enable_iam_grant_intervention(project: project, writer: writer)
+  if (serviceusage_enable_iam.identity as String) == (expected.identity as String) {
+    match serviceusage_enable_iam.completion_evidence {
+      NoDischargeSiteModeled =>
+        ReviewSheetAwaitingHuman { intervention: expected }
+      DischargedAt { evidence: _ } => ReviewSheetNeedsApiEnable { plan: plan }
+    }
+  } else {
+    ReviewSheetOperatorRefused {
+      reason: join(
+        [
+          "serviceusage enable iam intervention is not for project ",
+          project as String,
+          " writer ",
+          writer as String,
+        ],
+        "",
+      ) as NonEmptyStr
+    }
+  }
+}
+
 fn admit_review_sheet_operator(
   project: GcpProjectId,
   writer: ServiceAccountEmail,
@@ -281,11 +317,12 @@ fn admit_review_sheet_operator(
   ) {
     Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
     Apply { plan: plan } =>
-      match serviceusage_enable_iam.completion_evidence {
-        NoDischargeSiteModeled =>
-          ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
-        DischargedAt { evidence: _ } => ReviewSheetNeedsApiEnable { plan: plan }
-      }
+      admit_serviceusage_enable_iam_for_apply(
+        project: project,
+        writer: writer,
+        serviceusage_enable_iam: serviceusage_enable_iam,
+        plan: plan,
+      )
     Noop =>
       admit_review_sheet_after_enablement_ready(
         spreadsheet: spreadsheet,
