@@ -93,8 +93,10 @@ type PreOsObservationCapabilities {
   host_callback: HostCallbackCapability
 }
 
-// THE QUESTIONS DOWNSTREAM FOLDS ASK OF A PROFILE, as named fns so the verdict module consults one
-// authority per question rather than re-deriving it from the fields.
+// THE ONE QUESTION A DOWNSTREAM FOLD ASKS OF THE CONSOLE AXIS. The OEM-decode and localization
+// axes are consumed by gunbc.machine_intake_pre_os_bringup_verdict matching the profile's fields
+// directly (oem_sel_decode_standing, remediation_localization); a predicate here for each would
+// be a second reading of one field with no consumer (DESIGN section 3c).
 
 // May a console capture that contains nothing beyond the session banner be read as evidence about
 // the HOST? Only when the console is known to emit: on a silent-console platform the same bytes
@@ -105,21 +107,5 @@ fn console_silence_is_informative(profile: PreOsObservationCapabilities) -> Bool
     SolAbsent => false
     SolPresentSilent => false
     SolPresentEmitting => true
-  }
-}
-
-fn oem_sel_decode_licensed(profile: PreOsObservationCapabilities) -> Bool {
-  match profile.oem_sel_decode {
-    OemDecodeAvailable { decode_authority: _ } => true
-    OemDecodeControllerDeclaredUnknown => false
-    OemDecodeNotProbed => false
-  }
-}
-
-fn standard_sel_decode_available(profile: PreOsObservationCapabilities) -> Bool {
-  match profile.sel {
-    SelUnreadable => false
-    SelRawOnly => false
-    SelStandardDecoded => true
   }
 }
