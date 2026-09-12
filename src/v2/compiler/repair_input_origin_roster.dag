@@ -14,15 +14,20 @@ import std.repair_input_origin {
   SourceDeclarationCarrier,
   SourceDeclarationCarrierIdentity
 }
-import v2.std.algebra { fold_list, length, list_snoc_item, skip }
+import v2.std.algebra { fold_list, is_empty, length, list_snoc_item, skip }
 import v2.std.node { Node }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_to_dotted_string
 }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.compiler.reference_site_collector { collect_reference_sites }
+import v2.compiler.reference_site_collector {
+  ReferenceSiteCollection,
+  UnreadableModuleRoot,
+  collect_reference_sites
+}
 import v2.compiler.resolution_provenance {
   ProvenanceAmbiguous,
   ProvenanceOwnerless,
@@ -132,16 +137,36 @@ fn repair_input_origin_roster_from_sites(
   )
 }
 
+// THE DENOMINATOR TRAVELS WITH WHAT WAS LOST PRODUCING IT.
+//
+// A roster returned as a bare list would let a caller read a number while the collector had
+// silently failed to read some roots -- and for a DENOMINATOR that is not a slightly small answer,
+// it is a different question answered under the same name. So the unreadable roots the collector
+// counted are carried through rather than discarded at this seam, and a consumer that needs a TOTAL
+// denominator asks roster_is_total before believing the population.
+type RepairInputOriginRoster {
+  carriers: FreeMonoid<RepairInputOriginCandidate>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+fn repair_input_origin_roster_is_total(roster: RepairInputOriginRoster) -> Bool {
+  is_empty(xs: roster.unreadable_roots)
+}
+
 // THE WHOLE DENOMINATOR OVER ONE BASE'S MODULE ROOTS: index, roster and sites all derived from the
 // same roots, so no consumer can pair a roster with an index built from a different tree.
 fn repair_input_origin_roster_over_roots(
   roots: FreeMonoid<Node>
-) -> FreeMonoid<RepairInputOriginCandidate> {
-  repair_input_origin_roster_from_sites(
-    index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots),
-    module_roster: module_roster_from_roots(roots: roots),
-    sites: collect_reference_sites(roots: roots)
-  )
+) -> RepairInputOriginRoster {
+  let collected = collect_reference_sites(roots: roots)
+  RepairInputOriginRoster {
+    carriers: repair_input_origin_roster_from_sites(
+      index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots),
+      module_roster: module_roster_from_roots(roots: roots),
+      sites: collected.sites
+    ),
+    unreadable_roots: collected.unreadable_roots
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -90,7 +90,7 @@ data xl0_roots: FreeMonoid<Node> = Cons {
   tail: Cons { head: xl0_consumer_root, tail: Empty }
 }
 
-data xl0_consumer_sites: FreeMonoid<ReferenceSite> = collect_module_reference_sites(root: xl0_consumer_root)
+data xl0_consumer_sites: FreeMonoid<ReferenceSite> = collect_module_reference_sites(root: xl0_consumer_root).sites
 
 fn xl0_site_spelling(site: ReferenceSite) -> String {
   qualified_name_to_dotted_string(qn: site.spelling)
@@ -166,7 +166,7 @@ test fn a_mention_sits_at_its_containment_position_holds() -> Bool {
   sits_at_its_declaration && none_stamped_with_the_module
 }
 
-data xl0_roster: FreeMonoid<RepairInputOriginCandidate> = repair_input_origin_roster_over_roots(roots: xl0_roots)
+data xl0_roster: FreeMonoid<RepairInputOriginCandidate> = repair_input_origin_roster_over_roots(roots: xl0_roots).carriers
 
 fn xl0_roster_has(roster: FreeMonoid<RepairInputOriginCandidate>, f: fn(SourceDeclarationCarrierIdentity) -> Bool) -> Bool {
   fold_list(
@@ -225,4 +225,40 @@ test fn an_unanswerable_mention_is_a_row_and_not_a_drop_holds() -> Bool {
     length(xs: repair_input_origin_roster_digest_lines(roster: xl0_roster))
       == length(xs: xl0_roster)
   unbound_row_present && digest_covers_every_row
+}
+
+// AN UNREADABLE ROOT IS COUNTED, NOT DROPPED -- the wall for the arm that used to be
+// `Rejected => acc`. A bare atom is not a module root: its header cannot resolve, so it
+// contributes no mentions. The defect was that it also contributed no EVIDENCE, leaving a caller
+// unable to tell an unreadable module from an empty one. Both halves are asserted, because either
+// alone is satisfiable by the wrong implementation: the sites must be unchanged (the root really
+// did contribute nothing) AND the refusal must be present and countable (it said so).
+data xl0_unreadable_root: Node = xl0_atom(sym: ^Xl0NotAModuleRoot)
+
+data xl0_roots_with_one_unreadable: FreeMonoid<Node> = Cons {
+  head: xl0_consumer_root,
+  tail: Cons { head: xl0_unreadable_root, tail: Empty }
+}
+
+test fn an_unreadable_module_root_is_counted_and_not_silently_dropped_holds() -> Bool {
+  let clean = collect_reference_sites(roots: Cons { head: xl0_consumer_root, tail: Empty })
+  let with_bad = collect_reference_sites(roots: xl0_roots_with_one_unreadable)
+  length(xs: with_bad.sites) == length(xs: clean.sites)
+    && length(xs: with_bad.unreadable_roots) == 1
+    && is_empty(xs: clean.unreadable_roots)
+    && !reference_site_collection_is_total(collection: with_bad)
+    && reference_site_collection_is_total(collection: clean)
+}
+
+// THE REFUSAL SURVIVES THE SEAM INTO THE ROSTER. A collector that counted the loss and a producer
+// that dropped it at the next call would be the same silent degradation one layer down.
+test fn the_roster_carries_the_unreadable_roots_it_was_built_over_holds() -> Bool {
+  let roster = repair_input_origin_roster_over_roots(roots: xl0_roots_with_one_unreadable)
+  length(xs: roster.unreadable_roots) == 1
+    && !repair_input_origin_roster_is_total(roster: roster)
+    && repair_input_origin_roster_is_total(
+         roster: repair_input_origin_roster_over_roots(
+           roots: Cons { head: xl0_consumer_root, tail: Empty }
+         )
+       )
 }

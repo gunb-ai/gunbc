@@ -2,7 +2,7 @@ module v2.compiler.reference_site_collector
 
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list, is_empty, list_snoc_item }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -162,6 +162,41 @@ fn reference_sites_in_node(
 // it contributes none. That is a refusal to answer rather than a widened answer: the same module
 // is absent from the roster v2.compiler.resolution_provenance resolves owners against, so a site
 // collected at a guessed position could only have produced a mis-attributed owner.
+// AN UNREADABLE ROOT IS COUNTED, NOT DROPPED.
+//
+// This arm used to be `Rejected => acc`: a root whose module header does not resolve contributed
+// nothing and SAID nothing, so a caller could not tell an unreadable module from one that genuinely
+// contains no mentions. That is a silent, uncounted degradation, which DESIGN section 5 names a
+// hard reject rather than a weak arm -- "a failure arm must refuse, never widen", every degradation
+// a typed, located, countable diagnostic. It is carried here as all three: TYPED (its own
+// constructor, not a missing row), LOCATED (the locus of the root that could not be read), and
+// COUNTABLE (a list a consumer folds, so "n roots were unreadable" is answerable rather than
+// inferred from a short denominator).
+//
+// THE CONSEQUENCE FOR THE DENOMINATOR IS THE WHOLE POINT: XL-0 is a DENOMINATOR, so a root silently
+// missing from it does not make the number slightly small, it makes the number a different
+// question. A consumer that wants a total must join the sites with this list and refuse if it is
+// non-empty; one that wants a partial may proceed knowing exactly what it lost.
+type UnreadableModuleRoot {
+  locus: Locus
+}
+
+// The collector's answer is the pair, never the sites alone, so a caller cannot take the population
+// without also taking what was lost producing it. That is the shape section 5 asks for: the refusal
+// travels WITH the result rather than beside it where it can be ignored.
+type ReferenceSiteCollection {
+  sites: FreeMonoid<ReferenceSite>
+  unreadable_roots: FreeMonoid<UnreadableModuleRoot>
+}
+
+fn empty_reference_site_collection() -> ReferenceSiteCollection {
+  ReferenceSiteCollection { sites: Empty, unreadable_roots: Empty }
+}
+
+fn reference_site_collection_is_total(collection: ReferenceSiteCollection) -> Bool {
+  is_empty(xs: collection.unreadable_roots)
+}
+
 fn module_spine_unwrapped(root: Node) -> Node {
   match namespace_graft_spine_segment_edge_optional(node: root) {
     Present { value: spine_edge } => spine_edge.target
@@ -170,28 +205,38 @@ fn module_spine_unwrapped(root: Node) -> Node {
 }
 
 fn module_reference_sites(
-  acc: FreeMonoid<ReferenceSite>,
+  acc: ReferenceSiteCollection,
   root: Node
-) -> FreeMonoid<ReferenceSite> {
+) -> ReferenceSiteCollection {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      reference_sites_in_node(
-        acc: acc,
-        position: module_qn,
-        node: module_spine_unwrapped(root: root)
-      )
-    Rejected { diagnostics: _ } => acc
+      ReferenceSiteCollection {
+        sites: reference_sites_in_node(
+          acc: acc.sites,
+          position: module_qn,
+          node: module_spine_unwrapped(root: root)
+        ),
+        unreadable_roots: acc.unreadable_roots
+      }
+    Rejected { diagnostics: _ } =>
+      ReferenceSiteCollection {
+        sites: acc.sites,
+        unreadable_roots: list_snoc_item(
+          xs: acc.unreadable_roots,
+          item: UnreadableModuleRoot { locus: node_locus(node: root) }
+        )
+      }
   }
 }
 
-fn collect_module_reference_sites(root: Node) -> FreeMonoid<ReferenceSite> {
-  module_reference_sites(acc: Empty, root: root)
+fn collect_module_reference_sites(root: Node) -> ReferenceSiteCollection {
+  module_reference_sites(acc: empty_reference_site_collection(), root: root)
 }
 
-fn collect_reference_sites(roots: FreeMonoid<Node>) -> FreeMonoid<ReferenceSite> {
+fn collect_reference_sites(roots: FreeMonoid<Node>) -> ReferenceSiteCollection {
   fold_list(
     xs: roots,
-    empty: Empty,
+    empty: empty_reference_site_collection(),
     cons: fn(acc, root) {
       module_reference_sites(acc: acc, root: root)
     }

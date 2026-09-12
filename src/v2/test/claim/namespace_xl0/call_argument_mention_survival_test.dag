@@ -106,7 +106,7 @@ fn fixture_sites() -> FreeMonoid<ReferenceSite> {
       fold_list(
         xs: normalized_tree_roots_to_nodes(roots: roots),
         empty: Empty,
-        cons: fn(acc, root) { collect_module_reference_sites(root: root) }
+        cons: fn(acc, root) { collect_module_reference_sites(root: root).sites }
       )
     Rejected { diagnostics: _ } => Empty
   }
