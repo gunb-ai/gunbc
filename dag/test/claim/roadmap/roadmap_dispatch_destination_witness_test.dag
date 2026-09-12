@@ -76,12 +76,10 @@ test fn a_non_public_destination_does_not_publish_to_gunbc() -> Bool {
     base_branch: "main" as NonEmptyStr,
     head: observed_head(),
   ) {
-    PublicationSubjectUnobserved { reason: _ } => false
-    PublicationSubjectObserved { subject } =>
-      subject.repository.full_name != gunbc_repository.full_name
-        && subject.repository.full_name == "example/other"
-        && subject.repository.owner == "example"
-        && subject.repository.name == "other"
+    PublicationSubjectObserved { subject: _ } => false
+    PublicationSubjectUnobserved { reason } =>
+      reason.contains("example/other")
+        && reason.contains("no observed privacy standing")
   }
 }
 
@@ -182,6 +180,17 @@ test fn a_public_gunbc_node_still_publishes_to_gunbc() -> Bool {
               && match identity.default_branch {
                 DestinationDefaultBranchObserved { branch } =>
                   branch == gunbc_repository.default_branch
+                    && match belt_publication_subject_for_node(
+                      node: node,
+                      attempt_key: "feedfacefeedface",
+                      branch: "dispatch/public-dest-node-afeedfacefeedface",
+                      base_branch: "main" as NonEmptyStr,
+                      head: observed_head(),
+                    ) {
+                      PublicationSubjectUnobserved { reason: _ } => false
+                      PublicationSubjectObserved { subject } =>
+                        subject.repository.full_name == gunbc_repository.full_name
+                    }
                 DestinationDefaultBranchUnobserved => false
               }
           DestinationPrivacyUnobserved => false

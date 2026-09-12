@@ -317,6 +317,8 @@ import gunbc.roadmap_dispatch_destination {
   DispatchDestinationMissing,
   node_dispatch_destination,
   destination_github_repository,
+  DestinationGithubRepositoryObserved,
+  DestinationGithubRepositoryUnobserved,
   DispatchSpawnOrigin,
   dispatch_spawn_origin_json,
 }
@@ -6696,14 +6698,19 @@ fn belt_publication_subject_for_node(
     DispatchDestinationMissing { reason } =>
       PublicationSubjectUnobserved { reason: reason as String }
     DispatchDestinationResolved { identity } =>
-      belt_publication_subject_for(
-        node_id: node.node as String,
-        attempt_key: attempt_key,
-        branch: branch,
-        base_branch: base_branch,
-        head: head,
-        repository: destination_github_repository(identity: identity),
-      )
+      match destination_github_repository(identity: identity) {
+        DestinationGithubRepositoryUnobserved { reason } =>
+          PublicationSubjectUnobserved { reason: reason as String }
+        DestinationGithubRepositoryObserved { repository } =>
+          belt_publication_subject_for(
+            node_id: node.node as String,
+            attempt_key: attempt_key,
+            branch: branch,
+            base_branch: base_branch,
+            head: head,
+            repository: repository,
+          )
+      }
   }
 }
 

@@ -1,6 +1,6 @@
 module gunbc.roadmap_dispatch_destination
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Bool, List }
 import std.algebra { trim }
 import extdeps.github.github { Repository }
 import extdeps.languages.json.emit {
@@ -75,40 +75,48 @@ fn destination_is_known_public(identity: DestinationIdentity) -> Bool {
   }
 }
 
-// DECLARED DROP: gunbc.rung_drop publication_subject_unobserved_privacy_placeholder.
 // Owner and name on a named destination ARE observed from the slug. Privacy and default
 // branch are not. destination_is_known_public reads Unobserved as not known to be public.
-// This projection still fills Repository.private = true and default_branch = "" because
-// RoadmapPublicationSubject.repository cannot represent Unobserved. That fill is not an
-// observation. Do not flip the Bool to false. The drop, not this comment, is the record.
+// RoadmapPublicationSubject.repository is still a GitHub Repository (Bool/String, no
+// Unobserved arm). A fill would encode an unobserved fact as an established one (DESIGN §5).
+// The publication path therefore refuses: DestinationGithubRepositoryUnobserved, consumed as
+// PublicationSubjectUnobserved. Do not mint a Repository for Unobserved standing.
 
-fn destination_github_repository(identity: DestinationIdentity) -> Repository {
+type DestinationGithubRepository
+  = DestinationGithubRepositoryObserved { repository: Repository }
+  | DestinationGithubRepositoryUnobserved { reason: NonEmptyStr }
+
+fn destination_github_repository(identity: DestinationIdentity) -> DestinationGithubRepository {
   match identity.privacy {
+    DestinationPrivacyUnobserved =>
+      DestinationGithubRepositoryUnobserved {
+        reason: join([
+          "destination ",
+          identity.full_name,
+          " has no observed privacy standing, so a publication subject cannot encode GitHub Repository.private",
+        ], "") as NonEmptyStr,
+      }
     DestinationPrivacyObserved { private } =>
       match identity.default_branch {
-        DestinationDefaultBranchObserved { branch } =>
-          Repository {
-            owner: identity.owner,
-            name: identity.name,
-            full_name: identity.full_name,
-            private: private,
-            default_branch: branch,
-          }
         DestinationDefaultBranchUnobserved =>
-          destination_github_repository_unobserved_fields(identity: identity)
+          DestinationGithubRepositoryUnobserved {
+            reason: join([
+              "destination ",
+              identity.full_name,
+              " has no observed default branch, so a publication subject cannot encode GitHub Repository.default_branch",
+            ], "") as NonEmptyStr,
+          }
+        DestinationDefaultBranchObserved { branch } =>
+          DestinationGithubRepositoryObserved {
+            repository: Repository {
+              owner: identity.owner,
+              name: identity.name,
+              full_name: identity.full_name,
+              private: private,
+              default_branch: branch,
+            },
+          }
       }
-    DestinationPrivacyUnobserved =>
-      destination_github_repository_unobserved_fields(identity: identity)
-  }
-}
-
-fn destination_github_repository_unobserved_fields(identity: DestinationIdentity) -> Repository {
-  Repository {
-    owner: identity.owner,
-    name: identity.name,
-    full_name: identity.full_name,
-    private: true,
-    default_branch: "",
   }
 }
 
