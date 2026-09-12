@@ -1758,14 +1758,14 @@ pub struct TransitionAdmission {
 /// same instance deletion carried by the other cleanup PRs; the landing-incidence repair
 /// must itself discharge the roster debt it now enforces.
 ///
-/// THE SIZING UNBUNDLING (gunbc#10994, this PR). Seventeen TargetChanged bindings: `Intricacy*`
-/// and `Volume*` move to `gunbc.roadmap_sizing`, and `node_title` moves to `gunbc.roadmap_status`.
-/// `expected_candidates` is the HEAD candidate SET after that transition — not a renamed
-/// `target`. Each set is the named import at that site, matching the required floor's printed
-/// `head {…}` for these exact identities (`base {gunbc.roadmap_model} -> head {gunbc.roadmap_sizing}`
-/// for the size variants; `base {gunbc.roadmap_spawner} -> head {gunbc.roadmap_status}` for
-/// `node_title`). A wrong set stays UNADJUDICATED and prints expected versus found. TRIGGER: these
-/// rows are consumed by their own merge once #10994 is on main.
+/// THE SIZING UNBUNDLING (gunbc#10994, this PR). The rows below are not a count-preserving
+/// rewrite of an old roster: they are the TargetChanged bindings this branch still produces
+/// against origin/main. `Intricacy*` / `Volume*` are declared only on `gunbc.roadmap_sizing`
+/// (the `Intricacy` / `Volume` coproducts). `node_title` is declared only on
+/// `gunbc.roadmap_status`. Each listed site names that one module in its import list, so the
+/// intended HEAD candidate set is that singleton — established from the declaring module and
+/// the named import, not copied from a floor `found candidates` line. Seventeen is how many
+/// such sites remain; it is not a target. TRIGGER: consumed by this unbundling's own merge.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",
