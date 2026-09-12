@@ -809,6 +809,87 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
     }
 }
 
+/// Names of `test fn` / `test data` declarations at the resolved diff base, per path.
+/// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
+/// census is an observation failure and never becomes an empty map.
+pub(crate) fn floor_base_test_decl_census(
+    paths: &[String],
+) -> Result<std::collections::HashMap<String, HashSet<String>>, String> {
+    use v1_interpreter::Value;
+    if paths.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let comparison = floor_diff_comparison_readout()?;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let path_values: Vec<Value> = paths.iter().map(|p| str_value(p.clone())).collect();
+    let args = [
+        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("paths".to_string()), list_value_from_vec(path_values)),
+    ];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "floor_run_base_test_decl_census",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("floor_run_base_test_decl_census: {e}"))?;
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseTestDeclCensusRefused") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.to_string()),
+                _ => Err("base test-declaration census refused (no reason)".to_string()),
+            }
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseTestDeclCensus") => {
+            let rows = match ctx.field(fields, "rows") {
+                Some(Value::List(items)) => items,
+                _ => return Err("BaseTestDeclCensus missing `rows` list".to_string()),
+            };
+            let mut out = std::collections::HashMap::new();
+            for item in rows.iter() {
+                let Value::Record { type_name, fields } = item else {
+                    return Err(format!(
+                        "BaseTestDeclCensus row was not FloorBasePathTestDecls: {}",
+                        ctx.format_value(item)
+                    ));
+                };
+                if !ctx.sym_eq(*type_name, "FloorBasePathTestDecls") {
+                    return Err(format!(
+                        "BaseTestDeclCensus row type `{}`, expected FloorBasePathTestDecls",
+                        ctx.resolve(*type_name)
+                    ));
+                }
+                let path = match ctx.field(fields, "path") {
+                    Some(Value::Str(s)) => normalize_repo_path(s),
+                    _ => return Err("FloorBasePathTestDecls missing `path`".to_string()),
+                };
+                let names = match ctx.field(fields, "names") {
+                    Some(v) => string_list_from_value(v, "names")?,
+                    None => return Err("FloorBasePathTestDecls missing `names`".to_string()),
+                };
+                out.insert(path, names.into_iter().collect());
+            }
+            Ok(out)
+        }
+        other => Err(format!(
+            "floor_run_base_test_decl_census returned `{}`, expected FloorBaseTestDeclCensus",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 pub(crate) fn floor_diff_edits_from_diff_text(
     index: &MultiEntryIndex,
     diff_text: &str,
@@ -817,7 +898,39 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
-    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added)
+    // No census: `enrolled_test_fns` stays empty. Attribution tests read `edited_test_fns` /
+    // `touched_entry_files` / data items from this wrapper; enrolment is only answered when
+    // `floor_diff_edits_from_diff_text_with_base_names` (or production) supplies the census.
+    floor_diff_edits_from_line_ranges(
+        index,
+        &line_ranges,
+        &changed,
+        &departed,
+        &added,
+        None,
+        &std::collections::HashMap::new(),
+    )
+}
+
+pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+    base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
+) -> Result<FloorDiffEdits, String> {
+    let line_ranges = parse_unified_diff_line_ranges(diff_text);
+    let changed = parse_unified_diff_changed_new_lines(diff_text);
+    let departed = parse_unified_diff_departed_paths(diff_text);
+    let added = parse_unified_diff_added_paths(diff_text);
+    let rename_from = parse_unified_diff_rename_sources(diff_text);
+    floor_diff_edits_from_line_ranges(
+        index,
+        &line_ranges,
+        &changed,
+        &departed,
+        &added,
+        Some(base_test_decl_names),
+        &rename_from,
+    )
 }
 
 // Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
@@ -829,6 +942,8 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
+    base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
+    rename_from: &std::collections::HashMap<String, String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -997,12 +1112,22 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             }
             if test_fn_names.contains(name) {
                 edited_test_fns.insert((file_norm.clone(), name.clone()));
-                // NEWLY ENROLLED, AND THE CONDITION IS THE PATH'S rather than the line's. A test
-                // fn in a path whose declaration set is established fresh at NEW has never
-                // executed under its current qualified identity; one in a modified path may be a
-                // long-standing witness whose body was touched. Only the first may be refused for
-                // its cost by a gate that must never red a PR for debt it did not author.
-                if added_paths.contains(&file_norm) {
+                // NEWLY ENROLLED = declared now and not declared at the resolved diff base.
+                // The census is path-keyed. A rename destination is absent at the NEW path, so
+                // looking up the dest would enrol every fn as new — the author's-only-moved
+                // case. Enrolment therefore reads the SOURCE path when `rename_from` names one.
+                // Without a census there is no enrolment answer: the added-path rule is the
+                // superseded rung and must not remain as a silent alternative (review 64246).
+                let newly_declared = match base_test_decl_names {
+                    Some(at_base) => {
+                        let census_path = rename_from.get(&file_norm).unwrap_or(&file_norm);
+                        !at_base
+                            .get(census_path)
+                            .is_some_and(|names| names.contains(name))
+                    }
+                    None => false,
+                };
+                if newly_declared {
                     enrolled_test_fns.insert((file_norm.clone(), name.clone()));
                 }
             } else if *is_data {
@@ -1065,8 +1190,9 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// so "which test declarations did this change touch" has ONE producer; this function only spells
 /// the result as the qualified `module.function` identity the disposition receipt is keyed by. A
 /// wholly added `.dag` file contributes every test declaration it carries; a modified file
-/// contributes the declarations whose lines the diff reached. An observation or attribution failure
-/// REFUSES — it never widens to "no changed witnesses".
+/// contributes the declarations whose lines the diff reached. Newly enrolled identities are the
+/// subset whose names are absent from `floor_run_base_test_decl_census` at the resolved diff
+/// base. An observation or attribution failure REFUSES — it never widens to "no changed witnesses".
 ///
 /// THE TWO PROJECTIONS COME BACK TOGETHER rather than from two calls. Each call re-runs
 /// `floor_observe_git_diff_unified_for_ci` — a wet observation over the whole diff — and two calls
@@ -1090,12 +1216,27 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
+    let rename_from = parse_unified_diff_rename_sources(&diff_text);
+    let mut dag_paths: std::collections::HashSet<String> = line_ranges_by_file
+        .keys()
+        .filter(|p| p.ends_with(".dag"))
+        .cloned()
+        .collect();
+    for (dest, src) in &rename_from {
+        if dest.ends_with(".dag") {
+            dag_paths.insert(src.clone());
+        }
+    }
+    let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
         &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
+        Some(&base_test_decl_names),
+        &rename_from,
     )?;
     let quarantined = quarantine_probe_admitted_pairs();
     let root = process_workspace_root();
@@ -4487,7 +4628,8 @@ pub fn run_required_floor(
     // ── SHARED-BUILD ATTRIBUTION: the bare-reference edge index ───────────────────────────
     //
     // THIRD WARM, SAME REPAIR AS THE TWO ABOVE. The bare-reference edge index
-    // (`both_closure_edge_index`, and through it `tree_bare_census_for_root` per root) is a fact
+    // (`whole_pool_closure_edge_index`, explicitly demanded by `warm_bare_reference_edge_index`,
+    // which also warms `tree_bare_census_for_root` for reconciliation) is a fact
     // of the SUBJECT, not of any claim: memoized once per index — the census trace reports two
     // misses over two source roots against ONE index address, `edge_index_construction {
     // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED

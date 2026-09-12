@@ -89,35 +89,35 @@ data account_deletion_user_identifier_fields: List<NonEmptyStr> = ["username", "
 data ebay_account_deletion_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "EbayAccountDeletionCompliance"),
-    reason: "the compliance arms are read by a buyer pipeline's persisted-data admission, which may not be named from this tree; no public entry executes it",
+    reason: "no consumer reads the compliance arms yet. The intended one is a buyer pipeline's persisted-data admission, which may not be named from this tree; no public entry executes it",
     dissolution: unbound_dissolution(
       description: "dissolves when an executing gunbc entry decides whether an eBay keyset's declared compliance arm is admissible against the data that application persists; a witness that the type exists does not fire this"
     )
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_exemption_reason_label"),
-    reason: "the verbatim portal label is rendered by the consumer that records which exemption reason was filed, outside the public closure",
+    reason: "no consumer renders the verbatim portal label yet. The intended one records which exemption reason was filed, outside the public closure",
     dissolution: unbound_dissolution(
       description: "dissolves when an executing gunbc entry renders the filed exemption reason through account_deletion_exemption_reason_label into a record or refusal an operator reads; a witness comparing the string does not fire this"
     )
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_exemption_reason_standing"),
-    reason: "the labels' transcribed standing is read by the consumer that records the filed exemption reason, outside the public closure",
+    reason: "no consumer reads the labels' transcribed standing yet. The intended one records the filed exemption reason beside it, outside the public closure",
     dissolution: unbound_dissolution(
       description: "dissolves when an executing gunbc entry carries account_deletion_exemption_reason_standing beside the filed exemption reason it records, so a reader sees the label is transcribed; or when a first-party eBay text of the options is read and the standing becomes CitedToAuthority"
     )
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_page_read_standing"),
-    reason: "the archive-capture standing of the page read is consumed alongside the compliance facts by a consumer outside the public closure",
+    reason: "no consumer reports the archive-capture standing of the page read yet. The intended one carries it alongside any compliance decision, outside the public closure",
     dissolution: unbound_dissolution(
       description: "dissolves when an executing gunbc entry reports account_deletion_page_read_standing with any compliance decision it derives from this module; or when the live page is read and the standing cites it directly"
     )
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_user_identifier_fields"),
-    reason: "no public entry parses a deletion notification; the subject-identifier names are read by a consumer outside this closure",
+    reason: "no entry parses a deletion notification yet, here or elsewhere; the subject-identifier names have no reader until one does",
     dissolution: unbound_dissolution(
       description: "dissolves when an executing gunbc entry parses a marketplace account deletion notification and resolves its subject through these fields; a witness that the list exists does not fire this, and neither does a field-name intersection used as a compliance classifier, which this list does not support"
     )

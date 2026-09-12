@@ -25,8 +25,14 @@ import extdeps.cloudflare.account_api_tokens {
 import extdeps.cloudflare.r2 {
   R2Jurisdiction,
   r2_object_read_create_request,
-  r2_object_read_grant
+  r2_object_read_grant,
+  r2_object_write_create_request,
+  r2_object_write_grant
 }
+import gunbc.cloudflare.r2_permission_group_observe { r2_bucket_item_write_permission_group }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { frontier_row_decl }
 
 // POLICY, NOT UPSTREAM. The GitHub org-admin lane
 // (extdeps.github.org_admin_auth + gunbc.auth.org_admin_credential + docs/plans/org-admin-credential-acquisition.md)
@@ -43,7 +49,21 @@ import extdeps.cloudflare.r2 {
 // stored through gunbc.secret_provision, origin read pin at fabric_durable_origin_read_secret_version.
 // The first two Creates were RestOk with unread nested fields and were revoked; they are not this
 // census. An empty list here is the membership of a retired population, not a missing declaration.
-data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = []
+//
+// THE WRITE MINT IS THE SAME KIND OF SUBJECT AT THE SAME STAGE THE READ MINT WAS BEFORE gunbc#10947:
+// declared, admitted by the pure fold, and NOT yet executed against the account. Its row retires on
+// the same evidence -- run_object_write ExitSuccess, the token value stored through
+// gunbc.secret_provision, and the write credential pinned in gunbc.cloudflare.r2_origin -- and on
+// nothing weaker.
+data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint"),
+    reason: "the object-write mint is admitted by the pure fold and has an executing entry (gunbc.cloudflare.r2_token_mint_run run_object_write) that has not yet performed AccountTokens.Create against the account",
+    dissolution: unbound_dissolution(
+      description: "dissolves when run_object_write has executed with ExitSuccess, the token value is stored through gunbc.secret_provision, and gunbc.cloudflare.r2_origin fabric_durable_origin_standing carries the write credential as OriginCredentialPinned at the stored version; a witness that the admission fold answers Admitted does not fire this"
+    )
+  ),
+]
 
 // THE FLEET'S BOOTSTRAP TOKEN EXPIRES, AND THE MODEL SAID IT DID NOT. This shape declared
 // NoExpiryUntilRevoked, which was a convenient default rather than an observed fact, and the token
@@ -78,6 +98,21 @@ fn cloudflare_r2_object_read_token_shape() -> CloudflareAccountTokenShape {
   CloudflareAccountTokenShape {
     kind: AccountOwnedApiToken,
     grants: [r2_object_read_grant()],
+    acquisition: CreatedViaAccountTokensApi,
+    lifetime: NoExpiryUntilRevoked,
+    revocation: AccountApiTokensSurface
+  }
+}
+
+// THE WRITE SHAPE CARRIES EXACTLY ONE GRANT, AND IT IS NOT THE READ ONE. A write token that also
+// read would be spent by the commit path only, so the extra grant would buy nothing and would widen
+// what a leaked commit credential can do; and the reader must never hold the write grant
+// (gunbc.cloudflare.r2_origin, READ AND WRITE ARE TWO CREDENTIALS). The grant's group id is the
+// fleet's observation, threaded through r2_bucket_item_write_permission_group.
+fn cloudflare_r2_object_write_token_shape() -> CloudflareAccountTokenShape {
+  CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [r2_object_write_grant(write_group: r2_bucket_item_write_permission_group())],
     acquisition: CreatedViaAccountTokensApi,
     lifetime: NoExpiryUntilRevoked,
     revocation: AccountApiTokensSurface
@@ -122,6 +157,24 @@ fn admit_r2_object_read_api_mint(
     shape: cloudflare_r2_object_read_token_shape(),
     request: r2_object_read_create_request(
       name: name,
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
+    )
+  )
+}
+
+fn admit_r2_object_write_api_mint(
+  name: String,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> AccountTokenApiMintStanding {
+  admit_account_token_api_mint(
+    shape: cloudflare_r2_object_write_token_shape(),
+    request: r2_object_write_create_request(
+      name: name,
+      write_group: r2_bucket_item_write_permission_group(),
       account_id: account_id,
       jurisdiction: jurisdiction,
       bucket_name: bucket_name
