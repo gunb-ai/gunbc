@@ -47,10 +47,11 @@ import v2.std.logic { Bool }
 // from a short row list.
 //
 // WHAT THIS ROUTE CANNOT SEE is measured, not speculated.
-// Discriminator is QUALIFICATION, not position: a bare local type-position name
-// reaches; a qualified mention in value or type position does not. Body-lowering
-// (#11207) is not that trigger. Measured by
-// v2.test.claim.declaring_identity_spelling.production_ingest.
+// IdentityUnbound on a same-module ingest census row is an INDEX-PATH probe:
+// enrolled control cfp_own_module_site binds; ingest fill does not insert the
+// data name at the collector site's parser-keyed path (same class as
+// v2.test.claim.provenance.loaded_carrier_receipts receipt 2). Not a fact
+// that v2 cannot compile a local name.
 
 type DeclaringIdentitySpellingCensus {
   rows: FreeMonoid<DeclaringIdentitySpelling>
