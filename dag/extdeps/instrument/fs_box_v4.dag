@@ -1,0 +1,92 @@
+module extdeps.instrument.fs_box_v4
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+  CitedFigureStanding, CitedToAuthority,
+}
+import extdeps.uri { Uri, Https }
+
+// FS BOX V4, THE ORDERABLE MULTI-FUNCTIONAL TRANSCEIVER TOOL KIT, as its 2023 data sheet states
+// it. Per DESIGN section 3's external upstream decomposition this module owns this one product.
+// The V3/V4/V5 FAQ is a separately published document and lives in
+// extdeps.instrument.fs_box_v3_v4_v5_faq; a browser or OS list here is the data sheet's list, not
+// a merge. The current fs.com catalog page is not a citation of this module: it was fetched and
+// returned a JavaScript robot-check with no form-factor table, which is a fetch receipt in
+// product.fs_box_published_claims, not an Unobserved property of this product.
+//
+// NO FS COMPANY ENTITY IS MINTED HERE. Same standing as extdeps.transceiver.fs_145681: no FS
+// legal name was read from these documents as a citable legal-entity line.
+//
+// WHAT THIS MODULE DOES NOT CLAIM. The data sheet does not mention QSFP56, SFP56, breakout legs,
+// per-leg programming, disconnection, write recoverability, EEPROM bytes, or NVIDIA (ETH)
+// coding. Those absences are the point of reading it. Mechanical, battery, connector and warranty
+// figures were read and are not declared: this change's executing consumers are form-factor
+// membership, the browser list, the stated configurable media, and the product name the
+// programming procedure already cites.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "resource.fs.com/mall/doc/20230224114704wojcth.pdf"
+  }
+}
+
+type FsBoxV4DataSheet {
+  product_name: NonEmptyStr
+  supported_form_factors: List<NonEmptyStr>
+  configurable_media: NonEmptyStr
+  operating_systems: List<NonEmptyStr>
+  browsers: List<NonEmptyStr>
+  customization_fields: List<NonEmptyStr>
+  standing: CitedFigureStanding
+}
+
+data fs_box_v4_data_sheet: FsBoxV4DataSheet = FsBoxV4DataSheet {
+  product_name: "FS BOX V4" as NonEmptyStr,
+  supported_form_factors: [
+    "SFP" as NonEmptyStr,
+    "SFP+" as NonEmptyStr,
+    "SFP28" as NonEmptyStr,
+    "XFP" as NonEmptyStr,
+    "QSFP+" as NonEmptyStr,
+    "QSFP28" as NonEmptyStr,
+    "QSFP-DD" as NonEmptyStr,
+  ],
+  configurable_media: "FS transceivers and DAC/AOC cables with rates from 100M to 400G" as NonEmptyStr,
+  operating_systems: [
+    "Windows (10 or newer)" as NonEmptyStr,
+    "Mac OS (10.13 or newer)" as NonEmptyStr,
+    "Android (5.0 or newer)" as NonEmptyStr,
+    "IOS (11.0 or newer)" as NonEmptyStr,
+  ],
+  browsers: ["Chrome (68 or newer)" as NonEmptyStr],
+  customization_fields: [
+    "part number" as NonEmptyStr,
+    "compatible brand" as NonEmptyStr,
+    "serial number" as NonEmptyStr,
+    "vendor name" as NonEmptyStr,
+  ],
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+fn fs_box_v4_data_sheet_lists_form_factor(name: NonEmptyStr) -> Bool {
+  fold(
+    fs_box_v4_data_sheet.supported_form_factors,
+    init: false,
+    f: (hit, f) => hit || (f as String) == (name as String),
+  )
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.instrument.fs_box_v4",
+      decl_name: "fs_box_v4_data_sheet",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

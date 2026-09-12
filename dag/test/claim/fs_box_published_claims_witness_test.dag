@@ -1,0 +1,104 @@
+module test.claim.fs_box_published_claims_witness
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import extdeps.transceiver.sff_8636 { transceiver_identifier_from_byte }
+import extdeps.instrument.fs_box_v4 { fs_box_v4_data_sheet }
+import extdeps.instrument.fs_box_v3_v4_v5_faq { fs_box_v3_v4_v5_faq }
+import product.breakout_leg_programming {
+  fs_box_v4_leg_programming, fs_nvidia_eth_leg_coding,
+}
+import product.fs_box_published_claims {
+  qsfp56_named_on_v4_data_sheet, sff_identifier_named_on_v4_data_sheet,
+  faq_lists_firefox, datasheet_lists_firefox, faq_attests_extended_compliance_rewrite,
+  fs_box_internet_constraint_instruction, current_fs_box_internet_constraint_instruction,
+  fs_box_catalog_page_fetch, CatalogPageFetch, CatalogPageUnreadRobotCheck,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn v4_data_sheet_lists_qsfp28_and_qsfp_dd_but_not_qsfp56() -> Bool {
+  sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 17))
+    && sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 24))
+    && qsfp56_named_on_v4_data_sheet() == false
+}
+
+test fn observed_identifier_0x11_is_qsfp28_on_the_data_sheet() -> Bool {
+  sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 17))
+}
+
+test fn faq_adds_firefox_the_data_sheet_does_not() -> Bool {
+  faq_lists_firefox() && datasheet_lists_firefox() == false
+}
+
+test fn online_configuration_writes_fewer_fields_than_box_pro() -> Bool {
+  (fs_box_v3_v4_v5_faq.online_configuration_fields |> count)
+    < (fs_box_v3_v4_v5_faq.box_pro_fields |> count)
+}
+
+test fn faq_names_hpe_compatible_optics_as_not_reconfigurable() -> Bool {
+  fold(
+    fs_box_v3_v4_v5_faq.reconfiguration_not_supported,
+    init: false,
+    f: (hit, row) =>
+      hit || (row as String) == "HPE-compatible SFP+/SFP28/XFP/QSFP+/QSFP28 transceivers",
+  )
+}
+
+test fn data_sheet_configurable_media_are_fs_optics_and_cables() -> Bool {
+  string_contains(
+    s: fs_box_v4_data_sheet.configurable_media as String,
+    pattern: "FS transceivers and DAC/AOC cables",
+  )
+}
+
+test fn faq_does_not_attest_byte_192_rewrite() -> Bool {
+  faq_attests_extended_compliance_rewrite() == false
+}
+
+test fn faq_internet_requirement_reaches_the_instruction() -> Bool {
+  current_fs_box_internet_constraint_instruction()
+    != fs_box_internet_constraint_instruction(works_offline: true)
+}
+
+test fn catalog_page_was_not_read_as_a_form_factor_list() -> Bool {
+  match fs_box_catalog_page_fetch {
+    CatalogPageUnreadRobotCheck { locator: loc } =>
+      (loc as String) == "www.fs.com/c/fs-box-3389"
+  }
+}
+
+test fn leg_programming_stays_transcribed_uncited() -> Bool {
+  match fs_box_v4_leg_programming.standing {
+    TranscribedUncited { read_obligation: o } =>
+      string_contains(s: o as String, pattern: "neither states per-leg programming")
+    CitedToAuthority { authority: a } => false
+  }
+}
+
+test fn nvidia_eth_coding_stays_transcribed_uncited() -> Bool {
+  match fs_nvidia_eth_leg_coding.standing {
+    TranscribedUncited { read_obligation: o } =>
+      string_contains(s: o as String, pattern: "do not mention byte 192")
+    CitedToAuthority { authority: a } => false
+  }
+}
+
+test fn tool_name_is_the_data_sheet_product_name() -> Bool {
+  (fs_box_v4_leg_programming.tool as String) == (fs_box_v4_data_sheet.product_name as String)
+}
+
+test fn both_publications_are_cited_to_their_pdfs() -> Bool {
+  match fs_box_v4_data_sheet.standing {
+    CitedToAuthority { authority: a } =>
+      (a.uri.locator as String) == "resource.fs.com/mall/doc/20230224114704wojcth.pdf"
+    TranscribedUncited { read_obligation: o } => false
+  }
+    && match fs_box_v3_v4_v5_faq.standing {
+      CitedToAuthority { authority: a } =>
+        (a.uri.locator as String)
+          == "resource.fs.com/mall/resource/fs-box-v3v4v5-faq-20260824100858.pdf"
+      TranscribedUncited { read_obligation: o } => false
+    }
+}
