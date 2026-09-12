@@ -17,17 +17,24 @@ import extdeps.boards.types { BaseboardModel }
 // is PRESENT AND SILENT is neither "SOL: yes" nor "SOL: no", and reading it as yes is exactly how
 // silence got promoted to a firmware verdict on 2026-09-11.
 
-// THE CONSOLE. SolPresentSilent is a console that activates and returns no host bytes under a
-// collector PROVEN to be holding the session; it is separate from SolAbsent because the remedies
-// differ -- a silent console may be a firmware console-redirection setting; an absent one is a
-// controller capability. It is NOT the arm Mt. Collins inhabits, though an earlier revision said
-// so: eight "silent" captures were one broken collector exiting at stdin EOF, and a held session
-// captured the firmware's DRAM training output on the first try (2026-09-12). A profile may
-// carry this arm only on the strength of a held-session capture, never a banner-only one.
+// THE CONSOLE, WITH THE EVIDENCE THAT ESTABLISHED IT. A console capability is not a property of a
+// baseboard-plus-firmware pair on its own: it was established under particular conditions -- a
+// held session, a host state, a console routing -- so every arm carries the declaration of the
+// capture that established it, and a row with nothing to point at cannot be written. Two laws
+// follow (eager-owl-205, 2026-09-12): a later collector that fails to hold the session does not
+// erase a demonstrated capability, because the capability points at ITS evidence and not at the
+// latest attempt; and a demonstrated capability certifies no later attempt, because what an
+// attempt covered and received is the per-attempt carrier's subject
+// (gunbc.machine_intake_sol_collector_observation, gunbc#11127), never this profile's.
+//
+// SolPresentSilent -- the session activates and a HELD collector receives no host bytes -- is a
+// scoped arm with no instance in this corpus: the one observation that ever populated it was a
+// collector exiting at stdin EOF, and it is retracted. It survives as an arm a future held-session
+// capture could establish, not as one the corpus implies was seen.
 type ConsoleObservationCapability
-  = SolAbsent
-  | SolPresentSilent
-  | SolPresentEmitting
+  = SolAbsent { established_by: DeclarationRef }
+  | SolPresentSilent { established_by: DeclarationRef }
+  | SolPresentEmitting { established_by: DeclarationRef }
 
 // THE EVENT LOG, three rungs. Raw records readable; standard (section 42.2) sensor events decoded
 // by the controller's renderer; and OEM records, which section 32.2 hands to the manufacturer.

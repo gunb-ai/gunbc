@@ -318,7 +318,9 @@ fn emitting_console_profile() -> PreOsObservationCapabilities {
   PreOsObservationCapabilities {
     baseboard: mtcollins1_pre_os_capabilities.baseboard,
     controller_firmware: mtcollins1_pre_os_capabilities.controller_firmware,
-    console: SolPresentEmitting,
+    console: SolPresentEmitting {
+      established_by: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "emitting_console_profile", field: WholeDeclaration },
+    },
     sel: mtcollins1_pre_os_capabilities.sel,
     oem_sel_decode: mtcollins1_pre_os_capabilities.oem_sel_decode,
     web_event_log: mtcollins1_pre_os_capabilities.web_event_log,

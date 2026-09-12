@@ -378,7 +378,9 @@ data mtcollins1_web_event_log_decode: WebEventLogDecodeObservation = WebEventLog
 data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObservationCapabilities {
   baseboard: AmpereMtCollins,
   controller_firmware: mtcollins1_firmware,
-  console: SolPresentEmitting,
+  console: SolPresentEmitting {
+    established_by: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
+  },
   sel: SelStandardDecoded,
   oem_sel_decode: oem_sel_decode_capability_of_web_log(observation: mtcollins1_web_event_log_decode),
   web_event_log: WebEventLogAvailable,
