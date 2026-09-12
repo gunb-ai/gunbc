@@ -1,0 +1,582 @@
+module test.claim.fleet_observation_capture_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.string_type { String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, ObservationInstant, ClockDomain, ProcessMonotonic, SharedMonotonic, ClockBasis, WallClock }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.temporal_effect {
+  HeldLease,
+  LeaseEpoch,
+  LeaseAbsent,
+  LeaseRunningExpected,
+  LeaseRunningStale,
+  LeasePortForeign,
+  LeaseInaccessible,
+}
+import std.durable_compare_and_set {
+  CasOutcome,
+  CasCommitted,
+  CasStoreRefused,
+  CasSlotVersion,
+  CasUnreadableContentMissing,
+  CasUnreadableReadRefused,
+}
+import gunbc.fleet_observation_collector_ownership {
+  CollectorSessionId,
+  EndpointOwnership,
+  OwnerRecording,
+  FollowerReadOnly,
+  ForeignSessionHeld,
+  EndpointFencing,
+  RemoteFencingEnforced,
+  RemoteFencingAbsent,
+  OwnershipOutcome,
+  OwnershipChanged,
+  OwnershipRefused,
+  OwnershipRefusal,
+  ForeignInteractiveSessionNotStolen,
+  OwnershipLeaseInaccessible,
+  OwnershipGenerationWentBackwards,
+  OwnershipTransition,
+  OwnershipAcquired,
+  OwnershipRenewed,
+  OwnershipTakenOver,
+  OwnershipReleased,
+  acquire_ownership,
+  may_record,
+  exclusivity_is_enforced,
+}
+import gunbc.fleet_observation_capture_chunk {
+  CaptureChunk,
+  ChunkOccurrence,
+  SourceStreamRange,
+  ChunkRelation,
+  SameOccurrence,
+  DistinctOccurrencesEqualPayload,
+  DistinctOccurrencesDifferentPayload,
+  ChunkPayloadIncomparable,
+  relate_chunks,
+  LocalCommitStanding,
+  LocallyCommitted,
+  LocalCommitFailed,
+  LocalCommitNotAttempted,
+  CapturePersistenceRefusal,
+  SpoolDiskExhausted,
+  ChunkCorruptOnReadBack,
+  ChunkReferenceMissing,
+  ChunkRetentionExpired,
+  ChunkCommitRefused,
+  DownstreamAcceptanceStanding,
+  DownstreamAccepted,
+  DownstreamNotOffered,
+  StreamContinuity,
+  ContinuityEstablished,
+  ContinuityGap,
+  ContinuityUnknown,
+  ContinuityBreakCause,
+  RetainedLogRolledOver,
+  local_commit_from_cas,
+  range_covers,
+}
+import gunbc.fleet_observation_observation_envelope {
+  ObservationEnvelope,
+  SourceMachineBinding,
+  SourceGenerationStanding,
+  SourceGenerationObserved,
+  SourceGenerationUnavailable,
+  NativeRecordCursor,
+  NativeCursor,
+  NoNativeCursor,
+  ProducerTimestamp,
+  ProducerStated,
+  ProducerTimestampAbsent,
+  ReceiveObservation,
+  SourceByteFact,
+  SourceBytesObserved,
+  SourceProducedNoBytesInRange,
+  CoverageGapNotDurablyCommitted,
+  CoverageGapContinuityBroken,
+  CoverageGapRangeNotCovered,
+  CoverageGapNotTheRecordingOwner,
+  source_byte_fact,
+  is_forwarded,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SYNTHETIC SUBJECTS ONLY. Every value below is declared in this module; nothing here reads a real
+// chassis, a real controller, or a real capture, so no simulated success can reach a host's verdict
+// stream (the brief's evidence bar).
+
+data t_session: CollectorSessionId = CollectorSessionId {
+  collector_session: "synthetic-collector-a"
+  enrolled_machine: "synthetic-machine-1"
+}
+
+data t_other_session: CollectorSessionId = CollectorSessionId {
+  collector_session: "synthetic-collector-b"
+  enrolled_machine: "synthetic-machine-1"
+}
+
+data t_authority: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.fleet_observation_capture_witness"
+  decl_name: "t_authority"
+  field: WholeDeclaration
+}
+
+fn t_range(first: Nat, len: Nat) -> SourceStreamRange {
+  SourceStreamRange { first_offset: first, length: byte_size(count: len) }
+}
+
+fn t_lease(generation: Int) -> HeldLease {
+  HeldLease {
+    epoch: LeaseEpoch {
+      lease_key: "synthetic-endpoint"
+      resource_fingerprint: content_hash_of_value(value: "synthetic-endpoint")
+      owner_fingerprint: content_hash_of_value(value: "synthetic-collector-a")
+      generation: generation
+    },
+    observed: LeaseRunningExpected
+  }
+}
+
+fn t_owner(fencing: EndpointFencing) -> EndpointOwnership {
+  OwnerRecording { session: t_session, lease: t_lease(generation: 4), fencing: fencing }
+}
+
+data t_unfenced: EndpointFencing = RemoteFencingAbsent {
+  limitation: "IPMI SOL arbitration is the controller's; this collector observes the result and cannot fence a remote client."
+}
+
+data t_fenced: EndpointFencing = RemoteFencingEnforced { authority: t_authority }
+
+fn t_instant(origin: NonEmptyStr, since: Nat) -> ObservationInstant {
+  ObservationInstant {
+    domain: SharedMonotonic { origin: origin }
+    basis: WallClock
+    since_origin: since
+  }
+}
+
+fn t_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CaptureChunk {
+  CaptureChunk {
+    occurrence: ChunkOccurrence {
+      session: t_session
+      ownership_generation: generation
+      receive_sequence: seq
+    },
+    range: t_range(first: first, len: len)
+    payload_digest: content_hash_of_value(value: payload)
+    artifact_ref: "synthetic://chunk"
+  }
+}
+
+fn t_envelope(
+  ownership: EndpointOwnership,
+  chunk: CaptureChunk,
+  local_commit: LocalCommitStanding,
+  continuity: StreamContinuity,
+  downstream: DownstreamAcceptanceStanding,
+) -> ObservationEnvelope {
+  ObservationEnvelope {
+    binding: SourceMachineBinding {
+      enrolled_machine: "synthetic-machine-1"
+      source_identity: "synthetic-sol"
+      source_implementation: "synthetic-console"
+      source_version: "0"
+      authenticated_by: t_authority
+    },
+    source_generation: SourceGenerationUnavailable { reason: "synthetic source states no generation" }
+    native_cursor: NoNativeCursor
+    ownership: ownership,
+    chunk: chunk,
+    producer_timestamp: ProducerTimestampAbsent
+    received: ReceiveObservation {
+      wall: t_instant(origin: "synthetic-wall", since: 10)
+      monotonic: t_instant(origin: "synthetic-mono", since: 10)
+      observed_by: t_session
+    },
+    local_commit: local_commit,
+    downstream: downstream,
+    continuity: continuity,
+  }
+}
+
+data t_committed: LocalCommitStanding = LocallyCommitted {
+  committed_content: content_hash_of_value(value: "synthetic-committed")
+}
+
+// ── THE CENTRAL WALL ───────────────────────────────────────────────────────────────────────────
+
+// A NEGATIVE OBSERVATION REQUIRES DURABLE COVERAGE. This is the modelled form of the 2026-09-12
+// withdrawal (correction bf4cac9440): a quiet channel is not a boot. Each arm below removes exactly
+// one piece of the evidence and the answer must become a COVERAGE GAP naming what is missing --
+// never SourceProducedNoBytesInRange.
+//
+// This is the discriminating RED: if any guard in source_byte_fact were dropped or reordered so an
+// empty payload short-circuited to silence, one of these four conjuncts goes false.
+test fn w_silence_requires_committed_covered_continuous_bytes() -> Bool {
+  let chunk = t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 100)
+  let requested = t_range(first: 0, len: 100)
+  let uncommitted = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: chunk,
+    local_commit: LocalCommitNotAttempted,
+    continuity: ContinuityEstablished { verified_through: 100 },
+    downstream: DownstreamNotOffered,
+  )
+  let broken = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: chunk,
+    local_commit: t_committed,
+    continuity: ContinuityGap {
+      gap: t_range(first: 0, len: 40)
+      cause: RetainedLogRolledOver { lost_through: 40 }
+    },
+    downstream: DownstreamNotOffered,
+  )
+  let short = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 10),
+    local_commit: t_committed,
+    continuity: ContinuityEstablished { verified_through: 10 },
+    downstream: DownstreamNotOffered,
+  )
+  let not_owner = t_envelope(
+    ownership: FollowerReadOnly { session: t_other_session },
+    chunk: chunk,
+    local_commit: t_committed,
+    continuity: ContinuityEstablished { verified_through: 100 },
+    downstream: DownstreamNotOffered,
+  )
+  is_not_durably_committed(fact: source_byte_fact(envelope: uncommitted, requested: requested, payload_present: false))
+  && is_continuity_broken(fact: source_byte_fact(envelope: broken, requested: requested, payload_present: false))
+  && is_range_not_covered(fact: source_byte_fact(envelope: short, requested: requested, payload_present: false))
+  && is_not_owner(fact: source_byte_fact(envelope: not_owner, requested: requested, payload_present: false))
+}
+
+// THE POSITIVE CONTROL, which is what keeps the wall above from being green by vacancy. With all
+// four pieces of evidence present, silence IS mintable -- so the refusals are discriminating rather
+// than a fold that never returns its own arm (the hand-typed-digest defect: read the positive
+// control first).
+test fn w_full_evidence_licenses_silence_and_payload() -> Bool {
+  let requested = t_range(first: 0, len: 100)
+  let covered = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: t_chunk(seq: 1, generation: 4, payload: "host bytes", first: 0, len: 100),
+    local_commit: t_committed,
+    continuity: ContinuityEstablished { verified_through: 100 },
+    downstream: DownstreamNotOffered,
+  )
+  is_silence(fact: source_byte_fact(envelope: covered, requested: requested, payload_present: false))
+  && is_observed(fact: source_byte_fact(envelope: covered, requested: requested, payload_present: true))
+}
+
+// ── EQUAL PAYLOADS ARE NOT DUPLICATE EVENTS ────────────────────────────────────────────────────
+
+// THE SEVEN IDENTICAL CAPTURES, as a test. Two chunks received at different sequences carrying
+// byte-identical payloads are DISTINCT OCCURRENCES, and a fold that deduplicated on digest would
+// return SameOccurrence here and erase the evidence that exposed the defect.
+test fn w_equal_payloads_across_occurrences_are_distinct() -> Bool {
+  let a = t_chunk(seq: 1, generation: 4, payload: "banner-only", first: 0, len: 86)
+  let b = t_chunk(seq: 2, generation: 4, payload: "banner-only", first: 86, len: 86)
+  let c = t_chunk(seq: 3, generation: 4, payload: "different", first: 172, len: 9)
+  is_distinct_equal_payload(relation: relate_chunks(left: a, right: b))
+  && is_same_occurrence(relation: relate_chunks(left: a, right: a))
+  && is_distinct_different_payload(relation: relate_chunks(left: a, right: c))
+}
+
+// A DIFFERENT OWNERSHIP GENERATION IS A DIFFERENT OCCURRENCE even at the same receive sequence,
+// which is what makes a reconnect's replayed bytes separable from the original.
+test fn w_ownership_generation_separates_occurrences() -> Bool {
+  let a = t_chunk(seq: 1, generation: 4, payload: "same", first: 0, len: 4)
+  let b = t_chunk(seq: 1, generation: 5, payload: "same", first: 0, len: 4)
+  is_distinct_equal_payload(relation: relate_chunks(left: a, right: b))
+}
+
+// ── FILE EXISTENCE IS NOT A PERSISTENCE PROOF ──────────────────────────────────────────────────
+
+// THE ONLY ROUTE TO LocallyCommitted IS A CAS COMMIT, and each store refusal keeps its own remedy
+// rather than collapsing to one failure.
+test fn w_commit_standing_comes_only_from_cas() -> Bool {
+  let good: CasOutcome<NonEmptyStr> = CasCommitted {
+    committed: CasSlotVersion {
+      generation: 1
+      content: content_hash_of_value(value: "chunk")
+      value: "chunk"
+    },
+  }
+  let missing: CasOutcome<NonEmptyStr> = CasStoreRefused {
+    cause: CasUnreadableContentMissing { referenced: content_hash_of_value(value: "absent") }
+  }
+  let refused: CasOutcome<NonEmptyStr> = CasStoreRefused {
+    cause: CasUnreadableReadRefused { detail: "synthetic store refusal" }
+  }
+  is_committed(standing: local_commit_from_cas(outcome: good))
+  && is_reference_missing(standing: local_commit_from_cas(outcome: missing))
+  && is_commit_refused(standing: local_commit_from_cas(outcome: refused))
+}
+
+// ── OWNERSHIP IS OBSERVED, AND A FOREIGN SESSION IS NEVER STOLEN ────────────────────────────────
+
+test fn w_foreign_session_is_never_stolen() -> Bool {
+  refuses_foreign(outcome: acquire_ownership(session: t_session, observed: LeasePortForeign, observed_generation: 3, requested_generation: 9))
+  && refuses_inaccessible(outcome: acquire_ownership(session: t_session, observed: LeaseInaccessible, observed_generation: 3, requested_generation: 9))
+}
+
+// A STALE LEASE IS A TAKEOVER, AN EXPECTED ONE IS A RENEWAL, AN ABSENT ONE IS AN ACQUISITION, and a
+// backwards generation refuses in every case. Four different acts, four different answers.
+test fn w_ownership_transitions_are_distinguished() -> Bool {
+  acquired(outcome: acquire_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, requested_generation: 1))
+  && renewed(outcome: acquire_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, requested_generation: 4))
+  && taken_over(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, requested_generation: 5))
+  && refuses_backwards(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 9, requested_generation: 2))
+}
+
+// ── EXCLUSIVITY IS CARRIED HONESTLY ────────────────────────────────────────────────────────────
+
+// AN OWNER OVER AN UNFENCED ENDPOINT RECORDS BUT DOES NOT CLAIM STRUCTURAL EXCLUSIVITY. If
+// exclusivity_is_enforced answered true for the unfenced arm, this lane would be claiming a
+// guarantee the transport does not provide (DESIGN section 4b rung inflation).
+test fn w_unfenced_owner_records_without_claiming_exclusivity() -> Bool {
+  may_record(ownership: t_owner(fencing: t_unfenced))
+  && !exclusivity_is_enforced(ownership: t_owner(fencing: t_unfenced))
+  && exclusivity_is_enforced(ownership: t_owner(fencing: t_fenced))
+  && !may_record(ownership: ForeignSessionHeld { observed: LeasePortForeign })
+}
+
+// ── LOCAL DURABILITY IS NOT DOWNSTREAM ACCEPTANCE ──────────────────────────────────────────────
+
+// THE INTERVAL THE REFUSED RETENTION PROMISE IS ABOUT: committed here, not accepted there.
+test fn w_local_commit_does_not_imply_forwarding() -> Bool {
+  let requested = t_range(first: 0, len: 10)
+  let chunk = t_chunk(seq: 1, generation: 4, payload: "x", first: 0, len: 10)
+  let spooled = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: chunk,
+    local_commit: t_committed,
+    continuity: ContinuityEstablished { verified_through: 10 },
+    downstream: DownstreamNotOffered,
+  )
+  let forwarded = t_envelope(
+    ownership: t_owner(fencing: t_unfenced),
+    chunk: chunk,
+    local_commit: t_committed,
+    continuity: ContinuityEstablished { verified_through: 10 },
+    downstream: DownstreamAccepted { accepted_content: content_hash_of_value(value: "x") },
+  )
+  !is_forwarded(envelope: spooled)
+  && is_forwarded(envelope: forwarded)
+  && is_observed(fact: source_byte_fact(envelope: spooled, requested: requested, payload_present: true))
+}
+
+// ── readers ────────────────────────────────────────────────────────────────────────────────────
+
+fn is_silence(fact: SourceByteFact) -> Bool {
+  match fact {
+    SourceProducedNoBytesInRange { range: _ } => true
+    SourceBytesObserved { digest: _ } => false
+    CoverageGapNotDurablyCommitted => false
+    CoverageGapContinuityBroken { continuity: _ } => false
+    CoverageGapRangeNotCovered { requested: _, committed: _ } => false
+    CoverageGapNotTheRecordingOwner { ownership: _ } => false
+  }
+}
+
+fn is_observed(fact: SourceByteFact) -> Bool {
+  match fact {
+    SourceBytesObserved { digest: _ } => true
+    SourceProducedNoBytesInRange { range: _ } => false
+    CoverageGapNotDurablyCommitted => false
+    CoverageGapContinuityBroken { continuity: _ } => false
+    CoverageGapRangeNotCovered { requested: _, committed: _ } => false
+    CoverageGapNotTheRecordingOwner { ownership: _ } => false
+  }
+}
+
+fn is_not_durably_committed(fact: SourceByteFact) -> Bool {
+  match fact {
+    CoverageGapNotDurablyCommitted => true
+    SourceBytesObserved { digest: _ } => false
+    SourceProducedNoBytesInRange { range: _ } => false
+    CoverageGapContinuityBroken { continuity: _ } => false
+    CoverageGapRangeNotCovered { requested: _, committed: _ } => false
+    CoverageGapNotTheRecordingOwner { ownership: _ } => false
+  }
+}
+
+fn is_continuity_broken(fact: SourceByteFact) -> Bool {
+  match fact {
+    CoverageGapContinuityBroken { continuity: _ } => true
+    SourceBytesObserved { digest: _ } => false
+    SourceProducedNoBytesInRange { range: _ } => false
+    CoverageGapNotDurablyCommitted => false
+    CoverageGapRangeNotCovered { requested: _, committed: _ } => false
+    CoverageGapNotTheRecordingOwner { ownership: _ } => false
+  }
+}
+
+fn is_range_not_covered(fact: SourceByteFact) -> Bool {
+  match fact {
+    CoverageGapRangeNotCovered { requested: _, committed: _ } => true
+    SourceBytesObserved { digest: _ } => false
+    SourceProducedNoBytesInRange { range: _ } => false
+    CoverageGapNotDurablyCommitted => false
+    CoverageGapContinuityBroken { continuity: _ } => false
+    CoverageGapNotTheRecordingOwner { ownership: _ } => false
+  }
+}
+
+fn is_not_owner(fact: SourceByteFact) -> Bool {
+  match fact {
+    CoverageGapNotTheRecordingOwner { ownership: _ } => true
+    SourceBytesObserved { digest: _ } => false
+    SourceProducedNoBytesInRange { range: _ } => false
+    CoverageGapNotDurablyCommitted => false
+    CoverageGapContinuityBroken { continuity: _ } => false
+    CoverageGapRangeNotCovered { requested: _, committed: _ } => false
+  }
+}
+
+fn is_same_occurrence(relation: ChunkRelation) -> Bool {
+  match relation {
+    SameOccurrence => true
+    DistinctOccurrencesEqualPayload => false
+    DistinctOccurrencesDifferentPayload => false
+    ChunkPayloadIncomparable { left: _, right: _ } => false
+  }
+}
+
+fn is_distinct_equal_payload(relation: ChunkRelation) -> Bool {
+  match relation {
+    DistinctOccurrencesEqualPayload => true
+    SameOccurrence => false
+    DistinctOccurrencesDifferentPayload => false
+    ChunkPayloadIncomparable { left: _, right: _ } => false
+  }
+}
+
+fn is_distinct_different_payload(relation: ChunkRelation) -> Bool {
+  match relation {
+    DistinctOccurrencesDifferentPayload => true
+    SameOccurrence => false
+    DistinctOccurrencesEqualPayload => false
+    ChunkPayloadIncomparable { left: _, right: _ } => false
+  }
+}
+
+fn is_committed(standing: LocalCommitStanding) -> Bool {
+  match standing {
+    LocallyCommitted { committed_content: _ } => true
+    LocalCommitFailed { cause: _ } => false
+    LocalCommitNotAttempted => false
+  }
+}
+
+fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
+  match standing {
+    LocalCommitFailed { cause: cause } =>
+      match cause {
+        ChunkReferenceMissing { referenced: _ } => true
+        SpoolDiskExhausted { attempted: _ } => false
+        ChunkCorruptOnReadBack { expected: _, observed: _ } => false
+        ChunkRetentionExpired { artifact_ref: _ } => false
+        ChunkCommitRefused { detail: _ } => false
+      }
+    LocallyCommitted { committed_content: _ } => false
+    LocalCommitNotAttempted => false
+  }
+}
+
+fn is_commit_refused(standing: LocalCommitStanding) -> Bool {
+  match standing {
+    LocalCommitFailed { cause: cause } =>
+      match cause {
+        ChunkCommitRefused { detail: _ } => true
+        SpoolDiskExhausted { attempted: _ } => false
+        ChunkCorruptOnReadBack { expected: _, observed: _ } => false
+        ChunkReferenceMissing { referenced: _ } => false
+        ChunkRetentionExpired { artifact_ref: _ } => false
+      }
+    LocallyCommitted { committed_content: _ } => false
+    LocalCommitNotAttempted => false
+  }
+}
+
+fn refuses_foreign(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipRefused { cause: cause } =>
+      match cause {
+        ForeignInteractiveSessionNotStolen { observed: _ } => true
+        OwnershipLeaseInaccessible => false
+        OwnershipGenerationWentBackwards { observed: _, requested: _ } => false
+      }
+    OwnershipChanged { transition: _ } => false
+  }
+}
+
+fn refuses_inaccessible(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipRefused { cause: cause } =>
+      match cause {
+        OwnershipLeaseInaccessible => true
+        ForeignInteractiveSessionNotStolen { observed: _ } => false
+        OwnershipGenerationWentBackwards { observed: _, requested: _ } => false
+      }
+    OwnershipChanged { transition: _ } => false
+  }
+}
+
+fn refuses_backwards(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipRefused { cause: cause } =>
+      match cause {
+        OwnershipGenerationWentBackwards { observed: _, requested: _ } => true
+        OwnershipLeaseInaccessible => false
+        ForeignInteractiveSessionNotStolen { observed: _ } => false
+      }
+    OwnershipChanged { transition: _ } => false
+  }
+}
+
+fn acquired(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipChanged { transition: transition } =>
+      match transition {
+        OwnershipAcquired { session: _, generation: _ } => true
+        OwnershipRenewed { session: _, generation: _ } => false
+        OwnershipTakenOver { session: _, from_generation: _, to_generation: _ } => false
+        OwnershipReleased { session: _, generation: _ } => false
+      }
+    OwnershipRefused { cause: _ } => false
+  }
+}
+
+fn renewed(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipChanged { transition: transition } =>
+      match transition {
+        OwnershipRenewed { session: _, generation: _ } => true
+        OwnershipAcquired { session: _, generation: _ } => false
+        OwnershipTakenOver { session: _, from_generation: _, to_generation: _ } => false
+        OwnershipReleased { session: _, generation: _ } => false
+      }
+    OwnershipRefused { cause: _ } => false
+  }
+}
+
+fn taken_over(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipChanged { transition: transition } =>
+      match transition {
+        OwnershipTakenOver { session: _, from_generation: _, to_generation: _ } => true
+        OwnershipAcquired { session: _, generation: _ } => false
+        OwnershipRenewed { session: _, generation: _ } => false
+        OwnershipReleased { session: _, generation: _ } => false
+      }
+    OwnershipRefused { cause: _ } => false
+  }
+}

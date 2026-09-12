@@ -1,0 +1,160 @@
+module gunbc.fleet_observation_collector_ownership
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.string_type { String }
+import std.decl_ref { DeclarationRef }
+import std.temporal_effect {
+  HeldLease,
+  LeaseEpoch,
+  HeldLeaseObservedState,
+  LeaseAbsent,
+  LeaseRunningExpected,
+  LeaseRunningStale,
+  LeasePortForeign,
+  LeaseInaccessible,
+}
+
+// WHO IS ALLOWED TO READ AND RECORD AN EXCLUSIVE ENDPOINT, and on what evidence. The subject is an
+// ENROLLED MACHINE's collector, whose lifetime is the machine's -- not an attempt's and not a
+// session's. This module owns the ownership question only; the bytes are
+// gunbc.fleet_observation_capture_chunk and the published fact is
+// gunbc.fleet_observation_observation_envelope.
+//
+// THE RECEIPT THAT SHAPED IT (Mt. Collins unit 1, 2026-09-11/12): two stale SOL capture processes
+// were left competing for the one session the controller allows, so the capture believed to be
+// watching a reset was watching nothing, and a later replacement "never started" without anyone
+// observing that it had not. Ownership was assumed by whoever ran last. Here ownership is a fact
+// with a generation, and every change of it is an OBSERVED transition.
+//
+// NO SECOND LEASE AUTHORITY. std.temporal_effect HeldLease/LeaseEpoch is the corpus's writable-lease
+// authority and this module CONSUMES it -- LeaseEpoch.generation IS the ownership generation, and
+// HeldLeaseObservedState is the observed standing. Minting a collector-local lease beside it would
+// be the telemetry-workaround fork DESIGN section 3 forbids, and it is explicitly out of scope.
+
+// WHETHER THE ENDPOINT CAN ACTUALLY FENCE A REMOTE WRITER, carried because we mostly cannot and
+// must not pretend otherwise. An IPMI SOL payload is a single-session resource on the controller,
+// but nothing in the protocol lets THIS collector prove no other operator's client will be handed
+// the session next; the controller arbitrates, we only observe the result. Claiming structural
+// exclusivity we do not hold is the DESIGN section 4b rung-inflation defect, so the limitation is a
+// field rather than an assumption.
+//
+// RemoteFencingEnforced must name the authority that establishes the fencing, so the claim is
+// checkable; a row with nothing to cite cannot be written.
+type EndpointFencing
+  = RemoteFencingEnforced { authority: DeclarationRef }
+  | RemoteFencingAbsent { limitation: NonEmptyStr }
+
+// THE COLLECTOR'S OWN IDENTITY, separate from the machine's and from the source's. These identities
+// stay SEPARATE and are related only through evidence (the interface contract with royal-gull-60):
+// a collector session is not a machine, and an ownership generation is not a source generation.
+type CollectorSessionId {
+  collector_session: NonEmptyStr
+  enrolled_machine: NonEmptyStr
+}
+
+// THE OWNERSHIP STANDING AT ONE ENDPOINT. Three arms and not a Bool, because "we do not own it" has
+// two materially different causes with opposite remedies: we are deliberately following read-only,
+// or somebody else's interactive session is in the chair and must not be disturbed.
+//
+// OwnerRecording is the ONLY arm that licenses recording. FollowerReadOnly and ForeignSessionHeld
+// both read; neither writes; and ForeignSessionHeld additionally refuses takeover below.
+type EndpointOwnership
+  = OwnerRecording {
+      session: CollectorSessionId
+      lease: HeldLease
+      fencing: EndpointFencing
+    }
+  | FollowerReadOnly { session: CollectorSessionId }
+  | ForeignSessionHeld { observed: HeldLeaseObservedState }
+
+// EVERY CHANGE OF OWNERSHIP IS AN OBSERVATION, never an assumption. Acquire, renew, take over and
+// release are four different acts with four different evidentiary burdens, and collapsing them
+// into "we have the session now" is how a stale process kept a session nobody knew it held.
+type OwnershipTransition
+  = OwnershipAcquired { session: CollectorSessionId, generation: Int }
+  | OwnershipRenewed { session: CollectorSessionId, generation: Int }
+  | OwnershipTakenOver { session: CollectorSessionId, from_generation: Int, to_generation: Int }
+  | OwnershipReleased { session: CollectorSessionId, generation: Int }
+
+// WHY A REQUESTED OWNERSHIP CHANGE WAS REFUSED, typed and located. No arm widens: there is
+// deliberately no "proceed anyway" and no "assume we got it".
+type OwnershipRefusal
+  = ForeignInteractiveSessionNotStolen { observed: HeldLeaseObservedState }
+  | OwnershipLeaseInaccessible
+  | OwnershipGenerationWentBackwards { observed: Int, requested: Int }
+
+type OwnershipOutcome
+  = OwnershipChanged { transition: OwnershipTransition }
+  | OwnershipRefused { cause: OwnershipRefusal }
+
+fn ownership_generation(lease: HeldLease) -> Int {
+  lease.epoch.generation
+}
+
+// NEVER SILENTLY STEAL A FOREIGN INTERACTIVE SESSION. LeasePortForeign is the observed state in
+// which some other client holds the endpoint, and the ONLY answer to it is a typed refusal naming
+// what was observed. This is the arm that the three lost captures needed and did not have.
+//
+// LeaseInaccessible is kept SEPARATE from foreign: "somebody else has it" and "I could not tell
+// who has it" have opposite remedies, and rendering the second as the first would let an
+// unreadable endpoint read as an available one.
+fn acquire_ownership(
+  session: CollectorSessionId,
+  observed: HeldLeaseObservedState,
+  observed_generation: Int,
+  requested_generation: Int,
+) -> OwnershipOutcome {
+  match observed {
+    LeasePortForeign => OwnershipRefused { cause: ForeignInteractiveSessionNotStolen { observed: observed } }
+    LeaseInaccessible => OwnershipRefused { cause: OwnershipLeaseInaccessible }
+    LeaseAbsent =>
+      if requested_generation > observed_generation {
+        OwnershipChanged { transition: OwnershipAcquired { session: session, generation: requested_generation } }
+      } else {
+        OwnershipRefused { cause: OwnershipGenerationWentBackwards { observed: observed_generation, requested: requested_generation } }
+      }
+    LeaseRunningExpected =>
+      if requested_generation == observed_generation {
+        OwnershipChanged { transition: OwnershipRenewed { session: session, generation: requested_generation } }
+      } else {
+        OwnershipRefused { cause: OwnershipGenerationWentBackwards { observed: observed_generation, requested: requested_generation } }
+      }
+    LeaseRunningStale =>
+      if requested_generation > observed_generation {
+        OwnershipChanged {
+          transition: OwnershipTakenOver {
+            session: session
+            from_generation: observed_generation
+            to_generation: requested_generation
+          }
+        }
+      } else {
+        OwnershipRefused { cause: OwnershipGenerationWentBackwards { observed: observed_generation, requested: requested_generation } }
+      }
+  }
+}
+
+// ONLY AN OWNER RECORDS. A follower and a foreign-held endpoint both answer false, and they are
+// distinct arms above rather than one negative, so a caller can say WHY it is not recording.
+fn may_record(ownership: EndpointOwnership) -> Bool {
+  match ownership {
+    OwnerRecording { session: _, lease: _, fencing: _ } => true
+    FollowerReadOnly { session: _ } => false
+    ForeignSessionHeld { observed: _ } => false
+  }
+}
+
+// WHETHER THIS OWNERSHIP MAY CLAIM STRUCTURAL EXCLUSIVITY. An owner behind an endpoint with no
+// remote fencing is still the recorder, but its exclusivity is OBSERVED rather than enforced, and
+// a downstream reader is entitled to know which of the two it has.
+fn exclusivity_is_enforced(ownership: EndpointOwnership) -> Bool {
+  match ownership {
+    OwnerRecording { session: _, lease: _, fencing: fencing } =>
+      match fencing {
+        RemoteFencingEnforced { authority: _ } => true
+        RemoteFencingAbsent { limitation: _ } => false
+      }
+    FollowerReadOnly { session: _ } => false
+    ForeignSessionHeld { observed: _ } => false
+  }
+}

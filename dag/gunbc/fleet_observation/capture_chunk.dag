@@ -1,0 +1,194 @@
+module gunbc.fleet_observation_capture_chunk
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.string_type { String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import std.content_hash {
+  ContentHash,
+  ContentHashComparison,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  compare_content_hash,
+}
+import std.durable_compare_and_set {
+  CasOutcome,
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+  CasUnreadableSlot,
+  CasUnreadableMalformed,
+  CasUnreadableContentMissing,
+  CasUnreadableReadRefused,
+}
+import gunbc.fleet_observation_collector_ownership { CollectorSessionId }
+
+// BOUNDED DURABLE CAPTURE: the bytes, their identity, and what it takes to say they are kept.
+// Ownership is gunbc.fleet_observation_collector_ownership; the published fact is
+// gunbc.fleet_observation_observation_envelope. Raw chunks live in ARTIFACT storage, outside any
+// small event index -- console lines are not routed through capacity transactions and no boot arm
+// is added to any pool-event enum.
+//
+// A SUPERVISED COLLECTOR ROTATES, IT DOES NOT DETACH. A terminal event closes an assessed attempt
+// upstream; it must never close the collector, because detaching at the interesting boundary is
+// how four captures were lost. The unit of rotation is the chunk below, so the stream survives
+// every attempt boundary and the boundary becomes a range rather than an end.
+
+// WHERE IN THE SOURCE'S OWN STREAM these bytes sat. Offsets are the source's, not the file's: a
+// chunk is a window on a stream that outlives it.
+type SourceStreamRange {
+  first_offset: Nat
+  length: ByteSize
+}
+
+// THE OCCURRENCE IDENTITY OF ONE CHUNK, and it is deliberately NOT the digest.
+//
+// THIS IS THE MOST LOAD-BEARING DECISION IN THE MODULE. Seven of eight captures on 2026-09-11 were
+// byte-identical across materially different subjects, and the reason nobody noticed for a week is
+// that equal bytes read as "the same nothing". Equal payload hashes across SEPARATE OCCURRENCES ARE
+// NOT DUPLICATE EVENTS (recurring class gunbc.recurring_failure_mode.empty_capture_read_as_clean_result,
+// seventh instance). So occurrence identity is (collector session, ownership generation, receive
+// sequence) -- three facts about WHEN AND BY WHOM the bytes were received -- and the payload digest
+// is a separate field that identifies CONTENT and nothing else. Deduplicating on digest would erase
+// exactly the evidence that made the defect visible.
+type ChunkOccurrence {
+  session: CollectorSessionId
+  ownership_generation: Int
+  receive_sequence: Nat
+}
+
+// HOW TWO CHUNKS RELATE, three-valued because the interesting case is the one a Bool destroys.
+// DistinctOccurrencesEqualPayload is the seven-identical-captures case: real, separate, retained
+// events that happen to carry the same bytes. It is NOT a duplicate and must never be folded away.
+type ChunkRelation
+  = SameOccurrence
+  | DistinctOccurrencesEqualPayload
+  | DistinctOccurrencesDifferentPayload
+  | ChunkPayloadIncomparable { left: ContentHash, right: ContentHash }
+
+type CaptureChunk {
+  occurrence: ChunkOccurrence
+  range: SourceStreamRange
+  payload_digest: ContentHash
+  artifact_ref: NonEmptyStr
+}
+
+fn chunk_occurrence_eq(a: ChunkOccurrence, b: ChunkOccurrence) -> Bool {
+  ((a.session.collector_session as String) == (b.session.collector_session as String))
+  && ((a.session.enrolled_machine as String) == (b.session.enrolled_machine as String))
+  && (a.ownership_generation == b.ownership_generation)
+  && (a.receive_sequence == b.receive_sequence)
+}
+
+// THE COMPARISON THAT REFUSES TO CONFLATE CONTENT WITH OCCURRENCE. Note the order: occurrence is
+// decided FIRST, so equal payloads can never promote two occurrences into one.
+fn relate_chunks(left: CaptureChunk, right: CaptureChunk) -> ChunkRelation {
+  if chunk_occurrence_eq(a: left.occurrence, b: right.occurrence) {
+    SameOccurrence
+  } else {
+    match compare_content_hash(left: left.payload_digest, right: right.payload_digest) {
+      ContentHashEqual => DistinctOccurrencesEqualPayload
+      ContentHashDifferent => DistinctOccurrencesDifferentPayload
+      ContentHashCrossFamilyIncomparable =>
+        ChunkPayloadIncomparable { left: left.payload_digest, right: right.payload_digest }
+    }
+  }
+}
+
+// WHY A CHUNK COULD NOT BE DURABLY KEPT, each an explicit typed outcome with its own remedy. None
+// of these may silently change an observation's semantic result: a collector that cannot keep its
+// bytes reports a coverage gap, it does not report the source as quiet.
+type CapturePersistenceRefusal
+  = SpoolDiskExhausted { attempted: ByteSize }
+  | ChunkCorruptOnReadBack { expected: ContentHash, observed: ContentHash }
+  | ChunkReferenceMissing { referenced: ContentHash }
+  | ChunkRetentionExpired { artifact_ref: NonEmptyStr }
+  | ChunkCommitRefused { detail: NonEmptyStr }
+
+// LOCAL DURABLE COMMIT AND DOWNSTREAM ACCEPTANCE ARE SEPARATE FACTS and are never folded into one
+// "saved" flag. A chunk can be durably on this machine's spool and unaccepted anywhere else, which
+// is the normal state while the machine whose reboot we are capturing is down.
+type LocalCommitStanding
+  = LocallyCommitted { committed_content: ContentHash }
+  | LocalCommitFailed { cause: CapturePersistenceRefusal }
+  | LocalCommitNotAttempted
+
+type DownstreamAcceptanceStanding
+  = DownstreamAccepted { accepted_content: ContentHash }
+  | DownstreamRejected { cause: CapturePersistenceRefusal }
+  | DownstreamNotOffered
+
+// FILE EXISTENCE IS NOT A PERSISTENCE PROOF, and this fold is where that law is enforced rather
+// than asserted. The ONLY route to LocallyCommitted is a CasCommitted outcome from the corpus's
+// durable compare-and-set authority: a path, a directory listing, or a successful write() return
+// cannot construct it. A directory existing is not a writable evidence route.
+//
+// Every CAS refusal maps to a DISTINCT persistence refusal rather than one flat failure, because a
+// missing referenced object is re-derivable, a malformed head is repaired by hand, and a refused
+// read is retried -- three remedies a caller cannot choose between from prose.
+fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
+  match outcome {
+    CasCommitted { committed: committed } =>
+      LocallyCommitted { committed_content: committed.content }
+    CasPreconditionFailed { expected: _, observed: _ } =>
+      LocalCommitFailed { cause: ChunkCommitRefused { detail: "durable commit lost a compare-and-set race; the chunk is not kept" } }
+    CasStoreRefused { cause: cause } =>
+      match cause {
+        CasUnreadableMalformed { detail: detail } =>
+          LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
+        CasUnreadableContentMissing { referenced: referenced } =>
+          LocalCommitFailed { cause: ChunkReferenceMissing { referenced: referenced } }
+        CasUnreadableReadRefused { detail: detail } =>
+          LocalCommitFailed { cause: ChunkCommitRefused { detail: detail } }
+      }
+  }
+}
+
+fn chunk_is_locally_committed(standing: LocalCommitStanding) -> Bool {
+  match standing {
+    LocallyCommitted { committed_content: _ } => true
+    LocalCommitFailed { cause: _ } => false
+    LocalCommitNotAttempted => false
+  }
+}
+
+// ── continuity ─────────────────────────────────────────────────────────────────────────────────
+
+// WHY A STREAM'S CONTINUITY COULD NOT BE ESTABLISHED ACROSS A RECONNECT. A supervised collector
+// renews and reconnects by design -- that is what makes it survive the machine's own reboot -- so
+// the reconnect boundary is the one place completeness is actually at risk, and each cause below
+// is a different question about the source rather than one "gap".
+type ContinuityBreakCause
+  = RetainedLogRolledOver { lost_through: Nat }
+  | SourceLogCleared
+  | SourceRestarted { previous_generation: NonEmptyStr, current_generation: NonEmptyStr }
+  | SourceGenerationUncertain { detail: NonEmptyStr }
+
+// WHAT THE COMMITTED BYTES ACCOUNT FOR. ContinuityGap is RETAINED, not discarded and not repaired:
+// on reconnect we keep what we recovered WITH AN EXPLICIT GAP. Deduplication is not proof of
+// completeness, so there is deliberately no arm meaning "probably contiguous".
+type StreamContinuity
+  = ContinuityEstablished { verified_through: Nat }
+  | ContinuityGap { gap: SourceStreamRange, cause: ContinuityBreakCause }
+  | ContinuityUnknown { detail: NonEmptyStr }
+
+fn continuity_is_established(continuity: StreamContinuity) -> Bool {
+  match continuity {
+    ContinuityEstablished { verified_through: _ } => true
+    ContinuityGap { gap: _, cause: _ } => false
+    ContinuityUnknown { detail: _ } => false
+  }
+}
+
+// WHETHER A COMMITTED CHUNK ACTUALLY COVERS A REQUESTED RANGE. Coverage is arithmetic over the
+// source's own offsets and is INDEPENDENT OF THE COLLECTOR'S LIFETIME -- which is the property that
+// lets a machine-lifetime collector license a negative observation at all. A bounded client that
+// must exit before its window closes cannot answer this question; committed bytes can.
+fn range_end(range: SourceStreamRange) -> Nat {
+  range.first_offset + byte_size_count(b: range.length)
+}
+
+fn range_covers(outer: SourceStreamRange, inner: SourceStreamRange) -> Bool {
+  (outer.first_offset <= inner.first_offset) && (range_end(range: inner) <= range_end(range: outer))
+}
