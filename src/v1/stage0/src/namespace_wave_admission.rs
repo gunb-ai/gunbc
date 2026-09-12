@@ -1711,35 +1711,84 @@ const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std
 /// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
 /// empty was the resting state and one change authoring rows back into it is the ordinary motion.
 ///
-/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11138). The three `gunbc#11071 LinuxKernelRelease
+/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
 /// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
 /// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
 /// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
 /// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
-/// is that touch, so the debt is paid here rather than inherited by an unrelated lane.
+/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
+/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
+///
+/// gunbc#11137 sha256sum names Filesystem instead of reaching it (2026-09-12). The row below is a
+/// DIFFERENT delta that this change produces, not that one restored: empty is the resting state
+/// and one change authoring a row back into it is the ordinary motion.
+///
+/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
+/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
+/// module into the candidate set for every name it declares, so filesystem_io's copy of
+/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
+/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
+/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
+/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
+///
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. NO RESOLUTION CHANGES.
+/// `extdeps.tools.sha256sum` authors its own `extdeps_external_authority_anchor`, and a module's
+/// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
+/// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
+/// either way. What narrowed is the SET, from three modules to two, which is the qualification's
+/// whole purpose: the resolution stopped depending on a module the author never named. That no
+/// consumer changed behaviour is the required floor's verdict on this head, re-derived by
+/// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
+/// and read off its own `required-floor:` verdict line -- named rather than transcribed, because a
+/// copied count rots without anyone touching either end (DESIGN §6).
+///
+/// WHY THE `String` REQUALIFICATION IN THE SAME CHANGE NEEDS NO ROW, which is a fair question to
+/// ask of a diff that moves ten import lines onto `std.string_type`. It is not this adjudication's
+/// assertion; it is the wave phase's own measurement. That phase compares the binding table on both
+/// sides, and on this head it reported exactly ONE `TargetChanged binding` delta -- the row below --
+/// and none for `String`. The ten `String` sites appear instead as
+/// `ExplicitlyEvaluatedZeroDelta membership <module> -> std.string_type ... reached by a name this
+/// module authors`: explicitly evaluated, zero delta. The reason is that `std.types` declares no
+/// `String` at all, so `import std.types { String }` bound nothing and the read fell through to the
+/// shared slot, where scope precedence already answered `std.string_type`. Naming that module
+/// changes the read's AUTHORIZATION -- from an accident of precedence to something the author
+/// wrote -- without changing which declaration answers it. A delta row adjudicates a changed
+/// binding; there is no changed binding here to adjudicate.
+///
+/// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
+/// stops being producible, and CONSUMED comes due on the roster's next touch.
+///
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11138) -- WHICH DISSOLVES NOTHING, and is numbered
+/// here only to keep the ledger's sequence honest about the order these landed in. This change was
+/// authored believing it owed the three `gunbc#11071` consumed-row deletions; #11137 reached the
+/// roster first and paid them, so by the time this merged there was no debt left to pay. The
+/// original text claimed the deletion; that claim is corrected rather than carried, because a
+/// ledger recording one deletion twice is worse than one recording it once.
 ///
 /// gunbc#11138 string_eq collapse (2026-09-12). `fn string_eq(a: String, b: String) -> Bool
 /// { a == b }` was declared NINE times, byte-identical, across `v2.lens` -- one concept, nine
-/// homes, which is DESIGN §2 duplication in its plainest form. The nine copies are deleted and
-/// the single declaration now lives in `v2.std.text`, beside `char_eq`, its exact peer: both are
+/// homes, which is DESIGN §2 duplication in its plainest form. The nine copies are deleted and the
+/// single declaration now lives in `v2.std.text`, beside `char_eq`, its exact peer: both are
 /// equality folds over that module's own carrier, and `char_eq` is already the `eq` argument to
 /// `list_starts_with` exactly as `string_eq` is the `eq` argument to `contains`.
 ///
 /// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on both
-/// sides at every one of the 37 sites below, and what changed is which declaration it admits:
-/// base `{<the consuming module itself>}`, head `{v2.std.text}`. A name that was answered by the
-/// consumer's own copy is now answered by the shared one. That is a relocation, not an
+/// sides at every one of the 37 sites below, and what changed is which declaration it admits: base
+/// `{<the consuming module itself>}`, head `{v2.std.text}`. A name answered by the consumer's own
+/// copy is now answered by the shared one. That is a relocation, not an
 /// `AuthoredReferenceResolution`.
 ///
 /// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. THE NINE BODIES WERE
 /// BYTE-IDENTICAL -- `a == b`, same signature `(a: String, b: String) -> Bool` -- so every call
-/// site denotes exactly the function it denoted at the base. A body that differed anywhere would
-/// have made this a semantic change wearing a relocation's name, which is the thing this
-/// adjudication exists to rule out, so it was checked on all nine before the collapse rather than
-/// assumed from the shared spelling.
+/// site denotes exactly the function it denoted at the base. A body differing anywhere would have
+/// made this a semantic change wearing a relocation's name, which is what this adjudication exists
+/// to rule out, so all nine were compared before the collapse rather than assumed equal from the
+/// shared spelling.
 ///
 /// THE POPULATION IS COMPLETE AND MEASURED, not inferred: the required floor on this branch
-/// enumerated exactly 37 `TargetChanged binding ... `string_eq`` deltas and no delta of any other
+/// enumerated exactly 37 `TargetChanged binding ... string_eq` deltas and no delta of any other
 /// shape, and the rows below are that list one-for-one. `grep -c '^fn string_eq' src/v2/lens/**`
 /// goes 9 -> 0, and the one surviving declaration is in `v2.std.text`.
 ///
@@ -1747,6 +1796,20 @@ const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std
 /// `v2.std.text`, the delta stops being producible, and CONSUMED comes due on the roster's next
 /// touch -- adjudicated by the declaring-module join, not by this sentence.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
+        // The rationale, the safety adjudication and the trigger are in the doc comment on this
+        // const rather than repeated here. In one line: the bare `import
+        // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
+        // spelling's candidate set without changing what it resolves to.
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.tools.sha256sum",
+            in_declaration: "extdeps_external_authority_anchor",
+            spelling: "extdeps_external_authority_anchor",
+            target: "extdeps.tools.sha256sum",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: STRING_EQ_COLLAPSE_LABEL,
         subject: AdmissionSubject::Binding {

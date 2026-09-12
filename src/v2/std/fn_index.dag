@@ -292,14 +292,12 @@ fn callee_text_from_call(node: Node) -> String? {
 // are calls; what it still does, and the paragraph below says why, is scan its own accumulator on
 // every hit to deduplicate.
 //
-// THE ACCUMULATOR IS BUILT REVERSED AND TURNED ONCE, and that is the whole reason
-// callee_texts_in_subtree_reversed exists as its own function rather than being inlined. fold_node's
-// step receives a child's ALREADY-FOLDED result, so the only way to combine is a concat, and a
-// concat costs its LEFT argument. Appending the child onto the accumulator therefore copies
-// everything gathered so far on every edge; appending the accumulator onto the child copies only
-// that child's subtree. Each sub arrives reversed, so the reversed concatenations compose into
-// exact reverse preorder and one list_reverse at the top restores preorder. The named split is what
-// keeps the reversal from being invisible to a reader of either half.
+// fold_node's step receives a child's ALREADY-FOLDED result. `list_append` is concat; the executing
+// bridge `v1_rt::rc_list_concat` make_muts the left and clones the RIGHT. Combining
+// `list_append(left: acc, right: sub)` therefore copies only that child's callee list, the same
+// combine `node_subtree_nodes` uses, and the walk is already preorder (self, then children left to
+// right). The previous child-then-acc combine assumed concat charged the left; after the primitive
+// routing that cloned the growing acc on every sibling (DESIGN 6).
 //
 // DEDUPLICATION IS A LIST SCAN AND NOT A KEYED MAP. The rationale a reader cannot recover from the
 // code is that the keyed arm was WRITTEN and measured SLOWER here: a map is the one repair in this
@@ -311,8 +309,8 @@ fn callee_text_from_call(node: Node) -> String? {
 // re-derives the figures.
 //
 // The two repairs in this function that DO strictly remove work -- extracting during traversal
-// instead of materializing and filtering, and the concat that costs its left argument -- are kept,
-// because neither can be slower than what it replaced.
+// instead of materializing and filtering, and concatenating at the fold_node step rather than
+// materializing a full subtree list -- are kept, because neither can be slower than what it replaced.
 //
 // FIRST-OCCURRENCE ORDER IS PRESERVED EXACTLY, which is not incidental: the walk seeds its worklist
 // from this list, so a different order would reorder `reached` and change what every caller
@@ -321,7 +319,7 @@ fn callee_text_from_call(node: Node) -> String? {
 // The cost figures that motivated this shape are not transcribed here. They are re-derived by the
 // arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
 // produces them.
-fn callee_texts_in_subtree_reversed(node: Node) -> List<String> {
+fn callee_texts_in_subtree(node: Node) -> List<String> {
   fold_node(
     n: node,
     algebra: NodeFold {
@@ -331,13 +329,9 @@ fn callee_texts_in_subtree_reversed(node: Node) -> List<String> {
           Absent => empty_fn_arrow_string_list
         }
       },
-      step: fn(acc, _edge, sub) { list_append(left: sub, right: acc) }
+      step: fn(acc, _edge, sub) { list_append(left: acc, right: sub) }
     }
   )
-}
-
-fn callee_texts_in_subtree(node: Node) -> List<String> {
-  list_reverse(xs: callee_texts_in_subtree_reversed(node: node))
 }
 
 fn callees_from_node(node: Node, terminal_callee_symbols: List<String>) -> List<String> {

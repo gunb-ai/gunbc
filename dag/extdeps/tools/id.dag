@@ -1,6 +1,7 @@
 module extdeps.tools.id
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { NonEmptyStr, List, Bool, Unit }
+import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 

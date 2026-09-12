@@ -76,7 +76,26 @@ type DimmBuffering = Unbuffered | Registered | LoadReduced
 // 3DS is through-silicon-via die stacking presenting multiple logical ranks behind one physical
 // package load, which is precisely why a controller can admit it separately from ordinary
 // registered modules: the electrical load and the rank arithmetic differ.
-type DramDieStacking = MonolithicDie | ThreeDimensionalStacked
+//
+// THE THIRD VALUE IS JEDEC'S, NOT A VENDOR'S (2026-09-12). The DDR4 SPD "SDRAM Package Type"
+// byte (JESD21-C Annex L, byte 6) classifies a device as monolithic, a MULTI LOAD STACK, or a
+// SINGLE LOAD STACK. 3DS is the single-load stack: one chip-select, one electrical load, chip-ID
+// pins address the dies. A dual-die package (DDP, Micron's "Dual-Die") is the multi-load stack:
+// two dies in one package, each on its own CS/CKE/ODT, so the package presents two ranks and two
+// loads -- the same load count as two monolithic packages, in one footprint. The Micron DDR4
+// RDIMM Core Rev. B 12/2021 states the distinction in its C0-C2 pin description: "Some DDR4
+// modules support a traditional DDP package, which uses CS1_n, CKE1, and ODT1 to control the
+// second die. All other stack configurations, such as a 4H or 8H, are assumed to be single-load
+// (initiator/target) type configurations where C0, C1, and C2 are used as chip ID selects".
+//
+// Before this value existed the axis had no honest arm for a DDP module: MonolithicDie was a
+// lie about the package and ThreeDimensionalStacked a lie about the load, and the first such row
+// (extdeps.memory.micron mta36ads2g72pz_2g1a1_catalog) would have been graded by the Altra
+// admission fold against a class it does not belong to. rank_count and
+// dram_module_required_die_density are unchanged by the value: a DDP module's ranks are
+// CS-selected package ranks exactly like a monolithic two-rank module's, and density stays per
+// die, which is the figure JEDEC's ceiling bounds.
+type DramDieStacking = MonolithicDie | DualDiePackage | ThreeDimensionalStacked
 
 // The module class a controller admits, as the product of the two independent axes. Carried as a
 // record rather than an enum of named combinations so that a newly admitted pairing is a value,
@@ -93,8 +112,9 @@ fn dram_module_class_eq(a: DramModuleClass, b: DramModuleClass) -> Bool {
     LoadReduced => match b.buffering { LoadReduced => true  Unbuffered => false  Registered => false }
   })
     && (match a.stacking {
-      MonolithicDie => match b.stacking { MonolithicDie => true  ThreeDimensionalStacked => false }
-      ThreeDimensionalStacked => match b.stacking { ThreeDimensionalStacked => true  MonolithicDie => false }
+      MonolithicDie => match b.stacking { MonolithicDie => true  DualDiePackage => false  ThreeDimensionalStacked => false }
+      DualDiePackage => match b.stacking { DualDiePackage => true  MonolithicDie => false  ThreeDimensionalStacked => false }
+      ThreeDimensionalStacked => match b.stacking { ThreeDimensionalStacked => true  MonolithicDie => false  DualDiePackage => false }
     })
 }
 
