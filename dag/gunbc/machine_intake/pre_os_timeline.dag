@@ -8,8 +8,8 @@ import std.content_hash { Sha256Hash }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalAssessmentRefused, GoalIndeterminate }
 import std.algebra { FreeSemigroup, Empty }
 import gunbc.memory_observation { read_verified_memory_capture }
-import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope }
+import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, source_byte_fact }
 import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, range_end }
 import gunbc.machine_intake_pre_os_replay { pre_os_commit_binds_chunk, pre_os_same_source_generation, pre_os_envelope_binding_consistent, pre_os_continuity_covers_chunk, pre_os_occurrence_conflicts, pre_os_same_envelope, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
 import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
@@ -220,4 +220,16 @@ type PreOsReplayRequest { envelope: ObservationEnvelope, format: PreOsSourceForm
 func replay_pre_os_machine(machine: NonEmptyStr, requests: List<PreOsReplayRequest>, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
   let observations = map(requests, request => pre_os_read_observation(envelope: request.envelope, format: request.format))
   pre_os_machine_timeline(machine: machine, observations: observations, host_mac: host_mac, rendered_host_mac: rendered_host_mac, inventory_question: inventory_question)
+}
+
+// The production absence route obtains the byte standing from acquisition and
+// reads the exact artifact named by that envelope before asking the inventory
+// question. Callers cannot provide an unrelated payload or a silence flag here.
+func replay_pre_os_diagnostic_absence(envelope: ObservationEnvelope, question: PreOsInventoryQuestion, diagnostic: NonEmptyStr) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
+  let observation = pre_os_read_observation(envelope: envelope, format: PreOsConsoleText)
+  match observation.payload {
+    ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+    ObservationEstablished { observed: payload } => pre_os_diagnostic_absence(question: question, payload: payload,
+      source: source_byte_fact(envelope: envelope, requested: envelope.chunk.range), diagnostic: diagnostic),
+  }
 }
