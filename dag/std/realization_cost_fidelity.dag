@@ -77,16 +77,23 @@ import std.logic { Bool }
 // below reads `PrimitiveCostFact` directly, so one carrier answers at both grains. What remains is
 // the realized side, which is the frontier the paragraph above states.
 //
-// WHY THE CUT IS NOT MECHANICAL, stated because the obvious repair looks like a substitution and is
-// not one. Migrating `PrimitiveCostFact.cost` to `CostBound` and deriving the coarse rank through
-// `cost_bound_to_shape` would close the fork -- but the five populated rows record a shape and NO
-// PARAMETER, and every `CostBound` constructor needs one. The parameter is load-bearing here, not
-// decoration: `param_axis_comparison` keys on it and `param_union` matches it across the modeled
-// and realized sides, so an invented name produces a spurious axis and a fabricated verdict.
-// Recovering each row's real parameter from its primitive is modelling per primitive, not a
-// rewrite, and doing it by pattern-substitution would manufacture exactly the kind of fact this
-// authority exists to catch. The cut is therefore named here and sequenced separately rather than
-// performed inside a change that cannot establish its inputs.
+// WHY THE CUT WAS NOT MECHANICAL, AND WHAT PERFORMING IT ESTABLISHED. This paragraph used to defer
+// the migration, saying it was named here and sequenced separately; it has since been PERFORMED, so
+// what remains is the finding rather than the plan. The obvious repair looked like a substitution
+// and was not one: every `CostBound` constructor needs a parameter, `param_axis_comparison` keys on
+// it and `param_union` matches it across the modeled and realized sides, so an invented name
+// produces a spurious axis and a fabricated verdict -- the exact fact this authority exists to
+// catch, authored into its own inputs.
+//
+// TWO THINGS THE MIGRATION FOUND THAT THE DEFERRAL HAD ASSUMED. There are FIVE populated rows, not
+// the six this note claimed: the sixth was the `type PrimitiveCostFact` declaration, counted by a
+// grep. And NO row's parameter is recoverable from its signature -- three are `SignatureUngrounded`
+// and each states that authoring one would fabricate it, while the two grounded rows use
+// `FinitelySupportedFunctionProfile`, which supplies type params and a `FiniteSupport`
+// classification but NO cardinality variable. The axis for those two is therefore DERIVED from the
+// carrier's declared support by a single producer, and the other three carry their coarse fact with
+// a typed cause. `std.primitive_identity` owns that derivation and states its own next rung, which
+// is a parameter identity replacing the bare `String` in `AtomicCost`.
 //
 // WHAT THAT MEANS FOR A READER OF A GREEN RUN TODAY: this module can state a divergence and has
 // never been asked about a real one. Its arms are proven against authored costs, and the population
