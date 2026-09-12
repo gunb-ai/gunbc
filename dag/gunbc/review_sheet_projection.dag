@@ -194,67 +194,57 @@ fn read_derived_erasure_mark(cell: String) -> DerivedErasureMarkRead {
   }
 }
 
-fn kind_is_derived_field(kind: ReviewColumnKind) -> Bool {
-  match kind {
-    DerivedField { source_field: _ } => true
-    OperatorEntered => false
-    ListingStanding => false
-    DerivedErasureMark => false
-  }
-}
-
-fn kind_is_operator_entered(kind: ReviewColumnKind) -> Bool {
-  match kind {
-    OperatorEntered => true
-    DerivedField { source_field: _ } => false
-    ListingStanding => false
-    DerivedErasureMark => false
-  }
-}
-
-fn kind_is_listing_standing(kind: ReviewColumnKind) -> Bool {
-  match kind {
-    ListingStanding => true
-    DerivedField { source_field: _ } => false
-    OperatorEntered => false
-    DerivedErasureMark => false
-  }
-}
-
-fn kind_is_erasure_mark(kind: ReviewColumnKind) -> Bool {
-  match kind {
-    DerivedErasureMark => true
-    DerivedField { source_field: _ } => false
-    OperatorEntered => false
-    ListingStanding => false
-  }
-}
-
 type ObservedKindCell
   = KindCell { value: String }
   | KindAbsentFromSchema
   | KindColumnMissingFromHeader { column: NonEmptyStr }
 
-fn first_column_of_kind(schema: ReviewSheetSchema, keep: fn(ReviewColumnKind) -> Bool) -> ReviewColumn? {
-  schema.columns
-    |> filter(c => keep(c.kind))
-    |> first
-}
-
-fn schema_has_kind(schema: ReviewSheetSchema, keep: fn(ReviewColumnKind) -> Bool) -> Bool {
-  match first_column_of_kind(schema: schema, keep: keep) {
-    Present { value: _ } => true
-    Absent => false
+fn first_present_column(acc: ReviewColumn?, next: ReviewColumn?) -> ReviewColumn? {
+  match acc {
+    Present { value: found } => Present { value: found }
+    Absent => next
   }
 }
 
-fn observed_cell_of_kind(
-  schema: ReviewSheetSchema,
+fn first_derived_field_column(schema: ReviewSheetSchema) -> ReviewColumn? {
+  fold(schema.columns, init: none, f: fn(acc, col) {
+    first_present_column(acc: acc, next: match col.kind {
+      DerivedField { source_field: _ } => Present { value: col }
+      OperatorEntered => none
+      ListingStanding => none
+      DerivedErasureMark => none
+    })
+  })
+}
+
+fn first_listing_standing_column(schema: ReviewSheetSchema) -> ReviewColumn? {
+  fold(schema.columns, init: none, f: fn(acc, col) {
+    first_present_column(acc: acc, next: match col.kind {
+      ListingStanding => Present { value: col }
+      DerivedField { source_field: _ } => none
+      OperatorEntered => none
+      DerivedErasureMark => none
+    })
+  })
+}
+
+fn first_erasure_mark_column(schema: ReviewSheetSchema) -> ReviewColumn? {
+  fold(schema.columns, init: none, f: fn(acc, col) {
+    first_present_column(acc: acc, next: match col.kind {
+      DerivedErasureMark => Present { value: col }
+      DerivedField { source_field: _ } => none
+      OperatorEntered => none
+      ListingStanding => none
+    })
+  })
+}
+
+fn observed_cell_for_column(
   header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
-  keep: fn(ReviewColumnKind) -> Bool,
+  column: ReviewColumn?,
 ) -> ObservedKindCell {
-  match first_column_of_kind(schema: schema, keep: keep) {
+  match column {
     Absent => KindAbsentFromSchema
     Present { value: col } =>
       match header_by_name.lookup(col.name as String) {
@@ -458,11 +448,10 @@ fn read_row_listing_standing(
   header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
 ) -> ListingStandingRead? {
-  match observed_cell_of_kind(
-    schema: schema,
+  match observed_cell_for_column(
     header_by_name: header_by_name,
     row: row,
-    keep: kind_is_listing_standing,
+    column: first_listing_standing_column(schema: schema),
   ) {
     KindAbsentFromSchema => none
     KindColumnMissingFromHeader { column: _ } => none
@@ -475,11 +464,10 @@ fn read_row_erasure_mark(
   header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
 ) -> DerivedErasureMarkRead? {
-  match observed_cell_of_kind(
-    schema: schema,
+  match observed_cell_for_column(
     header_by_name: header_by_name,
     row: row,
-    keep: kind_is_erasure_mark,
+    column: first_erasure_mark_column(schema: schema),
   ) {
     KindAbsentFromSchema => none
     KindColumnMissingFromHeader { column: _ } => none
@@ -534,14 +522,6 @@ fn erasure_has_no_erasure_mark_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
   concat("derived payload erasure has no DerivedErasureMark column listing=", listing_id as String) as NonEmptyStr
 }
 
-fn schema_has_derived_field(schema: ReviewSheetSchema) -> Bool {
-  schema_has_kind(schema: schema, keep: kind_is_derived_field)
-}
-
-fn schema_has_erasure_mark(schema: ReviewSheetSchema) -> Bool {
-  schema_has_kind(schema: schema, keep: kind_is_erasure_mark)
-}
-
 fn first_erasure_not_on_sheet(
   erasures: List<DerivedPayloadErasure>,
   observed_by_id: Map<String, Bool>,
@@ -567,11 +547,10 @@ fn authorize_derived_payload_erasure(
     if in_projection {
       ErasureRefused { reason: erasure_still_projected_reason(listing_id: listing_id) }
     } else {
-      match observed_cell_of_kind(
-        schema: schema,
+      match observed_cell_for_column(
         header_by_name: header_by_name,
         row: row,
-        keep: kind_is_listing_standing,
+        column: first_listing_standing_column(schema: schema),
       ) {
         KindAbsentFromSchema =>
           ErasureRefused { reason: erasure_missing_standing_column_reason(listing_id: listing_id) }
@@ -583,14 +562,15 @@ fn authorize_derived_payload_erasure(
           match read_listing_standing(cell: cell) {
             StandingKnown { state: standing_state } =>
               if listing_standing_eq(a: standing_state, b: StandingGone) {
-                if schema_has_derived_field(schema: schema) {
-                  if schema_has_erasure_mark(schema: schema) {
-                    ErasureAuthorized
-                  } else {
-                    ErasureRefused { reason: erasure_has_no_erasure_mark_reason(listing_id: listing_id) }
-                  }
-                } else {
-                  ErasureRefused { reason: erasure_has_no_derived_field_reason(listing_id: listing_id) }
+                match first_derived_field_column(schema: schema) {
+                  Absent =>
+                    ErasureRefused { reason: erasure_has_no_derived_field_reason(listing_id: listing_id) }
+                  Present { value: _ } =>
+                    match first_erasure_mark_column(schema: schema) {
+                      Absent =>
+                        ErasureRefused { reason: erasure_has_no_erasure_mark_reason(listing_id: listing_id) }
+                      Present { value: _ } => ErasureAuthorized
+                    }
                 }
               } else {
                 ErasureRefused { reason: erasure_requires_gone_reason(listing_id: listing_id) }
@@ -643,14 +623,22 @@ fn col_and_listing(column: NonEmptyStr, listing_id: NonEmptyStr) -> String {
 
 fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -> NonEmptyStr? {
   let derived = derived_by_column(row: row)
-  schema.columns
-    |> filter(c => kind_is_derived_field(kind: c.kind))
-    |> filter(c => match derived.lookup(c.name as String) {
-      Absent => true
-      Present { value: _ } => false
-    })
-    |> map(c => c.name)
-    |> first
+  fold(schema.columns, init: none, f: fn(acc, col) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        match col.kind {
+          DerivedField { source_field: _ } =>
+            match derived.lookup(col.name as String) {
+              Absent => Present { value: col.name }
+              Present { value: _ } => none
+            }
+          OperatorEntered => none
+          ListingStanding => none
+          DerivedErasureMark => none
+        }
+    }
+  })
 }
 
 fn missing_schema_header(schema: ReviewSheetSchema, header_by_name: Map<String, Int>) -> NonEmptyStr? {
@@ -695,9 +683,14 @@ fn write_plan_touches_column(plan: ReviewSheetWritePlan, column: NonEmptyStr) ->
 }
 
 fn operator_column_names(schema: ReviewSheetSchema) -> List<NonEmptyStr> {
-  schema.columns
-    |> filter(c => kind_is_operator_entered(kind: c.kind))
-    |> map(c => c.name)
+  fold(schema.columns, init: [], f: fn(acc, col) {
+    match col.kind {
+      OperatorEntered => concat(acc, [col.name])
+      DerivedField { source_field: _ } => acc
+      ListingStanding => acc
+      DerivedErasureMark => acc
+    }
+  })
 }
 
 fn write_plan_covers_column_letter(plan: ReviewSheetWritePlan, letter: String) -> Bool {
