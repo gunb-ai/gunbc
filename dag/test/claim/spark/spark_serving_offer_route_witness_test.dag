@@ -226,6 +226,6 @@ test fn an_unidentified_service_does_not_bind_an_offer() -> Bool {
   match t_bind(route: spark_serving_route_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))) {
     SparkOfferBound { bound: _ } => false
     SparkOfferBindingRefused { group_wire: _, cause: c } =>
-      string_contains(s: c as String, pattern: "the SERVICE is not")
+      string_contains(s: c as String, pattern: "The SERVICE is not")
   }
 }

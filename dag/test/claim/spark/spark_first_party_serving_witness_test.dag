@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
-  CompliancePostureRevision,
+  CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
   ProviderPathUnread, ProviderPathLocated, ProviderPathAbsent,
 }
 import product.fabric.provider_admission {
@@ -163,18 +163,18 @@ fn t_not_engaged_naming(d: DispositionStanding, basis_decl: NonEmptyStr) -> Bool
   }
 }
 
+// THIS ROW NOW ASSERTS AT THE SEAM THAT OWNS THE DISPOSITIONS, and the move is forced rather than
+// stylistic. It used to read the three standings off an ADMITTED permit. After the telemetry repair
+// no realization admits -- the route facts are incomplete for every input, by design -- so the
+// permit arm is unreachable and a witness that asserts through it is asserting nothing. The
+// dispositions are not admission's to produce, though: they are produced by this module's own
+// spark_sanctions_disposition, spark_export_disposition and spark_prohibited_use_disposition, and
+// that is where the NOT-ENGAGED claim lives. Reading them there tests the same obligation without
+// routing it through a refusal that belongs to a different question.
 test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
-  match spark_first_party_admission(
-    realization: t_pair_realization(),
-    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
-    offer: t_offer(),
-  ) {
-    ProviderUseDenied { decision: _, cause: _ } => false
-    ProviderUseAdmitted { permit: p } =>
-      t_not_engaged_naming(d: p.evidence.sanctions_standing, basis_decl: "spark_sanctions_not_engaged" as NonEmptyStr)
-        && t_not_engaged_naming(d: p.evidence.export_standing, basis_decl: "spark_export_not_engaged" as NonEmptyStr)
-        && t_not_engaged_naming(d: p.evidence.prohibited_use_standing, basis_decl: "spark_prohibited_use_not_engaged" as NonEmptyStr)
-  }
+  t_not_engaged_naming(d: spark_sanctions_disposition(), basis_decl: "spark_sanctions_not_engaged" as NonEmptyStr)
+    && t_not_engaged_naming(d: spark_export_disposition(), basis_decl: "spark_export_not_engaged" as NonEmptyStr)
+    && t_not_engaged_naming(d: spark_prohibited_use_disposition(), basis_decl: "spark_prohibited_use_not_engaged" as NonEmptyStr)
 }
 
 // THE ARM IS READ THROUGH refusal_reason, WHICH IS THE MODULE'S OWN EXHAUSTIVE DERIVATION, rather
@@ -188,8 +188,55 @@ test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
 // RED -- "IT IS JUST SERVING US FOR NOW" IS ENFORCED BY EXECUTION. A use whose customer is anybody
 // but us reaches the same producer and is refused, and the refusal names the unsupported profile so
 // the remedy is the right one: get that profile sanctioned under a posture, not widen this one.
+// AN ISOLATING FIXTURE, AND WHAT IT IS NOT. After the telemetry repair every realization produces
+// an unread telemetry path, so spark_first_party_route_facts always refuses as
+// ProviderRouteFactsIncomplete -- correctly, and FIRST. That refusal would mask every obligation
+// downstream of it: a row asserting "a third-party customer is unsupported" would go green on a
+// route-facts refusal and prove nothing about customer scope. The reviewer named this hazard
+// exactly -- an earlier, correctly located refusal must not be presented as execution evidence for
+// a later one -- so the rows below take facts whose paths are all resolved and therefore reach the
+// question they are about.
+//
+// NOTHING HERE IS INVENTED, WHICH IS THE POINT. The closure is not built from a fabricated Located
+// value: every slot reuses this module's OWN on-site path, the one spark_first_party_route_facts
+// already produces for execution, storage and logs on operator-owned hardware. So the fixture says
+// "suppose the telemetry path were as established as the on-site ones already are", which is a
+// supposition about a FIXTURE INPUT and never a claim about a deployment. It does not assert that
+// telemetry is established, it does not reach production, and the row that WOULD assert it --
+// a positive control carrying launch-bound evidence -- is deliberately absent until such evidence
+// exists.
+fn t_facts_reaching_the_scope_checks() -> ProviderRouteFacts {
+  let f = spark_first_party_route_facts(realization: t_pair_realization())
+  let onsite = f.data_paths.execution
+  ProviderRouteFacts {
+    route: f.route,
+    contract_terms: f.contract_terms,
+    data_paths: ProviderDataPathClosure {
+      execution: onsite,
+      durable_storage: onsite,
+      backups: onsite,
+      logs: onsite,
+      telemetry: onsite,
+      control_plane: onsite,
+      support_access: onsite,
+      administrative_access: onsite,
+      spill: onsite,
+    },
+    downstream: f.downstream,
+    observed_at: f.observed_at,
+    facts_revision: f.facts_revision,
+  }
+}
+
 test fn a_non_first_party_use_refuses_as_unsupported() -> Bool {
-  match spark_first_party_admission(realization: t_pair_realization(), scope: t_third_party_scope(), offer: t_offer()) {
+  match admit_provider_use(
+    roster: spark_first_party_sanction_roster(),
+    facts: t_facts_reaching_the_scope_checks(),
+    active: spark_first_party_posture,
+    scope: t_third_party_scope(),
+    offer: t_offer(),
+    decision_receipt: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  ) {
     ProviderUseAdmitted { permit: _ } => false
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "customer scope unsupported"
   }
@@ -210,7 +257,7 @@ fn t_later_posture() -> CompliancePostureRevision {
 test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
   match admit_provider_use(
     roster: spark_first_party_sanction_roster(),
-    facts: spark_first_party_route_facts(realization: t_pair_realization()),
+    facts: t_facts_reaching_the_scope_checks(),
     active: t_later_posture(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
