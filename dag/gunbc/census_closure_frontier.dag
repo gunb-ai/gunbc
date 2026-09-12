@@ -44,6 +44,8 @@ import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontie
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 import gunbc.where_refinement_predicate_vocabulary { http_status_where_clause_names_declaration_frontier_rows }
 
+import product.fabric.job_admission { job_admission_frontier_rows }
+
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
     hetzner_money_rate_frontier_rows,
@@ -80,6 +82,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_permission_group_observation_frontier_rows,
     http_status_where_clause_names_declaration_frontier_rows,
     colo_types_frontier_rows,
+    job_admission_frontier_rows,
   ]
 }
 
