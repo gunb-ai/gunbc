@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_prerendered_body_carries_no_identity_of_its_source
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_prerendered_body_carries_no_identity_of_its_source: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_prerendered_body_carries_no_identity_of_its_source" as NonEmptyStr,
+
+  receipts: [
+    "**a pre-rendered body carries no identity of its source** (one deployment parameterizes a fold by the authority it should answer from, and the parameter reaches every surface that renders at REQUEST time -- but a surface rendered EARLIER, by a different process, and merely read back at request time, answers from whatever authority THAT process was given. The request-time parameter is real and the read-back is real; what does not exist is any record, on the bytes, of which authority produced them.",
+
+    "INVALID STATE: two processes of one deployment serving a response set derived from two different authorities, with no typed refusal and no observable at either end that distinguishes it from the coherent case.",
+
+    "WHY IT SURVIVES REVIEW, and why it is worth a row rather than a note: the parameterization is genuinely complete on both entries. Each half is individually correct, each is individually witnessed, and the seam is not inside any fold a reviewer reads -- it is between two processes that never exchange the parameter. A reviewer checking that the plan reaches every consumer finds that it does. A reviewer checking that the read-back is faithful finds that it is. The defect is that FAITHFUL TO WHAT is unanswerable from the artifact.",
+
+    "SPECIMEN (PR #10987). gunbc.roadmap_serve roadmap_serve_handle_over takes the roadmap plan as a parameter and every request-time surface reads it. The daily workspace page at path / does not render at request time: gunbc.roadmap_served_observation writes it at the belt tick through served_observation_observe_and_write_over, and the route serves the stored body. Supply a plan at the serve entry alone and / answers from the tick's plan, 200, no refusal. The two entries are both parameterized -- that is what makes this a seam rather than a missing parameter.",
+
+    "DISTINGUISHING FACTS, so the row discriminates rather than warning generally. It requires all three: a value parameterized at an entry; a consumer materialized by a DIFFERENT entry ahead of time; and a stored artifact whose schema omits the parameter it was derived under. Remove the third and the mismatch is detectable. A cache keyed by its inputs is NOT this class -- the key is exactly the identity this class lacks. A surface that recomputes per request is not this class either, because there is one process and one parameter.",
+
+    "NOT THE ABSORBING FALLBACK, and not a stale cache: nothing degrades and nothing widens. The stored body is a correct, current render of a coherent authority. What is false is only the implied claim that it is the authority THIS reader's entry was given, and that claim is made by juxtaposition rather than by any statement a fold could refuse.",
+
+    "RUNG: FOUND below the ladder -- a reader served a page derived from an authority they did not select, with no typed diagnostic anywhere -- and DESIGN 4b does not admit that as a low rung: silent wrongness is outside the ladder and forbidden outright. The specimen diff was the thing that created the constructor, so it could not file the row and ship the state.",
+
+    "RUNG NOW 1, mitigatable, and the split matters. The agreement is a DECLARED fact of the call (gunbc.roadmap_serve ServedDailyBodyAuthority): a caller that cannot state it gets a located refusal on that one route instead of a 200 from an unknown authority, so the UNDECLARED case is no longer silent and no longer reachable -- the coproduct has no third variant that serves. What remains is the DECLARED-BUT-FALSE case, where a caller asserts agreement its own tick does not honour. That is contained rather than prevented, because nothing on the serving side can check the assertion, and it is the residual the ceiling below is about. Stating rung 1 for the whole class rather than 3 for its refusing half is the 4b(1) rule that a class sits at the MINIMUM across its paths.",
+
+    "CEILING 3, structurally guaranteed, and NOT 4. The mismatch is a relation between two independently launched processes, so it cannot be made unconstructible -- nothing stops an operator from starting a tick on one authority and a server on another. What CAN be derived is the refusal: if the stored artifact carries the identity of the authority it was rendered under, the read-back compares it to the identity the serving entry was given and refuses with a located cause instead of answering 200. That replaces a TRUSTED declaration with a CHECKED one, which is the whole distance between rung 1 and the ceiling.",
+
+    "NEXT-RUNG TRIGGER, a capability rather than an artifact: a materialized-surface identity that binds a stored body to the authority it was derived under, sufficient for a read-back to decide agreement with the authority its own entry holds and to refuse on disagreement. Stamping a field into one snapshot type is not the trigger unless the read-back is obligated to consult it -- an identity nothing compares is the decoration DESIGN 4b names, and would leave the class exactly where it is while appearing to retire it.",
+
+    "REVIEW TELL: a diff that parameterizes an authority and then explains, in prose, that one surface is served from a body rendered elsewhere. Ask what the stored bytes say about which authority produced them. If the answer is nothing, the seam is undetectable, and the two wrong answers are to document it or to file it at a low rung -- both leave the forbidden state reachable. The available arm is refusal at a declared boundary, today, and the row is what carries the debt from there to the checked version.",
+  ],
+
+  evidence: [],
+}

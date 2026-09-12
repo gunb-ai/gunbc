@@ -1,5 +1,7 @@
 module v1.gunbc.occurrence_binding_parser_walk
 
+import extdeps.languages.dag.syntax { dag_parse_environment }
+
 import std.types { String, List, NonEmptyStr }
 import std.occurrence_identity {
   OccurrenceId,
@@ -50,7 +52,7 @@ fn parse_authored_occurrence_binding_source(
 ) -> ParsedOccurrenceBindingSource {
   let index = build_newline_index(file: file, source: source)
   let parsed = parse_with_table(
-    tokens: tokenize(source: source, file: file),
+    tokens: tokenize(source: source, file: file, env: dag_parse_environment),
     source_indices: map_insert(empty_map(), file, index),
     intern_table: empty_intern_table(),
   )

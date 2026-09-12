@@ -15,6 +15,9 @@ import extdeps.memory.types {
   dram_generation_ddr4,
   MonolithicDie,
 }
+import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
+import extdeps.memory.training { PhyWriteLeveling }
+import gunbc.host_memory_qualification { EvidenceUnobserved, PlatformTrainingFailure, part_implication }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { OneDimmPerChannel, TwoDimmsPerChannel }
 import gunbc.memory_provisioning { FullChannel, PopulationOption }
 import product.placement_supply { ProcurementReceiptIdentity }
@@ -54,7 +57,6 @@ import product.build_fulfillment {
   CeilingRefused,
   CeilingUnconstrainedByAnyLine,
   CompatibilityEstablished,
-  CompatibilityEvidenceUnread,
   CompatibilityUnread,
   IncludedInSystem,
   LedgerRefusedDraw,
@@ -81,6 +83,7 @@ import product.build_fulfillment {
   SupplyRowAbsent,
   SupplyRowDuplicated,
   SystemInclusion,
+  compatibility_of,
   derive_bom,
   historical_basis_consumed,
   incremental_cash_now,
@@ -421,7 +424,17 @@ test fn w_insufficient_owned_stock_falls_through_to_the_market() -> Bool {
 test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
   let unread = SupplyRow {
     part: dimm_ref,
-    compatibility: CompatibilityEvidenceUnread { obligation: "sample-qualify one module on this platform before committing to thirty-two" as NonEmptyStr },
+    compatibility: compatibility_of(implication: part_implication(
+      candidate: fixture_dimm,
+      failures: [PlatformTrainingFailure {
+        board: AsrockRackAltrad8ud1l2t,
+        step: PhyWriteLeveling,
+        standing: EvidenceUnobserved,
+        observed_population: [],
+        observed_at: 0,
+      }],
+      target_board: AsrockRackAltrad8ud1l2t,
+    )),
     owned: NoOwnedLot,
     market: MarketDepthCited {
       units_available: 400,
@@ -434,7 +447,8 @@ test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
     match r {
       LineResolved { line: _, fulfillment: f } =>
         match f {
-          CompatibilityUnread { part: _, obligation: _ } => true
+          CompatibilityUnread { part: _, obligation: o } =>
+            o == "observe platform training evidence for PHY write leveling"
           NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => false
           _ => acc
         }

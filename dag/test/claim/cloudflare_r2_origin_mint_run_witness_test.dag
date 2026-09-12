@@ -1,0 +1,433 @@
+module test.claim.cloudflare_r2_origin_mint_run
+
+import std.types { String, NonEmptyStr, Bool }
+import std.human_intervention { FleetOnce, human_intervention_frequency_eq }
+import extdeps.vendor { Vendor }
+import extdeps.vendor.cloudflare { cloudflare }
+import extdeps.cloudflare.r2 {
+  R2JurisdictionDefault,
+  r2_bucket_resource_name,
+  workers_r2_storage_bucket_item_read_permission_group_id,
+}
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, gcp_resource_names_this_version, secret_ref_version_resource }
+import std.allocation_roster {
+  AllocationAdmission,
+  AllocationAdmitted,
+  AllocationPrimaryKeyRepeated,
+  AllocationSecondaryKeyRepeated,
+  allocated_value,
+  build_allocation_roster,
+}
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountId,
+  CloudflareAccountAllocated,
+  CloudflareAccountUnallocated,
+  BootstrapCustodyPinned,
+  BootstrapCustodyUnrecorded,
+  fleet_cloudflare_account_standing,
+  cloudflare_account_allocation_intervention,
+  fleet_cloudflare_bootstrap_custody,
+  cloudflare_bootstrap_custody_intervention,
+  cloudflare_bootstrap_custody_version,
+  fabric_durable_origin_standing,
+  DurableOriginAllocated,
+  DurableOriginUnallocated,
+  DurableOriginStanding,
+  DurableOriginBucket,
+  FabricDurableOrigin,
+  BucketPurpose,
+  R2BucketAllocation,
+  bucket_purpose_key,
+  gunbc_fleet_r2_bucket_allocations,
+  allocated_bucket_name,
+  fleet_cloudflare_account_id,
+  fabric_durable_origin_read_secret_id,
+  fabric_durable_origin_read_secret_version,
+  fabric_durable_origin_read_access_key_id,
+  fabric_durable_origin_write_secret_id,
+  cloudflare_bootstrap_custody_secret_id,
+  FabricCommitManifestsAndContentAddressedOutputs,
+  OriginCredentialStanding,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
+}
+import gunbc.cloudflare.r2_permission_group_observe {
+  cloudflare_r2_bucket_item_write_observed_permission_group_id,
+}
+import gunbc.cloudflare.r2_permission_group_observe {
+  ObservedPermissionGroup,
+  observed_permission_group_by_id,
+}
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.cloudflare.r2_token_mint_run {
+  classify_r2_mint,
+  R2OriginObjectRead,
+  R2OriginObjectWrite,
+  origin_credential_pin_is_exact,
+  R2MintReady,
+  R2MintBootstrapCustodyUnrecorded,
+  R2MintAccountUnallocated,
+  R2MintOriginUnallocated,
+  R2MintAdmissionRefused,
+  bootstrap_burden_text,
+  origin_read_pin_is_exact,
+}
+
+// THE CUSTODY RED, NOW BORNE BY A FIXTURE RATHER THAN BY THE DECLARATIONS -- AND THE MOVE IS
+// RECORDED HERE BECAUSE IT WOULD OTHERWISE LOOK LIKE A WEAKENING. When this landed, the fleet had no
+// bootstrap token and fleet_cloudflare_bootstrap_custody() answered Unrecorded, so THIS red ran on
+// the declared path. The operator has since provisioned the token at version 1, so the declared path
+// correctly advances past custody and the arm is no longer reachable from the declarations.
+//
+// IT IS STILL EXECUTED EVIDENCE, WHICH IS THE WHOLE POINT OF SECTION 4b'S FIXTURE BOUNDARY: the
+// forbidden state is unrepresentable in the ACCEPTED declarations and perfectly representable as a
+// value handed to a pure classifier, so the wall keeps a discriminating red instead of quietly
+// becoming permanently green. Every future fleet credential begins in this arm.
+test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectRead,
+    account: fleet_cloudflare_account_standing(),
+    custody: BootstrapCustodyUnrecorded { intervention: cloudflare_bootstrap_custody_intervention() },
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintBootstrapCustodyUnrecorded { intervention: intervention } =>
+      human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
+        && string_contains(
+          s: intervention.instruction as String,
+          pattern: cloudflare_bootstrap_custody_secret_id as String)
+    R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE DECLARED PATH NOW REACHES READY, AND THE PINNED VERSION IS ASSERTED RATHER THAN ASSUMED. A
+// standing that recorded the container but floated its version would still classify Ready here, and
+// the fetch it authorizes would then be addressed to a moving target -- so the version is part of
+// what this test checks, not incidental to it.
+test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectRead,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintReady { account_id: _, bootstrap_locus: locus, request: _ } =>
+      (locus.secret as String) == (cloudflare_bootstrap_custody_secret_id as String)
+        && (locus.version as String) == (cloudflare_bootstrap_custody_version as String)
+        && (locus.version as String) != "latest"
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE FULL JOIN, AND IT IS WHAT PROVES THE DECLARATIONS ARE WIRED IN RATHER THAN MERELY PRESENT.
+// Reaching R2MintReady is not enough on its own: the admitted request must carry the declared
+// bucket's R2 resource name under the declared account, addressed at the declared jurisdiction,
+// granting exactly the cited Workers R2 Storage Bucket Item Read permission group. If the bucket
+// roster or the account id were ignored and a literal used anywhere in that chain, this join fails
+// while the classification still says Ready.
+// AN UNALLOCATED PURPOSE RENDERS A MARKER RATHER THAN AN EMPTY NAME, so a roster that stopped
+// answering makes every join below FAIL rather than compare two empty strings and agree.
+fn declared_bucket_name() -> String {
+  match allocated_bucket_name(purpose: FabricDurableOrigin {}) {
+    Present { value: name } => name as String
+    Absent => "<unallocated>"
+  }
+}
+
+test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectRead,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
+      (account_id as String) == (fleet_cloudflare_account_id as String)
+        && (locus.secret as String) == (cloudflare_bootstrap_custody_secret_id as String)
+        && string_contains(s: request.name, pattern: declared_bucket_name())
+        && all(request.policies, p =>
+             any(p.permission_groups, g =>
+               (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
+             && match map_get(p.resources, r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: declared_bucket_name())) {
+                  Present { value: scope } => scope == "*"
+                  none => false
+                })
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE ACCOUNT ARM IS STILL REACHABLE, WHICH IS WHY IT IS ASSERTED FROM A FIXTURE. This fleet's
+// account is allocated, so the arm is unreachable from the declarations -- and an arm no test can
+// reach is an arm nobody can trust. Section 4b's question is whether the RED is authorable
+// SOMEWHERE a check can run, and a pure classifier handed an unallocated standing is exactly that
+// place.
+test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectRead,
+    account: CloudflareAccountUnallocated {
+      company: cloudflare,
+      intervention: cloudflare_account_allocation_intervention(),
+    },
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintAccountUnallocated { intervention: intervention } =>
+      human_intervention_frequency_eq(a: intervention.frequency, b: FleetOnce)
+    R2MintReady { account_id: _, bootstrap_locus: _, request: _ } => false
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE ROSTER'S DUPLICATE REFUSAL, NOW ASSERTED AGAINST THE SHARED CARRIER AND REACHABLE ON BOTH
+// AXES. An earlier revision of this file had to record that the name-collision arm was UNREACHABLE,
+// because BucketPurpose has a single arm and two rows could therefore only ever collide on the
+// purpose axis. std.allocation_roster's carrier is generic over the row, so the second axis is
+// exercised here with an ordinary fixture row type -- the wall keeps a discriminating red on both
+// axes rather than one that is permanently green by construction.
+//
+// THE LIVE ROSTER IS ASSERTED ADMITTED IN THE SAME TEST, because a refusal nobody runs over the real
+// population is an inert check.
+type BucketRosterProbeRow {
+  left: String
+  right: String
+}
+
+fn bucket_roster_probe(left: String, right: String) -> BucketRosterProbeRow {
+  BucketRosterProbeRow { left: left, right: right }
+}
+
+fn bucket_roster_probe_admission(rows: List<BucketRosterProbeRow>) -> AllocationAdmission<String> {
+  build_allocation_roster(
+    rows: rows,
+    primary: row => row.left,
+    secondary: row => row.right,
+    value: row => row.right,
+  )
+}
+
+test fn r2_bucket_allocation_roster_refuses_a_duplicate_allocation() -> Bool {
+  match build_allocation_roster(
+    rows: gunbc_fleet_r2_bucket_allocations,
+    primary: row => bucket_purpose_key(purpose: row.purpose),
+    secondary: row => row.bucket_name as String,
+    value: row => row.bucket_name,
+  ) {
+    AllocationAdmitted { roster: _ } => true
+    AllocationPrimaryKeyRepeated { key: _ } => false
+    AllocationSecondaryKeyRepeated { key: _ } => false
+  }
+    && match bucket_roster_probe_admission(rows: [
+         bucket_roster_probe(left: "p1", right: "a"),
+         bucket_roster_probe(left: "p1", right: "b"),
+       ]) {
+         AllocationPrimaryKeyRepeated { key: dup } => dup == "p1"
+         AllocationAdmitted { roster: _ } => false
+         AllocationSecondaryKeyRepeated { key: _ } => false
+       }
+    && match bucket_roster_probe_admission(rows: [
+         bucket_roster_probe(left: "p1", right: "shared"),
+         bucket_roster_probe(left: "p2", right: "shared"),
+       ]) {
+         AllocationSecondaryKeyRepeated { key: dup } => dup == "shared"
+         AllocationAdmitted { roster: _ } => false
+         AllocationPrimaryKeyRepeated { key: _ } => false
+       }
+}
+
+// A COLLIDING ROSTER SERVES NOTHING RATHER THAN A WINNER, asserted through the fused lookup because
+// that is the shape production uses. With the carrier unable to hold a duplicate, this is what the
+// refused BUILD does at the one fallible ingress.
+test fn r2_bucket_colliding_roster_serves_no_value() -> Bool {
+  match allocated_value(
+    rows: [
+      bucket_roster_probe(left: "p1", right: "shared"),
+      bucket_roster_probe(left: "p2", right: "shared"),
+    ],
+    wanted: "p1",
+    primary: row => row.left,
+    secondary: row => row.right,
+    value: row => row.right,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE ORIGIN DECLARATION ITSELF, asserted so that a later edit that repoints the read credential
+// somewhere other than the container the mint writes is caught. The two are one fact and they are
+// spelled in one place; this is the join that proves it stayed that way.
+test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: bucket } =>
+      match bucket.read_credential {
+        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
+          (locus.secret as String) == (fabric_durable_origin_read_secret_id as String)
+            && (locus.project as String) == (fleet_secrets_gcp_project as String)
+            && (locus.version as String) == (fabric_durable_origin_read_secret_version as String)
+            && (locus.version as String) != "latest"
+            && (access_key_id as String) == (fabric_durable_origin_read_access_key_id as String)
+      }
+        && (bucket.bucket_name as String) == (declared_bucket_name())
+        && match bucket.admits {
+             FabricCommitManifestsAndContentAddressedOutputs {} => true
+           }
+  }
+}
+
+// THE WRITE CREDENTIAL IS UNMINTED AND SAYS WHICH ENTRY MINTS IT. This is the state the origin is
+// declared in until run_object_write has executed; the test pins the arm AND the entry it names,
+// so a pin that lands later must retire this test deliberately (turning it into the write twin of
+// the read test above) rather than leaving a stale expectation green.
+test fn r2_origin_bucket_write_credential_is_unminted_and_names_its_mint_entry() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: bucket } =>
+      match bucket.write_credential {
+        OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+        OriginCredentialUnminted { mint_entry: entry } =>
+          (entry.module_path as String) == "gunbc.cloudflare.r2_token_mint_run"
+            && (entry.decl_name as String) == "run_object_write"
+      }
+        && !origin_credential_pin_is_exact(credential: bucket.write_credential)
+  }
+}
+
+// THE WRITE MINT CLASSIFIES READY ON THE SAME DECLARATIONS AND CARRIES THE OBSERVED WRITE GROUP,
+// NOT THE PINNED READ ONE. The join is cross-authority: the group id comes from the observation
+// module, the bucket resource from the origin, the account from the account standing; if the
+// profile dispatch handed the write entry the read request, the group check fails while the
+// classification still says Ready.
+test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectWrite,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
+      string_contains(s: request.name, pattern: "-object-write")
+        && all(request.policies, p =>
+             any(p.permission_groups, g =>
+               (g.id as String) == (cloudflare_r2_bucket_item_write_observed_permission_group_id as String))
+             && !any(p.permission_groups, g =>
+               (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
+             && match map_get(p.resources, r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: declared_bucket_name())) {
+                  Present { value: scope } => scope == "*"
+                  none => false
+                })
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+  }
+}
+
+// THE PIN'S RESOURCE NAME JOINS THIS FLEET'S PROJECT NUMBER, not a transcribed AccessVersion string.
+// secret_ref_version_resource is derived from the origin declaration; gcp_resource_names_this_version
+// is the same identity join the bootstrap fetch uses. A pin that names another project fails while
+// fleet_secrets_project_number stays put.
+test fn r2_origin_read_pin_names_this_project_version() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: bucket } =>
+      match bucket.read_credential {
+        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialPinned { access_key_id: _, token_value: locus } =>
+          gcp_resource_names_this_version(
+            returned: secret_ref_version_resource(ref: locus),
+            ref: locus,
+            project_number: fleet_secrets_project_number,
+          )
+      }
+  }
+}
+
+fn origin_with_latest_read_pin() -> DurableOriginStanding {
+  DurableOriginAllocated {
+    bucket: DurableOriginBucket {
+      bucket_name: "gunbai-fabric-origin",
+      jurisdiction: R2JurisdictionDefault,
+      admits: FabricCommitManifestsAndContentAddressedOutputs {},
+      read_credential: OriginCredentialPinned {
+        access_key_id: fabric_durable_origin_read_access_key_id,
+        token_value: secret_ref_pin_version(
+          ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+          version: "latest",
+        ),
+      },
+      write_credential: OriginCredentialPinned {
+        access_key_id: fabric_durable_origin_read_access_key_id,
+        token_value: secret_ref_pin_version(
+          ref: fleet_secret_ref(secret_id: fabric_durable_origin_write_secret_id),
+          version: "latest",
+        ),
+      },
+    }
+  }
+}
+
+// THE DISCRIMINATING RED IS A FIXTURE, same move as the absent-bootstrap-custody test. latest is
+// representable as a standing handed to the classifier even though the accepted origin pin is
+// exact. origin_read_pin_is_exact on the declared standing is the positive control.
+test fn origin_read_pin_is_exact_is_false_for_latest() -> Bool {
+  !origin_read_pin_is_exact(origin: origin_with_latest_read_pin())
+    && origin_read_pin_is_exact(origin: fabric_durable_origin_standing())
+}
+
+// THE BURDEN IS PRICED BY THE ENTRY, which is the dissolution this change claims for
+// cloudflare_r2_token_human_burden's frontier row. The refusal text is derived from the burden's own
+// interventions rather than restated, so this asserts the derivation reaches the dashboard ceremony's
+// words. A row dissolved on a trigger nothing executes is the section 4b(3) failure; this is the
+// executed half of that claim.
+test fn r2_origin_mint_refusal_prices_the_dashboard_bootstrap() -> Bool {
+  string_contains(s: bootstrap_burden_text(), pattern: "Super Administrator")
+    && string_contains(s: bootstrap_burden_text(), pattern: "Account API Tokens Write")
+}
+
+// THE ACCOUNT STANDING CITES THE VENDOR ENTITY, which is the dissolution this change claims for
+// vendor_cloudflare_frontier_rows: a gunbc declaration that names this fleet's Cloudflare account and
+// cites extdeps.vendor.cloudflare as the company.
+test fn r2_origin_account_standing_cites_the_cloudflare_vendor_entity() -> Bool {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: company, intervention: _ } =>
+      company.legal_name == cloudflare.legal_name
+    CloudflareAccountAllocated { company: company, account_id: _ } =>
+      company.legal_name == cloudflare.legal_name
+  }
+}
+
+// THE OBSERVATION IS JOINED TO THE PINNED FACT, WHICH IS WHAT MAKES THE RECORDED ROWS CONSUMED
+// RATHER THAN DANGLING. extdeps.cloudflare.r2 pins the read group id as a modeled fact; the listing
+// this fleet performed returned that same id with the name and bucket scope the model assumes. If
+// either side is edited without the other -- the pin changed, or the observation re-recorded from a
+// different account -- this join fails, which is the only thing that makes recording the observation
+// worth more than a note.
+test fn r2_observed_permission_groups_agree_with_the_pinned_read_id() -> Bool {
+  match observed_permission_group_by_id(id: workers_r2_storage_bucket_item_read_permission_group_id as String) {
+    Present { value: observed } =>
+      observed.name == "Workers R2 Storage Bucket Item Read"
+        && observed.scope == "com.cloudflare.edge.r2.bucket"
+    Absent => false
+  }
+}
+

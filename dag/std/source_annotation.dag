@@ -2,6 +2,7 @@ module std.source_annotation
 // The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 
 import std.types { String, SourceSpan, List, Bool }
+import std.algebra { FreeSemigroup }
 import std.occurrence_identity { OccurrenceId }
 
 // Placement is OBSERVED at capture, not reconstructed later, because it cannot be reconstructed later. Whitespace and line structure are consumed before the parser sees anything, so once they are gone `fn a() -> Int { 1 } // text` followed by `fn b()` leaves residue identical to a leading annotation on b — two opposite meanings, one byte pattern. LeadingAfterLineIndent means only indentation preceded the annotation on its line; TrailingAfterSemanticToken means a semantic token did. Only the leading form is eligible for attachment in the first realization; trailing refuses until its attachment rule is separately modeled.
@@ -84,17 +85,12 @@ type AnnotationAttachment
   = AnnotationAttached { row: SourceAnnotationDebt }
   | AnnotationRefused { refusal: AnnotationAttachmentRefusal }
 
-type NonEmptyAnnotationAttachmentRefusals {
-  head: AnnotationAttachmentRefusal
-  tail: List<AnnotationAttachmentRefusal>
-}
-
 type AnnotationAdmission
   = AnnotationsAdmitted { graph: SourceAnnotationGraph }
-  | AnnotationsRefused { refusals: NonEmptyAnnotationAttachmentRefusals }
+  | AnnotationsRefused { refusals: FreeSemigroup<AnnotationAttachmentRefusal> }
 
 fn non_empty_refusals_all(
-  refusals: NonEmptyAnnotationAttachmentRefusals
+  refusals: FreeSemigroup<AnnotationAttachmentRefusal>
 ) -> List<AnnotationAttachmentRefusal> {
   concat([refusals.head], refusals.tail)
 }
@@ -132,7 +128,7 @@ fn admit_annotations(result: AnnotationAttachmentResult) -> AnnotationAdmission 
     Absent => AnnotationsAdmitted { graph: result.graph }
     Present { value: head } =>
       AnnotationsRefused {
-        refusals: NonEmptyAnnotationAttachmentRefusals {
+        refusals: FreeSemigroup {
           head: head,
           tail: skip(result.refusals, 1),
         },

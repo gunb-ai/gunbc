@@ -1,6 +1,6 @@
 module gunbc.runner.runner_host_filtered_egress
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,

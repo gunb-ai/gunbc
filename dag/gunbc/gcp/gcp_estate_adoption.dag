@@ -1,0 +1,431 @@
+module gunbc.gcp_estate_adoption
+
+import std.types { String, NonEmptyStr, List, Bool }
+import v2.std.optional { Present }
+import std.upsert_decision {
+  UpsertClassification,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  Noop,
+  Apply,
+  Refuse,
+}
+import gunbc.auth.github_gcp_federation {
+  github_wif_pool_id,
+  github_wif_provider_id,
+  github_wif_attribute_condition,
+  github_wif_principal_set,
+  github_wif_issuer_uri,
+  fleet_secrets_project_number,
+}
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import gunbc.gcp_estate_observation {
+  GcpEstateSubject,
+  EstateProject,
+  EstateEnabledService,
+  EstateServiceAccount,
+  EstateWifPool,
+  EstateWifProvider,
+  EstateIamBindingCell,
+  ObservedWifPool,
+  ObservedWifProvider,
+  ObservedPrincipalSetBinding,
+  GcpEstateCensus,
+  EstateObserved,
+  EstateUnread,
+  fleet_cloud_convergence_sa_email,
+  role_iam_workload_identity_user,
+  census_github_actions_provider_is_unread,
+  census_coverage_has_unread,
+}
+
+// PEER of gunbc.host_converge, not a fork of it. Hosts converge knobs on a machine; this
+// module classifies cloud subjects with the shared std.upsert_decision algebra. It does
+// not copy HostConverge.
+//
+// SELECTION PRECEDES CONVERGENCE: the desired roster below is the authority for what SHOULD
+// exist. The fold decides per subject handed to it. It does not enumerate Apply subjects
+// from the live estate.
+//
+// THIS MODULE DOES NOT ACTUATE. Apply is a decision, not a cloud write. Converge creates
+// and updates; it does not delete or disable. There is no flag that proceeds past a Refuse.
+
+type GcpEstateAdoptionPlan
+  = CreateSubject
+  | UpdateSubject
+
+type GcpUndeclaredFinding {
+  subject: GcpEstateSubject
+  location: NonEmptyStr
+}
+
+type DriftPolicy
+  = DriftApplyUpdate
+  | DriftRefuse { reason: NonEmptyStr }
+
+type DesiredWifPool {
+  project_number: String
+  pool_id: NonEmptyStr
+}
+
+type DesiredWifProvider {
+  project_number: String
+  pool_id: NonEmptyStr
+  provider_id: NonEmptyStr
+  issuer_uri: String
+  attribute_condition: String
+}
+
+type DesiredPrincipalSetBinding {
+  account: ServiceAccountEmail
+  role: String
+  member: String
+}
+
+type GcpEstateDesiredRoster {
+  wif_pools: List<DesiredWifPool>
+  wif_providers: List<DesiredWifProvider>
+  principal_set_bindings: List<DesiredPrincipalSetBinding>
+}
+
+fn drift_policy_for(subject: GcpEstateSubject) -> DriftPolicy {
+  match subject {
+    EstateProject { project_id: _, project_number: _ } => DriftRefuse {
+      reason: "project identity drift is not a create/update this fold may apply" as NonEmptyStr,
+    }
+    EstateEnabledService { project_id: _, service_id: _ } => DriftRefuse {
+      reason: "enabling is Apply on absence; disabling an already-enabled service is refused because Google documents resource destruction" as NonEmptyStr,
+    }
+    EstateServiceAccount { email: _ } => DriftRefuse {
+      reason: "service-account disable/delete is refused; only create on absence is Apply" as NonEmptyStr,
+    }
+    EstateWifPool { project_number: _, pool_id: _ } => DriftRefuse {
+      reason: "updating a pool by deleting or disabling it invalidates every federation through it" as NonEmptyStr,
+    }
+    EstateWifProvider { project_number: _, pool_id: _, provider_id: _ } => DriftApplyUpdate
+    EstateIamBindingCell { account: _, role: _, member: _ } => DriftRefuse {
+      reason: "IAM cell removal can lock the operator out; missing desired cells Apply, extra cells are undeclared findings, not deletes" as NonEmptyStr,
+    }
+  }
+}
+
+fn gcp_estate_desired_github_actions_pool() -> DesiredWifPool {
+  DesiredWifPool {
+    project_number: fleet_secrets_project_number,
+    pool_id: github_wif_pool_id,
+  }
+}
+
+fn gcp_estate_desired_github_oidc_provider() -> DesiredWifProvider {
+  DesiredWifProvider {
+    project_number: fleet_secrets_project_number,
+    pool_id: github_wif_pool_id,
+    provider_id: github_wif_provider_id,
+    issuer_uri: github_wif_issuer_uri as String,
+    attribute_condition: github_wif_attribute_condition(),
+  }
+}
+
+fn gcp_estate_desired_convergence_binding() -> DesiredPrincipalSetBinding {
+  DesiredPrincipalSetBinding {
+    account: fleet_cloud_convergence_sa_email,
+    role: role_iam_workload_identity_user,
+    member: github_wif_principal_set(),
+  }
+}
+
+fn gcp_estate_desired_roster() -> GcpEstateDesiredRoster {
+  GcpEstateDesiredRoster {
+    wif_pools: [gcp_estate_desired_github_actions_pool()],
+    wif_providers: [gcp_estate_desired_github_oidc_provider()],
+    principal_set_bindings: [gcp_estate_desired_convergence_binding()],
+  }
+}
+
+fn classify_desired_wif_pool(
+  desired: DesiredWifPool,
+  census: GcpEstateCensus,
+) -> UpsertClassification<GcpEstateAdoptionPlan> {
+  let matched = fold(
+    census.wif_pools,
+    init: none,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } =>
+          if p.project_number == desired.project_number && p.pool_id == desired.pool_id {
+            if p.disabled {
+              Present {
+                value: UpsertClassification {
+                  verdict: Drifted,
+                  decision: Refuse {
+                    reason: "observed pool is disabled; converge does not enable-by-delete-or-disable inversion and will not disable" as NonEmptyStr,
+                  },
+                },
+              }
+            } else {
+              Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
+            }
+          } else {
+            acc
+          }
+      }
+    },
+  )
+  match matched {
+    Present { value: c } => c
+    _ =>
+      if census_coverage_has_unread(rows: census.wif_pools) {
+        inaccessible_desired_subject()
+      } else {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } }
+      }
+  }
+}
+
+fn classify_desired_wif_provider(
+  desired: DesiredWifProvider,
+  census: GcpEstateCensus,
+) -> UpsertClassification<GcpEstateAdoptionPlan> {
+  let matched = fold(
+    census.wif_providers,
+    init: none,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } =>
+          if p.project_number == desired.project_number
+            && p.pool_id == desired.pool_id
+            && p.provider_id == desired.provider_id {
+            if p.attribute_condition == desired.attribute_condition
+              && p.issuer_uri == desired.issuer_uri {
+              Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
+            } else {
+              match drift_policy_for(subject: observed_provider_subject(p: p)) {
+                DriftApplyUpdate => Present {
+                  value: UpsertClassification {
+                    verdict: Drifted,
+                    decision: Apply { plan: UpdateSubject },
+                  },
+                }
+                DriftRefuse { reason: reason } => Present {
+                  value: UpsertClassification {
+                    verdict: Drifted,
+                    decision: Refuse { reason: reason },
+                  },
+                }
+              }
+            }
+          } else {
+            acc
+          }
+      }
+    },
+  )
+  match matched {
+    Present { value: c } => c
+    _ =>
+      if census_coverage_has_unread(rows: census.wif_providers)
+        || census_github_actions_provider_is_unread(census: census) {
+        inaccessible_desired_subject()
+      } else {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } }
+      }
+  }
+}
+
+fn classify_desired_binding(
+  desired: DesiredPrincipalSetBinding,
+  census: GcpEstateCensus,
+) -> UpsertClassification<GcpEstateAdoptionPlan> {
+  let matched = fold(
+    census.principal_set_bindings,
+    init: none,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: b } =>
+          if b.account == desired.account && b.role == desired.role && observed_member_eq(b: b, member: desired.member) {
+            Present { value: UpsertClassification { verdict: Converged, decision: Noop } }
+          } else {
+            acc
+          }
+      }
+    },
+  )
+  match matched {
+    Present { value: c } => c
+    _ =>
+      if census_coverage_has_unread(rows: census.principal_set_bindings) {
+        inaccessible_desired_subject()
+      } else {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: CreateSubject } }
+      }
+  }
+}
+
+fn observed_member_eq(b: ObservedPrincipalSetBinding, member: String) -> Bool {
+  match b.member {
+    Present { value: m } => m == member
+    _ => false
+  }
+}
+
+fn observed_provider_subject(p: ObservedWifProvider) -> GcpEstateSubject {
+  EstateWifProvider {
+    project_number: p.project_number,
+    pool_id: p.pool_id,
+    provider_id: p.provider_id,
+  }
+}
+
+fn observed_pool_subject(p: ObservedWifPool) -> GcpEstateSubject {
+  EstateWifPool { project_number: p.project_number, pool_id: p.pool_id }
+}
+
+fn pool_is_desired(p: ObservedWifPool, roster: GcpEstateDesiredRoster) -> Bool {
+  fold(
+    roster.wif_pools,
+    init: false,
+    f: fn(acc, d) {
+      acc || (d.project_number == p.project_number && d.pool_id == p.pool_id)
+    },
+  )
+}
+
+fn provider_is_desired(p: ObservedWifProvider, roster: GcpEstateDesiredRoster) -> Bool {
+  fold(
+    roster.wif_providers,
+    init: false,
+    f: fn(acc, d) {
+      acc || (
+        d.project_number == p.project_number
+          && d.pool_id == p.pool_id
+          && d.provider_id == p.provider_id
+      )
+    },
+  )
+}
+
+fn binding_is_desired(b: ObservedPrincipalSetBinding, roster: GcpEstateDesiredRoster) -> Bool {
+  fold(
+    roster.principal_set_bindings,
+    init: false,
+    f: fn(acc, d) {
+      acc || (d.account == b.account && d.role == b.role && observed_member_eq(b: b, member: d.member))
+    },
+  )
+}
+
+fn undeclared_findings(
+  roster: GcpEstateDesiredRoster,
+  census: GcpEstateCensus,
+) -> List<GcpUndeclaredFinding> {
+  let from_pools = fold(
+    census.wif_pools,
+    init: [],
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } =>
+          if pool_is_desired(p: p, roster: roster) {
+            acc
+          } else {
+            acc |> list_push(GcpUndeclaredFinding {
+              subject: observed_pool_subject(p: p),
+              location: concat("workloadIdentityPools/", p.pool_id as String) as NonEmptyStr,
+            })
+          }
+      }
+    },
+  )
+  let from_providers = fold(
+    census.wif_providers,
+    init: from_pools,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: p } =>
+          if provider_is_desired(p: p, roster: roster) {
+            acc
+          } else {
+            acc |> list_push(GcpUndeclaredFinding {
+              subject: EstateWifProvider {
+                project_number: p.project_number,
+                pool_id: p.pool_id,
+                provider_id: p.provider_id,
+              },
+              location: concat(
+                concat("workloadIdentityPools/", p.pool_id as String),
+                concat("/providers/", p.provider_id as String),
+              ) as NonEmptyStr,
+            })
+          }
+      }
+    },
+  )
+  fold(
+    census.principal_set_bindings,
+    init: from_providers,
+    f: fn(acc, row) {
+      match row {
+        EstateUnread { gap: _ } => acc
+        EstateObserved { value: b } =>
+          if binding_is_desired(b: b, roster: roster) {
+            acc
+          } else {
+            acc |> list_push(GcpUndeclaredFinding {
+              subject: EstateIamBindingCell {
+                account: b.account,
+                role: b.role,
+                member: b.member,
+              },
+              location: concat("iamPolicy/", b.account as String) as NonEmptyStr,
+            })
+          }
+      }
+    },
+  )
+}
+
+fn classify_undeclared(finding: GcpUndeclaredFinding) -> UpsertClassification<GcpEstateAdoptionPlan> {
+  UpsertClassification {
+    verdict: Conflict,
+    decision: Refuse {
+      reason: concat(
+        "undeclared present: ",
+        finding.location as String,
+      ) as NonEmptyStr,
+    },
+  }
+}
+
+fn undeclared_decision_never_applies(finding: GcpUndeclaredFinding) -> Bool {
+  match classify_undeclared(finding: finding) {
+    UpsertClassification { verdict: _, decision: Apply { plan: _ } } => false
+    UpsertClassification { verdict: _, decision: Noop } => false
+    UpsertClassification { verdict: _, decision: Refuse { reason: _ } } => true
+  }
+}
+
+fn classify_desired_binding_is_absent_create(
+  desired: DesiredPrincipalSetBinding,
+  census: GcpEstateCensus,
+) -> Bool {
+  match classify_desired_binding(desired: desired, census: census) {
+    UpsertClassification { verdict: Absent, decision: Apply { plan: _ } } => true
+    _ => false
+  }
+}
+
+fn inaccessible_desired_subject() -> UpsertClassification<GcpEstateAdoptionPlan> {
+  UpsertClassification {
+    verdict: Inaccessible,
+    decision: Refuse {
+      reason: "desired subject was not readable; absence must not be inferred from an unread project" as NonEmptyStr,
+    },
+  }
+}

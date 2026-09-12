@@ -7,6 +7,7 @@ import gunbc.fleet_converge_workflow {
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope,
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
+  RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
@@ -346,29 +347,27 @@ test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool 
 // THE VOCABULARY IS THE ONLY SPELLING AUTHORITY, and these are the facts that make that a claim
 // rather than a hope.
 //
-// COUNT AND DISTINCTNESS TOGETHER. The count alone is not enough: two members returning the same
-// wire string would still meet it, and the dispatch menu would silently offer one option twice while
-// one mode became unselectable. Counting the DISTINCT wire values is what refuses that.
-//
-// THE LITERAL MOVED FROM FIFTEEN TO SIXTEEN when HostResetReturn was added, and the roster
-// annotation in gunbc.fleet_converge_workflow says why a literal is here at all: nothing reflects
-// over a closed vocabulary to produce its members, so fleet_converge_workflow_modes is hand-ordered
-// and this count is what makes a member DROPPED from that roster visible. The count is grounded in
-// the coproduct, not copied from a measurement of itself -- adding a variant without rostering it
-// leaves the type and the roster disagreeing, and this is the only place that disagreement is loud.
-test fn the_mode_vocabulary_members_have_that_many_distinct_wire_values() -> Bool {
+// DISTINCTNESS, NOT A CENSUS LITERAL. Two members returning the same wire would still populate the
+// menu twice while one mode became unselectable; unique wires refuse that. A count equality
+// against a hand-updated N is a change detector: updating N when the roster grows collapses the
+// assertion to measure() == measure() (DESIGN §5). The coproduct-vs-roster drop is still the
+// known stall (roster_re_enumerates_its_own_rows_stall); this witness cannot mint that join, and
+// a literal does not substitute for it. What it CAN join is identities: the mode this lane added
+// is on the roster, every dispatch option is some rostered mode's wire, and every rostered wire is
+// a dispatch option.
+test fn the_password_session_tool_mode_is_on_the_roster_with_distinct_wires() -> Bool {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
-  count(fleet_converge_workflow_modes) == 16
-    && count(wires) == 16
+  any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerPasswordSessionToolConverge))
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
 // EVERY DISPATCH OPTION IS A WIRE VALUE, tying the menu GitHub renders to the vocabulary rather than
-// to a hand-kept list that merely happens to agree with it today.
+// to a hand-kept list that merely happens to agree with it today. The join is both directions, so
+// a roster row with no option and an option with no row are both red.
 test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
-  count(fleet_converge_mode_options) == 16
-    && all(fleet_converge_mode_options, o => any(wires, w => w == o))
+  all(fleet_converge_mode_options, o => any(wires, w => w == o))
+    && all(wires, w => any(fleet_converge_mode_options, o => o == w))
 }
 
 // THE STEP CONDITION IS DERIVED, not spelled beside the option. The discriminating half is the

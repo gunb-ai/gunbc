@@ -14,17 +14,19 @@ import std.types { String, Bool, List }
 //
 // THE HOST REALIZATION IS A DECLARED PARALLEL REPRESENTATION WITH AN EXECUTING JOIN, NOT A TWIN
 // LEFT TO DRIFT. claim_executor's RequiredCiPhase enum realizes this coproduct, and every
-// --required-ci run joins the two BEFORE running any phase: set equality over this declaration's
-// variant names, both directions, so "declared here and not realized" and "realized and not
-// declared" are separate refusals that stop the line (the join shape
-// v1_compiler.namespace_wave_admission vocabulary_findings executes against its disposition
-// authority). The join deliberately does NOT cover lane ownership -- the host lane match is not
-// readable from the declaration index -- and that residue is honest for enrolment truth: both lanes
-// execute in every required run, so a lane divergence can move a phase between two jobs that both
-// run; it cannot un-enrol one. The terminal state is the census's dissolution row: the workflow
-// emission consumes this roster whole and the host enum, lane match and REQUIRED_CI_PHASES list
-// delete atomically. Until then the parallel representation is this module's declared debt and the
-// per-run join is its wall.
+// --required-ci run joins the two BEFORE running any phase, at two grains: set equality over this
+// declaration's variant names (existence, read off the declaration index on the parse phase's
+// ingestion), and set equality over required_ci_lane_phase_rows' (lane, phase) pairs (ownership,
+// evaluated in EVERY lane at run start, because a match arm is not a declaration and the index
+// cannot read one). The pair join carries two further refusals: a selected lane whose
+// authority-expected phase set is empty stops rather than greening over zero phases, and the
+// observed ran set must equal the authority-expected set exactly. Lane ownership is load-bearing
+// because the lanes are independently selected jobs (the native route was a third lane from
+// 2026-09-09 to 2026-09-11; its deletion is gunbc.rung_drop v2_native_route_off_the_merge_path).
+// The terminal state is the census's dissolution row: the workflow emission consumes
+// this roster whole and the host enum, lane match and REQUIRED_CI_PHASES list delete atomically.
+// Until then the parallel representation is this module's declared debt and the per-run joins are
+// its wall.
 type RequiredCiLane
   = BuildLane
   | WitnessesLane
@@ -148,4 +150,23 @@ fn lane_phase_names(lane: RequiredCiLane, phases: List<RequiredCiPhase>) -> List
   phases
     |> filter(p => required_ci_lane_name(l: required_ci_phase_lane(p: p)) == required_ci_lane_name(l: lane))
     |> map(p => required_ci_phase_name(p: p))
+}
+
+// THE (LANE, PHASE) ROWS THE HOST'S OWNERSHIP JOIN EVALUATES, AS ONE NULLARY CALL. A match arm
+// is not a declaration, so lane ownership cannot leave this module through the declaration index;
+// it leaves through this function, in the CLI spelling the host matches on. The host joins these
+// pairs against its own enum-plus-lane-match in both directions at every required run's start,
+// refuses a selected lane whose expected set here is empty, and requires the observed ran set to
+// equal the expected set exactly.
+type RequiredCiLanePhaseRow {
+  lane: String
+  phase: String
+}
+
+fn required_ci_lane_phase_rows() -> List<RequiredCiLanePhaseRow> {
+  required_ci_phases
+    |> map(p => RequiredCiLanePhaseRow {
+      lane: required_ci_lane_name(l: required_ci_phase_lane(p: p)),
+      phase: required_ci_phase_name(p: p)
+    })
 }

@@ -1,6 +1,6 @@
 module test.claim.roadmap_dashboard_instance_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.types { Bool, String, NonEmptyStr, FilePath, Port }
 import extdeps.tmux { shape_tmux_ls_argv_for, DefaultTmuxServer }
 import gunbc.provider_account {
   CodexDefaultAccount,
@@ -58,6 +58,27 @@ import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_lab_dashboard_instance,
+  srv2_deploy_dashboard_instance,
+  macbook_local_dashboard_instance,
+  public_builtin_dashboard_instances,
+  dashboard_instance_is_disjoint_from_public_builtins,
+  isolated_dashboard_instance,
+  srv1_dashboard_lab_root,
+  dashboard_declared_instances_listen_endpoints_are_unique,
+  dashboard_instances_listen_endpoints_are_unique,
+  dashboard_declared_instance_ids_are_unique,
+  dashboard_declared_repo_roots_are_unique,
+  dashboard_host_lookup_subjects_are_unique,
+  dashboard_declared_instances_owned_paths_are_pairwise_consistent,
+  dashboard_instance_for_host,
+  dashboard_instance_for_repo_root,
+  dashboard_instance_for_id,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  DashboardInstanceForHost,
+  DashboardInstanceHostUnknown,
+  DashboardInstanceForId,
+  DashboardInstanceIdUnknown,
   isolated_dashboard_instance,
   DispatchStateScope,
   DispatchStateHostShared,
@@ -84,6 +105,8 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_path_is_under,
+  srv1_linux_toolchain,
+  dispatch_worker_memory_ceiling,
 }
 
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
@@ -649,6 +672,7 @@ test fn dashboard_instance_model_keystone_holds() -> Bool {
     && srv2_lab_is_actuating_unlike_its_preview_sibling()
     && srv2_lab_owns_paths_disjoint_from_preview_and_production()
     && srv2_lab_has_a_provision_plan_bound_to_itself()
+    && declared_dashboard_instance_set_is_the_lookup_authority()
     && dashboard_instance_paths_move_as_one_owned_root()
     && dashboard_lab_and_production_owned_paths_are_disjoint()
     && dashboard_actuation_posture_is_instance_data()
@@ -800,6 +824,7 @@ fn witness_production_slot(
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
+    toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   }
 }
@@ -931,6 +956,11 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
 // repo root or origin root on one host is the defect, and srv1-lab is a real second instance to
 // hold it over. Retiring this with the slot would have deleted a live obligation along with its
 // most recent example.
+//
+// THE POPULATION FOLD DOES NOT RETIRE THIS PAIR. dashboard_declared_instances_owned_paths_
+// are_pairwise_consistent is the quantification; this named live/lab call is the discriminating
+// control that the binary-overlap class stays closed (DESIGN 4b(4): climb deletes production
+// machinery, never the evidence).
 test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
@@ -938,4 +968,219 @@ test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
     && live.repo_root != lab.repo_root
     && live.local_origin_root != lab.local_origin_root
     && dashboard_instances_have_disjoint_owned_paths(a: live, b: lab)
+}
+
+// The incident's endpoint stays fixed in the control even when the live population changes.
+// The other two cases separate host identity from port: neither coordinate alone is unique.
+fn witness_endpoint_instance(
+  instance_id: NonEmptyStr,
+  layout: GunbcHostLayout,
+  listen_port: Port,
+) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: instance_id,
+    layout: layout,
+    root: dashboard_instance_child(
+      root: "/tmp/dashboard-endpoint-witness" as FilePath,
+      child: instance_id as String,
+    ),
+    serve_function: "endpoint_witness" as NonEmptyStr,
+    listen_port: listen_port,
+    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+test fn a_same_host_same_port_roster_is_refused() -> Bool {
+  !dashboard_instances_listen_endpoints_are_unique(instances: [
+    witness_endpoint_instance(
+      instance_id: "srv2-lab-v1-deletion" as NonEmptyStr,
+      layout: srv2_host_layout(),
+      listen_port: 18082,
+    ),
+    witness_endpoint_instance(
+      instance_id: "srv2-deploy" as NonEmptyStr,
+      layout: srv2_host_layout(),
+      listen_port: 18082,
+    ),
+  ])
+}
+
+test fn different_hosts_or_different_ports_do_not_collide() -> Bool {
+  let first = witness_endpoint_instance(
+    instance_id: "first" as NonEmptyStr,
+    layout: srv2_host_layout(),
+    listen_port: 18082,
+  )
+  dashboard_instances_listen_endpoints_are_unique(instances: [
+    first,
+    witness_endpoint_instance(
+      instance_id: "other-port" as NonEmptyStr,
+      layout: srv2_host_layout(),
+      listen_port: 18083,
+    ),
+  ]) && dashboard_instances_listen_endpoints_are_unique(instances: [
+    first,
+    witness_endpoint_instance(
+      instance_id: "other-host" as NonEmptyStr,
+      layout: srv1_host_layout(),
+      listen_port: 18082,
+    ),
+  ])
+}
+
+fn roster_has_id(id: NonEmptyStr) -> Bool {
+  any(public_builtin_dashboard_instances(), i => i.instance_id == id)
+}
+
+test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
+  dashboard_declared_instance_ids_are_unique()
+    && dashboard_declared_instances_listen_endpoints_are_unique()
+    && dashboard_declared_repo_roots_are_unique()
+    && dashboard_host_lookup_subjects_are_unique()
+    && dashboard_declared_instances_owned_paths_are_pairwise_consistent()
+    && roster_has_id(id: srv1_live_dashboard_instance().instance_id)
+    && roster_has_id(id: srv1_lab_dashboard_instance().instance_id)
+    && roster_has_id(id: srv2_preview_dashboard_instance().instance_id)
+    && roster_has_id(id: srv2_lab_dashboard_instance().instance_id)
+    && roster_has_id(id: srv2_deploy_dashboard_instance().instance_id)
+    && roster_has_id(id: macbook_local_dashboard_instance().instance_id)
+    && all(
+      public_builtin_dashboard_instances(),
+      i => match dashboard_instance_for_repo_root(repo_root: i.repo_root as String) {
+        DashboardInstanceResolved { instance } => instance.instance_id == i.instance_id
+        DashboardInstanceRootUnknown { repo_root: _ } => false
+      },
+    )
+    && all(
+      public_builtin_dashboard_instances(),
+      i => match dashboard_instance_for_id(instance_id: i.instance_id as String) {
+        DashboardInstanceForId { instance } => instance.instance_id == i.instance_id
+        DashboardInstanceIdUnknown { instance_id: _ } => false
+      },
+    )
+    && match dashboard_instance_for_host(
+      host: srv1_live_dashboard_instance().host_identity as String,
+    ) {
+      DashboardInstanceForHost { instance } =>
+        instance.instance_id == srv1_live_dashboard_instance().instance_id
+      DashboardInstanceHostUnknown { host: _ } => false
+    }
+    && match dashboard_instance_for_host(
+      host: srv2_deploy_dashboard_instance().host_identity as String,
+    ) {
+      DashboardInstanceForHost { instance } =>
+        instance.instance_id == srv2_deploy_dashboard_instance().instance_id
+      DashboardInstanceHostUnknown { host: _ } => false
+    }
+    && match dashboard_instance_for_host(
+      host: macbook_local_dashboard_instance().host_identity as String,
+    ) {
+      DashboardInstanceForHost { instance } =>
+        instance.instance_id == macbook_local_dashboard_instance().instance_id
+      DashboardInstanceHostUnknown { host: _ } => false
+    }
+    && match dashboard_instance_for_host(host: "not-a-host") {
+      DashboardInstanceHostUnknown { host } => host == "not-a-host"
+      DashboardInstanceForHost { instance: _ } => false
+    }
+    && match dashboard_instance_for_id(instance_id: "not-an-instance") {
+      DashboardInstanceIdUnknown { instance_id } => instance_id == "not-an-instance"
+      DashboardInstanceForId { instance: _ } => false
+    }
+    && match dashboard_instance_for_repo_root(repo_root: "/typo/gunbc") {
+      DashboardInstanceRootUnknown { repo_root } => repo_root == "/typo/gunbc"
+      DashboardInstanceResolved { instance: _ } => false
+    }
+}
+
+
+// ── A caller-supplied instance is admitted by a JOIN, never by membership ────────────────────────
+//
+// An instance declared in another repository cannot be a member of public_builtin_dashboard_instances
+// -- membership would make the public repo name a private one -- so its safety obligation cannot be
+// membership either. It is dashboard_instance_is_disjoint_from_public_builtins: the caller's own
+// instance against the public built-ins, on the public judgment, with no second disjointness rule
+// coined for the outside case.
+//
+// BOTH ARMS, because a predicate that only ever answers true is decoration. The two candidates
+// differ ONLY in their root, so the root is what the verdict turns on and nothing else can explain
+// the difference.
+
+fn outside_instance_at(root: FilePath) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: "outside-repository-candidate" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root,
+    serve_function: "outside_serve_handle" as NonEmptyStr,
+    listen_port: 18099,
+    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+test fn an_outside_instance_on_its_own_root_joins_clean() -> Bool {
+  dashboard_instance_is_disjoint_from_public_builtins(
+    candidate: outside_instance_at(
+      root: "/home/briansrls/.local/share/gunbc-dashboard-instances/outside-repository-v0" as FilePath,
+    ),
+  )
+}
+
+// THE RED, and the first cut of it was wrong in a way worth recording. It rooted the candidate
+// INSIDE srv1_dashboard_lab_root and expected refusal; it got admission, because the judgment is
+// over OWNED PATHS -- local_origin_root, repo_root, serve_binary -- and not over instance_root.
+// A nested root yields <lab>/nested/origin.git against <lab>/origin.git, which are genuinely
+// disjoint leaves. The witness was failing on the wrong axis: it asserted a claim about roots
+// against a predicate about files.
+//
+// The real overlap is a candidate on the SAME root, where all three footprint paths collide
+// exactly. The two candidates now differ only in that root, so the root is what the verdict turns
+// on, and this arm goes green only because the join actually refuses.
+test fn an_outside_instance_on_a_public_root_is_refused() -> Bool {
+  !dashboard_instance_is_disjoint_from_public_builtins(
+    candidate: outside_instance_at(root: srv1_dashboard_lab_root),
+  )
+}
+
+// THE HOLE THE TAG-SKIP OPENED. The witness above uses a distinct instance_id, so it stayed
+// green even while dashboard_instance_is_disjoint_from_each treated matching ids as the
+// diagonal. An outside deployment that spells srv1-live and occupies srv1-live's owned
+// footprint is the discriminating input: the only pair that overlaps is the pair the skip would
+// have excused. serve_function and listen_port differ so the candidate is not the public
+// constructor under another name.
+fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstance {
+  let live = srv1_live_dashboard_instance()
+  HostDashboardInstance {
+    instance_id: live.instance_id,
+    host_identity: live.host_identity,
+    provision_parent_root: live.provision_parent_root,
+    instance_root: live.instance_root,
+    local_origin_root: live.local_origin_root,
+    local_origin_publish_ref: live.local_origin_publish_ref,
+    repo_root: live.repo_root,
+    dispatch_base_ref: live.dispatch_base_ref,
+    dispatch_state_scope: live.dispatch_state_scope,
+    execution_environment: live.execution_environment,
+    provider_state: live.provider_state,
+    serve_binary: live.serve_binary,
+    serve_function: "outside_serve_handle" as NonEmptyStr,
+    listen_host: live.listen_host,
+    listen_port: 18099,
+    tmux_server: live.tmux_server,
+    actuation: live.actuation,
+    provision_transport: live.provision_transport,
+    source_seed: live.source_seed,
+    admitted_revision: live.admitted_revision,
+    toolchain: live.toolchain,
+    dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+  }
+}
+
+test fn an_outside_instance_claiming_a_public_id_on_that_footprint_is_refused() -> Bool {
+  !dashboard_instance_is_disjoint_from_public_builtins(
+    candidate: outside_instance_claiming_live_id_on_live_footprint(),
+  )
 }

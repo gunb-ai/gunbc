@@ -1,0 +1,213 @@
+module extdeps.flashinfer.flashinfer
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// ── FLASHINFER IS ITS OWN UPSTREAM, AND THIS MODULE EXISTS BECAUSE IT WAS NOT ─────────────────
+//
+// UNTIL THIS FILE, FLASHINFER APPEARED IN THIS REPOSITORY AS A FIELD ON SOMEONE ELSE'S RECIPE: a
+// `flashinfer_version: NonEmptyStr` inside extdeps.vllm.source_build's container recipe, because that
+// is where vLLM's Dockerfile spells it. DESIGN section 3's external-upstream rule is explicit that this
+// is the wrong home -- FlashInfer is independently versioned, independently released and independently
+// capable, so it gets its own authority rather than living as a string inside the product that consumes
+// it. A Chrome change must not require editing Safari's module, and a FlashInfer fact must not require
+// editing vLLM's.
+//
+// THE COST OF NOT HAVING THIS MODULE WAS PAID BEFORE IT WAS WRITTEN, twice in one hour. The question
+// "does this dependency support the kernel we need" was answered first from RELEASE DATES and then from
+// a `version.txt` at a git HEAD, and both answers were recorded in a consumer's declaration as a bare
+// version string -- a shape with nowhere to put the evidence, nowhere to put the acquisition route, and
+// no way to be wrong out loud. The failure-mode row is
+// gunbc.recurring_failure_mode.a_capability_established_upstream_but_not_obtainable, and its stated
+// next-rung trigger is exactly this module.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/flashinfer-ai/flashinfer"
+  },
+}
+
+data flashinfer_repository: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer" as NonEmptyStr
+
+// ── HOW A DEPENDENCY IS OBTAINED IS PART OF WHAT IT IS ────────────────────────────────────────
+//
+// A VERSION STRING CANNOT SAY WHERE IT COMES FROM. `0.6.18.post1`, `0.7.0.dev20260910` and `v0.7.0rc1`
+// are three well-formed spellings that resolve on three different things: a PyPI release, a wheel that
+// exists ONLY on a nightly index, and a git tag that is not a package at all. Carried as one String they
+// are indistinguishable -- and the cost of that is recorded twice in this file, once where a plan was
+// built toward bytes nobody publishes and once where a build was called unobtainable because two indexes
+// were checked and a third was not.
+//
+// SO THE ACQUISITION ROUTE IS THE TYPE, and each arm carries what that route actually needs: a release
+// names the index it resolves against, because "on PyPI" and "on flashinfer.ai/whl/cu130" are different
+// claims and this dependency publishes different packages to each. A source revision names why it is
+// not a release, because that reason is the thing a reader must re-check before the pin can retire --
+// and a pin whose reason has expired is a pin nobody removes.
+// WHICH CHANNEL PUBLISHED IT IS A CLOSED SET, NOT A SENTENCE. A first version of this record carried the
+// index as prose and then asked `does it contain "pypi.org/simple"` to decide whether a build could reach
+// it -- which makes a human-readable locator an execution input, the exact defect this repository has
+// already paid for twice today in provider identities. The locator stays, because a person reading a
+// refusal needs to know where to look; the DISPATCH goes through a variant, so adding a channel is a
+// compile error at every decision instead of a substring that quietly matches or quietly does not.
+type FlashInferChannel
+  = FlashInferPyPi
+  | FlashInferProjectStable
+  | FlashInferProjectNightly
+
+fn flashinfer_channel_key(c: FlashInferChannel) -> NonEmptyStr {
+  match c {
+    FlashInferPyPi => "pypi" as NonEmptyStr
+    FlashInferProjectStable => "flashinfer.ai/whl" as NonEmptyStr
+    FlashInferProjectNightly => "flashinfer.ai/whl/nightly" as NonEmptyStr
+  }
+}
+
+type FlashInferAcquisition
+  = FlashInferPublishedRelease { version: NonEmptyStr, channel: FlashInferChannel, index: NonEmptyStr }
+  | FlashInferSourceRevision { revision: NonEmptyStr, reason_unreleased: NonEmptyStr }
+
+fn flashinfer_acquisition_key(a: FlashInferAcquisition) -> String {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: c, index: _ } =>
+      join(["release:", v as String, "@", flashinfer_channel_key(c: c) as String], "")
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      join(["source:", flashinfer_repository as String, "@", r as String], "")
+  }
+}
+
+// WHAT UPSTREAM'S OWN BUILD ARGUMENT CAN CARRY, WHICH IS ONLY ONE OF THE TWO ARMS. vLLM's Dockerfile
+// takes FLASHINFER_VERSION and hands it to `uv pip install flashinfer-jit-cache==${VERSION}`, so it can
+// express a release and cannot express a revision. Returning an optional rather than a string is the
+// honest shape: a caller holding a source revision learns that this argument cannot say what it means,
+// instead of receiving a spelling that would install something else.
+fn flashinfer_published_version(a: FlashInferAcquisition) -> NonEmptyStr? {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } => Present { value: v }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => none
+  }
+}
+
+// ── THE CITED ROWS ────────────────────────────────────────────────────────────────────────────
+//
+// THE RELEASE THE OFFICIAL IMAGE AND THE FLEET'S OWN BUILD BOTH PIN. Read from PyPI on 2026-09-12:
+// flashinfer-python's latest is 0.6.18.post1 and flashinfer-cubin's is 0.6.13, with no 0.7.x at any
+// pre-release; flashinfer.ai/whl/cu130 publishes only flashinfer-jit-cache.
+data flashinfer_0_6_18_post1: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: "0.6.18.post1" as NonEmptyStr,
+  channel: FlashInferPyPi,
+  index: "pypi.org/simple, with flashinfer-jit-cache from flashinfer.ai/whl/cu130" as NonEmptyStr,
+}
+
+// AND THE BUILD THAT CARRIES THE KERNEL THIS FLEET NEEDS, WHICH IS PUBLISHED AFTER ALL.
+//
+// THIS ROW REPLACES A SOURCE-REVISION ROW THAT SHOULD NEVER HAVE BEEN WRITTEN, and the reason it was is
+// worth more than the row. The kernel was located in tag v0.7.0rc1, PyPI was checked (0.6.18.post1, no
+// 0.7.x at any pre-release), flashinfer.ai/whl/cu130 was checked (only flashinfer-jit-cache), and the
+// conclusion recorded was "no wheel exists for this tag on any CUDA version or architecture". TWO
+// INDEXES ARE NOT EVERY INDEX. This project's own installation document names a third, four lines below
+// the source-build procedure that was read carefully enough to plan against.
+//
+// WHAT IS ACTUALLY PUBLISHED, verified 2026-09-12 by downloading the wheel and reading it rather than by
+// trusting its version string: flashinfer_python-0.7.0.dev20260910-py3-none-any.whl carries
+// `_MODEL_TYPE_GLM53_NOPE = 3`, the `glm53_nope` dispatch branch in the SM120 shape check, and
+// `_DECODE_GLM53_NOPE_TOPK = 2176` -- which is exactly the kpool-widened top-k that vllm#55277's second
+// commit sizes the page table for. The matching flashinfer_jit_cache-0.7.0.dev20260910+cu130 wheel is
+// built for manylinux_2_28_aarch64, so the ahead-of-time kernels arrive PREBUILT and the final image
+// needs no nvcc -- which was the entire reason a source build looked expensive.
+//
+// THE INDEX IS PART OF THE PIN AND THIS ROW IS WHY THAT FIELD EXISTS. `0.7.0.dev20260910` resolves to
+// nothing on PyPI and to nothing on the stable index; it exists only here. A version carried without its
+// index is a pin that cannot be acted on, and the arm that could not say which index it came from is the
+// arm that produced the wrong answer above.
+data flashinfer_0_7_0_dev20260910: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: "0.7.0.dev20260910" as NonEmptyStr,
+  channel: FlashInferProjectNightly,
+  index: "flashinfer.ai/whl/nightly for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/nightly/cu130 for flashinfer-jit-cache" as NonEmptyStr,
+}
+
+// IT IS A NIGHTLY, AND THAT IS A REAL PROPERTY RATHER THAN A CAVEAT. A dated dev build is published,
+// installable and reproducible by digest, and it is also unsupported, unannounced and removable by its
+// publisher. Recording which release channel a pin came from is the difference between a dependency this
+// fleet chose and one it drifted onto, and the retirement condition is the same as before: when 0.7.x
+// ships to PyPI with cu130 aarch64 artifacts, this row takes that version and this note deletes.
+data flashinfer_nightly_channel_standing: NonEmptyStr = "0.7.0.dev20260910 is a NIGHTLY build, not a release. It is published and installable, and it carries no compatibility promise: the publisher may withdraw it, and no release notes describe what changed between it and the 0.6.18.post1 the rest of the fleet runs. It is pinned to an exact dated version rather than to `latest` so that a rebuild gets the bytes this fleet tested, and it retires when a 0.7.x release publishes cu130 aarch64 artifacts" as NonEmptyStr
+
+// ── THE CAPABILITY THIS FLEET IS ACTUALLY ASKING ABOUT ────────────────────────────────────────
+//
+// WHETHER THE SM120 SPARSE MLA KERNEL ACCEPTS NoPE DIMENSIONS IS A PROPERTY OF A REVISION, and it is
+// the property the whole GLM-5.3-Flash deployment turns on: sm_121 is compute-capability major 12, so
+// every GB10 takes the SM120 backend, and at 0.6.18.post1 that backend has no NoPE variant at all.
+//
+// THE ARMS SEPARATE A MEASURED NEGATIVE FROM AN UNREAD ONE, which is the distinction a Bool would lose
+// and the one that matters here: "we ran it and it refused" and "nobody asked this revision" owe
+// completely different work, and only the first is evidence about the dependency.
+type Sm120NopeSupport
+  = Sm120NopeSupported { evidence: NonEmptyStr }
+  | Sm120NopeAbsent { evidence: NonEmptyStr }
+  | Sm120NopeUnread { obligation: NonEmptyStr }
+
+fn flashinfer_sm120_nope_support(a: FlashInferAcquisition) -> Sm120NopeSupport {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } =>
+      if (v as String) == "0.7.0.dev20260910" {
+        Sm120NopeSupported {
+          evidence: "read out of the published wheel on 2026-09-12 rather than inferred from its version: flashinfer_python-0.7.0.dev20260910-py3-none-any.whl carries _MODEL_TYPE_GLM53_NOPE = 3, a glm53_nope branch in the SM120 shape check, and _DECODE_GLM53_NOPE_TOPK = 2176. THIS IS STILL A READING AND NOT AN EXECUTION: no engine has served on these bytes on this fleet, and the SM120 NoPE branch additionally requires kv_scale_format arbitrary_fp32, which only a run establishes" as NonEmptyStr,
+        }
+      } else if (v as String) == "0.6.18.post1" {
+        Sm120NopeAbsent {
+          evidence: "executed on a GB10 inside gunbc-vllm-dsv41-gb10:07b75534-sm121 on 2026-09-12: trtllm_batch_decode_with_kv_cache_mla at kv_lora_rank 512 and qk_rope_head_dim 0 refused with `SM120 sparse MLA v32/GLM expects kv_lora_rank=512, qk_rope_head_dim=64, and query head dim 576`. The native NoPE path exists at this version but only for the non-SM120 backends" as NonEmptyStr,
+        }
+      } else {
+        Sm120NopeUnread {
+          obligation: join(["no revision of this repository other than 0.6.18.post1 and v0.7.0rc1 has been read for SM120 NoPE support; ", v as String, " is unasked"], "") as NonEmptyStr,
+        }
+      }
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      Sm120NopeUnread {
+        obligation: join(["revision ", r as String, " has not been read for SM120 NoPE support. No source revision is pinned by this fleet today: the kernel arrives in a published nightly, so this arm exists for a future pin rather than a current one"], "") as NonEmptyStr,
+      }
+  }
+}
+
+fn sm120_nope_is_supported(s: Sm120NopeSupport) -> Bool {
+  match s {
+    Sm120NopeSupported { evidence: _ } => true
+    Sm120NopeAbsent { evidence: _ } => false
+    Sm120NopeUnread { obligation: _ } => false
+  }
+}
+
+// ── WHAT UPSTREAM'S DOCKERFILE CAN AND CANNOT BUILD ───────────────────────────────────────────
+//
+// THE ARGUMENT CARRIES A VERSION AND THE INDEX IS HARDCODED, WHICH IS THE WHOLE CONSTRAINT. vLLM's
+// Dockerfile takes FLASHINFER_VERSION and installs `flashinfer-jit-cache==${FLASHINFER_VERSION}` with
+// `--index-url https://flashinfer.ai/whl/cu$(CUDA_VERSION)`, while requirements/cuda.txt pins
+// flashinfer-python and flashinfer-cubin against `--extra-index-url https://flashinfer.ai/whl/`. Both
+// index URLs are literals in their file. The only machinery that touches those pins is a `sed` that
+// STRIPS them for the Rubin prerelease path, which removes a dependency rather than redirecting one.
+//
+// SO THE QUESTION IS NOT WHICH ARM, IT IS WHICH INDEX -- and a first version of this function got that
+// wrong by answering `true` for every published release. A nightly build IS a published release and is
+// still unreachable here, because the version is the only thing the argument can vary: pointing
+// FLASHINFER_VERSION at 0.7.0.dev20260910 makes the build ask the STABLE index for a wheel that exists
+// only on the nightly one, and get a resolution failure seventy minutes into a build rather than a
+// refusal before it.
+//
+// WHAT A REDIRECTED INDEX NEEDS IS SMALL AND IS NOT A SOURCE BUILD. The published nightly carries
+// prebuilt aarch64 cu130 kernels, so the derived layer installs three wheels from a different index on
+// top of a finished image -- seconds of work in a layer, against the hour this refusal was originally
+// written to protect. The capability is still named rather than assumed, because it still does not exist.
+fn flashinfer_reachable_by_upstream_dockerfile(a: FlashInferAcquisition) -> Bool {
+  match a {
+    FlashInferPublishedRelease { version: _, channel: c, index: _ } =>
+      match c {
+        FlashInferPyPi => true
+        FlashInferProjectStable => true
+        FlashInferProjectNightly => false
+      }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => false
+  }
+}
+
+data flashinfer_redirected_index_missing_capability: NonEmptyStr = "a derived image layer that installs flashinfer-python, flashinfer-cubin and flashinfer-jit-cache from the acquisition's own index on top of the built vLLM image -- vLLM's Dockerfile hardcodes the stable index URLs in requirements/cuda.txt and in the jit-cache install, and parameterises only the version. For a published nightly this is three pip installs and no compilation, because that channel ships prebuilt aarch64 cu130 kernels; for a source revision it would additionally have to build the library and precompile its kernels, since the final stage is a CUDA `base` image with no nvcc" as NonEmptyStr

@@ -14,19 +14,64 @@ data a_capability_established_upstream_but_not_obtainable: RecurringFailureMode 
 
     "`version.txt` IN GIT IS NOT A VERSION ANYONE CAN INSTALL. flashinfer-python's latest release is 0.6.18.post1 and flashinfer-cubin's is 0.6.13; PyPI carries NO 0.7.x at any pre-release, and flashinfer.ai/whl/cu130 publishes only flashinfer-jit-cache. The capability exists in a tagged release candidate (v0.7.0rc1) for which no wheel is published on any CUDA version or architecture. Everything about the requirement was right except that it could be had. ",
 
+    "AND THE CLASS RECURRED THE SAME DAY, IN THE OPPOSITE DIRECTION, WITH THIS ROW ALREADY WRITTEN. The\n"
+    "corrected requirement -- `v0.7.0rc1`, built from source -- was itself wrong: flashinfer publishes a\n"
+    "NIGHTLY index carrying flashinfer_python-0.7.0.dev20260910 and a matching\n"
+    "flashinfer_jit_cache-0.7.0.dev20260910+cu130 built for manylinux_2_28_aarch64. The kernel was\n"
+    "installable the whole time. PyPI had been queried and the stable index had been queried; the nightly\n"
+    "index, which the project's own installation document names four lines below the source-build\n"
+    "procedure that was read closely enough to plan against, had not. ",
+
+    "SO THE RULE NEEDS ITS SECOND HALF, AND THIS INSTANCE IS WHAT ESTABLISHES IT. `name the artifact and\n"
+    "the index it comes from` is satisfiable by naming ONE index and stopping, and it stops soonest on a\n"
+    "NEGATIVE -- a positive answer ends the search because the artifact is in hand, while a negative ends\n"
+    "it because there is nothing left to look at, which feels identical and is not. A not-obtainable\n"
+    "verdict is a claim about EVERY publication route, so it owes an enumeration: the package index, the\n"
+    "project's own index, its pre-release or nightly channel, and its release attachments. Three of those\n"
+    "four were unchecked when the source build was scoped. ",
+
+    "THE ASYMMETRY IS THE GENERALISABLE PART: a positive is self-verifying, because the artifact either\n"
+    "installs or does not, while a negative is an unbounded claim reached by a bounded search and nothing\n"
+    "about running out of places to look distinguishes `it is not published` from `I stopped early`. That\n"
+    "is why this class bites hardest exactly where a plan turns expensive -- a negative is what authorises\n"
+    "building the thing yourself. ",
+
+    "WHAT IT WOULD HAVE COST, HAD THE MODELLING NOT FORCED THE QUESTION: a derived Dockerfile, a\n"
+    "source-built dependency pinned to an rc tag, an ahead-of-time kernel compile for sm_121, and this\n"
+    "repository maintaining all of it until upstream released -- against a two-line index change. The\n"
+    "operator had already approved that scope. ",
+
     "WHAT THE ERROR COST AND WOULD HAVE COST. It was caught before a build, so the realized cost was one corrected declaration. Unchecked it would have spent a cold ~75-minute image build on a host taken out of service, and failed at the dependency-resolution step -- the cheapest possible failure to have predicted and an expensive one to discover. The declaration it corrupted had already been corrected once in the same hour, from an inference about release DATES to a reading of SOURCE, so the second correction is the tell: two rounds of increasingly careful reading of the same artifact, neither of which asked the acquisition question. ",
 
     "WHY READING SOURCE FEELS LIKE ENOUGH, which is the generalisable part. Reading upstream source is the move DESIGN section 3 asks for -- cite the real spec, keep its names, model what the API actually returns -- and it answers the question `does this capability exist and what is its shape`. Acquisition is a DIFFERENT question with a different authority (a package index, a release feed, a registry), and the satisfaction of having read the authoritative source substitutes for asking it. The stronger the source reading, the more complete the requirement feels. ",
 
     "AND IT IS THE SAME SHAPE AS AN OBSERVATION STANDING IN FOR A CONVERGENCE. `a capability exists` and `a capability is realizable here` are two standings, and this class collapses them exactly as this repository's realization work separates them: existence upstream is an external fact, obtainability for a platform is a second external fact, and a handle to a built artifact is a third. A requirement citing only the first is a dangling declaration that reads as a plan. ",
 
-    "RECOGNITION RULE: FOR EVERY UPSTREAM VERSION OR REVISION A PLAN DEPENDS ON, NAME THE ARTIFACT THAT WOULD BE ACQUIRED AND THE INDEX IT COMES FROM, FOR THIS PLATFORM. A version read from a source tree, a tag, a changelog or a merged pull request is evidence about existence and none about acquisition. Where the artifact must be BUILT rather than fetched, that build is part of the plan's scope and its absence from the scope is the defect -- not a detail of execution. ",
+    "RECOGNITION RULE, IN TWO HALVES BECAUSE ONE WAS NOT ENOUGH. FIRST: for every upstream version or\n"
+    "revision a plan depends on, name the artifact that would be acquired and the index it comes from, for\n"
+    "this platform -- a version read from a source tree, a tag, a changelog or a merged pull request is\n"
+    "evidence about existence and none about acquisition. SECOND: BEFORE RECORDING THAT SOMETHING IS NOT\n"
+    "OBTAINABLE, ENUMERATE THE PUBLICATION ROUTES AND SAY WHICH WERE CHECKED. The package index, the\n"
+    "project's own index, its nightly or pre-release channel, and its release attachments are four\n"
+    "different places, and a negative is a claim about all of them. Where the artifact genuinely must be\n"
+    "BUILT, that build is part of the plan's scope and its absence from the scope is the defect -- but\n"
+    "establishing that it must be built is the step this class keeps skipping. ",
 
-    "RUNG FOUND AT: mitigatable. It was caught by asking a package index a question, after the requirement had already been recorded twice. Nothing in the corpus refused it, and the modelled recipe field it would have populated -- a version string -- cannot express the difference between a released version and a tag. ",
+    "RUNG FOUND AT: mitigatable, and the second instance was caught by the MODELLING rather than by a\n"
+    "reviewer, which is the one encouraging fact here. Writing the acquisition coproduct forced the\n"
+    "question `which index does this arm resolve against` to be answered in a field rather than in prose,\n"
+    "and answering it is what sent the author back to the index listing that had the wheel. The type did\n"
+    "not prevent the error; it made the error expensive to write down. ",
 
     "ATTAINABLE CEILING: structurally guaranteed, and the gap is a modelling one rather than an undecidable one. A dependency pin is currently a NonEmptyStr, which is exactly the anemic leaf DESIGN section 2 names: it cannot distinguish a published release from a git tag from a branch, so no check can demand the acquisition route. Pinned as a coproduct over acquisition routes -- a published release naming its index, a source revision naming its build -- a pin that names a revision would be UNABLE to be spelled as though it were installable, and the build recipe would carry the source build as a field rather than as an unstated assumption. That is construction rather than validation, so it does not stop at mechanically preventable. ",
 
-    "NEXT TRIGGER: a coproduct-valued dependency pin in the extdeps container-build authority, replacing the bare version strings that authority carries for flashinfer and torch, with the published-release arm carrying the index it resolves against. That authority is not in this branch's closure yet, which is why this row cites only the requirement it corrupted and names the recipe in prose -- a DeclarationRef that does not resolve is the citation defect DESIGN section 3 forbids, and filing one inside a failure-mode row would be this ledger committing the class it records. Until that lands this row is review diligence, and the recognition rule above is the whole of it.)",
+    "NEXT TRIGGER, NOW PARTLY DISCHARGED: the coproduct-valued dependency pin landed as\n"
+    "extdeps.flashinfer.flashinfer FlashInferAcquisition, whose release arm carries the index it resolves\n"
+    "against -- which is what made the second instance visible. WHAT REMAINS is the route enumeration: a\n"
+    "not-obtainable verdict is still authorable as prose, with no structure demanding that the channels\n"
+    "checked be named. Until an acquisition refusal must carry the routes it searched, the second half of\n"
+    "the recognition rule above is review diligence. The original statement of this trigger follows,\n"
+    "preserved because it was written before the row it describes existed: a coproduct-valued dependency pin in the extdeps container-build authority, replacing the bare version strings that authority carries for flashinfer and torch, with the published-release arm carrying the index it resolves against. That authority is not in this branch's closure yet, which is why this row cites only the requirement it corrupted and names the recipe in prose -- a DeclarationRef that does not resolve is the citation defect DESIGN section 3 forbids, and filing one inside a failure-mode row would be this ledger committing the class it records. Until that lands this row is review diligence, and the recognition rule above is the whole of it.)",
   ],
 
   evidence: [

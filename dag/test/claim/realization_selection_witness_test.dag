@@ -2,7 +2,7 @@ module test.claim.realization_selection_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
   AxisGap,
@@ -225,6 +225,15 @@ fn entry_missing_power(id: DeclarationRef, label: NonEmptyStr, tput: Int) -> Par
   }
 }
 
+fn entry_over_cap_missing_tput(id: DeclarationRef, label: NonEmptyStr, power: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [reading(axis: ax_power, v: power)],
+    missing_inputs: [AxisGap { axis: ax_tput, cause: "tput unread on a forbidden candidate" as NonEmptyStr }],
+  }
+}
+
 data power_cap: HardConstraint = HardConstraint {
   identity: id_constraints,
   axis: ax_power,
@@ -269,6 +278,44 @@ fn selected_id(field: List<ParetoEntry>, axes: List<SelectionAxis>, constraints:
     RealizationSelectionRefused { defects: _ } => Absent
     NoFeasibleRealization { causes: _ } => Absent
     CandidateFieldUnestablished { causes: _ } => Absent
+  }
+}
+
+test fn a_hard_constraint_failure_excludes_before_unread_axes_are_requested() -> Bool {
+  let forbidden = entry_over_cap_missing_tput(id: id_a, label: "over cap missing tput" as NonEmptyStr, power: 200)
+  let feasible = entry(id: id_b, label: "under cap" as NonEmptyStr, tput: 10, power: 50)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [forbidden, feasible],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_b)
+    _ => false
+  }
+}
+
+test fn a_sole_hard_constraint_failure_is_no_feasible_not_needs_evidence() -> Bool {
+  let forbidden = entry_over_cap_missing_tput(id: id_a, label: "over cap missing tput" as NonEmptyStr, power: 200)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [forbidden],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorRequired { identity: id_policy_unique },
+    evidence_snapshot: id_evidence,
+  ) {
+    NoFeasibleRealization { causes: cs } =>
+      any(cs, s =>
+        string_contains(s: s as String, pattern: declaration_ref_display_key(ref: id_a))
+          && string_contains(s: s as String, pattern: declaration_ref_display_key(ref: ax_power)))
+    _ => false
   }
 }
 

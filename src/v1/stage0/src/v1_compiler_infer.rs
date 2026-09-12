@@ -67,8 +67,8 @@ pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
-use crate::std_syntax::LiteralValue::{LitBool, LitInt, LitStr};
-use crate::std_syntax::LiteralValue::{LitFloat, LitNull};
+use crate::std_syntax::LiteralValue::LitStr;
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
@@ -162,6 +162,7 @@ pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
     fn_type_param_names, is_user_generic_use_site, peel_nominal_alias_identity,
     preserve_nominal_brand_on_resolve, resolve_generic_use_decl, resolve_item_types, resolve_node,
+    resolve_node_bounded,
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
@@ -1127,6 +1128,137 @@ pub fn unlisted_variant_use_diagnostics(
         }
         std::option::Option::None => Rc::new(vec![]),
     }
+}
+
+pub fn declared_field_is_required(sf: Rc<Node>) -> bool {
+    {
+        let sf_type = match sf.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
+        };
+        ((sf_type.return_cardinality.clone() != Cardinality::CardOptional)
+            && (sf.body.clone() == std::option::Option::None))
+    }
+}
+
+pub fn bare_variant_reference_missing_field_diagnostics(
+    scope: Rc<InferScope>,
+    name: String,
+    span: Rc<SourceSpan>,
+    owner: Option<Rc<Node>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match owner.clone() {
+        Some(owner_node) => match Rc::new({
+            let mut __result = Vec::new();
+            for v in owner_node.children.clone().iter().cloned() {
+                if (crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    v.clone(),
+                ) == crate::v1_std_core::qualified_last_segment(name.clone()))
+                {
+                    __result.push(v);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(variant_node) => Rc::new({
+                let mut __result = Vec::new();
+                for sf in Rc::new({
+                    let mut __result = Vec::new();
+                    for sf in variant_node.children.clone().iter().cloned() {
+                        if declared_field_is_required(sf.clone()) {
+                            __result.push(sf);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::MissingField {
+                            field: crate::v1_std_core::authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                sf.clone(),
+                            ),
+                            type_name: name.clone(),
+                            span: span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    ));
+                }
+                __result
+            }),
+            std::option::Option::None => Rc::new(vec![]),
+        },
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn bare_product_reference_missing_field_diagnostics(
+    scope: Rc<InferScope>,
+    name: String,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), name.clone()) {
+        Some(decl) => {
+            if ((decl.connective.clone() == Connective::Conj)
+                && ((decl.params.clone().len() as i64) == 0))
+            {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for sf in Rc::new({
+                        let mut __result = Vec::new();
+                        for sf in decl.children.clone().iter().cloned() {
+                            if declared_field_is_required(sf.clone()) {
+                                __result.push(sf);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::MissingField {
+                                field: crate::v1_std_core::authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    sf.clone(),
+                                ),
+                                type_name: name.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        ));
+                    }
+                    __result
+                })
+            } else {
+                Rc::new(vec![])
+            }
+        }
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn variant_value_reference_diagnostics(
+    scope: Rc<InferScope>,
+    name: String,
+    span: Rc<SourceSpan>,
+    owner: Option<Rc<Node>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    v1_rt::concat(
+        unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), owner.clone()),
+        bare_variant_reference_missing_field_diagnostics(
+            scope.clone(),
+            name.clone(),
+            span.clone(),
+            owner.clone(),
+        ),
+    )
 }
 
 pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBindingKind> {
@@ -9700,7 +9832,7 @@ match scope_parent.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), binding.resolved.clone()),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
     std::option::Option::None => {
                 let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
@@ -9741,7 +9873,7 @@ match scope_parent.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: variant_reference_inferred_node(expected.clone(), name.clone(), scope_enum.clone(), scope.clone(), gbinding.resolved.clone()),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), variant_owner_node(scope.clone(), name.clone())),
 }),
     std::option::Option::None => match expected_variant_owner_instantiation(expected.clone(), name.clone(), scope.clone()) {
     Some(exp_enum) => Rc::new(InferResult {
@@ -9752,15 +9884,18 @@ match scope_parent.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
     std::option::Option::None => {
                 let binding_kind = infer_var_binding_kind(scope.clone(), name.clone());
-ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
+Rc::new(InferResult {
+    typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprVar {
     binding_kind: Some(binding_kind.clone()),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: gbinding.resolved.clone(),
-})), span.clone(), span.clone()))
+})), span.clone(), span.clone()),
+    diagnostics: bare_product_reference_missing_field_diagnostics(scope.clone(), name.clone(), span.clone()),
+})
 },
 },
 }
@@ -9776,7 +9911,7 @@ match expected_variant_enum.clone() {
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
     node: exp_enum.clone(),
 })), span.clone(), span.clone()),
-    diagnostics: unlisted_variant_use_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
+    diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
     std::option::Option::None => {
                 let var_ambiguity_cands = crate::v1_compiler_infer_env::global_bare_strict_ambiguity_candidates(scope.type_env.clone(), name.clone());
@@ -10245,7 +10380,14 @@ Rc::new(InferResult {
                                 }
                             }
                         };
-                        let arg_infer_results = arg_call.results.clone();
+                        let arg_infer_results = variant_tag_reference_argument_results(
+                            func_name.clone(),
+                            crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
+                                call_target.clone(),
+                            ),
+                            arg_call.results.clone(),
+                            scope.clone(),
+                        );
                         let call_subst = arg_call.subst.clone();
                         let typed_args = Rc::new({
                             let mut __result = Vec::new();
@@ -12883,10 +13025,12 @@ pub fn peel_alias_once_for_field_access(
     module_name: String,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let once = crate::v1_compiler_infer_resolve::resolve_node(
+        let once = crate::v1_compiler_infer_resolve::resolve_node_bounded(
             n.clone(),
             env.clone(),
             module_name.clone(),
+            0,
+            false,
         );
         let resolved_once = once.resolved.clone();
         if ((resolved_once.connective.clone() == Connective::Conj)
@@ -13452,10 +13596,75 @@ pub fn sole_constructor_construction_diags(
 pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier.".to_string()
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): the `discriminant(v: PrefixToken {})` idiom names a coproduct VARIANT to obtain its stable tag identity without materializing a value, and is sanctioned as a TAG REFERENCE rather than a construction. NARROWED 2026-09-11 (gunbc.recurring_failure_mode zero_field_construction_escapes_the_field_set_check): the exemption used to be read inside infer_record_lit_structural as `field_inits empty AND variant_owner_node != none` -- every zero-field variant literal anywhere, which is wider than the ruling and is exactly the hole through which a bare or empty-brace construction of a fields-declaring variant compiled clean and read its fields as null. It now lives at the ONE seam the ruling names, the argument position of the `discriminant` builtin (variant_tag_reference_argument_results), where the emitter already folds the same shape to its tag (v1.compiler.emit_rust discriminant_zero_field_variant_tag). Everywhere else a zero-field construction of a fields-declaring type or variant refuses with one MissingField per owed field, in both spellings. This is a decidable structural exemption, not an absorbing fallback: it waives exactly the MissingField rows of the referenced variant on exactly that argument and widens on nothing. DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the seam is deleted and the sites migrate to the carrier.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn variant_tag_reference_argument_results(
+    func_name: String,
+    callee_is_body_binding: bool,
+    results: Rc<Vec<Rc<ArgInferResult>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ArgInferResult>>> {
+    if (((func_name.clone() != "discriminant".to_string()) || callee_is_body_binding.clone())
+        || ((results.clone().len() as i64) != 1))
+    {
+        results.clone()
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for air in results.iter().cloned() {
+                __result.push({
+                    let arg = crate::v1_std_core::arg_value(air.typed_arg.clone());
+                    match (*arg.expr_data.clone()).clone() {
+                        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                            if ((arg.children.clone().len() as i64) != 0) {
+                                air.clone()
+                            } else {
+                                match crate::v1_std_core::record_lit_type_name_at(
+                                    arg.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ) {
+                                    Some(tn) => {
+                                        if (variant_owner_node(scope.clone(), tn.clone())
+                                            != std::option::Option::None)
+                                        {
+                                            Rc::new(ArgInferResult {
+                                                typed_arg: air.typed_arg.clone(),
+                                                diagnostics: Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for d in air.diagnostics.clone().iter().cloned()
+                                                    {
+                                                        if match (*d.diagnostic.clone()).clone() {
+                                                            CompilerDiagnostic::MissingField {
+                                                                type_name: t,
+                                                                ..
+                                                            } => (t.clone() != tn.clone()),
+                                                            _ => true,
+                                                        } {
+                                                            __result.push(d);
+                                                        }
+                                                    }
+                                                    __result
+                                                }),
+                                            })
+                                        } else {
+                                            air.clone()
+                                        }
+                                    }
+                                    std::option::Option::None => air.clone(),
+                                }
+                            }
+                        }
+                        _ => air.clone(),
+                    }
+                });
+            }
+            __result
+        })
+    }
 }
 
 pub fn presence_check_census_gate_note() -> String {
@@ -13744,8 +13953,6 @@ pub fn infer_record_lit_structural(
                 },
             }
         };
-        let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
-            && (presence_variant_owner.clone() != std::option::Option::None));
         let presence_name_is_ambiguous =
             (crate::v1_compiler_infer_env::global_bare_is_ambiguous(
                 scope.type_env.clone(),
@@ -13801,9 +14008,8 @@ pub fn infer_record_lit_structural(
                     }
                 }
             };
-        let missing_field_diags = if ((((tn_str.clone() == "".to_string())
+        let missing_field_diags = if (((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
-            || is_zero_field_variant_tag_reference.clone())
             || presence_name_is_ambiguous.clone())
         {
             Rc::new(vec![])
@@ -13813,30 +14019,24 @@ pub fn infer_record_lit_structural(
                 for sf in Rc::new({
                     let mut __result = Vec::new();
                     for sf in presence_fields.iter().cloned() {
-                        if {
-                            let sf_type = match sf.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-                                _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
-                            };
-                            (((sf_type.return_cardinality.clone() != Cardinality::CardOptional)
-                                && (sf.body.clone() == std::option::Option::None))
-                                && ({
-                                    let mut __found = false;
-                                    for fi in field_inits.iter().cloned() {
-                                        if (crate::v1_std_core::field_init_node_name_at(
-                                            fi.clone(),
-                                            si_presence.clone(),
-                                        ) == crate::v1_std_core::authored_name_at(
-                                            si_presence.clone(),
-                                            sf.clone(),
-                                        )) {
-                                            __found = true;
-                                            break;
-                                        }
+                        if (declared_field_is_required(sf.clone())
+                            && ({
+                                let mut __found = false;
+                                for fi in field_inits.iter().cloned() {
+                                    if (crate::v1_std_core::field_init_node_name_at(
+                                        fi.clone(),
+                                        si_presence.clone(),
+                                    ) == crate::v1_std_core::authored_name_at(
+                                        si_presence.clone(),
+                                        sf.clone(),
+                                    )) {
+                                        __found = true;
+                                        break;
                                     }
-                                    __found
-                                } == false))
-                        } {
+                                }
+                                __found
+                            } == false))
+                        {
                             __result.push(sf);
                         }
                     }
@@ -23335,6 +23535,30 @@ pub fn build_type_env(
                                     v1_rt::rc_map_insert(x, n.clone(), true)
                                 },
                             );
+                            let a2 = Rc::new(v1_rt::map_keys(
+                                &parent_mod
+                                    .interface
+                                    .clone()
+                                    .env
+                                    .clone()
+                                    .str_bindings
+                                    .clone(),
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
+                                a1.clone(),
+                                |x: Rc<HashMap<String, bool>>, n: String| {
+                                    v1_rt::rc_map_insert(
+                                        x,
+                                        v1_rt::concat(
+                                            imp.module_path.clone(),
+                                            v1_rt::concat(".".to_string(), n.clone()),
+                                        ),
+                                        true,
+                                    )
+                                },
+                            );
                             Rc::new(v1_rt::map_keys(
                                 &parent_mod
                                     .interface
@@ -23347,7 +23571,7 @@ pub fn build_type_env(
                             .iter()
                             .cloned()
                             .fold(
-                                a1.clone(),
+                                a2.clone(),
                                 |x: Rc<HashMap<String, bool>>, n: String| {
                                     v1_rt::rc_map_insert(x, n.clone(), true)
                                 },
@@ -23356,12 +23580,27 @@ pub fn build_type_env(
                         std::option::Option::None => acc.clone(),
                     }
                 } else {
-                    imp.specific_names.clone().iter().cloned().fold(
-                        acc.clone(),
-                        |x: Rc<HashMap<String, bool>>, n: String| {
-                            v1_rt::rc_map_insert(x, n.clone(), true)
-                        },
-                    )
+                    {
+                        let with_bare = imp.specific_names.clone().iter().cloned().fold(
+                            acc.clone(),
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(x, n.clone(), true)
+                            },
+                        );
+                        imp.specific_names.clone().iter().cloned().fold(
+                            with_bare.clone(),
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(
+                                    x,
+                                    v1_rt::concat(
+                                        imp.module_path.clone(),
+                                        v1_rt::concat(".".to_string(), n.clone()),
+                                    ),
+                                    true,
+                                )
+                            },
+                        )
+                    }
                 }
             },
         );

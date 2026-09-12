@@ -26,7 +26,7 @@ import gunbc.roadmap_dispatch_actuator {
 }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
-  roadmap_authority_projection,
+  RoadmapAuthorityProjection, roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   authored_merged_prs,
 }
@@ -86,8 +86,8 @@ import extdeps.languages.json.parse {
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.harness.harness_backend {
-  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing, HarnessRosterUnresolved,
-  harness_observe_roster, harness_declines_detail, harness_roster_unresolved_detail,
+  HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
+  harness_observe_roster, harness_declines_detail,
 }
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
@@ -1399,14 +1399,12 @@ fn belt_provider_preflight_for_instance(
       }
     GunbcHarnessProvider =>
       match harness_observe_roster() {
-        HarnessRosterServing { model: _, serving: _, declined: _ } => ProviderPreflightOk
-        HarnessRosterNoneServing { model: m, declined } =>
+        HarnessRosterServing { serving: _, declined: _, unresolved: _ } => ProviderPreflightOk
+        HarnessRosterNoneServing { declined, unresolved } =>
           ProviderPreflightRefused {
             step: "harness-backend-roster",
-            detail: join(["no harness replica serves ", m, ": ", harness_declines_detail(declined: declined)], ""),
+            detail: join(["no enrolled serving route advertises a model the harness is admitted to ask: ", harness_declines_detail(declined: declined, unresolved: unresolved)], ""),
           }
-        HarnessRosterUnresolved { hosts } =>
-          ProviderPreflightRefused { step: "harness-backend-roster", detail: harness_roster_unresolved_detail(hosts: hosts) }
       }
   }
 }
@@ -2167,7 +2165,7 @@ fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
 }
 
 type BeltObserve
-  = Observed { live: List<DispatchLiveSession> }
+  = BeltSessionsObserved { live: List<DispatchLiveSession> }
   | ObserveRefused { reason: String }
 
 // tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know
@@ -2175,8 +2173,8 @@ type BeltObserve
 // answer (§5 absorbing fallback, ⊤-as-answer vs ⊤-as-ignorance). extdeps.tmux
 // classify_tmux_session_list is the sole authority for tmux ls outcome facts (listed sessions,
 // documented no-server signals, stdout parse refusal, unknowable stderr); this module maps them to
-// belt policy only: TmuxSessionsListed -> filter dispatch sessions into Observed live rows;
-// TmuxNoServer -> Observed []; TmuxListStdoutRefused and TmuxListUnknowable -> ObserveRefused with
+// belt policy only: TmuxSessionsListed -> filter dispatch sessions into BeltSessionsObserved live rows;
+// TmuxNoServer -> BeltSessionsObserved []; TmuxListStdoutRefused and TmuxListUnknowable -> ObserveRefused with
 // located evidence, never a blind spawn/reap. First-tick bootstrap works under either no-server
 // spelling the classifier admits. The decision is a pure fn so every arm is witnessed
 // (belt_observe_from_result witnesses); belt_observe only threads live WitnessBin.Run fields in.
@@ -2203,14 +2201,14 @@ fn belt_observe_from_result(
 ) -> BeltObserve {
   match classify_tmux_session_list(exit_ok: success, stdout: stdout, stderr: stderr) {
     TmuxSessionsListed { entries } =>
-      Observed {
+      BeltSessionsObserved {
         live: dispatch_live_sessions_from_entries(
           entries: entries,
           selection: dispatch_actuator_selection(node_sizing: Unsized),
         ),
       }
     TmuxNoServer { evidence: _ } =>
-      Observed { live: [] }
+      BeltSessionsObserved { live: [] }
     TmuxListStdoutRefused { line_number, raw, reason } =>
       ObserveRefused {
         reason: belt_ls_stdout_refusal_reason(
@@ -3580,7 +3578,7 @@ fn belt_sessions_observe_for_instance(
         TmuxSessionsListed { entries } =>
           match belt_attempt_panes_observe_for_instance(instance: instance) {
             BeltAttemptPanesObserved { panes } =>
-              Observed {
+              BeltSessionsObserved {
                 live: dispatch_live_sessions_with_process(
                   entries: entries,
                   panes: panes,
@@ -3589,7 +3587,7 @@ fn belt_sessions_observe_for_instance(
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
-              Observed {
+              BeltSessionsObserved {
                 live: dispatch_live_sessions_with_process(
                   entries: entries,
                   panes: [],
@@ -3607,7 +3605,7 @@ fn belt_sessions_observe_for_instance(
             ),
           }
         TmuxNoServer { evidence: _ } =>
-          Observed { live: [] }
+          BeltSessionsObserved { live: [] }
         TmuxListUnknowable { stderr: e } =>
           ObserveRefused {
             reason: concat(
@@ -3623,7 +3621,7 @@ fn belt_sessions_observe_for_instance(
         stderr: result.stderr,
       ) {
         TmuxNoServer { evidence: _ } =>
-          Observed { live: [] }
+          BeltSessionsObserved { live: [] }
         TmuxSessionsListed { entries: _ } =>
           ObserveRefused {
             reason: concat(
@@ -5566,7 +5564,7 @@ fn belt_stop_node_for_instance(
     DashboardActuating => {
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
-    Observed { live } => {
+    BeltSessionsObserved { live } => {
       match dispatch_tmux_session_scope(
         node_id: node_id,
         selection: dispatch_actuator_selection(node_sizing: Unsized),
@@ -5739,7 +5737,7 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
         json_kv(key: "observe_refused", value: json_bool(b: true)),
         json_kv(key: "reason", value: json_string(s: r)),
       ])
-    Observed { live } =>
+    BeltSessionsObserved { live } =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
@@ -5793,7 +5791,7 @@ fn belt_sessions_json() -> String {
 fn belt_sessions_http_status(o: BeltObserve) -> Int {
   match o {
     ObserveRefused { reason: _ } => 503
-    Observed { live: _ } => 200
+    BeltSessionsObserved { live: _ } => 200
   }
 }
 
@@ -6014,7 +6012,7 @@ fn belt_launch_host_standing_for_instance_with_capacity(
 
 fn belt_launch_sessions_for_instance(instance: HostDashboardInstance) -> LaunchSessionsStanding {
   match belt_sessions_observe_for_instance(instance: instance) {
-    Observed { live } => LaunchSessionsObserved { live: live }
+    BeltSessionsObserved { live } => LaunchSessionsObserved { live: live }
     ObserveRefused { reason } => LaunchSessionsUnobserved { reason: reason }
   }
 }
@@ -6054,9 +6052,16 @@ fn belt_page_sessions_need(standing: LaunchHostStanding, graph: LaunchGraphStand
   })
 }
 
-fn belt_launch_host_standing_for_page(instance: HostDashboardInstance) -> LaunchHostStanding {
+// The page's standing is decided against the plan the page is about to RENDER. Passing the plan in
+// rather than reading the public carrier here is what keeps the two halves of one response honest:
+// a caller rendering a different plan would otherwise get session-need decided from a roadmap its
+// reader never sees.
+fn belt_launch_host_standing_for_page_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+) -> LaunchHostStanding {
   let pre = belt_launch_host_standing(instance: instance)
-  match roadmap_authority_projection() {
+  match plan {
     RoadmapAuthorityProjectionRefused { detail: _ } => pre
     RoadmapAuthorityProjected { doc, accepted: _ } => {
       let graph = launch_graph_of_document(doc: doc)
@@ -6090,6 +6095,23 @@ fn belt_dispatch_node_for_instance(
   node_id: String,
 ) -> BeltSpawnOutcome {
   belt_dispatch_node_staged(instance: instance, standing: belt_launch_host_standing(instance: instance), node_id: node_id)
+}
+
+// The dispatch route reaches the SAME staged fold with a caller-supplied plan. belt_dispatch_node_staged_over
+// already took the graph as a parameter, so this adds no second decision path -- it only supplies
+// launch_graph_of_projection over the given plan instead of over the public one.
+fn belt_dispatch_node_for_instance_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  node_id: String,
+) -> BeltSpawnOutcome {
+  belt_dispatch_node_staged_over(
+    instance: instance,
+    standing: belt_launch_host_standing(instance: instance),
+    graph: launch_graph_of_projection(proj: plan),
+    merged: authored_merged_prs(),
+    node_id: node_id,
+  )
 }
 
 // THE ROUTE'S DECISION PATH after the staged host observation, and the seam the hermetic

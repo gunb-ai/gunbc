@@ -1,5 +1,7 @@
 module v1.compiler.compile
 
+import extdeps.languages.dag.syntax { dag_parse_environment }
+
 import std.syntax { LiteralValue, BinOp }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
 import v1.std.core {
@@ -36,6 +38,7 @@ import v1.compiler.parse {
   parse_with_table,
   parse_with_table_in_occurrence_scope,
   ParseResult,
+  census_heads_body_stand_in,
 }
 import std.occurrence_identity {
   OccurrenceSynthetic,
@@ -923,11 +926,20 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
     "}")
 }
 
+// THE KEY LISTS ARE ORDERED AT THE KEY, WHICH IS WHY BOTH SITES READ `sorted_map_keys` AND
+// NOTHING SORTS THE EMITTED TEXT. `item_registry` is a host-ordered map; feeding `map_keys` of it
+// into the artifact made `dag-artifact.json` run-to-run unstable -- same graph, same `$ref`s, the
+// same key SET in a different order on every run (measured on main, gunbc#11072). An artifact
+// whose identity moves without its input moving makes every byte-equality oracle over it -- regen
+// fixed points, drift observers, emitted-closure identity -- unable to tell changed from
+// reordered. `sorted_map_keys` carries `CanonicalOrder` in `std.primitive_identity`; `map_keys`
+// carries `HostUnspecifiedOrder`, and that fact is the choice between them at any site whose
+// result reaches an emitted byte.
 fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"module\": ", serialize_node_ref(node: module.module, key_to_id: key_to_id),
     ", \"items\": ", json_list(items: module.items |> map(item => serialize_node_ref(node: item, key_to_id: key_to_id))),
-    ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => json_quote(s: k))),
+    ", \"item_registry_keys\": ", json_list(items: sorted_map_keys(module.item_registry) |> map(k => json_quote(s: k))),
     "}")
 }
 
@@ -967,7 +979,7 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
   let modules_json = typed.modules |> map(m => serialize_typed_module(module: m, key_to_id: key_to_id)) |> join(separator: ", ")
   let diagnostics_json = typed.diagnostics |> map(d => serialize_diagnostic(diagnostic: d)) |> join(separator: ", ")
-  let item_registry_json = map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
+  let item_registry_json = sorted_map_keys(typed.item_registry) |> map(k => json_quote(s: k)) |> join(separator: ", ")
   let json = concat(
     "{\n  \"version\": \"0.2.0\",\n  \"nodes\": {", nodes_json,
     "},\n  \"modules\": [", modules_json,
@@ -1075,7 +1087,7 @@ fn resolve_frontend_occurrence_transport(
 
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path)
+    let artifact = tokenize_artifact(source: s.content, file: s.path, env: dag_parse_environment)
     let si = build_newline_index(file: s.path, source: s.content)
     FrontendPrepared {
       tokens: artifact.tokens,
@@ -1154,6 +1166,57 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   }
 }
 
+// A census head is the declaration projection of an already parsed Node. Signature
+// subtrees and declaration identity survive; executable expressions and uses do not.
+// A function keeps the parser's refusing body stand-in: body presence is the existing
+// function-kind discriminator used by local_binding_for_item, not executable content.
+fn census_heads_item_is_fn_decl(item: Node) -> Bool {
+  item.connective == NoConnective && item.body != none && item.transport == none
+}
+
+fn census_heads_node(node: Node, children: List<Node>, body: Node?) -> Node {
+  Node {
+    occurrence_identity: node.occurrence_identity,
+    name: node.name,
+    ident: node.ident,
+    span: node.span,
+    ident_span: node.ident_span,
+    children: children,
+    connective: node.connective,
+    params: node.params,
+    inferred: node.inferred,
+    return_cardinality: node.return_cardinality,
+    uses: [],
+    body: body,
+    transport: node.transport,
+    properties: node.properties,
+    type_annotation: node.type_annotation,
+    is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: none,
+    module_item_kind: node.module_item_kind,
+    expr_data: NoExprData,
+  }
+}
+
+fn census_heads_module_item(item: Node) -> Node {
+  census_heads_node(
+    node: item,
+    children: item.children |> map(child => census_heads_module_item(item: child)),
+    body: if census_heads_item_is_fn_decl(item: item) {
+      Present { value: census_heads_body_stand_in() }
+    } else { none }
+  )
+}
+
+fn census_heads_module_node(module: Node) -> Node {
+  census_heads_node(
+    node: module,
+    children: module_items(n: module) |> map(item => census_heads_module_item(item: item)),
+    body: none
+  )
+}
+
 type CensusFillParse {
   modules: List<Node>,
   newline_indices: List<NewlineIndex>,
@@ -1162,33 +1225,86 @@ type CensusFillParse {
   annotations: SourceAnnotationGraph
 }
 
+type CensusModuleRetention
+  = RetainParsedModules
+  | RetainDeclarationHeads
+
+fn census_retain_module(module: Node, retention: CensusModuleRetention) -> Node {
+  match retention {
+    RetainParsedModules => module
+    RetainDeclarationHeads => census_heads_module_node(module: module)
+  }
+}
+
+fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetention) -> ParseResult {
+  ParseResult {
+    module: match result.module {
+      Present { value: module_node } => Present { value: census_retain_module(module: module_node, retention: retention) }
+      Absent => none
+    },
+    error: result.error
+  }
+}
+
 // Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
 // imports live in the compile closure or a different tree view; resolving against a fill-only pool
 // fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse
 // errors only — those are load-bearing (a broken-parse module contributes no names to the census)
 // and must surface, never be skipped.
 
+// TOKENIZE INSIDE THE FOLD, NOT INTO A LIST AHEAD OF IT. The census fill's population is the
+// WHOLE indexed pool minus the compile closure, so for an `--entry` compile it is ~5.4k modules
+// the entry never references. Materializing `prepared` first held every one of those modules'
+// token streams resident simultaneously, for a fold that consumes each exactly once and in order
+// — the token stream for module N was alive for the entire parse of modules N+1..5400 with no
+// consumer. Fusing the tokenize into the fold frees each module's tokens before the next is read,
+// which is DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape:
+// the same work, the same order, the same results, held for the interval it is actually used.
+// The instrument that re-derives the size of this term, rather than a number copied out of it
+// (DESIGN §6): `gunbc compile --source-root dag --source-root src/v2 --entry
+// src/v2/workflow/floor2_prepared_subject.dag --output-dir <dir> --target dag`, reading VmHWM
+// from /proc/<pid>/status while it runs. The entry is chosen because its reference-derived
+// closure is a handful of files while the census population is the whole pool, so peak RSS there
+// is dominated by this fold rather than by the closure being compiled.
+//
+// THE PRE-INTERN PASS DISSOLVES WITH `prepared`, and that is a consequence rather than a
+// separate decision: it existed only because the token lists were already all in hand. Interning
+// is idempotent and `parse_with_table_in_occurrence_scope` already threads an updated table
+// through the fold, so pre-interning module N's tokens immediately before parsing module N
+// reaches that parse with the same table contents the two-pass form did. What changes is the
+// ORDER ids are assigned in, which no consumer reads: names are resolved positionally through
+// `authored_name_at` against the newline index, never by intern id.
+//
+// WHAT THIS DELIBERATELY DOES NOT CHANGE: every module is still parsed with FULL BODIES and its
+// parse diagnostics still surface. That is load-bearing and is not a formality — a body-level
+// parse break in a non-closure module (balanced braces, invalid inside) is invisible to the
+// heads-only module index and is caught HERE and nowhere else. The discriminating RED is a
+// planted `fn body_probe(x: Int) -> Int { let = = = 9 }` in a module outside the entry's
+// closure: it must keep refusing with `expected name, found Eq`.
+// Singleton occurrence and namespace consumers retain their existing full-node view.
 fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
-  let prepared = sources |> map(s =>
-    let artifact = tokenize_artifact(source: s.content, file: s.path)
-    let si = build_newline_index(file: s.path, source: s.content)
-    FrontendPrepared {
-      tokens: artifact.tokens,
-      annotations: artifact.annotations,
-      source_length: string_length(s: s.content),
-      newline_index: si,
-    }
-  )
-  let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum {
+  parse_census_fill_sources_with_retention(sources: sources, retention: RetainParsedModules)
+}
+
+// Annotation admission consumes the full parse. Both accumulator references then
+// share the selected projection so neither retains a discarded body.
+fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention: CensusModuleRetention) -> CensusFillParse {
+  let parsed = sources |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
     newline_indices: [],
-    intern_table: intern_table,
+    intern_table: empty_intern_table(),
     occurrence_allocator: occurrence_id_allocator_initial(),
     annotations: source_annotation_graph_empty(),
     annotation_diagnostics: [],
-  }, f: (acc, p) =>
+  }, f: (acc, s) =>
+    let artifact = tokenize_artifact(source: s.content, file: s.path, env: dag_parse_environment)
+    let p = FrontendPrepared {
+      tokens: artifact.tokens,
+      annotations: artifact.annotations,
+      source_length: string_length(s: s.content),
+      newline_index: build_newline_index(file: s.path, source: s.content),
+    }
     let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
       source_indices: map_insert(
@@ -1196,7 +1312,7 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
         p.newline_index.file,
         p.newline_index
       ),
-      intern_table: acc.intern_table,
+      intern_table: pre_intern_tokens(tokens: p.tokens, table: acc.intern_table),
       occurrence_allocator: acc.occurrence_allocator
     )
     let bound = admit_source_annotations(
@@ -1204,9 +1320,10 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
       captures: p.annotations,
       source_length: p.source_length
     )
+    let retained_result = census_retain_parse_result(result: parsed.result, retention: retention)
     FrontendAccum {
-      parse_results: list_push(acc.parse_results, parsed.result),
-      module_inputs: match parsed.result.module {
+      parse_results: list_push(acc.parse_results, retained_result),
+      module_inputs: match retained_result.module {
         Present { value: parsed_module } =>
           list_push(acc.module_inputs, module_occurrence_input(
             module: parsed_module,
@@ -1354,7 +1471,10 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let fill = parse_census_fill_sources(sources: options.census_only_sources)
+      let fill = parse_census_fill_sources_with_retention(
+        sources: options.census_only_sources,
+        retention: RetainDeclarationHeads
+      )
       let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
       let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
       let _ = trace_mark("compile.reconcile.done")

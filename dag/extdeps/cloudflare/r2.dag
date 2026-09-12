@@ -14,7 +14,6 @@ import extdeps.cloudflare.account_api_tokens {
   PolicyAllow,
   CreateAccountTokenRequest,
   CloudflarePermissionGrant,
-  CloudflareAccountTokenShape,
   permission_groups_from_grants
 }
 
@@ -34,6 +33,34 @@ data r2_s3_api_citation: ExternalAuthority = ExternalAuthority {
 
 data r2_tokens_doc_as_of: Timestamp = "2026-08-18"
 
+// THE READ ID IS THE ONE PERMISSION GROUP ID THIS MODULE PINS, AND THE WRITE ID IS DELIBERATELY NOT
+// A SECOND ONE. The write half -- Cloudflare names the groups "Workers R2 Storage Read" and "Workers
+// R2 Storage Edit" on its public permission reference -- has no id here: THAT PAGE PUBLISHES NO IDS
+// (retrieved 2026-09-10), so there is no doc citation to make, and an uncited id would be worse than
+// an absent one because it would be indistinguishable from a checked fact at every later reading.
+// r2_object_write_grant below therefore takes the write group AS A PARAMETER, and the observing
+// layer supplies it.
+//
+// IT IS RESOLVED BY OBSERVATION, AND THE OPERATION THAT RESOLVES IT IS ALREADY MODELED.
+// cloudflare.AccountTokens.ListPermissionGroupsRaw answers GET
+// /accounts/{account_id}/tokens/permission_groups, and its response rows carry both "id" and "name"
+// (developers.cloudflare.com/api/resources/accounts/subresources/tokens/subresources/permission_groups/methods/list,
+// retrieved 2026-09-10 -- the modeled path was checked against that document and agrees with it).
+// So the write grant lands as an OBSERVATION recorded with its retrieval date, in the observing
+// workflow layer, never as a doc-cited fact authored here.
+//
+// A THIRD ID IS IN CIRCULATION AND IS NOT WRITTEN DOWN ANYWHERE IN THIS TREE ON PURPOSE. The
+// operator's existing account token carries permission group 5bc3f8b21c554832afc660159ab75fa4, which
+// is NOT the read id below and is not identified by any published document. Until the listing above
+// is performed, nobody can say whether it is a read grant, a write grant, or the Account API Tokens
+// Write grant the mint model expects of a bootstrap token -- and reshaping the model to whichever
+// answer would make the plan work is the fabrication this note exists to prevent.
+//
+// THE SCOPE AXIS IS A SECOND, INDEPENDENT GAP. r2_bucket_item_resources builds a BUCKET-scoped
+// resource map; that operator token grants at ACCOUNT scope ("com.cloudflare.api.account.<id>": "*"),
+// which r2_account_resource_name can already spell and which no policy builder here consumes. Those
+// are materially different grants -- one names a bucket, the other names everything in the account --
+// and the difference is recorded rather than smoothed into the bucket-scoped builder.
 data workers_r2_storage_bucket_item_read_permission_group_id: NonEmptyStr = "6a018a9f2fc74eb6b293b0c548f38b39"
 
 data r2_s3_access_key_is_created_token_id_citation: FactCitation = FactCitation {
@@ -152,11 +179,22 @@ fn r2_object_read_grant() -> CloudflarePermissionGrant {
   PermissionGroupGrant { group: r2_bucket_item_read_permission_group() }
 }
 
-fn shape_grants_include_r2_object_read(shape: CloudflareAccountTokenShape) -> Bool {
-  any(shape.grants, g => g == r2_object_read_grant())
+// THE WRITE GRANT IS BUILT FROM AN OBSERVED GROUP, NEVER FROM AN ID AUTHORED HERE. The reasoning
+// above workers_r2_storage_bucket_item_read_permission_group_id is the whole of it: Cloudflare
+// publishes the write group's NAME and no ID, so the id is a fact the observing workflow layer
+// records with its retrieval moment (gunbc.cloudflare.r2_permission_group_observe
+// cloudflare_r2_bucket_item_write_observed_permission_group_id) and this module receives it as a
+// PermissionGroupRef. The grant SHAPE -- one bucket-item permission group over one bucket resource
+// -- is upstream's and lives here; which id inhabits it is an observation and does not.
+fn r2_object_write_grant(write_group: PermissionGroupRef) -> CloudflarePermissionGrant {
+  PermissionGroupGrant { group: write_group }
 }
 
-fn r2_bucket_item_read_resources(
+// ONE BUCKET-ITEM RESOURCE MAP, READ AND WRITE ALIKE. Both grants scope to the same bucket resource
+// name with the same wildcard; the resource is a property of the BUCKET, and the permission group is
+// what distinguishes a reader from a writer. The previous read-specific name was a fork waiting to
+// happen the moment a second grant arrived, which is now.
+fn r2_bucket_item_resources(
   account_id: String,
   jurisdiction: R2Jurisdiction,
   bucket_name: String
@@ -172,20 +210,46 @@ fn r2_bucket_item_read_resources(
   )
 }
 
-fn r2_object_read_token_policy(
+fn r2_bucket_item_resources_policy(
+  grant: CloudflarePermissionGrant,
   account_id: String,
   jurisdiction: R2Jurisdiction,
   bucket_name: String
 ) -> AccountTokenPolicy {
   AccountTokenPolicy {
     effect: PolicyAllow,
-    permission_groups: permission_groups_from_grants(grants: [r2_object_read_grant()]),
-    resources: r2_bucket_item_read_resources(
+    permission_groups: permission_groups_from_grants(grants: [grant]),
+    resources: r2_bucket_item_resources(
       account_id: account_id,
       jurisdiction: jurisdiction,
       bucket_name: bucket_name
     )
   }
+}
+
+fn r2_bucket_item_create_request(
+  name: String,
+  policy: AccountTokenPolicy
+) -> CreateAccountTokenRequest {
+  CreateAccountTokenRequest {
+    name: name,
+    policies: [policy],
+    not_before: none,
+    expires_on: none
+  }
+}
+
+fn r2_object_read_token_policy(
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> AccountTokenPolicy {
+  r2_bucket_item_resources_policy(
+    grant: r2_object_read_grant(),
+    account_id: account_id,
+    jurisdiction: jurisdiction,
+    bucket_name: bucket_name
+  )
 }
 
 fn r2_object_read_create_request(
@@ -194,28 +258,81 @@ fn r2_object_read_create_request(
   jurisdiction: R2Jurisdiction,
   bucket_name: String
 ) -> CreateAccountTokenRequest {
-  CreateAccountTokenRequest {
+  r2_bucket_item_create_request(
     name: name,
-    policies: [
-      r2_object_read_token_policy(
-        account_id: account_id,
-        jurisdiction: jurisdiction,
-        bucket_name: bucket_name
-      )
-    ],
-    not_before: none,
-    expires_on: none
-  }
+    policy: r2_object_read_token_policy(
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
+    )
+  )
 }
 
-data cloudflare_r2_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_endpoint_url"),
-    reason: "S3 endpoint fold has no executing S3 caller in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration uses r2_s3_endpoint_url on an executing converge or gunbc-run entry that talks to R2 S3; a witness that the fold exists does not fire this"
+fn r2_object_write_token_policy(
+  write_group: PermissionGroupRef,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> AccountTokenPolicy {
+  r2_bucket_item_resources_policy(
+    grant: r2_object_write_grant(write_group: write_group),
+    account_id: account_id,
+    jurisdiction: jurisdiction,
+    bucket_name: bucket_name
+  )
+}
+
+fn r2_object_write_create_request(
+  name: String,
+  write_group: PermissionGroupRef,
+  account_id: String,
+  jurisdiction: R2Jurisdiction,
+  bucket_name: String
+) -> CreateAccountTokenRequest {
+  r2_bucket_item_create_request(
+    name: name,
+    policy: r2_object_write_token_policy(
+      write_group: write_group,
+      account_id: account_id,
+      jurisdiction: jurisdiction,
+      bucket_name: bucket_name
     )
-  ),
+  )
+}
+
+// THE S3 OBJECT ADDRESS AND THE SIGNATURE REGION, CITED TO THE R2 S3 API DOCUMENT
+// (developers.cloudflare.com/r2/api/s3/api, r2_s3_api_citation above). R2 serves the S3 API at
+// <account_id>.r2.cloudflarestorage.com and addresses objects PATH-STYLE, /<bucket>/<key>, so the
+// URL is the endpoint host followed by the bucket then the key. SigV4 requests are signed under
+// the region "auto" -- R2 has no region axis and the documented value is the literal word -- and a
+// signature computed under any other region is refused. Both are shape facts of the store and are
+// received by the transport builder (extdeps.tools.curl curl_aws_sigv4_s3_provider) rather than
+// spelled there.
+//
+// THE KEY IS CARRIED AS GIVEN. No percent-encoding is applied: the keys this repository writes are
+// the commit-slot keys gunbc.fabric_m0_commit derives (a namespace, a slash, an attempt identity)
+// and content-hash names, none of which carries a character that needs escaping in a URL path. A
+// key that did would need a modeled encoder, not a heuristic here, and until one exists a caller
+// that passes one gets a signature the store refuses rather than an object at a different name.
+data r2_s3_sigv4_region: NonEmptyStr = "auto"
+
+type R2ObjectLocator {
+  endpoint: R2S3Endpoint
+  bucket_name: NonEmptyStr
+  key: NonEmptyStr
+}
+
+fn r2_object_url(locator: R2ObjectLocator) -> String {
+  join(
+    [r2_s3_endpoint_url(endpoint: locator.endpoint), "/", locator.bucket_name as String, "/", locator.key as String],
+    ""
+  )
+}
+
+// THE r2_s3_endpoint_url ROW IS RETIRED: gunbc.cloudflare.r2_origin_object reaches it through
+// r2_object_url on the executing put_origin_object and fetch_origin_object entries, which is the
+// consumer the row named. The list is the membership of what remains.
+data cloudflare_r2_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_account_resource_name"),
     reason: "account IAM resource name has no executing consumer; object-read policy uses the bucket resource name",

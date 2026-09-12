@@ -6,6 +6,16 @@ import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_published_min_version, glm_5_3_flash_vllm_prerelease_image_nvidia }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627 }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
+  sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_version,
+}
+import extdeps.docker.images.gitcommit90_glm_53_one_spark {
+  gitcommit90_glm_53_one_spark_pinned_reference, gitcommit90_glm_53_one_spark_vllm_version,
+}
+import gunbc.spark.runtime_architecture_registry_reading {
+  ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
+  sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
+}
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
 }
@@ -127,6 +137,7 @@ type ServingCheckpointRow {
   repo: HubRepoId
   revision: NonEmptyStr
   placement: SnapshotPlacement
+  architecture: NonEmptyStr
   weight_gib: Nat
   quantization: CheckpointQuantization
   provenance: NonEmptyStr
@@ -137,9 +148,10 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
   placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
+  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
   weight_gib: 80,
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
-  provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards" as NonEmptyStr,
+  provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
 data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
@@ -147,9 +159,10 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
   weight_gib: glm_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
-  provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence. Still NOT measured on this fleet -- nothing here has fetched it" as NonEmptyStr,
+  provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
 fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
@@ -167,6 +180,13 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // that stopped this migration. It is carried per runtime, established by executing the registry
 // probe inside the image, and never inferred from the model card or the upstream recipe -- both of
 // which describe a vLLM newer than the one a given image pins.
+// THE IMAGE, ITS PINNED DIGEST AND THE VERSION IT DECLARES ARE READ FROM THE IMAGE'S OWN MODULE, not
+// restated here. Both rows previously carried a literal digest and a literal version beside the
+// extdeps module that owned them, which is two independently editable copies of one pin: a re-pin in
+// extdeps would have left this row launching the old digest with nothing refusing. The row keeps the
+// fields because a serving arm genuinely has an image and a version; what it no longer has is a
+// second place they are written.
+//
 // THE HUB CLI'S PATH IS A PER-IMAGE FACT, measured inside each image rather than assumed common.
 // `/opt/env/bin/hf` in the DeepSeek runtime and `/usr/local/bin/hf` in the community one -- a single
 // hardcoded path silently produced a container that could not start, reported downstream as a
@@ -301,12 +321,21 @@ fn runtime_artifact_key(a: RuntimeArtifactIdentity) -> String {
   }
 }
 
+// AN IMAGE NOBODY HAS PROBED HAS NO READING, AND THAT IS NOT AN EMPTY REGISTRY. `registry_reading`
+// arrived from the other side of a merge as a REQUIRED record, which is right for every row that side
+// carried -- each was probed inside its own digest. This branch adds a row for the STOCK upstream image,
+// whose registry has not been read by anyone here, and the three ways to make an unprobed image fit a
+// required shape are all lies: an empty architecture list asserts a measured negative, a copied list
+// asserts a reading taken somewhere else, and a reference that deliberately mismatches games the
+// currency check into refusing for the wrong reason. Absent is the fourth option and the only true one,
+// and it is fail-closed at both readers: an unprobed image registers nothing and its reading is never
+// current.
 type ServingRuntimeRow {
   runtime: ServingRuntime
   artifact: RuntimeArtifactIdentity
   hub_cli_path: NonEmptyStr
   vllm_version: NonEmptyStr
-  registers_glm5_next: Bool
+  registry_reading: ArchitectureRegistryReading?
   reasoning_projection: ReasoningResponseProjection
   provenance: NonEmptyStr
   claimed_defaults_revision: ModelledVllmDefaultsRevision
@@ -332,10 +361,10 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
     provenance: "a community image taken as published; the revision is what it self-reports as its vLLM build, not a comparison of its bytes against that tree" as NonEmptyStr,
   ),
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
-  vllm_version: "0.1.dev20051+g487ecf187" as NonEmptyStr,
-  registers_glm5_next: true,
+  vllm_version: gitcommit90_glm_53_one_spark_vllm_version,
+  registry_reading: Present { value: gitcommit90_glm_53_one_spark_registry_reading },
   reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
-  provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`" as NonEmptyStr,
+  provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`. The full registry carried here was re-read inside the same digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 377 entries, the three Glm5Next entries among them and DeepseekV41ForCausalLM not" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
 }
 
@@ -351,10 +380,10 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
     provenance: "this row previously carried the sentence \"digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10\" INSIDE the reference string, which read as a pin and was prose about one. The pin lives in that module; this row names it rather than restating it" as NonEmptyStr,
   ),
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
-  vllm_version: "0.21.1rc1.dev339+g1967a5627bc3" as NonEmptyStr,
-  registers_glm5_next: false,
+  vllm_version: sparkrun_vllm_ds4_gb10_vllm_version,
+  registry_reading: Present { value: sparkrun_vllm_ds4_gb10_registry_reading },
   reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
-  provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present" as NonEmptyStr,
+  provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present. The full registry carried here was read inside the pinned digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 361 entries, no Glm5 entry and no DeepseekV41ForCausalLM" as NonEmptyStr,
   claimed_defaults_revision: Vllm1967a5627,
 }
 
@@ -386,7 +415,7 @@ data vllm_openai_glm53_flash_row: ServingRuntimeRow = ServingRuntimeRow {
   ),
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: "0.28.1rc1.dev580+g385dce36b" as NonEmptyStr,
-  registers_glm5_next: true,
+  registry_reading: none,
   reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
   provenance: "pulled by tag vllm/vllm-openai:glm53-flash on the group B hosts 2026-09-10 and pinned here to the digest that tag resolved to; recipes.vllm.ai/zai-org/GLM-5.3-Flash directs NVIDIA deployments to this image for this checkpoint" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
@@ -428,6 +457,52 @@ fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime
   serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology)
 }
 
+// A CHECKPOINT LOADS WHEN THE RUNTIME REGISTERS ITS ARCHITECTURE, WHICH IS A MEMBERSHIP QUESTION.
+// The field this replaced was `registers_glm5_next: Bool`, and the shape of that name is the whole
+// defect: it answered ONE model's question, so every further model needed its own Bool, and a
+// runtime row could not say anything at all about an architecture nobody had thought to ask about
+// when the row was written. DeepSeek V4.1 is exactly that case -- `DeepseekV41ForCausalLM` did not
+// exist when either runtime row was authored, and under the Bool both rows were silent about it
+// while looking complete.
+//
+// THE SET IS A READING WE TOOK, NOT A FIELD THE IMAGE PUBLISHES, so the row carries the whole
+// receipt -- host, date, instrument and answer -- rather than a bare list whose provenance would
+// have to be restated in prose beside it. A miss is then a measured negative with a date on it
+// rather than an absence of modelling, and the membership test itself is the receipt's own fold.
+fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool {
+  match rrow.registry_reading {
+    Present { value: r } => registry_reading_contains(r: r, architecture: architecture)
+    Absent => false
+  }
+}
+
+// THE ROW'S DESIRED IMAGE AND ITS READING'S OBSERVED IMAGE ARE TWO FACTS, AND A REPIN SEPARATES THEM.
+// The artifact's PIN is what this arm intends to run; the reading is
+// what someone executed a registry call inside, frozen at the digest it was taken in. They agree
+// today. The moment extdeps repins the image, they stop agreeing, and the old architecture list
+// stops being evidence about the thing this arm would launch.
+//
+// AND THE PIN IS ONLY PART OF THE IDENTITY, which is what this branch added underneath the same check:
+// a wire reference answers "which bytes does docker pull", while the artifact also carries the source
+// revision and the patch set those bytes were built from. The currency question is still asked of the
+// reference, because that is what a registry probe was executed against.
+//
+// SO THE ARM REFUSES RATHER THAN INHERITING. The alternative -- carrying the reading forward onto a
+// digest nobody probed -- is the shape of every silent-wrongness failure this repository files: the
+// row still looks measured, the provenance string still reads convincingly, and the fact underneath
+// it has moved. A refusal here costs one probe; the other arm costs an engine that will not start
+// and a receipt claiming it should.
+fn runtime_reading_is_current(rrow: ServingRuntimeRow) -> Bool {
+  match rrow.registry_reading {
+    Present { value: r } => reading_applies_to(r: r, desired_reference: runtime_artifact_wire(a: rrow.artifact))
+    Absent => false
+  }
+}
+
+// TWO WAYS TO FAIL THE CURRENCY CHECK AND THEY OWE DIFFERENT WORK. A reading taken inside another digest
+// means someone probed and then the image moved; no reading at all means nobody has looked. Both refuse,
+// and a receipt that could not tell them apart would send a reader to re-probe an image that was never
+// probed, or to hunt a repin that never happened -- so this fold names which one it hit.
 fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
   match serving_checkpoint_row(c: checkpoint) {
     Absent => ServingArmRefused { cause: "no checkpoint row: this checkpoint's repo, revision and footprint are unmodelled, so neither fit nor acquisition can be decided" as NonEmptyStr }
@@ -435,12 +510,30 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
       match serving_runtime_row(r: runtime) {
         Absent => ServingArmRefused { cause: "no runtime row: this image's architecture registry has not been probed, so whether it can load the checkpoint is unknown" as NonEmptyStr }
         Present { value: rrow } =>
-          if !rrow.registers_glm5_next {
-            ServingArmRefused { cause: join([
-              "the runtime does not register Glm5NextForConditionalGeneration (vLLM ",
-              rrow.vllm_version as String,
-              "); no amount of weight transfer makes this tuple start",
-            ], "") as NonEmptyStr }
+          if !runtime_reading_is_current(rrow: rrow) {
+            match rrow.registry_reading {
+              Absent => ServingArmRefused { cause: join([
+                "no registry reading exists for ", runtime_artifact_wire(a: rrow.artifact) as String,
+                ": nothing here has read this image's architecture registry inside its own digest, so whether it can load ",
+                crow.architecture as String, " is unknown rather than false. One probe inside that digest settles it",
+              ], "") as NonEmptyStr }
+              Present { value: r } => ServingArmRefused { cause: join([
+                "the runtime's architecture reading was taken inside ",
+                r.image_reference as String,
+                " and this arm now names ", runtime_artifact_wire(a: rrow.artifact) as String,
+                ": the image was repinned without a new registry probe, so nothing here has looked inside the image this arm would launch",
+              ], "") as NonEmptyStr }
+            }
+          } else if !runtime_registers(rrow: rrow, architecture: crow.architecture) {
+            match rrow.registry_reading {
+              Absent => ServingArmRefused { cause: "unreachable: an absent reading is never current, so this arm is guarded above" as NonEmptyStr }
+              Present { value: r } => ServingArmRefused { cause: join([
+                "the runtime does not register ", crow.architecture as String, " (vLLM ",
+                rrow.vllm_version as String, " answered for ", to_string(length(r.architectures)),
+                " architectures when its registry was read on ", r.observed_at as String,
+                " and this is not one of them); no amount of weight transfer makes this tuple start",
+              ], "") as NonEmptyStr }
+            }
           } else if !serving_arm_fits(c: crow, t: topology) {
             ServingArmRefused { cause: join([
               "the checkpoint does not fit the topology: ", to_string(crow.weight_gib),

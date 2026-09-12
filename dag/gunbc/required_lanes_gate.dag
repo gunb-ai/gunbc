@@ -6,6 +6,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_exit,
   bash_build_if_from_stmts,
   bash_build_or_else,
+  bash_build_and_then,
+  bash_build_negation,
   bash_build_test_bracket,
   bash_build_with_redir,
   bash_build_word_concat_parts,
@@ -27,8 +29,10 @@ import gunbc.floor_attempt_standing {
   floor_head_standing_unobserved,
   floor_rendered_verdict_green_name,
   floor_rendered_verdict_red_name,
-  floor_rendered_verdict_unestablished_name
+  floor_rendered_verdict_unestablished_name,
+  floor_rendered_verdict_environment_name
 }
+import gunbc.ci_failure_class { floor_outcome_wire_infra, floor_outcome_wire_structural }
 import v2.std.node { Node }
 import std.types { String, List }
 
@@ -116,6 +120,17 @@ fn required_lane_var_equals_lit_test(var_name: String, text: String) -> Node {
       bash_build_word_lit(text: text)
     ]
   )
+}
+
+// Shell realization of `gunbc.floor_attempt_standing` `class_wire_is_environment`: the CLASS
+// job output equals `floor_outcome_wire_infra`. The modeled decode does not mint a POSIX
+// signature from class alone (`ClassWireOnly`).
+fn required_lane_is_infra_class_test(var_name: String) -> Node {
+  required_lane_var_equals_lit_test(var_name: var_name, text: floor_outcome_wire_infra)
+}
+
+fn required_lane_is_structural_class_test(var_name: String) -> Node {
+  required_lane_var_equals_lit_test(var_name: var_name, text: floor_outcome_wire_structural)
 }
 
 // THE ATTEMPT SUBJECT RECEIPT, AND IT IS THE PIECE THAT MAKES THE JOIN POSSIBLE AT ALL.
@@ -236,13 +251,13 @@ fn required_lanes_head_standing_stmts(
 // than anything in this file. A per-consumer fixture asserting the same refusal is deliberately
 // NOT added here: it would be one more monomorphised copy of a corpus-wide property, the same
 // duplication declining a sixth NonEmpty carrier avoids.
-// It is deliberately not a fresh NonEmptyRequiredLanes carrier -- `free_semigroup_grounding_note`
-// already names five monomorphised copies of that shape as convergence debt, and a sixth would be
-// the re-invention that section 2's own test forbids.
+// It is deliberately not a fresh NonEmptyRequiredLanes carrier — that would re-invent
+// std.algebra FreeSemigroup.
 type RequiredLane {
   job_id: String,
   label: String,
-  var_name: String
+  var_name: String,
+  class_var_name: String
 }
 
 // THE OR-FOLD OVER THE LANES, left-associated so that the two-lane case is the exact node the
@@ -275,6 +290,21 @@ fn required_lanes_receipt_parts(lanes: FreeSemigroup<RequiredLane>, head_prefix:
   )
 }
 
+fn required_lanes_class_receipt_parts(lanes: FreeSemigroup<RequiredLane>) -> List<Node> {
+  list_append(
+    left: [
+      bash_build_word_lit(text: concat(" ", lanes.head.label, "_class=")),
+      bash_build_word_var(name: lanes.head.class_var_name)
+    ],
+    right: list_flat_map(xs: lanes.tail, f: fn(lane) {
+      [
+        bash_build_word_lit(text: concat(" ", lane.label, "_class=")),
+        bash_build_word_var(name: lane.class_var_name)
+      ]
+    })
+  )
+}
+
 fn required_lane_is_failure_test(var_name: String) -> Node {
   required_lane_var_equals_lit_test(var_name: var_name, text: floor_lane_result_failure)
 }
@@ -291,6 +321,30 @@ fn required_lane_is_failure_test(var_name: String) -> Node {
 // that promotion can only ever move a blocking verdict to a different blocking verdict. An
 // unknown spelling therefore lands in unestablished and blocks; it can never land in green.
 // Reversing these two would make the enumeration load-bearing and reopen exactly that hole.
+fn required_lanes_any_class_test(lanes: FreeSemigroup<RequiredLane>) -> Node {
+  fold_list(
+    xs: lanes.tail,
+    empty: required_lane_is_infra_class_test(var_name: lanes.head.class_var_name),
+    cons: fn(acc, lane) {
+      bash_build_or_else(left: acc, right: required_lane_is_infra_class_test(var_name: lane.class_var_name))
+    }
+  )
+}
+
+fn required_lanes_any_structural_class_test(lanes: FreeSemigroup<RequiredLane>) -> Node {
+  fold_list(
+    xs: lanes.tail,
+    empty: required_lane_is_structural_class_test(var_name: lanes.head.class_var_name),
+    cons: fn(acc, lane) {
+      bash_build_or_else(left: acc, right: required_lane_is_structural_class_test(var_name: lane.class_var_name))
+    }
+  )
+}
+
+// The environment rewrite is only admitted over stands-red. That is
+// `floor_rendered_verdict_with_receipts`: infra without structural rewrites AttemptStandsRed
+// and leaves AttemptStandsUnestablished (timeout/cancel) alone. A cancelled lane plus a
+// leftover infra class must not become stands-environment.
 fn required_lanes_verdict_stmts(
   lanes: FreeSemigroup<RequiredLane>,
   verdict_var: String
@@ -311,6 +365,21 @@ fn required_lanes_verdict_stmts(
       }),
       then_stmts: [
         bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_red_name)
+      ]
+    ),
+    bash_build_if_from_stmts(
+      cond: bash_build_and_then(
+        left: required_lane_var_equals_lit_test(
+          var_name: verdict_var,
+          text: floor_rendered_verdict_red_name
+        ),
+        right: bash_build_and_then(
+          left: required_lanes_any_class_test(lanes: lanes),
+          right: bash_build_negation(inner: required_lanes_any_structural_class_test(lanes: lanes))
+        )
+      ),
+      then_stmts: [
+        bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_environment_name)
       ]
     )
   ]
@@ -357,14 +426,17 @@ fn required_lanes_verdict_receipt_stmt(
       bash_build_word_concat_parts(
         parts: list_append(
           left: required_lanes_receipt_parts(lanes: lanes, head_prefix: "required lanes: "),
-          right: [
+          right: list_append(
+            left: required_lanes_class_receipt_parts(lanes: lanes),
+            right: [
           bash_build_word_lit(text: " verdict="),
           bash_build_word_var(name: verdict_var),
           bash_build_word_lit(text: " mechanism="),
           bash_build_word_var(name: mechanism_var),
           bash_build_word_lit(text: " attribution="),
           bash_build_word_var(name: attribution_var)
-          ]
+            ]
+          )
         )
       )
     ]
@@ -444,7 +516,22 @@ fn required_lanes_refusal_stmts(
       ),
       then_stmts: [
         required_lanes_error_stmt(
-          text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed; rerun it (",
+          text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed (timeout-cancel is no verdict, not a red). Fetch the gunbc-floor-outcome artifact for this run id and attempt BEFORE re-running; a re-run reuses the run id and drops the failed attempt's log (",
+          lanes: lanes,
+          mechanism_var: mechanism_var,
+          attribution_var: attribution_var
+        ),
+        bash_build_exit(code: "1")
+      ]
+    ),
+    bash_build_if_from_stmts(
+      cond: required_lane_var_equals_lit_test(
+        var_name: verdict_var,
+        text: floor_rendered_verdict_environment_name
+      ),
+      then_stmts: [
+        required_lanes_error_stmt(
+          text: "::error title=environment::a required lane refused for an environmental cause, not a defect in the diff. Fetch the gunbc-floor-outcome artifact for this run id and attempt BEFORE re-running (",
           lanes: lanes,
           mechanism_var: mechanism_var,
           attribution_var: attribution_var

@@ -1,0 +1,304 @@
+module tools.fabric_m0_origin_readback_probe
+
+import std.types { Bool, NonEmptyStr, String }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
+import std.types { List }
+import std.measure { hardware_thread_count }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.identity { WorkKey }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, derive_work_key,
+  OutputObligation, OutputArtifactObligation,
+  DeclaredOutputObligations,
+  resolve_output_obligations, ObligationsJudgedAtJobStart,
+  OutputObligationsResolution,
+  Work, work_for,
+}
+import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import gunbc.fabric_m0_completion {
+  ObligationSubject,
+  ComputationSucceeded,
+  CommittedOutput,
+  ManifestMember,
+  OriginObservation,
+  JobPublication,
+  PublishSuccess,
+  PublishFinalizationFailed,
+  origin_readback_of,
+}
+import gunbc.fabric_m0_commit {
+  CommitNamespace,
+  CommitTransportOutcome,
+  StoreAnswered,
+  manifest_read_of,
+  publish_after_commit,
+}
+import extdeps.github.checks { CheckConclusion, Success, Failure }
+import gunbc.fabric_m0_job_ending { end_required_job }
+import gunbc.fabric_m0_origin_readback {
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  origin_reading_digest,
+  origin_reading_path,
+  read_origin_staged_file,
+}
+
+// THE COMPUTATION ITSELF, RUN AGAINST REAL BYTES -- AN INSTRUMENT, NOT A FLOOR WITNESS.
+//
+// test.claim.fabric_m0_origin_readback_seal establishes that a confirming reading cannot be
+// AUTHORED. That is a compile-time fact and it says nothing about whether the one sanctioned mint
+// actually digests the file it names -- a mint returning a constant would satisfy every one of
+// those refusals. This module is the other half: it runs read_origin_staged_file over two committed
+// fixture files and checks that the digest it carries is the digest of THOSE BYTES, then drives the
+// whole commit gate on the result.
+//
+// WHY IT IS AN INSTRUMENT AND NOT A dag/test/claim WITNESS, and this was measured rather than
+// assumed. Under the hermetic envelope crypto.Sha256Sum.File replays ONE fixed mock digest for
+// every path, so the discriminating arm -- two files must digest DIFFERENTLY, each to its own value
+// -- is false by construction there. A witness_exclusion_frontier row does NOT save it:
+// v2.workflow.required_floor required_floor_disposition_with_changed_selection REPLACES the
+// ordinary disposition, DeclinedDiscoveryExcluded included, with PlannedAsChangedWitness for any
+// identity the change touches, and that is deliberate -- the rule's own words are that the change
+// is the moment its author is present to route it, rename it, or remove it. Tried, and the floor
+// planned it anyway (gunbc#10934, run 34441858589). So the honest routing is the third door: this
+// is a named producer that re-derives the measurement on demand (DESIGN section 6, name the
+// instrument), reached by the recipe below rather than by a roster row that would be inert.
+//
+// RECIPE, and it is the whole consumer today:
+//   gunbc run --claim-run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_m0_origin_readback_probe.dag --function probe
+// Run from the repository root -- the fixture paths are repository-relative.
+//
+// STANDING, STATED POSITIVELY AND THEN DATED. Its consumer is the recipe above, run by hand: that
+// is the whole executing route, and it is the same standing every other real-effect probe in this
+// directory carries. What runs per PR is the compile-refusal half, test.claim
+// .fabric_m0_origin_readback_seal. Calling this file covered would be the proxy-assertion class.
+//
+// The complement -- that NO required lane enrolled it -- was true when measured at gunbc#10972 and
+// is recorded as of that commit rather than as a live claim. Enrolling it would happen in a CI
+// roster, a different file from this one, so nothing here would be invalidated or recomputed by the
+// edit that falsifies it; a dated observation cannot rot, and a live open-world negative would.
+//
+// The expected digests are a CONTROLLED FIXTURE oracle, not a measurement copied off the current
+// tree: the two files are committed beside this module and their content is chosen there, so
+// changing either file changes what this probe demands rather than what it observes.
+data staged_manifest_path: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
+data other_object_path: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/other_object.txt"
+
+fn expected_staged_manifest_digest() -> Sha256Digest {
+  Sha256Digest { hex: "47e3f235ff09282e7d5f556dd41b39f95ea05f4f04f643ff65740b7f28cd55ba" as Sha256DigestHex }
+}
+
+fn expected_other_object_digest() -> Sha256Digest {
+  Sha256Digest { hex: "087a9dd54ce8aef4192f5b49cf09666244a10dd5751370d6e7295e968e77642f" as Sha256DigestHex }
+}
+
+// CORRECTION, kept rather than quietly edited because the first version of this comment asserted a
+// cause it had not isolated. It read: the parameter is named `staged` and not `path` because a
+// parameter spelled `path` did not bind under whole-corpus preparation. THAT WAS WRONG. The
+// `undefined variable: path` on gunbc#10934 run 34441858589 came from extdeps.crypto.hash's
+// crypto.Sha256Sum.File mock_response, which interpolated the input path into its canned line and so
+// refused on every hermetic call -- the only such interpolation in any extdeps mock, and one that
+// had therefore never replayed. Two changes went in together (a rename and a move out of hermetic
+// discovery) and the rename got the credit. Isolated afterwards by running a consumer with NO
+// identifier `path` anywhere in it under --dry-run: same refusal. The mock is repaired at its own
+// authority; the parameter name here is now merely a name.
+fn digest_of(staged: NonEmptyStr, expected: Sha256Digest) -> Bool {
+  match read_origin_staged_file(staged_path: staged) {
+    OriginReadingTaken { reading: r } =>
+      content_hash_eq_cryptographic(left: origin_reading_digest(reading: r), right: expected)
+        && (origin_reading_path(reading: r) == staged)
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the reading carries the digest of the bytes at the path it names, and it
+// names the path it was told to read.
+fn the_reading_carries_the_digest_of_the_file_it_names() -> Bool {
+  digest_of(staged: staged_manifest_path, expected: expected_staged_manifest_digest())
+}
+
+// THE DISCRIMINATING ARM: a different file digests differently. Without this, a mint that returned
+// a constant would pass the control above.
+fn a_different_file_yields_a_different_digest() -> Bool {
+  digest_of(staged: other_object_path, expected: expected_other_object_digest())
+    && (digest_of(staged: other_object_path, expected: expected_staged_manifest_digest()) == false)
+}
+
+// A FILE THAT IS NOT THERE PRODUCES NO READING AT ALL, rather than an empty or fabricated digest.
+// The absent-file arm is where a digest of nothing would enter the corpus if it could.
+fn an_absent_file_refuses_instead_of_producing_a_digest() -> Bool {
+  match read_origin_staged_file(staged_path: "dag/test/fixture/fabric_m0_origin_readback/does_not_exist.txt") {
+    OriginReadingTaken { reading: _ } => false
+    OriginReadingUnavailable { staged_path: p, cause: _ } =>
+      p == "dag/test/fixture/fabric_m0_origin_readback/does_not_exist.txt"
+  }
+}
+
+// THE WHOLE CHAIN, END TO END, ON REAL BYTES. This is what makes the two mint folds
+// (gunbc.fabric_m0_commit manifest_read_of and gunbc.fabric_m0_completion origin_readback_of)
+// CONSUMED BY EXECUTION rather than declared: a job publishes success only when the digest computed
+// over the file the readback staged equals the digest the commit record claims, and every value on
+// the confirming side of that comparison came out of the read.
+//
+// The recorded side stays AUTHORED, and that is the correct split rather than an omission: what was
+// owed is a claim the commit makes, and what was observed is a fact the read produces. The gate
+// exists to compare them. Making both sides derive from one read would delete the comparison.
+fn the_attempt() -> AttemptIdentity {
+  "attempt-1" as AttemptIdentity
+}
+
+fn the_namespace() -> CommitNamespace {
+  "fabric-m0/v1/commit" as CommitNamespace
+}
+
+fn our_slot() -> NonEmptyStr {
+  "fabric-m0/v1/commit/attempt-1"
+}
+
+fn store_refused() -> CommitTransportOutcome {
+  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } }
+}
+
+fn the_object() -> OutputObligation {
+  OutputObligation { id: "staged-object", kind: OutputArtifactObligation {} }
+}
+
+fn fixture_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: shared_kernel_sandbox_profile(),
+  }
+}
+
+fn the_contract() -> WorkContract {
+  WorkContract {
+    program: "gunbc.fabric-m0.program:1",
+    steps: [WorkStep { step_id: "fabric-m0", resumability: ReceiptSatisfiable }],
+    source: "source:1",
+    inputs: "inputs:1",
+    runtime_closure: "runtime:1",
+    effect_contract: "effects:1",
+    output_contract: "outputs:1",
+    output_obligations: DeclaredOutputObligations { required: [the_object()] },
+  }
+}
+
+fn the_work() -> WorkKey {
+  derive_work_key(contract: the_contract(), requirements: fixture_requirements())
+}
+
+fn the_resolution() -> OutputObligationsResolution {
+  resolve_output_obligations(
+    contract: the_contract(),
+    requirements: fixture_requirements(),
+    work_key: the_work(),
+    judgment: ObligationsJudgedAtJobStart,
+  )
+}
+
+fn object_reads() -> List<OriginObservation> {
+  [
+    OriginObservation {
+      subject: ObligationSubject { obligation: the_object() },
+      readback: origin_readback_of(outcome: read_origin_staged_file(staged_path: other_object_path)),
+    },
+  ]
+}
+
+fn publish_with(recorded_manifest: Sha256Digest, manifest_source: NonEmptyStr) -> JobPublication {
+  publish_after_commit(
+    namespace: the_namespace(),
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    resolution: the_resolution(),
+    judged_work: the_work(),
+    committed: [CommittedOutput { obligation: the_object(), attempt: the_attempt(), recorded_digest: expected_other_object_digest() }],
+    observations: object_reads(),
+    manifest_digest: recorded_manifest,
+    members: [ManifestMember { obligation: the_object(), content: expected_other_object_digest() }],
+    transport: store_refused(),
+    observed: manifest_read_of(outcome: read_origin_staged_file(staged_path: manifest_source)),
+  )
+}
+
+// THE POSITIVE CONTROL FOR THE WHOLE GATE: the readback digests the manifest the commit recorded,
+// and the job publishes.
+fn a_readback_of_the_recorded_manifest_publishes_success() -> Bool {
+  match publish_with(recorded_manifest: expected_staged_manifest_digest(), manifest_source: staged_manifest_path) {
+    PublishSuccess { attempt: _, manifest_digest: _ } => true
+    other => false
+  }
+}
+
+// THE DISCRIMINATING ARM: the readback digests a DIFFERENT file, which is what a cache copy of some
+// other object would be. The computation is perfectly valid and the verdict is still a refusal,
+// because what the digest names is now decided by the read rather than by whoever wrote the record.
+fn a_readback_of_the_wrong_file_cannot_publish_success() -> Bool {
+  match publish_with(recorded_manifest: expected_staged_manifest_digest(), manifest_source: other_object_path) {
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
+    other => false
+  }
+}
+
+// THE JOB-ENDING OVER REAL BYTES, WITH ITS MUTATION CONTROL. test.claim.fabric_m0_job_ending_witness
+// drives gunbc.fabric_m0_job_ending end_required_job under the hermetic mock, which replays ONE
+// constant digest for every path -- so there an ending that ignored the read would green the
+// positive control. Here the only input that varies between the two arms is WHICH FIXTURE FILE the
+// manifest observation was digested from. The positive arm reads the manifest the record names and
+// the ending concludes Success; the control reads the OTHER committed file -- what a cache copy of
+// some other object would be -- with the same record, transport and Work, and concludes Failure.
+fn the_held_work() -> Work<NonEmptyStr> {
+  work_for(principal: "gunbc" as NonEmptyStr, contract: the_contract(), requirements: fixture_requirements())
+}
+
+fn ending_conclusion_over(manifest_source: NonEmptyStr) -> CheckConclusion {
+  end_required_job(
+    work: the_held_work(),
+    attempt: the_attempt(),
+    computation: ComputationSucceeded,
+    committed: [CommittedOutput { obligation: the_object(), attempt: the_attempt(), recorded_digest: expected_other_object_digest() }],
+    observations: object_reads(),
+    namespace: the_namespace(),
+    manifest_digest: expected_staged_manifest_digest(),
+    members: [ManifestMember { obligation: the_object(), content: expected_other_object_digest() }],
+    transport: store_refused(),
+    observed: manifest_read_of(outcome: read_origin_staged_file(staged_path: manifest_source)),
+  ).conclusion
+}
+
+fn an_ending_over_the_recorded_manifest_concludes_success() -> Bool {
+  match ending_conclusion_over(manifest_source: staged_manifest_path) {
+    Success => true
+    other => false
+  }
+}
+
+fn an_ending_over_the_wrong_file_concludes_failure() -> Bool {
+  match ending_conclusion_over(manifest_source: other_object_path) {
+    Failure => true
+    other => false
+  }
+}
+
+// THE ONE ENTRY THE RECIPE NAMES. Conjunction rather than five invocations, so a partial run
+// cannot read as a pass, and each arm is still callable on its own for diagnosis.
+fn probe() -> Bool {
+  the_reading_carries_the_digest_of_the_file_it_names()
+    && a_different_file_yields_a_different_digest()
+    && an_absent_file_refuses_instead_of_producing_a_digest()
+    && a_readback_of_the_recorded_manifest_publishes_success()
+    && a_readback_of_the_wrong_file_cannot_publish_success()
+    && an_ending_over_the_recorded_manifest_concludes_success()
+    && an_ending_over_the_wrong_file_concludes_failure()
+}

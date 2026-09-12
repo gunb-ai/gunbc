@@ -13,6 +13,18 @@ data witness_note: String = "Lockstep half of the P0 acceptance (docs/plans/prog
 data observation_module_path: String = "dag/std/observation.dag"
 data governor_source_path: String = "src/v1/stage0/src/memory_governor.rs"
 data heartbeat_source_path: String = "src/v1/stage0/src/cli_run.rs"
+data heartbeat_sampler_source_path: String = "src/v1/stage0/src/cli_run/required_floor_runner.rs"
+
+// THE THIRD COUPLING WENT FALSE A SECOND TIME AND WAS AGAIN CAUGHT BY REVIEW, NOT EXECUTION
+// (2026-09-11). The no-fabrication row named `let rss_kb = floor_sampled_field(...)` and its
+// siblings in cli_run.rs; the sampler had moved to cli_run/required_floor_runner.rs in the cli_run
+// split, so all three needles were absent and the row was false, while this module -- still
+// ReadsLiveTree, still declined before the fold -- reported nothing. The rows below now name the
+// RESTORED subject: the heartbeat renders through render_heartbeat_line_mirror in cli_run.rs, the
+// sampler is the typed FloorResourceSample in required_floor_runner.rs whose absent arms are
+// `None` rather than a sentinel string, and the raw `[floor-heartbeat] wall_s=` shape is gone.
+// The declined standing is unchanged and is restated rather than hidden: these needles executed
+// under claim_batch on the author's tree on 2026-09-11 and nowhere on the merge path.
 
 fn lockstep_source(path: String) -> String {
   let r = filesystem_read(path: path)
@@ -64,7 +76,8 @@ test fn w_lockstep_check_discriminates() -> Bool {
 
 test fn w_heartbeat_period_matches_the_seed_cadence() -> Bool {
   millisecond_count(m: observation_heartbeat_period) == 60000 &&
-  lockstep_has(path: heartbeat_source_path, needle: "[floor-heartbeat] wall_s=") &&
+  lockstep_has(path: heartbeat_source_path, needle: "render_heartbeat_line_mirror(") &&
+  !lockstep_has(path: heartbeat_source_path, needle: "[floor-heartbeat] wall_s=") &&
   lockstep_has(path: heartbeat_source_path, needle: "GUNBC_FLOOR_HEARTBEAT_SECS") &&
   lockstep_has(path: heartbeat_source_path, needle: ".unwrap_or(60)")
 }
@@ -75,8 +88,9 @@ test fn w_heartbeat_cadence_check_discriminates() -> Bool {
 }
 
 test fn w_heartbeat_source_still_refuses_to_fabricate() -> Bool {
-  lockstep_has(path: heartbeat_source_path, needle: "let rss_kb = floor_sampled_field(floor_statm_rss_kb());") &&
-  lockstep_has(path: heartbeat_source_path, needle: "let majflt = floor_sampled_field(tick(9));") &&
-  lockstep_has(path: heartbeat_source_path, needle: "let cpu_ms = floor_sampled_field(match (tick(11), tick(12)) {") &&
-  lockstep_has(path: heartbeat_source_path, needle: "None => FLOOR_SAMPLE_UNREADABLE.to_string(),")
+  lockstep_has(path: heartbeat_sampler_source_path, needle: "let rss_bytes = floor_statm_rss_kb().map(|kb| kb * 1024);") &&
+  lockstep_has(path: heartbeat_sampler_source_path, needle: "_ => (None, None),") &&
+  lockstep_has(path: heartbeat_sampler_source_path, needle: "pub(crate) struct FloorResourceSample {") &&
+  lockstep_has(path: heartbeat_source_path, needle: "None => heartbeat_unreadable(cause),") &&
+  !lockstep_has(path: heartbeat_source_path, needle: "FLOOR_SAMPLE_UNREADABLE")
 }

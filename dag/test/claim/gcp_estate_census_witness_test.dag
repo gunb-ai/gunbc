@@ -1,0 +1,576 @@
+module test.claim.gcp_estate_census_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible, Drifted, Apply }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.google.sheets { sheets_serviceusage_api_id }
+import gunbc.gcp_estate_observation {
+  operator_audit_census,
+  operator_prose_disagrees_with_sa_derived_project_id,
+  project_id_from_sa_email_is_gunbai_secrets,
+  fleet_cloud_convergence_sa_email,
+  gunbai_ci_secrets_sa_email,
+  gunbai_ci_iap_sa_email,
+  census_gap_count,
+  fleet_automation_has_no_principal_set_binding,
+  operator_prose_project_name_slip,
+  gunbai_auto_project_number,
+  principal_set_pool_project_number,
+  principal_set_citation,
+  PrincipalSetCitesProject,
+  PrincipalSetUnparsed,
+  MemberIsNotAPrincipalSet,
+  census_subject_is_enumerated_project_number,
+  census_subject_is_observed_project_number,
+  census_subject_is_named_gap,
+  census_cited_but_unenumerated_projects,
+  operator_audit_census_without_unread_project_gap,
+  census_unparsed_principal_set_members,
+  census_with_unparsed_principal_set_binding,
+  census_with_observed_provider,
+  census_with_observed_pool,
+  census_with_observed_project,
+  census_with_named_service_accounts,
+  census_with_unread_pool_gap,
+  census_with_refused_pool_gap,
+  census_measured_fingerprint_eq,
+  ObservedWifProvider,
+  ObservedNamedServiceAccount,
+  GcpProject,
+  EstateWifProvider,
+  EstateEnabledService,
+  observed_github_pool,
+  sheets_calling_home_is_unresolved,
+  secrets_project_is_refused_as_sheets_api_surface,
+  fleet_automation_is_refused_as_sheets_writer,
+  gunb_test_is_enumerated_not_selected,
+  sheets_calling_home,
+  SheetsCallingHomeUnresolved,
+  project_enables_service,
+  sts_api_service_id,
+  named_projects_are_observed_in_census,
+  every_census_observed_project_is_named,
+  named_wif_providers_are_in_census,
+  every_census_wif_provider_is_named,
+  named_sas_are_in_census,
+  every_census_sa_is_on_named_rosters,
+  gcp_project_int_number_is_the_string_authority,
+  workspace_admin_google_managed_keys_are_the_named_set,
+  observed_gemini_project,
+  gunbai_auto_services_are_distinctive_not_a_count,
+  gunb_ci_services_are_distinctive_not_a_count,
+  gunb_test_services_are_distinctive_not_a_count,
+  gunbai_auto_is_not_selected_as_sheets_home,
+  gap_workspace_admin_domain_wide_delegation,
+  gap_workspace_admin_workflow_refs,
+  gap_gemini_project_beyond_identity,
+  gap_pool_creation_timestamps,
+  gap_token_creator_binding_members,
+  custody_sas_with_no_wif_bindings,
+  fleet_automation_sa_email,
+  gunb_test_project_id,
+  gunbai_auto_project_id,
+  gunb_ci_project_id,
+  observed_gunbai_auto_github_pool,
+  observed_gunb_ci_github_pool,
+  observed_gunb_test_github_pool,
+  four_github_pools_are_keyed_by_project_number,
+  github_pool_id_does_not_discriminate_project,
+  gunbai_auto_sts_inert_is_not_established,
+  none_of_the_three_sandboxes_has_sheets,
+  gunbai_auto_is_the_only_pool_host_without_sts,
+  sheets_home_is_create_purpose_scoped_unminted,
+  gunbai_secrets_enabled_services_are_closed,
+  copied_malformed_condition_has_three_instances,
+  copied_malformed_instance_count_in_census,
+  gunbai_auto_provider_condition_is_tight_legacy_repo,
+  gunbai_auto_legacy_federation_hygiene,
+  CorrectlyScopedPossiblyInertUndeclared,
+  copied_malformed_condition_and_auto_escaped_well_formed,
+  observed_secrets_github_pool_provider,
+  observed_github_oidc_provider,
+  observed_gunbai_auto_github_provider,
+  gunbai_ci_workspace_admin_sa_email,
+  secrets_ci_integration_tests_sa_email,
+  gunb_ci_project_number,
+  project_number_from_sa_email,
+  sheets_leading_candidate_is_not_selected,
+  gunb_test_is_deranked_scratch_not_a_sheets_candidate,
+  workspace_admin_display_name_says_test,
+  workspace_admin_has_no_gunb_ci_project_roles,
+  workspace_admin_has_no_user_managed_keys,
+  sa_key_listings_are_empty,
+  project_iam_member_roles_are_empty,
+  ObservedSaKeyListing,
+  ObservedProjectIamMemberRoles,
+  observed_workspace_admin_user_managed_keys,
+  observed_workspace_admin_gunb_ci_project_roles,
+  secrets_named_sas_all_have_display_names,
+}
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.gcp_estate_dependency {
+  census_edges,
+  census_has_cross_project_binding_for_account,
+  census_has_same_project_pool_binding_for_account,
+  census_cross_project_account_project_number,
+  edge_is_cross_project,
+  edge_is_unparsed_principal_set,
+}
+import gunbc.gcp_estate_adoption {
+  gcp_estate_desired_roster,
+  gcp_estate_desired_github_actions_pool,
+  gcp_estate_desired_github_oidc_provider,
+  gcp_estate_desired_convergence_binding,
+  classify_desired_wif_pool,
+  classify_desired_wif_provider,
+  classify_desired_binding,
+  classify_desired_binding_is_absent_create,
+  UpdateSubject,
+  undeclared_findings,
+  classify_undeclared,
+  undeclared_decision_never_applies,
+  inaccessible_desired_subject,
+  drift_policy_for,
+  DriftApplyUpdate,
+  DriftRefuse,
+}
+import gunbc.gcp_estate_read_instrument {
+  estate_rows_are_hand_observed,
+  HandObserved,
+  MachineObserved,
+  enrolled_roster_includes_projects_list_and_workspace_admin_keys,
+  hand_observed_becomes_machine_observed_by_executing_the_named_instrument,
+  machine_observed_from_instrument,
+  gcloud_projects_list_instrument,
+  estate_readonly_credential_intervention,
+}
+import std.human_intervention { FleetOnce }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn sa_email_derives_gunbai_secrets_and_operator_prose_slipped() -> Bool {
+  project_id_from_sa_email_is_gunbai_secrets(email: fleet_cloud_convergence_sa_email)
+    && project_id_from_sa_email_is_gunbai_secrets(email: gunbai_ci_secrets_sa_email)
+    && match project_number_from_sa_email(email: gunbai_ci_workspace_admin_sa_email) {
+      Present { value: n } => n == gunb_ci_project_number
+      Absent => false
+    }
+    && operator_prose_disagrees_with_sa_derived_project_id()
+    && operator_prose_project_name_slip as String != fleet_secrets_gcp_project as String
+}
+
+test fn unread_project_is_a_named_gap_not_an_absence() -> Bool {
+  let census = operator_audit_census()
+  census_gap_count(census: census) != 0
+    && gunbai_auto_provider_condition_is_tight_legacy_repo()
+    && match gunbai_auto_legacy_federation_hygiene() {
+      CorrectlyScopedPossiblyInertUndeclared {
+        pool_project_number: n,
+        pool_id: _,
+        provider_id: _,
+        federated_repo: repo,
+        modeled_repo: current,
+      } =>
+        n == gunbai_auto_project_number as String
+          && repo == "gunb-ai/gunb.ai"
+          && current == "gunb-ai/gunbc"
+    }
+    && copied_malformed_condition_and_auto_escaped_well_formed()
+}
+
+test fn fleet_automation_has_no_wif_binding_in_the_audit() -> Bool {
+  fleet_automation_has_no_principal_set_binding(census: operator_audit_census())
+}
+
+test fn github_pool_provider_id_is_a_gap_not_an_invented_row() -> Bool {
+  copied_malformed_condition_and_auto_escaped_well_formed()
+    && observed_secrets_github_pool_provider.provider_id as String == "github"
+    && observed_github_oidc_provider.provider_id as String == "github-oidc"
+    && copied_malformed_condition_has_three_instances()
+}
+
+test fn unread_project_is_enumerated_unobserved_and_a_named_gap() -> Bool {
+  let census = operator_audit_census()
+  let number = gunbai_auto_project_number as String
+  census_subject_is_enumerated_project_number(census: census, number: number)
+    && census_subject_is_observed_project_number(census: census, number: number)
+    && !census_subject_is_named_gap(census: census, subject: concat("projects/", number))
+}
+
+test fn observed_project_is_enumerated_observed_and_not_a_gap() -> Bool {
+  let census = operator_audit_census()
+  census_subject_is_enumerated_project_number(census: census, number: "582015116396")
+    && census_subject_is_observed_project_number(census: census, number: "582015116396")
+    && !census_subject_is_named_gap(census: census, subject: "projects/582015116396")
+}
+
+test fn a_project_outside_the_census_is_not_enumerated() -> Bool {
+  let census = operator_audit_census()
+  !census_subject_is_enumerated_project_number(census: census, number: "999999999999")
+    && !census_subject_is_observed_project_number(census: census, number: "999999999999")
+    && !census_subject_is_named_gap(census: census, subject: "projects/999999999999")
+}
+
+test fn cited_project_enumerated_as_gap_is_not_outstanding() -> Bool {
+  census_cited_but_unenumerated_projects(census: operator_audit_census()).length() == 0
+}
+
+test fn cited_project_without_gap_is_outstanding() -> Bool {
+  let outstanding = census_cited_but_unenumerated_projects(
+    census: operator_audit_census_without_unread_project_gap(),
+  )
+  outstanding.length() == 1
+    && fold(
+      outstanding,
+      init: false,
+      f: fn(acc, n) { acc || n as String == gunbai_auto_project_number as String },
+    )
+}
+
+test fn undecomposable_principal_set_is_unparsed_not_a_non_set() -> Bool {
+  match principal_set_citation(member: "principalSet://iam.googleapis.com/some/unfamiliar/shape") {
+    PrincipalSetUnparsed { member: _ } => true
+    MemberIsNotAPrincipalSet { member: _ } => false
+    PrincipalSetCitesProject { project_number: _, pool_id: _ } => false
+  }
+}
+
+test fn undecomposable_principal_set_is_rostered() -> Bool {
+  census_unparsed_principal_set_members(census: census_with_unparsed_principal_set_binding()).length() == 1
+}
+
+test fn undecomposable_principal_set_is_not_a_same_project_edge() -> Bool {
+  let edges = census_edges(census: census_with_unparsed_principal_set_binding())
+  fold(edges, init: false, f: fn(acc, e) { acc || edge_is_unparsed_principal_set(edge: e) })
+    && !fold(edges, init: false, f: fn(acc, e) { acc || edge_is_cross_project(edge: e) })
+}
+
+test fn principal_set_parser_extracts_cross_project_number() -> Bool {
+  match principal_set_pool_project_number(
+    member: concat(
+      concat("principalSet://iam.googleapis.com/projects/", gunbai_auto_project_number as String),
+      "/locations/global/workloadIdentityPools/x/attribute.repository/gunb-ai/gunb.ai",
+    ),
+  ) {
+    Present { value: n } => n == gunbai_auto_project_number as String
+    Absent => false
+  }
+}
+
+test fn census_edges_make_the_cross_project_bindings_loud() -> Bool {
+  let census = operator_audit_census()
+  census_has_cross_project_binding_for_account(census: census, account: gunbai_ci_secrets_sa_email)
+    && census_has_cross_project_binding_for_account(census: census, account: gunbai_ci_iap_sa_email)
+    && census_has_cross_project_binding_for_account(
+      census: census,
+      account: gunbai_ci_workspace_admin_sa_email,
+    )
+    && census_has_same_project_pool_binding_for_account(
+      census: census,
+      account: fleet_cloud_convergence_sa_email,
+    )
+    && census_has_same_project_pool_binding_for_account(
+      census: census,
+      account: secrets_ci_integration_tests_sa_email,
+    )
+    && !census_has_cross_project_binding_for_account(
+      census: census,
+      account: fleet_cloud_convergence_sa_email,
+    )
+    && match census_cross_project_account_project_number(
+      census: census,
+      account: gunbai_ci_workspace_admin_sa_email,
+    ) {
+      Present { value: n } => n == gunb_ci_project_number
+      Absent => false
+    }
+}
+
+test fn desired_pool_is_noop_provider_unread_binding_absent() -> Bool {
+  let census = operator_audit_census()
+  match classify_desired_wif_pool(desired: gcp_estate_desired_github_actions_pool(), census: census) {
+    UpsertClassification { verdict: Converged, decision: Noop } =>
+      match classify_desired_wif_provider(desired: gcp_estate_desired_github_oidc_provider(), census: census) {
+        UpsertClassification { verdict: Converged, decision: Noop } =>
+          match classify_desired_binding(
+            desired: gcp_estate_desired_convergence_binding(),
+            census: census,
+          ) {
+            UpsertClassification { verdict: Converged, decision: Noop } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+data fixture_oidc_narrow: ObservedWifProvider = ObservedWifProvider {
+  project_number: "582015116396",
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
+data fixture_oidc_wide: ObservedWifProvider = ObservedWifProvider {
+  project_number: "582015116396",
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_condition: "true",
+}
+
+data fixture_oidc_narrow_other_project: ObservedWifProvider = ObservedWifProvider {
+  project_number: gunbai_auto_project_number as String,
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://token.actions.githubusercontent.com",
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
+test fn editing_an_attribute_condition_changes_the_census_identity() -> Bool {
+  let before = census_with_observed_provider(provider: fixture_oidc_narrow)
+  let after = census_with_observed_provider(provider: fixture_oidc_wide)
+  let same_ids_other_project = census_with_observed_provider(provider: fixture_oidc_narrow_other_project)
+  census_measured_fingerprint_eq(left: before, right: before)
+    && !census_measured_fingerprint_eq(left: before, right: after)
+    && !census_measured_fingerprint_eq(left: before, right: same_ids_other_project)
+    && copied_malformed_condition_has_three_instances()
+    && copied_malformed_instance_count_in_census(census: after) == 0
+}
+
+data fixture_oidc_issuer_drift: ObservedWifProvider = ObservedWifProvider {
+  project_number: "582015116396",
+  pool_id: "github-actions" as NonEmptyStr,
+  provider_id: "github-oidc" as NonEmptyStr,
+  issuer_uri: "https://example.invalid/oidc",
+  attribute_condition: "assertion.repository == 'gunb-ai/gunbc'",
+}
+
+test fn issuer_uri_drift_is_observable_against_desire() -> Bool {
+  match classify_desired_wif_provider(
+    desired: gcp_estate_desired_github_oidc_provider(),
+    census: census_with_observed_provider(provider: fixture_oidc_issuer_drift),
+  ) {
+    UpsertClassification { verdict: Drifted, decision: Apply { plan: UpdateSubject } } =>
+      match classify_desired_wif_provider(
+        desired: gcp_estate_desired_github_oidc_provider(),
+        census: census_with_observed_provider(provider: fixture_oidc_narrow),
+      ) {
+        UpsertClassification { verdict: Converged, decision: Noop } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn a_gap_and_an_observation_under_one_key_are_different_measurements() -> Bool {
+  let observed = census_with_observed_pool(pool: observed_github_pool)
+  let gapped = census_with_unread_pool_gap()
+  !census_measured_fingerprint_eq(left: observed, right: gapped)
+}
+
+test fn two_gap_causes_under_one_key_are_different_measurements() -> Bool {
+  !census_measured_fingerprint_eq(
+    left: census_with_unread_pool_gap(),
+    right: census_with_refused_pool_gap(),
+  )
+}
+
+test fn github_pool_and_cross_project_bindings_are_undeclared_and_refused() -> Bool {
+  let census = operator_audit_census()
+  let findings = undeclared_findings(roster: gcp_estate_desired_roster(), census: census)
+  findings.length() >= 3
+    && fold(findings, init: true, f: fn(acc, f) { acc && undeclared_decision_never_applies(finding: f) })
+    && fold(
+      findings,
+      init: false,
+      f: fn(acc, f) {
+        acc || match classify_undeclared(finding: f) {
+          UpsertClassification { verdict: Conflict, decision: Refuse { reason: r } } =>
+            (r as String).contains("undeclared present")
+          _ => false
+        }
+      },
+    )
+}
+
+test fn drift_policy_is_derived_from_the_subject() -> Bool {
+  match drift_policy_for(subject: EstateWifProvider {
+    project_number: observed_github_oidc_provider.project_number,
+    pool_id: observed_github_oidc_provider.pool_id,
+    provider_id: observed_github_oidc_provider.provider_id,
+  }) {
+    DriftApplyUpdate =>
+      match drift_policy_for(subject: EstateEnabledService {
+        project_id: gunb_ci_project_id,
+        service_id: "compute.googleapis.com" as NonEmptyStr,
+      }) {
+        DriftRefuse { reason: r } => (r as String).contains("disabling")
+        DriftApplyUpdate => false
+      }
+    DriftRefuse { reason: _ } => false
+  }
+}
+
+test fn inaccessible_desired_subject_does_not_look_absent() -> Bool {
+  match inaccessible_desired_subject() {
+    UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } } =>
+      (r as String).contains("not readable")
+    _ => false
+  }
+}
+
+test fn sheets_calling_home_is_unresolved_and_does_not_default_to_secrets() -> Bool {
+  sheets_calling_home_is_unresolved()
+    && secrets_project_is_refused_as_sheets_api_surface()
+    && fleet_automation_is_refused_as_sheets_writer()
+    && gunbai_auto_is_not_selected_as_sheets_home()
+    && match sheets_calling_home() {
+      SheetsCallingHomeUnresolved {
+        refused_api_surface_project: p,
+        refused_writer: w,
+        candidate_writer_in_secrets: c,
+        kitchen_sink_project: k,
+        pool_host_without_sts: auto,
+        sts_host_without_sheets: ci,
+      } =>
+        p == fleet_secrets_gcp_project
+          && w == fleet_automation_sa_email
+          && c == fleet_cloud_convergence_sa_email
+          && k == gunb_test_project_id
+          && auto == gunbai_auto_project_id
+          && ci == gunb_ci_project_id
+    }
+}
+
+test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
+  let census = operator_audit_census()
+  gunb_test_is_enumerated_not_selected(census: census)
+    && gcp_project_int_number_is_the_string_authority()
+    && !project_enables_service(project_id: gunb_test_project_id, service: sheets_serviceusage_api_id)
+    && project_enables_service(project_id: gunb_test_project_id, service: sts_api_service_id)
+    && none_of_the_three_sandboxes_has_sheets()
+    && sheets_home_is_create_purpose_scoped_unminted()
+    && !project_enables_service(project_id: gunbai_auto_project_id, service: sts_api_service_id)
+    && project_enables_service(project_id: gunb_ci_project_id, service: sts_api_service_id)
+    && gunbai_auto_is_the_only_pool_host_without_sts()
+    && gunbai_auto_services_are_distinctive_not_a_count()
+    && gunb_ci_services_are_distinctive_not_a_count()
+    && gunb_test_services_are_distinctive_not_a_count()
+    && gunbai_secrets_enabled_services_are_closed()
+    && custody_sas_with_no_wif_bindings(census: census)
+    && !census_subject_is_named_gap(census: census, subject: "projects/gunbai-auto/serviceAccounts")
+    && !census_subject_is_named_gap(census: census, subject: "gunbai-ci-workspace-admin@gunb-ci/keys?managed-by=user")
+    && census_subject_is_named_gap(census: census, subject: gap_workspace_admin_domain_wide_delegation.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_workspace_admin_workflow_refs.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_gemini_project_beyond_identity.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_pool_creation_timestamps.subject_identity as String)
+    && census_subject_is_named_gap(census: census, subject: gap_token_creator_binding_members.subject_identity as String)
+    && sheets_leading_candidate_is_not_selected()
+    && gunb_test_is_deranked_scratch_not_a_sheets_candidate()
+    && workspace_admin_display_name_says_test()
+    && workspace_admin_has_no_gunb_ci_project_roles()
+    && workspace_admin_has_no_user_managed_keys()
+    && secrets_named_sas_all_have_display_names()
+}
+
+test fn two_github_pools_are_keyed_by_project_not_name() -> Bool {
+  four_github_pools_are_keyed_by_project_number()
+    && github_pool_id_does_not_discriminate_project(
+      left: observed_github_pool,
+      right: observed_gunbai_auto_github_pool,
+    )
+    && github_pool_id_does_not_discriminate_project(
+      left: observed_gunb_ci_github_pool,
+      right: observed_gunb_test_github_pool,
+    )
+    && gunbai_auto_sts_inert_is_not_established()
+}
+
+test fn unread_pool_rows_do_not_classify_desired_pool_as_absent() -> Bool {
+  match classify_desired_wif_pool(
+    desired: gcp_estate_desired_github_actions_pool(),
+    census: census_with_unread_pool_gap(),
+  ) {
+    UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } } =>
+      (r as String).contains("not readable")
+    _ => false
+  }
+}
+
+test fn a_user_managed_key_or_project_role_row_is_not_none() -> Bool {
+  let one_key = [
+    ObservedSaKeyListing {
+      key_id: "user-managed-fixture",
+      created_at: "2026-09-11T00:00:00Z",
+      expires_at: "2027-09-11T00:00:00Z",
+      disabled: false,
+    },
+  ]
+  let one_role = ObservedProjectIamMemberRoles {
+    project_id: gunb_ci_project_id,
+    member: gunbai_ci_workspace_admin_sa_email,
+    roles: ["roles/viewer" as NonEmptyStr],
+  }
+  sa_key_listings_are_empty(keys: observed_workspace_admin_user_managed_keys)
+    && !sa_key_listings_are_empty(keys: one_key)
+    && project_iam_member_roles_are_empty(row: observed_workspace_admin_gunb_ci_project_roles)
+    && !project_iam_member_roles_are_empty(row: one_role)
+    && !workspace_admin_google_managed_keys_are_the_named_set(keys: one_key)
+    && !named_projects_are_observed_in_census(
+      census: census_with_observed_project(project: observed_gemini_project),
+    )
+    && !every_census_observed_project_is_named(
+      census: census_with_observed_project(
+        project: GcpProject {
+          project_id: "outside-roster" as GcpProjectId,
+          project_number: 999999999999,
+          name: "outside",
+        },
+      ),
+    )
+    && !named_wif_providers_are_in_census(
+      census: census_with_observed_provider(provider: observed_github_oidc_provider),
+    )
+    && !every_census_wif_provider_is_named(
+      census: census_with_observed_provider(
+        provider: ObservedWifProvider {
+          project_number: "999999999999",
+          pool_id: "github-pool" as NonEmptyStr,
+          provider_id: "not-on-roster" as NonEmptyStr,
+          issuer_uri: "https://token.actions.githubusercontent.com",
+          attribute_condition: "true",
+        },
+      ),
+    )
+    && !named_sas_are_in_census(census: census_with_named_service_accounts(sas: []))
+    && !every_census_sa_is_on_named_rosters(
+      census: census_with_named_service_accounts(
+        sas: [
+          ObservedNamedServiceAccount {
+            email: "not-on-roster@example.iam.gserviceaccount.com",
+            display_name: "fixture",
+          },
+        ],
+      ),
+    )
+}
+
+test fn estate_rows_name_their_producer_and_stay_hand_observed() -> Bool {
+  match estate_rows_are_hand_observed() {
+    HandObserved { observed_at: _, observed_by: _ } =>
+      enrolled_roster_includes_projects_list_and_workspace_admin_keys()
+        && hand_observed_becomes_machine_observed_by_executing_the_named_instrument()
+        && estate_readonly_credential_intervention().frequency == FleetOnce
+        && match machine_observed_from_instrument(instrument: gcloud_projects_list_instrument()) {
+          MachineObserved { producer_identity: id } =>
+            id == gcloud_projects_list_instrument().identity
+          HandObserved { observed_at: _, observed_by: _ } => false
+        }
+    MachineObserved { producer_identity: _ } => false
+  }
+}

@@ -79,7 +79,11 @@ mod compiler_tests {
     }
 
     fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
-        let tokens = tokenize(content.to_string(), path.to_string());
+        let tokens = tokenize(
+            content.to_string(),
+            path.to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let mut source_indices = HashMap::new();
         source_indices.insert(
             path.to_string(),
@@ -184,7 +188,11 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_produces_tokens() {
-        let tokens = tokenize("fn foo() -> Int { 42 }".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "fn foo() -> Int { 42 }".to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         assert!(
             !tokens.is_empty(),
             "tokenize should produce at least one token"
@@ -193,7 +201,11 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_ends_with_eof() {
-        let tokens = tokenize("type Foo { x: Int }".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "type Foo { x: Int }".to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let last = tokens.last().expect("should have tokens");
         assert!(
             matches!(last.shape, crate::v1_std_core::TokenShape::ShEof),
@@ -204,7 +216,11 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_fn_keyword() {
-        let tokens = tokenize("fn".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "fn".to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         assert!(
             tokens.len() >= 2,
             "expected at least 2 tokens, got {}",
@@ -222,6 +238,7 @@ mod compiler_tests {
         let tokens = tokenize(
             "module test\ntype Foo { x: Int }".to_string(),
             "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
         );
         assert!(
             tokens.len() > 5,
@@ -235,6 +252,7 @@ mod compiler_tests {
         let tokens = tokenize(
             "module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
         );
         let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
         assert!(
@@ -249,7 +267,11 @@ mod compiler_tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
                 let source = read_dag("src/v1/01_tokenize.dag");
-                let tokens = tokenize(source, "src/v1/01_tokenize.dag".to_string());
+                let tokens = tokenize(
+                    source,
+                    "src/v1/01_tokenize.dag".to_string(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
 
                 assert!(
                     !tokens.is_empty(),
@@ -344,6 +366,7 @@ mod compiler_tests {
                     crate::v1_compiler_tokenize::tokenize(
                         left_source.content.clone(),
                         left_source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     ),
                     std::rc::Rc::new(expected_source_indices),
                     crate::v1_std_core::empty_intern_table(),
@@ -529,6 +552,61 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("emit_import_lines_follow_resolved_binding_identity panicked");
+    }
+
+    #[test]
+    fn pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let zebra = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_zebra.dag".to_string(),
+                    content: "module probe.zebra\ntype Zebra { n: Int }\n".to_string(),
+                });
+                let aardvark = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_aardvark.dag".to_string(),
+                    content: "module probe.aardvark\ntype Aardvark { n: Int }\n".to_string(),
+                });
+                let mongoose = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_mongoose.dag".to_string(),
+                    content: "module probe.mongoose\ntype Mongoose { n: Int }\n".to_string(),
+                });
+                let omega = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_omega.dag".to_string(),
+                    content: "module probe.omega\nfn keep(z: probe.zebra.Zebra, a: probe.aardvark.Aardvark, m: probe.mongoose.Mongoose) -> Int { z.n + a.n + m.n }\n".to_string(),
+                });
+                let sources = std::rc::Rc::new(im::vector![zebra, aardvark, mongoose, omega]);
+                let first = crate::v1_compiler_compile::compile_sources(sources.clone(), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let second = crate::v1_compiler_compile::compile_sources(sources, crate::v1_compiler_artifact::RenderTarget::Rust);
+                assert_eq!(first.files.len(), second.files.len());
+                for (left, right) in first.files.iter().zip(second.files.iter()) {
+                    assert_eq!(left.path, right.path);
+                    assert_eq!(left.content, right.content, "two emissions of {} must be byte-identical", left.path);
+                }
+                let omega_out = first.files.iter().find(|f| f.path.contains("probe_omega")).expect("omega module must emit");
+                let pub_uses: Vec<&str> = omega_out.content.lines().filter(|l| l.contains("pub use crate::")).collect();
+                assert!(pub_uses.len() >= 2, "fixture must emit multiple pub use crate lines; got:\n{}", omega_out.content);
+                let mut sorted = pub_uses.clone();
+                sorted.sort();
+                assert_eq!(pub_uses, sorted, "pub use crate lines must be emitted sorted; got:\n{}", omega_out.content);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result
+            .expect("pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical panicked");
+    }
+
+    #[test]
+    fn overlapping_use_lines_dedupe_identically_under_permutation() {
+        let wider = "pub use crate::m::{Bar, Foo};".to_string();
+        let narrower = "pub use crate::m::{Foo};".to_string();
+        let forward = std::rc::Rc::new(im::vector![wider.clone(), narrower.clone()]);
+        let reversed = std::rc::Rc::new(im::vector![narrower, wider]);
+        assert_eq!(
+            crate::v1_compiler_emit_rust::dedupe_rust_import_lines(forward),
+            crate::v1_compiler_emit_rust::dedupe_rust_import_lines(reversed),
+            "first-binder-wins and prior-cover must see CanonicalOrder of the line set, not input permutation"
+        );
     }
 
     /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.
@@ -823,6 +901,173 @@ mod compiler_tests {
         assert!(
             crate::cli_run::fixture_discrimination_passed(&pair),
             "the applied-marker fixture must COMPILE, and the non-applied-field-plus-parent-return fixture must reach rustc and be refused in its own emitted module with the attributed E0308 this pair claims; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
+    /// THE EMPTY-MAP TURBOFISH, JUDGED BY RUSTC. Subject: `v1.compiler.emit_rust` `rust_empty_map_init_expr`.
+    ///
+    /// One of the three emitter arms the widened 00_compile closure exposed (node
+    /// adhoc-7f877994-e3a): the first execution of #10940's native route over a closure carrying
+    /// extdeps.rust.cargo_build and extdeps.exec.command emitted a crate rustc refused with 28
+    /// errors, and each of the three arms is one of the classes those errors fell into. The green
+    /// arm below is the shape, authored as a fixture and MEASURED RED on the seed before the
+    /// repair; the red arm is the route's own, so this pair's claim is about its green.
+    ///
+    /// WHY RUSTC AND NOT A SUBSTRING: the defective and repaired emissions differ only in the two identifiers inside one turbofish, and whether those identifiers NAME SOMETHING THAT EXISTS where they are written is a scoping question. A text oracle asserting either rendering pins one of two that are both correct depending on how the map type resolved.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on
+    /// demand -- `cargo test --release -p v1-compiler --lib empty_map_turbofish_fixture_closure_discrimination -- --ignored`. NO CI path
+    /// invokes it (`repo_self_test_command` is off the merge path, gunbc.rung_drop
+    /// rust_unit_tests_off_the_merge_path), so nothing here may be cited as coverage that executes
+    /// on the merge path.
+    #[test]
+    #[ignore]
+    fn empty_map_turbofish_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_empty_map_turbofish_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("empty-map-turbofish {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the empty-map-turbofish control must COMPILE and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
+    /// A WORD LIST SPLICED INTO AN ARGV LITERAL, JUDGED BY RUSTC. Subject: `v1.compiler.emit_rust` `emit_shell_call`.
+    ///
+    /// One of the three emitter arms the widened 00_compile closure exposed (node
+    /// adhoc-7f877994-e3a): the first execution of #10940's native route over a closure carrying
+    /// extdeps.rust.cargo_build and extdeps.exec.command emitted a crate rustc refused with 28
+    /// errors, and each of the three arms is one of the classes those errors fell into. The green
+    /// arm below is the shape, authored as a fixture and MEASURED RED on the seed before the
+    /// repair; the red arm is the route's own, so this pair's claim is about its green.
+    ///
+    /// WHY RUSTC AND NOT A SUBSTRING: after this change both `.arg(` and `.args(` appear in the emitted transports, so asserting the presence of either says nothing about WHICH element it was written for -- the fixture emits both kinds within one argv -- and the distinction to be made is a trait obligation on the argument type at each position.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on
+    /// demand -- `cargo test --release -p v1-compiler --lib argv_word_list_splice_fixture_closure_discrimination -- --ignored`. NO CI path
+    /// invokes it (`repo_self_test_command` is off the merge path, gunbc.rung_drop
+    /// rust_unit_tests_off_the_merge_path), so nothing here may be cited as coverage that executes
+    /// on the merge path.
+    #[test]
+    #[ignore]
+    fn argv_word_list_splice_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_argv_word_list_splice_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("argv-word-list-splice {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the argv-word-list-splice control must COMPILE and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
+    /// THE CONCAT FORM OF `append`, JUDGED BY RUSTC. Subject: `v1.compiler.emit_rust` `rust_append_call_is_concat_form`.
+    ///
+    /// One of the three emitter arms the widened 00_compile closure exposed (node
+    /// adhoc-7f877994-e3a): the first execution of #10940's native route over a closure carrying
+    /// extdeps.rust.cargo_build and extdeps.exec.command emitted a crate rustc refused with 28
+    /// errors, and each of the three arms is one of the classes those errors fell into. The green
+    /// arm below is the shape, authored as a fixture and MEASURED RED on the seed before the
+    /// repair; the red arm is the route's own, so this pair's claim is about its green.
+    ///
+    /// WHY RUSTC AND NOT A SUBSTRING: both emissions are a two-argument call to a `v1_rt::` function, so asserting that `rc_list_concat` appears somewhere says nothing about WHICH of the fixture's six declarations got it. What has to hold is that the appended argument satisfies the bridge's declared parameter.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on
+    /// demand -- `cargo test --release -p v1-compiler --lib append_concat_form_fixture_closure_discrimination -- --ignored`. NO CI path
+    /// invokes it (`repo_self_test_command` is off the merge path, gunbc.rung_drop
+    /// rust_unit_tests_off_the_merge_path), so nothing here may be cited as coverage that executes
+    /// on the merge path.
+    #[test]
+    #[ignore]
+    fn append_concat_form_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_append_concat_form_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("append-concat-form {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the append-concat-form control must COMPILE and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_closure_summary(&pair.green),
+            crate::cli_run::fixture_closure_summary(&pair.red),
+            crate::cli_run::fixture_closure_attributed_line(&pair.red),
+            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)
+        );
+    }
+
+    /// THE SHELL PROJECTION'S RETURN CONVENTION, JUDGED BY RUSTC. Subject:
+    /// `v1.compiler.emit_rust` `emit_shell_return`.
+    ///
+    /// `gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`: the
+    /// projection wraps a shell operation's value in `Ok(..)` only when the declared output carries
+    /// MORE THAN ONE field, while the same declaration signs the method `Result<.., Box<dyn Error>>`.
+    /// A single-field output answers its channel bare, so the emitted body violates its own emitted
+    /// type -- rustc E0308 over a source gunbc accepts with zero blocking diagnostics.
+    ///
+    /// THE RED ARM IS A KNOWN HOLE, NOT A WALL WORKING, and may not be cited as coverage of
+    /// anything. It is that row's specimen committed as a runnable file. When the class climbs this
+    /// arm flips to compiling and is KEPT as the regression control on the direction it established
+    /// (DESIGN 4b(4)); the expectation below changes then, not the fixtures.
+    ///
+    /// BOTH ARMS ARE THIS PAIR'S OWN, unlike the three emitter-arm pairs beside it, and they differ
+    /// in ONE authored thing: how many fields the output block declares. Borrowing the route's red
+    /// would measure nothing about the arity, which is the whole subject.
+    ///
+    /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and
+    /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on
+    /// demand -- `cargo test --release -p v1-compiler --lib
+    /// shell_projection_arity_fixture_closure_discrimination -- --ignored`. NO CI path invokes it
+    /// (`repo_self_test_command` is off the merge path, gunbc.rung_drop
+    /// rust_unit_tests_off_the_merge_path).
+    #[test]
+    #[ignore]
+    fn shell_projection_arity_fixture_closure_discrimination() {
+        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let pair = crate::cli_run::run_shell_projection_arity_discrimination(&probe_root);
+        for line in crate::cli_run::fixture_discrimination_report(&pair) {
+            eprintln!("shell-projection-arity {}", line);
+        }
+        assert!(
+            crate::cli_run::fixture_closure_reached_rustc(&pair.red),
+            "the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}",
+            crate::cli_run::fixture_closure_summary(&pair.red)
+        );
+        assert!(
+            crate::cli_run::fixture_discrimination_passed(&pair),
+            "the two-field control must COMPILE and the one-field arm must still be refused by rustc in its own emitted module with the claimed E0308; a green red arm means the class climbed and this pair's expectation is what changes. control={} red={} attribution={:?} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
             crate::cli_run::fixture_closure_attributed_line(&pair.red),
@@ -2650,7 +2895,11 @@ mod compiler_tests {
                 );
 
                 for (file, source) in &v1_files {
-                    let tokens = tokenize(source.to_string(), file.to_string());
+                    let tokens = tokenize(
+                        source.to_string(),
+                        file.to_string(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                    );
                     assert!(!tokens.is_empty(), "{} should produce tokens", file);
                     assert!(
                         matches!(
@@ -4133,6 +4382,7 @@ mod compiler_tests {
                     let tokens = crate::v1_compiler_tokenize::tokenize(
                         source.content.clone(),
                         source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     );
                     let elapsed = t.elapsed();
                     eprintln!(
@@ -4342,6 +4592,7 @@ mod compiler_tests {
                     let tokens = crate::v1_compiler_tokenize::tokenize(
                         source.content.clone(),
                         source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     );
                     token_lists.push(tokens);
                 }
@@ -4605,6 +4856,7 @@ mod compiler_tests {
                     let tokens = crate::v1_compiler_tokenize::tokenize(
                         source.content.clone(),
                         source.path.clone(),
+                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
                     );
                     let si = crate::v1_std_core::build_newline_index(
                         source.path.clone(),

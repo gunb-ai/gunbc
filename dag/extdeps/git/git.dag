@@ -4,7 +4,8 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.measure { Percent, percent }
-import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp }
+import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
+import std.string_type { String }
 import v2.std.algebra { length, skip }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -779,6 +780,77 @@ fn shape_git_config_local_argv(key: String, value: String) -> List<String> {
 
 fn git_config_local_set_command(key: String, value: String) -> ArgvCommand {
   argv_command(program: git_binary_name, arguments: git_config_local_set_args(key: key, value: value))
+}
+
+// ── MATERIALIZING A THIRD-PARTY TREE AT AN EXACT COMMIT ────────────────────────────────────────
+//
+// THREE COMMANDS, NOT ONE, AND THAT IS A PROPERTY OF GIT RATHER THAN A CHOICE HERE. `git clone` can
+// be told a branch or a tag but not an arbitrary commit id, so a clone pinned to a commit is a
+// shallow clone followed by a shallow fetch OF THAT COMMIT followed by a checkout of it. Spelling it
+// as one helper that hides the sequence would hide which of the three failed, and they fail for
+// different reasons: an unreachable remote, a commit the remote does not serve, and a working tree
+// that will not move.
+//
+// `--depth 1` on both legs is what keeps this from transferring the project's whole history for a
+// single revision. It costs nothing a build needs: the tree at the commit is complete, and the
+// version stamp setuptools-scm derives comes from the checked-out commit rather than from ancestry.
+fn git_clone_shallow_args(repository: String, destination: String) -> List<String> {
+  ["clone", "--depth", "1", repository, destination]
+}
+
+fn git_clone_shallow_command(repository: String, destination: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_clone_shallow_args(repository: repository, destination: destination))
+}
+
+// `-C <dir>` is git's own way to name the repository a command acts on, and it is what lets these
+// legs stay single commands instead of a directory change followed by a command -- which is not one
+// process and could not cross a transport that carries one argv.
+fn git_fetch_shallow_revision_args(repository_dir: String, remote: String, revision: String) -> List<String> {
+  ["-C", repository_dir, "fetch", "--depth", "1", remote, revision]
+}
+
+fn git_fetch_shallow_revision_command(repository_dir: String, remote: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_fetch_shallow_revision_args(repository_dir: repository_dir, remote: remote, revision: revision))
+}
+
+fn git_checkout_revision_args(repository_dir: String, revision: String) -> List<String> {
+  ["-C", repository_dir, "checkout", "--detach", revision]
+}
+
+fn git_checkout_revision_command(repository_dir: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
+}
+
+// THE READBACK. A checkout that reported success is not the same fact as a working tree whose HEAD
+// is the requested commit, and only the second one licenses a claim about what was built. `--verify`
+// makes git refuse an ambiguous or absent object rather than echoing the argument back.
+fn git_rev_parse_head_args(repository_dir: String) -> List<String> {
+  ["-C", repository_dir, "rev-parse", "--verify", "HEAD"]
+}
+
+fn git_rev_parse_head_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_rev_parse_head_args(repository_dir: repository_dir))
+}
+
+// HEAD IS NOT THE TREE. `rev-parse HEAD` says which commit is checked out and nothing about whether
+// the working tree still matches it, so a build whose only provenance check is the commit id will
+// happily build a modified context and stamp it with an unmodified revision. `--porcelain` prints one
+// line per difference and NOTHING when the tree is clean, so cleanliness is an empty answer rather
+// than a parse.
+//
+// `--ignored` IS NOT OPTIONAL FOR A BUILD CONTEXT, AND THE TWO IGNORE FILES DISAGREE. Plain
+// `--porcelain` omits ignored files entirely, while a docker build context contains everything the
+// DOCKERIGNORE does not exclude -- and those are different sets. Measured at vLLM
+// 07b75534651a0dd584c6f3be75d8c62fb8426397: `.gitignore` carries `**/generated/**` and `.dockerignore`
+// does not, so a file under any `generated/` directory is invisible to a plain status AND shipped to
+// the daemon. A provenance claim about what was built cannot rest on a status that cannot see part of
+// the context, so the ignored set is included and any output at all refuses.
+fn git_status_porcelain_args(repository_dir: String) -> List<String> {
+  ["-C", repository_dir, "status", "--porcelain", "--ignored", "--untracked-files=all"]
+}
+
+fn git_status_porcelain_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_status_porcelain_args(repository_dir: repository_dir))
 }
 
 fn shape_git_config_get_argv(key: String) -> List<String> {

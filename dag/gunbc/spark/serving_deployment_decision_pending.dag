@@ -64,7 +64,7 @@ data pending_serving_decisions: List<PendingServingDecision> = [
     authored_at: "2026-09-03" as NonEmptyStr,
     current_value: "32" as NonEmptyStr,
     role: ShouldBeDecisionVariable,
-    basis_today: "measured from one DeepSeek launch line in its own scenario; valid there and explicitly barred from travelling to another model, quantisation or KV layout" as NonEmptyStr,
+    basis_today: "operator launch argument (--max-num-seqs 32) copied from the 2026-09-03 DeepSeek argv; not a pool measurement; explicitly barred from travelling to another model, quantisation or KV layout" as NonEmptyStr,
   },
   PendingServingDecision {
     parameter: "gunbc.spark.serving_arm glm_native_initial_profile max_num_batched_tokens" as NonEmptyStr,

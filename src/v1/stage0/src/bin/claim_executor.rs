@@ -270,6 +270,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
+    let mut v2_native_route_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -345,6 +346,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             // required phase runs, so a green here and a green there cannot be two facts.
             "--required-emit-compile" => {
                 required_emit_compile_mode = true;
+            }
+            // THE NATIVE ROUTE AS AN OPERATOR-INVOKED INSTRUMENT, NOT A REQUIRED PHASE. It ran
+            // as the required `v2-native` lane from 2026-09-09 until the 2026-09-11 operator
+            // ruling deleted that job (~4h wall on every push against a 180-minute envelope;
+            // gunbc.rung_drop v2_native_route_off_the_merge_path). The harness and the
+            // admission authority are unchanged — this flag is the one route to them, so a
+            // receipt minted here and one minted by the deleted lane cannot be two facts.
+            "--v2-native-route" => {
+                v2_native_route_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -562,6 +572,33 @@ fn run() -> Result<ExitCode, ExitCode> {
                     phase.name(),
                     phase.lane().name()
                 );
+            }
+        }
+
+        // THE (PHASE, LANE) PAIR JOIN RUNS IN EVERY LANE, BEFORE ANY PHASE. The variant-set
+        // join rides the parse phase's index, but a match arm is not a declaration, so lane
+        // ownership is joined by evaluating the roster authority's
+        // `required_ci_lane_phase_rows`. Three lanes are independently selected and the native
+        // route's isolation is load-bearing: a host edit mapping a phase to the wrong lane
+        // (leaving the native job selecting zero phases), or a selected lane owning zero
+        // phases in the authority, stops the line here rather than greening over an
+        // unmeasured population.
+        let authority_lane_rows =
+            match v1_compiler::cli_run::authority_lane_phase_rows(&source_roots) {
+                Ok(rows) => Some(rows),
+                Err(e) => {
+                    eprintln!("required-ci: lane-roster FAIL {e}");
+                    phase_failures.push(format!("lane-roster: {e}"));
+                    None
+                }
+            };
+        if let Some(rows) = &authority_lane_rows {
+            let findings = lane_roster_findings(rows, required_ci_lane);
+            for finding in &findings {
+                eprintln!("required-ci: lane-roster FAIL {finding}");
+            }
+            if !findings.is_empty() {
+                phase_failures.push(format!("lane-roster ({} finding(s))", findings.len()));
             }
         }
 
@@ -1003,6 +1040,38 @@ fn run() -> Result<ExitCode, ExitCode> {
                     phase_failures.push(format!("regen-fixed-point ({e})"));
                 }
             }
+
+            // THE EMITTED `dag-artifact.json`'S OWN IDENTITY RIDES THIS PHASE, for the reason
+            // the rostered-row join rides the parse: it is the SAME QUESTION this phase already
+            // asks -- re-run the producer over an unchanged tree, compare the bytes -- one
+            // artifact over, and the roster of required jobs is closed to growth. It is a rider,
+            // not a phase, so `RequiredCiPhase::RegenFixedPoint`'s lane ownership answers for it
+            // and no second routing fact exists to drift.
+            //
+            // ITS COST IS THREE EMISSIONS OF A SIXTEEN-DECLARATION FIXTURE, not of the corpus.
+            // The class it catches is a property of the EMITTER, so the smallest specimen that
+            // carries several registry keys discriminates it exactly as the corpus does; paying
+            // corpus cost for it would buy nothing this control can read.
+            match v1_compiler::cli_run::run_dag_artifact_identity() {
+                Ok(outcome) => {
+                    eprintln!("required-ci: dag-artifact-identity {}", outcome.summary());
+                    for finding in &outcome.findings {
+                        eprintln!("required-ci: dag-artifact-identity FAIL {finding}");
+                    }
+                    if !outcome.passed() {
+                        phase_failures.push(format!(
+                            "dag-artifact-identity ({} finding(s))",
+                            outcome.findings.len()
+                        ));
+                    }
+                }
+                // NO VERDICT IS NOT A GREEN. A fixture that will not compile leaves this run
+                // holding no identity evidence, and that stops the line under its own name.
+                Err(e) => {
+                    eprintln!("required-ci: dag-artifact-identity NOT EVALUATED — {e}");
+                    phase_failures.push("dag-artifact-identity (subject unobtainable)".to_string());
+                }
+            }
             ran.push("regen-fixed-point");
         }
 
@@ -1052,6 +1121,25 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("floor");
+        }
+
+        // THE OBSERVED RAN SET IS THE AUTHORITY-EXPECTED SET, EXACTLY. The census below prints
+        // phases_run; this refusal covers the state where that number is legible but wrong — a
+        // phase silently never reached, or one executed that the authority does not expect in
+        // this lane. Equality over an empty expected set cannot mask a zero-phase run: the
+        // empty-expectation case already refused at run start.
+        if let Some(rows) = &authority_lane_rows {
+            let expected = expected_lane_phases(rows, required_ci_lane);
+            let expected_refs: std::collections::BTreeSet<&str> =
+                expected.iter().map(String::as_str).collect();
+            let observed: std::collections::BTreeSet<&str> = ran.iter().copied().collect();
+            if observed != expected_refs {
+                phase_failures.push(format!(
+                    "lane-roster ran-set: the authority expects {:?} in this lane but the run \
+                     executed {:?}",
+                    expected_refs, observed
+                ));
+            }
         }
 
         // COUNTER-KEY CENSUS (dashboard node adhoc-af8a3fe8-13d): this is the
@@ -1187,6 +1275,24 @@ fn run() -> Result<ExitCode, ExitCode> {
                 return Err(ExitCode::from(1));
             }
         }
+    }
+
+    if v2_native_route_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        eprintln!(
+            "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
+        );
+        return match v1_compiler::cli_run::run_required_v2_native(&roots) {
+            Ok(()) => Ok(ExitCode::SUCCESS),
+            Err(e) => {
+                eprintln!("v2-native-route: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
     }
 
     if required_v2_emission_mode {
@@ -1623,7 +1729,10 @@ impl RequiredCiPhase {
 // generated-artifact returned after its declared exposure produced a real stale projection on
 // main, and now also owns the former regen phase's stage0-mirror population. Keeping two phase
 // identities would preserve the independently-green outcomes this composition removes. The other
-// three removed phases remain outside required CI and inside the declared drop.
+// three removed phases remain outside required CI and inside the declared drop. The v2-native
+// phase (2026-09-09 to 2026-09-11) left required CI by operator ruling — its ~4h wall on every
+// push starved the gating lanes; the route stays reachable as `--v2-native-route` and the drop
+// is gunbc.rung_drop v2_native_route_off_the_merge_path.
 const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
@@ -1655,10 +1764,11 @@ const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
 /// nothing else joins these two. An absent authority module refuses too — that is the state in
 /// which nothing is checking the roster, not permission to proceed.
 ///
-/// WHAT THIS JOIN DELIBERATELY DOES NOT COVER: lane ownership. The host `lane` match is not
-/// readable from the declaration index, and a lane divergence cannot un-enrol a phase — both
-/// lanes execute in every required run — so the residue is bounded to which job carries a phase,
-/// and its terminal is the atomic deletion the roster's census row names.
+/// WHAT THIS JOIN DOES NOT COVER: lane ownership. A match arm is not a declaration, so the
+/// index this join reads cannot see which lane owns a phase. That half is joined by evaluation
+/// instead — `authority_lane_phase_rows` against this host's enum-plus-lane-match, executed at
+/// run start in EVERY lane (the lanes are independently selected jobs), with the
+/// empty-expectation and exact-ran-set refusals beside it.
 fn phase_roster_findings(
     index: &v1_compiler::cli_run::declaration_index::DeclarationIndex,
 ) -> Vec<String> {
@@ -1691,6 +1801,61 @@ fn phase_roster_findings(
         findings.push(format!(
             "this host enum realizes `{extra}` and `{PHASE_ROSTER_AUTHORITY_DECL}` does not \
              declare it — a phase running with no authority"
+        ));
+    }
+    findings
+}
+
+/// The authority-expected phase names for the selected lane — the whole roster when no lane was
+/// selected (a lane-less run owns every phase).
+fn expected_lane_phases(
+    rows: &[v1_compiler::cli_run::LanePhaseRow],
+    selected: Option<RequiredCiLane>,
+) -> std::collections::BTreeSet<String> {
+    rows.iter()
+        .filter(|r| selected.is_none_or(|l| r.lane == l.name()))
+        .map(|r| r.phase.clone())
+        .collect()
+}
+
+/// The (phase, lane) pair join, both directions, plus the empty-expectation refusal. The pair
+/// join is what makes a host lane-match edit red: moving a phase between lanes changes the host
+/// pair set while the authority's stays, and the difference names the divergence. The empty
+/// refusal is what makes a zero-phase selected lane stop: `phases_run=0` can no longer render
+/// as a successful required job.
+fn lane_roster_findings(
+    rows: &[v1_compiler::cli_run::LanePhaseRow],
+    selected: Option<RequiredCiLane>,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let host: BTreeSet<(String, String)> = REQUIRED_CI_PHASES
+        .iter()
+        .map(|p| (p.lane().name().to_string(), p.name().to_string()))
+        .collect();
+    let authority: BTreeSet<(String, String)> = rows
+        .iter()
+        .map(|r| (r.lane.clone(), r.phase.clone()))
+        .collect();
+    let mut findings = Vec::new();
+    for (lane, phase) in authority.difference(&host) {
+        findings.push(format!(
+            "the authority rosters phase `{phase}` in lane `{lane}` and this host does not \
+             realize that pair — lane ownership diverged"
+        ));
+    }
+    for (lane, phase) in host.difference(&authority) {
+        findings.push(format!(
+            "this host runs phase `{phase}` in lane `{lane}` and the authority does not roster \
+             that pair — lane ownership diverged"
+        ));
+    }
+    if expected_lane_phases(rows, selected).is_empty() {
+        findings.push(format!(
+            "the selected lane `{}` owns no phases in the authority roster — the run would \
+             report success over zero phases",
+            selected
+                .map(|l| l.name())
+                .unwrap_or("all (no --required-lane given)")
         ));
     }
     findings
@@ -1962,6 +2127,20 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for over_cost in &outcome.completed_over_cost_requirement {
         eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
     }
+    for blocker in &outcome.enrolment_margin_blocking {
+        eprintln!(
+            "required-floor: ENROLMENT-MARGIN-REFUSED {} cause={} — this change ENROLS this \
+             identity, and it was not shown to reach a verdict inside the margin the measured \
+             runner envelope implies. The ceiling is not the bar here: a row that clears 500ms on \
+             the runner that measured it can cross on the runner that runs it next, which is what \
+             every one of the fifteen incident rows did. Reduce what the witness reaches for, or \
+             enroll it in a lane that declares its own ceiling AND names it as an executing \
+             consumer. RELOCATING THE FILE DOES NOT DISCHARGE IT. If the cause is \
+             `enrolment_not_measured`, nothing timed this identity at all — that is a missing \
+             measurement to produce, not a cost to reduce.",
+            blocker.identity, blocker.cause
+        );
+    }
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
     }
@@ -2035,7 +2214,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 
 /// Whether the floor outcome permits a green run.
 ///
-/// NINE CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
@@ -2082,6 +2261,19 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         // is only the identities this change's diff touched, never the standing declined
         // corpus, so this conjunct cannot red a PR for debt it did not author.
         && outcome.changed_witness_blocking.is_empty()
+        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
+        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
+        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
+        // the line every one of the fifteen incident rows cleared on the run that measured them
+        // and crossed on the run that did not. Three refusing states, deliberately distinct:
+        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
+        // the one that must not be folded into the others — absence of a measurement is not
+        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
+        //
+        // The population is only what this change enrols, so this conjunct cannot red a PR for
+        // debt it did not author. Authority:
+        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
+        && outcome.enrolment_margin_blocking.is_empty()
 }
 
 fn required_floor_measurement_blockers(
@@ -2135,6 +2327,13 @@ fn required_floor_measurement_blockers(
     for blocker in &outcome.changed_witness_blocking {
         add(&blocker.identity, &blocker.cause);
     }
+    // SAME DISCIPLINE, SAME REASON: the cause comes from the row. The enrolment gate distinguishes
+    // measured-over-margin, censored-at-ceiling and not-measured-at-all, and those have three
+    // different remedies — collapsing them into one population name here would rebuild exactly the
+    // defect the loop above was repaired for.
+    for blocker in &outcome.enrolment_margin_blocking {
+        add(&blocker.identity, &blocker.cause);
+    }
     blockers
 }
 
@@ -2165,6 +2364,84 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lane_phase_row(lane: &str, phase: &str) -> v1_compiler::cli_run::LanePhaseRow {
+        v1_compiler::cli_run::LanePhaseRow {
+            lane: lane.to_string(),
+            phase: phase.to_string(),
+        }
+    }
+
+    /// The pairs `required_ci_lane_phase_rows` derives from the standing roster.
+    fn standing_authority_rows() -> Vec<v1_compiler::cli_run::LanePhaseRow> {
+        vec![
+            lane_phase_row("witnesses", "parse"),
+            lane_phase_row("witnesses", "namespace-wave-admission"),
+            lane_phase_row("build", "generated-artifact"),
+            lane_phase_row("build", "regen-fixed-point"),
+            lane_phase_row("witnesses", "floor"),
+        ]
+    }
+
+    #[test]
+    fn the_standing_pairs_join_cleanly_in_every_lane() {
+        for lane in [RequiredCiLane::Build, RequiredCiLane::Witnesses] {
+            assert!(
+                lane_roster_findings(&standing_authority_rows(), Some(lane)).is_empty(),
+                "lane {} must join cleanly",
+                lane.name()
+            );
+        }
+        assert!(lane_roster_findings(&standing_authority_rows(), None).is_empty());
+    }
+
+    #[test]
+    fn a_lane_ownership_divergence_is_red_and_names_the_pair() {
+        // The review's scenario — the host mapping and the authority mapping disagree about
+        // which lane owns a phase — simulated by moving every build-lane row to witnesses;
+        // the pair difference is symmetric, so either side's edit fires both directions, and
+        // the build lane's expectation is now empty and must refuse.
+        let mut rows = standing_authority_rows();
+        rows.retain(|r| r.lane != "build");
+        rows.push(lane_phase_row("witnesses", "generated-artifact"));
+        rows.push(lane_phase_row("witnesses", "regen-fixed-point"));
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.contains("generated-artifact") && f.contains("witnesses")),
+            "the divergence must name the pair: {findings:?}"
+        );
+        assert!(
+            findings.iter().any(|f| f.contains("owns no phases")),
+            "the build lane's expectation is now empty and must refuse: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_selected_lane_with_no_expected_phases_is_refused() {
+        let rows: Vec<_> = standing_authority_rows()
+            .into_iter()
+            .filter(|r| r.lane != "build")
+            .collect();
+        let findings = lane_roster_findings(&rows, Some(RequiredCiLane::Build));
+        assert!(findings.iter().any(|f| f.contains("owns no phases")));
+    }
+
+    #[test]
+    fn the_expected_set_tracks_the_selected_lane() {
+        let rows = standing_authority_rows();
+        assert_eq!(
+            expected_lane_phases(&rows, Some(RequiredCiLane::Build)),
+            [
+                "generated-artifact".to_string(),
+                "regen-fixed-point".to_string()
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(expected_lane_phases(&rows, None).len(), 5);
+    }
 
     #[test]
     fn a_returned_subject_refusal_is_a_completed_measurement() {

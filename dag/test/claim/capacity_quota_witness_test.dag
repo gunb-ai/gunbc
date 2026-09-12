@@ -9,12 +9,19 @@ import extdeps.cloud.gcp.rate_limits { gcp_rate_limits }
 import extdeps.ebay.rate_limits { ebay_rate_limits, ebay_sell_inventory_rate_limit }
 import extdeps.llm.anthropic_rest { anthropic_messages_rate_limit }
 import extdeps.llm.openai_rest { openai_chat_rate_limit }
+import extdeps.google.sheets {
+  sheets_rate_limits,
+  sheets_read_requests_per_minute_per_project,
+}
 import extdeps.accounting.appropriation_period { AppropriationPeriod }
 import product.capacity.pool { Pool, Replenishment, NoReplenishment, LapseAtPeriodEnd, pool_of, pool_acquire, pool_reading_at, PoolReading, PoolRead, PoolReadingRefused, PoolOutcome, PoolAdvanced, PoolRefused, pool_reanchor }
 import product.capacity.quota { quota_partition, quota_root_pool }
 
 fn w_all_limits() -> List<UpstreamRateLimit> {
-  concat(concat(concat(github_rate_limits, gcp_rate_limits), ebay_rate_limits), [anthropic_messages_rate_limit, openai_chat_rate_limit])
+  concat(
+    concat(concat(concat(github_rate_limits, gcp_rate_limits), ebay_rate_limits), sheets_rate_limits),
+    [anthropic_messages_rate_limit, openai_chat_rate_limit],
+  )
 }
 
 fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
@@ -24,13 +31,26 @@ fn w_headroom(p: Pool<Count, One>, at: EpochSecs) -> Int {
   }
 }
 
-// TEN SCOPES, EACH ITS OWN POOL, EACH NAMED ONCE: the seventeen annotations collapsed to ten typed
-// rows because eight GitHub services drew from one core pool. Keys are distinct, the pool
-// ceiling is the published count, and the period is the published period in seconds.
+fn enrolled_contains(limits: List<UpstreamRateLimit>, member: UpstreamRateLimit) -> Bool {
+  let wanted = upstream_rate_limit_key(l: member) as String
+  length(filter(map(limits, l => upstream_rate_limit_key(l: l) as String), k => k == wanted)) == 1
+}
+
+fn enrolled_contains_each(limits: List<UpstreamRateLimit>, members: List<UpstreamRateLimit>) -> Bool {
+  all(members, m => enrolled_contains(limits: limits, member: m))
+}
+
+// Completeness is an identity join: every named source member is in the enrolled roster by key,
+// keys are unique, each enrolled row is one pool. Ceiling pins are the published upstream counts.
 test fn every_upstream_scope_is_one_pool_with_the_published_ceiling_and_period() -> Bool {
   let limits = w_all_limits()
   let keys = map(limits, l => upstream_rate_limit_key(l: l) as String)
-  length(limits) == 10
+  enrolled_contains_each(limits: limits, members: github_rate_limits)
+    && enrolled_contains_each(limits: limits, members: gcp_rate_limits)
+    && enrolled_contains_each(limits: limits, members: ebay_rate_limits)
+    && enrolled_contains_each(limits: limits, members: sheets_rate_limits)
+    && enrolled_contains(limits: limits, member: anthropic_messages_rate_limit)
+    && enrolled_contains(limits: limits, member: openai_chat_rate_limit)
     && all(keys, k => length(filter(keys, x => x == k)) == 1)
     && all(limits, l =>
          (quota_partition(limit: l) as String) == join(["quota-", upstream_rate_limit_key(l: l) as String], "")
@@ -41,6 +61,8 @@ test fn every_upstream_scope_is_one_pool_with_the_published_ceiling_and_period()
               }))
     && github_core_rate_limit.requests == 5000 && rate_limit_period_seconds(p: github_core_rate_limit.period) == 3600
     && ebay_sell_inventory_rate_limit.requests == 2000000 && rate_limit_period_seconds(p: ebay_sell_inventory_rate_limit.period) == 86400
+    && sheets_read_requests_per_minute_per_project.requests == 300
+    && rate_limit_period_seconds(p: sheets_read_requests_per_minute_per_project.period) == 60
 }
 
 // A RESET INSTANT THE UPSTREAM REPORTS RE-ANCHORS THE POOL so a window ends exactly there: after

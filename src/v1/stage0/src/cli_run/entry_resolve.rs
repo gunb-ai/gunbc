@@ -854,9 +854,12 @@ pub(crate) fn new_multi_entry_index_shell(
         pool_parse: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
+        #[cfg(any(test, feature = "interp_test_witness"))]
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
+        closure_name_censuses: RefCell::new(HashMap::new()),
+        bare_reference_admission: RefCell::new(None),
         live_read_manifest: RefCell::new(None),
     }
 }
@@ -1308,8 +1311,11 @@ pub(crate) fn via_index_parse_one_source(
     // captures and admits them against this file's occurrence transport.
     // Annotation-erasing `tokenize` here let a touched in-closure file
     // compile on the floor while missing the class #8204 claims to close.
-    let artifact =
-        v1_compiler_tokenize::tokenize_artifact(source.content.clone(), source.path.clone());
+    let artifact = v1_compiler_tokenize::tokenize_artifact(
+        source.content.clone(),
+        source.path.clone(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
     let nl_index = build_newline_index(source.path.clone(), source.content.clone());
     let current_table = index.intern_table.borrow().clone();
     let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
@@ -1729,8 +1735,11 @@ pub(crate) fn parse_module_node_from_index_source(
     let (parse_result, nl_index) = match cached {
         Some(entry) => (entry.parse_result, entry.newline_index),
         None => {
-            let tokens =
-                v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+            let tokens = v1_compiler_tokenize::tokenize(
+                source.content.clone(),
+                source.path.clone(),
+                crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+            );
             let nl_index = build_newline_index(source.path.clone(), source.content.clone());
             let current_table = index.intern_table.borrow().clone();
             let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
@@ -2234,7 +2243,10 @@ pub(crate) fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
     if body.is_empty() {
         body.push_str("host_sr_empty");
     } else if body.as_bytes()[0].is_ascii_digit()
-        || v1_compiler_tokenize::is_keyword_text(body.clone())
+        || v1_compiler_tokenize::is_keyword_text(
+            body.clone(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        )
     {
         // THE THIRD ESCAPE ARM, AND THE CORPUS ALREADY CONTAINED ITS CASE.
         //
@@ -2601,6 +2613,7 @@ pub fn reference_resolution_facts(
                 tally: &mut scratch_tally,
                 unclassified: &mut scratch_unclassified,
                 module: self_module.clone(),
+                value_refs: std::collections::BTreeSet::new(),
                 occurrences: 0,
                 free_reference_edges: 0,
                 bound_occurrences_suppressed: 0,

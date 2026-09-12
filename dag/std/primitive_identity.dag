@@ -5,15 +5,19 @@ import std.algebra {
   AlgebraProfile,
   AlgebraTypeTemplate,
   CostShape,
+  FiniteSupport,
   FinitelySupportedFunctionProfile,
+  OpenSupport,
   ShapeIterateBody,
   ShapeLinearScan,
+  algebra_profile_support,
   algebra_templates_for_profile,
   ShapeSortBody,
   all_algebra_field_templates,
   all_algebra_profiles,
   all_algebra_template_names,
 }
+import std.induction { CostBound, cost_linear }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -28,7 +32,7 @@ import std.primitive_projection {
   PrimitiveProjection, PrimitiveProjectionAnswer,
   DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive, DeclarationPrimitiveUndisposed,
   primitive_projection_roster, primitive_projection_row_for_declaration,
-  primitive_length, primitive_map_insert, primitive_map_get, primitive_empty_map,
+  primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_empty_map,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
@@ -298,9 +302,66 @@ type PrimitiveRealization {
   handler: DeclarationRef
 }
 
+// WHY THE PARAMETER IS DERIVED AND NEVER AUTHORED. `CostBound` needs a parameter and
+// `AtomicCost.param` is a bare `String`, so a per-row literal would let two rows describing the same
+// carrier spell the same axis differently, and nothing would catch it -- the fabricated axis
+// `std.realization_cost_fidelity` exists to refuse, authored into the very facts it judges. The one
+// function below is therefore the only producer of that string in this module: it reads the
+// carrier's own declared support axis, so the parameter is a PROJECTION of a modeled fact rather
+// than a name someone chose. A profile whose support is open has no cardinality to name and gets
+// `Absent`, which is why the refusal arm below is reachable rather than decorative.
+//
+// THE NEXT-RUNG FRONTIER, AND IT IS THIS FUNCTION'S RETURN TYPE. `String` is an anemic leaf in the
+// DESIGN section 2 sense: the axis is a modeled quantity -- the cardinality of a named carrier's
+// finite support -- and it is carried as free text that any caller may spell any way. The one
+// function below is a CONTAINMENT of that defect, not a fix: it makes this module's rows agree with
+// each other, and does nothing about a second module naming the same axis differently, because
+// nothing in the type can stop it. The fix is a `CostParam` identity replacing the bare `String` in
+// `std.induction` `AtomicCost`, at which point agreement is structural and this function's
+// single-producer discipline dissolves into it. TRIGGER: `std.induction` `AtomicCost` carrying a
+// parameter identity rather than `String`. That is a change to the cost authority and is
+// deliberately not attempted here -- it would rewrite every cost-bearing row in the tree.
+fn finite_support_cardinality_param(profile: AlgebraProfile) -> String? {
+  match algebra_profile_support(profile: profile) {
+    FiniteSupport => Present { value: "support_cardinality" }
+    OpenSupport => none
+  }
+}
+
+// WHY THE COARSE SHAPE SURVIVES ON THE REFUSAL ARM. Three of this module's rows are
+// `SignatureUngrounded` and each says in its own reason that authoring a signature would fabricate
+// it, so no parameter can be recovered for them and no `CostBound` can be built. Dropping their
+// `CostShape` to mark that would DELETE modeled facts (`ShapeSortBody`, `ShapeIterateBody`) that are
+// true and were never in question -- the structured form is unavailable, the coarse form is not.
+// So the refusal arm keeps the coarse fact and carries the cause beside it: the two-grain situation
+// that `std.realization_cost_fidelity` names as a fork survives ONLY where it is declared, with the
+// reason attached, instead of silently across the whole population.
+type PrimitiveCostStructureUnavailable
+  = CostParamNotRecoverableFromSignature { signature_reason: NonEmptyStr }
+
+type PrimitiveModeledCost
+  = StructuredCost { bound: CostBound }
+  | CoarseCostOnly { shape: CostShape, cause: PrimitiveCostStructureUnavailable }
+
+// THE ONE CONSTRUCTOR THE ROWS GO THROUGH, so the derived parameter reaches every structured row by
+// the same route. A grounded profile yields the structured bound; anything else falls to the coarse
+// arm with the cause the caller supplies. `cost_linear` is `std.induction`'s own constructor -- this
+// module does not build `PolyCost` by hand, because the exponent convention belongs to the cost
+// authority and not to its callers.
+fn linear_support_scan_cost(
+  profile: AlgebraProfile,
+  coarse: CostShape,
+  unavailable: PrimitiveCostStructureUnavailable,
+) -> PrimitiveModeledCost {
+  match finite_support_cardinality_param(profile: profile) {
+    Present { value: param } => StructuredCost { bound: cost_linear(param: param) }
+    Absent => CoarseCostOnly { shape: coarse, cause: unavailable }
+  }
+}
+
 type PrimitiveCostFact {
   primitive: PrimitiveIdentity
-  cost: CostShape
+  cost: PrimitiveModeledCost
 }
 
 type TraversalOrder
@@ -713,8 +774,16 @@ data primitive_sorted_map_keys_traversal: PrimitiveTraversalOrderFact = Primitiv
 // mandatory determinism gate: map_keys exposes host map order, while
 // sorted_map_keys sorts by K's declared Ord. Before the sorted primitive joined
 // PrimitiveIdentity, its green witness was acceptance by non-membership rather
-// than an answered order classification. This wall does not claim map_keys caused
-// the emitter's observed byte drift; the corpus sweep found no such path.
+// than an answered order classification. THE LAST SENTENCE OF THIS ANNOTATION WAS
+// FALSE AND IS CORRECTED IN PLACE RATHER THAN DELETED. It read that this wall does
+// not claim map_keys caused the emitter's observed byte drift, because the corpus
+// sweep found no such path. The path existed and that sweep missed it: v1.compile
+// serialize_typed_module and emit_dag_artifact both fed map_keys of an item registry
+// straight into dag-artifact.json, so two runs of one binary over one unchanged tree
+// emitted the same key SET in two orders. Both sites now read sorted_map_keys. The
+// correction stays here because an annotation asserting an ABSENCE is exactly the
+// claim a later reader does not re-derive, and this one was readable as evidence that
+// the emitter was already clean.
 
 data primitive_map_values_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
   primitive: primitive_map_values,
@@ -739,30 +808,114 @@ data primitive_d0_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_index_by_traversal,
 ]
 
+// THE CAUSE THE THREE UNGROUNDED ROWS CARRY. It quotes no signature of its own: each definition
+// above already states why grounding it would fabricate one, and restating that here would be a
+// second copy of a reason that has an authority (DESIGN section 3). The rows below pass the
+// definition's own words through.
+data sorted_map_keys_cost_cause: PrimitiveCostStructureUnavailable = CostParamNotRecoverableFromSignature {
+    signature_reason: "sorted_map_keys is SignatureUngrounded: std.algebra declares no sorted_map_keys template, so there is no carrier whose support could name the parameter" as NonEmptyStr,
+  }
+
+data fold_list_cost_cause: PrimitiveCostStructureUnavailable = CostParamNotRecoverableFromSignature {
+    signature_reason: "fold_list is SignatureUngrounded on the algebra/interpreter spelling fork, so the carrier the cost would scale in is exactly the thing in dispute" as NonEmptyStr,
+  }
+
+data index_by_cost_cause: PrimitiveCostStructureUnavailable = CostParamNotRecoverableFromSignature {
+    signature_reason: "index_by is the registry+algebra dual-absence specimen: no template arm and no builtin row, so no carrier and no support axis exist to project" as NonEmptyStr,
+  }
+
+// THE FAIL-CLOSED ARGUMENT THE GROUNDED ROWS CARRY. It is not ceremony and it is not unreachable
+// by construction: it is what these rows become if `FinitelySupportedFunctionProfile` ever stops
+// declaring `FiniteSupport`. The parameter is derived from that support axis, so losing it removes
+// the only thing the bound could scale in, and the honest result is the coarse fact plus this cause
+// rather than a bound over an axis that no longer exists. One value serves both rows because it is
+// one fact about one carrier.
+data carrier_support_axis_no_longer_finite_cause: PrimitiveCostStructureUnavailable = CostParamNotRecoverableFromSignature {
+    signature_reason: "the carrier's profile no longer declares FiniteSupport, so it has no cardinality for the cost parameter to name" as NonEmptyStr,
+  }
+
+// THE TWO GROUNDED ROWS. Both reach `linear_support_scan_cost` with the SAME profile, which is the
+// point: the axis they scale in is read off that profile rather than written here, so they cannot
+// disagree about its name. Their coarse argument is the shape each row carried before the
+// structured form existed, and `cost_bound_to_shape` re-derives exactly that from the bound -- the
+// witness suite asserts the agreement rather than this comment claiming it.
 data primitive_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
   primitive: primitive_map_keys,
-  cost: ShapeLinearScan,
-}
-
-data primitive_sorted_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
-  primitive: primitive_sorted_map_keys,
-  cost: ShapeSortBody,
+  cost: linear_support_scan_cost(
+    profile: FinitelySupportedFunctionProfile,
+    coarse: ShapeLinearScan,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ),
 }
 
 data primitive_map_values_cost: PrimitiveCostFact = PrimitiveCostFact {
   primitive: primitive_map_values,
-  cost: ShapeLinearScan,
+  cost: linear_support_scan_cost(
+    profile: FinitelySupportedFunctionProfile,
+    coarse: ShapeLinearScan,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ),
+}
+
+// THE THREE UNGROUNDED ROWS keep their coarse fact and say why there is no structured one.
+data primitive_sorted_map_keys_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_sorted_map_keys,
+  cost: CoarseCostOnly { shape: ShapeSortBody, cause: sorted_map_keys_cost_cause },
 }
 
 data primitive_fold_list_cost: PrimitiveCostFact = PrimitiveCostFact {
   primitive: primitive_fold_list,
-  cost: ShapeIterateBody,
+  cost: CoarseCostOnly { shape: ShapeIterateBody, cause: fold_list_cost_cause },
 }
 
 data primitive_index_by_cost: PrimitiveCostFact = PrimitiveCostFact {
   primitive: primitive_index_by,
-  cost: ShapeIterateBody,
+  cost: CoarseCostOnly { shape: ShapeIterateBody, cause: index_by_cost_cause },
 }
+
+// THE ROSTER THIS CARRIER NEVER HAD, AND WHAT IT IS NOT. Its sibling `PrimitiveTraversalOrderFact`
+// is gathered by `primitive_d0_traversal_facts`; these five rows were free-floating `data`
+// declarations that no fold reached, which is the DESIGN section 3c dangling state -- well-modeled
+// and inhabited by nothing.
+//
+// THIS ROSTER IS THE SUBJECT UNIVERSE OF THE IDENTITY JOIN, NOT THE CONSUMER. It closes the
+// population so membership can be asserted per primitive instead of by count, and that is all it
+// does: a fold that exists to be folded over by a witness is not consumption in the section 3c
+// sense, and calling it one would be the specification-without-execution trap with a roster in
+// front of it.
+//
+// THE DECLARED FRONTIER (section 3c middle arm: a named consumer landing in a named later change).
+// CONSUMER: `std.realization_cost_fidelity` `realization_cost_fidelity_row`, the per-primitive join
+// of a modeled cost against a realized one, reached through `realization_cost_fidelity_report`.
+// ROUTE: DIRECT, and that is new in this change. `realization_cost_fidelity_rows` takes
+// `List<PrimitiveCostFact>` -- these rows are its declared input type, not a shape they would have
+// to be adapted into. The join previously read a second carrier, `ModeledCostBoundFact`, of the
+// same (primitive, cost) pair; that duplicate is DELETED here and the join re-signatured onto this
+// carrier, so the modeled side of the fidelity question now has exactly one home. What is still
+// missing for the route to EXECUTE is the realized side and a production caller: no declaration
+// outside `dag/test/` passes `primitive_d0_cost_facts` to that join, because with every realized
+// cost `Absent` there is nothing for it to answer.
+// TRIGGER: the first construction of a `RealizationCostFact` outside `dag/test/`. The trigger is
+// stated as that symbol rather than as "when measurements exist" because the capability it stands
+// for -- the emitted compiler being measurable per primitive, so a realized cost is an OBSERVATION
+// rather than an assertion -- is exactly what the first non-fixture producer of that type
+// demonstrates, and nothing short of it does. Until then the realized side is `Absent` for every
+// primitive and the join has nothing to answer about, which `std.realization_cost_fidelity` already
+// states as its own standing condition.
+// KILL CONDITION: if a `RealizationCostFact` producer lands and these rows are still not read by
+// that join, the frontier was wrong and the rows are dangling, not deferred.
+//
+// WHAT THIS FRONTIER IS NOT AN EXCUSE FOR, stated because the dissolution above could be read as
+// having closed more than it did. One carrier now answers the modeled question at both grains, and
+// the join takes it directly -- that part is done and executes in the witness suite. The frontier
+// covers only the REALIZED half, which no amount of work on this carrier can supply.
+data primitive_d0_cost_facts: List<PrimitiveCostFact> = [
+  primitive_map_keys_cost,
+  primitive_sorted_map_keys_cost,
+  primitive_map_values_cost,
+  primitive_fold_list_cost,
+  primitive_index_by_cost,
+]
 
 fn primitive_surface_missing_identity_violation(row: PrimitiveSurfaceRow) -> PrimitiveJoinViolation? {
   match row.primitive {
@@ -1072,6 +1225,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "length",
   "map_insert",
   "map_get",
+  "lookup",
   "empty_map",
   "decl_facts",
   "decl_facts_at",
@@ -1386,6 +1540,8 @@ data primitive_map_insert_traversal: PrimitiveTraversalOrderFact = PrimitiveTrav
 
 data primitive_map_get_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_map_get, order: OrderFreeResult }
 
+data primitive_lookup_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_lookup, order: OrderFreeResult }
+
 data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_empty_map, order: OrderFreeResult }
 
 // The parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their
@@ -1433,6 +1589,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
   primitive_map_get_traversal,
+  primitive_lookup_traversal,
   primitive_empty_map_traversal,
   primitive_decl_facts_traversal,
   primitive_decl_facts_at_traversal,

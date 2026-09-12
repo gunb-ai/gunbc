@@ -340,7 +340,77 @@ import v2.std.collection { List }
 // claims were briefly homed there while their cost was being fixed, which took them off the merge
 // path altogether and made a green floor mean nothing about them. They are back on it, and the
 // fill is what keeps them under the ceiling there.
+// THE SEVEN rust_module_emission_population ROWS EARN THEIR PLACE ON THE FILL-THAT-CANNOT-LAND
+// GROUND, NOT ON CROSS-CLAIM SHARING, and the distinction is stated because three of them serve
+// exactly one claim and would fail this roster's sharing conjunct if read against it. That is the
+// dag_prepared_grammar ground above, restated for a second producer family: the fill costs MORE
+// THAN ONE CLAIM'S CPU BUDGET on this lane's runner, so an in-fold first touch can never
+// complete, and no amount of sharing is the question. Receipt, re-derivable rather than
+// transcribed: required-floor run 34392489718 (PR #10907 head 65f01e1151) refused SEVEN of that
+// file's eight arms INTERRUPTED-BEFORE-VERDICT at cpu_at_least=501-507ms against limit_ms=500 --
+// the eighth, the declarationless refusal, is the one specimen whose walk stops at the collector's
+// empty population and it completed at ~341ms. Each producer is ONE ingest -> assemble -> infer ->
+// collect -> emit production walk over one specimen module, which is the subject of the witnesses
+// rather than incidental setup, so the cost cannot be reduced by rewriting the claims: the walk IS
+// what they assert over. The share point is a String or a Bool, fully portable, so a serve is a
+// hand-over against a ~600-900ms recompute.
+// WHAT IS NOT CLAIMED HERE: this enrollment is NOT verified by a local claim_batch run. The warm
+// path forces these at STRICT PREPARATION, which is the required-floor recipe's own step, and a
+// plain --entry run does not execute it -- measured, with the arms' costs unchanged at
+// 341-1545ms under claim_batch after the producers were introduced. The instrument that decides
+// it is the required floor's own [floor-shared-fill] ledger, which must show these fills landing
+// at preparation with disposition=Stored and the seven former INTERRUPTED arms serving hits.
+// THE native_decl_selection ROW IS THE SAME GROUND AGAIN, ON THE NATIVE-ROUTE DRIVER. The four
+// witnesses of v2.test.native_decl_selection drive v2.compiler.compile's source-root Eval
+// driver over one two-module synthetic ingest, and every one of them was refused
+// INTERRUPTED-BEFORE-VERDICT at cpu_at_least=503-508ms against limit_ms=500 on three
+// consecutive main heads (runs 34536354438, 34537144168, 34542819448) -- the file was enrolled
+// with members whose cost exceeds the budget they were enrolled under, and no run had ever
+// reached their verdict. The run's own cross-claim demand census
+// (required_floor_cross_claim_demand.tsv, run 34542819448) names the producer: collision_prepared
+// / native_test_context_from_ingest, 4 claims, the file's whole censored cost, of which
+// `tokenize` alone was ~330ms per claim and `parse_module_prepared` ~160ms -- the seed
+// tokenizing and parsing ~230 characters of source, four times. The uncensored stage split
+// (claim_batch --entry src/v2/test/native_decl_selection_test.dag [witness] lines, plus one
+// probe entry per stage, arm64 session host) measured ~1.1-1.4s per claim: tokenize ~490ms,
+// parse ~375ms, normalize + context fold ~210ms, resolve + infer ~220ms, eval ~0. The share
+// point is the RESOLVED tree -- the deepest closure-free stage, the same seam
+// direct_rust_door_specimen_resolved above uses -- so each claim keeps infer + eval and hands
+// over tokenize/parse/normalize/resolve. WARM, NEVER CLAIM-FORCED: a fill that costs more than
+// one claim's whole budget on the lane dies mid-flight in the fold, exactly as prepare_grammar's
+// did. The instrument that decides it is the required floor's [floor-shared-fill] ledger
+// (disposition=Stored at preparation, four hits) joined against required_floor_claim_cost.tsv
+// showing the four rows reaching verdict_reached=true with an observed cost.
+// THE EIGHT PARSE-WITNESS FIXTURE TREES EARN THEIR ROWS ON MAIN'S OWN RED FLOOR (runs
+// 34556215902 at c176027b and 34556223550 at 267d69b8, the two heads that landed
+// v2.test.parse.d1_declaration_grammar_parse, v2.test.parse.where_refinement_clause_parse and
+// v2.test.parse.expression_bodied_fn_decl_parse): ten identities across those three files plus
+// v2.test.claim.body_lowering.declaration_structure_preserved refused INTERRUPTED-BEFORE-VERDICT
+// at cpu_at_least=506-610ms against limit_ms=500, and no floor run has ever reached their
+// verdict. The cost has TWO halves and this roster carries only the second. The first half was
+// the parser re-deriving a once-per-grammar invariant on every parse call -- the run's census
+// names parse_grammar_digest at claims=19 evals=19 (~128ms per claim) plus two grammar_to_node
+// walks per claim -- and that is repaired at its home, v2.compiler.parse GrammarFirstAnalysis,
+// not by a roster row: it is a fact about the warm-shared dag_prepared_grammar, so once it is
+// carried on the preparation every consumer of that row inherits it. The second half is the
+// same shape as the native_decl_selection and door-specimen rows above: one module-constant
+// source tokenized and parsed by two, three or four claims of one file, once per claim frame.
+// The recompute instrument is claim_batch's gross [witness] receipt over the three entry files
+// with the parser repair already applied (~100-460ms per claim on an uncontended amd64 host,
+// of which one tokenize+parse of a ~60-character source is ~130-170ms); the sharing census is
+// the call-site graph itself, stated per producer beside its declaration; serve-below-recompute
+// is the header's zero-walk capability, since each value is an Outcome<Node> parse tree, small
+// and fully portable (no Closure/OriginBoundNode at any depth; normalize is deliberately NOT
+// the share point, so every normalize claim still executes the stage it names). WARM by the
+// same ceiling arithmetic as every row above. Sources read by exactly one claim are NOT
+// enrolled -- a single-consumer warm row is the per-claim budget relocated, not a recurrence
+// removed -- and the one three-source conjunction (where_refinement_clause_parses_and_is_carried)
+// was split into three rows instead. Re-derive rather than trust: claim_batch --entry <any of
+// the three test files> [witness] lines, and this run's [floor-shared-fill] ledger, which must
+// show the eight fills landing at preparation with disposition=Stored and the former interrupted
+// claims serving hits.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
@@ -351,7 +421,22 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.execution.emit_on_demand_match_loop_fold_family_witness.mlf_family_primary_emitted",
   "v2.test.execution.emit_on_demand_family_crate_witness.logic_family_primary_emitted",
   "v2.test.self_host.stage0_production_target.stage0_boundary_profile_emitted_source",
-  "v2.test.self_host.stage0_production_target.stage0_boundary_base_emitted_source"
+  "v2.test.self_host.stage0_production_target.stage0_boundary_base_emitted_source",
+  "v2.test.claim.self_host.rust_module_emission_population.population_emission_add",
+  "v2.test.claim.self_host.rust_module_emission_population.population_emission_add2",
+  "v2.test.claim.self_host.rust_module_emission_population.population_emission_add_then_add2",
+  "v2.test.claim.self_host.rust_module_emission_population.population_declarationless_refuses",
+  "v2.test.claim.self_host.rust_module_emission_population.population_unwired_two_declaration_refuses",
+  "v2.test.claim.self_host.rust_module_emission_population.population_declaration_count_add",
+  "v2.test.claim.self_host.rust_module_emission_population.population_declaration_count_add_then_add2",
+  "v2.test.parse.d1_declaration_grammar_parse.d1_where_reproducer_parsed",
+  "v2.test.parse.d1_declaration_grammar_parse.d1_where_bare_parsed",
+  "v2.test.parse.d1_declaration_grammar_parse.d1_where_control_parsed",
+  "v2.test.parse.d1_declaration_grammar_parse.d1_cache_identity_where_parsed",
+  "v2.test.parse.where_refinement_clause_parse.where_refinement_bare_parsed",
+  "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
+  "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
+  "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

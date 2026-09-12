@@ -129,7 +129,8 @@ use crate::v1_compiler_emit::BoundOperation::{
 };
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 use crate::v1_compiler_emit::FileResultChannel::{
-    FileChanByteCount, FileChanContent, FileChanError, FileChanPath, FileChanSuccess,
+    FileChanByteCount, FileChanContent, FileChanError, FileChanErrorKind, FileChanPath,
+    FileChanSuccess,
 };
 use crate::v1_compiler_emit::FileVerb::{
     FileDelete, FileList, FileRead, FileWrite, FileWriteCreateNew, FileWriteOwnerOnly,
@@ -817,10 +818,17 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 }
 
 pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-    crate::v1_compiler_languages::sharing_wrap_ctor_for_target(
-        RenderTarget::Rust,
-        inner_expr.clone(),
-    )
+    if ((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
+        || v1_rt::starts_with(inner_expr.clone(), "compile_error!(".to_string()))
+        || v1_rt::starts_with(inner_expr.clone(), "unreachable!(".to_string()))
+    {
+        inner_expr.clone()
+    } else {
+        crate::v1_compiler_languages::sharing_wrap_ctor_for_target(
+            RenderTarget::Rust,
+            inner_expr.clone(),
+        )
+    }
 }
 
 pub fn rust_shared_wrap_ctor_prefix() -> String {
@@ -9777,6 +9785,22 @@ pub struct ReferenceDerivedProviderBinding {
     pub provider_module: String,
 }
 
+pub fn canonical_string_set(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
+    {
+        let presence = items.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, item: String| {
+                if (item.clone() == "".to_string()) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_map_insert(acc.clone(), item.clone(), true)
+                }
+            },
+        );
+        Rc::new(v1_rt::sorted_map_keys(&presence))
+    }
+}
+
 pub fn reference_derived_use_line_plan(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -10118,7 +10142,7 @@ pub fn reference_derived_use_line_plan(
             }
             __result
         });
-        let providers = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let providers = canonical_string_set(Rc::new({
             let mut __result = Vec::new();
             for b in resolved.iter().cloned() {
                 __result.push(b.provider_module.clone());
@@ -10129,7 +10153,7 @@ pub fn reference_derived_use_line_plan(
             let mut __result = Vec::new();
             for provider in providers.iter().cloned() {
                 __result.extend((*{
-            let names = Rc::new({ let mut __result = Vec::new(); for b in Rc::new({ let mut __result = Vec::new(); for b in resolved.iter().cloned() { if (b.provider_module.clone() == provider.clone()) { __result.push(b); } } __result }).iter().cloned() { __result.push(b.name.clone()); } __result });
+            let names = canonical_string_set(Rc::new({ let mut __result = Vec::new(); for b in Rc::new({ let mut __result = Vec::new(); for b in resolved.iter().cloned() { if (b.provider_module.clone() == provider.clone()) { __result.push(b); } } __result }).iter().cloned() { __result.push(b.name.clone()); } __result }));
 let plan_module_env = match v1_rt::map_get(&module_index.by_name.clone(), this_module_name.clone()) {
     Some(tm) => Some(tm.type_env.clone()),
     std::option::Option::None => std::option::Option::None,
@@ -10382,7 +10406,7 @@ pub fn qualified_type_reference_use_lines(
     rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<Vec<String>> {
-    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+    canonical_string_set(Rc::new({
         let mut __result = Vec::new();
         for r in rows.iter().cloned() {
             __result.extend(
@@ -14554,15 +14578,7 @@ pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
 
 pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
-        let exact = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
-            let mut __result = Vec::new();
-            for line in lines.iter().cloned() {
-                if (line.clone() != "".to_string()) {
-                    __result.push(line);
-                }
-            }
-            __result
-        }));
+        let exact = canonical_string_set(lines.clone());
         let covered = Rc::new({
             let mut __result = Vec::new();
             for line in exact.clone().iter().cloned() {
@@ -17515,7 +17531,18 @@ if ((child.children.clone().len() as i64) == 0) {
                     if variant_is_synthetic_positional_payload(child.children.clone(), env.source_indices.clone()) {
                         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), "(_) => panic!(\"no ".to_string()), fname.clone()), " on positional-payload variant\"),".to_string())
                     } else {
-                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), " { ".to_string()), crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust)), ": __val, .. } => ".to_string()), crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), "__val".to_string())), ",".to_string())
+                        {
+                            let arm_field_boxed = match Rc::new({ let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { if (crate::v1_compiler_infer_env::authored_name(env.clone(), f.clone()) == fname.clone()) { __result.push(f); } } __result }).first().cloned() {
+    Some(f) => needs_box_wrapping(crate::v1_compiler_infer_types::resolved_type(f.clone()), recursive_types.clone(), shared_types.clone(), env.source_indices.clone()),
+    std::option::Option::None => false,
+};
+let clone_expr = if arm_field_boxed.clone() {
+                                crate::v1_compiler_emit_core_support::apply_type_template1(sharing.deref_clone.clone(), "*__val".to_string())
+                            } else {
+                                crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), "__val".to_string())
+                            };
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), " { ".to_string()), crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust)), ": __val, .. } => ".to_string()), clone_expr.clone()), ",".to_string())
+}
                     }
                 }
 }); } __result });
@@ -21700,6 +21727,44 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::conc
     })
 }
 
+pub fn rust_as_ref_let_is_irrefutable(
+    pattern: Rc<MatchPattern>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    if crate::v1_std_core::match_pattern_is_irrefutable(pattern.clone()) {
+        true
+    } else {
+        match (*pattern.clone()).clone() {
+            MatchPattern::VariantPattern {
+                name: n,
+                parent_enum: parent,
+                ..
+            } => {
+                let resolved = pattern_parent_enum(
+                    crate::v1_std_core::qualified_last_segment(n.clone()),
+                    parent.clone(),
+                    "".to_string(),
+                    emit_info.type_summaries.clone(),
+                );
+                match resolved.clone() {
+                    Some(enum_name) => {
+                        match v1_rt::map_get(&emit_info.type_summaries.clone(), enum_name.clone()) {
+                            Some(summary) => {
+                                ((Rc::new(v1_rt::sorted_map_keys(&summary.variant_name_set.clone()))
+                                    .len() as i64)
+                                    <= 1)
+                            }
+                            std::option::Option::None => false,
+                        }
+                    }
+                    std::option::Option::None => false,
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
 pub fn rc_pattern_preludes(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -21775,7 +21840,12 @@ let inner_analysis = analyze_rc_pattern(fb_pat_here.clone(), "".to_string(), sha
 if inner_analysis.needs_rc_pattern.clone() {
                                         {
                                             let aware = emit_pattern_rc_aware(fb_pat_here.clone(), v1_rt::rc_list_push(v1_rt::rc_list_push(Rc::new(vec![]), bare_n.clone()), fb_name.clone()), inner_analysis.clone(), shared_types.clone(), "".to_string(), source_indices.clone(), emit_info.clone());
-let head = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let ".to_string(), aware.clone()), " = ".to_string()), crate::v1_compiler_emit::emit_ident(fb_name.clone(), RenderTarget::Rust)), ".as_ref() else { unreachable!() };".to_string());
+let tail = if rust_as_ref_let_is_irrefutable(fb_pat_here.clone(), emit_info.clone()) {
+                                                ";".to_string()
+                                            } else {
+                                                " else { unreachable!() };".to_string()
+                                            };
+let head = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let ".to_string(), aware.clone()), " = ".to_string()), crate::v1_compiler_emit::emit_ident(fb_name.clone(), RenderTarget::Rust)), ".as_ref()".to_string()), tail.clone());
 let inner_preludes = rc_pattern_preludes(fb_pat_here.clone(), inner_analysis.clone(), shared_types.clone(), source_indices.clone(), emit_info.clone());
 if (inner_preludes.clone() == "".to_string()) {
                                                 Rc::new(vec![head.clone()])
@@ -21786,7 +21856,7 @@ if (inner_preludes.clone() == "".to_string()) {
                                     } else {
                                         {
                                             let bound_str = emit_pattern(fb_pat_here.clone(), v1_rt::rc_list_push(v1_rt::rc_list_push(Rc::new(vec![]), bare_n.clone()), fb_name.clone()), shared_types.clone(), "".to_string(), source_indices.clone(), emit_info.clone());
-let tail = if crate::v1_std_core::match_pattern_is_irrefutable(fb_pat_here.clone()) {
+let tail = if rust_as_ref_let_is_irrefutable(fb_pat_here.clone(), emit_info.clone()) {
                                                 ";".to_string()
                                             } else {
                                                 " else { unreachable!() };".to_string()
@@ -22972,6 +23042,41 @@ pub fn rust_empty_map_kv_type_str(
     }
 }
 
+pub fn rust_empty_map_init_expr(
+    map_type: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let kv_type_str = rust_empty_map_kv_type_str(
+            map_type.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        );
+        if (kv_type_str.clone() == "".to_string()) {
+            rust_shared_wrap_ctor(
+                "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
+            )
+        } else {
+            if rust_fold_rendered_type_has_any_spurious_generic(
+                v1_rt::concat(
+                    v1_rt::concat("<".to_string(), kv_type_str.clone()),
+                    ">".to_string(),
+                ),
+                emit_info.fn_generic_param_names.clone(),
+            ) {
+                "v1_rt::rc_empty_map::<_, _>()".to_string()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat("v1_rt::rc_empty_map::<".to_string(), kv_type_str.clone()),
+                    ">()".to_string(),
+                )
+            }
+        }
+    }
+}
+
 pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     {
         let ch = crate::v1_compiler_infer_types::child_type_node(c.clone());
@@ -23563,8 +23668,9 @@ pub fn emit_rust_expr_record_lit(
                     }
                 },
             };
-            if ((rc_name.clone() != "".to_string())
+            if (((rc_name.clone() != "".to_string())
                 && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                && !rust_expr_is_grounded_shared_value(raw.clone()))
             {
                 rust_shared_wrap_ctor(raw.clone())
             } else {
@@ -23576,6 +23682,10 @@ pub fn emit_rust_expr_record_lit(
             RenderTarget::Rust,
         ),
     }
+}
+
+pub fn rust_expr_is_grounded_shared_value(expr: String) -> bool {
+    (expr.clone() == emit_freemonoid_empty_rc_value())
 }
 
 pub fn emit_rust_expr_string_interp(
@@ -24313,27 +24423,12 @@ pub fn emit_typed_call_expr(
         let target_is_runtime = call_target_is_runtime_primitive(call_target.clone());
         let call_str = if (target_is_runtime.clone() && (func.clone() == "empty_map".to_string())) {
             match inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: ret_type, .. }) => {
-                    let kv_type_str = rust_empty_map_kv_type_str(
-                        ret_type.clone(),
-                        shared_types.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    if (kv_type_str.clone() != "".to_string()) {
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "v1_rt::rc_empty_map::<".to_string(),
-                                kv_type_str.clone(),
-                            ),
-                            ">()".to_string(),
-                        )
-                    } else {
-                        rust_shared_wrap_ctor(
-                            "HashMap::new() /* BRIDGE: empty_map value type unresolved */"
-                                .to_string(),
-                        )
-                    }
-                }
+                Some(InferredNode::Resolved { node: ret_type, .. }) => rust_empty_map_init_expr(
+                    ret_type.clone(),
+                    shared_types.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    emit_info.clone(),
+                ),
                 _ => rust_shared_wrap_ctor(
                     "HashMap::new() /* BRIDGE: empty_map return type unresolved */".to_string(),
                 ),
@@ -26436,36 +26531,12 @@ pub fn emit_rust_fold_method_call(
                         && (acc_type_str.clone() != "".to_string()))
                         && !acc_has_unit_child.clone())
                     {
-                        {
-                            let kv_type_str = rust_empty_map_kv_type_str(
-                                acc_type_node.clone(),
-                                shared_types.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            );
-                            if ((kv_type_str.clone() != "".to_string())
-                                && rust_fold_rendered_type_has_any_spurious_generic(
-                                    v1_rt::concat(
-                                        v1_rt::concat("<".to_string(), kv_type_str.clone()),
-                                        ">".to_string(),
-                                    ),
-                                    emit_info.fn_generic_param_names.clone(),
-                                ))
-                            {
-                                "v1_rt::rc_empty_map::<_, _>()".to_string()
-                            } else {
-                                if (kv_type_str.clone() != "".to_string()) {
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "v1_rt::rc_empty_map::<".to_string(),
-                                            kv_type_str.clone(),
-                                        ),
-                                        ">()".to_string(),
-                                    )
-                                } else {
-                                    rust_shared_wrap_ctor("HashMap::new() /* BRIDGE: fold empty_map value type unresolved */".to_string())
-                                }
-                            }
-                        }
+                        rust_empty_map_init_expr(
+                            acc_type_node.clone(),
+                            shared_types.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            emit_info.clone(),
+                        )
                     } else {
                         if (init_func.clone() == "empty_map".to_string()) {
                             rust_shared_wrap_ctor("HashMap::new() /* BRIDGE: fold empty_map accumulator type unresolved */".to_string())
@@ -27484,7 +27555,17 @@ pub fn emit_rust_generic_method_call(
                         __result
                     });
                     let all_strs = v1_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
-                    let bridge_name = rust_runtime_bridge_name(function_name.clone());
+                    let bridge_function_name = if rust_append_call_is_concat_form(
+                        function_name.clone(),
+                        rust_append_method_call_appended_arg(args.clone()),
+                        runtime_bridge.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        "list_concat".to_string()
+                    } else {
+                        function_name.clone()
+                    };
+                    let bridge_name = rust_runtime_bridge_name(bridge_function_name.clone());
                     let lowered = v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
@@ -27501,7 +27582,7 @@ pub fn emit_rust_generic_method_call(
                         ),
                         ")".to_string(),
                     );
-                    if rust_runtime_bridge_result_wraps_in_rc(function_name.clone()) {
+                    if rust_runtime_bridge_result_wraps_in_rc(bridge_function_name.clone()) {
                         rust_shared_wrap_ctor(lowered.clone())
                     } else {
                         lowered.clone()
@@ -28248,7 +28329,7 @@ pub fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
     } else {
         v1_rt::concat(
             v1_rt::concat("let ".to_string(), tail_bind.clone()),
-            ": Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ".to_string(),
+            ": Rc<Vec<_>> = Rc::new(__fm.skip(1)); ".to_string(),
         )
     }
 }
@@ -30241,11 +30322,12 @@ pub fn emit_field_value_with_context(
                         Some(en) => en.clone(),
                         std::option::Option::None => variant_name.clone(),
                     };
-                    if ((rc_name.clone() != "".to_string())
+                    if (((rc_name.clone() != "".to_string())
                         && v1_rt::set_contains(
                             &shared_types,
                             crate::v1_std_core::qualified_last_segment(rc_name.clone()),
                         ))
+                        && !rust_expr_is_grounded_shared_value(raw.clone()))
                     {
                         rust_shared_wrap_ctor(raw.clone())
                     } else {
@@ -31949,6 +32031,57 @@ pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
             (rt.return_cardinality.clone() == Cardinality::CardOptional)
         }
         _ => false,
+    }
+}
+
+pub fn type_node_is_ordered_element_run(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((((n.return_cardinality.clone() != Cardinality::CardOptional)
+        && crate::v1_compiler_infer_types::node_is_element_collection(
+            n.clone(),
+            source_indices.clone(),
+        ))
+        && !crate::v1_compiler_infer_types::node_is_set_collection(
+            n.clone(),
+            source_indices.clone(),
+        ))
+        && !is_rust_string_like(n.clone(), source_indices.clone()))
+}
+
+pub fn is_list_typed_expr(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match e.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            type_node_is_ordered_element_run(rt.clone(), source_indices.clone())
+        }
+        _ => false,
+    }
+}
+
+pub fn rust_append_call_is_concat_form(
+    func: String,
+    appended: Option<Rc<Node>>,
+    target_is_runtime: bool,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((target_is_runtime.clone() == false) || (func.clone() != "append".to_string())) {
+        false
+    } else {
+        match appended.clone() {
+            Some(value_node) => is_list_typed_expr(value_node.clone(), source_indices.clone()),
+            std::option::Option::None => false,
+        }
+    }
+}
+
+pub fn rust_append_method_call_appended_arg(args: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
+    match args.clone().first().cloned() {
+        Some(a) => Some(crate::v1_std_core::arg_value(a.clone())),
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -35648,6 +35781,27 @@ pub fn emit_shell_call(
                 )
             },
         );
+        let list_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in op_node.params.clone().iter().cloned() {
+                if shell_argv_param_is_word_list(p.clone(), source_indices.clone()) {
+                    __result.push(p);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone()),
+                    true,
+                )
+            },
+        );
         let has_stdin =
             match crate::v1_std_core::transport_stdin(transport.clone(), source_indices.clone()) {
                 Some(_) => true,
@@ -35707,17 +35861,36 @@ pub fn emit_shell_call(
                 .iter()
                 .cloned()
                 {
-                    __result.push(v1_rt::concat(
-                        v1_rt::concat(
-                            "    .arg(".to_string(),
-                            emit_shell_argv_element(
-                                arg.clone(),
-                                optional_params.clone(),
-                                source_indices.clone(),
-                            ),
-                        ),
-                        ")".to_string(),
-                    ));
+                    __result.push(
+                        if shell_argv_element_is_word_list(
+                            arg.clone(),
+                            list_params.clone(),
+                            source_indices.clone(),
+                        ) {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    .args(".to_string(),
+                                    emit_shell_argv_word_list_element(
+                                        arg.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                ),
+                                ".iter())".to_string(),
+                            )
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    .arg(".to_string(),
+                                    emit_shell_argv_element(
+                                        arg.clone(),
+                                        optional_params.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                ),
+                                ")".to_string(),
+                            )
+                        },
+                    );
                 }
                 __result
             })
@@ -35829,6 +36002,45 @@ pub fn emit_shell_call(
             }
         }
     }
+}
+
+pub fn shell_argv_param_is_word_list(
+    param: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    type_node_is_ordered_element_run(
+        crate::v1_std_core::param_node_type_expr(param.clone()),
+        source_indices.clone(),
+    )
+}
+
+pub fn shell_argv_element_is_word_list(
+    arg: Rc<Node>,
+    list_params: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => match v1_rt::map_get(
+            &list_params,
+            crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
+        ) {
+            Some(_) => true,
+            std::option::Option::None => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn emit_shell_argv_word_list_element(
+    arg: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    crate::v1_compiler_emit::emit_ident(
+        crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
+        RenderTarget::Rust,
+    )
 }
 
 pub fn emit_shell_argv_element(
@@ -36099,6 +36311,7 @@ pub fn emit_file_call(
         Rc::new(vec![
             path_line.clone(),
             file_empty_path_guard(),
+            file_io_error_kind_fn(),
             action.clone(),
             return_line.clone(),
         ])
@@ -36250,10 +36463,19 @@ pub fn file_empty_path_guard() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn file_io_error_kind_fn() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        _ => \"other\",\n    }\n    .to_string()\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn file_channel_binding_prefix() -> String {
     thread_local! {
         static CACHED: String = {
-            "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = ".to_string()
+            "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count, file_error_kind): (bool, String, String, i64, String) = ".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36262,7 +36484,7 @@ pub fn file_channel_binding_prefix() -> String {
 pub fn file_read_match_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64),\n};".to_string()
+            "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes, String::new()) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64, file_io_error_kind(&read_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36271,7 +36493,7 @@ pub fn file_read_match_expr() -> String {
 pub fn file_delete_match_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};".to_string()
+            "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64, String::new()),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64, file_io_error_kind(&delete_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36280,7 +36502,7 @@ pub fn file_delete_match_expr() -> String {
 pub fn file_list_match_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes)\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};".to_string()
+            "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64, \"other\".to_string()),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes, String::new())\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64, file_io_error_kind(&list_err)),\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36289,7 +36511,7 @@ pub fn file_list_match_expr() -> String {
 pub fn file_write_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36298,7 +36520,7 @@ pub fn file_write_expr() -> String {
 pub fn file_write_create_new_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36307,7 +36529,7 @@ pub fn file_write_create_new_expr() -> String {
 pub fn file_write_owner_only_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};".to_string()
+            "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64, file_io_error_kind(&owner_only_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -36320,6 +36542,7 @@ pub fn emit_file_channel_expr(channel: FileResultChannel, is_optional: bool) -> 
             FileResultChannel::FileChanByteCount => "file_byte_count".to_string(),
             FileResultChannel::FileChanPath => "file_path.clone()".to_string(),
             FileResultChannel::FileChanError => "file_error.clone()".to_string(),
+            FileResultChannel::FileChanErrorKind => "file_error_kind.clone()".to_string(),
             FileResultChannel::FileChanContent => "file_content.clone()".to_string(),
         };
         if is_optional.clone() {
@@ -38627,6 +38850,24 @@ pub fn compiler_entry_retained_host_driver() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn compiler_entry_source_root_eval_driver() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "SourceRootEvalDriver".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn compiler_entry_direct_ingest_driver() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DirectIngestDriver".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilerPipelineEntryDecl {
     pub module_name: String,
@@ -38736,6 +38977,41 @@ pub fn compiler_pipeline_entry_is_retained_host(modules: Rc<Vec<Rc<TypedModule>>
         Some(d) => (d.driver.clone() == compiler_entry_retained_host_driver()),
         std::option::Option::None => false,
     }
+}
+
+pub fn compiler_pipeline_entry_is_source_root_eval(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => (d.driver.clone() == compiler_entry_source_root_eval_driver()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn compiler_pipeline_entry_driver_is_known(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => {
+            (((d.driver.clone() == compiler_entry_retained_host_driver())
+                || (d.driver.clone() == compiler_entry_source_root_eval_driver()))
+                || (d.driver.clone() == compiler_entry_direct_ingest_driver()))
+        }
+        std::option::Option::None => true,
+    }
+}
+
+pub fn compiler_pipeline_entry_driver_reading(modules: Rc<Vec<Rc<TypedModule>>>) -> String {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => d.driver.clone(),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn emit_unknown_compiler_pipeline_driver_main_rs(
+    module_name: String,
+    driver_reading: String,
+) -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "compile_error!(\"REFUSED: the compiler pipeline entry in ".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(module_name.clone())), " declares a driver this emitter does not recognise (read as [".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(driver_reading.clone())), "]); std.compiler_entry declares RetainedHostCliKernel, DirectIngestDriver and SourceRootEvalDriver, and an unrecognised reading is a defect in the declaration or in the name read off it -- never a reason to render one of the arms anyway\");\n".to_string()),
+})
 }
 
 pub fn compiler_pipeline_entry_is_ambiguous(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
@@ -38924,10 +39200,27 @@ pub fn emit_main_rs(
                 modules.clone(),
             ));
         }
+        if (compiler_pipeline_entry_driver_is_known(modules.clone()) == false) {
+            return emit_unknown_compiler_pipeline_driver_main_rs(
+                compiler_pipeline_entry_module_name(modules.clone()),
+                compiler_pipeline_entry_driver_reading(modules.clone()),
+            );
+        }
         if (corpus_has_compiler_pipeline(modules.clone())
             && (retained_host_pipeline.clone() == false))
         {
-            return emit_direct_ingest_driver_main_rs(crate_name.clone(), pipeline_module.clone());
+            {
+                if compiler_pipeline_entry_is_source_root_eval(modules.clone()) {
+                    return emit_source_root_eval_driver_main_rs(
+                        crate_name.clone(),
+                        pipeline_module.clone(),
+                    );
+                }
+                return emit_direct_ingest_driver_main_rs(
+                    crate_name.clone(),
+                    pipeline_module.clone(),
+                );
+            }
         }
         if (((workflow_funcs.clone().len() as i64) == 0)
             && (retained_host_pipeline.clone() == false))
@@ -39078,6 +39371,20 @@ pub fn emit_direct_ingest_driver_main_rs(
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
     content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n".to_string()), "fn main() {\n".to_string()), "    let source_path = match std::env::args().nth(1) {\n".to_string()), "        Some(path) => path,\n".to_string()), "        None => { eprintln!(\"REFUSED: no source path given -- usage: ".to_string()), crate_name.clone()), " <source.dag>\"); std::process::exit(2); }\n".to_string()), "    };\n".to_string()), "    let source_text = match std::fs::read_to_string(&source_path) {\n".to_string()), "        Ok(text) => text,\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: could not read {}: {}\", source_path, cause); std::process::exit(2); }\n".to_string()), "    };\n".to_string()), "    match &*".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::compile_dag_source_to_target_text(source_text) {\n".to_string()), "        ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome::Accepted { value, .. } => {\n".to_string()), "            print!(\"{}\", value.carried);\n".to_string()), "            std::process::exit(0);\n".to_string()), "        }\n".to_string()), "        ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome::Rejected { diagnostics } => {\n".to_string()), "            eprintln!(\"REFUSED: {} did not compile\", source_path);\n".to_string()), "            eprintln!(\"{:#?}\", diagnostics);\n".to_string()), "            std::process::exit(1);\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string()),
+})
+    }
+}
+
+pub fn emit_source_root_eval_driver_main_rs(
+    crate_name: String,
+    pipeline_module: String,
+) -> Rc<TextFile> {
+    {
+        let pipeline_mod =
+            crate::v1_compiler_emit_core_support::module_to_filename(pipeline_module.clone());
+        Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n".to_string()), "use std::rc::Rc;\n".to_string()), "use std::time::Instant;\n\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{\n".to_string()), "    native_test_context_from_ingest, native_test_eval_one, native_test_infer_resolved,\n".to_string()), "    native_test_resolve_module,\n".to_string()), "    NativeTestObservation, NativeTestStage, NativeTestVerdict,\n".to_string()), "};\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome;\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::{\n".to_string()), "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos, native_driver_exclusive_sum,\n".to_string()), "    NativeDriverCostAccounting, NativeDriverExclusiveRows,\n".to_string()), "};\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{nanosecond, nanosecond_count};\n".to_string()), "\n".to_string()), "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {\n".to_string()), "    let entries = match std::fs::read_dir(dir) {\n".to_string()), "        Ok(entries) => entries,\n".to_string()), "        Err(cause) => return Err(format!(\"could not walk source root {}: {cause}\", dir.display())),\n".to_string()), "    };\n".to_string()), "    for entry in entries {\n".to_string()), "        let entry = match entry {\n".to_string()), "            Ok(entry) => entry,\n".to_string()), "            Err(cause) => return Err(format!(\"could not read entry under {}: {cause}\", dir.display())),\n".to_string()), "        };\n".to_string()), "        let path = entry.path();\n".to_string()), "        if path.is_dir() {\n".to_string()), "            collect_dag_paths(&path, out)?;\n".to_string()), "        } else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) {\n".to_string()), "            out.push(path.to_string_lossy().into_owned());\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    Ok(())\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 {\n".to_string()), "    if sorted.is_empty() { return 0; }\n".to_string()), "    let idx = (sorted.len() - 1) * numer / denom;\n".to_string()), "    sorted[idx]\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn native_cost_i64(n: u128) -> i64 {\n".to_string()), "    i64::try_from(n).unwrap_or(i64::MAX)\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn main() {\n".to_string()), "    let driver_start = Instant::now();\n".to_string()), "    let mut args = std::env::args().skip(1);\n".to_string()), "    let universe_path = match args.next() {\n".to_string()), "        Some(path) => path,\n".to_string()), "        None => {\n".to_string()), "            eprintln!(\"REFUSED: no universe file given -- usage: ".to_string()), crate_name.clone()), " <universe.tsv> <source-root>...\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "    };\n".to_string()), "    let source_roots: Vec<String> = args.collect();\n".to_string()), "    if source_roots.is_empty() {\n".to_string()), "        eprintln!(\"REFUSED: no source roots given -- usage: ".to_string()), crate_name.clone()), " <universe.tsv> <source-root>...\");\n".to_string()), "        std::process::exit(2);\n".to_string()), "    }\n".to_string()), "    let universe_text = match std::fs::read_to_string(&universe_path) {\n".to_string()), "        Ok(text) => text,\n".to_string()), "        Err(cause) => {\n".to_string()), "            eprintln!(\"REFUSED: could not read universe file {universe_path}: {cause}\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "    };\n".to_string()), "    let mut universe: Vec<(Rc<im::vector::Vector<String>>, String)> = Vec::new();\n".to_string()), "    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();\n".to_string()), "    for line in universe_text.lines() {\n".to_string()), "        if line.is_empty() || line.starts_with('#') {\n".to_string()), "            continue;\n".to_string()), "        }\n".to_string()), "        match line.split_once('\\t') {\n".to_string()), "            Some((module, declaration)) if !module.is_empty() && !declaration.is_empty() => {\n".to_string()), "                if !seen.insert(line.to_string()) {\n".to_string()), "                    eprintln!(\"REFUSED: duplicate universe line: {line}\");\n".to_string()), "                    std::process::exit(2);\n".to_string()), "                }\n".to_string()), "                universe.push((\n".to_string()), "                    Rc::new(module.split('.').map(|segment| segment.to_string()).collect::<im::vector::Vector<String>>()),\n".to_string()), "                    declaration.to_string(),\n".to_string()), "                ));\n".to_string()), "            }\n".to_string()), "            _ => {\n".to_string()), "                eprintln!(\"REFUSED: malformed universe line (expected module<TAB>declaration): {line}\");\n".to_string()), "                std::process::exit(2);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    if universe.is_empty() {\n".to_string()), "        eprintln!(\"REFUSED: universe file {universe_path} carried no test identities\");\n".to_string()), "        std::process::exit(2);\n".to_string()), "    }\n".to_string()), "    let load_start = Instant::now();\n".to_string()), "    let mut paths: Vec<String> = Vec::new();\n".to_string()), "    for root in &source_roots {\n".to_string()), "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) {\n".to_string()), "            eprintln!(\"REFUSED: {cause}\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    paths.sort();\n".to_string()), "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();\n".to_string()), "    for path in &paths {\n".to_string()), "        let text = match std::fs::read_to_string(path) {\n".to_string()), "            Ok(text) => text,\n".to_string()), "            Err(cause) => {\n".to_string()), "                eprintln!(\"REFUSED: could not read {path}: {cause}\");\n".to_string()), "                std::process::exit(2);\n".to_string()), "            }\n".to_string()), "        };\n".to_string()), "        reads.push(Rc::new(DagSourceReadWitness {\n".to_string()), "            source: Rc::new(Medium {\n".to_string()), "                carried: text,\n".to_string()), "                fidelity: DecodeFidelity::Lossless,\n".to_string()), "                _phantom: std::marker::PhantomData,\n".to_string()), "            }),\n".to_string()), "            artifact: Rc::new(Artifact {\n".to_string()), "                kind: ArtifactKind::SourceFile,\n".to_string()), "                id: path.clone(),\n".to_string()), "                file_path: path.clone(),\n".to_string()), "            }),\n".to_string()), "            compilation_unit: path.clone(),\n".to_string()), "            source_root: source_root_for_storage_path(path.clone()),\n".to_string()), "        }));\n".to_string()), "    }\n".to_string()), "    let source_files = paths.len() as u64;\n".to_string()), "    let load_nanos = load_start.elapsed().as_nanos();\n".to_string()), "    let context_start = Instant::now();\n".to_string()), "    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) {\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),\n".to_string()), "        Outcome::Rejected { diagnostics } => {\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");\n".to_string()), "            std::process::exit(1);\n".to_string()), "        }\n".to_string()), "    };\n".to_string()), "    let context_nanos = context_start.elapsed().as_nanos();\n".to_string()), "    eprintln!(\"[native-cost-shared] {}\", serde_json::json!({ \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"source_files\": source_files, \"load_nanos\": load_nanos, \"context_nanos\": context_nanos, \"file_refusals\": context.file_refusals.len() }));\n".to_string()), "    for refusal in context.file_refusals.iter() {\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));\n".to_string()), "    }\n".to_string()), "    let mut module_order: Vec<(String, Rc<im::vector::Vector<String>>)> = Vec::new();\n".to_string()), "    let mut module_decls: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();\n".to_string()), "    for (qn, declaration) in &universe {\n".to_string()), "        let dotted = qn.iter().cloned().collect::<Vec<String>>().join(\".\");\n".to_string()), "        if !module_decls.contains_key(&dotted) {\n".to_string()), "            module_order.push((dotted.clone(), qn.clone()));\n".to_string()), "            module_decls.insert(dotted.clone(), Vec::new());\n".to_string()), "        }\n".to_string()), "        module_decls.get_mut(&dotted).unwrap().push(declaration.clone());\n".to_string()), "    }\n".to_string()), "    let mut rows: u64 = 0;\n".to_string()), "    let mut prepare_nanos: u128 = 0;\n".to_string()), "    let mut eval_nanos: u128 = 0;\n".to_string()), "    let mut prepare_ok: u64 = 0;\n".to_string()), "    let mut prepare_refused: u64 = 0;\n".to_string()), "    let mut prepare_samples: Vec<u128> = Vec::new();\n".to_string()), "    let mut eval_samples: Vec<u128> = Vec::new();\n".to_string()), "    let mut prepare_resolve_nanos: u128 = 0;\n".to_string()), "    let mut prepare_infer_nanos: u128 = 0;\n".to_string()), "    for (dotted, qn) in &module_order {\n".to_string()), "        let declarations = &module_decls[dotted];\n".to_string()), "        let prepare_start = Instant::now();\n".to_string()), "        let resolve_start = Instant::now();\n".to_string()), "        match &*native_test_resolve_module(context.clone(), qn.clone()) {\n".to_string()), "            Outcome::Accepted { value: resolved, .. } => {\n".to_string()), "                let this_resolve = resolve_start.elapsed().as_nanos();\n".to_string()), "                let infer_start = Instant::now();\n".to_string()), "                match &*native_test_infer_resolved(qn.clone(), resolved.clone()) {\n".to_string()), "                    Outcome::Accepted { value: prepared, .. } => {\n".to_string()), "                        let this_infer = infer_start.elapsed().as_nanos();\n".to_string()), "                        let this_prepare = prepare_start.elapsed().as_nanos();\n".to_string()), "                        prepare_nanos += this_prepare;\n".to_string()), "                        prepare_resolve_nanos += this_resolve;\n".to_string()), "                        prepare_infer_nanos += this_infer;\n".to_string()), "                        prepare_samples.push(this_prepare);\n".to_string()), "                        prepare_ok += 1;\n".to_string()), "                        eprintln!(\"[native-prepare-split] module={dotted} resolve_nanos={this_resolve} infer_nanos={this_infer} prepare_nanos={this_prepare} decls={} outcome=accepted\", declarations.len());\n".to_string()), "                        for declaration in declarations {\n".to_string()), "                            let eval_start = Instant::now();\n".to_string()), "                            let observation = native_test_eval_one(prepared.clone(), declaration.clone());\n".to_string()), "                            let this_eval = eval_start.elapsed().as_nanos();\n".to_string()), "                            eval_nanos += this_eval;\n".to_string()), "                            eval_samples.push(this_eval);\n".to_string()), "                            println!(\"{}\", serde_json::to_string(&observation).unwrap());\n".to_string()), "                            rows += 1;\n".to_string()), "                        }\n".to_string()), "                    }\n".to_string()), "                    Outcome::Rejected { diagnostics } => {\n".to_string()), "                        let this_infer = infer_start.elapsed().as_nanos();\n".to_string()), "                        let this_prepare = prepare_start.elapsed().as_nanos();\n".to_string()), "                        prepare_nanos += this_prepare;\n".to_string()), "                        prepare_resolve_nanos += this_resolve;\n".to_string()), "                        prepare_infer_nanos += this_infer;\n".to_string()), "                        prepare_samples.push(this_prepare);\n".to_string()), "                        prepare_refused += 1;\n".to_string()), "                        eprintln!(\"[native-prepare-split] module={dotted} resolve_nanos={this_resolve} infer_nanos={this_infer} prepare_nanos={this_prepare} decls={} outcome=infer_refused\", declarations.len());\n".to_string()), "                        let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n".to_string()), "                        for declaration in declarations {\n".to_string()), "                            let observation = NativeTestObservation {\n".to_string()), "                                module: qn.clone(),\n".to_string()), "                                declaration: declaration.clone(),\n".to_string()), "                                verdict: Rc::new(NativeTestVerdict::NativeTestRefused {\n".to_string()), "                                    stage: NativeTestStage::NativeTestStagePrepare,\n".to_string()), "                                    reason: reason.clone(),\n".to_string()), "                                }),\n".to_string()), "                            };\n".to_string()), "                            println!(\"{}\", serde_json::to_string(&observation).unwrap());\n".to_string()), "                            rows += 1;\n".to_string()), "                        }\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "            Outcome::Rejected { diagnostics } => {\n".to_string()), "                let this_resolve = resolve_start.elapsed().as_nanos();\n".to_string()), "                let this_prepare = prepare_start.elapsed().as_nanos();\n".to_string()), "                prepare_nanos += this_prepare;\n".to_string()), "                prepare_resolve_nanos += this_resolve;\n".to_string()), "                prepare_samples.push(this_prepare);\n".to_string()), "                prepare_refused += 1;\n".to_string()), "                eprintln!(\"[native-prepare-split] module={dotted} resolve_nanos={this_resolve} infer_nanos=0 prepare_nanos={this_prepare} decls={} outcome=resolve_refused\", declarations.len());\n".to_string()), "                let reason = diagnostics.tail.last().map(|d| d.reason.clone()).unwrap_or_else(|| diagnostics.head.reason.clone());\n".to_string()), "                for declaration in declarations {\n".to_string()), "                    let observation = NativeTestObservation {\n".to_string()), "                        module: qn.clone(),\n".to_string()), "                        declaration: declaration.clone(),\n".to_string()), "                        verdict: Rc::new(NativeTestVerdict::NativeTestRefused {\n".to_string()), "                            stage: NativeTestStage::NativeTestStagePrepare,\n".to_string()), "                            reason: reason.clone(),\n".to_string()), "                        }),\n".to_string()), "                    };\n".to_string()), "                    println!(\"{}\", serde_json::to_string(&observation).unwrap());\n".to_string()), "                    rows += 1;\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"_terminal\": \"complete\", \"rows\": rows, \"file_refusals\": context.file_refusals.len() }));\n".to_string()), "    let file_refusals = context.file_refusals.len() as u64;\n".to_string()), "    prepare_samples.sort_unstable();\n".to_string()), "    eval_samples.sort_unstable();\n".to_string()), "    let parent_span_nanos = driver_start.elapsed().as_nanos();\n".to_string()), "    let identities = universe.len() as u64;\n".to_string()), "    let unique_modules = module_order.len() as u64;\n".to_string()), "    let exclusive = Rc::new(NativeDriverExclusiveRows {\n".to_string()), "        load: nanosecond(native_cost_i64(load_nanos)),\n".to_string()), "        context: nanosecond(native_cost_i64(context_nanos)),\n".to_string()), "        prepare: nanosecond(native_cost_i64(prepare_nanos)),\n".to_string()), "        eval: nanosecond(native_cost_i64(eval_nanos)),\n".to_string()), "    });\n".to_string()), "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;\n".to_string()), "    let shared_nanos = load_nanos + context_nanos;\n".to_string()), "    let shared_per_identity = if identities == 0 { 0 } else { shared_nanos / identities as u128 };\n".to_string()), "    let eval_mean = if eval_samples.is_empty() { 0 } else { eval_nanos / eval_samples.len() as u128 };\n".to_string()), "    let prepare_mean = if prepare_samples.is_empty() { 0 } else { prepare_nanos / prepare_samples.len() as u128 };\n".to_string()), "    let decls_per_module = if unique_modules == 0 { 0 } else { identities / unique_modules };\n".to_string()), "    let prepare_share_per_identity = if identities == 0 { 0 } else { prepare_nanos / identities as u128 };\n".to_string()), "    let floor_per_identity = eval_mean + prepare_share_per_identity;\n".to_string()), "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;\n".to_string()), "    let accounting = native_driver_cost_account(\n".to_string()), "        nanosecond(native_cost_i64(parent_span_nanos)),\n".to_string()), "        exclusive,\n".to_string()), "        native_driver_cost_remainder_tolerance_nanos(),\n".to_string()), "    );\n    let remainder_nanos = match accounting.as_ref() { NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } => None, NativeDriverCostAccounting::NativeDriverCostReconciled { residual, .. } | NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, .. } => Some(nanosecond_count(residual.clone()) as u128) };\n".to_string()), "    let verdict = match accounting.as_ref() {\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } => r#\"NativeDriverCostOverAttributed\"#,\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { .. } => r#\"NativeDriverCostRemainderExceedsTolerance\"#,\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => r#\"NativeDriverCostReconciled\"#,\n".to_string()), "    };\n".to_string()), "    let mut partition = serde_json::json!({ \"basis\": \"native_driver_wall\", \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\", \"producer\": \"std.compiler_entry.SourceRootEvalDriver\", \"verdict\": verdict, \"tolerance_nanos\": tolerance_nanos, \"parent_span_nanos\": parent_span_nanos, \"exclusive\": { \"load\": load_nanos, \"context\": context_nanos, \"prepare\": prepare_nanos, \"eval\": eval_nanos }, \"sum_exclusive_nanos\": exclusive_sum, \"source_files\": source_files, \"identities\": identities, \"unique_modules\": unique_modules, \"file_refusals\": file_refusals, \"prepare_ok\": prepare_ok, \"prepare_refused\": prepare_refused, \"shared_nanos\": shared_nanos, \"shared_per_identity_nanos\": shared_per_identity, \"prepare_mean_nanos\": prepare_mean, \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2), \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20), \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0), \"eval_mean_nanos\": eval_mean, \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2), \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20), \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0), \"prepare_share_per_identity_nanos\": prepare_share_per_identity, \"floor_per_identity_nanos\": floor_per_identity, \"mean_decls_per_module\": decls_per_module, \"prepare_resolve_nanos\": prepare_resolve_nanos, \"prepare_infer_nanos\": prepare_infer_nanos });\n    if let Some(r) = remainder_nanos { partition[\"remainder_nanos\"] = serde_json::json!(r); }\n    eprintln!(\"[native-cost-partition] {}\", partition);\n".to_string()), "    match accounting.as_ref() { NativeDriverCostAccounting::NativeDriverCostOverAttributed { sum_exclusive, parent_span } => { eprintln!(\"REFUSED: native driver cost OverAttributed {{ sum_exclusive_nanos: {}, parent_span_nanos: {} }}\", nanosecond_count(sum_exclusive.clone()) as u128, nanosecond_count(parent_span.clone()) as u128); std::process::exit(1); } NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, tolerance } => { eprintln!(\"REFUSED: native driver cost RemainderExceedsTolerance {{ residual_nanos: {}, tolerance_nanos: {} }}\", nanosecond_count(residual.clone()) as u128, nanosecond_count(tolerance.clone()) as u128); std::process::exit(1); } NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {} }\n}\n".to_string()),
 })
     }
 }

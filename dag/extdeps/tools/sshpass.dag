@@ -1,0 +1,49 @@
+module extdeps.tools.sshpass
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_sshpass }
+import extdeps.exec.command { sshpass_authority, sshpass_binary_name }
+
+// THE TOOL ROW FOR SSHPASS, and its one job is to make the binary this repository EXECS and the
+// binary gunbc.host_cli_dependency PROBES FOR the same declaration. Everything that runs sshpass
+// mints its program word from sshpass_binary_name (extdeps.exec.command, and the fixed argv of
+// ssh.PasswordFileSsh / ssh.PasswordSsh); the enrollment observes PATH for sshpass_cli_tool.name,
+// which binds that same row -- so the two cannot drift apart into a probe that passes while the
+// exec fails.
+//
+// WHY THIS ROW IS NOT IN extdeps.exec.command BESIDE THE NAME IT BINDS, which is where it was
+// first written: a CliTool needs extdeps.tools, and extdeps.tools is UPSTREAM of
+// extdeps.exec.command -- extdeps.tools imports extdeps.tools.gnu_coreutils, whose command
+// builders call argv_command from there. So exec.command cannot reach CliTool at all, in either
+// direction, and the attempt closed a real cycle (measured: `circular dependency detected:
+// extdeps.exec.command -> extdeps.tools -> extdeps.tools.gnu_coreutils -> extdeps.tools.npm ->
+// extdeps.tools.sshpass -> gunbc.host_cli_dependency`). §4's one structural law on the import
+// graph is acyclicity, so the edge runs the only way it can: this module imports the name and the
+// authority from exec.command rather than exec.command importing the row from here.
+//
+// The authority is IMPORTED rather than re-anchored for the same reason. Spelling a second literal
+// Uri for sourceforge.net/projects/sshpass/ here would be the duplicated-projection scaffold
+// extdeps.bmc.openbmc_password_ssh_transport already had to accept once; one upstream, one
+// citation. min_version is none deliberately: no operation in this corpus depends on a
+// version-gated sshpass feature, and an invented constraint would be a floor nothing measured.
+data extdeps_external_authority_anchor: ExternalAuthority = sshpass_authority
+
+data sshpass_cli_tool: CliTool = CliTool {
+  name: sshpass_binary_name,
+  min_version: none,
+  installable_via: [SourceApt { package: package_sshpass }],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.sshpass",
+      decl_name: "sshpass_cli_tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.tools.sshpass.extdeps_external_authority_anchor,
+  further_citations: []
+}

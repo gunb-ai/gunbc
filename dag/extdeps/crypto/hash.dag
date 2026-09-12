@@ -1,6 +1,7 @@
 module extdeps.crypto.hash
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, Bool, List, Unit }
+import std.string_type { String }
 import std.algebra { trim }
 import std.content_hash {
   as_content_hash_cryptographic,
@@ -103,7 +104,7 @@ service crypto.Sha256Sum {
       nonzero => String "sha256sum failed"
     }
     mock_response {
-      0 => { line: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  {path}", success: true, stderr: "" } "hermetic crypto.Sha256Sum.File: the empty-input digest"
+      0 => { line: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  -", success: true, stderr: "" } "hermetic crypto.Sha256Sum.File: the empty-input digest. THE SECOND COLUMN IS A LITERAL AND MUST STAY ONE. An earlier revision interpolated the input path there, and every hermetic call to this operation REFUSED with a NoSuchVariable diagnostic naming path, so this mock had never once replayed. It was the only interpolation of its kind in any extdeps mock_response -- every other arm in the corpus returns literals -- which is what an unsupported syntax looks like from outside. Measured by running a consumer under --dry-run before and after (lively-ibex-812, gunbc#10934). The reading is unaffected: sha256sum_line_digest takes the FIRST whitespace-delimited field, so the second column is inert, and a dash is what sha256sum itself prints for stdin. A mock that cannot execute is a decoration (DESIGN 4b) and worse than an absent one, because the operation reads as hermetically covered."
     }
   }
 }

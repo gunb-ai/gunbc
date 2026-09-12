@@ -170,21 +170,75 @@ data conformance_domains: List<ConformanceDomain> = [
   ConformanceDomain {
     key: "conformance-compute",
     label: "fabric / compute",
-    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why?",
+    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why? Compute cells and inference serving are two subjects of this one domain, and they share the PRICED SELECTION FOLD (both reach product.fabric.selection select_supply) while carrying DIFFERENT OCCUPANCY PRODUCERS: serving takes a seat via product.capacity.lease LeaseGrant, which has a term and a release law, linearized by fabric_seat_acquire over an append-only event chain; the compute control plane reserves a cell via product.fabric.execution LeaseIdentity, which carries no timestamp and no expiry, linearized by file_compare_and_set. Selection is shared, occupancy is not -- so a change that widens SELECTION must inhabit the shared fold, while a change to how either subject is HELD is a change to that subject's own producer and may not be written as if one lease algebra covered both.",
     homes: ConformanceHomes {
-      first: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
+      first: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply"),
       rest: [
+        decl_ref(module_path: "product.capacity.lease", decl_name: "LeaseGrant"),
+        decl_ref(module_path: "product.capacity.pool_events", decl_name: "SeatRequest"),
+        decl_ref(module_path: "product.fabric.work", decl_name: "ExecutionRequirements"),
+        decl_ref(module_path: "gunbc.fabric_event_log", decl_name: "fabric_seat_acquire"),
+        decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
         decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
         decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "CellReservation"),
         decl_ref(module_path: "gunbc.fabric_executor_class", decl_name: "CapacityClassAdmission"),
+        decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_bind_seat"),
+        decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_group_admission"),
       ],
     },
     tells: [
       "a host name, address or port chosen in the change instead of resolved from the fabric",
       "work run in the caller's own process or tree instead of requested as an exact-tree operation from a provider",
-      "a capacity or budget literal that the provider's admission already decides"
+      "a capacity or budget literal that the provider's admission already decides",
+      "a second SELECTION algebra written beside product.fabric.selection rather than parameterised over the new subject",
+      "a change to how one subject is HELD written as though one lease algebra covered both producers -- serving's termed LeaseGrant and the control plane's timeless LeaseIdentity are separate carriers with separate linearizations"
     ],
-    narrative: "allocation, placement and negotiation of resources: work contracts, compute layouts, fabric cell reservations, capacity class admission",
+    narrative: "allocation, placement and negotiation of resources. The shared authority is product.capacity (lease, pool, seat events) and product.fabric (priced selection over a provider parameter); the subjects that consume it are compute cells (work contracts, compute layouts, cell reservations, capacity class admission) and inference serving (seat binding, co-tenancy admission). Serving is INSIDE this domain, not beside it -- but the sharing is partial and the boundary is the point: both subjects reach the same priced selection fold, and each carries its OWN occupancy producer and linearization (serving: a termed LeaseGrant settled by fabric_seat_acquire over an event chain; compute: a timeless LeaseIdentity settled by file_compare_and_set). They differ further in what the lease is over -- a compute cell is stateless between grants and settles money, a serving seat is over a replica with loaded state and is quality-conditioned instead. The argument is [the serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)",
+  },
+  ConformanceDomain {
+    key: "conformance-decision",
+    label: "decision / selection",
+    question: "When this change chooses among candidates under objectives and constraints, does it inhabit the corpus's decision and Pareto models -- a DecisionSubject, a candidate field of ParetoEntry rows over declared SelectionAxis identities, a RealizationSelectionResult whose SelectedWithin arm binds a SelectionReceipt -- and where it uses another representation or another choosing route, is that departure and its reason stated?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.decision", decl_name: "DecisionSubject"),
+      rest: [
+        decl_ref(module_path: "std.decision", decl_name: "RealizationSelectionResult"),
+        decl_ref(module_path: "std.decision", decl_name: "SelectionReceipt"),
+        decl_ref(module_path: "std.decision", decl_name: "select_realization"),
+        decl_ref(module_path: "std.pareto", decl_name: "SelectionAxis"),
+        decl_ref(module_path: "std.pareto", decl_name: "ParetoEntry"),
+        decl_ref(module_path: "std.pareto", decl_name: "DominanceVerdict"),
+      ],
+    },
+    tells: [
+      "a locally authored candidate-selection result (a chosen/none/needs-more sum, a ranked list, a best-of fold) beside RealizationSelectionResult",
+      "a parallel dominance, orientation, interval or evidence-gap representation where std.pareto already carries DominanceVerdict, AxisGoal and AxisGap",
+      "a local convention for candidate-field identity, funded-axis identity or policy identity where SelectionReceipt already names them as declaration references",
+      "a new choosing route that neither consumes select_realization nor states, beside itself, why it does not"
+    ],
+    narrative: "a choice must remain attributable to its subject, candidate field, constraints, evidence and policy, and conformance exposes accidental forks of that authority; the hard selection laws -- no answer outrunning its evidence, no front standing as a winner -- stay with the §3d reviewer, and goal assessment (std.goal_assessment) is a boundary of this row, not a member of it",
+  },
+  ConformanceDomain {
+    key: "conformance-observability",
+    label: "process observability / reporting",
+    question: "When this change reports process progress, an occurrence, a measurement or an outcome -- a progress line, a heartbeat, a receipt line, a refusal restated for a reader -- does it use the existing observation and presentation authorities: an ObservationEvent or RecordedObservation carrying the typed subject, transition and Measured readings, projected through the CI renderer's event line and rendered line; and where it departs (a seed mirror, a wire format, a transport), does it state the departure and its reason?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.observation", decl_name: "ObservationEvent"),
+      rest: [
+        decl_ref(module_path: "std.observation", decl_name: "RecordedObservation"),
+        decl_ref(module_path: "std.observation", decl_name: "ObservationPresentation"),
+        decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_event_line"),
+        decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_render_line"),
+      ],
+    },
+    tells: [
+      "a status, count, duration or refusal cause built into an ad hoc formatted message instead of a typed event field the renderer projects",
+      "presentation assignment (glyph, attention, grouping, human units) rebuilt at the emit site rather than read from ObservationPresentation and the renderer",
+      "a reader that parses human prose as an undeclared wire contract, or a producer cut over while its reader still expects the old shape",
+      "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause",
+      "a site recorded as migrated in gunbc.observation_emit_census while the active producer bypasses the projection the row names"
+    ],
+    narrative: "operators and automated readers need reports traceable to the facts and occurrences they describe; the owning domain establishes the fact, the observation model represents its occurrence, the renderer or codec encodes it, and a bound effect delivers it -- four responsibilities, and producing bytes is not delivery. The row is scoped to process reporting: a repository population measured at a revision stays with gunbc.repository_census_observation, and durable delivery with the effect authorities",
   },
 ]
 
@@ -334,13 +388,13 @@ data design_section_2_to_7_rows: List<DesignRow> = [
     },
     review: ReviewableOnChange { parts: [yes_no_review(
       part: "selection-precedes-convergence",
-      question: "Does the change choose or converge a realization while the candidate field, constraints, funded-axis evidence or policy are unresolved; redeclare Pareto dominance/orientation/interval/gap vocabulary; treat a Pareto front as a winner; mint SelectedWithin over an incomplete closure; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or policy choice?",
+      question: "Does the change let a selected or settled answer outrun its candidate-field completeness, constraints, required evidence or policy; treat a Pareto front with several survivors as a chosen winner; turn missing funded evidence into a fabricated zero, a default score or a settled fact; or widen goal assessment (std.goal_assessment) / ensure into candidate generation or choice of desired policy? These are the hard laws, and a stated departure from the decision home (admitted by conformance-decision) does not excuse any of them.",
       tells: [
         "a convergence or ensure path that enumerates candidates or selects a realization",
-        "a second dominance, orientation, interval or evidence-gap algebra beside std.pareto",
-        "Optimal or first-list-element standing in for SelectedWithin / SelectionNeedsPolicy",
-        "a missing funded-axis reading filled with 0 W or a worst-score default",
-        "SelectedWithin (or Settled) minted while required (term, variable) cells, constraints or candidate-field identity are incomplete"
+        "Optimal or first-list-element standing where several non-dominated survivors remain and no policy was named",
+        "a missing funded-axis reading filled with 0 W, a worst-score default, or silently dropped from the comparison",
+        "SelectedWithin (or Settled) minted while required (term, variable) cells, constraints, funded-axis evidence or candidate-field identity are incomplete",
+        "a departure note that explains a different representation and is offered as the reason an incomplete choice may stand"
       ]
     )] },
   },

@@ -5,13 +5,14 @@ import std.algebra { Empty }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse }
 import v2.compiler.normalize { normalize }
-import v2.compiler.compile { TranslateTo, validate_then_compile }
+import v2.compiler.compile {
+  CompileLensRoot,
+  required_lenses_at_grain,
+  run_required_lens_gates
+}
+import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
-import v2.std.collection { empty_map }
-import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.compilers.target_model {
-  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -20,7 +21,6 @@ import v2.std.diagnostic {
   Rejected,
   Some
 }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, Symbol, TypeNode }
 import v2.std.text { String }
@@ -41,7 +41,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // cannot pass resolve (proven by execution 2026-07-13), so the door-grain suspect red is homed
 // there, not here.
 
-data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+// THE SNIPPET CUT IS REVERTED BECAUSE IT WAS MEASURED AND IT BOUGHT NOTHING. It shortened these
+// three sources on a model that put the marginal cost near 3ms/byte, predicting savings of 27, 30
+// and 57ms. The floor measured the same three witnesses before and after: 503 -> 516, 505 -> 508,
+// 525 -> 507. Two of the three got SLOWER after bytes were removed, and the spread is noise in both
+// directions. Cross-sectionally the same: the 88-byte source is the slowest of the three and the
+// 116-byte one the fastest. There is no size term here to cut.
+//
+// WHAT THE COST ACTUALLY IS: a ~500ms per-claim FIXED front end -- language model plus tokenize,
+// parse and normalize, rebuilt in each claim's own evaluation frame -- invariant to the
+// subject-specific work these witnesses do. It is not a defect in these witnesses, and none of them
+// is planned on an ordinary floor: this module is a DeclinedLongModule whose cadence has been
+// declared-unrealized since falsifier.yml was deleted, so no green run has ever paid that cost. The
+// line reached them only because a change touched this file, which made them changed witnesses.
+// That is closed by the FLOOR-CHANGED-COST-0 long-home arm, not here.
+//
+// The sources are therefore restored to the forms that read clearly, since a shortened spelling that
+// buys nothing is redundant work with a refuted rationale attached.
+data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: x, right: acc) })\n}\n"
 
 data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
 
@@ -62,7 +79,7 @@ fn normalized_of(source: String) -> NormalizedProbe {
           match normalize(parse_tree: parse_tree) {
             Rejected { diagnostics: _ } => ProbeStageRejected { stage: "normalize" }
             Accepted { value: normalized, diagnostics: _ } =>
-              ProbeNormalized { root: normalized }
+              ProbeNormalized { root: normalized.root }
           }
       }
   }
@@ -78,8 +95,47 @@ fn non_empty_contains_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   }
 }
 
+// THE FRONT END IS THE PER-CLAIM COST HERE, AND THE SHARE THAT WOULD NET IT IS WITHDRAWN UNTIL THE
+// SERVED VALUE SURVIVES CONSUMPTION. MEASURED (claim_batch over this module's four witnesses, one
+// BuildBuddy dispatch, 2026-09-11): the three source-path rows cost 534-680ms of CPU against a 500ms
+// per-claim ceiling, while door_root_roster_accepts_clean_inferred_tree -- same gate area, hand-built
+// node fixture, no front end -- costs 50ms. Three DIFFERENT four-line snippets spread ~150ms over a
+// ~530ms base, so the base is the front end itself and not the snippets, and the ledger row that
+// trips first is only 80ms above its nearest sibling. Re-derive with that instrument.
+//
+// THE SHARE WAS TRIED AND IT NETTED THE COST EXACTLY AS INTENDED: enrolled WARM in
+// v2.workflow.floor_pure_producer_share, the floor stored all three producers during strict
+// preparation (disposition=Stored, 868ms, 496ms and 571ms of front end paid outside every per-claim
+// budget), which is the diagnosis confirmed by execution rather than by argument.
+//
+// AND THEN ALL THREE CLAIMS FAILED ON THE SERVED VALUE: `no field 'kind' on type 'NormalizedTree'`,
+// three witnesses that pass when each claim derives its own tree. That is the SAME error claim_batch
+// reports for this module under its own preparation, which had read as an instrument quirk while the
+// floor was green; the two observations together say it is not about the instrument but about a
+// normalized tree produced OUTSIDE the frame that consumes it. Enrolling these rows therefore trades
+// a budget refusal for three failing witnesses, which is strictly worse, so the rows are withdrawn
+// and the producers below stay as plain helpers -- each claim calls one and derives its own tree,
+// exactly as before.
+//
+// WHAT THE ROWS RETURN ON, stated as a capability rather than an artifact: a normalized tree that
+// survives the cross-claim serve boundary, so that the value a claim is handed is the value it would
+// have derived. Until then the per-claim front end stands, and the budget question it raises is a
+// budget question rather than a witness question -- no witness here should be moved onto a fixture
+// to buy it, because that trades what these witnesses prove.
+fn quad_normalized() -> NormalizedProbe {
+  normalized_of(source: quad_snippet)
+}
+
+fn identity_normalized() -> NormalizedProbe {
+  normalized_of(source: identity_snippet)
+}
+
+fn unregistered_combiner_normalized() -> NormalizedProbe {
+  normalized_of(source: unregistered_combiner_snippet)
+}
+
 test fn gate_red_quadratic_rejects() -> Bool {
-  match normalized_of(source: quad_snippet) {
+  match quad_normalized() {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
@@ -91,7 +147,7 @@ test fn gate_red_quadratic_rejects() -> Bool {
 }
 
 test fn gate_green_identity_accepts_clean() -> Bool {
-  match normalized_of(source: identity_snippet) {
+  match identity_normalized() {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
@@ -106,7 +162,7 @@ test fn gate_green_identity_accepts_clean() -> Bool {
 }
 
 test fn gate_refusal_ledger_counted_not_gating() -> Bool {
-  match normalized_of(source: unregistered_combiner_snippet) {
+  match unregistered_combiner_normalized() {
     ProbeStageRejected { stage: _ } => false
     ProbeNormalized { root: root } =>
       match accumulator_copy_compile_gate(node: root) {
@@ -124,28 +180,28 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
   }
 }
 
-data compile_gate_target_stub: TargetModel = TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
-  bundle: Node {
-    kind: TypeNode { connective: Conj },
-    children: [],
-    occurrence_id: OccurrenceSynthetic
-  },
-  lex: VoidLexRules,
-  binding_spellings: empty_map(),
-  token_class_emit_transforms: target_model_emit_transforms_empty,
-  authority_source_text: Empty,
-  runtime_row: target_emit_host_runtime_row_unconfigured
-}
-
-test fn door_root_roster_runs_and_passes_clean_tree() -> Bool {
-  match validate_then_compile(
-    source: fixture_add_resolved_tree(),
-    lenses: [],
-    mode: TranslateTo { target: compile_gate_target_stub }
-  ) {
-    Rejected { diagnostics: d } =>
-      !non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
-    Accepted { value: _, diagnostics: _ } => true
+// WHAT THIS CONTROL DISCRIMINATES, AND WHY IT WAS RE-SCOPED. Its previous form called
+// validate_then_compile and accepted EITHER an Accepted compile OR any Rejected whose diagnostics
+// lacked the poly2 suspect. Measured: the door REFUSES this fixture, so the check was green on a
+// refusal and would have stayed green if the root roster had stopped running altogether - a
+// permanently-green check cited as coverage (DESIGN section 4b). The refusal is located, and it is
+// neither infer nor the root roster: infer Accepts this fixture, the root-required roster Accepts
+// the inferred tree, and the SUBTREE-grain roster refuses it. So the honest root-grain claim is
+// this one - infer accepts and every root-registered gate accepts the real inferred tree, with no
+// tolerance for an unrelated refusal - and the door-grain positive control (an Accepted
+// validate_then_compile carrying its coverage receipt) is a declared frontier recorded in
+// v2.test.lens_application.required_lens_coverage_join, triggered by a route that reaches Accepted
+// through the door.
+test fn door_root_roster_accepts_clean_inferred_tree() -> Bool {
+  match infer(tree: fixture_add_resolved_tree()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match run_required_lens_gates(
+        inferred: inferred,
+        lenses: required_lenses_at_grain(grain: CompileLensRoot)
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
   }
 }

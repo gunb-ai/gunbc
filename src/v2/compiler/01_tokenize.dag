@@ -121,6 +121,15 @@ fn lex_match_prefix(prefix: v2.std.text.String, source: v2.std.text.String) -> L
   }
 }
 
+// Lexeme growth must push items (amortized O(log n) on the persistent carrier, per
+// list_snoc_item): list_append right-folds over its LEFT side, which is the accumulator
+// at these call sites, so per-character accumulation paid O(n) a character - quadratic
+// in literal length, measured at 18+ minutes on the 132KB string literal in
+// gunbc.live_deploy.srv1_residue_rehearsal (2026-09-09, required-v2-native lane).
+fn lexeme_grow(acc: v2.std.text.String, chunk: v2.std.text.String) -> v2.std.text.String {
+  fold_list(xs: chunk, empty: acc, cons: fn(grown, c) { list_snoc_item(xs: grown, item: c) })
+}
+
 type RepeatState {
   remaining: v2.std.text.String
   lexeme: v2.std.text.String
@@ -178,7 +187,7 @@ fn lex_repeat_step(elem_r: LexMatchThunk, state: RepeatState) -> RepeatState {
                 elem_r: elem_r,
                 state: RepeatState {
                   remaining: rest,
-                  lexeme: list_append(left: state.lexeme, right: consumed),
+                  lexeme: lexeme_grow(acc: state.lexeme, chunk: consumed),
                   done: false
                 }
               )
@@ -199,7 +208,7 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
         LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
           DelimitedState {
             remaining: after_close,
-            lexeme: list_append(left: state.lexeme, right: close_lex),
+            lexeme: lexeme_grow(acc: state.lexeme, chunk: close_lex),
             done: true,
             failed: false
           }
@@ -217,7 +226,7 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
                     body_r: body_r,
                     state: DelimitedState {
                       remaining: after_body,
-                      lexeme: list_append(left: state.lexeme, right: body_lex),
+                      lexeme: lexeme_grow(acc: state.lexeme, chunk: body_lex),
                       done: false,
                       failed: false
                     }
@@ -588,12 +597,16 @@ fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWal
 }
 
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
+// Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
   )
-  let at = Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
+  let at = match string_is_empty(s: result.remaining) {
+    true => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
+    false => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos + 1 } }
+  }
   if result.error {
     v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {

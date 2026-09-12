@@ -270,13 +270,10 @@ pub enum AdmissionSubject {
         module: &'static str,
         in_declaration: &'static str,
         spelling: &'static str,
-        /// Where the relocated spelling now resolves — the module the admission's own PR moved
-        /// the name TO. Not consulted by delta matching (the delta subject carries no target);
-        /// it is the referent of the CONSUMPTION proof: after the admitting PR merges, the base
-        /// itself binds the spelling to exactly this module, which is the positive, decidable
-        /// fact that separates a consumed row from an author-error row. A row that cannot name
-        /// where its name went is not an admission of a relocation.
-        target: &'static str,
+        /// Exact candidate set after the admitted transition, checked at the head before
+        /// admission and at the base to derive consumption. A set, never merely one member
+        /// whose presence could hide unexpected candidates. The const roster stays authored.
+        expected_candidates: &'static [&'static str],
     },
 }
 
@@ -294,7 +291,7 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 module,
                 in_declaration,
                 spelling,
-                target: _,
+                expected_candidates: _,
             },
             DeltaSubject::Binding {
                 module: observed_module,
@@ -319,8 +316,8 @@ pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
             module,
             in_declaration,
             spelling,
-            target,
-        } => format!("binding {module}::{in_declaration} `{spelling}` -> {target}"),
+            expected_candidates,
+        } => format!("binding {module}::{in_declaration} `{spelling}` -> {expected_candidates:?}"),
     }
 }
 
@@ -592,7 +589,7 @@ pub struct TransitionAdmission {
 /// rows authored by gunbc#9985 are removed by their own dissolve-on trigger, which is that pull
 /// request merging: c2cd45dcff9 IS that merge, so `extdeps.llm.anthropic_rest` already imports the
 /// four hoisted spellings from `extdeps.llm.anthropic_messages_api` on the base of every run, and
-/// `admission_consumed_at_base` proves the relocation the rows admit. Like the RLM-2b pair before
+/// `admission_satisfied_at` proves the relocation the rows admit. Like the RLM-2b pair before
 /// them, they were BORN CONSUMED — authored in the same commit that merged their subject, so no
 /// run after that commit could ever match them.
 ///
@@ -1013,7 +1010,7 @@ pub struct TransitionAdmission {
 /// Same admitted target, one hop further out.
 ///
 /// Neither consumer file is in this diff, so base equals head for both and
-/// `admission_consumed_at_base` holds on all nineteen.
+/// `admission_satisfied_at` holds on all nineteen.
 ///
 /// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND BY NO OTHER. `consumed_due` is
 /// `roster_touched && !consumed.is_empty()`: a consumed row does NOT refuse unrelated pull requests,
@@ -1051,7 +1048,7 @@ pub struct TransitionAdmission {
 /// correction matters because the wrong version overstates this cohort's blast radius.
 ///
 /// After #10358 lands, each of these spellings binds to `gunbc.model.ollama_choice` at the base, so
-/// `admission_consumed_at_base` holds and the rows report CONSUMED -- not stale. A stale row matches
+/// `admission_satisfied_at` holds and the rows report CONSUMED -- not stale. A stale row matches
 /// no delta; a consumed row is one the base has already satisfied. Different states, different
 /// reporters.
 ///
@@ -1101,7 +1098,7 @@ pub struct TransitionAdmission {
 /// negative answer a total observer would have produced only if the fact were genuinely absent.
 ///
 /// WHAT WOULD ACTUALLY SETTLE IT is the production predicate rather than any hand join.
-/// `admission_consumed_at_base` resolves the full (module, enclosing declaration, spelling) subject
+/// `admission_satisfied_at` resolves the full (module, enclosing declaration, spelling) subject
 /// through the re-export chain and requires the base candidate set to be the EXACT SINGLETON named
 /// by the target. Every hand join above is a NECESSARY condition only; it agreed with the mechanism
 /// on these rows and did not establish what the mechanism establishes. The wall's own run at the
@@ -1129,7 +1126,7 @@ pub struct TransitionAdmission {
 /// uniform "found" was not available to it.
 ///
 /// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
-/// paragraphs above -- `admission_consumed_at_base` resolves the full subject through the re-export
+/// paragraphs above -- `admission_satisfied_at` resolves the full subject through the re-export
 /// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
 /// exact head is the proof.
 ///
@@ -1180,7 +1177,7 @@ pub struct TransitionAdmission {
 /// `00_core.dag`, so neither row's target set is ambiguous and no competing local declaration
 /// shadows either call site.
 ///
-/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_consumed_at_base`
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_satisfied_at`
 /// resolves the full subject through the re-export chain and requires an exact singleton, which no
 /// hand join reproduces. The wall's own run at the exact head is the proof.
 ///
@@ -1674,124 +1671,52 @@ pub struct TransitionAdmission {
 /// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
 /// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
 /// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-/// ASSESSMENT-RENAME TRANSITION (2026-09-09, gunbc#10883). No ordinal is claimed, for the reason
-/// the entries above give. `product.cable_plant_converge` is renamed to
-/// `product.cable_plant_assessment`, and `gunbc.spark.fabric_switch_converge` to
-/// `gunbc.spark.fabric_switch_assessment`. The modules never had an actuation stage; the
-/// `converge` name advertised one, which is how the shape they replaced came to be bound to a
-/// handler that DEMANDED an apply. Renaming an inspect-only home is the last step of that cut.
 ///
-/// ONLY NINE ROWS, AND THE ARITHMETIC IS THE POINT. The wave measured eighteen deltas. Nine
-/// auto-admit: the membership half of the same motion reports `SameDeclarationIdentityRebind`
-/// (the old edge, whose every supplied name still denotes the same declaration) or
-/// `ExplicitlyEvaluatedZeroDelta` (the new edge, reached by a name the module authors). The nine
-/// below are the binding half — a spelling authored on BOTH sides that now resolves to a
-/// different module. Consumers whose OWN module was renamed produce no binding delta at all,
-/// because a delta needs the module on both sides; that is why the two witness files this cut
-/// renamed are absent here and `fabric_switch_observed` is not.
+/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
+/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
+/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
+/// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
+/// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
+/// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
+/// by this sentence.
 ///
-/// NONE OF THESE CHANGES WHICH DECLARATION THE SPELLING DENOTES. `CablePlant`, `cable_plant`,
-/// `CableLegReading`, `LegReadingTaken` and `LegNeverRead` are the same declarations at a new
-/// module path. A binding whose MEANING had moved would refuse on its own row rather than be
-/// covered by these, which is why they are enumerated by exact identity rather than by a pattern
-/// over the renamed module pair -- a pattern would admit a genuine rebind that happened to land
-/// in the same pair.
+/// TWENTIETH DISSOLUTION (2026-09-10). That trigger fired and the wall said so rather than this
+/// paragraph: #10945 merged, and the required floor on gunbc#10951 (run 34517633122) reported the
+/// row as `CONSUMED ADMISSION ... already satisfied at the base — consumed by its own merge` and
+/// then refused adjudication with `1 consumed admission(s) due for deletion on this roster-touching
+/// change`. This change edits `evaluate_wave_admission`, so it is the toucher the rule charges, and
+/// the deletion is paid here rather than deferred to a follow-up nobody owes.
 ///
-/// TRIGGER: these rows are removed when this PR merges. At that point the base itself binds each
-/// spelling to `product.cable_plant_assessment`, every row reports consumed-at-base, and leaving
-/// them would refuse every unrelated PR -- the exact cost the first 53 rows recorded above.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_cable_plant",
-            spelling: "CablePlant",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_cable_plant",
-            spelling: "cable_plant",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "CableLegReading",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.fabric_switch_observed",
-            in_declaration: "fabric_leg_reading",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_never",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_never",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_taken",
-            spelling: "LegNeverRead",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "cable_plant_converge -> cable_plant_assessment 2026-09-09 (gunbc#10883)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.spark.spark_fabric_switch_witness",
-            in_declaration: "plant_readings_taken",
-            spelling: "LegReadingTaken",
-            target: "product.cable_plant_assessment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// THE RECEIPT IS THE DISPOSITION, NOT THE SIDE — which is the correction the eighteenth and
+/// nineteenth dissolutions above were both written to record. This row arrived from main through a
+/// merge and was never authored on this branch; that is not evidence of anything, and the reason it
+/// goes is that the wall computed its transition as merged and printed it.
+///
+/// THE RESTING STATE WAS EMPTY AND THIS CHANGE AUTHORS ONE ROW BACK INTO IT, which is the ordinary
+/// motion and not a regression of the dissolution above: the twentieth dissolution retired a row
+/// whose delta had stopped being producible, and the row below admits a different delta that this
+/// change produces. Empty is not permissive and non-empty is not permission - a run with any delta
+/// no row names still refuses it as UNADJUDICATED.
+///
+/// TWENTY-FIRST DISSOLUTION (2026-09-11). #10956 merged, and the required floor on gunbc#11071
+/// (run 34627055157) reported its row as `CONSUMED ADMISSION ... already satisfied at the base —
+/// consumed by its own merge`. This change edits the roster, so it is the toucher the rule charges
+/// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
+/// empty was the resting state and one change authoring rows back into it is the ordinary motion.
+///
+/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
+/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
+/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
+/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
+/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
+/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
+/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
+///
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12). #11137 merged. The required floor on gunbc#11121
+/// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
+/// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
+/// Empty is the resting state; this touch deletes the row rather than inheriting it.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -1816,7 +1741,7 @@ pub struct WaveAdmissionReport {
     /// Rows whose admitted relocation the BASE already satisfies — consumed by their own merge.
     /// Typed receipts, never refusals for an unrelated run: the deletion obligation they carry
     /// stands on the roster's own next touch (see the executor's roster-touched arm). Entered
-    /// only on the POSITIVE proof `admission_consumed_at_base`, never as the else-arm of "did
+    /// only on the POSITIVE proof `admission_satisfied_at`, never as the else-arm of "did
     /// not match a delta" — a row provable against neither side stays an UnmatchedAdmission
     /// refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
@@ -2220,11 +2145,19 @@ pub fn adjudicate(
 
     // ── ADMISSIONS ──
     let mut used: BTreeSet<usize> = BTreeSet::new();
+    let mut invalid_admissions = BTreeMap::new();
     for delta in deltas.iter_mut() {
         for (i, admission) in admissions.iter().enumerate() {
             if admission_subject_matches(&admission.subject, &delta.subject)
                 && admission.disposition == delta.disposition
             {
+                if matches!(admission.subject, AdmissionSubject::Binding { .. }) {
+                    if let Err(mismatch) = admission_satisfied_at(admission, head, &head_membership)
+                    {
+                        invalid_admissions.insert(i, format!("head {mismatch}"));
+                        continue;
+                    }
+                }
                 delta.admitted_by = Some(admission.label.to_string());
                 used.insert(i);
                 break;
@@ -2241,10 +2174,11 @@ pub fn adjudicate(
     // roster's garbage collector — externalized degradation (DESIGN §5).
     //
     // The two states are decidable apart, so this is a wall, not a ratchet: a consumed row's
-    // admitted relocation ALREADY HOLDS AT THE BASE (`admission_consumed_at_base`, a positive
+    // admitted relocation ALREADY HOLDS AT THE BASE (`admission_satisfied_at`, a positive
     // check against the base index), while an author-error row is provable against neither side.
-    // Only the proven arm is typed ConsumedByMerge; everything else unused still refuses as an
+    // Only the proven arm is typed ConsumedByMerge; everything else unused remains an
     // UnmatchedAdmission. The consumed arm does not widen: it is unreachable by fallthrough.
+    // Unmatched rows still refuse every PR; consumed rows come due on landing or roster edits.
     //
     // RETIRED BY: admissions bound to the delta content they admit, adjudicated per run and never
     // resident on main — the capability that makes a stale-able row unwritable. Until that
@@ -2256,21 +2190,25 @@ pub fn adjudicate(
         if used.contains(&i) {
             continue;
         }
-        if admission_consumed_at_base(a, base, &base_membership) {
-            consumed_admissions.push(format!(
+        let satisfaction = match invalid_admissions.get(&i) {
+            Some(mismatch) => Err(mismatch.clone()),
+            None => admission_satisfied_at(a, base, &base_membership)
+                .map_err(|mismatch| format!("base {mismatch}")),
+        };
+        match satisfaction {
+            Ok(()) => consumed_admissions.push(format!(
                 "{} ({} {}) already satisfied at the base — consumed by its own merge; deletion \
-                 is owed on the roster's next touch",
+                 is owed on landing or the roster's next touch",
                 a.label,
                 disposition_label(a.disposition),
                 admission_subject_render(&a.subject)
-            ));
-        } else {
-            stale_admissions.push(format!(
-                "{} ({} {}) matches no delta in this run",
+            )),
+            Err(mismatch) => stale_admissions.push(format!(
+                "{} ({} {}) has no valid admission in this run: {mismatch}",
                 a.label,
                 disposition_label(a.disposition),
                 admission_subject_render(&a.subject)
-            ));
+            )),
         }
     }
 
@@ -2282,33 +2220,51 @@ pub fn adjudicate(
     }
 }
 
-/// The POSITIVE consumption proof: the base itself already satisfies the admitted relocation.
-///
-/// Binding rows: the base binds (module, in_declaration, spelling) to EXACTLY the admitted
-/// target — a singleton set equal to it, not merely containing it. Membership rows: the base
-/// module's direct membership already carries the target. Anything less provable is not
-/// consumption; the caller refuses it as an UnmatchedAdmission.
-fn admission_consumed_at_base(
+/// Prove the admitted result at one index, or name its expected and observed candidates.
+/// The head check prevents authoring an unreachable lifecycle; the base check derives
+/// consumption. Membership keeps its existing presence proof; binding requires set equality.
+fn admission_satisfied_at(
     a: &TransitionAdmission,
-    base: &DeclarationIndex,
-    base_membership: &BTreeMap<String, BTreeSet<String>>,
-) -> bool {
+    index: &DeclarationIndex,
+    membership: &BTreeMap<String, BTreeSet<String>>,
+) -> Result<(), String> {
     match &a.subject {
-        AdmissionSubject::Membership { module, target } => base_membership
-            .get(*module)
-            .is_some_and(|members| members.contains(*target)),
+        AdmissionSubject::Membership { module, target } => {
+            if membership
+                .get(*module)
+                .is_some_and(|members| members.contains(*target))
+            {
+                Ok(())
+            } else {
+                Err(format!(
+                    "expected membership {module} -> {target}, found {:?}",
+                    membership.get(*module)
+                ))
+            }
+        }
         AdmissionSubject::Binding {
             module,
             in_declaration,
             spelling,
-            target,
+            expected_candidates,
         } => {
-            let Some(record) = index_get(base, module) else {
-                return false;
+            let expected: BTreeSet<String> =
+                expected_candidates.iter().map(|s| s.to_string()).collect();
+            let Some(record) = index_get(index, module) else {
+                return Err(format!(
+                    "expected candidates {expected:?}, found no module {module}"
+                ));
             };
-            let rows = binding_rows(base, record);
-            rows.get(&((*in_declaration).to_string(), (*spelling).to_string()))
-                .is_some_and(|set| set.len() == 1 && set.contains(*target))
+            let rows = binding_rows(index, record);
+            match rows.get(&((*in_declaration).to_string(), (*spelling).to_string())) {
+                Some(found) if *found == expected => Ok(()),
+                Some(found) => Err(format!(
+                    "expected candidates {expected:?}, found candidates {found:?}"
+                )),
+                None => Err(format!(
+                    "expected candidates {expected:?}, found no binding row"
+                )),
+            }
         }
     }
 }
@@ -2502,7 +2458,8 @@ use crate::cli_run::{workspace_root, DAG_PARSE_SWEEP_ROOTS};
 pub enum WaveAdmissionOutcome {
     /// The baseline resolves to the head, so there is no diff. A push to `main` after a squash
     /// merge is the whole population. NOT an admission: nothing was compared, and the phase
-    /// reports it under its own name.
+    /// reports it under its own name. Only an empty roster may take this arm: landing still
+    /// adjudicates and refuses stale or consumed rows when there is no diff.
     NoSubject { head: String },
     /// The baseline could not be observed. Refuses.
     NotEvaluated { reason: String },
@@ -2510,11 +2467,8 @@ pub enum WaveAdmissionOutcome {
         base: String,
         head: String,
         report: WaveAdmissionReport,
-        /// Whether this run's diff touches the admission roster's own source file. Consumed
-        /// rows are inert receipts for every other run; on this path their deletion is DUE, and
-        /// the executor refuses until the touching change removes them. This is what moves the
-        /// cleanup bill from bystanders to the roster: the next relocation PR by construction
-        /// touches this file and therefore cannot land while consumed rows stand.
+        /// Whether this diff touches the roster source. Consumed rows come due here
+        /// and on main (base == head); stale rows refuse regardless of this flag.
         roster_touched: bool,
     },
 }
@@ -2534,15 +2488,10 @@ pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_ad
 /// The executor keeps the receipts — it is the thing with a stderr — and asks this for the verdict,
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
-/// AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a permission standing
-/// over nothing — author error, and leaving it means the roster stops being a fact about the
-/// corpus.
-///
-/// A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already holds at the
-/// base (a positive proof), so for an unrelated run it is an inert typed receipt; billing its
-/// cleanup to that run was the externalized degradation eight dissolution PRs paid for. The
-/// deletion is due — and enforced — on the first change that touches the roster file itself,
-/// which every future relocation PR does by construction.
+/// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
+/// (base == head) or on a roster-source edit. Lifecycle is derived from the candidate-set
+/// proof, never predicted by an authored row. Policy authority:
+/// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
     match outcome {
         WaveAdmissionOutcome::NoSubject { head: _ } => None,
@@ -2550,24 +2499,41 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             Some("namespace-wave-admission (NotEvaluated)".to_string())
         }
         WaveAdmissionOutcome::Adjudicated {
-            base: _,
-            head: _,
+            base,
+            head,
             report,
             roster_touched,
         } => {
             let unadjudicated = report_unadjudicated(report);
-            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
-            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
+            let roster_due = base == head || *roster_touched;
+            let consumed_due = roster_due && !report.consumed_admissions.is_empty();
+            let stale_due = !report.stale_admissions.is_empty();
+            if unadjudicated.is_empty() && !stale_due && !consumed_due {
                 return None;
             }
+            let remedy = if stale_due || consumed_due {
+                let rows = report
+                    .stale_admissions
+                    .iter()
+                    .chain(&report.consumed_admissions)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                format!(
+                    "; delete these rows from {ADMISSION_ROSTER_REL_PATH}; declared transition \
+                     labels (including their trigger PR where authored): {rows}"
+                )
+            } else {
+                String::new()
+            };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){})",
+                 consumed admission(s){}){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
-                if consumed_due {
-                    " due for deletion on this roster-touching change"
+                if consumed_due || stale_due {
+                    " due for correction or deletion"
                 } else {
                     ""
                 }
@@ -2688,6 +2654,12 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
 /// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
 /// not a fact to assume.
+///
+/// Annotation-grain refusals are the exception named by
+/// `fail_closed_gate_refuses_its_own_repair`: the parser still produced the module (annotation
+/// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
+/// unreadable base sealed the transition that only moves `//` onto the declaration the grain
+/// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -2696,7 +2668,15 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
         })]
         .into(),
     ));
-    if !fill.diagnostics.is_empty() {
+    let annotation_erased_readable = !fill.modules.is_empty()
+        && !fill.diagnostics.is_empty()
+        && fill.diagnostics.iter().all(|d| {
+            matches!(
+                *d.diagnostic,
+                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        });
+    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
@@ -2745,7 +2725,16 @@ pub fn run_required_wave_admission(
         }
     };
     if base == head {
-        return Ok(WaveAdmissionOutcome::NoSubject { head });
+        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
+            return Ok(WaveAdmissionOutcome::NoSubject { head });
+        }
+        // Landing owns roster debt even though it has no namespace delta to compare.
+        return Ok(WaveAdmissionOutcome::Adjudicated {
+            base,
+            head,
+            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
+            roster_touched: false,
+        });
     }
 
     let name_status = git_stdout(
@@ -2812,6 +2801,15 @@ pub fn run_required_wave_admission(
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
+            // A BASE THIS PARSER CANNOT READ IS UNEVALUATED, FULL STOP. The annotation case that
+            // used to be repaired here is now answered truthfully upstream: `base_records` reads
+            // the real base declarations out of an annotation-refused parse via
+            // `annotation_erased_readable`, so the only reason left to reach this arm is a base
+            // carrying NON-annotation diagnostics. Substituting head records there is exactly the
+            // fabricated parse the readable path exists to avoid -- the remainders would still
+            // compare equal whenever the head touched only comments, so the old discriminator
+            // would happily certify a baseline for a file that failed to parse for an unrelated
+            // reason. The residual case argues for deletion, not for retention.
             Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         }
     }

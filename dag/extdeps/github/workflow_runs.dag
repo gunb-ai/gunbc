@@ -2,7 +2,8 @@ module extdeps.github.workflow_runs
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import std.types { CommitSha, NonEmptyStr, Timestamp }
+import extdeps.transports.rest { RestOutcome }
+import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -39,6 +40,19 @@ type WorkflowRunConclusion
   | ActionRequired
   | StartupFailure
 
+// DECLARED FRONTIER for the two fields this change adds to WorkflowJobRun. They are not consumed
+// in this change: the census that reads WorkflowJobRun today asks about starvation and has no use
+// for either, and filling its fixtures with labels: [] and run_attempt: 1 is padding rather than
+// consumption. Section 3c admits that state only with the trigger stated beside it, so it is
+// stated rather than left for a reader to infer from the fields' own rationale.
+data workflow_job_run_observed_runner_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun"),
+    reason: "labels and run_attempt are added for a runtime-observation carrier that does not exist in this change: a row recording what a job's run ACTUALLY selected, joined to the workflow-source identity the file was read at, so a declared runner label and an observed one stay separable. The census that reads WorkflowJobRun today (gunbc.superseded_run_starvation_census) asks a different question and reads neither, so the fixture entries this change adds are shape-completion and not consumption. The fields are modelled here rather than in the consumer because they are what the upstream job resource returns",
+    dissolution: unbound_dissolution(description: "a production fold outside test.claim reads WorkflowJobRun.labels and WorkflowJobRun.run_attempt - the capability being that an OBSERVED runner label and attempt reach a consumer that can tell them apart from the declared ones. NOT satisfied by a witness constructing a WorkflowJobRun, nor by a fixture carrying the fields, nor by a consumer that reads one of the two"),
+  )
+]
+
 data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowRunConclusion"),
@@ -63,15 +77,36 @@ type WorkflowRunPullRequest {
   number: Int
 }
 
+// FIVE FIELDS THE RESPONSE CARRIES THAT NO CONSUMER COULD READ. actor, triggering_actor,
+// event, head_branch and run_attempt are all in GitHub's workflow-run response and were absent
+// from this projection, so a .dag consumer asking "which actor triggered this, on what event,
+// and which attempt am I looking at" had to leave the provider model entirely -- gh api, raw
+// JSON, or a status word copied out of the UI.
+//
+// THE RUN_ATTEMPT FIELD IS THE LOAD-BEARING ONE. A run object reports created_at from attempt 1
+// and run_started_at from the LATEST attempt, naming neither, so a consumer that does not know
+// which attempt it holds can compute a start delay that never happened. Without run_attempt the
+// object cannot even say which attempt it describes.
+//
+// ACTOR AND TRIGGERING_ACTOR ARE TWO FACTS. The first is who the run is attributed to; the
+// second is who caused this particular attempt. They diverge exactly when a human releases a
+// withheld run: the actor stays the bot that pushed, and the triggering actor becomes the
+// person who approved. A model carrying only one of them cannot distinguish an ordinary
+// execution from a released one.
 type WorkflowRun {
   id: Int
   name: String?
   path: String?
   head_sha: CommitSha
+  head_branch: String?
+  event: String
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   workflow_id: Int
   run_number: Int
+  run_attempt: Int
+  actor: GitHubUser?
+  triggering_actor: GitHubUser?
   html_url: NonEmptyStr
   created_at: Timestamp
   updated_at: Timestamp
@@ -89,12 +124,32 @@ type WorkflowRunList {
 // no census consumer reads individual step data; if a future consumer needs it, adding it
 // here is a backward-compatible extension (the field is optional in the API response and
 // would become an optional field here).
+// WHY THE TWO ADDED FIELDS ARE NOT OPTIONAL RICHNESS.
+//
+// labels is THE OBSERVED RUNNER LABEL, and it is a different fact from the label the workflow
+// file declared. A `runs-on` written as an expression resolves at dispatch, so the YAML can
+// establish an architecture while leaving the provider open - that is a real row in this
+// fleet's workload census, where a job whose workflow offers a Ubicloud alternative was observed
+// running on GitHub-hosted ubuntu-24.04-arm. Only the job resource settles it, and a consumer
+// with no field to put it in has to treat the declaration as the observation.
+//
+// run_attempt is what makes a job identity re-findable. A re-run reuses run_id and mints new job
+// ids, so (run_id, job_id) alone cannot say which attempt an observation belonged to, and a
+// duration compared across attempts is comparing a cold run to a warm one.
+//
+// A THIRD FIELD WAS HERE AND IS NOT. runner_name was added in the same motion because the vendor's
+// machine name is corroborating - the Biome baseline job reports "depot-1mw2k81zm2" - and then
+// nothing read it, in this change or in the one that consumes the other two. Interesting is not a
+// consumer. It is deleted rather than parked behind a frontier, because a frontier admits a
+// declaration whose consumer LANDS IN A NAMED LATER CHANGE and there is no such change for it.
 type WorkflowJobRun {
   id: Int
   run_id: Int
+  run_attempt: Int
   name: String
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
+  labels: List<String>
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?
@@ -159,6 +214,18 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
   "closure:consolidate_variant_string_mapping|parse_workflow_run_status/workflow_run_status_wire_label and parse_workflow_run_conclusion/workflow_run_conclusion_wire_label hand-roll the SnakeCase mapping already declared in the wire contracts. Dissolve when the codec-from-contract bridge derives decode and encode from CoproductWireContract rows directly."
 ]
 
+// LISTATTEMPTJOBS EXISTS BECAUSE LISTJOBS PINS filter=latest INTO ITS QUERY, and that default is
+// not a nuance. A withheld run that a human later releases has ZERO jobs on attempt 1 and a full
+// set on attempt 2, so a latest-filtered read reports the release and calls it the original
+// execution. Every question of the form "did this run actually execute when it was created" is a
+// question about ONE attempt, and ListAttemptJobs is the only operation here that can ask it.
+// GitHub documents the attempt-scoped path separately from the run-scoped one because they answer
+// different questions: the attempt number is part of the resource, not a filter.
+//
+// THE ANNOTATION SITS ON THE SERVICE RATHER THAN THE OPERATION because an `operation` lives inside
+// this declaration's body, and section 4c admits annotations only at module-item grain. An
+// operation is not a module item, so per-operation rationale is not expressible; it belongs here
+// or nowhere.
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
@@ -243,6 +310,34 @@ service github.WorkflowRuns {
     }
     response {
       200 => WorkflowRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation ListAttemptJobs {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      attempt_number: Int
+      per_page: Int = max_per_page
+    }
+    output {
+      result: WorkflowJobRunList
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/attempts/\{attempt_number\}/jobs",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => WorkflowJobRunList
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape

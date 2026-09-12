@@ -4,11 +4,30 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.measure { token_count, basis_point }
+import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
+import std.pareto { LowerIsBetter, SelectionAxis }
+import std.decision { HardConstraint }
+import std.roster_frontier {
+  FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
+}
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+import gunbc.spark.v41_published_image_observation {
+  v41_published_arm64_reference,
+  v41_published_distribution_name,
+  v41_published_stamped_identifier_lookup,
+  PublicCommitAbsent, PublicCommitPresent, PublicCommitUnasked,
+}
+import gunbc.spark.runtime_architecture_registry_reading {
+  gunbc_vllm_dsv41_gb10_registry_reading,
+}
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, FootprintReportedExternally, FootprintUnread, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvFp8Layout, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
+  ModelArtifact, DeploymentCandidate, deployment_candidate,
+  ExecutorRayProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
+  WeightTreatment, PublishedNativeWeights, RequantisedWeights,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
   ServingExecutionProfile, execution_profile_of, execution_profile_eq, parameters_render,
@@ -19,8 +38,13 @@ import gunbc.spark.serving_deployment_selection {
   WorkloadDemandStanding, WorkloadDemandEstablished, WorkloadDemandUnestablished, ContextReservePolicy, context_reserve_policy,
   WeightsNotRuledOutByLowerBound, WeightsImpossibleByLowerBound, WeightFitUnderivable, weight_fit_of,
   per_rank_bytes_ceiling, fleet_fits,
-  spark_fleet_snapshot, serving_parameters_current, spark_runtime, eight_host_topologies,
-  artifact_deepseek_v4_flash_native, artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
+  spark_fleet_snapshot, serving_parameters_current, spark_runtime,
+  artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
+  artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
+  fleet_admitted_topologies, native_quality_holds, no_redundancy_holds,
+  topology_shape_eq,
+  serving_selection_constraints, id_constraint_authority, ax_quality,
+  deepseek_v4_1_candidate_field, v4_1_declared_profiles,
   TopologyShape, topology_shape,
   ServingDeploymentChoiceDomain, serving_deployment_domain,
   ServingDeploymentCandidateField, serving_candidate_field,
@@ -28,7 +52,12 @@ import gunbc.spark.serving_deployment_selection {
   ServingDeploymentEvidenceSnapshot, serving_evidence_snapshot,
   ServingDeploymentDecisionInput, serving_decision_input, decision_snapshot_key,
   ServingDeploymentSelection, ServingDeploymentSelected, ServingDeploymentNeedsEvidence,
+  ServingDeploymentSelectionRefused, ServingDeploymentNeedsPolicy, NoFeasibleServingDeployment,
   select_serving_deployment,
+  v4_1_profile_standings_from, v4_1_candidate_field_from_sm12, v4_1_decision_input_from_sm12,
+  v4_1_declared_profile_standings, ServingProfileReady, ServingProfileSm12JoinFailed,
+  v4_1_profile_from_standing, serving_deployment_domain_over_standings, derived_candidates_for,
+  serving_evidence_current, id_v4_1_constraint_authority,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
   glm_decision_input, deepseek_decision_input,
   serving_parameter_standings, provenance_kind,
@@ -40,8 +69,28 @@ import gunbc.spark.serving_deployment_selection {
   ParameterStandingRow, parameter_row, ParameterUnestablished,
   ParameterStandingCompleteness, AllParametersHaveStanding, ParametersWithoutStanding,
   ParametersWithConflictingStandings, parameter_standing_completeness,
+  glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
+  deepseek_v4_1_selection_policy,
+  deepseek_v4_1_quality_requirement,
+  derived_candidate_identity, v4_1_profile_at, v4_1_runtime_vllm_gb10_lead,
+  ax_no_redundancy, ax_authorized_runtime, authorized_v4_1_runtime_holds,
+  glm_candidate_field, deepseek_candidate_field, glm_domain, deepseek_domain,
+  unique_constraint_identities, constraint_native_quality, constraint_no_redundancy, constraint_authorized_runtime,
+  serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
+  kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
+  engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
+  kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
+  v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
+  VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
+  v4_1_selection_frontier, kv_layout_wire,
 }
+import extdeps.vllm.deepseek_v4_1_sm12 {
+  v41_sm12_kv_layout,
+  v41_sm12_kv_cache_dtype_admitted,
+  v41_sm12_admitted_kv_cache_dtypes,
+}
+import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 
 // ── THE PRODUCTION SUBJECTS ANSWER WITH OBLIGATIONS ───────────────────────────────────────────
 //
@@ -61,6 +110,94 @@ test fn the_real_glm_subject_returns_obligations_rather_than_a_shape() -> Bool {
     ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
     _ => false
   }
+}
+
+test fn the_real_deepseek_v4_1_subject_returns_obligations_rather_than_a_topology() -> Bool {
+  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+test fn live_select_is_sm12_admit_with_the_extdeps_roster() -> Bool {
+  match v4_1_gb10_kv_layout {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      match k {
+        KvFp8DsMlaLayout => v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: k))
+        KvAutoLayout => false
+        KvFp8Layout => false
+        KvFp4Layout => false
+      }
+    Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+  }
+    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+      _ => false
+    }
+    && decision_snapshot_key(input: deepseek_v4_1_decision_input)
+      == decision_snapshot_key(input: v4_1_decision_input_from_sm12(
+        wire: v41_sm12_kv_layout,
+        admitted: v41_sm12_admitted_kv_cache_dtypes,
+      ))
+}
+
+fn v4_1_input_for_runtime(runtime: RuntimeRevision, stem: String) -> ServingDeploymentDecisionInput {
+  let standings = [v4_1_profile_from_standing(runtime: runtime, standing: v4_1_gb10_kv_layout)]
+  let domain = serving_deployment_domain_over_standings(
+    artifacts: [artifact_deepseek_v4_1_flash_native],
+    topologies: fleet_admitted_topologies(fleet: spark_fleet_snapshot),
+    standings: standings,
+  )
+  serving_decision_input(
+    field: serving_candidate_field(
+      identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: stem),
+      domain: domain,
+      candidates: derived_candidates_for(stem: stem, domain: domain),
+    ),
+    evidence: serving_evidence_current,
+    quality_requirement: deepseek_v4_1_quality_requirement,
+    selection_policy: deepseek_v4_1_selection_policy,
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_v4_1_constraint_authority,
+    axes: v4_1_selection_axes,
+  )
+}
+
+fn causes_name_authorized_runtime(cs: List<NonEmptyStr>) -> Bool {
+  any(cs, s => string_contains(s: s as String, pattern: declaration_ref_display_key(ref: ax_authorized_runtime)))
+}
+
+test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
+  match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_vllm_gb10_lead, stem: "plant_gb10_lead")) {
+    NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+    _ => false
+  }
+    && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: spark_runtime, stem: "plant_spark_runtime")) {
+      NoFeasibleServingDeployment { causes: cs } => causes_name_authorized_runtime(cs: cs)
+      _ => false
+    }
+    && match select_serving_deployment(input: v4_1_input_for_runtime(runtime: v4_1_runtime_published_arm64, stem: "plant_published_arm64")) {
+      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+      _ => false
+    }
+    && match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+      ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+      _ => false
+    }
+    && match v4_1_runtime_published_arm64.vllm_source {
+      VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => true
+      VllmSourceRevisionEstablished { git: _ } => false
+    }
+}
+
+test fn matching_the_authorized_v4_1_digest_does_not_establish_source() -> Bool {
+  any(deepseek_v4_1_candidate_field.candidates, c =>
+    authorized_v4_1_runtime_holds(c: c)
+      && match c.profile.runtime.vllm_source {
+        VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => true
+        VllmSourceRevisionEstablished { git: _ } => false
+      })
+    && any(deepseek_v4_1_candidate_field.candidates, c => !authorized_v4_1_runtime_holds(c: c))
 }
 
 // ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
@@ -287,9 +424,16 @@ test fn a_duplicated_value_in_the_declared_domain_refuses() -> Bool {
 }
 
 // ── COMPLETENESS IS A JOIN, IN BOTH DIRECTIONS ────────────────────────────────────────────────
+data fixture_four_covering_topologies: List<TopologyShape> = [
+  topology_shape(tensor_parallel_degree: 1, replica_count: 8),
+  topology_shape(tensor_parallel_degree: 2, replica_count: 4),
+  topology_shape(tensor_parallel_degree: 4, replica_count: 2),
+  topology_shape(tensor_parallel_degree: 8, replica_count: 1),
+]
+
 data full_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
   artifacts: [artifact_deepseek_v4_flash_native],
-  topologies: eight_host_topologies,
+  topologies: fixture_four_covering_topologies,
   parameters: serving_parameters_current,
 )
 
@@ -369,6 +513,9 @@ fn input_with(field: ServingDeploymentCandidateField, w: WorkloadDemandStanding)
     evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: w),
     quality_requirement: deepseek_quality_requirement,
     selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: serving_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: serving_selection_axes,
   )
 }
 
@@ -377,6 +524,10 @@ data settled_field: ServingDeploymentCandidateField = serving_candidate_field(
   domain: serving_deployment_domain(artifacts: [artifact_deepseek_v4_flash_native], topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)], parameters: serving_parameters_current),
   candidates: [native_tp4_x2],
 )
+
+data no_redundancy_goal_flip_constraints: List<HardConstraint> = concat(serving_selection_constraints, [
+  HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 1 },
+])
 
 test fn changing_the_workload_changes_the_decision_identity() -> Bool {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
@@ -391,6 +542,148 @@ test fn changing_the_candidate_roster_changes_the_decision_identity() -> Bool {
 test fn an_unchanged_input_keeps_its_decision_identity() -> Bool {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
     == decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+}
+
+fn profile_with_layout(p: ServingDecisionParameters, k: KvLayoutPolicy) -> ServingDecisionParameters {
+  serving_decision_parameters(
+    max_model_len: p.max_model_len,
+    memory_request: p.memory_request,
+    max_num_batched_tokens: p.max_num_batched_tokens,
+    max_num_seqs: p.max_num_seqs,
+    executor: p.executor,
+    kv_layout: k,
+    speculative: p.speculative,
+    enable_prefix_caching: p.enable_prefix_caching,
+    runtime: p.runtime,
+  )
+}
+
+test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
+  let requant_art = ModelArtifact {
+    identity: artifact_deepseek_v4_flash_native.identity,
+    label: artifact_deepseek_v4_flash_native.label,
+    footprint: artifact_deepseek_v4_flash_native.footprint,
+    weight_treatment: RequantisedWeights { distinction: "identity-collision-probe" as NonEmptyStr },
+  }
+  let requant_field = serving_candidate_field(
+    identity: settled_field.identity,
+    domain: serving_deployment_domain(
+      artifacts: [requant_art],
+      topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "requant_same_id", art: requant_art, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))],
+  )
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: input_with(field: requant_field, w: established_demand))
+}
+
+test fn candidate_identity_includes_the_complete_profile() -> Bool {
+  let t = topology_shape(tensor_parallel_degree: 4, replica_count: 1)
+  match v4_1_profile_at(runtime: v4_1_runtime_vllm_gb10_lead) {
+    ServingProfileSm12JoinFailed { runtime: _, standing: _ } => false
+    ServingProfileReady { profile: p } =>
+      !declaration_ref_eq(
+        a: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: p),
+        b: derived_candidate_identity(stem: "id", art: artifact_deepseek_v4_1_flash_native, t: t, profile: profile_with_layout(p: p, k: KvFp4Layout)),
+      )
+  }
+}
+
+test fn changing_constraint_bounds_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: serving_decision_input(
+      field: settled_field,
+      evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+      quality_requirement: deepseek_quality_requirement,
+      selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+      constraints: map(serving_selection_constraints, c =>
+        if declaration_ref_eq(a: c.axis, b: ax_quality) {
+          HardConstraint { identity: c.identity, axis: c.axis, bound_micro: c.bound_micro + 1 }
+        } else { c }),
+      constraint_authority: id_constraint_authority,
+      axes: serving_selection_axes,
+    ))
+}
+
+test fn changing_axis_goal_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) != decision_snapshot_key(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: map(v4_1_selection_axes, a =>
+      if declaration_ref_eq(a: a.identity, b: ax_no_redundancy) {
+        SelectionAxis { identity: a.identity, goal: LowerIsBetter }
+      } else { a }),
+  ))
+}
+
+test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
+  match select_serving_deployment(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: no_redundancy_goal_flip_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) {
+    NoFeasibleServingDeployment { causes: _ } =>
+      match select_serving_deployment(input: serving_decision_input(
+        field: settled_field,
+        evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+        quality_requirement: deepseek_quality_requirement,
+        selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+        constraints: no_redundancy_goal_flip_constraints,
+        constraint_authority: id_constraint_authority,
+        axes: map(v4_1_selection_axes, a =>
+          if declaration_ref_eq(a: a.identity, b: ax_no_redundancy) {
+            SelectionAxis { identity: a.identity, goal: LowerIsBetter }
+          } else { a }),
+      )) {
+        ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn changing_funded_axes_changes_the_decision_identity() -> Bool {
+  decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
+    != decision_snapshot_key(input: serving_decision_input(
+      field: settled_field,
+      evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+      quality_requirement: deepseek_quality_requirement,
+      selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+      constraints: serving_selection_constraints,
+      constraint_authority: id_constraint_authority,
+      axes: v4_1_selection_axes,
+    ))
+}
+
+test fn funded_axes_are_carried_not_inferred_from_constraint_authority() -> Bool {
+  match select_serving_deployment(input: serving_decision_input(
+    field: settled_field,
+    evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
+    quality_requirement: deepseek_quality_requirement,
+    selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
+    constraints: v4_1_selection_constraints,
+    constraint_authority: id_constraint_authority,
+    axes: v4_1_selection_axes,
+  )) {
+    NoFeasibleServingDeployment { causes: _ } => true
+    _ => false
+  }
 }
 
 // ── CONTROL 9: AN UNESTABLISHED DEMAND KEEPS THE DECISION AT NEEDS-EVIDENCE ────────────────────
@@ -448,17 +741,17 @@ data fixture_unread_artifact: ModelArtifact = ModelArtifact {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_unread_artifact"),
   label: "fixture artifact whose bytes nobody has read anywhere" as NonEmptyStr,
   footprint: FootprintUnread { obligation: "fixture: never weighed" as NonEmptyStr },
-  weight_treatment: "fixture" as NonEmptyStr,
+  weight_treatment: RequantisedWeights { distinction: "fixture" as NonEmptyStr },
 }
 
 data fixture_externally_reported_artifact: ModelArtifact = ModelArtifact {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_externally_reported_artifact"),
   label: "fixture artifact whose only footprint is someone else's report" as NonEmptyStr,
   footprint: FootprintReportedExternally {
-    bytes: 85230000000,
+    bytes: byte_size(count: 85230000000),
     source: "fixture: a third-party deployment write-up, not read on this fleet" as NonEmptyStr,
   },
-  weight_treatment: "fixture" as NonEmptyStr,
+  weight_treatment: RequantisedWeights { distinction: "fixture" as NonEmptyStr },
 }
 
 test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool {
@@ -523,13 +816,13 @@ test fn the_measured_requantised_artifact_is_feasible_and_refused_anyway() -> Bo
 
 // CEILING, AND THE HELPER REFUSES ZERO RANKS ITSELF rather than trusting a guard at its call site.
 test fn per_rank_bytes_round_up_and_refuse_zero_ranks() -> Bool {
-  match per_rank_bytes_ceiling(total: 101, ranks: 2) {
-    Present { value: v } => v == 51
+  match per_rank_bytes_ceiling(total: byte_size(101), ranks: 2) {
+    Present { value: v } => byte_size_count(b: v) == 51
     Absent => false
-  } && match per_rank_bytes_ceiling(total: 100, ranks: 2) {
-    Present { value: v } => v == 50
+  } && match per_rank_bytes_ceiling(total: byte_size(100), ranks: 2) {
+    Present { value: v } => byte_size_count(b: v) == 50
     Absent => false
-  } && match per_rank_bytes_ceiling(total: 1, ranks: 0) {
+  } && match per_rank_bytes_ceiling(total: byte_size(1), ranks: 0) {
     Absent => true
     Present { value: _ } => false
   }
@@ -546,6 +839,286 @@ test fn a_deployment_of_no_replicas_does_not_fit_the_fleet() -> Bool {
 //
 // The requantised build is not a cheaper way to serve the native checkpoint; it is other weights.
 // No report about it can pass a requirement whose subject is the native artifact.
+test fn native_quality_is_a_fact_on_the_weight_treatment() -> Bool {
+  native_quality_holds(c: native_tp4_x2)
+    && native_quality_holds(c: cand(name: "v41", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)))
+    && !native_quality_holds(c: cand(name: "twobit_fact", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)))
+}
+
+test fn replica_count_above_one_fails_no_redundancy() -> Bool {
+  no_redundancy_holds(c: native_tp8_x1)
+    && no_redundancy_holds(c: cand(name: "tp2x1", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 1)))
+    && no_redundancy_holds(c: cand(name: "tp4x1", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
+    && !no_redundancy_holds(c: native_tp4_x2)
+    && !no_redundancy_holds(c: cand(name: "two_replicas", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 2)))
+}
+
+fn topology_in(shapes: List<TopologyShape>, tp: Nat, replicas: Nat) -> Bool {
+  any(shapes, t => topology_shape_eq(a: t, b: topology_shape(tensor_parallel_degree: tp, replica_count: replicas)))
+}
+
+test fn v4_1_field_is_complete_over_every_shape_the_fleet_admits() -> Bool {
+  let admitted = fleet_admitted_topologies(fleet: spark_fleet_snapshot)
+  match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
+    ServingFieldEstablished =>
+      topology_in(shapes: admitted, tp: 4, replicas: 1)
+        && topology_in(shapes: admitted, tp: 2, replicas: 1)
+        && topology_in(shapes: admitted, tp: 1, replicas: 1)
+        && count(v4_1_declared_profiles) == 3
+        && (v4_1_runtime_published_arm64.image as String) == (v41_published_arm64_reference() as String)
+        && match v4_1_runtime_published_arm64.vllm_source {
+          VllmSourceRevisionUnestablished { reported_version: v, obligation: _ } =>
+            (v as String) == (v41_published_distribution_name as String)
+          VllmSourceRevisionEstablished { git: _ } => false
+        }
+        && match v41_published_stamped_identifier_lookup {
+          PublicCommitAbsent => true
+          PublicCommitPresent => false
+          PublicCommitUnasked => false
+        }
+        && match spark_runtime.vllm_source {
+          VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => true
+          VllmSourceRevisionEstablished { git: _ } => false
+        }
+        && match v4_1_runtime_vllm_gb10_lead.vllm_source {
+          VllmSourceRevisionEstablished { git: g } =>
+            (g as String) == (vllm_deepseek_v4_1_sm12_revision.full_revision as String)
+          VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => false
+        }
+        && (v4_1_runtime_vllm_gb10_lead.image as String)
+          == (gunbc_vllm_dsv41_gb10_registry_reading.image_reference as String)
+    ServingFieldUnestablished { causes: _ } => false
+  }
+}
+
+test fn v4_1_gb10_kv_layout_is_fp8_ds_mla_and_bytes_per_token_are_unestablished() -> Bool {
+  token_count_value(t: serving_parameters_current.max_model_len) == 300000
+    && all(v4_1_declared_profiles, p =>
+      token_count_value(t: p.max_model_len) == 1048576
+        && match p.speculative {
+          SpeculationDraft { algorithm: _ } => true
+          SpeculationOff => false
+          SpeculationOn => false
+        }
+        && match p.kv_layout {
+          KvFp8DsMlaLayout => true
+          KvAutoLayout => false
+          KvFp8Layout => false
+          KvFp4Layout => false
+        })
+    && match v4_1_gb10_kv_layout {
+      Sm12KvLayoutAdmitted { policy: k } =>
+        match k {
+          KvFp8DsMlaLayout => true
+          KvAutoLayout => false
+          KvFp8Layout => false
+          KvFp4Layout => false
+        }
+        && (kv_layout_wire(k: k) as String) == (v41_sm12_kv_layout as String)
+        && v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: k))
+      Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+    }
+    && !v41_sm12_kv_cache_dtype_admitted(dtype: kv_layout_wire(k: KvAutoLayout))
+    && native_quality_holds(c: cand(name: "v41_fp8dsmla", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1)))
+    && match kv_bytes_per_token_standing(c: cand(name: "v41_kv", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 1))) {
+      KvBytesPerTokenUnestablished { layout: k, obligation: _ } =>
+        match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+      KvBytesPerTokenNotThisSubject => false
+    }
+}
+
+fn names_sm12_kv_join(s: NonEmptyStr) -> Bool {
+  string_contains(s: s as String, pattern: "v41_sm12_kv_layout")
+    && string_contains(s: s as String, pattern: "supports_combination")
+    && string_contains(s: s as String, pattern: "v41_sm12_admitted_kv_cache_dtypes")
+}
+
+fn planted_join_is_named_failure(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
+  match sm12_kv_layout_standing(wire: wire, admitted: admitted) {
+    Sm12KvLayoutAdmitted { policy: k } =>
+      match k {
+        KvAutoLayout => false
+        KvFp8DsMlaLayout => false
+        KvFp8Layout => false
+        KvFp4Layout => false
+      }
+    Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
+  }
+}
+
+fn planted_field_names_join_and_keeps_profiles(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> Bool {
+  let standings = v4_1_profile_standings_from(standing: sm12_kv_layout_standing(wire: wire, admitted: admitted))
+  let field = v4_1_candidate_field_from_sm12(wire: wire, admitted: admitted)
+  count(standings) == 3
+    && all(standings, s => match s {
+      ServingProfileReady { profile: p } =>
+        match p.kv_layout {
+          KvAutoLayout => false
+          KvFp8DsMlaLayout => false
+          KvFp8Layout => false
+          KvFp4Layout => false
+        }
+      ServingProfileSm12JoinFailed { runtime: _, standing: st } =>
+        match st {
+          Sm12KvLayoutAdmitted { policy: k } =>
+            match k { KvAutoLayout => false, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+          Sm12KvLayoutJoinFailed { wire: _, obligation: o } => names_sm12_kv_join(s: o)
+        }
+    })
+    && match establish_serving_candidate_field(field: field) {
+      ServingFieldEstablished => false
+      ServingFieldUnestablished { causes: cs } =>
+        any(cs, c => names_sm12_kv_join(s: c))
+          && !any(cs, c => string_contains(s: c as String, pattern: "no serving profiles"))
+    }
+    && match select_serving_deployment(input: v4_1_decision_input_from_sm12(wire: wire, admitted: admitted)) {
+      ServingDeploymentSelectionRefused { defects: ds } => any(ds, d => names_sm12_kv_join(s: d))
+      ServingDeploymentNeedsEvidence { needs: _ } => false
+      ServingDeploymentSelected { selected: _ } => false
+      ServingDeploymentNeedsPolicy { survivors: _ } => false
+      NoFeasibleServingDeployment { causes: _ } => false
+    }
+}
+
+test fn different_failed_sm12_wires_have_different_decision_identities() -> Bool {
+  let empty_admit: List<NonEmptyStr> = []
+  let unadmitted = kv_layout_wire(k: KvAutoLayout)
+  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
+    match kv_layout_policy_matching_wire(wire: d) {
+      Absent => true
+      Present { value: _ } => false
+    })).first()
+  match nomatch_opt {
+    Absent => false
+    Present { value: nomatch } =>
+      decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
+        != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes))
+          != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
+        && decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes))
+          != decision_snapshot_key(input: v4_1_decision_input_from_sm12(wire: v41_sm12_kv_layout, admitted: empty_admit))
+  }
+}
+
+test fn planted_unadmitted_and_nomatch_sm12_wires_keep_named_join_standing() -> Bool {
+  let empty_admit: List<NonEmptyStr> = []
+  let unadmitted = kv_layout_wire(k: KvAutoLayout)
+  let nomatch_opt = (filter(v41_sm12_admitted_kv_cache_dtypes, d =>
+    match kv_layout_policy_matching_wire(wire: d) {
+      Absent => true
+      Present { value: _ } => false
+    })).first()
+  match nomatch_opt {
+    Absent => false
+    Present { value: nomatch } =>
+      v41_sm12_kv_cache_dtype_admitted(dtype: nomatch)
+        && !v41_sm12_kv_cache_dtype_admitted(dtype: unadmitted)
+        && match kv_layout_policy_matching_wire(wire: unadmitted) {
+          Present { value: k } =>
+            match k { KvAutoLayout => true, KvFp8DsMlaLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+          Absent => false
+        }
+        && match kv_layout_policy_matching_wire(wire: nomatch) {
+          Absent => true
+          Present { value: _ } => false
+        }
+        && planted_join_is_named_failure(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_join_is_named_failure(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_join_is_named_failure(wire: v41_sm12_kv_layout, admitted: empty_admit)
+        && planted_field_names_join_and_keeps_profiles(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_field_names_join_and_keeps_profiles(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes)
+        && planted_field_names_join_and_keeps_profiles(wire: v41_sm12_kv_layout, admitted: empty_admit)
+        && match sm12_kv_layout_standing(wire: unadmitted, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
+          Sm12KvLayoutAdmitted { policy: _ } => false
+        }
+        && match sm12_kv_layout_standing(wire: nomatch, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => true
+          Sm12KvLayoutAdmitted { policy: _ } => false
+        }
+        && match establish_serving_candidate_field(field: deepseek_v4_1_candidate_field) {
+          ServingFieldEstablished => true
+          ServingFieldUnestablished { causes: _ } => false
+        }
+        && match sm12_kv_layout_standing(wire: v41_sm12_kv_layout, admitted: v41_sm12_admitted_kv_cache_dtypes) {
+          Sm12KvLayoutAdmitted { policy: k } =>
+            match k { KvFp8DsMlaLayout => true, KvAutoLayout => false, KvFp8Layout => false, KvFp4Layout => false }
+          Sm12KvLayoutJoinFailed { wire: _, obligation: _ } => false
+        }
+  }
+}
+
+fn v4_1_frontier_keys_contain(decl_name: String) -> Bool {
+  let want = declaration_ref_display_key(ref: DeclarationRef {
+    module_path: "gunbc.spark.serving_deployment_selection" as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  })
+  any(frontier_path_subjects(rows: v4_1_selection_frontier), k => k == want)
+}
+
+test fn v4_1_selection_frontier_is_the_roster_home_for_deferred_kv_and_width_facts() -> Bool {
+  frontier_rows_well_formed(rows: v4_1_selection_frontier)
+    && match frontier_rows_keyed_roster_build(rows: v4_1_selection_frontier) {
+      KeyedRosterBuilt { rows: built } => count(built) == 3
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
+    && v4_1_frontier_keys_contain(decl_name: "fleet_admitted_topologies")
+    && v4_1_frontier_keys_contain(decl_name: "v4_1_gb10_kv_bytes_obligation")
+    && v4_1_frontier_keys_contain(decl_name: "engram_standing")
+}
+
+test fn kv_bytes_axis_is_v4_1_only_and_engram_is_standing_not_an_axis() -> Bool {
+  !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
+    && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_kv_bytes_per_token))
+    && any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_authorized_runtime))
+    && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_authorized_runtime))
+    && match kv_bytes_per_token_standing(c: cand(name: "glm_kv", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))) {
+      KvBytesPerTokenNotThisSubject => true
+      KvBytesPerTokenUnestablished { layout: _, obligation: _ } => false
+    }
+    && match engram_standing(art: artifact_deepseek_v4_1_flash_native) {
+      EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => true
+      EngramNotAComponentOfThisArtifact => false
+    }
+    && match engram_standing(art: artifact_glm_53_flash_native) {
+      EngramNotAComponentOfThisArtifact => true
+      EngramOffloadZeroPoolGainOnUnifiedMemory { how: _ } => false
+    }
+}
+
+test fn v4_1_selection_policy_is_not_the_quality_requirement() -> Bool {
+  !declaration_ref_eq(a: deepseek_v4_1_selection_policy, b: deepseek_v4_1_quality_requirement.identity)
+}
+
+test fn assessment_dispositions_join_the_constraint_identities_on_the_input() -> Bool {
+  let glm_ids = unique_constraint_identities(cs: glm_decision_input.constraints)
+  let v41_ids = unique_constraint_identities(cs: deepseek_v4_1_decision_input.constraints)
+  count(glm_ids) == 2
+    && any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_native_quality))
+    && !any(glm_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))
+    && count(v41_ids) == 4
+    && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_native_quality))
+    && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_no_redundancy))
+    && any(v41_ids, id => declaration_ref_eq(a: id, b: constraint_authorized_runtime))
+}
+
+test fn glm_and_deepseek_fields_are_the_derived_admitted_cartesian() -> Bool {
+  match establish_serving_candidate_field(field: glm_candidate_field) {
+    ServingFieldEstablished =>
+      count(glm_candidate_field.candidates)
+        == count(glm_domain.artifacts) * count(glm_domain.topologies) * count(glm_domain.profiles)
+        && topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 2)
+        && !topology_in(shapes: glm_domain.topologies, tp: 4, replicas: 1)
+    ServingFieldUnestablished { causes: _ } => false
+  } && match establish_serving_candidate_field(field: deepseek_candidate_field) {
+    ServingFieldEstablished =>
+      count(deepseek_candidate_field.candidates)
+        == count(deepseek_domain.artifacts) * count(deepseek_domain.topologies) * count(deepseek_domain.profiles)
+    ServingFieldUnestablished { causes: _ } => false
+  }
+}
+
 test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bool {
   match assess_quality(
     report: serving_quality_report(

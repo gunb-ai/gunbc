@@ -95,7 +95,7 @@ use serde::Serialize;
 
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
-    stripped_fn_body_marker()
+    crate::v1_compiler_parse::census_heads_body_stand_in()
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -103,88 +103,8 @@ pub fn census_heads_module_node_for_test(module: Rc<Node>) -> Rc<Node> {
     census_heads_module_node(module)
 }
 
-pub(crate) fn census_heads_children(
-    children: &Rc<im::Vector<Rc<Node>>>,
-) -> Rc<im::Vector<Rc<Node>>> {
-    Rc::new(
-        children
-            .iter()
-            .cloned()
-            .map(census_heads_module_item)
-            .collect(),
-    )
-}
-
-/// Fn-decl discriminator for heads-only shrink — must match `local_binding_for_item`'s
-/// fn arm (`04_infer.dag`: `NoConnective && body.is_some() && transport.is_none()`).
-pub(crate) fn census_heads_item_is_fn_decl(item: &Rc<Node>) -> bool {
-    item.connective == Connective::NoConnective && item.body.is_some() && item.transport.is_none()
-}
-
-pub(crate) fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
-    let body = if census_heads_item_is_fn_decl(&item) {
-        Some(stripped_fn_body_marker())
-    } else {
-        None
-    };
-    let children = if item.children.is_empty() {
-        item.children.clone()
-    } else {
-        census_heads_children(&item.children)
-    };
-    Rc::new(Node {
-        occurrence_identity: item.occurrence_identity.clone(),
-        name: item.name.clone(),
-        span: item.span.clone(),
-        ident_span: item.ident_span.clone(),
-        children,
-        connective: item.connective.clone(),
-        params: item.params.clone(),
-        inferred: item.inferred.clone(),
-        return_cardinality: item.return_cardinality.clone(),
-        uses: empty_node_list(),
-        body,
-        transport: item.transport.clone(),
-        properties: item.properties.clone(),
-        type_annotation: item.type_annotation.clone(),
-        is_self_recursive: item.is_self_recursive,
-        has_non_tail_self_call: item.has_non_tail_self_call,
-        match_pattern: None,
-        module_item_kind: item.module_item_kind,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: item.ident.clone(),
-    })
-}
-
 pub(crate) fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: module.occurrence_identity.clone(),
-        name: module.name.clone(),
-        span: module.span.clone(),
-        ident_span: module.ident_span.clone(),
-        children: Rc::new(
-            module_items(module.clone())
-                .iter()
-                .cloned()
-                .map(census_heads_module_item)
-                .collect(),
-        ),
-        connective: module.connective.clone(),
-        params: module.params.clone(),
-        inferred: module.inferred.clone(),
-        return_cardinality: module.return_cardinality.clone(),
-        uses: empty_node_list(),
-        body: None,
-        transport: module.transport.clone(),
-        properties: module.properties.clone(),
-        type_annotation: module.type_annotation.clone(),
-        is_self_recursive: module.is_self_recursive,
-        has_non_tail_self_call: module.has_non_tail_self_call,
-        match_pattern: None,
-        module_item_kind: module.module_item_kind,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: module.ident.clone(),
-    })
+    crate::v1_compiler_compile::census_heads_module_node(module)
 }
 
 /// One module read BOTH ways and normalized by the census, so the two readings can be
@@ -208,7 +128,11 @@ pub(crate) fn census_heads_both_readings(
 ) {
     let table = index.intern_table.borrow().clone();
     let read = |heads_only: bool| -> (Result<Rc<Node>, String>, u128) {
-        let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+        let tokens = v1_compiler_tokenize::tokenize(
+            source.content.clone(),
+            source.path.clone(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
         let nl_index = build_newline_index(source.path.clone(), source.content.clone());
         let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
             let mut m = HashMap::new();

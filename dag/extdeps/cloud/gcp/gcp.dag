@@ -3,7 +3,8 @@ module extdeps.cloud.gcp.gcp
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Secret }
+import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Secret, Unit }
+import std.string_type { String }
 import v2.std.network { POST }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -72,6 +73,7 @@ type WifProvider {
   pool: String
   issuer_uri: String
   attribute_mapping: Map<String, String>?
+  attribute_condition: String?
 }
 
 fn wif_pool_resource(project_number: String, pool_id: String) -> String {

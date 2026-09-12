@@ -1,0 +1,332 @@
+module test.claim.v2_compile_obligation_census_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
+import gunbc.guarantee_rung {
+  GuaranteeRung,
+  OutsideTheLadder,
+  Mitigatable,
+  MechanicallyPreventable,
+  StructurallyGuaranteed,
+  StructurallyImpossible
+}
+import gunbc.v2_compile_obligation_census {
+  V2CompileObligation,
+  PathExecution,
+  WitnessSubject,
+  CompileDoor,
+  RequiredRootLens,
+
+  ExecutedPendingVerification,
+  standing_carries_premise,
+  unverified_entry_premise,
+  RouteGapHeld,
+  Home,
+  HomeAuthority,
+  SeedEscapeOpen,
+  SeedEscapeClosed,
+  witness_subject,
+  witness_subject_survives_every_subtraction,
+  witness_subject_is_frozen,
+  witness_subject_is_excluded,
+  witness_subject_is_inside_gate_closure,
+  obligation_route_coverage_rung,
+  route_coverage_rung_of,
+  obligation_rung_is_inflated,
+  rung_is_inflated_of,
+  obligation_executes_on_an_unverified_entry,
+  obligation_is_pending_on,
+  obligation_claim_exceeds_its_ceiling,
+  witness_subject_in_native_lane,
+  obligation_seed_escape_is_open,
+  v2_compile_obligation_census
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CHECKS THAT MATTER HERE ARE THE ONES THAT READ SOMEBODY ELSE'S DATA. An earlier cut of this
+// file folded over rows the census itself authored and called the result a check; review 63152 named
+// that correctly as a change detector over a copy of the current tree, and DESIGN section 5 says the
+// same thing in its own words. The census now DERIVES each obligation's per-PR standing by asking
+// gunbc.witness_deferral_freeze and gunbc.ci_layer_roots, so the arms below exercise a join against
+// two live rosters this file does not own and cannot edit — which is what makes them oracles rather
+// than mirrors, and which is what would have caught the reading error that cut shipped.
+//
+// WHAT IS STILL NOT CHECKED, SAID PLAINLY. Nothing here asserts that the census's row set equals the
+// contents of required_compile_lens_roster: that is an identity join over a list literal no reader
+// available here can walk, so a lens de-enrolled from the roster would leave a stale row standing.
+// (The roster was two grain-specific lists when this was written and is one roster carrying a grain
+// per row since gunbc#11004; the gap is unchanged, and it never turned on how many lists there
+// were.) Cited-symbol resolution is uncovered corpus-wide under the existing
+// declared drop gunbc.rung_drop cited_symbol_census, and the entry paths below inherit it. Both are
+// the census's own next trigger, not silences.
+
+data fixture_home: DeclarationRef = decl_ref(module_path: "fixture.module", decl_name: "fixture_decl")
+
+data fixture_stall: DeclarationRef = decl_ref(
+  module_path: "fixture.stall",
+  decl_name: "fixture_stall_decl"
+)
+
+// TWO REAL SUBJECTS FROM OPPOSITE SIDES OF THE LIVE ROSTERS, chosen because each is decided by a
+// DIFFERENT authority. The mandatory-tag entry is covered by gunbc.witness_deferral_freeze AND sits
+// under the "test/claim/long/" exclusion pattern; the fact-density entry is subtracted by neither.
+// If either roster changes underneath this file, one of these two arms flips — which is the whole
+// point of asking rather than asserting.
+fn frozen_and_excluded_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "src/v2/test/claim/long/mandatory_tag_gate_witness_test.dag",
+    function: "mandatory_tag_enrolled_in_root_roster_rejects_violating_module",
+    module_path: "v2.test.long.mandatory_tag_gate_witness"
+  )
+}
+
+fn discovered_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "src/v2/test/lens_fact_density/hollow_alias_blocked_via_always_required_lenses_test.dag",
+    function: "hollow_alias_blocked_via_always_required_lenses_holds",
+    module_path: "v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses"
+  )
+}
+
+fn non_executing_arm() -> PathExecution {
+  RouteGapHeld { stall: fixture_stall }
+}
+
+fn fixture_row(subject: WitnessSubject) -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_row" as NonEmptyStr,
+    kind: RequiredRootLens,
+    home: HomeAuthority { authority: fixture_home },
+    claimed_rung: StructurallyGuaranteed,
+    witnesses: [subject],
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    ceiling: StructurallyGuaranteed,
+    next_trigger: climbs_when(capability: "fixture trigger"),
+    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
+    related_drops: [],
+  }
+}
+
+fn closed_escape_fixture_row() -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_closed" as NonEmptyStr,
+    kind: CompileDoor,
+    home: HomeAuthority { authority: fixture_home },
+    claimed_rung: MechanicallyPreventable,
+    witnesses: [discovered_subject()],
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    ceiling: StructurallyGuaranteed,
+    next_trigger: climbs_when(capability: "fixture trigger"),
+    seed_escape: SeedEscapeClosed { by: fixture_home },
+    related_drops: [],
+  }
+}
+
+fn guarantee_rung_is(r: GuaranteeRung, expected: String) -> Bool {
+  match r {
+    OutsideTheLadder => expected == "OutsideTheLadder"
+    Mitigatable => expected == "Mitigatable"
+    MechanicallyPreventable => expected == "MechanicallyPreventable"
+    StructurallyGuaranteed => expected == "StructurallyGuaranteed"
+    StructurallyImpossible => expected == "StructurallyImpossible"
+  }
+}
+
+// THE JOIN, IN BOTH DIRECTIONS, AGAINST BOTH ROSTERS. A derivation that answered "not executing" to
+// everything would satisfy the first conjunct and fail the second; one that answered "executing" to
+// everything fails the first. The two inner arms additionally separate WHICH authority decided,
+// because a derivation that had silently lost the freeze lookup would still get the mandatory-tag
+// answer right through the exclusion pattern alone and nobody would notice the missing half.
+test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_holds() -> Bool {
+  !witness_subject_survives_every_subtraction(w: frozen_and_excluded_subject())
+    && witness_subject_survives_every_subtraction(w: discovered_subject())
+    && witness_subject_is_frozen(w: frozen_and_excluded_subject())
+    && witness_subject_is_excluded(w: frozen_and_excluded_subject())
+    && !witness_subject_is_frozen(w: discovered_subject())
+    && !witness_subject_is_excluded(w: discovered_subject())
+}
+
+// THE ROUTE-COVERAGE RUNG READS THE TWO STANDINGS AND NOTHING ELSE, and it is exercised through
+// route_coverage_rung_of because both standings are now derived: with the native lane off the merge
+// path no obligation in the corpus can reach a both-routes-executing state, so a test that went
+// through a fixture ROW could only ever observe Mitigatable and would be permanently green by
+// construction. Handing the law its two arguments keeps its RED authorable, which is the boundary
+// DESIGN section 4b draws before a check is worth writing.
+//
+// claimed_rung is absent from all four cases on purpose: the law must not read it, and the way to
+// show that is to never give it one to read.
+test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_holds() -> Bool {
+  guarantee_rung_is(
+    r: route_coverage_rung_of(interpreted: an_executing_arm(), native: an_executing_arm()),
+    expected: "MechanicallyPreventable"
+  )
+    && guarantee_rung_is(
+      r: route_coverage_rung_of(interpreted: an_executing_arm(), native: non_executing_arm()),
+      expected: "Mitigatable"
+    )
+    && guarantee_rung_is(
+      r: route_coverage_rung_of(interpreted: non_executing_arm(), native: an_executing_arm()),
+      expected: "Mitigatable"
+    )
+    && guarantee_rung_is(
+      r: route_coverage_rung_of(interpreted: non_executing_arm(), native: non_executing_arm()),
+      expected: "Mitigatable"
+    )
+}
+
+fn an_executing_arm() -> PathExecution {
+  ExecutedPendingVerification {
+    instrument: "fixture instrument" as NonEmptyStr,
+    unverified_premises: [unverified_entry_premise]
+  }
+}
+
+// THE SEED-ESCAPE ARMS ARE DISTINGUISHED BY THE ARM, NOT BY PROSE. Every row in the live roster is
+// currently open, so a constant-true reader would be indistinguishable from a correct one when read
+// over the roster alone. The closed fixture is what separates them.
+test fn v2_compile_obligation_seed_escape_arms_are_distinguished_holds() -> Bool {
+  obligation_seed_escape_is_open(
+    o: fixture_row(subject: discovered_subject())
+  )
+    && !obligation_seed_escape_is_open(o: closed_escape_fixture_row())
+}
+
+// THE NATIVE COLUMN IS DERIVED, AND ITS PREDECESSOR ARM RETIRED BY ITS OWN DISSOLUTION. Until
+// gunbc#10882 landed, this file asserted that no row executes natively, and said in its own words
+// that the flip "is this arm's intended dissolution, not a regression — the arm deletes then rather
+// than being repaired back to passing". The lane landed, the arm went red, and it is deleted rather
+// than weakened. What replaces it is the check that matters now: native standing is DERIVED from the
+// lane's own universe predicate intersected with floor discovery, so a row is reported as executing
+// natively only when the emitted binary's population actually contains its identity.
+//
+// THE NEGATIVE CONTROL IS AN EXCLUDED SUBJECT, NOT AN OUT-OF-PREFIX ONE, because the prefix half is
+// already covered by the gate-closure arm and because the excluded half is where the first cut of
+// this derivation was wrong: asking the lane's prefix predicate alone reported two carved-out
+// obligations as natively executing.
+test fn v2_compile_obligation_native_standing_intersects_discovery_holds() -> Bool {
+  witness_subject_in_native_lane(w: discovered_subject())
+    && !witness_subject_in_native_lane(w: frozen_and_excluded_subject())
+    && !witness_subject_in_native_lane(w: this_witnesss_own_subject())
+}
+
+// THE CENSUS'S HEADLINE COMPARISON, EXERCISED ON THE LAW RATHER THAN THROUGH A ROW. Inflation is
+// claimed > coverage, and both sides have to vary independently or a passing predicate could be
+// reading only one. Going through a fixture obligation can no longer do that: with the native lane
+// off the merge path no row reaches a both-routes-executing coverage, so every row-based case would
+// observe Mitigatable and the arm would be permanently green on one side.
+//
+// THE FOUR CASES. Claimed above coverage IS inflated, at one rank and at two, so the predicate is not
+// reading a fixed gap. Claimed EQUAL to coverage is not, which is what stops it from being "claim is
+// high". And claimed BELOW coverage is not either -- under-claiming is honesty, not a defect, and
+// that arm is what makes this a strict inequality rather than a disagreement.
+test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> Bool {
+  rung_is_inflated_of(claimed: StructurallyGuaranteed, coverage: Mitigatable)
+    && rung_is_inflated_of(claimed: MechanicallyPreventable, coverage: Mitigatable)
+    && !rung_is_inflated_of(claimed: Mitigatable, coverage: Mitigatable)
+    && !rung_is_inflated_of(claimed: MechanicallyPreventable, coverage: MechanicallyPreventable)
+    && !rung_is_inflated_of(claimed: Mitigatable, coverage: MechanicallyPreventable)
+}
+
+// A CLAIM ABOVE THE ROW'S OWN CEILING IS INCOHERENT, and unlike the emptiness checks this module
+// deleted, this RED is authorable — the ceiling and the claim are independent fields and a fixture
+// can set them in either order.
+test fn v2_compile_obligation_claim_above_its_own_ceiling_is_detected_holds() -> Bool {
+  obligation_claim_exceeds_its_ceiling(o: over_ceiling_fixture_row())
+    && !obligation_claim_exceeds_its_ceiling(
+      o: fixture_row(subject: discovered_subject())
+    )
+}
+
+
+fn over_ceiling_fixture_row() -> V2CompileObligation {
+  V2CompileObligation {
+    identity: "fixture_over_ceiling" as NonEmptyStr,
+    kind: RequiredRootLens,
+    home: HomeAuthority { authority: fixture_home },
+    claimed_rung: StructurallyGuaranteed,
+    witnesses: [discovered_subject()],
+    discriminating_red: "fixture red" as NonEmptyStr,
+    positive_control: "fixture positive control" as NonEmptyStr,
+    ceiling: Mitigatable,
+    next_trigger: climbs_when(capability: "fixture trigger"),
+    seed_escape: SeedEscapeOpen { what_the_seed_does: "fixture escape" as NonEmptyStr },
+    related_drops: [],
+  }
+}
+
+
+// THE UNVERIFIED-ENTRY DEBT IS COUNTED, NOT ASSUMED. A row whose subject survives both subtractions
+// reports ExecutedPendingVerification and is counted as debt; a row whose subject is frozen and
+// excluded reports neither and is not. Without the second arm a constant-true reader would be
+// indistinguishable from a correct one, and the debt number would equal the row count forever.
+//
+// THIS ARM EXISTS BECAUSE THE FIRST CUT WIDENED. "Not frozen and not excluded" was reported as plain
+// ExecutedOnPath, so a moved or deleted entry — covered by neither roster — would have read as
+// covered at exactly the moment the derivation stopped being able to decide. The arm is now
+// separate, loud and counted, and its dissolution is bound to
+// gunbc.v2_compile_obligation_census entry_existence_verification_trigger.
+test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
+  obligation_executes_on_an_unverified_entry(
+    o: fixture_row(subject: discovered_subject())
+  )
+    && !obligation_executes_on_an_unverified_entry(
+      o: fixture_row(subject: frozen_and_excluded_subject())
+    )
+}
+
+// THE GATE-CLOSURE SUBTRACTION, WITH THIS FILE'S OWN MODULE AS THE NEGATIVE CONTROL. The required
+// floor prepares the import closure of v2.workflow.required_floor required_gate_prefixes, not the
+// corpus, so a discovered witness outside that roster is dispositioned DeclinedOutsideGateClosure
+// and does not run. Every witness the census names is under v2.test., which the roster admits.
+//
+// AND THIS WITNESS IS NOT. test.claim.v2_compile_obligation_census_witness_test matches no prefix in
+// the roster, so the arm below asserts its own dormancy on ordinary required floors. What selects it
+// otherwise is narrower than a closure walk: changed-witness selection folds the EDITED TEST
+// FUNCTIONS in the run's diff, so editing what these arms CALL without editing the arms themselves
+// selects nothing. That is an
+// uncomfortable thing for a witness to prove about itself and it is the honest pair: a predicate
+// that answered "inside" to everything would pass the first conjunct and fail the second, and using
+// any other module as the control would have let this file avoid stating its own standing.
+test fn v2_compile_obligation_gate_closure_subtraction_is_asked_holds() -> Bool {
+  witness_subject_is_inside_gate_closure(w: discovered_subject())
+    && witness_subject_is_inside_gate_closure(w: frozen_and_excluded_subject())
+    && !witness_subject_is_inside_gate_closure(w: this_witnesss_own_subject())
+}
+
+fn this_witnesss_own_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "dag/test/claim/v2_compile_obligation_census_witness_test.dag",
+    function: "v2_compile_obligation_gate_closure_subtraction_is_asked_holds",
+    module_path: "test.claim.v2_compile_obligation_census_witness_test"
+  )
+}
+
+// THE PREMISE FOLD READS ITS ARGUMENT, WHICH IS THE PROPERTY THAT SURVIVED THE LANE'S DELETION. When
+// the native route was a required lane the census carried two premises and this arm contrasted them;
+// gunbc#11003 took that lane off the merge path, the unread-verdict premise described a state nobody
+// can reach, and it was deleted with its fold. What must still hold is that standing_carries_premise
+// answers about the premise it is HANDED rather than about the arm it is looking at — otherwise the
+// remaining count could drift onto any premise at all. So the absent side is now an arbitrary real
+// reference that no standing carries, which tests the same property without inventing a second
+// production premise to keep a test company.
+test fn v2_compile_obligation_premise_fold_reads_its_argument_holds() -> Bool {
+  standing_carries_premise(p: entry_only_pending_standing(), premise: unverified_entry_premise)
+    && !standing_carries_premise(p: entry_only_pending_standing(), premise: a_premise_no_standing_carries())
+    && !standing_carries_premise(p: non_executing_arm(), premise: unverified_entry_premise)
+}
+
+fn a_premise_no_standing_carries() -> DeclarationRef {
+  decl_ref(module_path: "fixture.premise", decl_name: "carried_by_nothing")
+}
+
+fn entry_only_pending_standing() -> PathExecution {
+  ExecutedPendingVerification {
+    instrument: "fixture instrument" as NonEmptyStr,
+    unverified_premises: [unverified_entry_premise]
+  }
+}

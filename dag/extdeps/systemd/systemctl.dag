@@ -1,6 +1,7 @@
 module extdeps.systemd.systemctl
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.types { NonEmptyStr, List, Bool, Int, Unit }
+import std.string_type { String }
 import std.algebra { trim }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
@@ -210,6 +211,31 @@ fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty
     concat("--property=", systemd_unit_property_wire(property: property) as String),
     "--value",
   ]
+}
+
+// SEVERAL PROPERTIES OF SEVERAL UNITS IN ONE READ. systemctl show accepts a comma-separated
+// --property list and any number of units, and prints one block of `Name=value` lines per unit with a
+// blank line between blocks. Without --value the property names ride along, so a consumer can key each
+// value by name rather than trusting an output order systemctl does not document; asking for Id makes
+// every block say which unit it describes. A unit the manager has not loaded still gets a block --
+// LoadState=not-found beside the manager's DEFAULTS for every other property -- so a consumer must read
+// LoadState before believing any other value in that block.
+fn systemctl_show_properties_argv(units: List<NonEmptyStr>, properties: List<SystemdUnitProperty>) -> List<String> {
+  concat(
+    [
+      "systemctl",
+      "show",
+      concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")),
+    ],
+    map(units, u => u as String),
+  )
+}
+
+// Every service unit the manager holds, loaded or not, as plain rows whose first field is the unit
+// name. No pattern: a glob is a shell word the fleet's far-side re-parse refuses, so the caller filters
+// by name in the model instead.
+fn systemctl_list_all_service_units_argv() -> List<String> {
+  ["systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"]
 }
 
 // LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.

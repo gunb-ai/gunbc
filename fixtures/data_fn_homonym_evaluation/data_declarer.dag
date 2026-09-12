@@ -1,0 +1,13 @@
+module fixtures.data_fn_homonym_evaluation.data_declarer
+
+import std.types { NonEmptyStr }
+
+// THE DATA HALF OF THE HOMONYM. A record-valued `data` whose bare spelling another module declares
+// as a `fn`. read_homonym_field is the whole subject: a reference to this module's own data,
+// resolved inside this module, followed by one field access. Nothing here refers to the other
+// module.
+type HomonymRow { field: NonEmptyStr }
+
+data evaluation_homonym: HomonymRow = HomonymRow { field: "data-side" }
+
+fn read_homonym_field() -> NonEmptyStr { evaluation_homonym.field }

@@ -115,7 +115,14 @@ import product.placement_supply { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
 import extdeps.gunbc
-import extdeps.apt { package_curl, package_nbdkit, package_socat, package_xorriso, apt_get_binary_path }
+import extdeps.apt {
+  package_curl,
+  package_nbdkit,
+  package_socat,
+  package_xorriso,
+  apt_get_binary_path,
+  apt_installed_bin_path,
+}
 import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
@@ -1616,6 +1623,22 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
   }
 }
 
+// TRANSPORT-CONDITIONED PRESENCE, not a silent fork of one question. LocalShell and SshShell keep
+// posix_command_v_check_argv / shell.PosixCommandV.Check: PRESENT ON PATH. FleetSsh cannot carry that
+// argv -- the -c payload is not a PortableRemoteWord (spaces, quotes, `$`) -- so it answers a
+// different, named question: shell.Test.IsExecutable over extdeps.apt apt_installed_bin_path,
+// PRESENT AT THIS PATH (`apt_bin_dir` + binary). A tool installed outside apt_bin_dir (diverted
+// path, /usr/sbin, a local build) now reads absent and the ensure takes the install arm; apt then
+// no-ops if the package is already recorded, so the host is not harmed, but the receipt can say
+// the install ran for a host that already had the binary elsewhere.
+//
+// Path-presence is the right question for an apt-acquired tool: the installer places the binary
+// at that FHS path, and the password-session exec is that argv0. PATH search would accept a
+// shadow that apt does not own. srv3_toolchain_rows consumers are unaffected: host_toolchain_ensure
+// passes host_identity_ssh_access transport (SshShell), and seeded-install-media toolchain
+// ensure uses ci_deploy_srv1_access (LocalShell). Neither production caller uses FleetSsh; both
+// still rely on PATH presence. The realize entry gate admits FleetSsh so a later caller would
+// inherit this path-presence arm -- that is the caveat, not a current production change.
 fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   match transport {
     LocalShell =>
@@ -1628,13 +1651,10 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
-    FleetSsh { target: t, context: c } =>
-      srv3_predicate_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(
-          target: t,
-          context: c,
-          argv: posix_command_v_check_argv(command: tool_name),
-        ),
+    FleetSsh { target: _, context: _ } =>
+      srv3_transport_test_executable(
+        path: apt_installed_bin_path(binary: tool_name) as String,
+        transport: transport,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3PredicateUnobserved {
@@ -1643,6 +1663,12 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
   }
 }
 
+// FleetSsh resolved path is the same question as srv3_apt_tool_present: executable at
+// apt_installed_bin_path (FHS /usr/bin/<binary>), not PATH stdout from command -v. LocalShell and
+// SshShell still resolve via command -v. This arm is in scope because srv3_apt_tool_version_ok
+// (and srv3_run_tool_by_name) read the path from here; leaving FleetSsh on posix_command_v_check_argv
+// would make version_ok Unobserved after a successful path-presence probe -- the install arm would
+// never be able to prove the version on FleetSsh. A binary only elsewhere still reads absent.
 fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) -> Srv3ObservedToken {
   match transport {
     LocalShell => {
@@ -1660,14 +1686,16 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
       srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool_name)),
       )
-    FleetSsh { target: t, context: c } =>
-      srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(
-          target: t,
-          context: c,
-          argv: posix_command_v_check_argv(command: tool_name),
-        ),
-      )
+    FleetSsh { target: _, context: _ } =>
+      match srv3_transport_test_executable(
+        path: apt_installed_bin_path(binary: tool_name) as String,
+        transport: transport,
+      ) {
+        Srv3PredicateHolds =>
+          Srv3TokenObserved { value: apt_installed_bin_path(binary: tool_name) as String }
+        Srv3PredicateFails => Srv3TokenAbsent
+        Srv3PredicateUnobserved { reason: why } => Srv3TokenUnobserved { reason: why }
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3TokenUnobserved {
         reason: "EmitArtifactThenThinRun transport has no arm that can resolve a tool path",

@@ -1,7 +1,9 @@
 module gunbc.bmc_implementation_dispatch
 
-import std.types { List, String }
+import std.types { List, NonEmptyStr, String }
 import std.credentials { FactoryLogin }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef, decl_field_ref }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, OpenBmc }
 import extdeps.bmc.openbmc {
   HostStorageBlind,
@@ -19,7 +21,16 @@ import extdeps.bmc.megarac { megarac_factory_login, megarac_supported_protocols_
 // OpenBMC module import the MegaRAC one — the 'a Chrome change must not require editing
 // Safari's module' violation named in DESIGN §3, and the reason those functions now live here.
 // Each is an exhaustive match, so a third implementation refuses to compile here and nowhere
-// else; that is the census. Every arm returns what its implementation module CITES at the
+// else; that is the census. THAT SENTENCE IS LOAD-BEARING AND IT IS WHY rotation_route_for_family
+// LANDED HERE RATHER THAN IN machine_intake (review 63250, gunbc#10952). It was first authored in
+// gunbc.machine_intake_bmc_rotation_route as a fourth `match family` -- which would have made
+// "here and nowhere else" false the moment it merged, and split the third-implementation census
+// across two modules with no cross-reference. The route table is realization keyed on firmware
+// family and cites only extdeps.bmc facts, so this is its home by the same reasoning that moved
+// the gunbc#9678 arms out of extdeps.bmc.openbmc. What stayed behind is the part that is NOT
+// family-keyed: rotation_application_for_route maps a route to a machine_intake
+// CredentialRotationApplication, so hoisting it would make this peripheral dispatch module depend
+// on machine_intake and invert the layering it exists to keep straight. Every arm returns what its implementation module CITES at the
 // family grain: MegaRAC's published admin/admin default and IPMI-only protocol floor come from
 // extdeps.bmc.megarac, whose scope note explains why Redfish presence is a build-scoped fact
 // carried on the build binding, never here.
@@ -51,3 +62,78 @@ fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHos
     AmiMegaRac => megarac_host_storage_visibility_floor
   }
 }
+
+// THE AVAILABLE ARM CARRIES REFERENCES, NOT A SENTENCE ABOUT THEM (review 63263). It was a single
+// path_note String spelling out the method, the path template, the JSON member, the operation name
+// and the executing tool -- and every one of those is ALREADY a modeled fact: the argv is
+// `operation SetAccountPassword` on the redfish.Http service, the action shape is the
+// SetAccountPassword arm of RedfishSystemAction, and the provenance is the call site in
+// gunbc.tools.bmc_onboard. A String leaf hiding named parts is anemic modeling (DESIGN §2), and a
+// symbol cited INSIDE a string literal is unreachable from the Node tree, so unlike a
+// DeclarationRef it is not harvested by the citation checker -- it can rot with neither end touched.
+//
+// THE REFS ARE BUILT BY std.decl_ref's OWN CONSTRUCTOR, not spelled as record literals here (review
+// 63521). That module's annotation states the rule: a module needing a DeclarationRef imports the
+// constructor from the type's own module and never re-mints it. Spelling the literal inline is the
+// same re-invention DESIGN §2 forbids, one layer down from the prose leaf this arm already replaced.
+//
+// AND IT WOULD NOT HAVE SURVIVED ITS OWN FRONTIER. rotation_route_consumption_frontier promises an
+// actuator that DERIVES the rotation by calling this table; that actuator needs the operation, not
+// a description of it, so the arm would have been rewritten rather than consumed -- §6's reviewer
+// test answered "no" on the one arm that is supposed to work.
+type BmcRotationRoute
+  = RotationRouteRedfishAccountService { transport_operation: DeclarationRef, action_shape: DeclarationRef }
+  | RotationRouteUnavailable { family_note: NonEmptyStr, detail: NonEmptyStr }
+
+// THE MEGARAC ARM IS UNAVAILABLE AND THAT IS A GROUNDED STATEMENT, NOT A GAP LEFT BLANK.
+// extdeps.bmc.megarac declares its own admission rule in its scope note: its REST operation rows
+// are "the SP-X interface shape AS EXECUTED on that build - the one place a single-build execution
+// grounds a family-grain row - and carry that provenance explicitly". Six operations are rostered
+// there and every one was executed against the controller. NO USER-MANAGEMENT OPERATION HAS BEEN
+// EXECUTED, so authoring one would put an unexecuted row beside six executed ones under a rule that
+// admits only the executed -- the module contradicting itself in its own file. AMI publishes no
+// SP-X API reference to cite instead; the module's external authority is a product page.
+//
+// AND ONE ATTEMPT IS KNOWN TO HAVE REACHED SOMETHING. gunbc#10630 records a rotation attempt whose
+// REST path answered "attempt to set previous password" against a policy-conforming secret -- a
+// DECIDED response, so an endpoint exists, parses the field and applies a history policy to it. The
+// request that produced it was never committed and cannot be recovered from any diff, which is
+// filed as gunbc.recurring_failure_mode.ad_hoc_hardware_probe_produces_no_receipt. So the honest
+// state is not "MegaRAC cannot rotate" -- it is "we have seen it answer and we cannot say how we
+// asked".
+fn rotation_route_for_family(family: BmcFirmwareFamily) -> BmcRotationRoute {
+  match family {
+    OpenBmc => RotationRouteRedfishAccountService {
+      transport_operation: decl_field_ref(
+        module_path: "extdeps.bmc.http",
+        decl_name: "redfish.Http",
+        field_name: "SetAccountPassword",
+      ),
+      action_shape: decl_field_ref(
+        module_path: "extdeps.bmc.types",
+        decl_name: "RedfishSystemAction",
+        field_name: "SetAccountPassword",
+      ),
+    }
+    AmiMegaRac => RotationRouteUnavailable {
+      family_note: "AMI MegaRAC serves an SP-X-style /api/ surface and no Redfish service root" as NonEmptyStr,
+      detail: "no executed user-management operation exists on extdeps.bmc.megarac, whose scope note admits an operation row only as executed; a rotation attempt has answered a password-history refusal, so an endpoint exists, but the request that reached it was never committed" as NonEmptyStr,
+    }
+  }
+}
+
+// WHAT RETIRES THE UNAVAILABLE ARM, NAMED AS THE CAPABILITY RATHER THAN AS THE ROW IT WOULD ADD.
+// Adding a megarac_op_user_password row is the ARTIFACT; the capability is an EXECUTED user-
+// management request against a MegaRAC controller whose request shape and response are committed as
+// evidence, which is what that module's own admission rule requires and what neither prior attempt
+// produced. Until that exists the arm stays Unavailable.
+//
+// WHAT THAT DOES NOT YET MEAN, because the first draft said it did: this sentence previously read
+// "and the Arrival phase stays unsatisfied for every MegaRAC unit". No unit's Arrival phase reads
+// this table today -- BmcCredentialRotationObservation takes `rotation` as a SUPPLIED field -- so
+// that was a claim about the terminal architecture in the present tense, the same DESIGN §4b(1)
+// inflation corrected in gunbc.machine_intake_bmc_rotation_route. The Arrival consequence arrives
+// with the actuator named in rotation_route_consumption_frontier, not with this row.
+data megarac_rotation_route_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when an executed MegaRAC user-management request against a live controller commits its request shape and response as evidence, so extdeps.bmc.megarac may roster the operation under its as-executed admission rule and this arm can return a route; NOT satisfied by authoring an operation row from AMI documentation, from the srv3/srv4 Redfish shape, or from the uncommitted attempt recorded in gunbc#10630" as NonEmptyStr,
+)

@@ -30,66 +30,106 @@ import gunbc.fabric_m0_completion {
   PublishFinalizationFailed,
   PublishPendingReconciliation,
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.fabric_m0_origin_readback {
+  OriginReading,
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  origin_reading_digest,
+  read_origin_staged_file,
+}
 import gunbc.fabric_m0_commit {
   CommitTransportOutcome,
   StoreAnswered,
   StoreDidNotAnswer,
   ManifestReadbackObservation,
   ManifestRead,
-  ReadSource,
-  DurableOriginRead,
-  DisposableCacheRead,
+  cache_manifest_read,
   ManifestNotFound,
   ManifestReadUnavailable,
   publish_after_commit,
   CommitNamespace,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// READS THE LIVE TREE, AND THE STAMP HAD TO CHANGE WITH THE BODY. This file previously declared
+// SubstrateInputsOnly and was correct to: it was a pure fold over authored fixtures. Deleting the
+// fixture mint makes it call read_origin_staged_file over a committed repository path, which reaches
+// a live-checkout sink, so the old stamp would be a declaration asserting something its own body
+// contradicts -- and nothing in the toolchain compares the two. A stamp that outlives the body it
+// describes is the same stale-evidence class this PR repairs everywhere else, one scale down.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-fn digest_a() -> Sha256Digest {
-  Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha256DigestHex }
+// EVERY CONFIRMING READ BELOW IS A REAL READ. There is no fixture mint any more, and that is the
+// point rather than an inconvenience: an earlier revision of this file called an admitted
+// witness_origin_reading with a digest of its own choosing, and because .dag has no module-private,
+// that admitted wrapper was itself an exported unrestricted constructor -- a foreign module could
+// import THIS function and reach ManifestRead with any digest it liked. Measured, not reasoned:
+// the probe compiled with 0 blocking errors. Sealing the wrapper in turn would only have moved the
+// proxy one hop, because every helper that returns a value CARRYING a reading is the same escape.
+//
+// So the mint is gone and these witnesses obtain readings the only way anything can: by digesting a
+// file. Under the hermetic envelope crypto.Sha256Sum.File replays one constant digest for every
+// path, which is exactly enough for the verdict algebra -- what these witnesses are about -- because
+// the RECORDED digest is what varies between the matching and mismatching arms. Whether the digest
+// tracks the bytes is a different question and is measured wet by
+// tools.fabric_m0_origin_readback_probe.
+data fixture_staged_manifest: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
+
+fn read_outcome() -> OriginReadingOutcome {
+  read_origin_staged_file(staged_path: fixture_staged_manifest)
+}
+
+// The digest the origin actually returned. It is DERIVED from the reading, never authored, so the
+// success arms below cannot drift away from what was read.
+fn digest_a(r: OriginReading) -> Sha256Digest {
+  origin_reading_digest(reading: r)
 }
 
 fn the_attempt() -> AttemptIdentity {
   "attempt-1" as AttemptIdentity
 }
 
-fn members() -> List<ManifestMember> {
+fn members(r: OriginReading) -> List<ManifestMember> {
   [
-    ManifestMember { obligation: build_output(), content: digest_a() },
-    ManifestMember { obligation: execution_receipt(), content: digest_a() },
+    ManifestMember { obligation: build_output(), content: digest_a(r: r) },
+    ManifestMember { obligation: execution_receipt(), content: digest_a(r: r) },
   ]
 }
 
-fn committed_both() -> List<CommittedOutput> {
+fn committed_both(r: OriginReading) -> List<CommittedOutput> {
   [
-    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a() },
-    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a() },
+    CommittedOutput { obligation: build_output(), attempt: the_attempt(), recorded_digest: digest_a(r: r) },
+    CommittedOutput { obligation: execution_receipt(), attempt: the_attempt(), recorded_digest: digest_a(r: r) },
   ]
 }
 
 // The object reads. The MANIFEST's observation is deliberately not here: the commit boundary
 // derives it from the transport and the read, so a caller cannot supply one that disagrees with the
 // slot the manifest actually lives at.
-fn object_reads() -> List<OriginObservation> {
+fn object_reads(r: OriginReading) -> List<OriginObservation> {
   [
-    OriginObservation { subject: ObligationSubject { obligation: build_output() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
-    OriginObservation { subject: ObligationSubject { obligation: execution_receipt() }, readback: ReadbackConfirmed { observed_digest: digest_a() } },
+    OriginObservation { subject: ObligationSubject { obligation: build_output() }, readback: ReadbackConfirmed { reading: r } },
+    OriginObservation { subject: ObligationSubject { obligation: execution_receipt() }, readback: ReadbackConfirmed { reading: r } },
   ]
 }
 
-fn commit(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> JobPublication {
+// THE RECORDED MANIFEST DIGEST IS A PARAMETER, because it is the axis the mismatch arms vary. What
+// the commit RECORDED is a claim the commit makes; what the read OBSERVED is a fact the read
+// produces. Under the hermetic mock the observed side is one constant, so the arm that must diverge
+// is the recorded one -- which is the same asymmetry the old shape expressed from the other side,
+// and the honest direction: an authority cannot choose what it reads back.
+fn commit(r: OriginReading, recorded_manifest: Sha256Digest, transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> JobPublication {
   publish_after_commit(
     namespace: the_namespace(),
     attempt: the_attempt(),
     computation: ComputationSucceeded,
     resolution: the_resolution(),
     judged_work: the_work(),
-    committed: committed_both(),
-    observations: object_reads(),
-    manifest_digest: digest_a(),
-    members: members(),
+    committed: committed_both(r: r),
+    observations: object_reads(r: r),
+    manifest_digest: recorded_manifest,
+    members: members(r: r),
     transport: transport,
     observed: observed,
   )
@@ -156,9 +196,13 @@ fn store_refused() -> CommitTransportOutcome {
 
 // THE POSITIVE CONTROL: a store that answered and a read that found the intended manifest.
 test fn an_answered_commit_confirmed_by_readback_publishes_success() -> Bool {
-  match commit(transport: store_refused(), observed: ManifestRead { observed_digest: digest_a(), source: DurableOriginRead }) {
-    PublishSuccess { attempt: _, manifest_digest: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(r: r, recorded_manifest: digest_a(r: r), transport: store_refused(), observed: ManifestRead { reading: r }) {
+        PublishSuccess { attempt: _, manifest_digest: _ } => true
+        other => false
+      }
   }
 }
 
@@ -166,42 +210,62 @@ test fn an_answered_commit_confirmed_by_readback_publishes_success() -> Bool {
 // is PENDING -- not a failure. Rendering it absent would re-execute work that may already be
 // committed, and rendering it success would green over bytes nobody read.
 test fn an_unanswered_write_with_no_object_yet_is_pending() -> Bool {
-  match commit(
-    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
-    observed: ManifestNotFound,
-  ) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(
+        r: r,
+        recorded_manifest: digest_a(r: r),
+        transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
+        observed: ManifestNotFound,
+      ) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
 // AND THE SAME UNANSWERED WRITE RECONCILES once an independent read finds the intended manifest, so
 // the pending arm above is a state that resolves rather than a dead end.
 test fn an_unanswered_write_reconciles_when_the_object_is_read_back() -> Bool {
-  match commit(
-    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
-    observed: ManifestRead { observed_digest: digest_a(), source: DurableOriginRead },
-  ) {
-    PublishSuccess { attempt: _, manifest_digest: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(
+        r: r,
+        recorded_manifest: digest_a(r: r),
+        transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
+        observed: ManifestRead { reading: r },
+      ) {
+        PublishSuccess { attempt: _, manifest_digest: _ } => true
+        other => false
+      }
   }
 }
 
 // A READ THAT COULD NOT RUN IS ALSO UNKNOWN, never absence: not reaching the store says nothing
 // about what the store holds.
 test fn an_unavailable_readback_is_pending_not_absent() -> Bool {
-  match commit(transport: store_refused(), observed: ManifestReadUnavailable { cause: "origin unreachable" }) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(r: r, recorded_manifest: digest_a(r: r), transport: store_refused(), observed: ManifestReadUnavailable { cause: "origin unreachable" }) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
 // AN OBJECT THE READER LOOKED FOR AND DID NOT FIND, after a store that DID answer, is decided
 // against us -- this is the arm that must not be confused with the two above.
 test fn an_answered_commit_with_no_object_prevents_success() -> Bool {
-  match commit(transport: store_refused(), observed: ManifestNotFound) {
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(r: r, recorded_manifest: digest_a(r: r), transport: store_refused(), observed: ManifestNotFound) {
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
@@ -211,12 +275,18 @@ test fn an_answered_commit_with_no_object_prevents_success() -> Bool {
 // looking maximally conservative. It is a separate witness from the store-answered one above
 // because they are different branches, and covering one left the other free to lie.
 test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool {
-  match commit(
-    transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
-    observed: ManifestReadUnavailable { cause: "origin unreachable" },
-  ) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(
+        r: r,
+        recorded_manifest: digest_a(r: r),
+        transport: StoreDidNotAnswer { slot: our_slot(), cause: "commit acknowledgement lost" },
+        observed: ManifestReadUnavailable { cause: "origin unreachable" },
+      ) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
@@ -224,27 +294,39 @@ test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool {
 // relation outside its own guarantee -- its observation carries no key, so generations agreeing is
 // enough to commit to the wrong slot -- and names the realization as the owner. This is that owner.
 test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool {
-  match commit(
-    transport: StoreAnswered {
-      slot: "fabric-m0/v1/commit/attempt-9",
-      outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
-    },
-    observed: ManifestRead { observed_digest: digest_a(), source: DurableOriginRead },
-  ) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(
+        r: r,
+        recorded_manifest: digest_a(r: r),
+        transport: StoreAnswered {
+          slot: "fabric-m0/v1/commit/attempt-9",
+          outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } },
+        },
+        observed: ManifestRead { reading: r },
+      ) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
 // AND A FOREIGN-SLOT ANSWER IS NOT REPORTED AS ABSENCE EITHER, so the check above is not satisfied
 // by an implementation that simply fails everything it cannot match.
 test fn a_foreign_slot_answer_is_not_reported_as_absence() -> Bool {
-  match commit(
-    transport: StoreDidNotAnswer { slot: "fabric-m0/v1/commit/attempt-9", cause: "commit acknowledgement lost" },
-    observed: ManifestNotFound,
-  ) {
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
-    other => true
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(
+        r: r,
+        recorded_manifest: digest_a(r: r),
+        transport: StoreDidNotAnswer { slot: "fabric-m0/v1/commit/attempt-9", cause: "commit acknowledgement lost" },
+        observed: ManifestNotFound,
+      ) {
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => false
+        other => true
+      }
   }
 }
 
@@ -265,27 +347,39 @@ fn precondition_failed() -> CommitTransportOutcome {
 // the store answers precondition-failed because A's manifest is already there. Reporting that as
 // absence fails a job whose result is committed and readable.
 test fn a_precondition_failure_reconciles_when_our_manifest_is_read_back() -> Bool {
-  match commit(transport: precondition_failed(), observed: ManifestRead { observed_digest: digest_a(), source: DurableOriginRead }) {
-    PublishSuccess { attempt: _, manifest_digest: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(r: r, recorded_manifest: digest_a(r: r), transport: precondition_failed(), observed: ManifestRead { reading: r }) {
+        PublishSuccess { attempt: _, manifest_digest: _ } => true
+        other => false
+      }
   }
 }
 
 // AND A FOREIGN OCCUPANT IS STILL A CONFLICT, so the repair above does not turn precondition failure
 // into a blanket success. The reconciliation is earned by the digest matching, not by the branch.
 test fn a_precondition_failure_with_a_conflicting_manifest_prevents_success() -> Bool {
-  match commit(transport: precondition_failed(), observed: ManifestRead { observed_digest: digest_b(), source: DurableOriginRead }) {
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(r: r, recorded_manifest: digest_b(), transport: precondition_failed(), observed: ManifestRead { reading: r }) {
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
 // AND A PRECONDITION FAILURE WITH NOTHING AT THE SLOT IS STILL ABSENCE: the store answered, so a
 // fruitless read establishes non-commitment rather than leaving it unknown.
 test fn a_precondition_failure_with_no_object_is_absence() -> Bool {
-  match commit(transport: precondition_failed(), observed: ManifestNotFound) {
-    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(r: r, recorded_manifest: digest_a(r: r), transport: precondition_failed(), observed: ManifestNotFound) {
+        PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
@@ -293,24 +387,44 @@ test fn a_precondition_failure_with_no_object_is_absence() -> Bool {
 // hollow. The cache and the origin address the same immutable object by the same content key, so
 // the bytes and the digest are identical and only the SOURCE separates them. Reading our own
 // manifest back off the node that is about to be lost must not publish success.
+//
+// THIS WITNESS CHANGED SHAPE WITH THE REPAIR AND STAYS ENROLLED (DESIGN 4b(4)). It used to hand the
+// fold a ManifestRead stamped DisposableCacheRead and check that the fold refused it -- a check that
+// could be satisfied by editing the stamp. There is no stamp now: cache_manifest_read is the ONLY
+// thing a cache read can produce and it cannot produce a confirming read at all, so what this
+// witness now establishes is that the cache route still reaches pending rather than success. The
+// discriminating evidence that the confirming route is unreachable from outside is a compile
+// refusal, not a value comparison, and lives in test.claim.fabric_m0_origin_readback_seal.
 test fn a_manifest_read_from_the_local_cache_cannot_publish_success() -> Bool {
-  match commit(
-    transport: store_refused(),
-    observed: ManifestRead { observed_digest: digest_a(), source: DisposableCacheRead { provider: "srv1-nvme" } },
-  ) {
-    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(
+        r: r,
+        recorded_manifest: digest_a(r: r),
+        transport: store_refused(),
+        observed: cache_manifest_read(provider: "srv1-nvme"),
+      ) {
+        PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => true
+        other => false
+      }
   }
 }
 
 // AND THE SAME BYTES FROM THE ORIGIN DO PUBLISH, so the refusal above is attributable to the source
 // and not to anything about the content. Identical digest, identical transport, opposite verdict.
 test fn the_same_manifest_read_from_the_origin_publishes_success() -> Bool {
-  match commit(
-    transport: store_refused(),
-    observed: ManifestRead { observed_digest: digest_a(), source: DurableOriginRead },
-  ) {
-    PublishSuccess { attempt: _, manifest_digest: _ } => true
-    other => false
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      match commit(
+        r: r,
+        recorded_manifest: digest_a(r: r),
+        transport: store_refused(),
+        observed: ManifestRead { reading: r },
+      ) {
+        PublishSuccess { attempt: _, manifest_digest: _ } => true
+        other => false
+      }
   }
 }

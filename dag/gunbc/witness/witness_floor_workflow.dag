@@ -16,7 +16,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import v2.std.algebra { FreeSemigroup, list_append, list_map, non_empty_to_list }
+import v2.std.algebra { FreeSemigroup, fold_list, list_append, list_map, non_empty_to_list, list_head, skip, HeadFound, HeadAbsent }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
@@ -49,7 +49,11 @@ import extdeps.github.actions {
   CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
   RunnerSpec,
-  checkout_action, setup_rust_action
+  checkout_action, setup_rust_action,
+  github_event_name_pull_request,
+  github_event_name_push,
+  github_event_name_merge_group,
+  github_event_name_workflow_dispatch
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_heal_credential {
@@ -72,7 +76,40 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, witnesses_lane_measurement_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { RequiredLane, required_lanes_gate_stmts }
-import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
+import gunbc.ci_failure_class {
+  wrap_command_with_floor_attempt_receipt,
+  wrap_command_is_renderable,
+  floor_attempt_receipt_finalize_script,
+  floor_attempt_receipt_finalize_is_renderable,
+  floor_attempt_receipt_filename,
+  floor_attempt_command_log_filename,
+  floor_attempt_receipt_output_name,
+  floor_attempt_receipt_step_id,
+}
+import extdeps.github.expressions {
+  ContextAccess,
+  Github,
+  Needs,
+  Steps,
+  interpolate,
+  Expression,
+  FunctionCall,
+  Format,
+  StringLiteral,
+  LogicalOr,
+  LogicalAnd,
+  Equals,
+  NotEquals,
+  evaluate_expression,
+  github_path_key,
+  GithubPathValue,
+  GithubPathUnmodeled,
+  GithubPathResolution,
+  ExpressionValue,
+  ExpressionEvaluationRefused,
+  ExpressionEvaluation,
+  ExpressionEvaluationRefusal
+}
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_finalize_stmts,
@@ -80,7 +117,7 @@ import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_build_outcome_var
 }
 import v2.std.diagnostic { Outcome }
-import std.types { List, String, Int }
+import std.types { Bool, List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
@@ -215,36 +252,176 @@ data heal_generated_artifacts_job_id: String = "heal-generated-artifacts"
 // admission comparing against a name nothing produces, refusing every candidate forever.
 data witness_floor_workflow_name: String = "witnesses"
 
-// CANCELLATION IS A PER-EVENT FACT, AND THE GROUP CARRIES HALF OF IT. Operator ruling 2026-08-17:
-// every push to main must finish; only pull-request runs may be superseded. The predecessor
-// collapsed both axes into one group keyed on `github.ref` with an unconditional `true`, so
-// consecutive pushes to main landed in the single group `witness-floor-refs/heads/main` and each
-// new push killed the previous commit's run -- main's floor coverage was decided by push arrival,
-// the empty-observation narrow section 5 forbids: a cancelled run reports no verdict, and no
-// verdict was being read as nothing to report.
-//
-// Setting `cancel_in_progress` false for main is NOT sufficient on its own. GitHub cancels PENDING
-// runs in a group regardless of that flag -- it only protects a run that has already started -- so
-// a main run queued behind a busy fleet could still be superseded before it executed. The group
-// must therefore be unique per main run, which `github.run_id` gives, and the flag must
-// additionally be false there so the two mechanisms agree rather than one relying on the other.
-//
-// The cost is that N concurrent main runs may execute where one used to. That is the intended
-// trade -- coverage of every landed commit, at fleet occupancy -- and the reason the dep-info race
-// under `target/` is worth identifying before this is widened further.
-//
-// AND QUEUEING IS NOT THE THIRD ARM IT LOOKS LIKE. Sharing one main group with cancellation off
-// makes GitHub QUEUE same-group runs rather than drop them, which reads as coverage without
-// concurrency cost -- but the floor's merge-critical wall runs hours against a main push gap of
-// minutes (run 31672107941, the last main run to complete before the 2026-08-13 measurement), so a
-// queued policy accumulates an unbounded backlog and delivers each verdict long after the commit it
-// judges. A unique key runs them concurrently instead, which is the only arm that yields a verdict
-// per main commit at this arrival rate. This paragraph is carried here because it was the only
-// record of that measurement, and it lived in `gunbc.ci_workflow_expressions` -- a SECOND
-// concurrency authority left behind when the floor cut deleted the workflow it fed. That module's
-// note asserted main was grouped by `github.sha` and "never run_id", which is not what CI runs;
-// its rows are deleted with this one standing as the single authority.
-data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
+// GROUPING AND RUNNING CANCEL ARE TWO AXES. The 2026-09-10 occupancy ruling supersedes the
+// 2026-08-17 per-main-commit grouping policy (unique github.run_id so every main push finished).
+// PRs group by PR identity; main pushes group by github.ref. GitHub may replace obsolete PENDING
+// members of those mutable-head groups; a replaced pending run is not a green verdict. Running
+// cancellation is derived independently from fleet_compile_cancellation_standing: the live
+// producer-absent standing yields NeverSupersedeRunning, so cancel-in-progress is literal false.
+// merge_group and heal revalidation stay immutable and separately keyed (mg-{sha},
+// heal-{expected_healed_sha}); other dispatch uses run_id.
+fn github_event_name_equals(event: String) -> Expression {
+  Equals {
+    left: ContextAccess { context: Github, path: ["event_name"] },
+    right: StringLiteral { value: event }
+  }
+}
+
+fn gha_format_prefix(prefix: String, arg: Expression) -> Expression {
+  FunctionCall {
+    function: Format,
+    args: [StringLiteral { value: concat(prefix, "{0}") }, arg]
+  }
+}
+
+fn github_sha_expr() -> Expression { ContextAccess { context: Github, path: ["sha"] } }
+fn github_ref_expr() -> Expression { ContextAccess { context: Github, path: ["ref"] } }
+fn github_run_id_expr() -> Expression { ContextAccess { context: Github, path: ["run_id"] } }
+fn github_pr_number_expr() -> Expression { ContextAccess { context: Github, path: ["event", "pull_request", "number"] } }
+fn github_dispatch_input_expr(name: String) -> Expression { ContextAccess { context: Github, path: ["event", "inputs", name] } }
+
+type WitnessFloorGroupBranch
+  = ShaAfterEvent { event: String, prefix: String }
+  | NonemptyInputAfterEvent { event: String, input: String, prefix: String }
+  | PrNumberAfterEvent { event: String, prefix: String }
+  | RefAfterEvent { event: String }
+  | RunIdFallback { prefix: String }
+
+fn nonempty_input_after_event_expr(event: String, input: String, prefix: String) -> Expression {
+  LogicalAnd {
+    left: github_event_name_equals(event: event),
+    right: LogicalAnd {
+      left: NotEquals { left: github_dispatch_input_expr(name: input), right: StringLiteral { value: "" } },
+      right: gha_format_prefix(prefix: prefix, arg: github_dispatch_input_expr(name: input))
+    }
+  }
+}
+
+fn group_branch_expr(branch: WitnessFloorGroupBranch) -> Expression {
+  match branch {
+    ShaAfterEvent { event: e, prefix: p } =>
+      LogicalAnd { left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_sha_expr()) }
+    NonemptyInputAfterEvent { event: e, input: i, prefix: p } =>
+      nonempty_input_after_event_expr(event: e, input: i, prefix: p)
+    PrNumberAfterEvent { event: e, prefix: p } =>
+      LogicalAnd { left: github_event_name_equals(event: e), right: gha_format_prefix(prefix: p, arg: github_pr_number_expr()) }
+    RefAfterEvent { event: e } =>
+      LogicalAnd { left: github_event_name_equals(event: e), right: github_ref_expr() }
+    RunIdFallback { prefix: p } =>
+      gha_format_prefix(prefix: p, arg: github_run_id_expr())
+  }
+}
+
+fn witness_floor_group_expression() -> Expression {
+  match list_head(xs: witness_floor_group_branches()) {
+    HeadAbsent => gha_format_prefix(prefix: "run-", arg: github_run_id_expr())
+    HeadFound { value: first } =>
+      fold_list(
+        xs: skip(xs: witness_floor_group_branches(), n: 1),
+        empty: group_branch_expr(branch: first),
+        cons: fn(acc, b) { LogicalOr { left: acc, right: group_branch_expr(branch: b) } }
+      )
+  }
+}
+
+fn witness_floor_concurrency_group() -> String {
+  concat("witness-floor-", interpolate(expression: witness_floor_group_expression()))
+}
+
+fn witness_floor_group_branches() -> List<WitnessFloorGroupBranch> {
+  [
+    ShaAfterEvent { event: github_event_name_merge_group, prefix: "mg-" },
+    NonemptyInputAfterEvent {
+      event: github_event_name_workflow_dispatch,
+      input: ci_heal_expected_healed_sha_input_name,
+      prefix: "heal-"
+    },
+    PrNumberAfterEvent { event: github_event_name_pull_request, prefix: "pr-" },
+    RefAfterEvent { event: github_event_name_push },
+    RunIdFallback { prefix: "run-" }
+  ]
+}
+
+type DispatchInputBinding {
+  name: String
+  value: String
+}
+
+type WitnessFloorGroupFixture {
+  event: String
+  sha: String
+  run_id: String
+  pull_request_number: String
+  github_ref: String
+  dispatch_inputs: List<DispatchInputBinding>
+}
+
+fn dispatch_input_value(bindings: List<DispatchInputBinding>, name: String) -> String {
+  fold_list(
+    xs: bindings,
+    empty: "",
+    cons: fn(acc, b) {
+      if acc != "" {
+        acc
+      } else {
+        if b.name == name {
+          b.value
+        } else {
+          ""
+        }
+      }
+    }
+  )
+}
+
+fn fixture_github_path(fx: WitnessFloorGroupFixture, path: List<String>) -> GithubPathResolution {
+  let key = github_path_key(path: path)
+  if key == "event_name" {
+    GithubPathValue { value: fx.event }
+  } else {
+    if key == "sha" {
+      GithubPathValue { value: fx.sha }
+    } else {
+      if key == "ref" {
+        GithubPathValue { value: fx.github_ref }
+      } else {
+        if key == "run_id" {
+          GithubPathValue { value: fx.run_id }
+        } else {
+          if key == "event.pull_request.number" {
+            GithubPathValue { value: fx.pull_request_number }
+          } else {
+            if starts_with(s: key, prefix: "event.inputs.") {
+              GithubPathValue {
+                value: dispatch_input_value(
+                  bindings: fx.dispatch_inputs,
+                  name: substring(s: key, start: string_length(s: "event.inputs."), end: string_length(s: key))
+                )
+              }
+            } else {
+              GithubPathUnmodeled
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn evaluate_against_group_fixture(expression: Expression, fx: WitnessFloorGroupFixture) -> ExpressionEvaluation {
+  evaluate_expression(expression: expression, github_path: fn(path) { fixture_github_path(fx: fx, path: path) })
+}
+
+type WitnessFloorGroupResolution
+  = WitnessFloorGroupResolved { group: String }
+  | WitnessFloorGroupRefused { cause: ExpressionEvaluationRefusal }
+
+fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> WitnessFloorGroupResolution {
+  match evaluate_against_group_fixture(expression: witness_floor_group_expression(), fx: fx) {
+    ExpressionValue { value: suffix } => WitnessFloorGroupResolved { group: concat("witness-floor-", suffix) }
+    ExpressionEvaluationRefused { cause: c } => WitnessFloorGroupRefused { cause: c }
+  }
+}
 
 // SUPERSESSION IS DISABLED, AND THIS ROW IS THE WHOLE POLICY.
 //
@@ -269,9 +446,11 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // reseeded, still medians 22.8 minutes against srv4's 11.8.
 //
 // THE COST OF THIS ROW IS N CONCURRENT RUNS PER PULL REQUEST where one used to survive. That is
-// the same trade the concurrency group above already accepts for main, for the same reason: stale
-// work completing is expensive, and capacity silently disappearing is not recoverable. Cancelling
-// is only cheaper than not cancelling while the permits come back.
+// not the grouping trade: witness_floor_group_branches keys push by github.ref
+// (RefAfterEvent), so GitHub may replace PENDING members of witness-floor-refs/heads/main —
+// declared as gunbc.rung_drop.main_per_commit_floor_verdict — while this running-cancel row stays
+// false for every event, including those main runs. Cancelling a RUNNING job is only cheaper than
+// letting it finish while the permits come back; replacing a pending one never held a permit.
 //
 // DISSOLVE-ON, and it is the CAPABILITY rather than any artifact: no client of the required floor
 // holds a host-persistent cooperative permit -- either the ctrl host FIFO is deleted and compile
@@ -333,7 +512,8 @@ fn running_supersession_for_fleet_standing(
 ) -> RunningSupersessionPolicy {
   match standing {
     FleetCancellationNotSafe { unsafe_hosts: _, unobserved_hosts: _ } => NeverSupersedeRunning
-    FleetCancellationSafe { hosts: _ } => SupersedeRunningForEvent { event: "pull_request" }
+    FleetCancellationSafe { hosts: _ } =>
+      SupersedeRunningForEvent { event: github_event_name_pull_request }
   }
 }
 
@@ -346,15 +526,11 @@ data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witn
 
 data witness_floor_pending_replacement_policy: PendingReplacementPolicy = witness_floor_concurrency_policy.pending
 
-fn supersession_event_expression(event: String) -> String {
-  concat(concat("${{ github.event_name == '", event), "' }}")
-}
-
 fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
   match policy {
     NeverSupersedeRunning => CancelInProgressBool { value: false }
     SupersedeRunningForEvent { event: e } =>
-      CancelInProgressExpression { expression: supersession_event_expression(event: e) }
+      CancelInProgressExpression { expression: interpolate(expression: github_event_name_equals(event: e)) }
   }
 }
 
@@ -374,7 +550,7 @@ fn queue_max_cancel_of_policy(policy: RunningSupersessionPolicy) -> CancelInProg
   match policy {
     NeverSupersedeRunning => QueueMaxCancelInProgressFalse
     SupersedeRunningForEvent { event: e } =>
-      QueueMaxCancelInProgressExpression { expression: supersession_event_expression(event: e) }
+      QueueMaxCancelInProgressExpression { expression: interpolate(expression: github_event_name_equals(event: e)) }
   }
 }
 
@@ -652,7 +828,7 @@ fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
   RunStep {
     name: Present { value: step_name },
     id: Present { value: "build_witness_fold" },
-    run: concat(build_script, "\n"),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: build_script), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -848,9 +1024,11 @@ fn witness_floor_precondition() -> String {
 // like a probe that failed to run.
 //
 // Shell remains a §6 tell, bounded by the explicit condition below rather than permanent workflow
-// furniture. Runner microVM isolation is independently sufficient because it makes another job's
-// cleanup incapable of reaching this filesystem even before the particular deleter is known.
-data toolchain_filesystem_probe_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible")
+// furniture. Process-count (#46) does not retire this instrument. Typed env-vs-code classification
+// (POSIX 126/127, attempt receipts, stands-environment) is a different class and does not dissolve
+// here: BMC/host/JIT failure remains environmental after isolation. The probe retires only when
+// BOTH conjuncts in toolchain_filesystem_probe_dissolution_condition hold (gunbc#10971).
+data toolchain_filesystem_probe_dissolution_condition: DissolutionCondition = unbound_dissolution(description: "dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument when BOTH (1) every required public job selects a per-attempt microVM via gunbc.ci_runner_target selected_ci_runner_target / gunbc_ci_selected_runner_spec and every required private job selects one via strategy.private_witness_workflow witnesses_job() SelfHosted custom labels, not the empty-custom shared-FS fleet slot, AND (2) this row is eligible to bind because that selection makes the shared-filesystem eviction class impossible. Identifying a deleter on the shared slot is not a substitute for (1). Isolation does not dissolve typed BMC/host/JIT vs code classification.")
 
 fn witness_toolchain_filesystem_probe_script(phase: String) -> String {
   concat(
@@ -868,7 +1046,7 @@ fn witness_toolchain_filesystem_probe_script(phase: String) -> String {
               concat(
                 "df -Pik \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo \"$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE\"; done\n",
                 concat(
-                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustc \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustfmt \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin/cargo; do if [ -e \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n",
+                  "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustc \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin/rustfmt \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin/cargo; do if [ -e \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i mode=%a' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); if [ -x \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_EXEC=yes; else GUNBC_TOOLCHAIN_FS_EXEC=no; fi; echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes executable=$GUNBC_TOOLCHAIN_FS_EXEC $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no executable=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable mode=unavailable\"; fi; done\n",
                   "for GUNBC_TOOLCHAIN_FS_PATH in \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains/*/bin \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/rustup/toolchains \"$\{RUNNER_TEMP:-/path-that-does-not-exist}\"/cargo/bin; do if [ -d \"$GUNBC_TOOLCHAIN_FS_PATH\" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' \"$GUNBC_TOOLCHAIN_FS_PATH\" 2>&1 || echo stat-unavailable); echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT\"; else echo \"$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable\"; fi; done\n"
                 )
               )
@@ -894,6 +1072,88 @@ fn witness_toolchain_filesystem_probe_step(phase: String, condition: String) -> 
   }
 }
 
+fn floor_attempt_receipt_artifact_name() -> String {
+  concat(
+    "gunbc-floor-outcome-",
+    concat(
+      interpolate(expression: ContextAccess { context: Github, path: ["run_id"] }),
+      concat(
+        "-",
+        concat(
+          interpolate(expression: ContextAccess { context: Github, path: ["run_attempt"] }),
+          concat("-", interpolate(expression: ContextAccess { context: Github, path: ["job"] }))
+        )
+      )
+    )
+  )
+}
+
+fn floor_attempt_receipt_finalize_step() -> Step {
+  RunStep {
+    name: Present { value: "Publish the floor attempt receipt" },
+    id: Present { value: floor_attempt_receipt_step_id },
+    run: concat(floor_attempt_receipt_finalize_script(), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn floor_attempt_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the floor attempt receipt and command log" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: floor_attempt_receipt_artifact_name())),
+        kv(key: "path", value: yaml_string(s: join([floor_attempt_receipt_filename, floor_attempt_command_log_filename], "\n"))),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+        kv(key: "retention-days", value: yaml_int(n: 14)),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn floor_attempt_receipt_bound_steps() -> List<WitnessFloorBoundStep> {
+  [
+    WitnessFloorBoundStep {
+      step: floor_attempt_receipt_finalize_step(),
+      role: capability_neutral,
+      step_name: "Publish the floor attempt receipt",
+    },
+    WitnessFloorBoundStep {
+      step: floor_attempt_receipt_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload the floor attempt receipt",
+    },
+  ]
+}
+
+fn floor_lane_job_outputs() -> List<YamlKeyValue>? {
+  Present {
+    value: [
+      kv(
+        key: floor_attempt_receipt_output_name,
+        value: yaml_string(
+          s: interpolate(
+            expression: ContextAccess {
+              context: Steps,
+              path: [floor_attempt_receipt_step_id, "outputs", floor_attempt_receipt_output_name]
+            }
+          )
+        )
+      )
+    ]
+  }
+}
 fn witness_toolchain_filesystem_start_probe_step() -> Step {
   witness_toolchain_filesystem_probe_step(phase: "start", condition: "always()")
 }
@@ -936,7 +1196,7 @@ fn build_lane_run_step() -> Step {
   RunStep {
     name: Present { value: "Required CI: build lane (phases named by the run, not by this label)" },
     id: none,
-    run: build_lane_run_script(),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: build_lane_run_script()), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -950,7 +1210,7 @@ fn witness_floor_run_step() -> Step {
   RunStep {
     name: Present { value: "D0-MEASURE: witnesses lane" },
     id: Present { value: "required_ci_measure" },
-    run: witness_floor_run_script(),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: witness_floor_run_script()), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -998,6 +1258,13 @@ fn required_ci_measurement_adjudicate_script_outcome() -> String? {
   }
 }
 
+fn required_ci_measurement_adjudicate_script() -> String {
+  match required_ci_measurement_adjudicate_script_outcome() {
+    Present { value: script } => script
+    Absent => ""
+  }
+}
+
 fn required_ci_measurement_scripts_are_renderable() -> Bool {
   match required_ci_measurement_finalize_script_outcome() {
     Present { value: _ } => match required_ci_measurement_adjudicate_script_outcome() {
@@ -1012,7 +1279,7 @@ fn required_ci_measurement_finalize_step() -> Step {
   RunStep {
     name: Present { value: "D0-MEASURE: seal an unreached receipt when the instrument did not return" },
     id: none,
-    run: required_ci_measurement_finalize_script(), shell: none,
+    run: concat(wrap_command_with_floor_attempt_receipt(command: required_ci_measurement_finalize_script()), "\n"), shell: none,
     env: Present { value: required_ci_measurement_build_outcome_env() }, working_directory: none,
     if_condition: Present { value: "always() && !cancelled()" }, continue_on_error: none, timeout_minutes: none
   }
@@ -1022,10 +1289,7 @@ fn required_ci_measurement_adjudicate_step() -> Step {
   RunStep {
     name: Present { value: "D0-ADJUDICATE: consume the published measurement receipt" },
     id: none,
-    run: match required_ci_measurement_adjudicate_script_outcome() {
-      Present { value: script } => script
-      Absent => ""
-    },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: required_ci_measurement_adjudicate_script()), "\n"),
     shell: none, env: Present { value: required_ci_measurement_build_outcome_env() }, working_directory: none,
     if_condition: Present { value: "always() && !cancelled()" }, continue_on_error: none, timeout_minutes: none
   }
@@ -1078,6 +1342,38 @@ type WitnessFloorBoundStep {
 data required_floor_disposition_path: String = "required_floor_disposition.tsv"
 
 data required_floor_disposition_artifact_name: String = "required-floor-disposition"
+
+// ── THE ALLOCATOR'S ARENA COUNT, BOUNDED, BECAUSE THE SLOT IS THE BINDING CONSTRAINT ─────────
+//
+// WHAT THIS IS FOR, measured in the slot rather than argued. `gunbc.runner_slot_allocation` gives
+// each slot memory_high = 15 GiB and memory_max = 16 GiB. Read from the floor job's own
+// `[floor-cgroup]` lines on main, a FAILING run and a SUCCEEDING run are the same shape: both
+// enter around 10 GB charged and both weld to `memory.high` by beat-10. What separates them is
+// only whether the working set drifts back under the line afterwards. At that margin the run's
+// verdict is decided by a gigabyte or two, which is why the reds are intermittent and why
+// re-running one "fixes" it.
+//
+// WHY THE ARENA COUNT IS THE LEVER. glibc gives each thread its own malloc arena, and the parse
+// phase spawns a thread per `.dag` file over a corpus of ~5,500 — so the process accumulates
+// arenas whose per-arena free lists are retained rather than returned. Measured on this workload:
+// RSS 24.6 -> 21.9 GiB at IDENTICAL live heap. The live data does not change; the fragmentation
+// overhead does.
+//
+// IT IS A MITIGATION AND IS NAMED AS ONE. It does not reduce what the floor needs, so it does not
+// retire the sizing question and must never be cited as having done so — `gunbc.host.memory_stall_refusal`
+// still refuses a thrashing run, deliberately, and this only moves the margin. What it buys is
+// bought at ZERO CI CAPACITY: unlike raising the slot ceiling it costs no slots per host, touches
+// no compiler code, and is one environment variable.
+//
+// dissolve-on: the floor's resident demand falls far enough below `memory_high` that arena
+// retention cannot decide a verdict — at which point this row is removed rather than left as a
+// permanent tuning knob whose effect nobody re-measures.
+data malloc_arena_max_env_key: String = "MALLOC_ARENA_MAX"
+
+// TWO, NOT ONE. One arena serializes every allocation in a process whose parse phase is
+// deliberately threaded, trading the memory back for wall time on the job that is already the
+// slowest in the run. Two keeps a second arena for concurrent allocation while bounding retention.
+data malloc_arena_max_value: String = "2"
 
 data expected_red_roster_join_path: String = "expected_red_roster_join.tsv"
 
@@ -1425,7 +1721,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: consumes_only(capabilities: [RustfmtCapability]),
         step_name: "All witnesses (one prepared subject, one fold)",
       },
-    ], concat(required_ci_measurement_bound_steps(), [
+    ], concat(required_ci_measurement_bound_steps(), concat([
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's admission roster",
@@ -1476,12 +1772,13 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Upload the floor's cross-claim demand census",
       },
+    ], concat(floor_attempt_receipt_bound_steps(), [
       WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
       },
-    ])),
+    ])))),
   )
 }
 
@@ -1584,7 +1881,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
 fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(build_script: build_lane_build_script()),
-    items: [
+    items: concat([
       WitnessFloorBoundStep {
         step: witness_toolchain_homes_isolated_guard_step(),
         role: capability_neutral,
@@ -1600,12 +1897,13 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
         role: consumes_only(capabilities: [CargoCapability]),
         step_name: "clippy, all targets",
       },
+    ], concat(floor_attempt_receipt_bound_steps(), [
       WitnessFloorBoundStep {
         step: witness_toolchain_filesystem_end_probe_step(),
         role: capability_neutral,
         step_name: "Record runner filesystem at job end",
       },
-    ],
+    ])),
   )
 }
 
@@ -1666,7 +1964,7 @@ fn witness_floor_job() -> Job {
     steps: witness_floor_steps(),
     needs: witness_floor_lane_needs(),
     env: none,
-    outputs: none,
+    outputs: floor_lane_job_outputs(),
     if_condition: none,
     timeout_minutes: minute_count(witness_floor_lane_timeout),
     continue_on_error: none,
@@ -1674,6 +1972,18 @@ fn witness_floor_job() -> Job {
     permissions: none
   }
 }
+
+// THE NATIVE LANE JOB IS DELETED (operator ruling, 2026-09-11). It was authorized 2026-09-09 as
+// one additional required job and ran on every push and pull request from #10882 (0006e0aabd)
+// until this change. Its measured wall was 4h06m on srv2 against a declared 180-minute envelope
+// that cited ~70 minutes; the workflow's concurrency group is keyed per PR number or run id with
+// cancel-in-progress false, so no push superseded a running native job and every main push
+// added another ~4h claimant on the shared arm64 runners, starving the build and floor lanes
+// that gate. The route model (gunbc.witness_v2_native_route) and its harness
+// (`claim_executor --v2-native-route`) stay as an operator-invoked instrument; the loss of the
+// merge-path lane is the declared drop gunbc.rung_drop v2_native_route_off_the_merge_path,
+// and a replacement job is designed from the ground up against that row's trigger, never
+// re-added into the same envelope.
 
 // THE LANE'S EXECUTION ENVELOPE, NAMED BECAUSE A SECOND CONSUMER NOW READS IT. The value did not
 // change; it stopped being a literal. gunbc.repo_ruleset derives the merge queue's
@@ -1765,7 +2075,7 @@ fn rust_clippy_all_targets_step() -> Step {
     id: Present { value: "rust_clippy_all_targets" },
     run: concat(
       concat("# ", concat(dissolution_description(condition: rust_clippy_all_targets_shell_emit_dissolution_trigger), "\n")),
-      concat(repo_self_clippy_command(), "\n")
+      concat(wrap_command_with_floor_attempt_receipt(command: repo_self_clippy_command()), "\n")
     ),
     shell: none,
     env: none,
@@ -2063,7 +2373,7 @@ fn build_lane_job() -> Job {
     steps: build_lane_steps(),
     needs: build_lane_needs(),
     env: none,
-    outputs: none,
+    outputs: floor_lane_job_outputs(),
     if_condition: none,
     timeout_minutes: 90,
     continue_on_error: none,
@@ -2225,6 +2535,15 @@ fn required_lane_result_expression(job_id: String) -> String {
   interpolate(expression: ContextAccess { context: Needs, path: [job_id, "result"] })
 }
 
+fn required_lane_class_expression(job_id: String) -> String {
+  interpolate(
+    expression: ContextAccess {
+      context: Needs,
+      path: [job_id, "outputs", floor_attempt_receipt_output_name]
+    }
+  )
+}
+
 // THE ATTEMPT SUBJECT'S EXPRESSIONS. `github.event.pull_request.*` renders as the empty string on
 // push, merge_group and workflow_dispatch runs, and that emptiness is what the gate reads to
 // decide the head axis is inapplicable rather than unmeasured.
@@ -2279,6 +2598,8 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_build_class_var: String = "BUILD_CLASS"
+data required_lanes_gate_floor_class_var: String = "FLOOR_CLASS"
 
 // THE REQUIRED LANE ROSTER, AND IT IS ONE ROSTER READ TWICE RATHER THAN TWO LISTS THAT AGREE.
 //
@@ -2296,13 +2617,15 @@ fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
     head: RequiredLane {
       job_id: build_lane_job_id,
       label: "build",
-      var_name: required_lanes_gate_build_var
+      var_name: required_lanes_gate_build_var,
+      class_var_name: required_lanes_gate_build_class_var
     },
     tail: [
       RequiredLane {
         job_id: floor_lane_job_id,
         label: "floor",
-        var_name: required_lanes_gate_floor_var
+        var_name: required_lanes_gate_floor_var,
+        class_var_name: required_lanes_gate_floor_class_var
       }
     ]
   }
@@ -2378,12 +2701,20 @@ fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
         value: yaml_string(s: required_lane_result_expression(job_id: lane.job_id))
       )
     }),
-    right: [
+    right: list_append(
+      left: list_map(xs: non_empty_to_list(xs: required_lanes_roster()), f: fn(lane) {
+        kv(
+          key: lane.class_var_name,
+          value: yaml_string(s: required_lane_class_expression(job_id: lane.job_id))
+        )
+      }),
+      right: [
     kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
     kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
     kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
     kv(key: required_lanes_gate_run_id_var, value: yaml_string(s: required_lanes_run_id_expression()))
     ]
+    )
   )
 }
 
@@ -2493,6 +2824,12 @@ fn required_lanes_aggregate_job() -> Job {
 // from exactly these, so a lane added here is a lane in the emitted yaml, and a reader folding
 // `witness_floor_lane_jobs` covers every witness-bearing lane by construction rather than by a
 // hand-listed roster that could fall behind.
+data witness_floor_pull_request_activity_types: List<PullRequestActivity> = [
+  Opened,
+  Synchronize,
+  Reopened,
+]
+
 fn witness_floor_triggers() -> List<WorkflowTrigger> {
   [
     WorkflowDispatch { inputs: [ci_heal_expected_healed_sha_input] },
@@ -2500,7 +2837,7 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
       branches: [gunbc_default_branch_name],
-      types: [Opened, Synchronize, Reopened]
+      types: witness_floor_pull_request_activity_types
     }
   ]
 }
@@ -2584,11 +2921,12 @@ data witness_floor_workflow: Workflow = {
   concurrency: Present {
     value: concurrency_of_policy(
       policy: witness_floor_concurrency_policy,
-      group: witness_floor_concurrency_group)
+      group: witness_floor_concurrency_group())
   },
   env: Present {
     value: [
       kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+      kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value)),
       kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
       kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
@@ -2703,12 +3041,23 @@ data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.wi
 // The 9.37 GiB peak is a cost-shape defect to root-cause (the repository already carries that lane:
 // schedule-derived per-module retention, and the carrier/interning roots), not a reason to change
 // the shape.
+fn floor_attempt_production_wraps_are_renderable() -> Bool {
+  wrap_command_is_renderable(command: witness_floor_build_script())
+    && wrap_command_is_renderable(command: build_lane_build_script())
+    && wrap_command_is_renderable(command: heal_generated_artifacts_build_script())
+    && wrap_command_is_renderable(command: witness_floor_run_script())
+    && wrap_command_is_renderable(command: build_lane_run_script())
+    && wrap_command_is_renderable(command: repo_self_clippy_command())
+    && wrap_command_is_renderable(command: required_ci_measurement_finalize_script())
+    && wrap_command_is_renderable(command: required_ci_measurement_adjudicate_script())
+}
+
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
   match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() {
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
         WitnessFloorGenerated {
           content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
         }

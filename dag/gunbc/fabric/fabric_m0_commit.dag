@@ -6,6 +6,16 @@ import std.scoped_authorization { AttemptIdentity }
 import product.fabric.identity { WorkKey }
 import product.fabric.work { OutputObligationsResolution }
 import std.durable_compare_and_set { CasOutcome }
+import gunbc.fabric_m0_origin_readback {
+  OriginReading,
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+}
 import gunbc.fabric_m0_completion {
   ComputationOutcome,
   CommittedOutput,
@@ -88,30 +98,78 @@ fn slot_mismatch_readback(expected: NonEmptyStr, actual: NonEmptyStr) -> OriginR
 // What an independent reader saw at the manifest slot afterwards, kept separate from what the write
 // call returned. A write that reported success and a read that confirms the intended bytes are two
 // observations, and only the second establishes the object is there to be recovered.
-// WHERE A CONFIRMING READ CAME FROM, because a read that did not reach the durable origin cannot
-// establish durability no matter how correct its bytes are.
 //
-// This closes the hole that would hollow out the milestone: the local cache and the durable origin
-// address the SAME immutable object by the SAME content key, so a cache hit and an origin read are
-// byte-identical and indistinguishable once the digest is in hand. Without a source, "we read H back
-// and it matched" is satisfied by reading the copy on the machine that is about to be lost -- and
-// the job publishes success for an output that exists nowhere else. Same content identity,
-// different AUTHORITY.
+// THE HOLE THIS SHAPE USED TO LEAVE, and why the repair is a different shape rather than a stronger
+// check. The local cache and the durable origin address the SAME immutable object by the SAME
+// content key, so a cache hit and an origin read are byte-identical and indistinguishable once the
+// digest is in hand. The previous shape said so and carried a ReadSource stamp beside the observed
+// digest, refusing the cache arm in the fold below. That was VALIDATION STANDING WHERE CONSTRUCTION
+// WAS AVAILABLE, and it failed its own review tell exactly: the check was satisfied by editing the
+// DECLARATION -- writing DurableOriginRead instead of DisposableCacheRead -- while the realization
+// still digested a local copy. Worse, the digest itself was an author's assertion, so a caller
+// could stamp origin provenance over a digest taken from nothing at all.
 //
-// HONEST RUNG: this is a declared boundary, not a construction. DurableOriginRead is freely
-// authorable here, exactly like the readback-provenance assertion std.materialization_provider
-// already records against itself, and for the same reason -- confinement of the constructor to the
-// modeled read is not available until a byte-owning origin exists. What changes is that the fact is
-// now STATABLE and REFUSABLE rather than absent: before this, there was nowhere to even record that
-// a confirmation came from a cache.
-type ReadSource
-  = DurableOriginRead
-  | DisposableCacheRead { provider: NonEmptyStr }
-
+// THE CONSTRUCTION: ManifestRead carries an OriginReading, which is sole_constructor in
+// gunbc.fabric_m0_origin_readback and is produced only by the operation that digests a named file.
+// There is no stamp to edit, because there is no stamp: a confirming read is reachable only by
+// having digested a file, and the file is named in the same value. ReadSource, DurableOriginRead
+// and DisposableCacheRead are DELETED rather than kept beside it -- a stamp surviving next to the
+// construction would be the second authority DESIGN 3 forbids, and the fold arm that refused it is
+// dissolved with it (DESIGN 4b(4): the lower-rung production handling goes, the evidence stays).
+//
+// WHAT IS STILL A DECLARED BOUNDARY: which file the readback staged. That is
+// gunbc.fabric_m0_origin_readback's subject and its trigger; it is cited here, not restated.
 type ManifestReadbackObservation
-  = ManifestRead { observed_digest: Sha256Digest, source: ReadSource }
+  = ManifestRead { reading: OriginReading }
   | ManifestNotFound
   | ManifestReadUnavailable { cause: NonEmptyStr }
+
+// The mint side of the boundary, kept as a pure fold so this authority performs no effect. The read
+// itself is gunbc.fabric_m0_origin_readback's; this only says what a taken or untaken reading means
+// about the manifest slot. An unavailable reading is UNKNOWN, never absence.
+fn manifest_read_of(outcome: OriginReadingOutcome) -> ManifestReadbackObservation {
+  match outcome {
+    OriginReadingTaken { reading: r } => ManifestRead { reading: r }
+    OriginReadingUnavailable { staged_path: _, cause: c } => ManifestReadUnavailable { cause: c }
+  }
+}
+
+// THE SAME FOLD OVER A SELF-STAGING FETCH, and the one that reaches ManifestNotFound. manifest_read_of
+// above cannot: a caller-named file that is not there is an UNAVAILABLE reading, because nothing
+// about a missing local file says the ORIGIN holds no object. A fetch that asked the origin for the
+// manifest's key and was told there is none is the only route to absence, and it arrives here as
+// the fetch's own arm rather than as a caller's assertion. The staged arm carries the reading the
+// fetch minted over its own output, so a confirmation reached through this fold digested bytes the
+// origin returned, at a path the caller never chose.
+fn manifest_read_of_origin_fetch(fetch: OriginFetchOutcome) -> ManifestReadbackObservation {
+  match fetch {
+    OriginObjectStaged { key: _, reading: r } => ManifestRead { reading: r }
+    OriginObjectAbsent { key: _ } => ManifestNotFound
+    OriginFetchUnavailable { key: _, cause: c } => ManifestReadUnavailable { cause: c }
+  }
+}
+
+// WHAT A CALLER THAT KNOWS IT READ A CACHE SHOULD RETURN. This is a SAFE HELPER, not a total
+// classifier, and the difference is the whole honesty of this module.
+//
+// What it does give: nothing on this path can reach a confirmation. ManifestRead is unreachable
+// from here because OriginReading is, so a caller routing through this function cannot publish a
+// cache hit as durability no matter what it writes -- and the cause is kept rather than collapsed
+// to a bare unknown, so a reader of a pending job learns which provider answered and why that did
+// not establish durability.
+//
+// WHAT IT DOES NOT GIVE, stated because an earlier revision of this comment claimed it did: this
+// function does not make a cache read UNABLE to reach a confirmation by some other route. Nothing
+// stops a caller handing a /var/cache path to read_origin_staged_file; the digest would be computed
+// honestly over those bytes and the reading would confirm. That is path PROVENANCE, which is a
+// different fact from the path-digest coherence OriginReading establishes, and it is exactly the
+// mitigatable enclosing class gunbc.fabric_m0_origin_readback declares with its capability trigger.
+// Using this helper is a discipline; the construction underneath it is the digest, not the source.
+fn cache_manifest_read(provider: NonEmptyStr) -> ManifestReadbackObservation {
+  ManifestReadUnavailable {
+    cause: "manifest read from disposable cache " + provider + ", not the durable origin; durability unestablished",
+  }
+}
 
 // THE TRANSLATION, and the only rule in this module with teeth.
 //
@@ -146,12 +204,7 @@ fn manifest_readback(namespace: CommitNamespace, attempt: AttemptIdentity, trans
 
 fn manifest_readback_for_slot(transport: CommitTransportOutcome, observed: ManifestReadbackObservation) -> OriginReadback {
   match observed {
-    ManifestRead { observed_digest: d, source: src } =>
-      match src {
-        DurableOriginRead => ReadbackConfirmed { observed_digest: d }
-        DisposableCacheRead { provider: pr } =>
-          ReadbackUnknown { cause: "manifest read from disposable cache " + pr + ", not the durable origin; durability unestablished" }
-      }
+    ManifestRead { reading: r } => ReadbackConfirmed { reading: r }
     ManifestReadUnavailable { cause: rc } => ReadbackUnknown { cause: rc }
     ManifestNotFound =>
       match transport {
@@ -193,20 +246,50 @@ fn manifest_observation(
 
 // The consumer: one call from a real commit attempt to a published outcome.
 //
-// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). Today this function is exercised by the
-// enrolled witnesses and by nothing else: no production route reaches it, so the declarations
-// below are a DECLARED FRONTIER rather than a consumed model, and this annotation is here so
-// that state is legible in the module rather than inferred from an import census.
+// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). gunbc.fabric_m0_publication publish_work is the
+// named join that holds a run's Work and calls this function; the instrument
+// tools.fabric_m0_origin_readback_probe is the second caller, driving the whole gate over real
+// bytes. That join is itself a DECLARED FRONTIER. Rewriting this paragraph as CONSUMED while the
+// route terminated in a test was false.
 //
-// THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a job-publication path that
-// holds a run's required work and decides its ending -- the roadmap's compute-artifact-return-
-// and-materialization capability, where a computation's declared outputs come back identified by
-// content through a manifest the caller reads. When that path exists, it calls this function to
-// turn a commit attempt into an ending, and the frontier closes. Naming a smaller artifact -- one
-// caller, one job, one emitted script -- would be satisfied while the capability stayed dead.
+// THIS PARAGRAPH IS MAIN'S, RESTORED, AND THE RESTORATION IS THE POINT. gunbc#10933 corrected it in
+// the same commit that added publish_work -- an atomic, correct edit -- and this branch silently
+// carried the superseded `exercised by the enrolled witnesses and by nothing else` text back over
+// it. THE RESURRECTION ENTERED EARLY, at the `--ours` resolution taken when gunbc#10934's squash
+// collided -- there WAS a conflict there, which is what an `--ours` resolution answers -- and the
+// check run at that moment asked only whether main had touched the file AFTER the squash. It had
+// touched it BEFORE, inside the range that question excludes.
 //
-// This is a consumption frontier, NOT a guarantee drop: the gate's walls are enrolled and
-// executing over the population they are declared for, so no rung is being lowered by the wait.
+// EVERY LATER INTEGRATION THEN CARRIED IT FORWARD LEGITIMATELY AND SILENTLY, and that is the half
+// worth recording: by then only one side had touched this file, so git had nothing to conflict about
+// and correctly kept the branch text. Merge 542e069b64 is the observation -- its base already
+// contained gunbc#10933, and its result nonetheless carried the superseded paragraph. No conflict
+// was raised at that merge and no merge commit touched this file. A clean merge is exactly the thing
+// that will not tell you, and a three-dot diff compares against the merge base, so branch text
+// reverting main reads there as no change at all; only `git diff origin/main HEAD` shows it. That is
+// why the receipt is here rather than in a commit message.
+//
+// WHAT IS CHANGED FROM MAIN'S TEXT, and only this: the second consumer is named, and the clause
+// `today it is reached by enrolled witnesses and by no job-ending on a run path` is DROPPED. That
+// clause is a live open-world negative with no producer and no date -- nothing derives it, nothing
+// recomputes it, and the mutation that falsifies it is the one least likely to touch this comment.
+// The trigger below states the same fact positively, as the capability that closes the frontier,
+// which is the tracked shape and carries the whole meaning.
+//
+// THE NAMED CONSUMER THAT DECIDES THE CHECK: gunbc.fabric_m0_job_ending end_required_job.
+// THE REMAINING FRONTIER TRIGGER: wiring that ending into required-CI (or another real job
+// process) so the check conclusion is the CheckConclusion it returns, once an independent origin
+// readback is constructible on the run path -- the roadmap's compute-artifact-return-and-
+// materialization capability. Naming a smaller artifact -- one fold, one witness file, one
+// emitted script -- would be satisfied while the capability stayed dead. Sibling lanes own origin
+// binding and cache; fabricating a confirming readback on the required-CI path would be the silent
+// default this gate exists to refuse, and main's text said `DurableOriginRead` there, a variant
+// gunbc#10934 deleted -- the decayed citation DESIGN 3's cite-the-symbol rule exists to prevent. It
+// is no longer expressible at all: a confirming readback carries an OriginReading, which only
+// gunbc.fabric_m0_origin_readback read_origin_staged_file can produce.
+//
+// This is a consumption frontier, NOT a guarantee drop: the gate's walls are enrolled and executing
+// over the population they are declared for, so no rung is being lowered by the wait.
 fn publish_after_commit(
   namespace: CommitNamespace,
   attempt: AttemptIdentity,

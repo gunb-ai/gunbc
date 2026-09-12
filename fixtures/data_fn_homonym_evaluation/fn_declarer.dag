@@ -1,0 +1,8 @@
+module fixtures.data_fn_homonym_evaluation.fn_declarer
+
+import std.types { Int }
+
+// THE FN HALF OF THE HOMONYM: the same bare spelling as data_declarer's data, declared as a
+// function. It is the whole perturbation -- its mere presence in the evaluated closure is what
+// lets the data reference above come back as a function value.
+fn evaluation_homonym(count: Int) -> Int { count }

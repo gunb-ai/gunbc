@@ -382,7 +382,14 @@ type ExecutorBootstrapPrincipal {
   reachable_with_secret: NonEmptyStr
 }
 
-data srv3_executor_bootstrap_principal: ExecutorBootstrapPrincipal = ExecutorBootstrapPrincipal {
+// ONE ROW FOR THE FLEET, NOT ONE PER HOST, AND WHAT IS MEASURED IS STATED SEPARATELY FROM WHAT IS
+// DECLARED. It was named for srv3 because srv3 is where the probe above ran. Two further facts arrived
+// later and neither is a measurement of reach: srv1 carries an `ubuntu` account with a NOPASSWD sudoers
+// file (read on srv1, 2026-09-11), and srv1-srv4 were imaged the same way. So the row is the DECLARED
+// administrator for every runner host, measured only on srv3; gunbc.runner_host_file_converge probes
+// `sudo -n` as this principal on every run and refuses by name on a host where the declaration is
+// false, before any write. Per-host rows would be the right shape only once a host is known to differ.
+data executor_bootstrap_principal: ExecutorBootstrapPrincipal = ExecutorBootstrapPrincipal {
   login: "ubuntu" as NonEmptyStr,
   reachable_with_secret: "fleet-automation-ssh-key" as NonEmptyStr,
 }

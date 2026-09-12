@@ -1,0 +1,464 @@
+module gunbc.runner_attempt_launch
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { Second, second, ByteSize, byte_size, measure_le, Mebibyte, mebibyte }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.e2fsprogs { Ext2, mke2fs_format_command }
+import extdeps.tools.gnu_coreutils { timeout_command, cp_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.busybox { busybox_dd_sparse_image_command }
+import extdeps.virtualization.firecracker {
+  FirecrackerVmConfig,
+  FirecrackerBootSource,
+  firecracker_requires_kvm_device,
+  firecracker_jailer_run_command,
+  firecracker_jailer_chroot_root,
+}
+import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, OfferKey }
+import product.fabric.execution { ExecutionGrant }
+import product.fabric.budget { MoneyAccount }
+import product.fabric.grant_issue {
+  GrantAuthorization, GrantAuthorizes, GrantFenceRefused,
+  GrantAuthorizesDifferentWork, GrantAnswersDifferentDemand, GrantIssuedAgainstDifferentOffer,
+  grant_authorizes_reservation,
+}
+import gunbc.guarantee_rung {
+  GuaranteeRung, Mitigatable, MechanicallyPreventable, guarantee_rung_index,
+}
+import gunbc.runner.runner_jit_admission {
+  SignatureAxis, ExpiryAxis, jit_admission_axis_standing,
+  AxisRequired, HostEnvelopeNonemptyAndFresh,
+}
+import gunbc.runner_microvm {
+  runner_microvm_vm_config,
+  attach_workspace_drive,
+  runner_microvm_workspace_drive_id,
+  RunnerMicroVmSize,
+  gunbc_runner_jit_transport,
+}
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt,
+  runner_microvm_attempt_jail_base,
+  runner_microvm_attempt_slice_property,
+}
+import gunbc.runner_microvm_network {
+  runner_slot_network,
+  runner_slot_network_as_microvm_networking,
+  runner_slot_guest_ip_boot_arg,
+  runner_microvm_nft_ruleset_text,
+}
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+
+data runner_attempt_launch_disposition: Disposition = SingleAuthority
+
+// THE CUTOVER CAPABILITY, NOT AN ARTIFACT. Shadow Y is this planner. The transition fires when
+// THIS planner (or its successor of the same root) EXECUTES AT HOST BOOT and the host image is
+// BUILT FROM THAT MODEL, so X's ISO path has no remaining production consumer. NAMED CONSUMER:
+// the host-image build that carries this fold as PID 1's per-attempt driver. TRIGGER: that
+// capability — Y execs at host boot, image built from Y — not a binary in a checkout, not a
+// witness, not recovered/ remaining as evidence. SUFFICIENT FOR deleting recovered/ and this
+// frontier together. NOT satisfied by this module existing beside the recovered init.
+data host_boot_cutover_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the host-image build whose per-attempt driver is gunbc.runner_attempt_launch plan_attempt_launch executed at host boot on tmpfs. TRIGGER: that capability holds — Y execs at host boot and the host image is built from Y — so the recovered initramfs/init path has zero production consumers. SUFFICIENT FOR deleting docs/recovered/mtcollins-host-image-source and this row in one motion. NOT satisfied by this planner compiling, by a gunbc binary in a checkout, or by Y sitting beside X." as NonEmptyStr,
+)
+
+// DECLARED FRONTIER (DESIGN 3c). Step 6's mint is a GitHub HTTP effect. Do not take a dependency
+// on unmerged gunbc#10923. NAMED CONSUMER: plan_attempt_launch's envelope arm. TRIGGER: #10923
+// merges gunbc.github_effect_perform (classify_github_http_outcome / github_effect_http_path for
+// GenerateOrganizationJitConfig) and this planner obtains encoded_jit_config through that
+// realization. SUFFICIENT FOR deleting this row. NOT satisfied by wget, a host HTTP server, or a
+// second performer in this module.
+data jit_mint_http_realization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_attempt_launch envelope arm. TRIGGER: gunbc#10923 merges gunbc.github_effect_perform so generate-jitconfig is a classified GitHubEffect HTTP realization; this planner then takes the minted blob from that effect rather than a presented EnvelopeStanding. SUFFICIENT FOR deleting this row. NOT satisfied by wget, a second HTTP stack here, or an unmerged #10923." as NonEmptyStr,
+)
+
+// DECLARED FRONTIER. After mint, the blob must be written into the jail as /jit.bin (X's
+// padded block device). NAMED CONSUMER: plan_authorized_steps. TRIGGER: the #10923 mint
+// supplies encoded_jit_config and this planner emits the host write into
+// firecracker_jailer_chroot_root. SUFFICIENT FOR deleting this row. NOT satisfied by
+// creating an empty jit.bin beside the workspace.
+data jail_jit_device_staging_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_authorized_steps. TRIGGER: gunbc#10923 mint supplies encoded_jit_config and this planner writes that blob at firecracker_jailer_chroot_root/.../jit.bin so the in-jail path /jit.bin names a file the VMM can open. SUFFICIENT FOR deleting this row. NOT satisfied by an empty placeholder beside work.img." as NonEmptyStr,
+)
+
+// SHADOW MEANS SHADOW. No fleet-converge entry, no dual dispatch, no "use Y when available".
+// Production does not import plan_attempt_launch; a Bool in this module cannot decide that.
+
+// recovered/'s dissolution is NOT this PR. Y beside X does not satisfy it; that fact is the
+// unbound host_boot_cutover_frontier, not a second false constant.
+
+// §4b(1): the reported rung is the MINIMUM across in-scope paths. The planner-witness path has
+// executed REDs. The host-boot jailer-exec path has not: host_image_placeability_standing is still
+// HostShellAndBootImageAccessRefused (BMC answering is not tmpfs exec). Claiming
+// MechanicallyPreventable for the class would be inflation. Cutover sequence:
+// docs/plans/ci-per-job-microvm-migration.md — plan only, unbound host_boot_cutover_frontier.
+data attempt_launch_planner_witness_rung: GuaranteeRung = MechanicallyPreventable
+
+data attempt_launch_host_boot_exec_rung: GuaranteeRung = Mitigatable
+
+fn reported_attempt_launch_rung() -> GuaranteeRung {
+  if guarantee_rung_index(r: attempt_launch_host_boot_exec_rung)
+    <= guarantee_rung_index(r: attempt_launch_planner_witness_rung) {
+    attempt_launch_host_boot_exec_rung
+  } else {
+    attempt_launch_planner_witness_rung
+  }
+}
+
+// THE JAILER FILESYSTEM CANNOT CARRY noexec OR nodev: the stock jailer copies the VMM into the
+// chroot and mknods /dev/kvm there. Containment is chroot, namespaces, cgroup, and the uid drop.
+
+data attempt_unprivileged_uid: Int = 1000
+
+data attempt_unprivileged_gid: Int = 1000
+
+data runner_attempt_vmm_deadline: Second = second(count: 540)
+
+data runner_attempt_vmm_kill_grace: Second = second(count: 10)
+
+data jit_config_byte_floor: ByteSize = byte_size(count: 512)
+
+data jit_config_byte_ceiling: ByteSize = byte_size(count: 65536)
+
+data jail_config_path: String = "/vm.json"
+
+data jail_rootfs_path: FilePath = "/rootfs.squashfs"
+
+data jail_kernel_path: FilePath = "/vmlinux"
+
+data jail_jit_path: FilePath = "/jit.bin"
+
+data jail_workspace_path: FilePath = "/work.img"
+
+data host_busybox_bin: NonEmptyStr = "/bin/busybox"
+
+// X's WORKGB=4 with `dd bs=1M count=0 seek=$((WORKGB*1024))`: four gibibytes as a Mebibyte seek.
+data runner_attempt_workspace_size: Mebibyte = mebibyte(count: 4096)
+
+type AttemptGround
+  = GroundClear
+  | GroundOccupied
+
+// X's run_attempt admission order after a fetch: absent, malformed, signature, unit, boot,
+// nonce, attempt, payload digest, floor, ceiling. Presented here because mint is still the
+// #10923 frontier; the planner must still refuse every arm so the later cut does not erase a
+// correctness distinction. Host-once refusals (no boot secret, stage2 missing files) are PID 1
+// and are outside this per-attempt planner.
+type EnvelopeStanding
+  = EnvelopeAdmitted { bytes: ByteSize }
+  | EnvelopeAbsent
+  | EnvelopeMalformed
+  | EnvelopeSignatureRejected
+  | EnvelopeBoundToDifferentUnit
+  | EnvelopeBoundToDifferentBoot
+  | EnvelopeNonceMismatch
+  | EnvelopeBoundToDifferentAttempt
+  | EnvelopePayloadDigestMismatch
+  | EnvelopePayloadBelowFloor { bytes: ByteSize }
+  | EnvelopePayloadAboveCeiling { bytes: ByteSize }
+  | EnvelopeAdmissionAxisNotRequired
+
+// PID1 refusals (no boot secret, stage2 missing files) have no constructor on AttemptLaunchPlan.
+// That is the census: they are outside this per-attempt planner by construction, not by a Bool.
+
+type AttemptLaunchPlan
+  = LaunchRefusedUnauthorized { authorization: GrantAuthorization }
+  | LaunchRefusedEnvelope { standing: EnvelopeStanding }
+  | LaunchRefusedPriorResources
+  | LaunchAuthorized {
+      authorization: GrantAuthorization
+      tap_device: NonEmptyStr
+      guest_ip_boot_arg: String
+      nft_ruleset: String
+      slice: SystemdRunProperty
+      jail_root: String
+      stage_jail_root: ArgvCommand
+      stage_kernel: ArgvCommand
+      stage_rootfs: ArgvCommand
+      workspace_path: String
+      workspace_create: ArgvCommand
+      workspace_format: ArgvCommand
+      kvm_device: FilePath
+      vm_config: FirecrackerVmConfig
+      jailer: ArgvCommand
+    }
+
+fn envelope_floor_is_required() -> Bool {
+  match jit_admission_axis_standing(axis: SignatureAxis) {
+    AxisRequired { checker: HostEnvelopeNonemptyAndFresh } =>
+      match jit_admission_axis_standing(axis: ExpiryAxis) {
+        AxisRequired { checker: HostEnvelopeNonemptyAndFresh } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn credential_bytes_admit(bytes: ByteSize) -> Bool {
+  envelope_floor_is_required()
+    && measure_le(a: jit_config_byte_floor, b: bytes)
+    && measure_le(a: bytes, b: jit_config_byte_ceiling)
+}
+
+fn envelope_admits_launch(standing: EnvelopeStanding) -> Bool {
+  match standing {
+    EnvelopeAdmitted { bytes: n } => credential_bytes_admit(bytes: n)
+    EnvelopeAbsent => false
+    EnvelopeMalformed => false
+    EnvelopeSignatureRejected => false
+    EnvelopeBoundToDifferentUnit => false
+    EnvelopeBoundToDifferentBoot => false
+    EnvelopeNonceMismatch => false
+    EnvelopeBoundToDifferentAttempt => false
+    EnvelopePayloadDigestMismatch => false
+    EnvelopePayloadBelowFloor { bytes: _ } => false
+    EnvelopePayloadAboveCeiling { bytes: _ } => false
+    EnvelopeAdmissionAxisNotRequired => false
+  }
+}
+
+fn refuse_or_normalize_envelope(standing: EnvelopeStanding) -> EnvelopeStanding {
+  match standing {
+    EnvelopeAdmitted { bytes: n } =>
+      if !envelope_floor_is_required() {
+        EnvelopeAdmissionAxisNotRequired
+      } else if !measure_le(a: jit_config_byte_floor, b: n) {
+        EnvelopePayloadBelowFloor { bytes: n }
+      } else if !measure_le(a: n, b: jit_config_byte_ceiling) {
+        EnvelopePayloadAboveCeiling { bytes: n }
+      } else {
+        standing
+      }
+    EnvelopeAbsent => standing
+    EnvelopeMalformed => standing
+    EnvelopeSignatureRejected => standing
+    EnvelopeBoundToDifferentUnit => standing
+    EnvelopeBoundToDifferentBoot => standing
+    EnvelopeNonceMismatch => standing
+    EnvelopeBoundToDifferentAttempt => standing
+    EnvelopePayloadDigestMismatch => standing
+    EnvelopePayloadBelowFloor { bytes: _ } => standing
+    EnvelopePayloadAboveCeiling { bytes: _ } => standing
+    EnvelopeAdmissionAxisNotRequired => standing
+  }
+}
+
+fn with_guest_ip_boot_arg(config: FirecrackerVmConfig, ip_arg: String) -> FirecrackerVmConfig {
+  FirecrackerVmConfig {
+    boot_source: FirecrackerBootSource {
+      kernel_image_path: config.boot_source.kernel_image_path,
+      boot_args: join([config.boot_source.boot_args as String, " ", ip_arg], "") as NonEmptyStr,
+    },
+    drives: config.drives,
+    network_interfaces: config.network_interfaces,
+    machine_config: config.machine_config,
+  }
+}
+
+fn bounded_jailer_command(
+  jailer_binary: String,
+  jailer_id: String,
+  exec_file: String,
+  chroot_base_dir: String,
+) -> ArgvCommand {
+  timeout_command(
+    duration: runner_attempt_vmm_deadline,
+    kill_after: runner_attempt_vmm_kill_grace,
+    command: firecracker_jailer_run_command(
+      jailer_binary: jailer_binary,
+      jailer_id: jailer_id,
+      exec_file: exec_file,
+      uid: attempt_unprivileged_uid,
+      gid: attempt_unprivileged_gid,
+      chroot_base_dir: chroot_base_dir,
+      config_path_in_jail: jail_config_path,
+    ),
+  )
+}
+
+fn plan_attempt_launch(
+  grant: ExecutionGrant<NonEmptyStr>,
+  account: MoneyAccount,
+  money_generation: Int,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  attempt: MicroVmAttempt,
+  envelope: EnvelopeStanding,
+  ground: AttemptGround,
+  jailer_binary: String,
+  firecracker_binary: String,
+  kernel_source: String,
+  rootfs_source: String,
+  guest_size: RunnerMicroVmSize,
+) -> AttemptLaunchPlan {
+  let authorization = grant_authorizes_reservation(
+    grant: grant,
+    account: account,
+    money_generation: money_generation,
+    work: work,
+    demand: demand,
+    offer: offer,
+  )
+  match authorization {
+    GrantAuthorizes => plan_after_authorization(
+      authorization: authorization,
+      attempt: attempt,
+      envelope: envelope,
+      ground: ground,
+      jailer_binary: jailer_binary,
+      firecracker_binary: firecracker_binary,
+      kernel_source: kernel_source,
+      rootfs_source: rootfs_source,
+      guest_size: guest_size,
+    )
+    GrantFenceRefused => LaunchRefusedUnauthorized { authorization: authorization }
+    GrantAuthorizesDifferentWork => LaunchRefusedUnauthorized { authorization: authorization }
+    GrantAnswersDifferentDemand => LaunchRefusedUnauthorized { authorization: authorization }
+    GrantIssuedAgainstDifferentOffer => LaunchRefusedUnauthorized { authorization: authorization }
+  }
+}
+
+fn plan_after_authorization(
+  authorization: GrantAuthorization,
+  attempt: MicroVmAttempt,
+  envelope: EnvelopeStanding,
+  ground: AttemptGround,
+  jailer_binary: String,
+  firecracker_binary: String,
+  kernel_source: String,
+  rootfs_source: String,
+  guest_size: RunnerMicroVmSize,
+) -> AttemptLaunchPlan {
+  match ground {
+    GroundOccupied => LaunchRefusedPriorResources
+    GroundClear =>
+      if envelope_admits_launch(standing: envelope) {
+        plan_authorized_steps(
+          authorization: authorization,
+          attempt: attempt,
+          jailer_binary: jailer_binary,
+          firecracker_binary: firecracker_binary,
+          kernel_source: kernel_source,
+          rootfs_source: rootfs_source,
+          guest_size: guest_size,
+        )
+      } else {
+        LaunchRefusedEnvelope { standing: refuse_or_normalize_envelope(standing: envelope) }
+      }
+  }
+}
+
+fn plan_authorized_steps(
+  authorization: GrantAuthorization,
+  attempt: MicroVmAttempt,
+  jailer_binary: String,
+  firecracker_binary: String,
+  kernel_source: String,
+  rootfs_source: String,
+  guest_size: RunnerMicroVmSize,
+) -> AttemptLaunchPlan {
+  let net = runner_slot_network(slot: attempt.slot)
+  let jail_root = attempt_jail_chroot_root(attempt: attempt, firecracker_binary: firecracker_binary)
+  let workspace_host = join([jail_root, jail_workspace_path as String], "")
+  let cfg = runner_microvm_vm_config(
+    rootfs_path: jail_rootfs_path,
+    jit_config_path: jail_jit_path,
+    kernel_path: jail_kernel_path,
+    net: runner_slot_network_as_microvm_networking(net: net),
+    size: guest_size,
+    transport: gunbc_runner_jit_transport,
+  )
+  let jailed = with_guest_ip_boot_arg(
+    config: attach_workspace_drive(config: cfg, path: jail_workspace_path),
+    ip_arg: runner_slot_guest_ip_boot_arg(net: net),
+  )
+  LaunchAuthorized {
+    authorization: authorization,
+    tap_device: net.tap_device,
+    guest_ip_boot_arg: runner_slot_guest_ip_boot_arg(net: net),
+    nft_ruleset: runner_microvm_nft_ruleset_text(),
+    slice: runner_microvm_attempt_slice_property(attempt: attempt),
+    jail_root: jail_root,
+    stage_jail_root: mkdir_parents_command(path: jail_root),
+    stage_kernel: cp_command(
+      source: kernel_source,
+      destination: join([jail_root, jail_kernel_path as String], ""),
+    ),
+    stage_rootfs: cp_command(
+      source: rootfs_source,
+      destination: join([jail_root, jail_rootfs_path as String], ""),
+    ),
+    workspace_path: workspace_host,
+    workspace_create: busybox_dd_sparse_image_command(
+      busybox_bin: host_busybox_bin,
+      image_path: workspace_host,
+      size: runner_attempt_workspace_size,
+    ),
+    workspace_format: mke2fs_format_command(
+      fs: Ext2,
+      image_path: workspace_host,
+    ),
+    kvm_device: firecracker_requires_kvm_device,
+    vm_config: jailed,
+    jailer: bounded_jailer_command(
+      jailer_binary: jailer_binary,
+      jailer_id: attempt.attempt_id.value as String,
+      exec_file: firecracker_binary,
+      chroot_base_dir: runner_microvm_attempt_jail_base(attempt: attempt),
+    ),
+  }
+}
+
+fn attempt_jail_chroot_root(attempt: MicroVmAttempt, firecracker_binary: String) -> String {
+  firecracker_jailer_chroot_root(
+    chroot_base_dir: runner_microvm_attempt_jail_base(attempt: attempt),
+    exec_file: firecracker_binary,
+    jailer_id: attempt.attempt_id.value as String,
+  )
+}
+
+fn workspace_drive_path_on_host(config: FirecrackerVmConfig) -> String {
+  fold(config.drives, init: "", f: (acc, d) =>
+    if (d.drive_id as String) == (runner_microvm_workspace_drive_id as String) {
+      d.path_on_host as String
+    } else {
+      acc
+    }
+  )
+}
+
+fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
+  match plan {
+    LaunchAuthorized {
+      authorization: _,
+      tap_device: _,
+      guest_ip_boot_arg: _,
+      nft_ruleset: _,
+      slice: _,
+      jail_root: _,
+      stage_jail_root: _,
+      stage_kernel: _,
+      stage_rootfs: _,
+      workspace_path: _,
+      workspace_create: _,
+      workspace_format: _,
+      kvm_device: _,
+      vm_config: _,
+      jailer: _,
+    } => 1
+    LaunchRefusedUnauthorized { authorization: _ } => 0
+    LaunchRefusedEnvelope { standing: _ } => 0
+    LaunchRefusedPriorResources => 0
+  }
+}
+
+type WorkNotEstablished {
+  vmm_exit: Int
+}
+
+fn work_standing_from_vmm_exit(exit_code: Int) -> WorkNotEstablished {
+  WorkNotEstablished { vmm_exit: exit_code }
+}

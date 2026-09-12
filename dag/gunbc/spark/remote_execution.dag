@@ -10,7 +10,7 @@ import std.resources { Network }
 import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words, shape_fleet_ssh_password_exec_trusting,
 }
-import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
 
 // ── ONE REMOTE PERFORMER, HOST-PARAMETERISED ───────────────────────────────────────────────────
@@ -94,7 +94,7 @@ func spark_exec(ctx: SparkRemoteExecutionContext, host: HostIdentity, argv: List
               trust: ctx.trust,
               target: SshTarget {
                 endpoint: endpoint as NonEmptyStr,
-                principal: spark_operator_bootstrap_login as NonEmptyStr,
+                principal: fleet_bootstrap_principal_login(),
               },
               words: words,
             ),

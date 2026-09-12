@@ -7,12 +7,17 @@ import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.fleet_intent { ComputeHost, fleet_intent_known_hosts }
 import product.placement_supply { HostIdentity }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import v2.std.decl_ref_resolution {
+  DeclarationRefResolution,
+  declaration_ref_resolution_is_resolved, declaration_ref_resolution_arm_key,
+  resolve_declaration_ref_live
+}
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
   | FleetConvergeYamlArtifact
   | FleetDesiredAdmissionYamlArtifact
-  | BootstrapPrLauncherYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | RoadmapArtifact
@@ -40,7 +45,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, BootstrapPrLauncherYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -165,7 +170,6 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     WitnessFloorYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "witnesses.yml" }
     FleetConvergeYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-converge.yml" }
     FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
-    BootstrapPrLauncherYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "bootstrap-pr-launcher.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
     RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
@@ -243,7 +247,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     WitnessFloorYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    BootstrapPrLauncherYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
@@ -297,7 +300,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     WitnessFloorYamlArtifact => match b { WitnessFloorYamlArtifact => true  _ => false }
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
     FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
-    BootstrapPrLauncherYamlArtifact => match b { BootstrapPrLauncherYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
@@ -326,4 +328,144 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 
 fn registry_contains(a: GeneratedArtifact) -> Bool {
   any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
+}
+
+// THE PRODUCER OF EACH ARTIFACT, AS A DECLARATION REFERENCE. Every artifact rostered above is a
+// projection of one .dag declaration -- the `expected_*` function gunbc.generated_artifact_emit
+// artifact_generate_unadorned dispatches to -- and that declaration is where a v1 reference inside
+// the artifact is AUTHORED: a `target/release/gunbc` argv in witnesses.yml is a literal in
+// gunbc.witness_floor_workflow, not a fact about the YAML. So the workflow YAML, .gitattributes, the
+// git hooks and the committed stage0 mirrors are not four consumer media with no declaration
+// identity (gunbc.v1_consumer_census ConsumerMedium WorkflowArgv, GitHookScript,
+// CommittedGeneratedMirror): each is the .dag medium seen through a producer, and a consumer census
+// that keys the .dag population at declaration grain already holds their rows. What that reduction
+// needs to be SOUND is exactly this map plus the join below: an artifact whose producer is not a
+// declaration in the .dag population would be a generated file whose v1 references no declaration
+// join can see, and it has to refuse by name rather than be swept by a second scanner -- a scanner
+// would rediscover the same relation under a path key and double-count the blocking column.
+//
+// This map and the emit dispatch are one fact spelled twice, and that is stated rather than hidden:
+// the dispatch CALLS the producer, this row NAMES it, and the substrate has no reflection from a
+// call site to a DeclarationRef that would let one be derived from the other. The join below checks
+// that every name here resolves; it does not check that the name is the one the dispatch calls.
+// That second half is decidable -- a fold over artifact_generate_unadorned's match arms pairing each
+// variant with the call target it reaches -- and is this class's next-rung trigger, not a ceiling.
+//
+// WHO CONSUMES THE JOIN, AND WHEN (DESIGN section 3c, a declared frontier). Today the executing
+// consumer is test.claim.generated_artifact_producer_coverage_witness_test on the required floor,
+// which refuses a push that leaves any registry row's producer unresolvable. The census-side
+// consumer is gunbc.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
+// GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when
+// every_generated_artifact_producer_covered holds over the same pool roots its .dag-medium producer
+// folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that
+// gives the census a per-medium joined_media state (PR #10939, tools.v1_consumer_discovery); it is
+// not authored here because the census on main carries no such state yet, and adding one beside
+// that in-flight change would be the second vocabulary section 3 forbids. Trigger: #10939 merged.
+fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
+  match a {
+    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.witness_floor_workflow", decl_name: "expected_witness_floor_yml")
+    FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
+    FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
+    GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
+    GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
+    RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "expected_roadmap_md")
+    DesignArtifact => decl_ref(module_path: "gunbc.design_document", decl_name: "expected_design_md")
+    DesignFailureModesArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_failure_modes_md")
+    DesignRungDropsArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_rung_drops_md")
+    GithooksPrePushArtifact => decl_ref(module_path: "gunbc.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh")
+    GithooksPreCommitArtifact => decl_ref(module_path: "gunbc.githooks_pre_commit_emit", decl_name: "expected_githooks_pre_commit_sh")
+    GeneratedArtifactMergeDriverArtifact => decl_ref(module_path: "gunbc.generated_artifact_merge_driver", decl_name: "expected_generated_artifact_merge_driver_sh")
+    RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
+    CouponCadQueryProgramArtifact => decl_ref(module_path: "product.printed_chassis.cadquery_realization", decl_name: "expected_coupon_cadquery_program")
+    Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
+    Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
+    Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
+    Stage0ExecutableAssemblyGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_executable_assembly_emit", decl_name: "expected_stage0_executable_assembly_generated_dag")
+    SeedRetentionFrontierGeneratedRsArtifact => decl_ref(module_path: "gunbc.seed_retention_frontier_emit", decl_name: "expected_seed_retention_frontier_generated_rs")
+    V1InterpreterDispatchGeneratedRsArtifact => decl_ref(module_path: "gunbc.v1_interpreter_dispatch_emit", decl_name: "expected_v1_interpreter_dispatch_generated_rs")
+    EvaluationBudgetConsequenceGeneratedRsArtifact => decl_ref(module_path: "gunbc.evaluation_budget_consequence_emit", decl_name: "expected_evaluation_budget_consequence_generated_rs")
+    FileTransportRealizationGeneratedRsArtifact => decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "expected_gunbc_file_transport_generated_rs")
+    Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
+    AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
+    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner_host_grants", decl_name: "runner_host_sudoers_content")
+    PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "expected_plan_md")
+  }
+}
+
+// THE JOIN KEY: artifact path x producer. The path is what a consumer census finds a v1 reference
+// under; the producer is the declaration that census keys the .dag population by. A row is the
+// claim "everything in this path was authored at this declaration".
+type GeneratedArtifactProducerRow {
+  artifact_path: String
+  producer: DeclarationRef
+}
+
+fn artifact_producer_row(a: GeneratedArtifact) -> GeneratedArtifactProducerRow {
+  GeneratedArtifactProducerRow { artifact_path: artifact_path(a: a), producer: artifact_producer(a: a) }
+}
+
+fn generated_artifact_producer_rows() -> List<GeneratedArtifactProducerRow> {
+  map(generated_artifact_registry, a => artifact_producer_row(a: a))
+}
+
+// THE COVERAGE VERDICT, ONE PER ROW, AND THE REFUSAL IS THE RESOLVER'S OWN ARM. The producer is
+// resolved by v2.std.decl_ref_resolution -- module absent, declaration absent, field absent,
+// ambiguous, or resolved -- against the live tree by key, so a producer that has been renamed,
+// moved to another module or deleted refuses with the arm that says which, and the artifact path it
+// leaves uncovered is carried beside it. Nothing here scans the artifact's bytes: the question is
+// whether the declaration join REACHES this artifact, not what the artifact contains.
+type GeneratedArtifactProducerCoverage
+  = GeneratedArtifactProducerCovered { row: GeneratedArtifactProducerRow }
+  | GeneratedArtifactProducerUncovered { row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution }
+
+fn generated_artifact_producer_coverage_of(row: GeneratedArtifactProducerRow, resolution: DeclarationRefResolution) -> GeneratedArtifactProducerCoverage {
+  if declaration_ref_resolution_is_resolved(resolution: resolution) {
+    GeneratedArtifactProducerCovered { row: row }
+  } else {
+    GeneratedArtifactProducerUncovered { row: row, resolution: resolution }
+  }
+}
+
+fn generated_artifact_producer_coverage_row(row: GeneratedArtifactProducerRow, pool_roots: List<String>) -> GeneratedArtifactProducerCoverage {
+  generated_artifact_producer_coverage_of(
+    row: row,
+    resolution: resolve_declaration_ref_live(ref: row.producer, pool_roots: pool_roots)
+  )
+}
+
+fn generated_artifact_producer_coverage_over(rows: List<GeneratedArtifactProducerRow>, pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
+  map(rows, r => generated_artifact_producer_coverage_row(row: r, pool_roots: pool_roots))
+}
+
+fn generated_artifact_producer_coverage_is_refused(c: GeneratedArtifactProducerCoverage) -> Bool {
+  match c {
+    GeneratedArtifactProducerCovered { row: _ } => false
+    GeneratedArtifactProducerUncovered { row: _, resolution: _ } => true
+  }
+}
+
+// THE REFUSAL SET over a supplied row population. The registry fold below hands it the real rows; a
+// witness hands it a planted row whose producer names no declaration, which is the only way an
+// uncovered artifact can be authored while GeneratedArtifact stays closed and every rostered
+// producer resolves.
+fn generated_artifact_producer_refusals_over(rows: List<GeneratedArtifactProducerRow>, pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
+  filter(generated_artifact_producer_coverage_over(rows: rows, pool_roots: pool_roots), c => generated_artifact_producer_coverage_is_refused(c: c))
+}
+
+fn generated_artifact_producer_refusals(pool_roots: List<String>) -> List<GeneratedArtifactProducerCoverage> {
+  generated_artifact_producer_refusals_over(rows: generated_artifact_producer_rows(), pool_roots: pool_roots)
+}
+
+fn every_generated_artifact_producer_covered(pool_roots: List<String>) -> Bool {
+  count(generated_artifact_producer_refusals(pool_roots: pool_roots)) == 0
+}
+
+// LOCATED: the artifact path, the producer it claims, and the resolver arm that refused it.
+fn generated_artifact_producer_coverage_rendered(c: GeneratedArtifactProducerCoverage) -> String {
+  match c {
+    GeneratedArtifactProducerCovered { row } =>
+      concat(concat(concat("generated artifact ", row.artifact_path), " covered by producer "), declaration_ref_display_key(ref: row.producer))
+    GeneratedArtifactProducerUncovered { row, resolution } =>
+      concat(concat(concat(concat(concat("generated artifact ", row.artifact_path), " UNCOVERED: producer "), declaration_ref_display_key(ref: row.producer)), " "), declaration_ref_resolution_arm_key(resolution: resolution))
+  }
 }

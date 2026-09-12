@@ -170,25 +170,70 @@ fn required_floor_disposition_with_changed_selection(
 // exactly one thing -- the CPU ceiling's power to convert a REACHED verdict into a floor red,
 // for an identity whose expensiveness is already declared debt and whose author is present.
 //
-// AN ORDINARY CHANGED WITNESS IS UNAFFECTED. A changed identity that is NOT enrolled in the
-// cost-debt roster keeps the ordinary policy and still reds when it exceeds the CPU line, so
-// this is not a widening of the floor: no identity gains the override by being changed alone,
-// and none gains it by being expensive alone.
+// AN ORDINARY CHANGED WITNESS IS UNAFFECTED. A changed identity that is NEITHER cost-debt
+// rostered NOR long-home classified keeps the ordinary policy and still reds when it exceeds the
+// CPU line, so this is not a widening of the floor: no identity gains the override by being
+// changed alone, and none gains it by being expensive alone. The two conditions are one question
+// asked at two grains -- `changed_witness_expensiveness_is_declared` is the authority that joins
+// them -- so this sentence names both, and a reader who finds only the roster here is reading a
+// rule the implementation stopped following.
 type ChangedWitnessCostPolicy =
     OrdinaryChangedWitnessCostPolicy
   | ChangedCostDebtVerdictOnly
 
 // THE INTERSECTION, DERIVED ONCE. Both conditions are required and neither is a name test: the
-// selection fact comes from the diff attribution the floor already owns, and the membership fact
-// from the roster module's own `floor_cost_debt_holds`. A witness that is rostered but unchanged
+// selection fact comes from the diff attribution the floor already owns, and the expensiveness
+// fact from `changed_witness_expensiveness_is_declared`, which is
+// `floor_cost_debt_holds(identity)` OR `first_module_prefix_match(module, long_home_prefixes())`.
+// That second disjunct is why this function takes a module path as well as an identity: the long
+// home declares the same expensiveness structurally, per module, and consulting only the roster
+// left a changed witness in a long module on the armed line. A witness that is rostered but unchanged
 // takes no policy here at all -- it never becomes a claim, and its disposition remains
 // `DeclinedCostDebt` through `required_floor_site_disposition` above.
+// WHAT "ALREADY DECLARED TOO EXPENSIVE FOR THE ARMED LINE" MEANS, AND WHY IT WAS TWO NAMES.
+// The cost-debt roster and the long home are ONE declaration class wearing two names: both say
+// this identity is not run on an ordinary floor because the 500ms CPU line cannot carry it. The
+// roster says it per identity, after measuring; the long home says it per module, structurally,
+// which is why test/claim/long/ exists at all. This function consulted only the first, so a
+// changed witness in a long module fell through to the armed line -- and DESIGN section 3 is the
+// reason that reads as a defect rather than as a gap: minimization holds only if each fact lives
+// in one place, and "declared too expensive" was living in two with only one of them wired here.
+//
+// MEASURED, AND CITED BY NAMING THE PRODUCER RATHER THAN BY COPYING ITS FIGURES (DESIGN section 6).
+// The instrument is the floor's own per-claim cost receipt for gunbc#11004 at 6b153bf8 -- the run's
+// BUDGET-REFUSED announcements and the required-floor-claim-cost artifact beside them. What it
+// reports: touching one long module planned its three witnesses as changed witnesses, and EVERY ONE
+// was refused at the line BEFORE reaching a verdict. What no green floor's artifact reports: any row
+// for that module at all, because none of its witnesses is planned on an ordinary floor. So the line
+// applied only because a PR touched the file, and the floor returned three reds that say nothing
+// about the change -- the FLOOR-CHANGED-COST-0 failure exactly, a green context that never looked
+// inverted into a red context that looked and could not finish.
+//
+// THE LONG TEST READS THE CLASSIFICATION THE FLOOR ALREADY COMPUTES. It matches the module's
+// AUTHORED NAME against long_home_prefixes(), the same roster required_floor_site_disposition
+// folds to reach DeclinedLongModule -- not a second list of paths, and not the file path, for
+// the reason stated at that roster: a directory is not the admission authority.
+fn changed_witness_expensiveness_is_declared(
+  module_path: String,
+  identity: String,
+) -> Bool {
+  if floor_cost_debt_holds(name: identity) {
+    true
+  } else {
+    match first_module_prefix_match(module_path: module_path, prefixes: long_home_prefixes()) {
+      ModulePrefixMatched { prefix: _ } => true
+      ModulePrefixUnmatched => false
+    }
+  }
+}
+
 fn changed_witness_cost_policy(
   selected_as_changed_witness: Bool,
+  module_path: String,
   identity: String,
 ) -> ChangedWitnessCostPolicy {
   if selected_as_changed_witness {
-    if floor_cost_debt_holds(name: identity) {
+    if changed_witness_expensiveness_is_declared(module_path: module_path, identity: identity) {
       ChangedCostDebtVerdictOnly {}
     } else {
       OrdinaryChangedWitnessCostPolicy {}
@@ -1356,7 +1401,8 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // per-claim limits above may be asked to answer for.
 //
 // WHY IT IS DECLARED RATHER THAN LEFT AS A HOST DETAIL. The bare-reference edge index
-// (`v1_compiler.cli_run` `both_closure_edge_index`, and through it `tree_bare_census_for_root`)
+// (`v1_compiler.cli_run` `whole_pool_closure_edge_index`, explicitly demanded by
+// `warm_bare_reference_edge_index`, which also warms `tree_bare_census_for_root` for reconciliation)
 // is memoized once per index -- the census trace reports two misses over two source roots
 // against ONE index address, `edge_index_construction { builds: 1 }` -- so its ~28s is neither
 // duplicated nor repeated. It was simply BILLED to whichever claim resolved an entry first:
