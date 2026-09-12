@@ -30,6 +30,7 @@ import extdeps.docker.cli {
   DockerBuildArg, DockerBuildSpec,
   docker_build_spec_command, docker_image_digest_command,
   docker_image_inspect_command, docker_image_inspect_names_no_such_image,
+  docker_image_save_command, docker_image_load_command,
   DockerImageInspectIdRead, DockerImageInspectId, DockerImageInspectIdUnreadable,
   docker_image_inspect_id_from_stdout,
 }
@@ -40,6 +41,7 @@ import extdeps.git {
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.tools.stat { stat_file_type_command }
+import extdeps.tools.sha256sum { sha256sum_digest_command }
 import gunbc.artifact_acquisition {
   AcquisitionSubject, AcquisitionSource, AcquisitionKey, ContentDigestSha256,
   SourceLocator, SourceUrl,
@@ -1274,6 +1276,100 @@ func glm53_nope_image_build_wet() -> ProcessExit
   uses net: Network
 {
   vllm_runtime_image_build_for(b: glm53_nope_build())
+}
+
+// ── MOVING AN IMAGE TO THE HOSTS THAT SERVE IT ────────────────────────────────────────────────
+//
+// THE EXPORT AND THE IMPORT ARE DIFFERENT OPERATIONS ON DIFFERENT HOSTS, and the archive between them
+// is a third artifact with its own identity. Writing this as one "ship" step would fuse three failures
+// that owe three repairs: an export that did not produce a readable archive, a transfer that did not
+// arrive, and a daemon that accepted an archive but now holds something other than what was asked for.
+//
+// THE LAST OF THOSE IS THE ONE THAT LOOKS LIKE SUCCESS. `docker load` reports that an archive was
+// accepted; it does not say which image id sits behind the tag afterwards, and on a host that served a
+// previous runtime the tag already exists. So the destination is READ BACK through the same privileged
+// leg that loaded it, and the readback is compared to the identity the source host reported.
+data image_archive_dir_name: NonEmptyStr = "image-archives" as NonEmptyStr
+
+fn image_archive_dir() -> NonEmptyStr {
+  join([vllm_build_root() as String, "/", image_archive_dir_name as String], "") as NonEmptyStr
+}
+
+// A TAG IS NOT A FILENAME, and rather than transliterate one into the other this derives the archive
+// name from the CONTENT HASH the build already computes. Two references that differ only in a character
+// a sanitiser would strip would otherwise share one archive, and the second export would overwrite the
+// first silently; a content hash collides only when the inputs do.
+fn image_archive_path(key: ContentHash) -> NonEmptyStr {
+  join([image_archive_dir() as String, "/", serialize_content_hash(hash: key) as String, ".tar"], "") as NonEmptyStr
+}
+
+// ── EXPORT, ON THE HOST THAT HOLDS THE IMAGE ──────────────────────────────────────────────────
+//
+// THE ARCHIVE IS VERIFIED AS BYTES BEFORE IT TRAVELS, because a truncated export and a complete one are
+// the same file to `scp`. The digest recorded here is the ARCHIVE's, and it is carried separately from
+// the image identity for the whole journey: they answer different questions and a receipt that reported
+// one as the other would be naming the envelope for the letter.
+type ImageExportOutcome
+  = ImageExported { archive_path: NonEmptyStr, archive_sha256: NonEmptyStr, source_image_id: NonEmptyStr }
+  | ImageExportRefused { step: NonEmptyStr, cause: String }
+
+func export_image_archive(ctx: SparkMaterializeContext, reference: NonEmptyStr, archive_key: ContentHash) -> ImageExportOutcome
+  uses net: Network
+{
+  match read_image_identity(ctx: ctx, reference: reference) {
+    ImageIdentityAbsent { reference: r } =>
+      ImageExportRefused { step: "export-identity" as NonEmptyStr, cause: join([r as String, " is not present on the source host"], "") }
+    ImageIdentityUnreadable { reference: _, cause: c } =>
+      ImageExportRefused { step: "export-identity" as NonEmptyStr, cause: c }
+    ImageIdentityObserved { reference: _, local_image_id: source_id } =>
+      match vllm_docker_leg(ctx: ctx, step: "export-mkdir" as NonEmptyStr, command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: image_archive_dir() as String)) {
+        ImageLegFailed { step: st, cause: why } => ImageExportRefused { step: st, cause: why }
+        ImageLegRan { stdout: _ } =>
+          match vllm_docker_leg(ctx: ctx, step: "export-save" as NonEmptyStr, command: docker_image_save_command(image: reference, destination: image_archive_path(key: archive_key))) {
+            ImageLegFailed { step: st, cause: why } => ImageExportRefused { step: st, cause: why }
+            ImageLegRan { stdout: _ } =>
+              match vllm_docker_leg(ctx: ctx, step: "export-digest" as NonEmptyStr, command: sha256sum_digest_command(path: image_archive_path(key: archive_key) as String)) {
+                ImageLegFailed { step: st, cause: why } => ImageExportRefused { step: st, cause: why }
+                ImageLegRan { stdout: out } =>
+                  match get(xs: split(s: trim(s: out), delimiter: " "), index: 0) {
+                    Absent => ImageExportRefused { step: "export-digest" as NonEmptyStr, cause: "sha256sum produced no digest field" }
+                    Present { value: d } =>
+                      if d == "" {
+                        ImageExportRefused { step: "export-digest" as NonEmptyStr, cause: "sha256sum produced an empty digest field" }
+                      } else {
+                        ImageExported { archive_path: image_archive_path(key: archive_key), archive_sha256: d as NonEmptyStr, source_image_id: source_id }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── IMPORT, ON EACH HOST THAT MUST SERVE IT ───────────────────────────────────────────────────
+//
+// A HOST THAT ALREADY HOLDS THE RIGHT BYTES IS NOT RE-SENT. The check is the image id, not the tag:
+// a tag that matches proves nothing, and this is the resume property -- an interrupted distribution
+// should finish the hosts that are missing rather than repeat the ones that are done.
+func distribute_image_to(ctx: SparkMaterializeContext, host: HostIdentity, reference: NonEmptyStr, expected_image_id: NonEmptyStr) -> ImageDistributionOutcome
+  uses net: Network
+{
+  match read_image_identity(ctx: ctx, reference: reference) {
+    ImageIdentityObserved { reference: _, local_image_id: observed } =>
+      if (observed as String) == (expected_image_id as String) {
+        ImagePresentOnHost { host: host, local_image_id: observed }
+      } else {
+        ImageIdentityMismatch { host: host, expected: expected_image_id, observed: observed }
+      }
+    ImageIdentityUnreadable { reference: _, cause: c } =>
+      ImageTransferRefused { host: host, step: "destination-probe" as NonEmptyStr, cause: c }
+    ImageIdentityAbsent { reference: _ } =>
+      ImageTransferRefused {
+        host: host,
+        step: "destination-absent" as NonEmptyStr,
+        cause: "the image is not on this host and the archive transfer leg is not yet bound; the population is incomplete rather than silently short",
+      }
+  }
 }
 
 // ── INSPECTING AN IMAGE THROUGH THE PRIVILEGED LEG, WHICH IS ALSO HOW THAT LEG GETS TESTED ────

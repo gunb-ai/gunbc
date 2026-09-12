@@ -1,0 +1,297 @@
+module gunbc.spark.flashinfer_wheel_fetch
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.resources { Network }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import extdeps.http.client
+import extdeps.flashinfer.flashinfer {
+  FlashInferWheel, flashinfer_0_7_0_dev20260910_wheels,
+  WheelResolution, WheelResolved, WheelIndexUnreadable, WheelNotInIndex, WheelCandidatesConflict,
+  resolve_wheel_from_hrefs, wheel_resolution_is_resolved, flashinfer_nightly_index_for,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionSubject, AcquisitionSource, AcquisitionKey, ContentDigestSha256, UpstreamRevision,
+  SourceLocator, SourceUrl, SourceArgv,
+  AcquisitionHandler, AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified,
+  AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  AcquisitionAttempt, AttemptRejected, AttemptUnreachable, AttemptFailedKey, AttemptTerminal,
+  AcquisitionOutcome, AcquisitionFetched, AcquisitionAlreadyPresent, AcquisitionRefused,
+  PublishFailed, VerifyMechanismFailed, InstalledCopyFailsItsKey,
+  acquire_artifact,
+}
+import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+
+// ── FETCHING THE WHEELS, AS A BINDING AND NOT AS A SECOND ALGORITHM ───────────────────────────
+//
+// THE FOLD ALREADY EXISTS AND THIS MODULE SUPPLIES ITS THREE HANDLERS. gunbc.artifact_acquisition owns
+// observe-then-acquire-then-stage-then-verify-then-publish, and it already separates every outcome a
+// wheel fetch needs to keep apart: a destination that is absent, present-and-verified, present-and-wrong,
+// or unreadable; a source unreachable, rejected, failing its key, or failing to publish. A shell loop
+// was about to re-derive all of that, worse and once per caller.
+//
+// THE SHAPE IS COPIED FROM extdeps.provisioning.ubuntu_install_media_fetch DELIBERATELY. That module is
+// the existing binding of this fold to an HTTP file with a published digest, which is exactly what a
+// wheel is. Following it means a reader who knows one knows the other, and it means the staging rule --
+// download to a side path, verify, publish only then -- is the same rule in both places rather than two
+// rules that happen to agree today.
+//
+// WHAT IS DIFFERENT IS THE LOCATOR. Install media is fetched from mirrors whose URL is derived from the
+// artifact row; a wheel's URL is DISCOVERED by reading a package index, because the simple repository
+// API lets an index link anywhere. So the subject here is built from a resolution rather than from a
+// row, and a subject that could not be resolved is never constructed at all.
+
+fn wheel_key_digest(key: AcquisitionKey) -> NonEmptyStr {
+  match key {
+    ContentDigestSha256 { hex: h } => h
+    UpstreamRevision { revision: _ } => "a wheel is never revision-keyed" as NonEmptyStr
+  }
+}
+
+fn observe_wheel(subject: AcquisitionSubject) -> AcquisitionObservation {
+  let present = shell.Test.IsFile(path: subject.install_path as FilePath, expect: OutcomeIsData)
+  if present.is_file == false {
+    AcquisitionAbsent
+  } else {
+    match sha256sum_verify_via_shell(path: subject.install_path, expected_digest: wheel_key_digest(key: subject.key)) {
+      Sha256Matches => AcquisitionVerified
+      Sha256Mismatch => AcquisitionDigestMismatch
+      Sha256VerifyInfraFailure { reason: r } => AcquisitionProbeFailed { reason: r }
+    }
+  }
+}
+
+fn ensure_wheel_parent(subject: AcquisitionSubject) -> Bool {
+  let made = shell.Mkdir.Parents(path: subject.parent_directory as FilePath)
+  made.success
+}
+
+fn wheel_staging_path(subject: AcquisitionSubject) -> NonEmptyStr {
+  match subject.staging_path {
+    Present { value: p } => p
+    Absent => join([subject.install_path as String, ".part"], "") as NonEmptyStr
+  }
+}
+
+// A MISMATCH DISCARDS THE BYTES RATHER THAN LEAVING THEM STAGED. This is the property that keeps a 404
+// page or a truncated transfer from becoming a permanent resident: the staging path is where wrong bytes
+// die, and the install path only ever holds something that passed.
+fn wheel_discard_mismatch(part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+  AttemptFailedKey
+}
+
+fn wheel_discard_infra_failure(part_path: NonEmptyStr, subject: AcquisitionSubject, origin: AcquisitionSource, reason: NonEmptyStr) -> AcquisitionAttempt {
+  let cleaned = shell.Remove.RecursiveForce(path: part_path as FilePath)
+  AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+    identity: subject.identity, source: origin.identity, reason: reason,
+  } } }
+}
+
+fn wheel_publish(subject: AcquisitionSubject, origin: AcquisitionSource, part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let moved = shell.Move.File(source: part_path as FilePath, destination: subject.install_path as FilePath)
+  if moved.success {
+    AttemptTerminal { outcome: AcquisitionFetched {
+      identity: subject.identity, install_path: subject.install_path, source: origin,
+    } }
+  } else {
+    AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed {
+      identity: subject.identity, source: origin.identity, install_path: subject.install_path,
+    } } }
+  }
+}
+
+fn attempt_wheel_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr) -> AcquisitionAttempt {
+  let downloaded = http.Client.DownloadToFile(url: url, destination: part_path)
+  if downloaded.success == false {
+    AttemptUnreachable
+  } else {
+    match sha256sum_verify_via_shell(path: part_path, expected_digest: wheel_key_digest(key: subject.key)) {
+      Sha256Matches => wheel_publish(subject: subject, origin: origin, part_path: part_path)
+      Sha256Mismatch => wheel_discard_mismatch(part_path: part_path)
+      Sha256VerifyInfraFailure { reason: r } => wheel_discard_infra_failure(part_path: part_path, subject: subject, origin: origin, reason: r)
+    }
+  }
+}
+
+fn attempt_wheel_source(subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match origin.locator {
+    SourceArgv { argv: _ } =>
+      AttemptRejected { detail: "a wheel source was built with a command-line locator; this transport downloads a resolved URL" as NonEmptyStr }
+    SourceUrl { url: u } => attempt_wheel_download(subject: subject, origin: origin, url: u, part_path: wheel_staging_path(subject: subject))
+  }
+}
+
+data wheel_acquisition_handler: AcquisitionHandler = AcquisitionHandler {
+  observe: observe_wheel,
+  ensure_parent: ensure_wheel_parent,
+  attempt: attempt_wheel_source,
+}
+
+// ── READING AN INDEX IS ITS OWN STEP AND ITS OWN FAILURE ──────────────────────────────────────
+//
+// THE INDEX IS FETCHED AS A DOCUMENT AND THE HREFS ARE READ OUT OF IT, which is the operation whose
+// absence produced a constructed URL and a 404 page that failed its digest. An unreadable index and an
+// index that holds nothing matching are different answers: the first is availability, the second is a
+// pin that has been withdrawn -- ordinary on a nightly channel -- and only the second means the pin is
+// wrong.
+func read_index_hrefs(index: NonEmptyStr) -> List<NonEmptyStr>?
+  uses net: Network
+{
+  let fetched = http.Client.Get(url: index)
+  if fetched.success == false {
+    none
+  } else {
+    Present { value: extract_href_urls(document: fetched.body) }
+  }
+}
+
+// THE HREF READER IS DELIBERATELY DUMB AND WHOLE-TOKEN. It takes every absolute URL in the document and
+// lets resolve_wheel_from_hrefs decide which one matches, rather than trying to parse HTML: the
+// filename match is the discriminating step and it is exact, so a looser extraction cannot widen what
+// gets selected -- it can only offer more candidates to a matcher that rejects all but one.
+fn extract_href_urls(document: String) -> List<NonEmptyStr> {
+  fold(split(s: document, separator: "\""), init: [], f: (acc, piece) =>
+    if starts_with(s: piece, prefix: "https://") { concat(acc, [piece as NonEmptyStr]) } else { acc })
+}
+
+func resolve_wheel(w: FlashInferWheel) -> WheelResolution
+  uses net: Network
+{
+  let index = flashinfer_nightly_index_for(package: w.package)
+  match read_index_hrefs(index: index) {
+    Absent => WheelIndexUnreadable { index: index, cause: "the package index could not be fetched" as NonEmptyStr }
+    Present { value: hrefs } => resolve_wheel_from_hrefs(w: w, index: index, hrefs: hrefs)
+  }
+}
+
+// ── ONE WHEEL, RESOLVED THEN ACQUIRED ─────────────────────────────────────────────────────────
+//
+// THE TWO STEPS STAY VISIBLE BECAUSE THEY FAIL DIFFERENTLY. A resolution failure is about the index; an
+// acquisition failure is about the transfer or the bytes. Collapsing them into one outcome would make
+// "the nightly withdrew this build" and "the download was truncated" the same diagnostic.
+type WheelMaterialization
+  = WheelMaterialized { filename: NonEmptyStr, install_path: NonEmptyStr }
+  | WheelResolutionFailed { filename: NonEmptyStr, resolution: WheelResolution }
+  | WheelAcquisitionFailed { filename: NonEmptyStr, outcome: AcquisitionOutcome }
+
+// ── AN ARTIFACT REQUIREMENT IS NOT A DOWNLOAD SOURCE, AND THE ORDER MATTERS ───────────────────
+//
+// A PREVIOUS REVISION RESOLVED THE INDEX BEFORE IT COULD BUILD A SUBJECT AT ALL, and stated the rule as
+// "the subject is built from a resolution, never from a row". That is too strong and it costs the exact
+// case this fleet is in: a correct, verified wheel already on disk plus a nightly index that has moved
+// on. Resolution would fail, no subject could be constructed, and a wheel that is sitting right there
+// and hashes correctly could not be used.
+//
+// THE ROW ALREADY ESTABLISHES WHAT BYTES ARE WANTED -- that is what the digest is -- and where they can
+// currently be fetched is a separate, later question. So the requirement is expressed first and the
+// destination is observed first, which is what `acquire_artifact` does anyway: it returns
+// AcquisitionAlreadyPresent on a verified destination without touching a source. Resolving beforehand
+// defeated that by failing before the fold could run.
+//
+// WHAT REMAINS FORBIDDEN IS THE THING THAT ACTUALLY WENT WRONG: a DOWNLOAD may only use a locator that
+// came from a successful resolution. A fresh fetch never invents a URL; an existing verified artifact
+// never depends on the index still being online.
+fn wheel_requirement_subject(w: FlashInferWheel, parent: NonEmptyStr, sources: List<AcquisitionSource>) -> AcquisitionSubject {
+  let install_path = join([parent as String, "/", w.filename as String], "") as NonEmptyStr
+  AcquisitionSubject {
+    identity: w.filename,
+    key: ContentDigestSha256 { hex: w.sha256 },
+    install_path: install_path,
+    staging_path: Present { value: join([install_path as String, ".part"], "") as NonEmptyStr },
+    parent_directory: parent,
+    sources: sources,
+  }
+}
+
+// THE DESTINATION IS ASKED FIRST AND WITH NO SOURCES DECLARED, so a verified local copy is reused
+// without any network operation at all -- not merely without a download, but without the index read whose
+// failure would otherwise abort the whole thing.
+func materialize_wheel(w: FlashInferWheel, parent: NonEmptyStr) -> WheelMaterialization
+  uses net: Network
+{
+  let requirement = wheel_requirement_subject(w: w, parent: parent, sources: [])
+  match observe_wheel(subject: requirement) {
+    AcquisitionVerified => WheelMaterialized { filename: w.filename, install_path: requirement.install_path }
+    AcquisitionDigestMismatch =>
+      WheelAcquisitionFailed { filename: w.filename, outcome: AcquisitionRefused { cause: InstalledCopyFailsItsKey {
+        identity: w.filename, install_path: requirement.install_path, expected: w.sha256,
+      } } }
+    AcquisitionProbeFailed { reason: r } =>
+      WheelAcquisitionFailed { filename: w.filename, outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+        identity: w.filename, source: "destination-probe" as NonEmptyStr, reason: r,
+      } } }
+    AcquisitionAbsent => {
+      let r = resolve_wheel(w: w)
+      match r {
+        WheelResolved { filename: f, locator: loc, expected_sha256: _ } => {
+          let subject = wheel_requirement_subject(w: w, parent: parent, sources: [AcquisitionSource {
+            identity: join(["index:", flashinfer_nightly_index_for(package: w.package) as String], "") as NonEmptyStr,
+            locator: SourceUrl { url: loc },
+          }])
+          match acquire_artifact(subject: subject, handler: wheel_acquisition_handler) {
+            AcquisitionFetched { identity: _, install_path: p, source: _ } => WheelMaterialized { filename: f, install_path: p }
+            AcquisitionAlreadyPresent { identity: _, install_path: p } => WheelMaterialized { filename: f, install_path: p }
+            AcquisitionRefused { cause: c } => WheelAcquisitionFailed { filename: f, outcome: AcquisitionRefused { cause: c } }
+          }
+        }
+        WheelIndexUnreadable { index: _, cause: _ } => WheelResolutionFailed { filename: w.filename, resolution: r }
+        WheelNotInIndex { index: _, filename: _ } => WheelResolutionFailed { filename: w.filename, resolution: r }
+        WheelCandidatesConflict { filename: _, locators: _ } => WheelResolutionFailed { filename: w.filename, resolution: r }
+      }
+    }
+  }
+}
+
+fn wheel_materialized_path(m: WheelMaterialization) -> NonEmptyStr? {
+  match m {
+    WheelMaterialized { filename: _, install_path: p } => Present { value: p }
+    WheelResolutionFailed { filename: _, resolution: _ } => none
+    WheelAcquisitionFailed { filename: _, outcome: _ } => none
+  }
+}
+
+fn wheel_materialization_line(m: WheelMaterialization) -> String {
+  match m {
+    WheelMaterialized { filename: f, install_path: p } =>
+      join(["wheel ", f as String, " -> ", p as String, "\n"], "")
+    WheelResolutionFailed { filename: f, resolution: r } =>
+      join(["wheel ", f as String, " RESOLUTION FAILED: ", wheel_resolution_text(r: r), "\n"], "")
+    WheelAcquisitionFailed { filename: f, outcome: _ } =>
+      join(["wheel ", f as String, " ACQUISITION FAILED\n"], "")
+  }
+}
+
+fn wheel_resolution_text(r: WheelResolution) -> String {
+  match r {
+    WheelResolved { filename: _, locator: loc, expected_sha256: _ } => loc as String
+    WheelIndexUnreadable { index: i, cause: c } => join(["index unreadable ", i as String, ": ", c as String], "")
+    WheelNotInIndex { index: i, filename: f } => join(["no ", f as String, " in ", i as String], "")
+    WheelCandidatesConflict { filename: f, locators: ls } =>
+      join(["conflicting candidates for ", f as String, ": ", to_string(count(ls))], "")
+  }
+}
+
+// ── THE POPULATION IS ALL THREE OR IT IS NOT A LAYER ──────────────────────────────────────────
+//
+// TWO OF THREE IS NOT PARTIAL SUCCESS TO PROCEED FROM. The layer installs them in one invocation, and a
+// missing jit-cache means the image quietly keeps whatever the base carried -- which is the released
+// build the layer exists to replace. So the fold reports the population, and a caller cannot read a
+// count and guess.
+type WheelPopulation
+  = WheelsReady { paths: List<NonEmptyStr> }
+  | WheelsIncomplete { failures: List<WheelMaterialization>, ready: List<NonEmptyStr> }
+
+func materialize_wheel_population(ws: List<FlashInferWheel>, parent: NonEmptyStr) -> WheelPopulation
+  uses net: Network
+{
+  let results = map(ws, w => materialize_wheel(w: w, parent: parent))
+  let failures = filter(results, m => match wheel_materialized_path(m: m) { Present { value: _ } => false, Absent => true })
+  let ready = flat_map(results, m => match wheel_materialized_path(m: m) {
+    Present { value: p } => [p]
+    Absent => []
+  })
+  if count(failures) == 0 { WheelsReady { paths: ready } } else { WheelsIncomplete { failures: failures, ready: ready } }
+}

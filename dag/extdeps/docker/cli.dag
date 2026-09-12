@@ -332,3 +332,26 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["image", "pull", image as String])
 }
+
+// ── MOVING AN IMAGE BETWEEN DAEMONS WITHOUT A REGISTRY ────────────────────────────────────────
+//
+// `save` AND `load` ARE THE PAIR A FLEET NEEDS WHEN THE BUILD HOST IS NOT THE SERVING HOST and nothing
+// is published. They are modelled here rather than at the caller for the ordinary reason: an argv is a
+// fact about docker, and a caller that spelled these itself would be a second authority on what docker's
+// command line is.
+//
+// `-o` AND `-i` RATHER THAN A REDIRECT. A shell redirect is not expressible as an argv and would force
+// the caller into a shell, which is the thing the portable-word allowlist exists to prevent; docker's own
+// flags take the path, so the operation stays one command with one operand.
+fn docker_image_save_command(image: NonEmptyStr, destination: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "save", "-o", destination as String, image as String])
+}
+
+// LOAD IS NOT THE INVERSE OF SAVE FOR IDENTITY PURPOSES, and that is why this builder exists beside a
+// separate readback rather than returning anything useful itself. `docker image load` restores images
+// and their tags and reports what it loaded on stdout, but a caller must not take that report as the
+// destination's state: if the tag already existed on the target it has simply been moved, and the id
+// behind it afterwards is a question only `docker image inspect` answers.
+fn docker_image_load_command(archive: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "load", "-i", archive as String])
+}

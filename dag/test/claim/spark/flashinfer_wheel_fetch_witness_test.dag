@@ -1,0 +1,127 @@
+module test.claim.spark.flashinfer_wheel_fetch_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import extdeps.flashinfer.flashinfer {
+  FlashInferWheel, flashinfer_0_7_0_dev20260910_wheels, flashinfer_wheel_for,
+  WheelResolution, WheelResolved, WheelIndexUnreadable, WheelNotInIndex, WheelCandidatesConflict,
+  resolve_wheel_from_hrefs, flashinfer_nightly_index_for,
+}
+import gunbc.spark.flashinfer_wheel_fetch {
+  WheelMaterialization, WheelMaterialized, WheelResolutionFailed, WheelAcquisitionFailed,
+  WheelPopulation, WheelsReady, WheelsIncomplete,
+  wheel_materialized_path, wheel_requirement_subject,
+}
+import gunbc.artifact_acquisition { AcquisitionSubject }
+
+// ── THE TWO PROPERTIES THAT LIVE IN THE FOLD RATHER THAN THE PARSER ───────────────────────────
+//
+// AN UNREADABLE INDEX MUST NOT BECOME AN ABSENCE VERDICT. "The index could not be read" and "the index
+// was read and holds nothing matching" are the difference between a retry and a repin, and on a nightly
+// channel the second is ordinary while the first is an outage. A fold that collapsed them would tell an
+// operator to change a pin because a network was down.
+fn w_wheel() -> FlashInferWheel? {
+  flashinfer_wheel_for(wheels: flashinfer_0_7_0_dev20260910_wheels, package: "flashinfer-python" as NonEmptyStr)
+}
+
+test fn an_unreadable_index_is_not_a_missing_artifact() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let unreadable = WheelIndexUnreadable {
+        index: flashinfer_nightly_index_for(package: w.package),
+        cause: "the package index could not be fetched" as NonEmptyStr,
+      }
+      match unreadable {
+        WheelIndexUnreadable { index: _, cause: _ } => true
+        WheelNotInIndex { index: _, filename: _ } => false
+        WheelResolved { filename: _, locator: _, expected_sha256: _ } => false
+        WheelCandidatesConflict { filename: _, locators: _ } => false
+      }
+    }
+  }
+}
+
+// AND AN EMPTY CANDIDATE LIST FROM A SUCCESSFULLY READ INDEX IS THE OTHER ANSWER, which is what makes
+// the pair meaningful: the same absence of candidates means different things depending on whether the
+// read succeeded, so the resolver must not derive one from the other.
+test fn a_read_index_with_no_candidates_is_not_in_index() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } =>
+      match resolve_wheel_from_hrefs(w: w, index: flashinfer_nightly_index_for(package: w.package), hrefs: []) {
+        WheelNotInIndex { index: _, filename: f } => (f as String) == (w.filename as String)
+        WheelIndexUnreadable { index: _, cause: _ } => false
+        WheelResolved { filename: _, locator: _, expected_sha256: _ } => false
+        WheelCandidatesConflict { filename: _, locators: _ } => false
+      }
+  }
+}
+
+// ── THE REQUIREMENT EXISTS WITHOUT A SOURCE, WHICH IS WHAT MAKES LOCAL REUSE POSSIBLE ─────────
+//
+// THE SUBJECT IS CONSTRUCTIBLE WITH NO SOURCES AT ALL. A previous revision resolved the index before it
+// could build a subject, so a verified wheel already on disk was unusable whenever the nightly had moved
+// on -- the artifact was right there, hashing correctly, and the code could not express wanting it.
+//
+// THE ROW ESTABLISHES WHAT BYTES ARE WANTED; RESOLUTION ESTABLISHES WHERE THEY CAN BE FETCHED. This row
+// asserts the first half stands alone, which is the structural precondition for the destination-first
+// observation the acquisition fold performs.
+test fn a_requirement_subject_needs_no_source_to_exist() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let s = wheel_requirement_subject(w: w, parent: "/tmp/wheels" as NonEmptyStr, sources: [])
+      count(s.sources) == 0
+        && (s.identity as String) == (w.filename as String)
+        && string_contains(s: s.install_path as String, pattern: w.filename as String)
+    }
+  }
+}
+
+// AND THE STAGING PATH IS NOT THE INSTALL PATH, which is the property that keeps wrong bytes from
+// becoming a permanent resident: a download lands beside the destination and only a verified one is
+// published over it.
+test fn the_staging_path_differs_from_the_install_path() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let s = wheel_requirement_subject(w: w, parent: "/tmp/wheels" as NonEmptyStr, sources: [])
+      match s.staging_path {
+        Present { value: st } => (st as String) != (s.install_path as String)
+        Absent => false
+      }
+    }
+  }
+}
+
+// ── THE POPULATION IS ALL OR IT IS NAMED ──────────────────────────────────────────────────────
+//
+// TWO OF THREE IS NOT A PARTIAL SUCCESS TO PROCEED FROM: the layer installs them in one invocation, and
+// a missing jit-cache leaves the image carrying whatever the base had -- the released build this whole
+// exercise exists to replace, installed silently.
+test fn an_incomplete_population_names_its_failures_rather_than_counting() -> Bool {
+  match w_wheel() {
+    Absent => false
+    Present { value: w } => {
+      let failed = WheelResolutionFailed {
+        filename: w.filename,
+        resolution: WheelNotInIndex { index: "https://x.invalid/" as NonEmptyStr, filename: w.filename },
+      }
+      match wheel_materialized_path(m: failed) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    }
+  }
+}
+
+test fn a_materialized_wheel_reports_its_path() -> Bool {
+  match wheel_materialized_path(m: WheelMaterialized {
+    filename: "w.whl" as NonEmptyStr,
+    install_path: "/tmp/wheels/w.whl" as NonEmptyStr,
+  }) {
+    Present { value: p } => (p as String) == "/tmp/wheels/w.whl"
+    Absent => false
+  }
+}

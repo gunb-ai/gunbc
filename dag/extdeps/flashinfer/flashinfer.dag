@@ -3,6 +3,7 @@ module extdeps.flashinfer.flashinfer
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.python.simple_repository_api { locator_names_file, locator_filename }
 
 // ── FLASHINFER IS ITS OWN UPSTREAM, AND THIS MODULE EXISTS BECAUSE IT WAS NOT ─────────────────
 //
@@ -192,17 +193,27 @@ type WheelResolution
   | WheelNotInIndex { index: NonEmptyStr, filename: NonEmptyStr }
   | WheelCandidatesConflict { filename: NonEmptyStr, locators: List<NonEmptyStr> }
 
-// THE MATCH IS ON THE EXACT FILENAME, which is what makes the wheel's own name load-bearing rather
-// than decorative: the architecture, the CUDA version and the ABI all live in it, and a match on the
-// package name alone would accept the x86_64 wheel that sits beside the aarch64 one at the same version.
+// THE MATCH IS ON THE EXACT FILENAME, and a previous revision SAID that while doing a substring test.
+// `string_contains(href, filename)` accepts `.../F.metadata`, `.../other?description=F` and
+// `.../F/another-file` for a required F -- the first of which package indexes publish routinely, right
+// beside the wheel. The existing witnesses did not catch it because a neighbouring version and an x86
+// wheel fail a substring test too; they exercised the property's easy cases and not its claim.
+//
+// SO THE COMPARISON GOES THROUGH THE INDEX SPEC'S OWN READING: strip the fragment (which is where a
+// package index puts the digest), strip the query, take the last path segment, decode it, compare whole.
+// The architecture, CUDA version and ABI all live in that name, which is why it has to be the name and
+// not a substring of a URL.
 fn wheel_matches_requirement(href: NonEmptyStr, w: FlashInferWheel) -> Bool {
-  string_contains(s: href as String, pattern: w.filename as String)
+  locator_names_file(locator: href, filename: w.filename)
 }
 
-// MULTIPLE LINKS TO THE SAME BYTES ARE NOT A CONFLICT. An index may legitimately list one artifact
-// under several mirrors, and refusing that would make an ordinary republication look like ambiguity.
-// What must never be silently resolved is two DIFFERENT locators for one filename, which is why the
-// distinct population is what the decision reads.
+// TWO DISTINCT LOCATORS REFUSE, AND THAT IS A POLICY RATHER THAN A PROOF. Two URLs for one filename may
+// be two mirrors of identical bytes or two different artifacts; this resolver cannot tell, and the
+// digest that would settle it is checked after a source has already been chosen. Refusing is the
+// conservative reading and it is deliberately not described as mirror support: an index that legitimately
+// publishes one artifact under several links will be refused here, and the repair at that point is to
+// model mirrors explicitly rather than to relax this test.
+// IDENTICAL LOCATORS LISTED TWICE ARE ONE CANDIDATE, which is why the population is de-duplicated first.
 fn resolve_wheel_from_hrefs(w: FlashInferWheel, index: NonEmptyStr, hrefs: List<NonEmptyStr>) -> WheelResolution {
   let matching = filter(hrefs, h => wheel_matches_requirement(href: h, w: w))
   let distinct = fold(matching, init: [], f: (acc, h) =>

@@ -1,0 +1,185 @@
+module extdeps.python.simple_repository_api
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// ── WHAT A PACKAGE INDEX OFFERS, AND HOW TO READ IT WITHOUT GUESSING ──────────────────────────
+//
+// THE SPEC IS THE AUTHORITY AND IT IS EXPLICIT ABOUT THE TWO THINGS THIS MODULE EXISTS FOR. A project
+// page identifies downloadable files through anchor href attributes; those links MAY be relative, and
+// they MAY point at another host entirely. Nothing requires a file to live under the index URL.
+//
+// BOTH MISTAKES THIS MODULE PREVENTS WERE MADE IN ONE DAY. First a URL was CONSTRUCTED as
+// <index>/<package>/<filename>, which returned a 404 page whose bytes failed their digest. Then the
+// repair extracted EVERY absolute URL in the document and claimed that a loose extraction could not
+// widen selection because the filename match was exact. That claim was wrong twice: the match was a
+// substring test, and a document's absolute URLs are not its file links -- a URL inside a comment is
+// selectable, and a legitimate relative link is invisible.
+//
+// WITH ONE SPURIOUS MATCHING URL, "REJECT ALL BUT ONE" SELECTS THE SPURIOUS URL. That is the sentence
+// the previous revision's reasoning could not survive: a matcher cannot recover whether its input came
+// from a download link or from prose, so the extraction has to be right rather than generous.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "packaging.python.org/en/latest/specifications/simple-repository-api/"
+  },
+}
+
+// ── COMMENTS ARE NOT CONTENT ──────────────────────────────────────────────────────────────────
+//
+// AN HTML COMMENT CAN CONTAIN ANYTHING, INCLUDING A PERFECTLY WELL-FORMED LINK. Indexes carry generator
+// banners, commented-out entries and debugging notes, and a scanner that reads them is reading text the
+// index is explicitly not offering. They are removed before any link is looked for, rather than filtered
+// afterwards, because a comment containing `<a href=` would otherwise produce a link with no tag.
+fn strip_html_comments(document: String) -> String {
+  fold(split(s: document, separator: "<!--"), init: "", f: (acc, piece) =>
+    if acc == "" { piece } else {
+      match get(xs: split(s: piece, separator: "-->"), index: 1) {
+        Present { value: after } => join([acc, after], "")
+        Absent => acc
+      }
+    })
+}
+
+// ── A FILE LINK IS AN ANCHOR'S href, NOT ANY URL IN THE PAGE ──────────────────────────────────
+//
+// THE EXTRACTION IS ANCHOR-SCOPED AND THAT IS THE WHOLE CORRECTION. Splitting on `<a` and reading the
+// href of each piece answers "what did the index offer as a file" rather than "what strings in this
+// document look like addresses", which are different questions with different answers on every real
+// index page.
+//
+// THIS IS A SCANNER AND NOT AN HTML PARSER, and the limitation is stated rather than hidden: it does not
+// model nested quoting, attribute order or malformed markup, and an index that served pathological HTML
+// could defeat it. It is sufficient for the shape package indexes actually publish, and its next rung is
+// a real parser binding -- at which point this function deletes rather than being patched.
+// NEXT-RUNG TRIGGER: a modelled HTML parsing operation in extdeps, at which point file-link extraction
+// becomes a call into it and this scanner's limitations stop being this module's problem.
+fn extract_file_link_hrefs(document: String) -> List<String> {
+  let body = strip_html_comments(document: document)
+  fold(split(s: body, separator: "<a "), init: [], f: (acc, piece) =>
+    if acc == [] && !string_contains(s: piece, pattern: "href") { acc } else {
+      match href_value_of(tag_body: piece) {
+        Present { value: h } => concat(acc, [h])
+        Absent => acc
+      }
+    })
+}
+
+fn href_value_of(tag_body: String) -> String? {
+  match get(xs: split(s: tag_body, separator: "href=\""), index: 1) {
+    Absent => none
+    Present { value: after } =>
+      match get(xs: split(s: after, separator: "\""), index: 0) {
+        Absent => none
+        Present { value: v } => if v == "" { none } else { Present { value: v } }
+      }
+  }
+}
+
+// ── A RELATIVE LINK IS RESOLVED AGAINST THE RESPONSE URL ──────────────────────────────────────
+//
+// THE SPEC PERMITS RELATIVE LINKS AND REAL INDEXES USE THEM. An absolute-only reader silently omits
+// those artifacts, which produces the most misleading possible result: a successfully read index that
+// appears to hold nothing matching, reported as a withdrawn pin.
+//
+// THE RESOLUTION IS THE ORDINARY ONE and deliberately narrow: an absolute URL passes through, a
+// root-relative path replaces the index's path, and anything else is joined to the index's directory.
+// It is not a general URL resolver -- `..` segments are left to the server, because collapsing them here
+// would be a second opinion about a path the index already published.
+fn resolve_against_index(index: NonEmptyStr, href: String) -> NonEmptyStr? {
+  if href == "" { none }
+  else {
+    if starts_with(s: href, prefix: "https://") || starts_with(s: href, prefix: "http://") {
+      Present { value: href as NonEmptyStr }
+    } else {
+      if starts_with(s: href, prefix: "/") {
+        match index_origin(index: index) {
+          Absent => none
+          Present { value: origin } => Present { value: join([origin as String, href], "") as NonEmptyStr }
+        }
+      } else {
+        Present { value: join([index_directory(index: index) as String, href], "") as NonEmptyStr }
+      }
+    }
+  }
+}
+
+fn index_origin(index: NonEmptyStr) -> NonEmptyStr? {
+  match get(xs: split(s: index as String, separator: "//"), index: 1) {
+    Absent => none
+    Present { value: after } =>
+      match get(xs: split(s: after, separator: "/"), index: 0) {
+        Absent => none
+        Present { value: host } =>
+          match get(xs: split(s: index as String, separator: "//"), index: 0) {
+            Absent => none
+            Present { value: scheme } => Present { value: join([scheme, "//", host], "") as NonEmptyStr }
+          }
+      }
+  }
+}
+
+// THE DIRECTORY IS EVERYTHING UP TO AND INCLUDING THE LAST SLASH. An index URL that does not end in one
+// names a document rather than a directory, and joining a relative link to it would produce a sibling of
+// that document rather than a child of its folder.
+fn index_directory(index: NonEmptyStr) -> NonEmptyStr {
+  let s = index as String
+  if ends_with(s: s, suffix: "/") { index }
+  else {
+    let parts = split(s: s, separator: "/")
+    let kept = reverse((reverse(parts)).skip(n: 1))
+    join([join(kept, "/"), "/"], "") as NonEmptyStr
+  }
+}
+
+// ── THE FILENAME IS THE LAST PATH SEGMENT, WITHOUT QUERY OR FRAGMENT ──────────────────────────
+//
+// THIS IS THE COMPARISON THAT WAS A SUBSTRING TEST. `string_contains(href, filename)` accepts every one
+// of these for a required filename F:
+//   .../F.metadata          -- a different artifact, the index publishes these beside the wheel
+//   .../other?description=F -- F appearing in a query value
+//   .../F/another-file      -- F as a directory name
+// None is the file. The digest would have caught the bytes afterwards, but the resolver would already
+// have chosen the wrong source and turned a resolution defect into an acquisition failure, which is a
+// worse diagnostic for the same problem.
+//
+// THE FRAGMENT GOES FIRST BECAUSE THAT IS WHERE THE DIGEST LIVES on a package index -- `#sha256=...` is
+// part of the link, not part of the name -- and the query second, so a filename is compared against a
+// filename and nothing else.
+fn locator_filename(locator: NonEmptyStr) -> String {
+  let no_fragment = match get(xs: split(s: locator as String, separator: "#"), index: 0) {
+    Present { value: v } => v
+    Absent => locator as String
+  }
+  let no_query = match get(xs: split(s: no_fragment, separator: "?"), index: 0) {
+    Present { value: v } => v
+    Absent => no_fragment
+  }
+  let segments = split(s: no_query, separator: "/")
+  match get(xs: segments, index: count(segments) - 1) {
+    Present { value: last } => percent_decode(s: last)
+    Absent => ""
+  }
+}
+
+// PERCENT-DECODING IS PART OF READING A FILENAME, because `+` and `%2B` both appear in wheel names for a
+// local version segment and an index may publish either spelling. Only the two forms this corpus has
+// actually seen are decoded; an unrecognised escape is left alone rather than guessed at, so a name this
+// function cannot read fails to match rather than matching something else.
+fn percent_decode(s: String) -> String {
+  replace_seq(s: replace_seq(s: s, find: "%2B", replace: "+"), find: "%2b", replace: "+")
+}
+
+fn replace_seq(s: String, find: String, replace: String) -> String {
+  fold(split(s: s, separator: find), init: "", f: (acc, piece) =>
+    if acc == "" { piece } else { join([acc, replace, piece], "") })
+}
+
+// THE COMPARISON THE RESOLVER SHOULD USE. Exact, on the decoded final path component.
+fn locator_names_file(locator: NonEmptyStr, filename: NonEmptyStr) -> Bool {
+  locator_filename(locator: locator) == (filename as String)
+}
