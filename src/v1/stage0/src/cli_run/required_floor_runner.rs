@@ -2916,7 +2916,7 @@ pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
     FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.inventory.clone()))
 }
 
-/// One prepared source, looked up by the repo-relative path a roster row names.
+/// One prepared source, looked up by the EXACT identity preparation established for it.
 ///
 /// WHY THIS EXISTS BESIDE `floor_prepared_inventory_snapshot`: that accessor clones the whole
 /// inventory vector, which is the right shape for a consumer that folds the corpus and the wrong
@@ -2924,26 +2924,23 @@ pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
 /// ~5k `Rc`s to read one of them would be the cost-shape defect DESIGN section 6 names, at the
 /// accessor rather than in the caller.
 ///
-/// The match is on the prepared source's own path, normalized to `/`, accepting either the exact
-/// repo-relative spelling or that spelling as a trailing component — preparation stores whatever
-/// the module index gave it, and the roster authors repo-relative paths. It does NOT fall back to
-/// a disk read: absence here is a real answer (the entry is outside the prepared subject) and its
-/// caller refuses on it rather than reconstructing a second universe to look again.
+/// THE KEY IS AN IDENTITY, NOT A SUFFIX. `register_floor_prepared_authority` builds
+/// `by_entry_path` with the same normalizer preparation keys its own `path_to_module` map with,
+/// so agreement is by construction. An earlier revision of this function scanned the inventory for
+/// a path ENDING IN the requested one, which is not merely slower: `test/claim/x.dag` is a tail of
+/// both `dag/test/claim/x.dag` and `src/v2/test/claim/x.dag` and both roots are in this subject, so
+/// a suffix scan could serve the wrong file's bytes and the caller could never tell.
+///
+/// It does NOT fall back to a disk read: absence here is a real answer — the entry is outside the
+/// prepared subject — and its caller refuses on it rather than looking for a second answer.
 pub(crate) fn floor_prepared_source_for_entry_path(
     entry_path: &str,
 ) -> Option<Rc<crate::v1_compiler_compile::SourceFile>> {
-    let wanted = entry_path.replace('\\', "/");
-    let suffix = format!("/{wanted}");
+    let wanted = workspace_relative_entry_path(entry_path);
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
-        cell.borrow().as_ref().and_then(|auth| {
-            auth.inventory
-                .iter()
-                .find(|view| {
-                    let p = view.source.path.replace('\\', "/");
-                    p == wanted || p.ends_with(&suffix)
-                })
-                .map(|view| view.source.clone())
-        })
+        cell.borrow()
+            .as_ref()
+            .and_then(|auth| auth.by_entry_path.get(&wanted).cloned())
     })
 }
 
@@ -3360,6 +3357,60 @@ pub(crate) fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str
 /// `v2.workflow.floor_naming_hygiene`) is read from its own module's scope, never from the
 /// policy module's — whether the policy module's closure happens to reach a module is a fact
 /// about the corpus, not about the question being asked.
+/// THE PREPARED-PRODUCT HANDOFF LAW, EVALUATED FROM ITS OWN MODULE ON THE RUN THAT USES IT.
+///
+/// `v2.workflow.floor2_prepared_subject` declares what a consumer may do when its prepared product
+/// is not held: refuse, with no reconstruct arm. `roster_entry_registry` implements exactly that in
+/// Rust — and an implementation that merely RESEMBLES its model is what this call exists to stop
+/// being. Both nullary probes are evaluated here, every required run, and a disagreement stops the
+/// line before a single claim executes.
+///
+/// WHY BOTH ARMS AND NOT JUST THE REFUSAL: a probe that only checks "outside refuses" is satisfied
+/// by a model that refuses everything, which would make the gate useless in the opposite direction.
+/// The served arm is what proves the law can still say yes.
+///
+/// FAIL-CLOSED AT EVERY ARM, like every other authority decode on this path: a subject that cannot
+/// frame the module, a probe that will not evaluate, and a probe returning a non-`Bool` each refuse
+/// by name. A skipped conformance check would leave the host's arms unlicensed while CI reads green.
+pub(crate) fn floor_required_prepared_product_law(
+    prepared: &PreparedRepository,
+) -> Result<(), String> {
+    const MODULE: &str = "v2.workflow.floor2_prepared_subject";
+    let ctx = floor_authority_frame(prepared, MODULE).map_err(|e| {
+        format!("REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnframeable module={MODULE} — {e}")
+    })?;
+    for (func, expected) in [
+        ("prepared_product_held_serves", true),
+        ("prepared_product_outside_subject_refuses", true),
+    ] {
+        let qualified = format!("{MODULE}.{func}");
+        match v1_interpreter::run_in_context(&ctx, &qualified, false) {
+            Ok(v1_interpreter::Value::Bool(b)) if b == expected => {}
+            Ok(v1_interpreter::Value::Bool(b)) => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawDiverged {qualified} answered \
+                     {b}, but `roster_entry_registry` is written to the answer {expected}. The \
+                     model and the host disagree about the prepared-product handoff; the host's \
+                     arms are not licensed by the law they claim to implement."
+                ));
+            }
+            Ok(other) => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawNotBool {qualified}: expected \
+                     a Bool, got {}",
+                    floor_value_shape(Some(&other))
+                ));
+            }
+            Err(e) => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnevaluable {qualified} — {e}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn floor_authority_frame(
     prepared: &PreparedRepository,
     module_path: &str,
@@ -4128,6 +4179,11 @@ pub fn run_required_floor(
         Some((&gate_entry_index, &closure_seeds)),
     )?;
     drop(gate_entry_index);
+    // THE HANDOFF LAW IS CONSULTED BEFORE ANY CONSUMER USES IT. `roster_entry_registry` serves its
+    // answers out of the prepared authority registered a few lines below, so the model that
+    // licenses its two arms is evaluated here, first, and a divergence refuses the run rather than
+    // being discovered by a reader comparing two files.
+    floor_required_prepared_product_law(&prepared)?;
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize

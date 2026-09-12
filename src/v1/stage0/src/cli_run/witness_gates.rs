@@ -824,22 +824,32 @@ pub(crate) fn commit_witness_field_str(
 /// replaced, and the distinction is the whole point — the defect was never "reads from disk", it
 /// was "resolves a corpus to read a name set".
 pub(crate) fn roster_entry_registry(roots: &[String], entry: &str) -> RosterEntryRegistryCache {
+    // THE PREPARED SUBJECT IS CONSULTED FIRST, AND UNDER THE FLOOR IT IS CONSULTED ALONE.
+    //
+    // ORDER IS THE WHOLE POINT AND AN EARLIER REVISION HAD IT BACKWARDS. It resolved the entry
+    // against the live filesystem first and only then reached for the prepared bytes, which makes
+    // the answer depend on the tree AS IT IS NOW rather than as preparation froze it: a file
+    // deleted, moved or rewritten after preparation produced `EntryMissing` even though its exact
+    // bytes were held one lookup away. That is the prepared subject not being the authority —
+    // precisely the defect this change exists to close, reintroduced by a `stat` in front of it.
+    //
+    // So there is NO path resolution on this arm at all. The roster's own repo-relative spelling is
+    // the identity, `by_entry_path` is keyed by it, and a miss is `OutsidePreparedSubject` — a
+    // statement about the SUBJECT, which is decided, not about the disk, which is irrelevant here.
+    if floor_prepared_authority_active() {
+        return match floor_prepared_source_for_entry_path(entry) {
+            Some(source) => roster_entry_registry_from_prepared_source(entry, &source),
+            None => RosterEntryRegistryCache::OutsidePreparedSubject {
+                detail: format!("the prepared subject does not hold {entry}"),
+            },
+        };
+    }
+    // OUTSIDE THE FLOOR THERE IS NO PREPARED SUBJECT FOR THE ENTRY TO BE OUTSIDE OF, so the entry's
+    // own file is read. One file, parse-only — not the corpus index this replaced.
     let entry_path = match resolve_entry_file_under_roots(roots, entry) {
         Ok(p) => p,
         Err(detail) => return RosterEntryRegistryCache::EntryMissing { detail },
     };
-    if floor_prepared_authority_active() {
-        return match floor_prepared_source_for_entry_path(entry)
-            .or_else(|| floor_prepared_source_for_entry_path(&entry_path))
-        {
-            Some(source) => roster_entry_registry_from_prepared_source(entry, &source),
-            None => RosterEntryRegistryCache::OutsidePreparedSubject {
-                detail: format!(
-                    "{entry} resolves to {entry_path} but the prepared subject does not hold it"
-                ),
-            },
-        };
-    }
     match std::fs::read_to_string(&entry_path) {
         Ok(content) => roster_entry_registry_from_prepared_source(
             entry,

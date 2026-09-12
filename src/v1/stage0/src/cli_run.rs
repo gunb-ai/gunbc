@@ -39206,6 +39206,19 @@ thread_local! {
 struct FloorPreparedAuthority {
     inventory: Vec<PreparedSourceView>,
     inventory_digest: String,
+    /// EXACT IDENTITY, ESTABLISHED HERE AND NOT RE-DERIVED BY LOOKUP.
+    ///
+    /// Keyed by `workspace_relative_entry_path` of the prepared source's own path — the same
+    /// normalizer `assemble_prepared_subject_closure` uses to key its `path_to_module` map, so a
+    /// consumer and preparation agree on what "this file" means by construction rather than by two
+    /// spellings that happen to coincide.
+    ///
+    /// IT IS A MAP BECAUSE THE ALTERNATIVE WAS WRONG, not merely slow. A consumer matching a
+    /// prepared source by PATH SUFFIX can hit the wrong file whenever one repo-relative spelling is
+    /// a tail of another — `test/claim/x.dag` is a suffix of both `dag/test/claim/x.dag` and
+    /// `src/v2/test/claim/x.dag`, and both roots are in this subject. An exact key cannot express
+    /// that ambiguity; a suffix scan silently resolves it to whichever entry it met first.
+    by_entry_path: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
 }
 
 struct FloorPreparedAuthorityGuard;
@@ -39222,10 +39235,20 @@ impl Drop for FloorPreparedAuthorityGuard {
 fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
     crate::coproduct_reflection::register_decl_census_memo();
     let inventory_digest = floor_inventory_content_digest(&inventory);
+    let by_entry_path: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = inventory
+        .iter()
+        .map(|view| {
+            (
+                workspace_relative_entry_path(&view.source.path),
+                view.source.clone(),
+            )
+        })
+        .collect();
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         *cell.borrow_mut() = Some(FloorPreparedAuthority {
             inventory,
             inventory_digest,
+            by_entry_path,
         });
     });
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
@@ -39326,6 +39349,108 @@ fn register_floor_prepared_authority_guard(
 ) -> FloorPreparedAuthorityGuard {
     register_floor_prepared_authority(inventory);
     FloorPreparedAuthorityGuard
+}
+
+#[cfg(test)]
+mod prepared_source_identity_test {
+    use super::*;
+
+    fn view(path: &str, content: &str) -> PreparedSourceView {
+        PreparedSourceView {
+            module_path: path.replace(['/', '.'], "_"),
+            source: Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            }),
+        }
+    }
+
+    /// THE FIXTURE PLANTS THE AMBIGUITY THE OLD LOOKUP COULD NOT SEE.
+    ///
+    /// Two prepared sources whose repo-relative paths share a tail — `test/claim/x.dag` — under the
+    /// two roots this subject actually carries. A suffix scan answers whichever it meets first and
+    /// cannot report that it had a choice; an exact key cannot express the ambiguity at all.
+    ///
+    /// DISCRIMINATING: restore `p.ends_with(&format!("/{wanted}"))` in
+    /// `floor_prepared_source_for_entry_path` and the third assertion goes RED — a bare
+    /// `test/claim/x.dag` resolves to one of the two rather than to neither.
+    #[test]
+    fn prepared_lookup_is_exact_not_suffix() {
+        let _guard = register_floor_prepared_authority_guard(vec![
+            view("dag/test/claim/x.dag", "module dag_x"),
+            view("src/v2/test/claim/x.dag", "module v2_x"),
+        ]);
+
+        let under_dag =
+            crate::cli_run::floor_prepared_source_for_entry_path("dag/test/claim/x.dag")
+                .expect("the dag-root entry is held");
+        assert_eq!(under_dag.content, "module dag_x");
+
+        let under_v2 =
+            crate::cli_run::floor_prepared_source_for_entry_path("src/v2/test/claim/x.dag")
+                .expect("the src/v2-root entry is held");
+        assert_eq!(under_v2.content, "module v2_x");
+
+        assert!(
+            crate::cli_run::floor_prepared_source_for_entry_path("test/claim/x.dag").is_none(),
+            "a shared tail is not an identity: it names neither prepared source, and answering \
+             with either one would serve the wrong file's bytes with no way for the caller to tell"
+        );
+    }
+
+    /// THE PREPARED SUBJECT OUTLIVES THE TREE IT WAS TAKEN FROM, which is what makes it an
+    /// authority rather than a cache. This entry is held by preparation and does not exist on disk
+    /// at any point in this test.
+    ///
+    /// DISCRIMINATING: put a `resolve_entry_file_under_roots` stat in front of the prepared lookup
+    /// in `roster_entry_registry` — the ordering an earlier revision shipped — and this goes RED
+    /// with `EntryMissing`, because the file is not there to be found.
+    #[test]
+    fn a_held_entry_serves_even_though_no_such_file_exists() {
+        let _guard = register_floor_prepared_authority_guard(vec![view(
+            "dag/test/claim/deleted_after_preparation.dag",
+            "module gone\n\nfn still_declared() -> Bool { true }\n",
+        )]);
+
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        assert!(
+            !std::path::Path::new("dag/test/claim/deleted_after_preparation.dag").exists(),
+            "fixture precondition: this path must not exist on disk"
+        );
+
+        match crate::cli_run::witness_gates::roster_entry_registry(
+            &roots,
+            "dag/test/claim/deleted_after_preparation.dag",
+        ) {
+            RosterEntryRegistryCache::Functions(names) => {
+                assert!(
+                    names.contains("still_declared"),
+                    "the frozen bytes declare it: {names:?}"
+                );
+            }
+            other => panic!("expected the prepared bytes to serve, got {other:?}"),
+        }
+    }
+
+    /// An entry the prepared subject does not hold refuses by NAME, and with the arm whose remedy
+    /// is "fix the subject" rather than the one whose remedy is "fix the roster row".
+    #[test]
+    fn an_unheld_entry_refuses_as_outside_the_subject() {
+        let _guard = register_floor_prepared_authority_guard(vec![view(
+            "dag/test/claim/held.dag",
+            "module h",
+        )]);
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        match crate::cli_run::witness_gates::roster_entry_registry(
+            &roots,
+            "dag/test/claim/not_held.dag",
+        ) {
+            RosterEntryRegistryCache::OutsidePreparedSubject { detail } => {
+                assert!(detail.contains("dag/test/claim/not_held.dag"), "{detail}");
+            }
+            other => panic!("expected OutsidePreparedSubject, got {other:?}"),
+        }
+    }
 }
 
 /// THE SUBJECT THE REQUIRED RUN PREPARES — assembled once, BEFORE any judgment is passed on it.
@@ -41072,11 +41197,18 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
     "v2.workflow.floor_pure_producer_share",
+    // The prepared-product handoff law (`prepared_product_held_serves` /
+    // `prepared_product_outside_subject_refuses`, evaluated by
+    // `floor_required_prepared_product_law`). Enrolled here for the reason the comment below
+    // gives: this list IS the declaration that a module is evaluated by name, and a law the
+    // running floor consults must be in the subject by declaration rather than by whichever
+    // unrelated closure happens to drag it in.
+    "v2.workflow.floor2_prepared_subject",
     // The grounded opaque-host-call surface (`opaque_host_call_surface`, qualified, from
     // `floor_required_opaque_host_call_surface`). Enrolled here rather than read out of the
     // policy module's frame because this list IS the declaration that a module is evaluated by
