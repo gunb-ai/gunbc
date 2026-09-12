@@ -16,7 +16,7 @@ data emit_rust_reference_derived_rows_bridge_seed_growth_justification: SeedGrow
       module_path: "v1_interpreter",
       decl_name: "reference_derived_candidate_disposition_value",
       field: WholeDeclaration
-    }
+    },
     DeclarationRef {
       module_path: "v1_interpreter",
       decl_name: "occurrence_transport_value",

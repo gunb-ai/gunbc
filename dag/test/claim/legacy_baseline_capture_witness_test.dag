@@ -55,6 +55,7 @@ import v2.workflow.legacy_baseline_capture {
   CaptureBlocked,
   CaptureAvailable
 }
+import v2.workflow.legacy_repair_observation { repair_subject_field_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

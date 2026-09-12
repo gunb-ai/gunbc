@@ -34,10 +34,12 @@ import v2.workflow.legacy_baseline_persisted_observation {
   PersistRefusedNotCaptured,
   persisted_against_requested
 }
-import v2.workflow.legacy_repair_tap {
+import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateRow,
   CandidateOwnModule,
-  CandidateRegistryAbsent,
+  CandidateRegistryAbsent
+}
+import v2.workflow.legacy_repair_tap {
   persist_capture_from_bridge_rows,
   repair_roster_from_bridge_rows,
   never_emitted_declared_modules,
