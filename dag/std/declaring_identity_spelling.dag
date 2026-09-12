@@ -3,7 +3,6 @@ module std.declaring_identity_spelling
 import std.types { Bool }
 import std.decl_ref { DeclarationRef }
 import v2.std.algebra { is_prefix_of, list_reverse }
-import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName }
 
 // XL-3: whether one mention is spelled as the identity that declared its target.
@@ -17,10 +16,14 @@ import v2.std.qualified_name { QualifiedName }
 // WHAT PRODUCTION INGEST ACTUALLY SEES is measured by
 // v2.test.claim.declaring_identity_spelling.production_ingest and
 // v2.test.claim.namespace_xl0.call_argument_mention_survival:
-// SURVIVES as sites (unusable for requalification): a BARE name not inside a call.
-// DOES NOT: names inside calls (body-lowering, eager-raven / #11207);
+// SURVIVES as sites (unusable for requalification): a BARE value not inside a
+// call; a parameter reference; a BARE type name in PARAMETER position.
+// DOES NOT: a BARE type name in FIELD position (separate from qualification);
+// names inside calls (body-lowering, eager-raven / #11207);
 // QUALIFIED/dotted references in any position (dotted-reference gap, not lowering);
 // kernel types, which have no corpus declaration.
+// A qualified field type is absent for two independent reasons and cannot
+// discriminate either class.
 // A bare same-module name resolves inside its own module, so it is not the XL-3
 // population. The usable class is the qualified cross-module mention, absent with
 // no call anywhere; a trigger naming only body-lowering (#11207) does not cover it.
@@ -47,15 +50,11 @@ type DeclaringIdentitySpelling
       cause: UnresolvableCause
     }
 
-fn spelling_symbol_eq(a: Symbol, b: Symbol) -> Bool {
-  a == b
-}
-
 fn authored_is_suffix_of_canonical(authored: QualifiedName, canonical: QualifiedName) -> Bool {
   is_prefix_of(
     prefix: list_reverse(xs: authored),
     xs: list_reverse(xs: canonical),
-    eq: spelling_symbol_eq
+    eq: fn(a, b) { a == b }
   )
 }
 
@@ -89,17 +88,5 @@ fn declaring_identity_spelling_unresolvable(
   UnresolvableSpelling {
     authored: authored,
     cause: cause
-  }
-}
-
-fn resolved_spelling_needs_requalification(row: DeclaringIdentitySpelling) -> Bool {
-  match row {
-    ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: path_verdict } =>
-      match path_verdict {
-        SpelledCanonically => false
-        SpelledShorter => true
-        ResolvedAuthoredNotOnCanonicalPath => true
-      }
-    UnresolvableSpelling { authored: _, cause: _ } => false
   }
 }
