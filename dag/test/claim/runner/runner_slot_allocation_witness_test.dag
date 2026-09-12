@@ -137,22 +137,29 @@ test fn srv2_width_is_held_rather_than_derived() -> Bool {
 // property under test. An assertion whose oracle is an unestablished derivation is worse than a
 // missing one, because it reads as coverage. srv2's width is asserted on its own terms, as a hold,
 // by srv2_width_is_held_rather_than_derived above.
-// THE BINDING AXIS FLIPPED BACK TO MEMORY ON 2026-09-12, and the three conjuncts that asserted
-// otherwise are inverted rather than deleted. The paragraph above is preserved because its LESSON
-// survives -- a name that states a coincidence as a law teaches the wrong invariant -- but its
-// factual claim ("strictly below what memory admits") was true only while the slot was 16 GiB.
-// At 26 GiB the envelope quotient gives srv1 15 and srv3/srv4 17, all below CPU's 21, so committed
-// EQUALS memory admitted again. That is the same coincidence the rename warned about, returning
-// from the other direction, which is exactly why the assertion is written as equality against the
-// memory axis by name rather than against a literal that happens to match it.
+// CPU STILL BINDS AT 26 GiB, AND THE REASON IS THAT THE TWO AXES ARE NOT INDEPENDENT.
+//
+// The first draft of this row asserted that the binding axis flipped to memory -- srv1 15,
+// srv3/srv4 17 -- and it was WRONG, caught by this witness rather than by reading. cores_per_slot
+// is DERIVED from the slot's memory ceiling (`gunbc_runner_cores_per_slot`:
+// ceil(memory_max / memory_per_core), against the cited Ubicloud arm64 ratio of 3 GB decimal per
+// vCPU). So raising memory 16 -> 26 GiB raises cores_per_slot 6 -> 10, and the CPU axis falls
+// 128/6 = 21 to 128/10 = 12. Memory admits 15 and 17; CPU admits 12; the minimum is 12 everywhere.
+//
+// THE COUPLING IS THE FINDING AND IT IS RECORDED HERE BECAUSE IT IS INVISIBLE AT THE LITERAL. A
+// reader raising the memory ceiling sees a memory decision and pays a CPU one, at a ratio taken
+// from a cloud vendor's shape catalog rather than from any measurement of this workload -- whose
+// floor run uses about one core sustained (cpu 20 min against 24 min wall). Most of the width lost
+// by this change is therefore not bought by the memory it needed; it is bought by CPU quota
+// nothing asked for.
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  gunbc_runner_slots_per_host(host: operator_host_srv1) == 15
+  gunbc_runner_slots_per_host(host: operator_host_srv1) == 12
     && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 17
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 17
-    && gunbc_runner_slots_per_host(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == host_memory_admitted_width(host: operator_host_srv4)
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 12
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 12
+    && gunbc_runner_slots_per_host(host: operator_host_srv1) < host_memory_admitted_width(host: operator_host_srv1)
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) < host_memory_admitted_width(host: operator_host_srv3)
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) < host_memory_admitted_width(host: operator_host_srv4)
 }
 
 test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
@@ -246,13 +253,27 @@ test fn witness_RED_binary_unit_reading_would_exceed_the_armed_line() -> Bool {
   byte_size_count(b: byte_size(16750372454)) > byte_size_count(b: gunbc_floor_measured_peak_armed_high)
 }
 
-test fn witness_srv2_03_observation_no_longer_drifts_after_ruling() -> Bool {
+// RENAMED 2026-09-12, AND THE RENAME IS THE POINT RATHER THAN BOOKKEEPING. The old name --
+// `..._no_longer_drifts_after_ruling` -- was true only because the 2026-08-17 ruling had moved the
+// DECLARATION to meet what srv2-03 was already running. The 2026-09-12 demand ruling moves the
+// declaration to 26/25 while the fleet still runs 16/15, so the observation drifts again, and it
+// SHOULD: a declaration ahead of the hosts is exactly what drift means, and this witness is where
+// the model says so out loud.
+//
+// THAT IS THE DRAIN-BEFORE-RAISE ORDERING SURFACING STRUCTURALLY. Nothing here is broken and
+// nothing should be "fixed" by editing the observation: `gunbc_srv2_03_effective_cap_observation`
+// is a MEASURED READBACK of a live host, and
+// `gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation` forbids reconciling a
+// declaration toward a readback precisely so that this gap stays visible until a converge closes
+// it. The witness therefore asserts the observation's own bytes unchanged and asserts that drift
+// IS detected, which is the true state between the ruling and the rollout.
+test fn witness_srv2_03_observation_drifts_until_the_fleet_is_converged() -> Bool {
   match gunbc_srv2_03_effective_cap_observation {
     RunnerSlotEffectiveCapMeasured { runner_unit: unit, memory_max: max, memory_high: high, probed_at: _ } =>
       unit == "actions-runner@srv2-03.service"
         && byte_size_count(b: max) == byte_size_count(b: byte_size(17179869184))
         && byte_size_count(b: high) == byte_size_count(b: byte_size(16106127360))
-        && !runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
+        && runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
         && !runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
     _ => false
   }

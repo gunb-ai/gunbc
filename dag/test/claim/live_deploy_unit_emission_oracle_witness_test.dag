@@ -221,7 +221,7 @@ test fn the_serve_unit_matches_the_deployed_bytes() -> Bool {
 // resource-control authority; a change to either shows up here as the deployed bytes changing.
 test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=16106127360\n"
+  emitted == "[Unit]\nDescription=gunbc deployment cgroup bound for gunbc-roadmap.service\n\n[Slice]\nMemoryMax=27917287424\nMemoryHigh=26843545600\n"
 }
 
 

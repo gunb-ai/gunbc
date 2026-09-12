@@ -112,17 +112,44 @@ data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RE
 // distribution, and this row does not claim it does; what it claims is that a line BELOW a
 // measured uncensored peak is known to be too low, which needs no distribution to be true.
 //
-// WHAT IT COSTS, AND THE WIDTHS MOVE WITH IT BY CONSTRUCTION rather than by a second edit:
-// host_memory_admitted_width is now the envelope quotient, so srv1 goes 25 -> 15 and srv3/srv4
-// 29 -> 17 on this literal alone. Committed width is the minimum against CPU's 21, so the fleet
-// moves 21/21/21 -> 15/17/17 and loses 14 of 63 slots. That is bought deliberately: at 16/15 the
-// floor welds to the throttle line on every run and its verdict is decided by whether the working
-// set happens to drift back under, which is not a CI system.
+// WHAT IT COSTS, AND BOTH AXES MOVE BY CONSTRUCTION rather than by a second edit. The memory axis
+// is now the envelope quotient, so srv1 goes 25 -> 15 and srv3/srv4 29 -> 17 on this literal alone.
+// THE CPU AXIS MOVES TOO, AND THAT IS THE PART A READER WILL NOT SEE AT THIS LITERAL:
+// `gunbc_runner_cores_per_slot` derives cores from THIS ceiling --
+// ceil(memory_max / memory_per_core) against the cited Ubicloud arm64 ratio of 3 GB decimal per
+// vCPU -- so 16 -> 26 GiB takes cores_per_slot 6 -> 10 and the CPU axis 128/6 = 21 down to
+// 128/10 = 12. Memory admits 15 and 17; CPU admits 12; the minimum is 12. The fleet moves
+// 21/21/21 -> 12/12/12 and loses 22 of 63 slots.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH SAID 15/17/17 AND 14 SLOTS, having reasoned about the
+// memory axis alone. It was caught by
+// `runner_slot_allocation_committed_widths_are_the_minimum_over_axes` going red, not by review, and
+// the correction is recorded rather than silently applied because the coupling is the durable fact:
+// raising the memory ceiling SPENDS CPU WIDTH, at a ratio taken from a cloud vendor's shape catalog
+// rather than from any measurement of this workload. The floor run behind this ruling uses about
+// one core sustained (cpu 20 min against 24 min wall), so eight of the twenty-two lost slots are
+// not bought by the memory this change needed -- they are bought by CPU quota nothing asked for.
+//
+// THAT IS ACCEPTED HERE RATHER THAN REPAIRED (operator ruling 2026-09-12, presented with the
+// alternative of deriving cores_per_slot from measured floor CPU demand and declined for now). It
+// is a real cost knowingly taken, not an oversight, and the repair is a separate change to a
+// separate authority rather than a rider on a capacity decision.
+//
+// The whole trade is bought deliberately: at 16/15 the floor welds to the throttle line on every
+// run and its verdict is decided by whether the working set happens to drift back under, which is
+// not a CI system.
 //
 // dissolve-on: the floor's demand falls below this line. The prepared-product and dependency
 // lifetime reductions have a measured exchange rate now -- roughly one slot per GiB removed on
 // srv1 -- so this row is sized to a workload under active reduction and is expected to fall.
-data gunbc_runner_slot_memory_max: ByteSize = byte_size(27917287424)
+// THE BYTE COUNT IS THE AUTHORITY AND THE ByteSize IS DERIVED FROM IT, so the number has one home
+// and the width arithmetic below stays in the Int domain. Mixing Int and Nat in one expression is a
+// corpus-wide hazard rather than a local inconvenience -- one such expression in std.nat broke
+// resolution in unrelated modules -- so the quotient is taken over byte COUNTS and the measure is
+// reconstructed for the consumers that want a ByteSize.
+data gunbc_runner_slot_memory_max_bytes: Int = 27917287424
+
+data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory_max_bytes)
 
 // THE CPU QUOTA IS THE SURVEYED CORES-PER-SLOT, RESOLVED OR REFUSED. A Resolved arm is an absolute
 // ceiling the cell slice can enforce; a Refused arm means the survey failed and this function does
@@ -249,16 +276,20 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // a cycle -- today they sit in `gunbc.ci_floor_measurement` and `gunbc.ci_runner_placement`, both
 // of which import this one -- at which point the envelope is computed from them and this authored
 // row deletes rather than being kept beside a derivation of the same number.
-fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
+fn host_runner_memory_envelope_bytes(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
-    byte_size(429496729600)
+    429496729600
   } else if (host as String) == (operator_host_srv3 as String) {
-    byte_size(498216206336)
+    498216206336
   } else if (host as String) == (operator_host_srv4 as String) {
-    byte_size(498216206336)
+    498216206336
   } else {
-    byte_size(0)
+    0
   }
+}
+
+fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
+  byte_size(host_runner_memory_envelope_bytes(host: host))
 }
 
 // srv2 IS STILL NOT DERIVED AND THIS FUNCTION DOES NOT PRETEND OTHERWISE. Its 5 is a HELD
@@ -272,8 +303,7 @@ fn host_memory_admitted_width(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv2 as String) {
     5
   } else {
-    byte_size_count(b: host_runner_memory_envelope(host: host))
-      / byte_size_count(b: gunbc_runner_slot_memory_max)
+    host_runner_memory_envelope_bytes(host: host) / gunbc_runner_slot_memory_max_bytes
   }
 }
 
