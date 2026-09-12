@@ -1,0 +1,52 @@
+module test.claim.fabric_m0_origin_object_probe_witness
+
+import std.types { Bool }
+import std.process { exit_ok }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fabric_m0_origin_readback {
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+}
+import gunbc.fabric_m0_commit {
+  ManifestRead,
+  ManifestNotFound,
+  ManifestReadUnavailable,
+  manifest_read_of_origin_fetch,
+}
+import tools.fabric_m0_origin_object_probe {
+  canary_identity,
+  absent_key,
+  canary_exit_from_origin_fetch,
+  canary_exit_is_zero,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn the_canary_identity_is_named() -> Bool {
+  canary_identity == "gunbc.fabric-m0.canary:1"
+}
+
+test fn an_absent_origin_object_is_manifest_not_found() -> Bool {
+  match manifest_read_of_origin_fetch(fetch: OriginObjectAbsent { key: absent_key }) {
+    ManifestNotFound => true
+    ManifestRead { reading: _ } => false
+    ManifestReadUnavailable { cause: _ } => false
+  }
+}
+
+test fn an_unavailable_origin_fetch_is_manifest_read_unavailable() -> Bool {
+  match manifest_read_of_origin_fetch(fetch: OriginFetchUnavailable { key: absent_key, cause: "origin unbound" }) {
+    ManifestReadUnavailable { cause } => cause == "origin unbound"
+    ManifestRead { reading: _ } => false
+    ManifestNotFound => false
+  }
+}
+
+test fn fetch_absent_pending_exits_nonzero() -> Bool {
+  exit_ok(e: canary_exit_from_origin_fetch(fetch: OriginObjectAbsent { key: absent_key })) == false
+    && (canary_exit_is_zero(fetch: OriginObjectAbsent { key: absent_key }) == false)
+}
+
+test fn an_unavailable_fetch_exits_nonzero() -> Bool {
+  canary_exit_is_zero(fetch: OriginFetchUnavailable { key: absent_key, cause: "origin unbound" }) == false
+}
