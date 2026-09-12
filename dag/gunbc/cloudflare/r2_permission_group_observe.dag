@@ -5,6 +5,8 @@ import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.account_api_tokens
 import extdeps.cloudflare.account_api_tokens { PermissionGroupRef }
@@ -17,12 +19,13 @@ import gunbc.cloudflare.r2_origin {
   fleet_cloudflare_account_standing,
   fleet_cloudflare_bootstrap_custody,
 }
-import gunbc.auth.access_token_source { OperatorSuppliedToken }
-import gunbc.auth.gcp_secret_access {
-  SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
+import gunbc.auth.access_token_source {
+  AccessTokenSourceSelected, AccessTokenSourceUnavailable, select_access_token_source,
+  ensure_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  access_token_upsert_required_reason,
 }
 import gunbc.auth.secret_ref_credential {
-  fetch_secret_ref_credential,
+  fetch_secret_ref_credential_with_token,
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
   SecretCredentialWireDecodeRefused,
@@ -45,32 +48,66 @@ import gunbc.auth.secret_ref_credential {
 // typed permission-group roster would require deciding which ids matter before anyone has seen the
 // list -- and the list is the input to that decision. The typed model lands in the change that
 // records the observation, with the retrieval date beside it.
-func observe_account_permission_groups() -> String uses net: Network {
+// THE IDENTITY THIS OBSERVATION RUNS AS IS THE RUN'S OWN, for the same reason the mint's is: a
+// listing that only an operator session can perform cannot be the preflight of a workflow job.
+// gunbc.auth.access_token_source select_access_token_source names the arm the environment supports;
+// nothing about identity is decided here.
+type PermissionGroupObserveToken
+  = PermissionGroupObserveTokenResolved { token: Secret }
+  | PermissionGroupObserveTokenRefused { cause: NonEmptyStr }
+
+func permission_group_observe_access_token() -> PermissionGroupObserveToken uses net: Network {
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: cause } =>
+      PermissionGroupObserveTokenRefused { cause: cause }
+    AccessTokenSourceSelected { source: source } =>
+      match ensure_access_token(source: source) {
+        AccessTokenUpsertRequired { plan: plan } =>
+          PermissionGroupObserveTokenRefused {
+            cause: access_token_upsert_required_reason(plan: plan) as NonEmptyStr,
+          }
+        AccessTokenEnsureRefused { reason: reason } =>
+          PermissionGroupObserveTokenRefused { cause: reason }
+        AccessTokenReady { token: token } =>
+          PermissionGroupObserveTokenResolved { token: token }
+      }
+  }
+}
+
+// THE REFUSAL IS AN ARM, NOT A PREFIX. An earlier draft of the preflight below decided whether this
+// observation had succeeded by testing the returned String for "NO "/"THE "/"LISTING " -- a
+// postcondition keyed to a phrase, which greens the moment someone improves the wording and says
+// nothing about what actually happened. The standing is the fact; the String is its rendering.
+type PermissionGroupListing
+  = PermissionGroupsListed { rendered: String }
+  | PermissionGroupListingRefused { cause: NonEmptyStr }
+
+func observe_account_permission_groups_standing() -> PermissionGroupListing uses net: Network {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: _ } =>
-      "NO CLOUDFLARE ACCOUNT ID: nothing to list permission groups for"
+      PermissionGroupListingRefused { cause: "NO CLOUDFLARE ACCOUNT ID: nothing to list permission groups for" as NonEmptyStr }
     CloudflareAccountAllocated { company: _, account_id: account_id } =>
       match fleet_cloudflare_bootstrap_custody() {
         BootstrapCustodyUnrecorded { intervention: _ } =>
-          "NO BOOTSTRAP TOKEN IN CUSTODY: the listing needs the account credential"
+          PermissionGroupListingRefused { cause: "NO BOOTSTRAP TOKEN IN CUSTODY: the listing needs the account credential" as NonEmptyStr }
         BootstrapCustodyPinned { locus: locus } =>
-          match read_supplied_access_token() {
-            SuppliedTokenUnavailable { cause: cause } =>
-              concat("NO GCP ACCESS TOKEN: ", cause as String)
-            SuppliedTokenReady { token: gcp_token } =>
-              match fetch_secret_ref_credential(
+          match permission_group_observe_access_token() {
+            PermissionGroupObserveTokenRefused { cause: cause } =>
+              PermissionGroupListingRefused { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
+            PermissionGroupObserveTokenResolved { token: gcp_token } =>
+              match fetch_secret_ref_credential_with_token(
                 secret_ref: locus,
-                token_source: OperatorSuppliedToken { token: gcp_token },
+                access_token: gcp_token,
               ) {
                 SecretCredentialAccessUpsertRequired { plan: _ } =>
-                  "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication"
+                  PermissionGroupListingRefused { cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication" as NonEmptyStr }
                 SecretCredentialFetchRefused { reason: reason } =>
-                  concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String)
+                  PermissionGroupListingRefused { cause: concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
                 SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
-                  "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode"
+                  PermissionGroupListingRefused { cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
                 SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
-                  concat(concat("THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
-                    concat(", answered about ", resolved))
+                  PermissionGroupListingRefused { cause: concat(concat("THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
+                    concat(", answered about ", resolved)) as NonEmptyStr }
                 SecretCredentialReady { credential: bootstrap, resolved_version: _ } => {
                   let listed = cloudflare.AccountTokens.ListPermissionGroups(
                     auth_token: bootstrap,
@@ -78,13 +115,13 @@ func observe_account_permission_groups() -> String uses net: Network {
                   )
                   match listed.outcome {
                     RestStatusRefused { status: _, body: body } =>
-                      concat("LISTING REFUSED: ", body)
+                      PermissionGroupListingRefused { cause: concat("LISTING REFUSED: ", body) as NonEmptyStr }
                     RestTransportRefused { cause: cause } =>
-                      concat("LISTING GOT NO RESPONSE: ", cause as String)
+                      PermissionGroupListingRefused { cause: concat("LISTING GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
                     RestBodyUndecodable { status: _, cause: cause } =>
-                      concat("LISTING BODY DID NOT DECODE: ", cause as String)
+                      PermissionGroupListingRefused { cause: concat("LISTING BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }
                     RestOk =>
-                      join(map(listed.groups, g => join([g.id as String, g.name, join(g.scopes, "+")], " | ")), "\n")
+                      PermissionGroupsListed { rendered: join(map(listed.groups, g => join([g.id as String, g.name, join(g.scopes, "+")], " | ")), "\n") }
                   }
                 }
               }
@@ -215,3 +252,44 @@ data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = 
     )
   ),
 ]
+
+// ── THE MINT'S PREFLIGHT, AND WHY IT IS THIS OBSERVATION RATHER THAN A NEW PROBE ───────────────
+// REACHABILITY FROM A RUNNER CLASS IS A FACT TO OBSERVE, NEVER TO ASSUME, and the cheapest honest
+// observation is one this module already performs: the listing reads the bootstrap credential from
+// secretmanager.googleapis.com and then calls api.cloudflare.com, which is exactly the pair of hosts
+// the mint depends on, and it MUTATES NOTHING. A dedicated curl probe would be a second authority
+// for the same question and would prove reachability for a client the mint does not use.
+//
+// IT IS ALSO WHERE THE PRE-GRANT REFUSAL IS OBSERVED WITH NOTHING SPENT. Dispatched before the
+// operator's IAM grant lands, this entry refuses typed and located -- "THE BOOTSTRAP TOKEN COULD NOT
+// BE READ: ..." -- having issued no AccountTokens.Create, because it has no Create to issue. The
+// mint's own identical refusal is the same wall one step later and on a path where a Create COULD
+// follow, which is precisely why the evidence is taken here first: a discriminating red is worth
+// more when observing it cannot cost a token.
+func observe_account_permission_groups_wet() -> ProcessExit uses net: Network {
+  match observe_account_permission_groups_standing() {
+    PermissionGroupListingRefused { cause: cause } => exit_failure(reason: cause as String)
+    PermissionGroupsListed { rendered: rendered } => {
+      let written = Filesystem.Write(
+        path: r2_mint_preflight_receipt_path,
+        content: rendered,
+      )
+      if written.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("THE PREFLIGHT LISTED AND ITS RECEIPT COULD NOT BE WRITTEN: ", written.error))
+      }
+    }
+  }
+}
+
+// The pre-existing String-valued entry, kept as the RENDERING of the standing so nothing that
+// invoked it is renamed and no second listing exists.
+func observe_account_permission_groups() -> String uses net: Network {
+  match observe_account_permission_groups_standing() {
+    PermissionGroupListingRefused { cause: cause } => cause as String
+    PermissionGroupsListed { rendered: rendered } => rendered
+  }
+}
+
+data r2_mint_preflight_receipt_path: String = "target/r2-mint-preflight-permission-groups.txt"

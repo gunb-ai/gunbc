@@ -54,12 +54,14 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialPinned,
   OriginCredentialUnminted,
 }
-import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken }
-import gunbc.auth.gcp_secret_access {
-  SuppliedTokenResolution, SuppliedTokenReady, SuppliedTokenUnavailable, read_supplied_access_token,
+import gunbc.auth.access_token_source {
+  AccessTokenSourceSelection, AccessTokenSourceSelected, AccessTokenSourceUnavailable,
+  select_access_token_source,
+  ensure_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  access_token_upsert_required_reason,
 }
 import gunbc.auth.secret_ref_credential {
-  fetch_secret_ref_credential,
+  fetch_secret_ref_credential_with_token,
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
   SecretCredentialWireDecodeRefused,
@@ -248,6 +250,40 @@ fn bootstrap_burden_text() -> String {
 // is the custody fetch that every Create/List/Delete/AccessVersion consumer has to pass through.
 // Re-authoring the five classify arms and the five fetch arms at each entry was four copies of one
 // refusal text, which is how a decode-arm drift becomes a second mint.
+// THE IDENTITY THIS RUN HAS, RESOLVED ONCE AND USED FOR EVERY EFFECT IT PERFORMS. The mint reads
+// the bootstrap credential AND then writes the custody container and its version, so one token has
+// to survive from the read to the writes. Before this it was an operator token by construction --
+// read_supplied_access_token() then OperatorSuppliedToken, spelled here -- which is why the only
+// executed precedent (#10947) was an operator pasting a one-hour ya29 token into a session, and why
+// no federated workflow run could perform this mint at all.
+//
+// select_access_token_source names the arm the RUN's environment supports (workload federation in a
+// dispatched job, an operator token file in a session) and ensure_access_token realizes it. This
+// module chooses nothing about identity and spells no arm: the ladder lives in
+// gunbc.auth.access_token_source, and adding a fourth realizer there reaches this mint without an
+// edit here.
+type R2MintAccessTokenStanding
+  = R2MintAccessTokenResolved { token: Secret }
+  | R2MintAccessTokenRefused { cause: NonEmptyStr }
+
+func r2_mint_gcp_access_token() -> R2MintAccessTokenStanding uses net: Network {
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: cause } =>
+      R2MintAccessTokenRefused { cause: cause }
+    AccessTokenSourceSelected { source: source } =>
+      match ensure_access_token(source: source) {
+        AccessTokenUpsertRequired { plan: plan } =>
+          R2MintAccessTokenRefused {
+            cause: access_token_upsert_required_reason(plan: plan) as NonEmptyStr,
+          }
+        AccessTokenEnsureRefused { reason: reason } =>
+          R2MintAccessTokenRefused { cause: reason }
+        AccessTokenReady { token: token } =>
+          R2MintAccessTokenResolved { token: token }
+      }
+  }
+}
+
 type R2MintBootstrapStanding
   = R2MintBootstrapReady {
       account_id: CloudflareAccountId
@@ -274,13 +310,13 @@ func r2_mint_bootstrap(profile: R2OriginTokenProfile) -> R2MintBootstrapStanding
     R2MintAdmissionRefused { standing: standing } =>
       R2MintBootstrapRefused { cause: concat("THE MINT WAS NOT ADMITTED: ", mint_refusal_text(standing: standing)) as NonEmptyStr }
     R2MintReady { account_id: account_id, bootstrap_locus: locus, request: request } =>
-      match read_supplied_access_token() {
-        SuppliedTokenUnavailable { cause: cause } =>
+      match r2_mint_gcp_access_token() {
+        R2MintAccessTokenRefused { cause: cause } =>
           R2MintBootstrapRefused { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
-        SuppliedTokenReady { token: gcp_token } =>
-          match fetch_secret_ref_credential(
+        R2MintAccessTokenResolved { token: gcp_token } =>
+          match fetch_secret_ref_credential_with_token(
             secret_ref: locus,
-            token_source: OperatorSuppliedToken { token: gcp_token },
+            access_token: gcp_token,
           ) {
             SecretCredentialAccessUpsertRequired { plan: _ } =>
               R2MintBootstrapRefused {
