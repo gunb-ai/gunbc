@@ -17,7 +17,6 @@ import product.fabric.provider_admission {
   DispositionStanding, DispositionNotEngaged, admit_provider_use,
 }
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations }
-import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadbackStanding, ModelsRouteRead, VllmModelsRouteReadback,
 }
@@ -412,13 +411,20 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // offer identity, and keep operator policy -- the site allocation, the posture -- as policy inputs
 // rather than making them responsible for observing runtime behaviour.
 //
-// WHAT A REALIZATION IS HERE, AND WHY IT IS THESE TWO FIELDS. The endpoint is what actually
-// answered, and the hosts are who actually serves it; together they decide both questions this
-// module asks of a deployment -- whether the operator's site allocation covers the machines, and
-// whose container environment may be read for the telemetry path. Anything richer belongs to the
-// realization lane rather than here.
+// WHAT A REALIZATION IS HERE, AND WHY IT IS THESE TWO FIELDS. The hosts are who actually serves the
+// offer, and the readback is what the running engine reported about itself; together they decide
+// both questions this module asks of a deployment -- whether the operator's site allocation covers
+// the machines, and which declared launch the process is, which is what makes an environment
+// attributable to it. Anything richer belongs to the realization lane rather than here.
+//
+// AN ENDPOINT FIELD STOOD HERE AND IS DELETED RATHER THAN KEPT FOR LATER. It was load-bearing only
+// while attribution was keyed on the port, and review 64424 moved that to the readback; the field
+// then survived the move with prose still claiming it decided attribution. That is a declaration no
+// operation consumes under an annotation asserting it does -- which is exactly the class this change
+// files as gunbc.recurring_failure_mode.diagnostic_asserts_standing_no_check_evaluated, reached by
+// that row's own review tell: name the producer the sentence asserts an outcome for, and grep for
+// it. There was none (review 64438).
 type SparkServingRealization {
-  endpoint: ServingRouteEndpoint
   hosts: List<HostIdentity>
   readback: VllmModelsRouteReadbackStanding
 }
@@ -511,7 +517,7 @@ fn spark_lane_disables_usage_stats(lane: FabricLaneObserved) -> Bool {
   )
 }
 
-data spark_serving_usage_stats_unread_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: no fabric lane is observed, so no serving container environment exists to read and whether vLLM's usage-stats reporter is disabled on this fleet is unknown. Read the lanes (gunbc.spark.fabric_switch_observed fabric_lane_observations) before this route's telemetry path can be resolved."
+data spark_serving_usage_stats_unread_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: the realization that answered carries no host membership, so there is no set of machines whose serving container environment could be read and whether vLLM's usage-stats reporter is disabled for this route is unknown. The located fact is the GROUP'S MEMBERSHIP, not the lane roster: reading more lanes answers nothing while the realization names no hosts. Establish which hosts serve this deployment before its telemetry path can be resolved."
 
 // THE OBLIGATION THE REQUEST-MATERIAL ARM NAMES, AND IT MUST EXIST FOR THAT ARM TO BE WORTH
 // ANYTHING. It was declared, then lost in the rewrite that moved the launch standing to a fold, and

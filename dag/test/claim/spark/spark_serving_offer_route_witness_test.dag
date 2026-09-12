@@ -1,6 +1,6 @@
 module test.claim.spark.spark_serving_offer_route_witness_test
 
-import std.types { Bool, NonEmptyStr, String, List, Port }
+import std.types { Bool, NonEmptyStr, String, List }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import product.fabric.provider_route { ProviderRoute }
 import product.fabric.identity { FabricIdentity }
@@ -8,8 +8,6 @@ import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
 import product.placement_supply { HostIdentity }
-import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
-import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.first_party_serving { SparkServingRealization }
 import gunbc.spark.vllm_observed { ModelsRouteDocumentUnreadable }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
@@ -38,7 +36,6 @@ import gunbc.spark.serving_offer {
 // endpoint's question and is exercised in the first-party witness instead.
 fn t_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
   SparkServingRealization {
-    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: hosts,
     readback: ModelsRouteDocumentUnreadable { cause: "not decoded in this fixture: these rows vary the hosts, and the route standing reads only those" as NonEmptyStr },
   }

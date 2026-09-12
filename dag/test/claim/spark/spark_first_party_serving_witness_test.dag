@@ -1,6 +1,6 @@
 module test.claim.spark.spark_first_party_serving_witness_test
 
-import std.types { Bool, NonEmptyStr, String, Port }
+import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
@@ -19,10 +19,8 @@ import product.placement_supply { HostIdentity }
 import std.measure { token_count }
 import v2.std.optional { Present, Absent }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6 }
-import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.pair_serving_realization {
-  spark_pair_serve_port, spark_pair_model_path_in_container, spark_pair_desired_snapshot,
+  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
 }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteDocumentUnreadable,
@@ -98,7 +96,6 @@ fn t_declared_path() -> String {
 
 fn t_pair_realization() -> SparkServingRealization {
   SparkServingRealization {
-    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [operator_host_srv5, operator_host_srv6],
     readback: t_readback(path: t_declared_path()),
   }
@@ -109,7 +106,6 @@ fn t_pair_realization() -> SparkServingRealization {
 // engine on the same port would inherit an environment nothing observed it to have.
 fn t_foreign_realization() -> SparkServingRealization {
   SparkServingRealization {
-    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [operator_host_srv5, operator_host_srv6],
     readback: t_readback(path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a"),
   }
@@ -253,15 +249,16 @@ test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
 }
 
 // RED -- A REALIZATION WITH NO READABLE HOST MEMBERSHIP IS UNREAD TOO, and for its own reason rather
-// than the foreign-deployment one: the port is the pair route's, so the environment WOULD be
-// attributable, and what is missing is which lanes serve it.
+// than the foreign-deployment one: the readback identifies the declared launch, so the environment
+// WOULD be attributable, and what is missing is which hosts serve it. The obligation must name THAT
+// -- reading more of the lane roster answers nothing while the realization names no hosts (review
+// 64438).
 test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
   match spark_serving_usage_stats_standing(realization: SparkServingRealization {
-    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [] as List<HostIdentity>,
     readback: t_readback(path: t_declared_path()),
   }) {
-    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no fabric lane")
+    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no host membership")
     UsageStatsEnabledByDefault { basis: _ } => false
     UsageStatsDisabledByLaunch { mechanism: _ } => false
   }
@@ -275,7 +272,6 @@ test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
 // is the obligation rather than srv5's environment.
 test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_observed_half() -> Bool {
   match spark_serving_usage_stats_standing(realization: SparkServingRealization {
-    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [operator_host_srv5, operator_host_srv1],
     readback: t_readback(path: t_declared_path()),
   }) {
@@ -291,7 +287,6 @@ test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_ob
 // there is nothing to compare to the declared path.
 test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
   match spark_serving_usage_stats_standing(realization: SparkServingRealization {
-    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: spark_pair_serve_port },
     hosts: [operator_host_srv5, operator_host_srv6],
     readback: ModelsRouteDocumentUnreadable { cause: "the document's data member is not an array" as NonEmptyStr },
   }) {

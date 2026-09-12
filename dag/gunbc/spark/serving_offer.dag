@@ -157,8 +157,9 @@ data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_o
 //
 // THE SUBJECT IS THE REALIZATION THAT ANSWERED, NOT A HOST LIST, because the same hosts can carry
 // more than one deployment and the route's facts are about the one being offered. The coverage
-// question below reads its hosts; gunbc.spark.first_party_serving reads its endpoint to decide whose
-// container environment it may attribute. Passing a bare host list let those two answers come from
+// question below reads its hosts; gunbc.spark.first_party_serving reads the readback the running
+// engine answered with to decide which declared launch it is, and therefore whose container
+// environment may be attributed to it. Passing a bare host list let those two answers come from
 // different deployments (operator-routed review of #11083).
 //
 // AN EMPTY HOST LIST REFUSES, and that arm is the reason this is a fold over the UNCOVERED set

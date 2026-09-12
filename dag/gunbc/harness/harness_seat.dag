@@ -481,7 +481,6 @@ fn harness_bind_candidate(acc: HarnessCandidates, group: FabricGroup, endpoint: 
     readiness: harness_serving_readiness(standing: standing, now: now),
     route: spark_serving_route_standing(
       realization: SparkServingRealization {
-        endpoint: endpoint,
         hosts: fabric_group_hosts(g: group),
         readback: readback,
       },
