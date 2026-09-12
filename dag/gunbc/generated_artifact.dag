@@ -73,7 +73,7 @@ type CommitPolicy
 // whole-tree regenerator before it can finish an otherwise mechanical merge puts that shared
 // projection on every lane's critical path. heal-generated-artifacts already checks out the
 // pushed branch head, derives every committed artifact from that head's authorities, commits
-// the result, and dispatches a revalidation bound to the healed SHA. So for that artifact heal
+// the result. So for that artifact heal
 // IS the route, not one of two: this arm is what the selector returns and what the emitted recipe
 // instructs, and no value in this module means "either actuator". THAT EXCLUSIVITY IS THE MODELED
 // POLICY AND IS ASSERTED IN BOTH DIRECTIONS by
