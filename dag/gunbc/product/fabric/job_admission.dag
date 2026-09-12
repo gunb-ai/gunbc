@@ -35,6 +35,11 @@ fn classify_job<P>(subject: FabricIdentity<P, WorkKey>, classification: JobClass
   }
 }
 
+// Consumption frontier: job_admission_witness executes this boundary today.
+// billing-receipts closes the real-carrier join when its metered gross, credit
+// and net invoice consumes this result for the same fabric work identity.
+// Runner deployment must call this boundary before launch; these pure witnesses
+// do not establish that deployed enforcement.
 // An invoice is not an input to admission. This boundary rechecks the current
 // declaration: a previously admitted subject does not authorize changed handling.
 // The receipt is sealed on source acceptance; external authenticity remains the
