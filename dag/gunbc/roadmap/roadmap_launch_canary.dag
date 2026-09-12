@@ -59,10 +59,9 @@ fn roadmap_launch_canary_execution_contract() -> WorkItemExecutionContract {
   )
 }
 
-// Ticket prose still names the intended sentinel path. That is not AttemptPathScope:
-// PathsAllowed is DECLARED FRONTIER on gunbc.roadmap_execution_contract until belt verify
-// consumes attempt_paths_admitted with a name-status observation. Production contracts,
-// including this canary, bind PathsUnrestricted.
+// Ticket prose still names the intended sentinel path. That is not AttemptPathScope.
+// Production contracts, including this canary, bind PathsUnrestricted. The PathsAllowed
+// production consumer is paths_allowed_production_consumer_frontier.
 
 // The acceptance criteria of the parent, in the ticket carrier the live authority uses, so the
 // criteria digest RLM-3..6 bind is gunbc.roadmap_model roadmap_criteria_digest over exactly these

@@ -1023,18 +1023,14 @@ fn belt_oracle_pin_not_observable_reason(tree: String) -> String {
   ], "")
 }
 
-// BeltSpawnOraclePinStanding / belt_spawn_oracle_pin_standing are DECLARED FRONTIER, not
-// dangling. The production spawn path no longer calls this fold: the controller-tree caller
-// was deleted because it was not the same object as the attempt-worktree pin (#11021).
-// Live spawn refuses via belt_attempt_oracle_pin_capture_for_instance after worktree-add.
-// NAMED CONSUMER: the admitted-base-before-enqueue gate on POST /dispatch (same boundary as
-// durable intent: admit-or-refuse, then the belt consumes the intent and does worktree/pin/seat/spawn).
-// TRIGGER: a production fold that is on that POST /dispatch or belt-intent-admission path
-// calls belt_spawn_oracle_pin_standing with observations of the exact admitted-base Git
-// objects (not instance.repo_root, not a post-worktree filesystem read of a tree created
-// for the attempt). A witness that constructs OracleMissing / OracleFound and calls this
-// fold does not satisfy the trigger. Re-binding spawn to instance.repo_root does not
-// satisfy it either.
+data belt_spawn_oracle_pin_standing_production_consumer_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_belt_actuate",
+    decl_name: "belt_dispatch_node",
+    field: WholeDeclaration
+  }
+}
 
 type BeltSpawnOraclePinStanding
   = SpawnOraclePinAdmitted

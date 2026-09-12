@@ -1,6 +1,8 @@
 module gunbc.roadmap_execution_contract
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ensure { EnsurePolicy }
 
 type ExecutionCapability
@@ -31,16 +33,14 @@ type AttemptPathScope
   = PathsUnrestricted
   | PathsAllowed { prefixes: List<FilePath> }
 
-// PathsAllowed / attempt_paths_admitted is DECLARED FRONTIER, not a live wall.
-// agent_execution_contract and every production ExecutionContract bind PathsUnrestricted.
-// attempt_paths_admitted is the verdict over a caller-supplied touched set; belt verify still
-// binds path_scope: _ (roadmap_belt_actuate). GitExactDiffWindow is identity-only;
-// git.Core.DiffNameStatus is in the argv-expression residue. NAMED CONSUMER: belt verify
-// (or the admitted-base POST /dispatch verify) calling attempt_paths_admitted with a
-// name-status observation over that exact diff window as `touched`. TRIGGER: a production
-// tick refuses PathOutOfScope for a path outside the declared prefixes. A witness that
-// constructs PathsAllowed and calls the fold does not satisfy this trigger. Inventing a
-// second path census does not satisfy it either.
+data paths_allowed_production_consumer_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_belt_actuate",
+    decl_name: "belt_verify_attempt_for_instance",
+    field: WholeDeclaration
+  }
+}
 
 type PathScopeVerdict
   = PathsAdmitted
@@ -50,27 +50,23 @@ type ClaimSourceRootLayout
   = PublicWorktreeLayout
   | PinnedPublicPlusLocalRoot { public_prefix: NonEmptyStr }
 
-// PinnedPublicPlusLocalRoot is DECLARED FRONTIER, not dangling. claim_source_root_args matches
-// the arm and the destination witness constructs it; no production constructor emits it.
-// agent_execution_contract and contract_source_roots on every non-ExecutionContract arm bind
-// PublicWorktreeLayout. NAMED CONSUMER: a live RoadmapNode.execution the belt looks up, whose
-// ExecutionContract.source_roots is PinnedPublicPlusLocalRoot, so spawn/verify argv is
-// claim_source_root_args of that arm rather than the public-only pair. TRIGGER: such a node is
-// constructed on this public authority or on a plan supplied as a parameter, and a production
-// tick (POST /dispatch or belt verify) reads those args. A witness that constructs the arm in
-// isolation does not satisfy this trigger. Binding every contract to PublicWorktreeLayout does
-// not satisfy it either.
+data pinned_public_plus_local_root_production_consumer_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_execution_contract",
+    decl_name: "claim_source_root_args",
+    field: WholeDeclaration
+  }
+}
 
-// WorkItemExecutionContract is the per-node execution fact. ExecutionContractUnspecified and
-// ExecutionContract have live producers in gunbc.roadmap_authority. NotAgentWork is DECLARED
-// FRONTIER, not dangling: launch admission, serve 409, verify, and contract_closure already refuse
-// by NonAgentWorkMode so Unspecified is not their stand-in. No live RoadmapNode.execution is
-// constructed as NotAgentWork today — minting a public authority row that is not actually non-agent
-// work would be a fake producer. TRIGGER: a RoadmapNode the belt looks up (this public authority,
-// or a plan supplied as a parameter) is constructed with execution: NotAgentWork { mode }, so
-// LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. A witness that
-// constructs the arm in isolation does not satisfy this trigger. Inventing a public node whose
-// work is not operator-exclusive, external-lead, or calendar-observation does not satisfy it either.
+data not_agent_work_production_constructor_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_execution_contract",
+    decl_name: "not_agent_work_execution",
+    field: WholeDeclaration
+  }
+}
 
 type NonAgentWorkMode
   = OperatorExclusiveMode
@@ -212,13 +208,10 @@ fn execution_contract_required_capabilities(
 // reading of the model says so.\n\nThis is the one decision, and it returns a THREE-valued closure
 // rather than a Bool because the two unclosed states have different remedies — author a contract,
 // versus fix the contract you authored — and dispatch_environment's located diagnostics depend on
-// telling them apart. contract_has_closing_validation is the Bool projection for the callers that
-// genuinely only need whether an agent closing validation exists. Non-agent modes are false on that
-// predicate because they do not close by validation; they are not therefore missing a contract.
-// Task derivation reads contract_awaits_closing_validation_authoring, which is false for
-// ContractNotAgentWork so a sized operator-exclusive node does not mint a task whose brief
-// replaces that mode with an agent contract. No consumer re-derives either from the coproduct's
-// shape.\n\nNo behaviour changes on today's corpus: all four bound nodes route through
+// telling them apart. Task derivation reads contract_awaits_closing_validation_authoring, which
+// is false for ContractNotAgentWork so a sized operator-exclusive node does not mint a task whose
+// brief replaces that mode with an agent contract. No consumer re-derives that from the
+// coproduct's shape.\n\nNo behaviour changes on today's corpus: all four bound nodes route through
 // gunbc_claim_execution_contract, which always emits exactly one validation. The de-fork is what
 // keeps that true when the fifth binding is written by hand.
 
@@ -262,15 +255,6 @@ fn contract_closure(contract: WorkItemExecutionContract) -> ContractClosure {
       } else {
         ContractCloses { validations: validations }
       }
-  }
-}
-
-fn contract_has_closing_validation(contract: WorkItemExecutionContract) -> Bool {
-  match contract_closure(contract: contract) {
-    ContractCloses { validations: _ } => true
-    ContractClosesNothing => false
-    ContractDeclaresNoValidation => false
-    ContractNotAgentWork { mode: _ } => false
   }
 }
 
