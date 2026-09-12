@@ -497,20 +497,6 @@ fn vllm_member_shape_cause(field: NonEmptyStr, lookup: JsonMemberLookup) -> NonE
   }
 }
 
-// THE ENTRY IS SELECTED BY THE ID THE CALLER ADMITTED, NOT BY POSITION. A route may advertise more
-// than one model, and taking the first entry would bind a readback about model A to a turn admitted
-// for model B -- the pricing-offer-A-with-offer-B's-inputs failure, one layer down, where every
-// value is real and the join is nonsense.
-//
-// AN ENTRY WHOSE OWN id CANNOT BE READ IS COUNTED RATHER THAN SKIPPED. A filter that silently drops
-// a malformed entry makes 'the route does not advertise this model' indistinguishable from 'the
-// route advertised something this decode could not examine', and only the first of those means what
-// the absent arm says. The count travels on the absent arm so the difference is readable.
-type VllmModelsEntrySelection {
-  matched: List<JsonValue>
-  unexaminable: Int
-}
-
 // ONE LOOKUP PER ENTRY, AND ONE AUTHORITY FOR WHAT ITS id IS. An earlier spelling asked the same
 // question twice with two predicates -- does this entry's id match, and is this entry's id readable
 // -- and their least common ancestor ran both filters over the same list, so json_object_unique_member
@@ -565,6 +551,16 @@ fn vllm_models_data_standing(doc: JsonValue) -> VllmModelsDataStanding {
   }
 }
 
+// THE ENTRY IS SELECTED BY THE ID THE CALLER ADMITTED, NOT BY POSITION. A route may advertise more
+// than one model, and taking the first entry would bind a readback about model A to a turn admitted
+// for model B -- the pricing-offer-A-with-offer-B's-inputs failure, one layer down, where every
+// value is real and the join is nonsense.
+//
+// AN ENTRY WHOSE OWN id CANNOT BE READ IS COUNTED RATHER THAN SKIPPED. A filter that silently drops
+// a malformed entry makes 'the route does not advertise this model' indistinguishable from 'the
+// route advertised something this decode could not examine', and only the first of those means what
+// the absent arm says. The count travels on the absent arm so the difference is readable.
+//
 // ONE FOLD, ONE MATCH PER ENTRY, AND NO COPIED ACCUMULATOR. The two predicates that stood here fed
 // two filters over one list, which is two elimination surfaces beside `match` for one coproduct and
 // two independent readings of one value (reviews 64237, 64265). They are gone.
