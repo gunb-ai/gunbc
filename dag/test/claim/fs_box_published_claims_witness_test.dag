@@ -88,9 +88,9 @@ test fn data_sheet_names_bluetooth_4_2_and_usb_c() -> Bool {
 }
 
 test fn faq_trial_freezes_and_has_a_24_hour_buffer() -> Bool {
-  (fs_box_v3_v4_v5_faq.trial_period as String) == "seven-day"
+  minute_count(m: fs_box_v3_v4_v5_faq.trial_period) == 10080
     && fs_box_v3_v4_v5_faq.trial_frozen_on_expiry
-    && (fs_box_v3_v4_v5_faq.formal_account_buffer as String) == "24-hour"
+    && minute_count(m: fs_box_v3_v4_v5_faq.formal_account_buffer) == 1440
     && fs_box_v3_v4_v5_faq.custom_compatible_brand_requires_engineering_approval
     && string_contains(
       s: fs_box_v3_v4_v5_faq.box_pro_customization_review as String,
