@@ -51,7 +51,6 @@ import gunbc.gcp_estate_observation {
   project_enables_service,
   sts_api_service_id,
   named_projects_are_observed_in_census,
-  named_projects_are_observed_in_census,
   every_census_observed_project_is_named,
   named_wif_providers_are_in_census,
   every_census_wif_provider_is_named,
