@@ -1343,6 +1343,38 @@ data required_floor_disposition_path: String = "required_floor_disposition.tsv"
 
 data required_floor_disposition_artifact_name: String = "required-floor-disposition"
 
+// ── THE ALLOCATOR'S ARENA COUNT, BOUNDED, BECAUSE THE SLOT IS THE BINDING CONSTRAINT ─────────
+//
+// WHAT THIS IS FOR, measured in the slot rather than argued. `gunbc.runner_slot_allocation` gives
+// each slot memory_high = 15 GiB and memory_max = 16 GiB. Read from the floor job's own
+// `[floor-cgroup]` lines on main, a FAILING run and a SUCCEEDING run are the same shape: both
+// enter around 10 GB charged and both weld to `memory.high` by beat-10. What separates them is
+// only whether the working set drifts back under the line afterwards. At that margin the run's
+// verdict is decided by a gigabyte or two, which is why the reds are intermittent and why
+// re-running one "fixes" it.
+//
+// WHY THE ARENA COUNT IS THE LEVER. glibc gives each thread its own malloc arena, and the parse
+// phase spawns a thread per `.dag` file over a corpus of ~5,500 — so the process accumulates
+// arenas whose per-arena free lists are retained rather than returned. Measured on this workload:
+// RSS 24.6 -> 21.9 GiB at IDENTICAL live heap. The live data does not change; the fragmentation
+// overhead does.
+//
+// IT IS A MITIGATION AND IS NAMED AS ONE. It does not reduce what the floor needs, so it does not
+// retire the sizing question and must never be cited as having done so — `gunbc.host.memory_stall_refusal`
+// still refuses a thrashing run, deliberately, and this only moves the margin. What it buys is
+// bought at ZERO CI CAPACITY: unlike raising the slot ceiling it costs no slots per host, touches
+// no compiler code, and is one environment variable.
+//
+// dissolve-on: the floor's resident demand falls far enough below `memory_high` that arena
+// retention cannot decide a verdict — at which point this row is removed rather than left as a
+// permanent tuning knob whose effect nobody re-measures.
+data malloc_arena_max_env_key: String = "MALLOC_ARENA_MAX"
+
+// TWO, NOT ONE. One arena serializes every allocation in a process whose parse phase is
+// deliberately threaded, trading the memory back for wall time on the job that is already the
+// slowest in the run. Two keeps a second arena for concurrent allocation while bounding retention.
+data malloc_arena_max_value: String = "2"
+
 data expected_red_roster_join_path: String = "expected_red_roster_join.tsv"
 
 data expected_red_roster_join_artifact_name: String = "expected-red-roster-join"
@@ -2894,6 +2926,7 @@ data witness_floor_workflow: Workflow = {
   env: Present {
     value: [
       kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+      kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value)),
       kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
       kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),

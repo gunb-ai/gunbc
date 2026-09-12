@@ -1,0 +1,759 @@
+module test.claim.mtcollins1_memory_census_witness_test
+
+import std.types { Bool, Int, List, list_length }
+import std.nat { Nat }
+import extdeps.memory { host_memory_population_nominal_bytes }
+import extdeps.memory.types { HostMemoryPopulation, MemoryPopulationRow }
+import std.measure { kibibyte_to_byte_size }
+import extdeps.linux.edac {
+  ChannelTopologyAbsent,
+  ChannelTopologyEnumerated,
+  FirmwareFirstErrorAttributionShim,
+  NoMemoryControllerDriverBound,
+  AbsentOnEveryBoot,
+  AbsentUntilDriverBound,
+  edac_channel_topology_availability,
+  edac_channel_topology_absence_standing,
+}
+import extdeps.memory.sk_hynix {
+  hma82gr7afr4n_vk_catalog,
+  hma82gr7afr8n_vk_catalog,
+  hma82gr7cjr8n_vk_catalog,
+}
+import extdeps.memory.types { DramModuleCatalogRow }
+import extdeps.ocp.mt_jade.memory_mixing {
+  MtJadeMixedDimmSupportOutcome,
+  MixedDimmSupportResolved,
+  MixedDimmSupportUnmodelled,
+  MixedDimmSupportAmbiguous,
+  MixingSupported,
+  MixingNotSupported,
+  MixingNotPreferred,
+  MixingUndetermined,
+}
+import std.measure { bit_width_count }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelPopulationRole,
+  MtCollinsChannelPopulationRoleStanding,
+  PopulationRolesResolved,
+  PopulationRolesRefused,
+  mt_collins_channel_population_roles,
+}
+import std.measure { byte_size_count, hardware_thread_count_value, second_count }
+import gunbc.machine_intake_mtcollins1_memory_census_observation {
+  HistoricalAdHocCapture,
+  MtCollins1AcquisitionStanding,
+  MtCollins1EdacTopologyObservation,
+  MtCollins1MemoryWorkload,
+  MtCollins1SubjectBinding,
+  ProducedByModelledOperation,
+  MtCollins1FirmwareChannelBinding,
+  MtCollins1SlotObservation,
+  SlotEmpty,
+  SlotPopulated,
+  MtCollins1ConsumptionFrontier,
+  MtCollins1MediaRedirectionSample,
+  MtCollins1ConnectorIdentificationBasis,
+  MtCollins1PartnerRequirement,
+  MtCollins1BootDeliveryObservation,
+  mtcollins1_acquisition_standing,
+  mtcollins1_host_memory_population,
+  mtcollins1_memtotal_kb,
+  mtcollins1_boot_delivery_observation,
+  mtcollins1_cross_channel_rank_mixing_standing,
+  mtcollins1_partner_requirement,
+  mtcollins1_census_observed_at,
+  mtcollins1_connector_identification_basis,
+  mtcollins1_edac_clean_at_capture,
+  mtcollins1_edac_uptime_at_capture_seconds,
+  mtcollins1_host_capture_observed_at,
+  mtcollins1_media_attach_observed_at,
+  mtcollins1_consumption_frontier,
+  artifact_identity_frontier,
+  boot_delivery_frontier,
+  mtcollins1_media_redirection_samples,
+  mtcollins1_edac_topology,
+  mtcollins1_firmware_channel_bindings,
+  mtcollins1_host_capture_byte_count,
+  mtcollins1_memory_workload,
+  mtcollins1_nproc,
+  mtcollins1_slots,
+  mtcollins1_subject_binding,
+}
+
+// THIS TEST EXISTS BECAUSE THE CENSUS MODULE WOULD OTHERWISE DECLARE SIXTEEN CHANNEL BINDINGS AND
+// THIRTY-TWO SLOT ROWS THAT NOTHING READS — DESIGN section 3c's dangling declaration, and section 2's
+// redundant work in its purest form. It is also the only mechanism that keeps the module's two
+// independent readings from silently drifting apart under a later edit.
+//
+// THE LOAD-BEARING CHECK IS THE CROSS-JOIN, and it is discriminating rather than decorative. The
+// firmware DRAM training output and the SMBIOS Type 17 table are two DIFFERENT readings, taken by
+// two different agents (the Altra boot firmware before any OS, and dmidecode under Linux) from two
+// different structures. The census module transcribes both. If either transcription is wrong, or
+// if a later editor changes one list and not the other, the part number or rank at some connector
+// stops agreeing and this test goes red. A test that merely asserted "sixteen rows exist" would
+// stay green through exactly that corruption.
+
+// THE CONNECTOR IS RESOLVED THROUGH AMPERE, NOT READ OFF THE BINDING. The census no longer carries
+// a connector column -- firmware reports (socket, controller, slot-in-channel) and nothing else --
+// so this join can only be performed by asking the upstream authority which J-number it assigns to
+// that channel at 1DPC. That makes the import load-bearing: delete it and this file stops
+// compiling, which is the difference between consuming an authority and citing one.
+//
+// A CHANNEL WITH NO ROLE ROW, OR MORE THAN ONE, RESOLVES TO NOTHING and every slot comparison
+// against it fails rather than defaulting to a plausible connector -- DESIGN section 5, a failure
+// arm refuses instead of widening.
+// NO SENTINEL, BECAUSE THERE IS NOTHING TO RESOLVE TO. An earlier attempt folded the roles down to
+// a connector number and needed an "unresolved" value to stand for a channel the authority does not
+// cover. Nat has no value outside the connector range to reserve, and inventing one -- 0, or a
+// negative in an Int -- would have been a sentinel that some later reader could mistake for an
+// answer. The pair fold below has no such hole: a channel with no role row simply contributes no
+// matching pair, so its count is zero and the test refuses, with no value standing for absence.
+fn role_covers_binding(r: MtCollinsChannelPopulationRole, b: MtCollins1FirmwareChannelBinding) -> Bool {
+  r.processor_socket == b.processor_socket && r.memory_controller == b.memory_controller
+}
+
+fn slot_agrees_with_binding_at(b: MtCollins1FirmwareChannelBinding, s: MtCollins1SlotObservation, r: MtCollinsChannelPopulationRole) -> Bool {
+  if s.connector == r.connector_used_at_one_dpc {
+    match s.occupancy {
+      SlotPopulated { part_number: p, rank_count: rc, serial_number: _, configured_mts: _ } =>
+        p == b.part_number && rc == b.rank_count && s.processor_socket == b.processor_socket
+      SlotEmpty => false
+    }
+  } else {
+    false
+  }
+}
+
+// ONE BINDING, ONE ROLE, ONE SLOT -- counted as PAIRS so all three cardinalities are asserted at
+// once. The count is over (role, slot) combinations where the role covers the observed channel and
+// the slot sits at the connector that role assigns. Requiring exactly one means: the upstream
+// authority covers this channel exactly once, and exactly one SMBIOS slot carries the module the
+// firmware reported there. A missing role, a duplicated role, a missing slot or a duplicated
+// connector each move the count off one.
+fn agreeing_pair_count(b: MtCollins1FirmwareChannelBinding, slots: List<MtCollins1SlotObservation>, roles: List<MtCollinsChannelPopulationRole>) -> Int {
+  fold(roles, init: 0, f: fn(outer, r) {
+    if role_covers_binding(r: r, b: b) {
+      outer + fold(slots, init: 0, f: fn(inner, s) {
+        if slot_agrees_with_binding_at(b: b, s: s, r: r) { inner + 1 } else { inner }
+      })
+    } else {
+      outer
+    }
+  })
+}
+
+fn every_binding_has_exactly_one_agreeing_slot(bindings: List<MtCollins1FirmwareChannelBinding>, slots: List<MtCollins1SlotObservation>, roles: List<MtCollinsChannelPopulationRole>) -> Bool {
+  fold(bindings, init: true, f: fn(acc, b) { acc && (agreeing_pair_count(b: b, slots: slots, roles: roles) == 1) })
+}
+
+test fn firmware_channel_map_agrees_with_the_smbios_slot_table() -> Bool {
+  list_length(items: mtcollins1_firmware_channel_bindings) == 16
+    && list_length(items: population_roles(standing: mt_collins_channel_population_roles)) == 16
+    && every_binding_has_exactly_one_agreeing_slot(
+         bindings: mtcollins1_firmware_channel_bindings,
+         slots: mtcollins1_slots,
+         roles: population_roles(standing: mt_collins_channel_population_roles),
+       )
+}
+
+fn populated_count(slots: List<MtCollins1SlotObservation>) -> Int {
+  fold(slots, init: 0, f: fn(acc, s) {
+    match s.occupancy {
+      SlotPopulated { part_number: _, rank_count: _, serial_number: _, configured_mts: _ } => acc + 1
+      SlotEmpty => acc
+    }
+  })
+}
+
+fn populated_on_even_connector_count(slots: List<MtCollins1SlotObservation>) -> Int {
+  fold(slots, init: 0, f: fn(acc, s) {
+    match s.occupancy {
+      SlotPopulated { part_number: _, rank_count: _, serial_number: _, configured_mts: _ } =>
+        if ((s.connector % 2) == 0) { acc + 1 } else { acc }
+      SlotEmpty => acc
+    }
+  })
+}
+
+// THE ODD-CONNECTOR POPULATION IS THE PROPERTY THAT TIES THIS UNIT TO THE UPSTREAM TABLE.
+// extdeps.ampere.mt_collins_product_brief.memory_population records that the Getting Started
+// Guide's 16-DIMM row populates the odd member of every connector pair. This unit is asserted to be
+// in exactly that configuration, so a census that reported a module on an even connector would
+// contradict either the reading or the identification of connectors, and must not pass quietly.
+test fn all_thirty_two_connectors_are_present_and_only_odd_ones_are_populated() -> Bool {
+  list_length(items: mtcollins1_slots) == 32
+    && populated_count(slots: mtcollins1_slots) == 16
+    && populated_on_even_connector_count(slots: mtcollins1_slots) == 0
+}
+
+fn bindings_at_channel_slot_zero(bindings: List<MtCollins1FirmwareChannelBinding>) -> Int {
+  fold(bindings, init: 0, f: fn(acc, b) { if (b.slot_in_channel == 0) { acc + 1 } else { acc } })
+}
+
+// ONE DIMM PER CHANNEL, AND THE FIRMWARE SAYS SO DIRECTLY. Every populated module sits at S0 of its
+// channel, which is what makes all sixteen empty connectors the S1 position and is the whole basis
+// of the 2DPC fill question this census was taken to inform.
+test fn the_unit_is_uniformly_one_dimm_per_channel() -> Bool {
+  bindings_at_channel_slot_zero(bindings: mtcollins1_firmware_channel_bindings) == 16
+}
+
+// THE NEGATIVE RESULT IS ENROLLED AS EVIDENCE, not left as prose. If a future kernel or a native
+// Altra EDAC driver ever does expose a csrow tree on this platform, csrow_node_count stops being 0
+// and this test goes red — which is the correct outcome, because the census module's stated reason
+// for reading the channel map out of firmware instead would no longer hold. It is a control that is
+// SUPPOSED to fail the day the platform changes.
+test fn edac_exposes_no_channel_topology_and_reports_no_errors() -> Bool {
+  mtcollins1_edac_topology.csrow_node_count == 0
+    && mtcollins1_edac_topology.memory_controller_count == 1
+    && mtcollins1_edac_topology.dimm_node_count == 16
+    && mtcollins1_edac_topology.corrected_error_count == 0
+    && mtcollins1_edac_topology.uncorrected_error_count == 0
+    && mtcollins1_edac_topology.apei_firmware_first
+}
+
+// The year-end plan's exit clause names nproc 160 explicitly, so the figure is asserted rather than
+// merely carried.
+test fn the_unit_presents_one_hundred_and_sixty_processors() -> Bool {
+  hardware_thread_count_value(t: mtcollins1_nproc) == 160
+}
+
+
+// ── the declarations the earlier witness left unread ───────────────────────────────────────────
+//
+// THE FIRST VERSION OF THIS WITNESS CHECKED THE SLOT ROWS AND NOTHING ELSE, which is how a
+// timestamp wrong by four days and an attempt label naming two attempts both landed green. A
+// witness that reads only the declarations it happens to find interesting is a witness that lets
+// every other declaration drift.
+//
+// WHAT IT STILL CANNOT DO, STATED SO NOBODY READS MORE INTO IT. These checks compare declarations
+// to declarations. They CANNOT recompute an artifact's SHA-256 and compare it to the declared one,
+// because a pure witness has no file access — so a hand-transcribed digest or byte count remains
+// unverifiable here. That gap is not closable in this test; it closes when a modelled producer
+// GENERATES the receipt from the artifact instead of an author transcribing it. Until then this
+// witness bounds drift between fields, not fidelity to the bytes.
+
+// The subject binding is the claim that makes every serial in this module a fact about UNIT 1
+// rather than about some Mt. Collins.
+//
+// THE PREVIOUS VERSION WAS A CHANGE DETECTOR AND REVIEW 64267 WAS RIGHT. It asserted
+// smbios_board_serial == "02030A800TEXFT02L", a literal hand-copied from the declaration under
+// test in this same PR, so an author editing the serial in both places stayed green and nothing
+// about unit identity was under test. DESIGN section 5: "A measurement copied from the same current
+// tree is not an oracle ... if automating the literal's update collapses the assertion to
+// measure() == measure(), the manual update was the test's entire content." The two companion
+// clauses were the SAME DECORATION CLASS as the frontier test review 64253 rejected -- both fields
+// are NonEmptyStr, so != "" had no authorable RED anywhere it ran.
+//
+// WHAT IS ACTUALLY LOAD-BEARING is the corroboration: the host reads its board serial from SMBIOS
+// Type 2 under Linux, the controller reads it from IPMI FRU, and the two AGREE. Two transports, two
+// agents, one serial -- which is what makes this an observation of a UNIT rather than of an address.
+// That equality was previously prose on both ends (a String field here, a // annotation there) and
+// is now a fold across two independently-declared typed rows.
+//
+// THE RED IS AUTHORABLE IN BOTH DIRECTIONS, which is the whole point: changing the serial in ONE
+// module and not the other goes red, whichever module an author edits. A self-copy cannot do that.
+test fn the_capture_is_bound_to_unit_one_by_two_transports_agreeing() -> Bool {
+  mtcollins1_subject_binding.smbios_board_serial
+      == mtcollins1_subject_binding.corroborating_controller_read.board_serial
+    && mtcollins1_subject_binding.smbios_system_serial
+      == mtcollins1_subject_binding.corroborating_controller_read.product_serial
+}
+
+// A SECOND CONTROL, because the fold above would also pass if BOTH sides were the same placeholder.
+// The controller row is a separate module's declaration, so this asserts the two rows are not
+// trivially equal to each other as whole values -- the host carries a UUID and a baseboard product
+// string the controller row does not, and the controller carries a part number and manufacturer the
+// host row does not. If a future edit collapses the two rows into one carrier, this goes red and the
+// corroboration claim must be re-earned rather than silently becoming a self-comparison.
+test fn the_two_transports_remain_independently_declared() -> Bool {
+  !(mtcollins1_subject_binding.baseboard_product
+      == mtcollins1_subject_binding.corroborating_controller_read.board_part_number)
+    && !(mtcollins1_subject_binding.smbios_system_uuid
+      == mtcollins1_subject_binding.corroborating_controller_read.board_serial)
+}
+
+// EDAC-clean is only meaningful beside the load that was run. A workload whose write failed, or
+// whose two hash passes disagreed, must not sit next to a zero-counter reading and read as health.
+test fn the_health_reading_is_backed_by_a_workload_that_actually_ran() -> Bool {
+  mtcollins1_memory_workload.write_exit_status == 0
+    && mtcollins1_memory_workload.digest_stable_across_passes
+    && byte_size_count(b: mtcollins1_memory_workload.bytes_exercised) > 0
+    && mtcollins1_memory_workload.edac_corrected_before == 0
+    && mtcollins1_memory_workload.edac_corrected_after == 0
+    && mtcollins1_memory_workload.edac_uncorrected_before == 0
+    && mtcollins1_memory_workload.edac_uncorrected_after == 0
+}
+
+// The counters either side of the workload must agree with the topology row's summary; if they
+// ever diverge, one of the two was transcribed rather than read.
+test fn the_topology_summary_agrees_with_the_before_and_after_counters() -> Bool {
+  mtcollins1_edac_topology.corrected_error_count == mtcollins1_memory_workload.edac_corrected_after
+    && mtcollins1_edac_topology.uncorrected_error_count == mtcollins1_memory_workload.edac_uncorrected_after
+}
+
+fn acquisition_is_ad_hoc(a: MtCollins1AcquisitionStanding) -> Bool {
+  match a {
+    HistoricalAdHocCapture { reusable_producer_absent: absent } => absent
+    ProducedByModelledOperation { producer: _ } => false
+  }
+}
+
+// A CONTROL THAT IS SUPPOSED TO FLIP. While these captures have no modelled producer, the standing
+// must say so; the day a producer generates this receipt, this test goes red and is replaced by one
+// asserting the producer, rather than quietly continuing to claim the weaker thing.
+test fn the_acquisition_is_declared_ad_hoc_while_no_producer_exists() -> Bool {
+  acquisition_is_ad_hoc(a: mtcollins1_acquisition_standing)
+    && byte_size_count(b: mtcollins1_host_capture_byte_count) > 0
+}
+
+
+// ── the observed media transition, folded rather than read ─────────────────────────────────────
+
+// THE SAMPLES REPLACED A PROSE SENTENCE, so this is what makes that worth doing: a sequence carried
+// as rows can be checked, and the checks below would all have been unwritable against a String.
+//
+// WHAT IS DELIBERATELY NOT ASSERTED: that any status value means ready, attached, or dropped. The
+// census module carries those codes raw because the catalog that decodes them is keyed to firmware
+// identity and lives in extdeps.bmc.megarac. This test checks the SHAPE of the reading — that it is
+// a real time series with a real transition in it — and never its meaning.
+type MediaSampleScan {
+  previous_offset: Int
+  previous_status: Int
+  started: Bool
+  offsets_increase: Bool
+  a_transition_occurred: Bool
+}
+
+fn scan_media_samples(samples: List<MtCollins1MediaRedirectionSample>) -> MediaSampleScan {
+  fold(samples, init: MediaSampleScan {
+    previous_offset: 0,
+    previous_status: 0,
+    started: false,
+    offsets_increase: true,
+    a_transition_occurred: false,
+  }, f: fn(acc, x) {
+    MediaSampleScan {
+      previous_offset: second_count(s: x.offset_from_attach),
+      previous_status: x.redirection_status,
+      started: true,
+      offsets_increase: acc.offsets_increase
+        && (if acc.started { second_count(s: x.offset_from_attach) > acc.previous_offset } else { true }),
+      a_transition_occurred: acc.a_transition_occurred
+        || (if acc.started { !(x.redirection_status == acc.previous_status) } else { false }),
+    }
+  })
+}
+
+// A sequence whose offsets repeat or run backwards is a transcription error, not an observation;
+// and the reading is only evidence ABOUT A TRANSITION if it actually contains one. If a later edit
+// flattened these rows to a single repeated status, the observation would have become a snapshot
+// while still being cited as a transition, and this goes red.
+test fn the_redirection_samples_are_a_time_series_containing_a_transition() -> Bool {
+  list_length(items: mtcollins1_media_redirection_samples) == 4
+    && scan_media_samples(samples: mtcollins1_media_redirection_samples).offsets_increase
+    && scan_media_samples(samples: mtcollins1_media_redirection_samples).a_transition_occurred
+}
+
+// ── the declared frontier ──────────────────────────────────────────────────────────────────────
+
+// DESIGN section 3c admits a declaration whose consumer lands in a named later change ONLY with the
+// trigger stated beside it. That makes the frontier rows themselves a claim that can rot.
+//
+// THE PREVIOUS VERSION OF THIS CHECK WAS A DECORATION AND REVIEW 64253 WAS RIGHT TO REJECT IT. It
+// folded !(awaited_consumer == "") && !(trigger_capability == "") && !(decl_name == "") over rows
+// whose awaited_consumer and trigger_capability are declared NonEmptyStr and whose decl_name
+// reaches a NonEmptyStr field of DeclarationRef. No RED was authorable anywhere that check could
+// run, so it was permanently green by construction while being cited as the executed evidence for
+// an admission that licenses eleven otherwise-dangling rows. DESIGN section 4b names exactly this:
+// "ask whether the check's RED is authorable before writing the check ... worse than absent because
+// it will be cited as coverage."
+//
+// WHAT IS AUTHORABLE-RED, AND WHAT SECTION 3C ACTUALLY REQUIRES, is three properties the string
+// emptiness test never touched. Each is reachable by an edit a future author can plausibly make.
+//
+// FIRST: a row must be what its own constructor mints for its own declaration name. The frontier is
+// built by calling artifact_identity_frontier or boot_delivery_frontier, and each mints a fixed
+// awaited-consumer and trigger for its KIND. A row hand-authored as a bare
+// MtCollins1ConsumptionFrontier literal -- the way a future author adds "just one more" admission
+// with a bespoke trigger -- satisfies every type and fails this.
+fn frontier_row_is_constructor_minted(f: MtCollins1ConsumptionFrontier) -> Bool {
+  (f.awaited_consumer == artifact_identity_frontier(decl_name: f.declaration.decl_name).awaited_consumer
+     && f.trigger_capability == artifact_identity_frontier(decl_name: f.declaration.decl_name).trigger_capability)
+  || (f.awaited_consumer == boot_delivery_frontier(decl_name: f.declaration.decl_name).awaited_consumer
+     && f.trigger_capability == boot_delivery_frontier(decl_name: f.declaration.decl_name).trigger_capability)
+}
+
+// SECOND: the two kinds must mint DIFFERENT triggers. If they ever converge -- by a copy-paste edit
+// to either constructor -- then the classification above stops carrying information and the check
+// above degenerates into the decoration it replaced. This is the positive control that keeps the
+// first property discriminating, and it goes red on a one-line edit to either constructor.
+fn the_two_frontier_kinds_mint_distinct_triggers() -> Bool {
+  !(artifact_identity_frontier(decl_name: "probe").trigger_capability
+      == boot_delivery_frontier(decl_name: "probe").trigger_capability)
+    && !(artifact_identity_frontier(decl_name: "probe").awaited_consumer
+      == boot_delivery_frontier(decl_name: "probe").awaited_consumer)
+}
+
+// THIRD: one declaration may hold at most ONE admission. Two frontier rows naming the same
+// declaration is two answers to "who consumes this", which is the section 3 fork the frontier
+// exists to avoid, and it is the single most likely edit to introduce -- a duplicated line while
+// adding a neighbour. Counted as an identity join over the rows rather than against any literal.
+fn rows_naming(rows: List<MtCollins1ConsumptionFrontier>, name: String) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) { if r.declaration.decl_name == name { acc + 1 } else { acc } })
+}
+
+fn every_declaration_admitted_at_most_once(rows: List<MtCollins1ConsumptionFrontier>) -> Bool {
+  fold(rows, init: true, f: fn(acc, r) { acc && rows_naming(rows: rows, name: r.declaration.decl_name) == 1 })
+}
+
+// NO ROW-COUNT LITERAL HERE, and the omission is deliberate rather than lazy. An earlier version
+// asserted the list had exactly four entries; the frontier then grew to fourteen and the assertion
+// failed for no reason except that a number had gone stale. DESIGN section 5 names that shape: a
+// merge-blocking test comparing a live population to a literal measured from the same tree is a
+// change detector, not a check -- automating the literal collapses it to measure() == measure().
+// What is actually load-bearing is that the list is non-empty and that EVERY row earns its
+// admission, which is a property of the rows rather than of how many there are.
+test fn the_declared_frontier_names_a_consumer_and_a_trigger() -> Bool {
+  list_length(items: mtcollins1_consumption_frontier) > 0
+    && the_two_frontier_kinds_mint_distinct_triggers()
+    && every_declaration_admitted_at_most_once(rows: mtcollins1_consumption_frontier)
+    && fold(mtcollins1_consumption_frontier, init: true, f: fn(acc, r) { acc && frontier_row_is_constructor_minted(f: r) })
+}
+
+
+// ── the rows a frontier would have been the lazy answer for ────────────────────────────────────
+
+// REVIEW 63909 FOUND ELEVEN DANGLING ROWS and it was right. Most acquired a declared frontier,
+// because their real consumer is an effect this pure witness cannot perform. THESE THREE DID NOT,
+// because a frontier would have been a label standing in for a check that was available all along.
+
+// THE CLEAN-EDAC FLAG MUST AGREE WITH THE COUNTERS IT SUMMARISES, and it must not be readable as
+// health on its own. A zero-counter reading taken at zero uptime says nothing; the observation
+// window is part of the observation, so both are read here and a flag that disagreed with either
+// goes red rather than sitting beside them.
+test fn the_clean_flag_agrees_with_the_counters_and_has_an_observation_window() -> Bool {
+  mtcollins1_edac_clean_at_capture
+    == (mtcollins1_edac_topology.corrected_error_count == 0
+        && mtcollins1_edac_topology.uncorrected_error_count == 0)
+    && second_count(s: mtcollins1_edac_uptime_at_capture_seconds) > 0
+}
+
+// THE ATTEMPT LABEL IS UNRELIABLE AND THE RECEIPT SAYS SO; this is what makes that statement
+// CHECKABLE rather than merely stated. The defect row claims the artifacts are distinguished by
+// wall-clock window instead of by the duplicated attempt=3 label. If those windows ever collapsed
+// -- two captures claiming one instant, or the second preceding the first -- the distinguishing
+// fact the row rests on would be gone while the row went on asserting it.
+test fn the_capture_windows_actually_distinguish_the_attempts() -> Bool {
+  mtcollins1_census_observed_at < mtcollins1_host_capture_observed_at
+    && mtcollins1_media_attach_observed_at < mtcollins1_host_capture_observed_at
+}
+
+// THE CONNECTOR IDENTIFICATION RESTS ON A ONE-OF-SIXTEEN PART, and that is a structural property
+// of the bindings, not a matter of opinion: the argument is that a part occurring EXACTLY ONCE
+// agrees with the pair table at the single position that carries it, which no shift or reversal of
+// the sequence reproduces. If a later edit duplicated that part, the identification argument would
+// collapse while its prose went on claiming it. So the property is asserted against the rows, and
+// the basis's upstream citation is bound rather than left as a sentence.
+fn part_occurrence_count(target: MtCollins1FirmwareChannelBinding, bindings: List<MtCollins1FirmwareChannelBinding>) -> Int {
+  fold(bindings, init: 0, f: fn(acc, b) { if b.part_number == target.part_number { acc + 1 } else { acc } })
+}
+
+fn singleton_part_count(bindings: List<MtCollins1FirmwareChannelBinding>) -> Int {
+  fold(bindings, init: 0, f: fn(acc, b) {
+    if part_occurrence_count(target: b, bindings: bindings) == 1 { acc + 1 } else { acc }
+  })
+}
+
+// REVIEW 63939 FOUND THIS TEST COMPARING STRINGS AND IT WAS RIGHT. The previous version asserted
+// that the basis's DeclarationRef carried the expected module_path and decl_name spellings. That
+// is a CITATION check -- it proves a sentence names the right authority, and it would stay green
+// while the mapping the sentence is about drifted arbitrarily. DESIGN section 5: a typecheck and a
+// grep are not consumers. Comparing a reference's spelling to a literal is the same thing wearing
+// a struct.
+//
+// SO THE AMPERE ROWS ARE FOLDED HERE INSTEAD. extdeps.ampere.mt_collins_product_brief.memory_population
+// derives, for each (socket, memory controller), the connector populated at 1DPC -- itself a join
+// over the guide's pair table rather than a transcription. The census observes (socket, controller)
+// from firmware DRAM training and joins to a J-number. Those are two independent routes to the same
+// mapping, and until now the census simply hand-wrote its answer beside the authority that owns it.
+fn population_roles(standing: MtCollinsChannelPopulationRoleStanding) -> List<MtCollinsChannelPopulationRole> {
+  match standing {
+    PopulationRolesResolved { roles: rs } => rs
+    PopulationRolesRefused { refusals: _ } => []
+  }
+}
+
+fn binding_matches_some_ampere_role(b: MtCollins1FirmwareChannelBinding, roles: List<MtCollinsChannelPopulationRole>) -> Int {
+  fold(roles, init: 0, f: fn(acc, r) {
+    if r.processor_socket == b.processor_socket && r.memory_controller == b.memory_controller { acc + 1 } else { acc }
+  })
+}
+
+// EVERY OBSERVED CHANNEL MUST RESOLVE TO EXACTLY ONE UPSTREAM ROLE ROW. This is what makes the
+// connector resolution above total: no role row would leave a channel with no J-number, and two
+// would make its J-number ambiguous, and in either case the cross-join's agreement would be an
+// accident rather than a fact. Asserting it separately keeps that precondition from being silently
+// carried by the join it enables.
+//
+// It also catches the drift the census can no longer commit on its own. Since the connector column
+// is gone, a change to Ampere's derivation now moves this unit's channel map -- correctly, since
+// that is where the mapping lives -- and a change that DROPPED a channel would surface here rather
+// than as a mysteriously failing slot comparison.
+test fn every_observed_channel_resolves_to_exactly_one_upstream_role() -> Bool {
+  list_length(items: population_roles(standing: mt_collins_channel_population_roles)) == 16
+    && fold(mtcollins1_firmware_channel_bindings, init: true, f: fn(acc, b) {
+         acc && binding_matches_some_ampere_role(b: b, roles: population_roles(standing: mt_collins_channel_population_roles)) == 1
+       })
+}
+
+// AND THE ONE-OF-SIXTEEN DISCRIMINATOR THE IDENTIFICATION RESTS ON MUST STILL EXIST. The argument
+// is that a part occurring EXACTLY ONCE agrees with the pair table at the single position carrying
+// it, which no shift or reversal of the sequence reproduces. That is a structural property of the
+// rows, and if a later edit duplicated the part it would collapse while the prose kept claiming it.
+test fn the_one_of_sixteen_discriminator_the_identification_rests_on_still_exists() -> Bool {
+  singleton_part_count(bindings: mtcollins1_firmware_channel_bindings) == 1
+}
+
+// A COHERENCE GUARD, AND IT IS NAMED THAT RATHER THAN CALLED A CHECK. The basis row explains HOW
+// the SMBIOS-to-connector join was established and cites the authority it was established against.
+// Asserting that its citation names the module this witness actually folds keeps the prose and the
+// executed join from drifting apart -- a basis that cited one authority while the test folded
+// another would be a sentence about work nobody did.
+//
+// WHAT THIS IS NOT: the discriminating check. Those are
+// every_observed_channel_resolves_to_exactly_one_upstream_role and
+// firmware_channel_map_agrees_with_the_smbios_slot_table, which fold the rows. An earlier
+// version of this file had ONLY the string comparison and presented it as the discriminating
+// witness; review 63939 caught that, and the distinction is kept explicit here so the weaker check
+// cannot be mistaken for the stronger one again.
+fn basis_citation_names_the_folded_authority(basis: MtCollins1ConnectorIdentificationBasis) -> Bool {
+  basis.upstream_pair_authority.module_path == "extdeps.ampere.mt_collins_product_brief.memory_population"
+}
+
+test fn the_identification_basis_cites_the_authority_this_witness_folds() -> Bool {
+  basis_citation_names_the_folded_authority(basis: mtcollins1_connector_identification_basis)
+}
+
+
+// ── the observation resolved against the catalogs, not merely against itself ───────────────────
+
+// THE CROSS-JOIN ABOVE PROVES TWO LOCAL TRANSCRIPTIONS AGREE, which is worth having and is not
+// enough: edit the same part number in BOTH lists and it stays green. That is the substitution this
+// section closes. Each observed part must resolve to a MANUFACTURER CATALOG ROW, and the row's
+// rank and chip width must equal what the firmware independently reported -- so a part number
+// changed on both local sides now has to survive contact with SK hynix's own datasheet figures.
+fn catalog_agrees_with_binding(c: DramModuleCatalogRow, b: MtCollins1FirmwareChannelBinding) -> Bool {
+  c.part_number == b.part_number
+    && c.rank_count == b.rank_count
+    && bit_width_count(b: c.chip_width) == bit_width_count(b: b.chip_width)
+}
+
+fn catalog_row_for_binding_count(b: MtCollins1FirmwareChannelBinding, rows: List<DramModuleCatalogRow>) -> Int {
+  fold(rows, init: 0, f: fn(acc, c) { if catalog_agrees_with_binding(c: c, b: b) { acc + 1 } else { acc } })
+}
+
+data mtcollins1_installed_catalog_rows: List<DramModuleCatalogRow> = [
+  hma82gr7afr4n_vk_catalog,
+  hma82gr7afr8n_vk_catalog,
+  hma82gr7cjr8n_vk_catalog,
+]
+
+// EVERY INSTALLED MODULE RESOLVES TO EXACTLY ONE CATALOG ROW that agrees with it on rank and
+// width. Exactly one, never at least one: two rows agreeing would mean the catalog cannot tell
+// this unit's parts apart, which would make the population ambiguous rather than merely
+// unverified.
+test fn every_observed_module_resolves_to_one_manufacturer_catalog_row() -> Bool {
+  fold(mtcollins1_firmware_channel_bindings, init: true, f: fn(acc, b) {
+    acc && catalog_row_for_binding_count(b: b, rows: mtcollins1_installed_catalog_rows) == 1
+  })
+}
+
+fn bindings_of_part(part: NonEmptyStr) -> Int {
+  fold(mtcollins1_firmware_channel_bindings, init: 0, f: fn(acc, b) { if b.part_number == part { acc + 1 } else { acc } })
+}
+
+// THE POPULATION BY CATALOG IDENTITY: ten AFR4N, five AFR8N, one CJR8N. This is the census's
+// headline claim stated as an identity join rather than a count of anonymous sticks, and the
+// sixteen must be exactly accounted for -- a substitution that swapped one part for another in
+// both local lists would change these three numbers even though the cross-join stayed green.
+test fn the_population_by_catalog_identity_accounts_for_all_sixteen() -> Bool {
+  bindings_of_part(part: hma82gr7afr4n_vk_catalog.part_number) == 10
+    && bindings_of_part(part: hma82gr7afr8n_vk_catalog.part_number) == 5
+    && bindings_of_part(part: hma82gr7cjr8n_vk_catalog.part_number) == 1
+    && list_length(items: mtcollins1_firmware_channel_bindings) == 16
+}
+
+// ── the fill consequence, derived from the specification rather than from the sample ───────────
+
+// THE REFUSAL ARMS ARE FALSE, EXPLICITLY, AND THEY ARE NOT THE SAME AS A TBD. An unmodelled or
+// ambiguous lookup means this corpus cannot answer for the cell; a MixingUndetermined means the
+// SPECIFICATION declines to. Both make the requirement underivable, so both return false here --
+// but they arrive as distinct constructors rather than one substituted value, which is what lets
+// the control below tell them apart.
+fn mixing_is_forbidden(outcome: MtJadeMixedDimmSupportOutcome) -> Bool {
+  match outcome {
+    MixedDimmSupportResolved { cell: c } =>
+      match c.support {
+        MixingNotSupported => true
+        MixingSupported => false
+        MixingNotPreferred => false
+        MixingUndetermined => false
+      }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+fn requirement_is_peer_determined(r: MtCollins1PartnerRequirement) -> Bool {
+  mixing_is_forbidden(outcome: r.rank_mixing_in_channel)
+    && mixing_is_forbidden(outcome: r.width_mixing_in_channel)
+    && mixing_is_forbidden(outcome: r.density_mixing_in_channel)
+    && r.empty_connector == r.peer_connector + 1
+}
+
+// EACH EMPTY PARTNER'S RANK, WIDTH AND DENSITY ARE FIXED BY ITS PEER BECAUSE THE SPECIFICATION
+// FORBIDS MIXING THEM IN ONE CHANNEL -- not because the installed modules happen to have those
+// values. If OCP ever relaxed a same-channel cell, this goes red and the fill consequence stops
+// being determined, which is the correct outcome rather than a silently unchanged requirement.
+test fn every_empty_partner_is_determined_by_its_channel_peer() -> Bool {
+  fold(mtcollins1_firmware_channel_bindings, init: true, f: fn(acc, b) {
+    acc && fold(population_roles(standing: mt_collins_channel_population_roles), init: true, f: fn(inner, r) {
+      if role_covers_binding(r: r, b: b) {
+        inner && requirement_is_peer_determined(r: mtcollins1_partner_requirement(b: b, peer_connector: r.connector_used_at_one_dpc))
+      } else {
+        inner
+      }
+    })
+  })
+}
+
+// AND THE UNIT'S EXISTING CROSS-CHANNEL ARRANGEMENT IS NOT AFFIRMED. This asserts the TBD is still
+// a TBD: if a later specification revision resolved that cell either way, this goes red and the
+// purchase question it gates gets revisited, instead of the corpus quietly carrying a stale
+// non-affirmation. It is a control that is SUPPOSED to flip.
+// A CONTROL THAT CAN ACTUALLY FLIP, which the previous version could not. It requires the lookup
+// to RESOLVE and the resolved cell to read MixingUndetermined -- the specification's own TBD. If a
+// later revision answers that cell either way, this goes red and the purchase question it gates
+// gets revisited. And if the row ever went missing or was duplicated, the lookup would return
+// Unmodelled or Ambiguous and this ALSO goes red, rather than a fabricated MixingUndetermined
+// keeping it green while its subject had disappeared. That substitution is what review 64125
+// found, and it is the same class as
+// gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission one turn further in:
+// there, a non-affirmation read as permission; here, an ABSENCE read as a non-affirmation.
+test fn cross_channel_rank_mixing_remains_unaffirmed_by_the_specification() -> Bool {
+  match mtcollins1_cross_channel_rank_mixing_standing {
+    MixedDimmSupportResolved { cell: c } =>
+      match c.support {
+        MixingUndetermined => true
+        MixingSupported => false
+        MixingNotSupported => false
+        MixingNotPreferred => false
+      }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+
+// ── the boot-delivery control, as a joinable fact rather than a paragraph ──────────────────────
+
+// THE EXPERIMENT THIS LANE RAN HAD EXACTLY ONE VARIED TERM, and that is what makes it a control
+// rather than an anecdote. Across the failing and succeeding probes the device selector and the
+// persistence setting were held constant and the firmware BOOT TYPE was not: legacy on the
+// attempts that booted nothing, EFI on the attempt that produced the host capture. Asserting it
+// here means a later edit that flattened the two boot-type readings to the same value -- which
+// would destroy the control while leaving the prose intact -- goes red.
+test fn the_boot_type_is_the_only_varied_term_across_the_probes() -> Bool {
+  mtcollins1_boot_delivery_observation.boot_flag_valid_observed
+    && mtcollins1_boot_delivery_observation.persistence_held_constant_across_probes
+    && !(mtcollins1_boot_delivery_observation.efi_boot_type_on_failing_attempts
+         == mtcollins1_boot_delivery_observation.efi_boot_type_on_succeeding_attempt)
+    && mtcollins1_boot_delivery_observation.efi_boot_type_on_succeeding_attempt
+}
+
+// AND THE MODEL CALLED EVERY ONE OF THEM COMPLETE. This is the observation that made the whole
+// defect invisible for an intake lane, so it is carried as a Bool a fold reads rather than a
+// sentence. It is a control that SHOULD flip: when gunbc#11001 lands and the terminal can no
+// longer be minted from an accepted power command plus a readback, this goes red and the receipt
+// has to be restated against a model that no longer lies.
+test fn the_model_reported_a_completed_handoff_even_when_nothing_booted() -> Bool {
+  mtcollins1_boot_delivery_observation.model_reported_completed_on_every_attempt
+    && !(mtcollins1_boot_delivery_observation.efi_boot_type_on_failing_attempts)
+}
+
+
+// ── the absence, derived from the Linux authority rather than asserted here ────────────────────
+
+// THIS RECEIPT USED TO CARRY A PARAGRAPH SAYING re-booting would not produce a channel map. That
+// sentence was true and unfalsifiable in place; gunbc#11071 made it derivable, so it is derived.
+// The observation contributes ONE fact -- the binding this host actually had -- and the authority
+// supplies what follows from it.
+//
+// WHY THE STANDING IS THE LOAD-BEARING HALF: AbsentOnEveryBoot is the difference between "no
+// channel map here" and "no channel map, and another boot will not change that". The second is
+// what justified recovering the channel map from firmware DRAM training instead, and it is now a
+// consequence of a cited kernel authority rather than of my confidence.
+test fn the_channel_topology_absence_is_derived_and_holds_on_every_boot() -> Bool {
+  match edac_channel_topology_availability(binding: mtcollins1_edac_topology.driver_binding).availability {
+    ChannelTopologyAbsent { cause: c } =>
+      match c {
+        FirmwareFirstErrorAttributionShim =>
+          match edac_channel_topology_absence_standing(cause: c) {
+            AbsentOnEveryBoot => true
+            AbsentUntilDriverBound => false
+          }
+        NoMemoryControllerDriverBound => false
+      }
+    ChannelTopologyEnumerated { kernel_module: _ } => false
+  }
+}
+
+// AND THE MEASURED TREE MUST AGREE WITH WHAT THE AUTHORITY PREDICTS. Zero csrow nodes is the
+// EXPECTED reading under the shim, not an anomaly; sixteen DIMM nodes mirrored from SMBIOS Type 17
+// is what the shim registers them for. If a future capture on this platform found a populated
+// csrow tree, the observation and the authority would disagree and this goes red -- which is the
+// only way either of them can be wrong out loud.
+test fn the_measured_edac_tree_matches_what_the_authority_predicts() -> Bool {
+  mtcollins1_edac_topology.csrow_node_count == 0
+    && mtcollins1_edac_topology.apei_firmware_first
+    && mtcollins1_edac_topology.dimm_node_count == 16
+}
+
+
+// ── the capacity join the missing catalog row used to block ────────────────────────────────────
+
+// THIS IS THE CHECK THAT COULD NOT BE WRITTEN YESTERDAY. mtcollins1_memtotal_kb carried a declared
+// frontier saying its consumer was a capacity join needing a catalog row for every installed part,
+// and that one of the three had none. gunbc#11066 landed that row, so the frontier is discharged
+// and this is the consumer it named.
+//
+// NOMINAL AND USABLE ARE DIFFERENT FACTS, which is the trap this join has to respect rather than
+// paper over. The population states what is INSTALLED; MemTotal states what the kernel finds
+// USABLE after firmware and kernel reservations, and it is always smaller. gunbc.fleet.fleet_intent
+// records the same gap on the upgraded fleet hosts -- about 10 GiB per host between the two -- and
+// warns that a wall spending nominal would overcommit by exactly that. So this asserts the
+// RELATIONSHIP, not equality: usable is strictly less than nominal, and within a few percent of it.
+fn population_stick_total(pop: HostMemoryPopulation) -> Int {
+  fold(pop.rows, init: 0, f: fn(acc, r) { acc + r.stick_count })
+}
+
+// A usable figure ABOVE nominal would mean the population under-counts what the machine has; one
+// far below would mean sticks are installed that the firmware is not presenting. Both are real
+// failure shapes for a census whose purpose is deciding what to buy, and both go red here.
+test fn the_kernel_usable_memory_agrees_with_the_catalogued_population() -> Bool {
+  population_stick_total(pop: mtcollins1_host_memory_population) == 16
+    && byte_size_count(b: kibibyte_to_byte_size(k: mtcollins1_memtotal_kb))
+       < byte_size_count(b: host_memory_population_nominal_bytes(pop: mtcollins1_host_memory_population))
+    && (byte_size_count(b: kibibyte_to_byte_size(k: mtcollins1_memtotal_kb)) * 100)
+       > (byte_size_count(b: host_memory_population_nominal_bytes(pop: mtcollins1_host_memory_population)) * 95)
+}
+
+// AND THE POPULATION'S CATALOG IDENTITIES MUST MATCH THE OBSERVED BINDINGS, so the two cannot drift
+// apart: the stick counts here are the same ten / five / one asserted against the firmware readings
+// above, but stated through catalog rows rather than part-number spellings.
+test fn the_population_rows_match_the_observed_part_counts() -> Bool {
+  fold(mtcollins1_host_memory_population.rows, init: true, f: fn(acc, r) {
+    acc && bindings_of_part(part: r.module.part_number) == r.stick_count
+  })
+}

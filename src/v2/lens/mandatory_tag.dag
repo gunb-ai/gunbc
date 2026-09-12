@@ -43,7 +43,8 @@ import v2.extdeps.languages.dag {
 // region-by-region per dag/gunbc/plans/disposition_carrier.dag: a MandatoryTagRegion row declares
 // that every module whose qualified name falls inside a namespace region MUST carry a top-level
 // data declaration with a required name, a required declared type, and a value whose discriminating
-// vocabulary atoms are drawn from an accepted subset. Enrolled in always_required_root_lenses, so a
+// vocabulary atoms are drawn from an accepted subset. Registered at CompileLensRoot grain in
+// required_compile_lens_roster, so a
 // violating module FAILS COMPILATION with a typed, located diagnostic - the
 // missing/misnamed/misvalued tag is unwritable at definition admission, not flagged post-hoc by a
 // corpus scan (DESIGN 5: construction over validation). First region: extdeps external-authority

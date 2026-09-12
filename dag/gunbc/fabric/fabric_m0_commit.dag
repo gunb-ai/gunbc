@@ -257,11 +257,11 @@ fn manifest_observation(
 // The trigger below states the same fact positively, as the capability that closes the frontier,
 // which is the tracked shape and carries the whole meaning.
 //
-// THE FRONTIER TRIGGER, STATED AS THE CAPABILITY THAT CONSUMES IT: a required-CI (or other real job)
-// ending that already possesses that run's Work, the attempt's commit transport, and an independent
-// origin readback of the commit manifest -- the roadmap's compute-artifact-return-and-
-// materialization capability -- and that decides the process/check conclusion from the
-// JobPublication this function returns. Naming a smaller artifact -- one fold, one witness file, one
+// THE NAMED CONSUMER THAT DECIDES THE CHECK: gunbc.fabric_m0_job_ending end_required_job.
+// THE REMAINING FRONTIER TRIGGER: wiring that ending into required-CI (or another real job
+// process) so the check conclusion is the CheckConclusion it returns, once an independent origin
+// readback is constructible on the run path -- the roadmap's compute-artifact-return-and-
+// materialization capability. Naming a smaller artifact -- one fold, one witness file, one
 // emitted script -- would be satisfied while the capability stayed dead. Sibling lanes own origin
 // binding and cache; fabricating a confirming readback on the required-CI path would be the silent
 // default this gate exists to refuse, and main's text said `DurableOriginRead` there, a variant

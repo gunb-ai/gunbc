@@ -428,7 +428,8 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // prefix, a required declaration name and a required type name, and mandatory_tag_law states that a
 // violating module FAILS COMPILATION with a typed, located diagnostic -- unwritable at definition
 // admission, not flagged post-hoc by a corpus scan. mandatory_tag_lens is enrolled in
-// v2.compiler.00_compile always_required_root_lenses. So the obvious move is one more region with
+// v2.compiler.compile required_compile_lens_roster at CompileLensRoot grain. So the obvious move is
+// one more region with
 // prefix v2.lens., required declaration construction_justification, required type
 // ConstructionJustification.
 //

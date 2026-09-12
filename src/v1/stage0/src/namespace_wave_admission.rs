@@ -1707,21 +1707,24 @@ pub struct TransitionAdmission {
 /// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
 /// empty was the resting state and one change authoring rows back into it is the ordinary motion.
 ///
-/// TWENTY-SECOND DISSOLUTION (2026-09-11). #11071 merged, and the required floor on this change
-/// (run 34652558033) reported all three of its rows as `CONSUMED ADMISSION ... already satisfied at
-/// the base`. The base now authors `LinuxKernelRelease` in `extdeps.linux.kernel`, so the
-/// `TargetChanged` delta those rows admitted has stopped being producible -- the rows would now
-/// admit nothing, and a row that admits nothing is a standing claim with no subject.
+/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
+/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
+/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
+/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
+/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
+/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
+/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
-/// THIS CHANGE IS THE TOUCHER THE RULE CHARGES. The deletion comes due on the roster's next touch
-/// rather than at merge time, because nothing scans for consumed rows on a change that leaves the
-/// roster alone; this change edits the roster, so it pays. That is the same bargain the twenty-first
-/// dissolution paid one change earlier, and the predecessor row said so in advance: "these rows go
-/// when #11071 merges ... CONSUMED comes due on the roster's next touch."
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#10970). The `gunbc#11137 extdeps.tools.sha256sum
+/// names Filesystem instead of reaching it` row is deleted. #11137 merged, so the base now carries
+/// `import extdeps.filesystem.filesystem_io { Filesystem }`, the `TargetChanged` delta it admitted
+/// has stopped being producible, and its own trigger -- "this row goes when #11137 merges" -- has
+/// fired. Deletion comes due on the roster's next touch; this change touches the roster, so the
+/// debt is paid here rather than left for an unrelated lane, exactly as the thirty-fifth
+/// dissolution paid #11071's.
 ///
-/// EMPTY IS THE RESTING STATE, NOT A WEAKENED WALL. An empty roster admits nothing: a run carrying
-/// any delta no row names still refuses it as UNADJUDICATED. The deletion removes three satisfied
-/// claims, not a guarantee.
+/// EMPTY IS THE RESTING STATE, NOT A WEAKENED WALL. An empty roster admits nothing: any delta no
+/// row names still refuses as UNADJUDICATED. Two consumed claims are removed here; no guarantee is.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

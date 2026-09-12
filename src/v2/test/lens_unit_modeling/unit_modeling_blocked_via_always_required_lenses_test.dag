@@ -2,7 +2,8 @@ module v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lens
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.compile {
-  always_required_lenses,
+  CompileLensSubtree,
+  required_lenses_at_grain,
   run_required_lens_gates
 }
 import v2.compiler.infer { InferredTree }
@@ -59,7 +60,7 @@ fn unit_ar_tree() -> InferredTree {
 test fn unit_modeling_blocked_via_always_required_lenses_holds() -> Bool {
   match run_required_lens_gates(
     inferred: unit_ar_tree(),
-    lenses: always_required_lenses()
+    lenses: required_lenses_at_grain(grain: CompileLensSubtree)
   ) {
     Rejected { diagnostics: r } => r.head.reason == ^unit_modeling_flat_scalar_unit_leaf_fixable
     Accepted { value: _, diagnostics: _ } => false
