@@ -31,9 +31,9 @@ data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIden
 data cooler_srv3: PhysicalAssetIdentity = "cooler-srv3" as PhysicalAssetIdentity
 data cooler_srv4: PhysicalAssetIdentity = "cooler-srv4" as PhysicalAssetIdentity
 
-// Operator-confirmed physical population (2026-09-12). These inventory labels do not
-// assert a serial, host-slot binding, or source-lot attribution. The join from these
-// units to router observations and to individual procurement lots is unobserved.
+// Operator-confirmed physical population (2026-09-12). The first six labels bind receipt
+// serials to the Micro Center lot in fleet_physical_inventory. The final pair has
+// no observed serials. No label asserts a host-slot or router-observation binding.
 // Consumer: fleet_physical_inventory.dgx_spark_asset_identities, exercised by
 // test.claim.dgx_spark_inventory_witness through the inventory population witness.
 data dgx_spark_01: PhysicalAssetIdentity = "dgx-spark-01" as PhysicalAssetIdentity

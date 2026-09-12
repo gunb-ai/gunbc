@@ -2,6 +2,7 @@ module test.claim.dgx_spark_inventory_witness
 
 import std.types { Bool, String }
 import std.nat { Nat }
+import std.decl_ref { declaration_ref_eq }
 import product.inventory {
   LotAcquired, LotReceived, CatalogRowUnread, CatalogRowExact,
   ReceiptHeldPrivately, ReceiptRecorded,
@@ -17,6 +18,7 @@ import gunbc.fleet_physical_inventory {
   dimm_lot_64gib_32x_identity,
   dgx_spark_procurement_ledgers, dgx_spark_asset_identities,
   fleet_inventory_population, dgx_spark_procurement_population,
+  dgx_spark_micro_center_catalog_reference,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -36,10 +38,10 @@ fn population_is(reading: FleetInventoryPopulation, acquired: Nat, received: Nat
 // result; an implementation returning eight without folding cannot pass.
 test fn w_independent_acquisitions_reconcile_eight() -> Bool {
   let micro_center_only = fleet_inventory_population(ledgers: [
-    FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+    FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger, identified_assets: [] },
   ])
   let ebay_only = fleet_inventory_population(ledgers: [
-    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger, identified_assets: [] },
   ])
   dgx_spark_procurement_ledgers.length() == 2
     && population_is(reading: dgx_spark_procurement_population(), acquired: 8, received: 8, owned: 8)
@@ -59,12 +61,13 @@ test fn w_counts_follow_events_not_just_lot_rows() -> Bool {
     FleetInventoryLedger {
       lot: dgx_spark_micro_center_lot,
       events: [LotAcquired { lot: dgx_spark_micro_center_lot.identity }],
+      identified_assets: [],
     },
-    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger, identified_assets: [] },
   ])
   let without_acquisition = fleet_inventory_population(ledgers: [
-    FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: [] },
-    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: [], identified_assets: [] },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger, identified_assets: [] },
   ])
   population_is(reading: without_receipt, acquired: 8, received: 2, owned: 8)
     && population_is(reading: without_acquisition, acquired: 2, received: 2, owned: 2)
@@ -75,12 +78,13 @@ test fn w_counts_follow_events_not_just_lot_rows() -> Bool {
 // Neither a valid prefix nor a later valid lot may replace the located refusal.
 test fn w_invalid_ledger_refuses_the_whole_population() -> Bool {
   match fleet_inventory_population(ledgers: [
-    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger, identified_assets: [] },
     FleetInventoryLedger {
       lot: dgx_spark_micro_center_lot,
       events: [LotReceived { lot: dgx_spark_micro_center_lot.identity, quantity: 6 }],
+      identified_assets: [],
     },
-    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger, identified_assets: [] },
   ]) {
     FleetPopulationRefused { lot: l, cause: c, event_ordinal: n, event_label: e } =>
       inventory_lot_identity_eq(left: l, right: dgx_spark_micro_center_lot.identity)
@@ -90,8 +94,8 @@ test fn w_invalid_ledger_refuses_the_whole_population() -> Bool {
   }
 }
 
-// This checks aggregate coverage, not a unit-to-lot join: no test attributes an
-// inventory label to a procurement event or borrows a router label as evidence.
+// Aggregate coverage does not establish host bindings. The receipt-based source
+// lot bindings are exercised separately below; router labels are not evidence here.
 test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
   let distinct = unique(xs: dgx_spark_asset_identities, eq: physical_asset_identity_eq)
   match dgx_spark_procurement_population() {
@@ -101,9 +105,9 @@ test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
   }
 }
 
-// The physical sum must not require disclosing money or claiming a storage SKU.
+// The physical sum must not require disclosing money or guessing a storage SKU.
 // Read every live lot, not separately authored lookalike fixtures.
-test fn w_lots_preserve_private_costs_and_unobserved_skus() -> Bool {
+test fn w_lots_preserve_private_costs_and_catalog_evidence() -> Bool {
   fold(dgx_spark_procurement_ledgers, init: true, f: fn(acc, ledger) {
     let private_receipt = match ledger.lot.receipt {
       ReceiptHeldPrivately => true
@@ -114,11 +118,42 @@ test fn w_lots_preserve_private_costs_and_unobserved_skus() -> Bool {
       LandedCostUnsettled => true
       LandedCostRecorded { cost: _ } => false
     }
-    let unread_sku = match ledger.lot.catalog {
+    let evidenced_sku = match ledger.lot.catalog {
       CatalogRowUnread { observed_family: family, read_obligation: obligation } =>
-        family as String == "NVIDIA DGX Spark" && (obligation as String).length() > 0
-      CatalogRowExact { row: _ } => false
+        inventory_lot_identity_eq(left: ledger.lot.identity, right: dgx_spark_ebay_pair_lot.identity)
+          && family as String == "NVIDIA DGX Spark" && (obligation as String).length() > 0
+      CatalogRowExact { row: r } =>
+        inventory_lot_identity_eq(left: ledger.lot.identity, right: dgx_spark_micro_center_lot.identity)
+          && declaration_ref_eq(a: r, b: dgx_spark_micro_center_catalog_reference)
     }
-    acc && private_receipt && private_cost && unread_sku
+    acc && private_receipt && private_cost && evidenced_sku
   })
+}
+
+// The real receipt has six distinct unit serials. This consumes the source-lot
+// attachment, catalog and serial fields; an unattached asset list cannot pass.
+test fn w_receipt_serials_bind_six_assets_to_micro_center_only() -> Bool {
+  let assets = flat_map(dgx_spark_procurement_ledgers, ledger => ledger.identified_assets)
+  let serials = flat_map(assets, asset =>
+    match asset.physical_serial {
+      Absent => []
+      Present { value: serial } => [serial]
+    }
+  )
+  let bindings_hold = fold(dgx_spark_procurement_ledgers, init: true, f: fn(acc, ledger) {
+    if inventory_lot_identity_eq(left: ledger.lot.identity, right: dgx_spark_micro_center_lot.identity) {
+      acc && ledger.identified_assets.length() == 6
+        && fold(ledger.identified_assets, init: true, f: fn(ok, asset) {
+          let registered = fold(dgx_spark_asset_identities, init: false, f: fn(found, id) {
+            found || physical_asset_identity_eq(a: id, b: asset.identity)
+          })
+          ok && registered && declaration_ref_eq(a: asset.catalog, b: dgx_spark_micro_center_catalog_reference)
+        })
+    } else {
+      acc && ledger.identified_assets.length() == 0
+    }
+  })
+  serials.length() == 6 && unique(xs: serials, eq: (a, b) => a == b)
+    && unique(xs: map(assets, asset => asset.identity), eq: physical_asset_identity_eq)
+    && assets.length() == 6 && bindings_hold
 }

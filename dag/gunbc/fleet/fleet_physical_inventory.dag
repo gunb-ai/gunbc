@@ -600,29 +600,36 @@ fn dimm_lot_intent_fits_the_lot() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// DGX Spark procurement population, independently attested on 2026-09-12:
-// Micro Center supplied SIX (the acquisition memo's quantity, relayed by the
-// operator's CPA session); eBay supplied a separate PAIR. The recalled six was
-// one lot, not the whole population. Neither quantity is back-solved from eight.
+// DGX Spark procurement population, independently evidenced on 2026-09-12:
+// Micro Center's receipt contains six one-unit lines, description
+// "NVIDIADGX DGX SPARK GB10/128/4/L", and the six serials bound below.
+// The eBay PAIR is a separate acquisition. The recalled six was one lot, not
+// the whole population. Neither quantity is back-solved from eight.
+//
+// The Micro Center North Jersey transaction date is 2026-09-01. Obtaining the
+// receipt refuted BOTH proposed acquisition dates (2026-08-19 and 2026-08-15);
+// neither was selected or averaged. This is a transaction date, not an inferred
+// receipt date or service date. No financial receipt contents are published.
 //
 // These are procurement events, not the 2 + 2 + 3 + 1 LAN arrival batches in
-// gunbc.spark.dgx_procurement. The asset-to-lot and arrival-to-lot joins are
-// UNOBSERVED: no serial, router label, or host identity is attributed to either
-// lot here. Inventory labels below name the operator-confirmed physical units.
+// gunbc.spark.dgx_procurement. The receipt now binds six inventory labels to
+// serials and their source lot. No serial has been matched to a router label or
+// host identity. The dates support a hypothesis that the earlier LAN pair is
+// the eBay pair, but there is no observed unit-to-unit arrival join here.
 //
 // MODELING GAPS (explicitly retained, not resolved by omission):
-// - ProcurementLot / InventoryEvent has no receipt-date field or unsettled-date
-//   arm. The eBay pair was delivered 2026-08-06. Micro Center's receipt date is
-//   unresolved: a 2026-08-19 purchase-date assertion and a 2026-08-15 service-date
-//   assertion disagree, and neither establishes receipt. No date is chosen.
+// - ProcurementLot / InventoryEvent has no transaction/receipt-date field or
+//   unsettled-date arm. The eBay pair was delivered 2026-08-06. Micro Center's
+//   transaction is dated above; its receipt/service dates are not inferred.
 //   Date-sensitive acquisition chronology cannot be derived from these ledgers.
 //   LotReceived records receipt, not its date.
 // - InventoryEvent has no ordered-then-cancelled arm. A separate eBay order was
 //   CANCELLED and acquired nothing. It has no ProcurementLot or LotAcquired event;
 //   this model cannot distinguish that cancelled order from never ordering.
-// - Both lots' storage SKUs are unobserved. CatalogRowUnread carries each read
-//   obligation. extdeps.systems.nvidia has 1 TB and 4 TB catalog rows; no exact
-//   DeclarationRef is licensed until storage and source-lot identity are observed.
+// - The eBay storage SKU remains unobserved. The operator attests 4 TB for the
+//   fleet, while extdeps.systems.nvidia's cited source transcribes two storage
+//   configurations. The obligation is to identify THESE units, not settle what
+//   NVIDIA manufactures. Micro Center's receipt discharges only its own SKU.
 // - dgx_spark_procurement_intent.unit_count is an authored intent literal, not an
 //   acquisition fold. Its aggregate 4 TB catalog binding is not per-lot evidence.
 //   That pre-existing row and the arrival model remain outside this change.
@@ -643,13 +650,18 @@ data fleet_lot_allocator_after_dgx_spark_micro_center: InventoryLotAllocator = m
 
 data dgx_spark_ebay_pair_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).id
 
+// Receipt description GB10/128/4/L establishes the 4 TB configuration for this
+// acquisition only. CatalogRowExact still means cited, not mechanically resolved.
+data dgx_spark_micro_center_catalog_reference: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.systems.nvidia",
+  decl_name: "nvidia_dgx_spark_4tb_catalog",
+  field: WholeDeclaration,
+}
+
 data dgx_spark_micro_center_lot: ProcurementLot = ProcurementLot {
   identity: dgx_spark_micro_center_lot_identity,
   receipt: ReceiptHeldPrivately,
-  catalog: CatalogRowUnread {
-    observed_family: "NVIDIA DGX Spark" as NonEmptyStr,
-    read_obligation: "Observe storage capacity (1 TB or 4 TB) and identify each unit belonging to the Micro Center acquisition before citing an exact extdeps.systems.nvidia catalog row" as NonEmptyStr,
-  },
+  catalog: CatalogRowExact { row: dgx_spark_micro_center_catalog_reference },
   display_label: "NVIDIA DGX Spark, Micro Center acquisition" as NonEmptyStr,
   quantity_acquired: 6,
   landed_cost: LandedCostHeldPrivately,
@@ -665,7 +677,7 @@ data dgx_spark_ebay_pair_lot: ProcurementLot = ProcurementLot {
   receipt: ReceiptHeldPrivately,
   catalog: CatalogRowUnread {
     observed_family: "NVIDIA DGX Spark" as NonEmptyStr,
-    read_obligation: "Observe storage capacity (1 TB or 4 TB) and identify each unit belonging to the eBay pair delivered 2026-08-06 before citing an exact extdeps.systems.nvidia catalog row" as NonEmptyStr,
+    read_obligation: "Operator attests 4 TB; the cited NVIDIA source documents two storage configurations. Observe storage capacity and source-lot identity of the eBay pair delivered 2026-08-06 before citing an exact extdeps.systems.nvidia catalog row; the Micro Center receipt does not cover this pair" as NonEmptyStr,
   },
   display_label: "NVIDIA DGX Spark, eBay pair acquisition" as NonEmptyStr,
   quantity_acquired: 2,
@@ -677,14 +689,37 @@ data dgx_spark_ebay_pair_lot_ledger: List<InventoryEvent> = [
   LotReceived { lot: dgx_spark_ebay_pair_lot_identity, quantity: dgx_spark_ebay_pair_lot.quantity_acquired },
 ]
 
+// Receipt-based asset attribution is distinct from the installation provenance
+// read by product.inventory.asset_source_lot_standing. No installation is invented.
 type FleetInventoryLedger {
   lot: ProcurementLot
   events: List<InventoryEvent>
+  identified_assets: List<PhysicalAsset>
 }
 
+// Inventory labels are allocated in the order the six serials were relayed from
+// the receipt. They do not claim host-slot order. The receipt identity stays private.
+fn dgx_spark_micro_center_asset(identity: PhysicalAssetIdentity, serial: NonEmptyStr) -> PhysicalAsset {
+  PhysicalAsset {
+    identity: identity,
+    catalog: dgx_spark_micro_center_catalog_reference,
+    physical_serial: Present { value: serial },
+    procurement: none,
+  }
+}
+
+data dgx_spark_micro_center_assets: List<PhysicalAsset> = [
+  dgx_spark_micro_center_asset(identity: dgx_spark_01, serial: "1980526005202" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_02, serial: "1984025004768" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_03, serial: "1984025004355" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_04, serial: "1980526004162" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_05, serial: "1983925004641" as NonEmptyStr),
+  dgx_spark_micro_center_asset(identity: dgx_spark_06, serial: "1980526004937" as NonEmptyStr),
+]
+
 data dgx_spark_procurement_ledgers: List<FleetInventoryLedger> = [
-  FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
-  FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger, identified_assets: dgx_spark_micro_center_assets },
+  FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger, identified_assets: [] },
 ]
 
 data dgx_spark_asset_identities: List<PhysicalAssetIdentity> = [
