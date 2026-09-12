@@ -4,11 +4,11 @@ import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor }
-import gunbc.fleet_observation_capture_chunk { ContinuityEstablished, DownstreamNotOffered }
+import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered }
 import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for }
 import gunbc.machine_intake_pre_os_replay { pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
 
-import gunbc.machine_intake_pre_os_timeline { PreOsReplayObservation, PreOsConsoleText, pre_os_machine_timeline, pre_os_timeline_view }
+import gunbc.machine_intake_pre_os_timeline { pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, pre_os_machine_timeline, pre_os_timeline_view }
 import test.claim.pre_os_observer_witness { observer_test_boot_payload }
 
 fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> ObservationEnvelope {
@@ -74,4 +74,26 @@ test fn w_same_occurrence_new_continuity_receipt_is_retained() -> Bool {
     downstream: a.downstream, continuity: ContinuityEstablished { verified_through: 200 } }
   count(pre_os_unique_occurrences(envelopes: [a, a, b, b])) == 2
     && !pre_os_occurrence_conflicts(envelopes: [a, b], subject: a)
+}
+
+fn replay_console_chunk(seq: Nat, first: Nat, payload: NonEmptyStr, continuity: StreamContinuity) -> PreOsReplayObservation {
+  let base = replay_fixture(seq: seq, generation: "console-a", record: "685")
+  let chunk = t_chunk(seq: seq, generation: 4, payload: payload, first: first, len: pre_os_utf8_size(text: payload as String))
+  PreOsReplayObservation {
+    envelope: ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+      ownership: base.ownership, chunk: chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+      local_commit: t_commit_for(payload: payload), downstream: base.downstream, continuity: continuity },
+    format: PreOsConsoleText, payload: ObservationEstablished { observed: payload as String },
+  }
+}
+
+test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool {
+  let a = replay_console_chunk(seq: 1, first: 0, payload: "NOTICE:  DRAM FW ver", continuity: ContinuityEstablished { verified_through: 20 })
+  let b = replay_console_chunk(seq: 2, first: 20, payload: "sion 210525", continuity: ContinuityEstablished { verified_through: 31 })
+  let gap = replay_console_chunk(seq: 2, first: 20, payload: "sion 210525", continuity: ContinuityUnknown { detail: "reconnect lost continuity" })
+  let before = pre_os_console_span(previous: Absent, current: a)
+  let joined = pre_os_console_span(previous: Present { value: before }, current: b)
+  let interrupted = pre_os_console_span(previous: Present { value: before }, current: gap)
+  joined.payload == "NOTICE:  DRAM FW version 210525" && count(joined.chunks) == 2
+    && interrupted.payload == "sion 210525" && count(interrupted.chunks) == 1
 }
