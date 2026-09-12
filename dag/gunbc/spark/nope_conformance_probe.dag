@@ -49,14 +49,28 @@ type ProbeInvocation
 // `concat_and_cache_mla` the engine calls, with a zero-width rope section, and prints one word. A traceback
 // is the expected output today.
 //
-// THE RESERVED-TAIL HALF OF THE ASSERTION IS NOT ENCODED HERE, AND THAT IS DELIBERATE. Upstream's fix zeroes
-// the reserved region of the fixed 656-byte cache row, and checking it requires the exact offset at which
-// that region begins -- a layout constant this repository has NOT read from the kernel source. Inventing an
+// THE RESERVED TAIL IS NOW ASSERTED, AND THE FILL IS WHY IT CAN BE. An earlier revision of this probe
+// allocated the cache with `torch.zeros` and reported the nonzero byte count, which cannot distinguish the
+// two outcomes it exists to separate: a writer that correctly ZEROED the reserved region and a writer that
+// never touched those bytes produce identical output against a zero-filled buffer. It was a control that
+// could not fail, sitting in the probe whose whole job is to refuse the wrong bytes cheaply.
+//
+// SO THE BUFFER IS SENTINEL-FILLED WITH 0xA5, which is the shape upstream's own regression test for this
+// fix uses. Three things are then separable and all three are asserted: the reserved tail 528:656 reads
+// ZERO for every written row -- the repair's actual behaviour, since the RoPE warp zeroes it instead of
+// reading a k_pe that does not exist; the latent region is no longer sentinel, so the write happened at
+// all; and rows outside the slot mapping still hold the sentinel, so the writer stayed inside its own
+// slots. The offset is not invented: 656 = 512 latent + 16 scale + 128 reserved, and vllm#55277's message
+// names bytes 528:656 as the reserved padding it zeroes.
+//
+// A PREVIOUS NOTE HERE SAID THIS ASSERTION COULD NOT BE WRITTEN because the layout constant had not been
+// read from the kernel source. That was true when written and stopped being true when the commit was read;
+// the constant is in its message. Inventing an
 // offset would produce a check that passes or fails for reasons unrelated to the property, so the probe
 // prints the row's nonzero byte population and the tail assertion stays a declared gap.
 // NEXT-RUNG TRIGGER: the cache row layout read from vLLM's own source at the pinned revision and carried in
 // extdeps, at which point the tail becomes an equality rather than a printed number.
-data nope_writer_probe_source: String = "import torch; from vllm import _custom_ops as ops; T=4; kv_c=torch.zeros(T,512,dtype=torch.bfloat16,device='cuda'); k_pe=torch.zeros(T,0,dtype=torch.bfloat16,device='cuda'); cache=torch.zeros(1,64,656,dtype=torch.uint8,device='cuda'); slot=torch.arange(T,dtype=torch.long,device='cuda'); scale=torch.ones(1,dtype=torch.float32,device='cuda'); ops.concat_and_cache_mla(kv_c,k_pe,cache,slot,'fp8_ds_mla',scale); print('WRITER_ACCEPTED_PE_DIM_ZERO'); print(int((cache!=0).sum().item()))"
+data nope_writer_probe_source: String = "import torch; from vllm import _custom_ops as ops; T=4; B=64; SENT=0xA5; TAIL=528; kv_c=torch.ones(T,512,dtype=torch.bfloat16,device='cuda'); k_pe=torch.zeros(T,0,dtype=torch.bfloat16,device='cuda'); cache=torch.full((1,B,656),SENT,dtype=torch.uint8,device='cuda'); slot=torch.arange(T,dtype=torch.long,device='cuda'); scale=torch.ones(1,dtype=torch.float32,device='cuda'); ops.concat_and_cache_mla(kv_c,k_pe,cache,slot,'fp8_ds_mla',scale); written=cache[0,:T,:]; untouched=cache[0,T:,:]; tail_zero=bool((written[:,TAIL:]==0).all().item()); latent_written=bool((written[:,:TAIL]!=SENT).any().item()); sentinel_held=bool((untouched==SENT).all().item()); print('TAIL_ZEROED',tail_zero); print('LATENT_WRITTEN',latent_written); print('SENTINEL_HELD',sentinel_held); assert sentinel_held, 'writer touched rows outside its slot mapping'; assert latent_written, 'writer did not write the latent region'; assert tail_zero, 'reserved tail 528:656 still holds the sentinel: the NoPE path did not zero it'; print('WRITER_ACCEPTED_PE_DIM_ZERO')"
 
 // ── THE READER PROBE, WHICH ASKS THE BACKEND THE GB10 ACTUALLY TAKES ──────────────────────────
 //

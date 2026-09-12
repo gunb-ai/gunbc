@@ -12,6 +12,7 @@ import extdeps.flashinfer.flashinfer {
   FlashInferChannel, FlashInferPyPi, FlashInferProjectStable, FlashInferProjectNightly,
   flashinfer_acquisition_key, flashinfer_published_version,
   flashinfer_0_6_18_post1, flashinfer_0_7_0_dev20260910,
+  FlashInferWheel, flashinfer_0_7_0_dev20260910_wheels,
   Sm120NopeSupport, Sm120NopeSupported, Sm120NopeAbsent, Sm120NopeUnread,
   flashinfer_sm120_nope_support, sm120_nope_is_supported,
   flashinfer_reachable_by_upstream_dockerfile, flashinfer_redirected_index_missing_capability,
@@ -296,6 +297,77 @@ fn v41_gb10_build() -> FleetRuntimeBuild {
 fn glm53_nope_build() -> FleetRuntimeBuild {
   fleet_runtime_build(recipe: v41_gb10_recipe(), flashinfer: flashinfer_0_7_0_dev20260910)
 }
+
+// ── THE DERIVED LAYER, WHICH IS WHERE THE ACQUISITION ACTUALLY LANDS ──────────────────────────
+//
+// THE BUILD PRODUCES AN IMAGE WITH UPSTREAM'S PINNED FLASHINFER IN IT, because that is what upstream's
+// Dockerfile installs and this fleet does not fork that file. The acquisition this deployment needs is
+// applied ON TOP, as a second image built FROM the first -- three wheel installs and no compilation,
+// because the chosen channel ships prebuilt aarch64 cu130 kernels.
+//
+// IT IS A SECOND IMAGE AND NOT A SECOND BUILD ARGUMENT, and the distinction is the whole reason this
+// exists: upstream's FLASHINFER_VERSION argument varies a version against a hardcoded index, so pointing
+// it at a nightly asks the stable index for a wheel that is not there. Installing from the acquisition's
+// OWN index is a thing only a layer we author can do.
+//
+// THE WHEELS ARE NAMED BY FILE AND CHECKED BY DIGEST. A version plus an index is a discovery operation --
+// resolve-whatever-is-there-today -- and a nightly index is exactly the kind that reorganises underneath
+// one. An installer that fetches different bytes under a name this fleet already decided about should
+// fail rather than proceed, which is what the hash is for.
+type DerivedRuntimeLayer sole_constructor {
+  base_tag: NonEmptyStr
+  wheels: List<FlashInferWheel>
+  acquisition: FlashInferAcquisition
+}
+
+fn glm53_nope_derived_layer(base_tag: NonEmptyStr) -> DerivedRuntimeLayer {
+  DerivedRuntimeLayer {
+    base_tag: base_tag,
+    wheels: flashinfer_0_7_0_dev20260910_wheels,
+    acquisition: flashinfer_0_7_0_dev20260910,
+  }
+}
+
+// THE INSTALL IS ORDERED AND THE ORDER IS LOAD-BEARING. flashinfer-python is installed with its
+// dependencies already satisfied by the base image, so it goes in with --no-deps: letting it resolve
+// freely is exactly how a fresh dependency solve reaches back to the stable index and restores the
+// released build this layer exists to replace. The jit-cache wheel is last because it is the one whose
+// filename carries the architecture, and a wrong one there is a silent mismatch rather than a refusal.
+fn derived_layer_install_argv(l: DerivedRuntimeLayer) -> List<String> {
+  concat(
+    ["python3", "-m", "pip", "install", "--no-deps", "--force-reinstall"],
+    map(l.wheels, w => w.filename as String),
+  )
+}
+
+// AND THE LAYER'S IDENTITY IS THE BASE PLUS WHAT IT INSTALLED. Two derived images over one base with
+// different wheels are different runtimes, and a tag that named only the base would let the cache serve
+// either for the other.
+fn derived_layer_key(l: DerivedRuntimeLayer) -> String {
+  join([
+    l.base_tag as String, "+",
+    flashinfer_acquisition_key(a: l.acquisition), "+",
+    join(map(l.wheels, w => w.sha256 as String), ","),
+  ], "")
+}
+
+// ── WHAT MUST BE TRUE OF THE FINAL IMAGE, ASKED OF THE IMAGE AND NOT OF THE BUILD ─────────────
+//
+// A BUILD THAT SUCCEEDED IS NOT AN IMAGE THAT CARRIES WHAT WAS ASKED FOR. vLLM's own installation step
+// resolves requirements/cuda.txt, which pins flashinfer-python against the stable index; a derived layer
+// that installs the nightly and then triggers any further dependency resolution can have the pinned
+// wheel quietly replaced by the released one it was chosen to escape. The image would look correct, the
+// build log would read clean, and the kernel that refuses NoPE would be the one loaded.
+//
+// SO THE CHECK IS EXECUTED INSIDE THE FINAL IMAGE and asks three separate questions: which FlashInfer
+// version is importable, whether the SM120 NoPE symbol is present in the installed bytes, and which vLLM
+// build the compiled extension actually came from. Each has its own arm, because "the wheel was replaced"
+// and "the extension is the old one" are different repairs.
+type FinalImageInspection
+  = FinalImageCarriesAcquisition { flashinfer_version: NonEmptyStr, vllm_version: NonEmptyStr }
+  | FinalImageDependencyReplaced { observed: NonEmptyStr, expected: NonEmptyStr }
+  | FinalImageExtensionStale { observed: NonEmptyStr, expected: NonEmptyStr }
+  | FinalImageUnread { cause: NonEmptyStr }
 
 // ── WHETHER A BUILD CAN BE PERFORMED AT ALL, ASKED BEFORE AN HOUR IS SPENT ────────────────────
 //

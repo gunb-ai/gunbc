@@ -126,6 +126,60 @@ data flashinfer_0_7_0_dev20260910: FlashInferAcquisition = FlashInferPublishedRe
   index: "flashinfer.ai/whl/nightly for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/nightly/cu130 for flashinfer-jit-cache" as NonEmptyStr,
 }
 
+// ── THE THREE WHEELS, BY FILENAME AND DIGEST ──────────────────────────────────────────────────
+//
+// A CHANNEL AND A VERSION ARE STILL A DISCOVERY OPERATION, NOT A RECIPE. "install 0.7.0.dev20260910 from
+// the nightly index" is resolved by asking the index what it holds today, and a nightly index is the one
+// kind that reorganises: builds are added, withdrawn and occasionally rebuilt under the same version. A
+// build that resolves its own inputs at build time cannot be repeated, and its image cannot be explained
+// afterwards -- which is the whole reason this fleet keys images by content.
+//
+// SO THE PIN IS THE ARTIFACT, and the digest is what makes it one. These three were read from the index
+// listings on 2026-09-12; an installer that fetches a file whose sha256 differs is fetching different
+// bytes under a name this fleet already decided about, and it should fail rather than proceed.
+//
+// THE ARCHITECTURE IS PART OF THE JIT-CACHE IDENTITY AND OF NOTHING ELSE HERE. flashinfer-python and
+// flashinfer-cubin are py3-none-any; only the jit-cache wheel is built per CUDA version and machine, and
+// the aarch64 one is the row that matters for a GB10 -- the x86_64 wheel exists beside it at the same
+// version and installing it would be a silent architecture error rather than a refusal.
+type FlashInferWheel sole_constructor {
+  package: NonEmptyStr
+  filename: NonEmptyStr
+  sha256: NonEmptyStr
+}
+
+data flashinfer_0_7_0_dev20260910_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: "b5ae2fc0631bdf9416767fe1c41300819111e2f435af8c53487e7074465d4ae7" as NonEmptyStr,
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: "a5fa6ee62652b6e02cef8e2be33a5a3fdc1f2ae70ed2a131beface7594c436bd" as NonEmptyStr,
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: "7c45246d658c9818a4179c2ce81729163112aefcb3bcd1ff63eb5004c0df5422" as NonEmptyStr,
+  },
+]
+
+// ── WHAT PREBUILT KERNELS DO AND DO NOT ESTABLISH ─────────────────────────────────────────────
+//
+// THE CLAIM WORTH MAKING IS NARROW. A jit-cache wheel built for cu130 aarch64 means the ahead-of-time
+// kernels it covers arrive compiled, which is what removes the need for a CUDA compiler in the serving
+// image for THOSE kernels. It does not establish that every operation this model exercises is covered:
+// this project ships kernels that remain JIT-only, and prebuilt coverage is architecture-dependent by
+// construction.
+//
+// SO THE PROPERTY THIS FLEET ACTUALLY NEEDS IS THE EXECUTABLE ONE -- the chosen bytes are in the final
+// image and the operations this model runs succeed inside it -- and that is settled by the probes and the
+// engine run, not by reasoning about wheel contents. Proving a universal "nothing JITs anywhere" is a
+// different and much larger claim, and nothing here depends on it.
+data flashinfer_prebuilt_coverage_standing: NonEmptyStr = "the cu130 aarch64 jit-cache wheel supplies ahead-of-time kernels for the operations it covers, which is why the serving image needs no CUDA compiler for them. Coverage is NOT total -- upstream ships JIT-only kernels and prebuilt coverage varies by architecture -- so this row claims only that the pinned bytes are installed, and leaves `the operations this model runs succeed in this image` to the probes and the engine run that execute them" as NonEmptyStr
+
 // IT IS A NIGHTLY, AND THAT IS A REAL PROPERTY RATHER THAN A CAVEAT. A dated dev build is published,
 // installable and reproducible by digest, and it is also unsupported, unannounced and removable by its
 // publisher. Recording which release channel a pin came from is the difference between a dependency this
