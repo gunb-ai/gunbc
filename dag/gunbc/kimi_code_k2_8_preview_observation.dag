@@ -1,9 +1,6 @@
 module gunbc.kimi_code_k2_8_preview_observation
 
 import std.types { NonEmptyStr, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.moonshot.kimi_code_k2_8_preview {
   KimiCodeAliasAssignment,
   kimi_for_coding_wire_id,
@@ -71,26 +68,5 @@ data kimi_k28_artifact_standing: KimiK28ArtifactStanding = CheckpointNotLocatedO
   observed_at: kimi_k28_checkpoint_search_observed_on,
   searched_surfaces: [kimi_k28_hf_org_surface, kimi_k28_github_org_surface],
   known_unsearched_official_surfaces: [kimi_k28_modelscope_org_surface],
-  trigger: "an official K2.8 checkpoint published on any official Moonshot surface, including a surface not in this search, with a citable revision, sufficient for a live ModelArtifact / serving / fit constructor to consume this standing" as NonEmptyStr,
+  trigger: "an official K2.8 checkpoint published on any official Moonshot surface, including a surface not in this search, with a citable revision" as NonEmptyStr,
 }
-
-fn kimi_code_k28_preview_observation_fact(decl_name: NonEmptyStr) -> DeclarationRef {
-  DeclarationRef {
-    module_path: "gunbc.kimi_code_k2_8_preview_observation" as NonEmptyStr,
-    decl_name: decl_name,
-    field: WholeDeclaration,
-  }
-}
-
-data kimi_code_k28_preview_observation_frontier: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: kimi_code_k28_preview_observation_fact(decl_name: "kimi_k28_artifact_standing" as NonEmptyStr),
-    reason: "KIMI28-1 local serving stays out of scope; this search does not feed a live ModelArtifact constructor",
-    dissolution: unbound_dissolution(description: "a live ModelArtifact / serving / fit constructor consumes kimi_k28_artifact_standing"),
-  ),
-  frontier_row_decl(
-    ref: kimi_code_k28_preview_observation_fact(decl_name: "kimi_code_executed_version_evidence" as NonEmptyStr),
-    reason: "no version-bearing execution receipt exists yet; the ExecutedVersionUnobserved arm is the standing",
-    dissolution: unbound_dissolution(description: "a named consumer binds ExecutedVersionObserved from a version-bearing execution receipt"),
-  ),
-]

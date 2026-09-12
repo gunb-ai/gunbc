@@ -38,6 +38,34 @@ data kimi_k28_preview_served_version_name: NonEmptyStr = "K2.8 Preview" as NonEm
 data kimi_k27_code_highspeed_served_version_name: NonEmptyStr = "K2.7 Code HighSpeed" as NonEmptyStr
 data kimi_k3_served_version_name: NonEmptyStr = "K3" as NonEmptyStr
 
+type KimiCodeRequestId
+  = KimiForCoding
+  | KimiK3
+  | KimiK3_256k
+  | KimiForCodingHighspeed
+
+fn kimi_code_request_id_wire(id: KimiCodeRequestId) -> NonEmptyStr {
+  match id {
+    KimiForCoding => kimi_for_coding_wire_id
+    KimiK3 => kimi_k3_wire_id
+    KimiK3_256k => kimi_k3_256k_wire_id
+    KimiForCodingHighspeed => kimi_for_coding_highspeed_wire_id
+  }
+}
+
+type KimiCodeServedVersion
+  = ServedK28Preview
+  | ServedK3
+  | ServedK27CodeHighspeed
+
+fn kimi_code_served_version_name(v: KimiCodeServedVersion) -> NonEmptyStr {
+  match v {
+    ServedK28Preview => kimi_k28_preview_served_version_name
+    ServedK3 => kimi_k3_served_version_name
+    ServedK27CodeHighspeed => kimi_k27_code_highspeed_served_version_name
+  }
+}
+
 type KimiCodeAliasEnd
   = AliasEndNotPublished
   | AliasEndPublished { on: NonEmptyStr }
@@ -47,8 +75,8 @@ type KimiCodeEffectiveFrom
   | StartDateNotPublishedOnCitedAuthorities { read_obligation: NonEmptyStr }
 
 type KimiCodeAliasAssignment {
-  model_id: NonEmptyStr
-  served_version: NonEmptyStr
+  request_id: KimiCodeRequestId
+  served_version: KimiCodeServedVersion
   effective_from: KimiCodeEffectiveFrom
   effective_until: KimiCodeAliasEnd
   authority: ExternalAuthority
@@ -58,34 +86,37 @@ type KimiCodeAliasAssignment {
 // version" row would collapse two epochs onto one name. K2.8 Preview is the 2026-09-11
 // rollout; the cited docs do not publish an until date.
 data kimi_for_coding_k28_preview_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
-  model_id: kimi_for_coding_wire_id,
-  served_version: kimi_k28_preview_served_version_name,
+  request_id: KimiForCoding,
+  served_version: ServedK28Preview,
   effective_from: CitedAvailableOn { on: "2026-09-11" as NonEmptyStr },
   effective_until: AliasEndNotPublished,
   authority: kimi_code_whats_new_authority,
 }
 
-// HighSpeed "is now available" is the v0.24.0 whats-new heading dated July 14, 2026 — not the
-// 2026-09-11 catalog observation, and not an uncited July 9.
+// HighSpeed availability is cited to the live HTML h2
+// #highspeed-extra-usage-are-live-july-9-2026 (wn-date July 9, 2026), not to a markdown
+// rendering of whats-new.html: that conversion nested this block under the preceding
+// v0.24.0 July 14 CLI heading, which is a different announcement. Do not re-derive
+// 2026-07-14 from the markdown projection of the same page.
 data kimi_for_coding_highspeed_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
-  model_id: kimi_for_coding_highspeed_wire_id,
-  served_version: kimi_k27_code_highspeed_served_version_name,
-  effective_from: CitedAvailableOn { on: "2026-07-14" as NonEmptyStr },
+  request_id: KimiForCodingHighspeed,
+  served_version: ServedK27CodeHighspeed,
+  effective_from: CitedAvailableOn { on: "2026-07-09" as NonEmptyStr },
   effective_until: AliasEndNotPublished,
   authority: kimi_code_whats_new_authority,
 }
 
 data kimi_k3_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
-  model_id: kimi_k3_wire_id,
-  served_version: kimi_k3_served_version_name,
+  request_id: KimiK3,
+  served_version: ServedK3,
   effective_from: CitedAvailableOn { on: "2026-07-16" as NonEmptyStr },
   effective_until: AliasEndNotPublished,
   authority: kimi_code_whats_new_authority,
 }
 
 data kimi_k3_256k_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
-  model_id: kimi_k3_256k_wire_id,
-  served_version: kimi_k3_served_version_name,
+  request_id: KimiK3_256k,
+  served_version: ServedK3,
   effective_from: StartDateNotPublishedOnCitedAuthorities {
     read_obligation: "whats-new.html and models.html list k3-256k but do not publish a first-available date" as NonEmptyStr,
   },
@@ -102,21 +133,6 @@ data kimi_for_coding_k28_preview_assignment_citation: FactCitation = FactCitatio
     field: WholeDeclaration,
   },
   authority: kimi_code_whats_new_authority,
-}
-
-type KimiCodeRequestId
-  = KimiForCoding
-  | KimiK3
-  | KimiK3_256k
-  | KimiForCodingHighspeed
-
-fn kimi_code_request_id_wire(id: KimiCodeRequestId) -> NonEmptyStr {
-  match id {
-    KimiForCoding => kimi_for_coding_wire_id
-    KimiK3 => kimi_k3_wire_id
-    KimiK3_256k => kimi_k3_256k_wire_id
-    KimiForCodingHighspeed => kimi_for_coding_highspeed_wire_id
-  }
 }
 
 data kimi_code_request_id_wires: List<NonEmptyStr> = [
@@ -156,19 +172,6 @@ type KimiCodeThinkingControl
   | KimiThinkingOff
   | KimiHighSpeedThinkingOn
 
-type KimiCodeServedVersion
-  = ServedK28Preview
-  | ServedK3
-  | ServedK27CodeHighspeed
-
-fn kimi_code_served_version_name(v: KimiCodeServedVersion) -> NonEmptyStr {
-  match v {
-    ServedK28Preview => kimi_k28_preview_served_version_name
-    ServedK3 => kimi_k3_served_version_name
-    ServedK27CodeHighspeed => kimi_k27_code_highspeed_served_version_name
-  }
-}
-
 type KimiCodeThinkingOnPolicy
   = ThinkingOnWithK28Effort
   | HighSpeedThinkingOnOnly
@@ -178,9 +181,7 @@ type KimiCodeThinkingOffPolicy
   | ThinkingOffNotDocumented
 
 type KimiCodeCatalogRow {
-  request_id: KimiCodeRequestId
   assignment: KimiCodeAliasAssignment
-  served_when_thinking_on: KimiCodeServedVersion
   thinking_on: KimiCodeThinkingOnPolicy
   thinking_off: KimiCodeThinkingOffPolicy
 }
@@ -196,30 +197,22 @@ type KimiCodeCatalogEpoch {
 data kimi_code_catalog_as_of_2026_09_11: KimiCodeCatalogEpoch = KimiCodeCatalogEpoch {
   observed_as_of: kimi_code_catalog_observed_as_of,
   kimi_for_coding: KimiCodeCatalogRow {
-    request_id: KimiForCoding,
     assignment: kimi_for_coding_k28_preview_assignment,
-    served_when_thinking_on: ServedK28Preview,
     thinking_on: ThinkingOnWithK28Effort,
     thinking_off: ThinkingOffServes { version: ServedK28Preview },
   },
   kimi_k3: KimiCodeCatalogRow {
-    request_id: KimiK3,
     assignment: kimi_k3_assignment,
-    served_when_thinking_on: ServedK3,
     thinking_on: ThinkingOnWithK28Effort,
     thinking_off: ThinkingOffServes { version: ServedK28Preview },
   },
   kimi_k3_256k: KimiCodeCatalogRow {
-    request_id: KimiK3_256k,
     assignment: kimi_k3_256k_assignment,
-    served_when_thinking_on: ServedK3,
     thinking_on: ThinkingOnWithK28Effort,
     thinking_off: ThinkingOffServes { version: ServedK28Preview },
   },
   kimi_for_coding_highspeed: KimiCodeCatalogRow {
-    request_id: KimiForCodingHighspeed,
     assignment: kimi_for_coding_highspeed_assignment,
-    served_when_thinking_on: ServedK27CodeHighspeed,
     thinking_on: HighSpeedThinkingOnOnly,
     thinking_off: ThinkingOffNotDocumented,
   },
@@ -282,7 +275,7 @@ fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingContr
       ThinkingOnWithK28Effort => KimiCodeRouteResolved {
         route: KimiCodeRoute {
           requested_id: requested,
-          served_version: row.served_when_thinking_on,
+          served_version: row.assignment.served_version,
           served_thinking: thinking,
         },
       }
@@ -295,7 +288,7 @@ fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingContr
       HighSpeedThinkingOnOnly => KimiCodeRouteResolved {
         route: KimiCodeRoute {
           requested_id: requested,
-          served_version: row.served_when_thinking_on,
+          served_version: row.assignment.served_version,
           served_thinking: thinking,
         },
       }
@@ -365,12 +358,12 @@ fn kimi_code_k28_preview_fact(decl_name: NonEmptyStr) -> DeclarationRef {
 data kimi_code_k28_preview_provider_integration_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: kimi_code_k28_preview_fact(decl_name: "kimi_code_route" as NonEmptyStr),
-    reason: "KIMI28-1 provider integration binds routing; this change does not",
-    dissolution: unbound_dissolution(description: "KIMI28-1 provider integration consumes kimi_code_route on a live request path"),
+    reason: "KIMI28-1 is the owning change: it binds this resolver on the admitted Kimi Code live-request path; this change does not",
+    dissolution: unbound_dissolution(description: "KIMI28-1 binds kimi_code_route as the production resolver on an admitted Kimi Code live request"),
   ),
   frontier_row_decl(
     ref: kimi_code_k28_preview_fact(decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr),
-    reason: "effective_from is a cited Gregorian day carried as NonEmptyStr; v2.std.datetime CalendarDate has no corpus constructor (zero CalendarDate constructors in use; pin.dag pin_currency_gap dissolve names the same gap)",
-    dissolution: unbound_dissolution(description: "this assignment's effective_from is a v2.std.datetime CalendarDate constructed from the cited YMD 2026-09-11"),
+    reason: "CitedAvailableOn carries a Gregorian day as NonEmptyStr; v2.std.datetime CalendarDate has no corpus constructor (pin.dag pin_currency_gap dissolve names the same gap)",
+    dissolution: unbound_dissolution(description: "kimi_for_coding_k28_preview_assignment.effective_from is a v2.std.datetime CalendarDate constructed from the cited YMD 2026-09-11"),
   ),
 ]
