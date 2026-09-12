@@ -43,13 +43,10 @@ import std.nat { Nat }
 import product.inventory {
   CatalogRowExact,
   CatalogRowUnread,
-  BalanceDerived,
-  BalanceRefused,
-  LedgerRefusalCause,
-  derive_inventory_balance,
   LandedCostHeldPrivately,
   LotReceived,
   InventoryEvent,
+  InventoryLotEvidence,
   InventoryLotAllocator,
   InventoryLotIdentity,
   LandedCostUnsettled,
@@ -612,12 +609,19 @@ fn dimm_lot_intent_fits_the_lot() -> Bool {
 // receipt date or service date. No financial receipt contents are published.
 //
 // These are procurement events, not the 2 + 2 + 3 + 1 LAN arrival batches in
-// gunbc.spark.dgx_procurement. The receipt now binds six inventory labels to
-// serials and their source lot. No serial has been matched to a router label or
+// gunbc.spark.dgx_procurement. The receipt identifies six inventory labels by
+// serial. No serial has been matched to a router label or
 // host identity. The dates support a hypothesis that the earlier LAN pair is
 // the eBay pair, but there is no observed unit-to-unit arrival join here.
 //
 // MODELING GAPS (explicitly retained, not resolved by omission):
+// - Receipt-time serialization has no InventoryEvent arm. The serials are known
+//   from the Micro Center receipt, but asset_source_lot_standing can only read
+//   installation events and therefore returns AssetSourceLotUnobserved for them.
+//   There is no parallel asset-to-lot field here and no fabricated installation.
+//   Trigger: model receipt-time identification in product.inventory and consume
+//   it in the existing admitted-ledger provenance scan. Until then the receipt's
+//   source-lot evidence is documented, not available through the canonical query.
 // - ProcurementLot / InventoryEvent has no transaction/receipt-date field or
 //   unsettled-date arm. The eBay pair was delivered 2026-08-06. Micro Center's
 //   transaction is dated above; its receipt/service dates are not inferred.
@@ -634,8 +638,11 @@ fn dimm_lot_intent_fits_the_lot() -> Bool {
 //   acquisition fold. Its aggregate 4 TB catalog binding is not per-lot evidence.
 //   That pre-existing row and the arrival model remain outside this change.
 //
-// CONSUMPTION: dgx_spark_procurement_population folds the two lot ledgers through
-// product.inventory.derive_inventory_balance. The executing route is `gunbc run
+// CONSUMPTION: the acquisition witness passes the two lots to the shared
+// product.inventory.admit_ledger_evidence and sums the admitted balances through
+// sum_inventory_balances. The serialized asset witness reads the six PhysicalAsset
+// rows and exercises the canonical provenance query's unobserved standing.
+// The executing route is `gunbc run
 // --source-root dag --source-root src/v2 --entry
 // dag/test/claim/dgx_spark_inventory_witness_test.dag --function
 // w_independent_acquisitions_reconcile_eight --claim-run`, also discovered as a
@@ -689,14 +696,6 @@ data dgx_spark_ebay_pair_lot_ledger: List<InventoryEvent> = [
   LotReceived { lot: dgx_spark_ebay_pair_lot_identity, quantity: dgx_spark_ebay_pair_lot.quantity_acquired },
 ]
 
-// Receipt-based asset attribution is distinct from the installation provenance
-// read by product.inventory.asset_source_lot_standing. No installation is invented.
-type FleetInventoryLedger {
-  lot: ProcurementLot
-  events: List<InventoryEvent>
-  identified_assets: List<PhysicalAsset>
-}
-
 // Inventory labels are allocated in the order the six serials were relayed from
 // the receipt. They do not claim host-slot order. The receipt identity stays private.
 fn dgx_spark_micro_center_asset(identity: PhysicalAssetIdentity, serial: NonEmptyStr) -> PhysicalAsset {
@@ -708,7 +707,7 @@ fn dgx_spark_micro_center_asset(identity: PhysicalAssetIdentity, serial: NonEmpt
   }
 }
 
-data dgx_spark_micro_center_assets: List<PhysicalAsset> = [
+data dgx_spark_serialized_assets: List<PhysicalAsset> = [
   dgx_spark_micro_center_asset(identity: dgx_spark_01, serial: "1980526005202" as NonEmptyStr),
   dgx_spark_micro_center_asset(identity: dgx_spark_02, serial: "1984025004768" as NonEmptyStr),
   dgx_spark_micro_center_asset(identity: dgx_spark_03, serial: "1984025004355" as NonEmptyStr),
@@ -717,46 +716,12 @@ data dgx_spark_micro_center_assets: List<PhysicalAsset> = [
   dgx_spark_micro_center_asset(identity: dgx_spark_06, serial: "1980526004937" as NonEmptyStr),
 ]
 
-data dgx_spark_procurement_ledgers: List<FleetInventoryLedger> = [
-  FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger, identified_assets: dgx_spark_micro_center_assets },
-  FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger, identified_assets: [] },
+data dgx_spark_procurement_ledgers: List<InventoryLotEvidence> = [
+  InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+  InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
 ]
 
 data dgx_spark_asset_identities: List<PhysicalAssetIdentity> = [
   dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04,
   dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08,
 ]
-
-type FleetInventoryPopulation
-  = FleetPopulationDerived { acquired: Nat, received: Nat, owned: Nat }
-  | FleetPopulationRefused {
-      lot: InventoryLotIdentity,
-      cause: LedgerRefusalCause,
-      event_ordinal: Nat,
-      event_label: NonEmptyStr,
-    }
-
-// No failed ledger contributes a zero or a valid prefix. The first located refusal
-// survives the outer fold, so a later valid lot cannot hide an invalid acquisition.
-fn fleet_inventory_population(ledgers: List<FleetInventoryLedger>) -> FleetInventoryPopulation {
-  fold(ledgers, init: FleetPopulationDerived { acquired: 0, received: 0, owned: 0 }, f: fn(acc, ledger) {
-    match acc {
-      FleetPopulationRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => acc
-      FleetPopulationDerived { acquired: a, received: r, owned: o } =>
-        match derive_inventory_balance(lot: ledger.lot, events: ledger.events) {
-          BalanceDerived { balance: b } => FleetPopulationDerived {
-            acquired: a + b.acquired,
-            received: r + b.received,
-            owned: o + b.owned,
-          }
-          BalanceRefused { cause: c, event_ordinal: n, event_label: l } => FleetPopulationRefused {
-            lot: ledger.lot.identity, cause: c, event_ordinal: n, event_label: l,
-          }
-        }
-    }
-  })
-}
-
-fn dgx_spark_procurement_population() -> FleetInventoryPopulation {
-  fleet_inventory_population(ledgers: dgx_spark_procurement_ledgers)
-}

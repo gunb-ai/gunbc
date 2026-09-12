@@ -546,6 +546,7 @@ fn departure_origin_position(origin: DepartureOrigin) -> StockPosition {
 type AdmittedInventoryLedger sole_constructor {
   lot: ProcurementLot
   events: List<InventoryEvent>
+  balance: InventoryBalance
 }
 
 type InventoryLedgerAdmission
@@ -559,11 +560,54 @@ type InventoryLedgerAdmission
 
 fn admit_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> InventoryLedgerAdmission {
   match fold_inventory_ledger(lot: lot, events: events) {
-    LedgerSettled { state: _ } =>
-      LedgerAdmitted { admitted: AdmittedInventoryLedger { lot: lot, events: events } }
+    LedgerSettled { state: s } =>
+      LedgerAdmitted { admitted: AdmittedInventoryLedger {
+        lot: lot, events: events, balance: inventory_balance_from_state(state: s),
+      } }
     LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l } =>
       LedgerAdmissionRefused { lot: lot.identity, cause: c, event_ordinal: o, event_label: l }
   }
+}
+
+// THE UNADMITTED PAIR THE CALLER SUPPLIES. It is deliberately NOT AdmittedInventoryLedger: if the
+// caller could only pass admitted ledgers, the refused-evidence case would be unreachable here and
+// the caller would be the one deciding what counts as history -- which is precisely the judgment
+// this module must not delegate. The admission happens inside.
+type InventoryLotEvidence {
+  lot: ProcurementLot
+  events: List<InventoryEvent>
+}
+
+// --- ledger admission over the whole evidence population ------------------------------------------
+// THE FIRST REFUSAL WINS AND THE REST ARE NOT CONSULTED, which is the fail-closed reading rather
+// than a shortcut: once one ledger is inadmissible the caller's evidence set is not history, and
+// reporting a second refusal beside it would suggest the first was survivable.
+type LedgerEvidenceAdmission
+  = AllLedgersAdmitted { ledgers: List<AdmittedInventoryLedger> }
+  | LedgerEvidenceRefused {
+      lot: InventoryLotIdentity,
+      cause: LedgerRefusalCause,
+      event_ordinal: Nat,
+      event_label: NonEmptyStr,
+    }
+
+fn admit_one_more_ledger(acc: LedgerEvidenceAdmission, row: InventoryLotEvidence) -> LedgerEvidenceAdmission {
+  match acc {
+    LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
+      LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
+    AllLedgersAdmitted { ledgers: so_far } =>
+      match admit_inventory_ledger(lot: row.lot, events: row.events) {
+        LedgerAdmitted { admitted: a } => AllLedgersAdmitted { ledgers: concat(so_far, [a]) }
+        LedgerAdmissionRefused { lot: l, cause: c, event_ordinal: o, event_label: lb } =>
+          LedgerEvidenceRefused { lot: l, cause: c, event_ordinal: o, event_label: lb }
+      }
+  }
+}
+
+fn admit_ledger_evidence(evidence: List<InventoryLotEvidence>) -> LedgerEvidenceAdmission {
+  fold(evidence, init: AllLedgersAdmitted { ledgers: [] }, f: fn(acc, row) {
+    admit_one_more_ledger(acc: acc, row: row)
+  })
 }
 
 // THE ORDINAL IS POSITION IN THE SCANNED POPULATION, NOT POSITION WITHIN ONE LEDGER, which is why
@@ -1134,8 +1178,8 @@ fn fold_inventory_ledger(lot: ProcurementLot, events: List<InventoryEvent>) -> L
   })
 }
 
-// InventoryBalance is DERIVED by one fold and never authored: there is no constructor for it
-// outside derive_inventory_balance, no field of ProcurementLot holds one, and no event carries one.
+// InventoryBalance is derived from the settled ledger state (or summed over admitted
+// ledgers); no field of ProcurementLot holds one and no event carries one.
 // Its nine buckets are three different kinds of reading over the same partition and it is worth
 // saying which is which, because a reader who takes them all for disjoint tallies will double
 // count. owned, received and qualified are AGGREGATES over several positions; unqualified,
@@ -1165,31 +1209,55 @@ type InventoryBalanceProjection
       event_label: NonEmptyStr,
     }
 
+// Retain the balance when admission already holds the settled state. A population
+// consumer must not replay the same events to recover a result admission discarded.
+fn inventory_balance_from_state(state: LedgerState) -> InventoryBalance {
+  let d = state.distribution
+  InventoryBalance {
+    acquired: stock_distribution_total(distribution: d),
+    owned: stock_distribution_total(distribution: d) - d.departed,
+    received: stock_distribution_total(distribution: d) - d.awaiting_receipt,
+    unqualified: d.unqualified,
+    qualified: d.available + d.reserved + d.installed,
+    available: d.available,
+    reserved: d.reserved,
+    installed: d.installed,
+    quarantined: d.quarantined,
+    departed: d.departed,
+  }
+}
+
 fn derive_inventory_balance(
   lot: ProcurementLot,
   events: List<InventoryEvent>,
 ) -> InventoryBalanceProjection {
-  match fold_inventory_ledger(lot: lot, events: events) {
-    LedgerFoldRefused { cause: c, event_ordinal: o, event_label: l } =>
+  match admit_inventory_ledger(lot: lot, events: events) {
+    LedgerAdmissionRefused { lot: _, cause: c, event_ordinal: o, event_label: l } =>
       BalanceRefused { cause: c, event_ordinal: o, event_label: l }
-    LedgerSettled { state: s } => {
-      let d = s.distribution
-      BalanceDerived {
-        balance: InventoryBalance {
-          acquired: stock_distribution_total(distribution: d),
-          owned: stock_distribution_total(distribution: d) - d.departed,
-          received: stock_distribution_total(distribution: d) - d.awaiting_receipt,
-          unqualified: d.unqualified,
-          qualified: d.available + d.reserved + d.installed,
-          available: d.available,
-          reserved: d.reserved,
-          installed: d.installed,
-          quarantined: d.quarantined,
-          departed: d.departed,
-        },
-      }
-    }
+    LedgerAdmitted { admitted: a } => BalanceDerived { balance: a.balance }
   }
+}
+
+// The caller first admits its whole evidence population through admit_ledger_evidence.
+// This sum takes only admitted ledgers, so it needs no second refusal interpretation.
+// Consumers: test.claim.dgx_spark_inventory_witness and
+// test.claim.inventory_ledger_witness through the required witness lane.
+fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryBalance {
+  fold(ledgers, init: inventory_balance_from_state(state: initial_ledger_state()), f: fn(acc, ledger) {
+    let b = ledger.balance
+    InventoryBalance {
+      acquired: acc.acquired + b.acquired,
+      owned: acc.owned + b.owned,
+      received: acc.received + b.received,
+      unqualified: acc.unqualified + b.unqualified,
+      qualified: acc.qualified + b.qualified,
+      available: acc.available + b.available,
+      reserved: acc.reserved + b.reserved,
+      installed: acc.installed + b.installed,
+      quarantined: acc.quarantined + b.quarantined,
+      departed: acc.departed + b.departed,
+    }
+  })
 }
 
 // There is deliberately NO balance_reconciles_to_acquired function, and the reason is worth the row
