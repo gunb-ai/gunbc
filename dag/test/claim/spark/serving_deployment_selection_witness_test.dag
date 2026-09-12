@@ -452,6 +452,10 @@ data settled_field: ServingDeploymentCandidateField = serving_candidate_field(
   candidates: [native_tp4_x2],
 )
 
+data no_redundancy_goal_flip_constraints: List<HardConstraint> = concat(serving_selection_constraints, [
+  HardConstraint { identity: constraint_no_redundancy, axis: ax_no_redundancy, bound_micro: 1 },
+])
+
 test fn changing_the_workload_changes_the_decision_identity() -> Bool {
   decision_snapshot_key(input: input_with(field: settled_field, w: established_demand))
     != decision_snapshot_key(input: input_with(field: settled_field, w: wider_established_demand))
@@ -556,7 +560,7 @@ test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
     evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
     quality_requirement: deepseek_quality_requirement,
     selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
-    constraints: v4_1_selection_constraints,
+    constraints: no_redundancy_goal_flip_constraints,
     constraint_authority: id_constraint_authority,
     axes: v4_1_selection_axes,
   )) {
@@ -566,7 +570,7 @@ test fn flipping_no_redundancy_goal_on_tp4x2_changes_feasibility() -> Bool {
         evidence: evidence_admitting(profiles: [passing_quality_for(tp: 4)], w: established_demand),
         quality_requirement: deepseek_quality_requirement,
         selection_policy: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
-        constraints: v4_1_selection_constraints,
+        constraints: no_redundancy_goal_flip_constraints,
         constraint_authority: id_constraint_authority,
         axes: map(v4_1_selection_axes, a =>
           if declaration_ref_eq(a: a.identity, b: ax_no_redundancy) {
