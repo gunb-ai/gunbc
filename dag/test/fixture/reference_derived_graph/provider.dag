@@ -5,3 +5,5 @@ import std.types { Int }
 type ProvidedMarker
 
 data provided_value: Int = 1
+
+fn provided_fn() -> Int { 1 }

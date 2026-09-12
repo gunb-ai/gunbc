@@ -22,11 +22,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // MEASUREMENTS OF TODAY'S XL-4 ROUTE: module_roots_from_source_root_ingest then
 // normalized_tree_roots_to_nodes (via located_roots_from_source_root_ingest), then the one
-// collector. Not a second parse_module ingest. Type-position and call contents stay declared
-// frontiers (go red when lowering repair lands). Trigger: eager-raven-113 lowering, then this
-// same ingest of the repaired tree.
+// collector. Not a second parse_module ingest. Type-position with no call anywhere is its own
+// missing class, independent of call-argument / callee erasure. Trigger: eager-raven-113
+// lowering widened to type positions (parent escalation to fierce-lark/eager-raven), then
+// this same ingest of the repaired tree.
 
-data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\n"
+data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
 
 data consumer_reference_only_text: String = "module test.fixture.reference_derived_graph.consumer_reference_only\nimport std.types { Int }\nfn uses_provider() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
 
@@ -37,6 +38,8 @@ data consumer_both_text: String = "module test.fixture.reference_derived_graph.c
 data consumer_call_only_text: String = "module test.fixture.reference_derived_graph.consumer_call_only\nimport std.types { Int }\nfn sink(x: Int) -> Int { x }\nfn uses_only_in_call() -> Int {\n  sink(x: test.fixture.reference_derived_graph.provider.provided_value)\n}\n"
 
 data consumer_type_only_text: String = "module test.fixture.reference_derived_graph.consumer_type_only\nimport std.types { Int }\nfn uses(\n  x: test.fixture.reference_derived_graph.provider.ProvidedMarker\n) -> Int {\n  1\n}\n"
+
+data consumer_callee_only_text: String = "module test.fixture.reference_derived_graph.consumer_callee_only\nimport std.types { Int }\nfn uses_only_as_callee() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_fn()\n}\n"
 
 data provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
 
@@ -49,6 +52,8 @@ data consumer_both_path: String = "dag/test/fixture/reference_derived_graph/cons
 data consumer_call_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
 
 data consumer_type_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_only.dag"
+
+data consumer_callee_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_callee_only.dag"
 
 data provider_module: String = "test.fixture.reference_derived_graph.provider"
 
@@ -75,7 +80,10 @@ data fixture_ingest: SourceRootIngest = Cons {
           head: fixture_read(text: consumer_call_only_text, path: consumer_call_only_path, unit: ^call_only_unit),
           tail: Cons {
             head: fixture_read(text: consumer_type_only_text, path: consumer_type_only_path, unit: ^type_only_unit),
-            tail: Empty
+            tail: Cons {
+              head: fixture_read(text: consumer_callee_only_text, path: consumer_callee_only_path, unit: ^callee_only_unit),
+              tail: Empty
+            }
           }
         }
       }
@@ -114,4 +122,8 @@ test fn production_route_call_contents_are_missing_today_holds() -> Bool {
 
 test fn production_route_type_position_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_type_only_path, target: provider_module) == 0
+}
+
+test fn production_route_callee_with_no_arguments_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_callee_only_path, target: provider_module) == 0
 }
