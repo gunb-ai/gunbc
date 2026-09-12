@@ -237,11 +237,12 @@ fn observed_job_run_attempt(job: WorkflowJobRun) -> Int {
 fn observed_primary_label(o: ObservedExecution) -> String {
   match o {
     JobRunObserved { job, head_sha, correctness } =>
-      if count(observed_job_labels(job: job)) == 0 {
-        ""
-      } else {
-        observed_job_labels(job: job).first()
-      }
+      fold(observed_job_labels(job: job), init: "", f: fn(acc, l) {
+        match acc {
+          "" => l
+          _ => acc
+        }
+      })
     NoRunObserved { obligation } => ""
   }
 }
