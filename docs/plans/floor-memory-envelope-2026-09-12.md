@@ -158,6 +158,50 @@ unmeasured unless explicitly labeled otherwise; implementation costs are estimat
 both heads. We cannot yet say how large a box this phase requires. There is no
 evidence here for declaring 16, 18 or 20 GiB sufficient.
 
+## Did #11078 measurably increase cost?
+
+**No consistent wall-time increase is visible in this small before/after sample;
+the census's isolated CPU and typecheck increment remain unobserved.** This is
+not a finding that its incremental cost is zero.
+
+[#11078](https://github.com/gunb-ai/gunbc/pull/11078) merged at
+`2026-09-12T03:15:29Z` as `f4b63e3b80ba142d8650e2d2d033881e7ba04a9e`.
+It expanded the per-claim-scope ambiguity report from counts to named rows.
+That report and `tree_bare_census_for_root` are different producers; sharing the
+word “census” does not make the older RSS attribution apply to this change.
+
+Two nearby completed main runs before the merge and two after it give:
+
+| Main run / floor job | source SHA prefix | relation to #11078 | completed fold wall, ms | completed ledger resolve wall, ms | observed claim CPU total, ms |
+| --- | --- | --- | ---: | ---: | ---: |
+| [34665537725 / 103478308337](https://github.com/gunb-ai/gunbc/actions/runs/34665537725/job/103478308337) | `b2bda4edda7d` | before | 526589 | 44878 | 44027 |
+| [34668064603 / 103484007739](https://github.com/gunb-ai/gunbc/actions/runs/34668064603/job/103484007739) | `c25ab6d87477` | before | 524850 | 34747 | 46789 |
+| [34669916077 / 103489226361](https://github.com/gunb-ai/gunbc/actions/runs/34669916077/job/103489226361) | `6cdebf53c4b1` | after | 558781 | unobserved: refused | unobserved: no summary |
+| [34672874238 / 103499666826](https://github.com/gunb-ai/gunbc/actions/runs/34672874238/job/103499666826) | `88c67ace130ef` | after | 487936 | 40831 | 42202 |
+
+Membership is verified with `git merge-base --is-ancestor` against #11078's
+merge commit, not inferred from job completion time. The before runs also lack
+the added `names_distinct` field; the after runs print it. Cancelled runs are
+excluded and this convenience sample is not a population trend estimate.
+
+Producers: `run_required_floor` prints the completed
+`floor: evaluating N / N (Xms)` fold span; `publish_terminal_ledger` prints
+`resolve_ms`; the `[cross-claim-demand] claims_absorbed=...` summary prints
+`claim_cpu_observed_total_ms`. The CPU totals cover 3754, 3781 and 3760 completed
+claims respectively, with zero censored claim rows in those three summaries.
+They are marginal claim-evaluation CPU, **not whole-floor CPU or census CPU**;
+they cannot measure the cost of scope construction or reporting outside the
+claim window. Nor is ledger `resolve_ms` a pure typecheck timer.
+
+The completed post-merge ledger resolve, 40.831s, lies inside the pre-merge
+34.747–44.878s range. Post-merge fold times straddle the pre-merge range; the
+completed post-merge claim CPU total is lower. Hosts and source populations
+differ, and one post-merge ledger resolve is censored. These observations do not
+identify a regression caused by #11078, nor rule out a smaller increment hidden
+by those differences. Its specific cost needs a producer-local bracket;
+whole-run wall/CPU cannot supply that attribution. No retained-state experiment
+or new heavy run was added for this comparison.
+
 ## Next-rung capability and reproduction
 
 **Next-rung trigger:** the floor's own receipts publish per-phase resident-memory
