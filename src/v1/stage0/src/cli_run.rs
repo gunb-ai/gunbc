@@ -32161,14 +32161,35 @@ pub(crate) enum CommitWitnessClaimPairResolvability {
     OutsidePreparedSubject {
         detail: String,
     },
+    /// The subject HOLDS the entry and the decoded handoff law refuses to serve it. Distinct from
+    /// `OutsidePreparedSubject` because the remedy is the law, not the subject's membership.
+    PreparedProductWithheld {
+        detail: String,
+    },
     FunctionNotFound,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum RosterEntryRegistryCache {
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
-    OutsidePreparedSubject { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
+    OutsidePreparedSubject {
+        detail: String,
+    },
+    /// The prepared subject HOLDS this entry and the decoded handoff law refuses to serve it.
+    ///
+    /// A THIRD STATE, NOT A SPELLING OF THE SECOND. `OutsidePreparedSubject` says the subject does
+    /// not have it — the remedy is the subject or its exclusions. This says the subject has it and
+    /// the law says no — the remedy is the law. Collapsing them would put one symbol over two
+    /// causes with different owners, which is the conflation DESIGN's failure-mode list names, and
+    /// it would also make the `hit=Refuse` fixture indistinguishable from a lookup miss.
+    PreparedProductWithheld {
+        detail: String,
+    },
     Functions(std::collections::HashSet<String>),
 }
 
@@ -39411,6 +39432,16 @@ mod prepared_source_identity_test {
         }
     }
 
+    /// A law that withholds a HELD product. Not what the model declares today — it is the input
+    /// that makes `law.hit` observable at all, and without it a host ignoring the hit disposition
+    /// passes every other test in this module.
+    fn withholding_law() -> PreparedProductLaw {
+        PreparedProductLaw {
+            hit: PreparedProductDisposition::Refuse,
+            miss: PreparedProductDisposition::Refuse,
+        }
+    }
+
     fn view(path: &str, content: &str) -> PreparedSourceView {
         PreparedSourceView {
             module_path: path.replace(['/', '.'], "_"),
@@ -39511,6 +39542,45 @@ mod prepared_source_identity_test {
                 assert!(detail.contains("dag/test/claim/not_held.dag"), "{detail}");
             }
             other => panic!("expected OutsidePreparedSubject, got {other:?}"),
+        }
+    }
+
+    /// BOTH BRANCHES OF THE LAW ARE CONSUMED, and this is the pair that shows it. The same held
+    /// entry, the same bytes, two laws: under `hit=Serve` its declarations are served, under
+    /// `hit=Refuse` it is withheld. A host that served held bytes unconditionally — which is what
+    /// an earlier revision did — passes the first half and fails the second.
+    ///
+    /// `PreparedProductWithheld` is asserted rather than any refusal, because the third state has
+    /// its own remedy: the subject HAS the entry and the law says no. Accepting
+    /// `OutsidePreparedSubject` here would let a lookup miss masquerade as a withholding.
+    #[test]
+    fn a_held_entry_is_served_or_withheld_by_the_laws_hit_disposition() {
+        let held = "dag/test/claim/governed.dag";
+        let bytes = "module governed\n\nfn governed_fn() -> Bool { true }\n";
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+
+        {
+            let _guard =
+                register_floor_prepared_authority_guard(vec![view(held, bytes)], declared_law());
+            match crate::cli_run::witness_gates::roster_entry_registry(&roots, held) {
+                RosterEntryRegistryCache::Functions(names) => assert!(
+                    names.contains("governed_fn"),
+                    "hit=Serve must serve the held bytes: {names:?}"
+                ),
+                other => panic!("hit=Serve must serve, got {other:?}"),
+            }
+        }
+
+        let _guard =
+            register_floor_prepared_authority_guard(vec![view(held, bytes)], withholding_law());
+        match crate::cli_run::witness_gates::roster_entry_registry(&roots, held) {
+            RosterEntryRegistryCache::PreparedProductWithheld { detail } => {
+                assert!(detail.contains(held), "{detail}");
+            }
+            other => panic!(
+                "hit=Refuse must withhold the same held bytes; serving them would mean the hit \
+                 disposition was decoded and ignored. Got {other:?}"
+            ),
         }
     }
 

@@ -3681,19 +3681,57 @@ fn floor_decode_prepared_product_disposition(
     module: &str,
     func: &str,
 ) -> Result<PreparedProductDisposition, String> {
+    const EXPECTED_PRODUCT: &str = "PreparedModuleSource";
+    const EXPECTED_CONSUMER: &str = "CommitWitnessRosterGate";
     let qualified = format!("{module}.{func}");
     match v1_interpreter::run_in_context(ctx, &qualified, false) {
-        Ok(v1_interpreter::Value::Variant { variant_name, .. }) => {
-            match ctx.resolve(variant_name).as_str() {
-                "PreparedProductServed" => Ok(PreparedProductDisposition::Serve),
-                "PreparedProductRefused" => Ok(PreparedProductDisposition::Refuse),
-                unknown => Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=PreparedProductDispositionUnimplemented \
-                     {qualified} answered `{unknown}`, which this host has no behaviour for. The \
-                     model has grown an arm the prepared-product lookup does not implement; \
-                     acting on the arms it does know would silently ignore the new one."
-                )),
+        Ok(v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) => {
+            let disposition = match ctx.resolve(variant_name).as_str() {
+                "PreparedProductServed" => PreparedProductDisposition::Serve,
+                "PreparedProductRefused" => PreparedProductDisposition::Refuse,
+                unknown => {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PreparedProductDispositionUnimplemented \
+                         {qualified} answered `{unknown}`, which this host has no behaviour for. \
+                         The model has grown an arm the prepared-product lookup does not \
+                         implement; acting on the arms it does know would silently ignore the new \
+                         one."
+                    ));
+                }
+            };
+            // THE PAYLOAD IS CHECKED, NOT DISCARDED, and the reason is that a variant name alone
+            // does not say WHOSE disposition this is. An outcome carrying `PreparedClaimScope` or
+            // naming `WitnessClaimFold` is a perfectly well-formed `PreparedProductRefused` about
+            // a DIFFERENT consumer's product, and reading only the name would let the roster gate
+            // adopt it as its own — the authority-substitution failure DESIGN names: both halves
+            // check out and only the arrow between them is missing.
+            floor_prepared_product_field_is(ctx, &fields, "product", EXPECTED_PRODUCT).map_err(
+                |found| {
+                    format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawWrongProduct {qualified} \
+                         answered about `{found}`, but the roster gate's product is \
+                         `{EXPECTED_PRODUCT}`. This outcome is not this consumer's to act on."
+                    )
+                },
+            )?;
+            // The consumer field exists only on the refused arm, so its absence on `Served` is
+            // not a defect. Where it IS present it must name this gate, for the same reason.
+            if fields.iter().any(|(k, _)| ctx.resolve(*k) == "consumer") {
+                floor_prepared_product_field_is(ctx, &fields, "consumer", EXPECTED_CONSUMER)
+                    .map_err(|found| {
+                        format!(
+                            "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawWrongConsumer \
+                             {qualified} answered for `{found}`, but this is \
+                             `{EXPECTED_CONSUMER}`'s lookup. A refusal addressed to another \
+                             consumer is not authority for this one."
+                        )
+                    })?;
             }
+            Ok(disposition)
         }
         Ok(other) => Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawNotAnOutcome {qualified}: expected a \
@@ -3703,6 +3741,28 @@ fn floor_decode_prepared_product_disposition(
         Err(e) => Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=PreparedProductLawUnevaluable {qualified} — {e}"
         )),
+    }
+}
+
+/// One field of a decoded outcome must be the nullary variant this consumer expects.
+/// `Err` carries what was found instead, so the caller's refusal can name it.
+fn floor_prepared_product_field_is(
+    ctx: &v1_interpreter::InterpContext,
+    fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
+    field: &str,
+    expected_variant: &str,
+) -> Result<(), String> {
+    match ctx.field(fields, field) {
+        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            let found = ctx.resolve(*variant_name);
+            if found == expected_variant {
+                Ok(())
+            } else {
+                Err(found)
+            }
+        }
+        Some(other) => Err(floor_value_shape(Some(other))),
+        None => Err(format!("no `{field}` field")),
     }
 }
 

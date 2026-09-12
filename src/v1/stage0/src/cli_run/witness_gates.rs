@@ -847,7 +847,22 @@ pub(crate) fn roster_entry_registry(roots: &[String], entry: &str) -> RosterEntr
     // arm this lookup does not implement.
     if let Some(law) = floor_prepared_product_law() {
         return match floor_prepared_source_for_entry_path(entry) {
-            Some(source) => roster_entry_registry_from_prepared_source(entry, &source),
+            // THE HIT IS GOVERNED TOO, and an earlier revision governed only the miss. Serving
+            // held bytes unconditionally meant half the law was decoded and then ignored: a model
+            // answering `Refuse` for a held product changed nothing, so the decode was consumed on
+            // one branch and decorative on the other. Both branches now act on what was decoded.
+            Some(source) => match law.hit {
+                PreparedProductDisposition::Serve => {
+                    roster_entry_registry_from_prepared_source(entry, &source)
+                }
+                PreparedProductDisposition::Refuse => {
+                    RosterEntryRegistryCache::PreparedProductWithheld {
+                        detail: format!(
+                            "the prepared subject holds {entry} and the handoff law withholds it"
+                        ),
+                    }
+                }
+            },
             None => match law.miss {
                 PreparedProductDisposition::Refuse => {
                     RosterEntryRegistryCache::OutsidePreparedSubject {
@@ -925,6 +940,11 @@ pub(crate) fn commit_witness_claim_pair_resolvability(
                 detail: detail.clone(),
             }
         }
+        RosterEntryRegistryCache::PreparedProductWithheld { detail } => {
+            CommitWitnessClaimPairResolvability::PreparedProductWithheld {
+                detail: detail.clone(),
+            }
+        }
         RosterEntryRegistryCache::Functions(names) => {
             if names.contains(function) {
                 CommitWitnessClaimPairResolvability::Resolvable
@@ -962,6 +982,9 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
             }
             CommitWitnessClaimPairResolvability::OutsidePreparedSubject { detail } => {
                 format!("outside_prepared_subject:{detail}")
+            }
+            CommitWitnessClaimPairResolvability::PreparedProductWithheld { detail } => {
+                format!("prepared_product_withheld:{detail}")
             }
             CommitWitnessClaimPairResolvability::FunctionNotFound => {
                 "function_not_found".to_string()
