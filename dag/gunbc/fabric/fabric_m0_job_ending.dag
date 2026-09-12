@@ -1,8 +1,9 @@
 module gunbc.fabric_m0_job_ending
 
-import std.types { List }
+import std.types { List, String }
 import std.content_hash { Sha256Digest }
 import std.scoped_authorization { AttemptIdentity }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import product.fabric.work {
   Work,
 }
@@ -59,8 +60,9 @@ import gunbc.fabric_m0_publication { publish_work }
 // end_required_job over real bytes with a mutation control -- the same record read from the wrong
 // fixture file concludes Failure -- which is the half the mock cannot show.
 // stamp_floor_receipt_with_conclusion can take the CheckConclusion this fold returns; it is not
-// called here because this module is the decision, not the GitHub report. The required-CI ending
-// is the named later consumer.
+// called here because this module is the decision, not the GitHub report. tools.fabric_m0_origin_object_probe
+// canary_exit_from_origin_fetch is the identified canary whose process exit follows this fold's
+// conclusion; claim_executor --required-ci remains the named later consumer for every required job.
 
 // WHY PENDING IS ActionRequired AND NEVER Neutral OR Success.
 //
@@ -125,5 +127,28 @@ fn end_required_job<P>(
   JobEnding {
     publication: publication,
     conclusion: check_conclusion_of_publication(publication: publication),
+  }
+}
+
+// WHAT THE PROCESS SAYS, derived from the ENDING and not from the publication a second time, so
+// there is one mapping from publication to conclusion and the exit follows it. A process cannot stay
+// in progress, so ActionRequired -- the pending arm -- exits NON-ZERO with the reconciliation named
+// on the exit: not because the job failed, but because a zero exit would be the green-over-unread-
+// bytes the conclusion refused one function up. The reason carries the publication's own subject
+// and cause so a reader of the exit does not mistake a pending job for a failed build.
+fn process_exit_of_job_ending(ending: JobEnding) -> ProcessExit {
+  match ending.conclusion {
+    Success => ExitSuccess
+    other => exit_failure(reason: publication_exit_reason(publication: ending.publication))
+  }
+}
+
+fn publication_exit_reason(publication: JobPublication) -> String {
+  match publication {
+    PublishSuccess { attempt: _, manifest_digest: _ } => "published"
+    PublishComputationFailed { attempt: _, cause: c, unresolved: _ } => "computation failed: " + c
+    PublishFinalizationFailed { attempt: _, subject: s, cause: c, unresolved: _ } => "finalization failed at " + s + ": " + c
+    PublishObligationsUnreadable { attempt: _, subject: s, cause: c, unresolved: _ } => "obligations unreadable for " + s + ": " + c
+    PublishPendingReconciliation { attempt: _, subject: s, cause: c, unresolved: _ } => "awaiting reconciliation of " + s + ": " + c
   }
 }

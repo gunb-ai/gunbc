@@ -112,6 +112,24 @@ type OriginReadingOutcome
   = OriginReadingTaken { reading: OriginReading }
   | OriginReadingUnavailable { staged_path: NonEmptyStr, cause: NonEmptyStr }
 
+// WHAT A SELF-STAGING ORIGIN READ ANSWERS, keyed by the object it was asked for and never by a
+// path. Three arms and no fourth: the object was fetched and its staged bytes digested (the reading
+// is the one this module minted over the file the fetch wrote); the origin answered that no such
+// object exists; or nothing usable was obtained -- a refused request, a transport that never
+// answered, a staging directory that could not be made, a digest that could not be taken -- each a
+// located cause. Absent and Unavailable are kept apart because they have opposite remedies
+// downstream: gunbc.fabric_m0_commit reads absence as ManifestNotFound and unavailability as
+// ManifestReadUnavailable, and collapsing one into the other is the empty-observation narrow.
+//
+// THE SHAPE LIVES HERE AND THE PRODUCER DOES NOT. This module owns what a confirming reading IS;
+// which store answers, and over which transport, is a sibling origin realization. A second origin
+// realization produces this same type. The executing instrument that will obtain a live fetch is
+// named on tools.fabric_m0_origin_object_probe; this change does not add that producer.
+type OriginFetchOutcome
+  = OriginObjectStaged { key: NonEmptyStr, reading: OriginReading }
+  | OriginObjectAbsent { key: NonEmptyStr }
+  | OriginFetchUnavailable { key: NonEmptyStr, cause: NonEmptyStr }
+
 // THE SOLE MINT. One operation obtains the bytes' digest and the name of the file it was taken
 // from, so the two cannot describe different objects.
 //

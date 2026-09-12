@@ -1,6 +1,7 @@
 module test.claim.fabric_m0_job_ending_witness
 
 import std.types { Bool, List, NonEmptyStr }
+import std.process { exit_ok }
 import std.measure { hardware_thread_count }
 import std.content_hash { Sha256Digest }
 import std.scoped_authorization { AttemptIdentity }
@@ -58,6 +59,7 @@ import gunbc.fabric_m0_job_ending {
   JobEnding,
   end_required_job,
   check_conclusion_of_publication,
+  process_exit_of_job_ending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -369,4 +371,37 @@ test fn an_unreadable_roster_concludes_failure_rather_than_action_required() -> 
       unresolved: [],
     }
   ) == Failure
+}
+
+test fn process_exit_follows_the_ending_conclusion() -> Bool {
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      let green = end_required_job(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: origin_read(r: r),
+      )
+      let pending = end_required_job(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: cache_manifest_read(provider: "local-store"),
+      )
+      exit_ok(e: process_exit_of_job_ending(ending: green))
+        && (exit_ok(e: process_exit_of_job_ending(ending: pending)) == false)
+  }
 }

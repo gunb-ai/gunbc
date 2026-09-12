@@ -1,0 +1,115 @@
+module tools.fabric_m0_origin_object_probe
+
+import std.types { List, NonEmptyStr }
+import std.process { ProcessExit, exit_ok }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.measure { hardware_thread_count }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
+  Shape, HardRequirements, ControlPlaneCapacity, work_for,
+  DeclaredOutputObligations,
+}
+import gunbc.fabric_m0_completion {
+  ComputationSucceeded, CommittedOutput, ManifestMember, OriginObservation,
+}
+import gunbc.fabric_m0_commit {
+  CommitNamespace,
+  CommitTransportOutcome,
+  StoreDidNotAnswer,
+  commit_slot_key,
+  manifest_read_of_origin_fetch,
+}
+import gunbc.fabric_m0_origin_readback { OriginFetchOutcome }
+import gunbc.fabric_m0_job_ending { end_required_job, process_exit_of_job_ending }
+
+// THE IDENTIFIED CANARY: ONE JOB WHOSE PROCESS CONCLUSION FOLLOWS ITS JobPublication.
+//
+// Identity: gunbc.fabric-m0.canary:1. This is not claim_executor --required-ci. The production
+// consumer fold is gunbc.fabric_m0_job_ending end_required_job (landed). This module is the SHAPE
+// of routing one origin fetch through that ending to a process exit.
+//
+// Route: OriginFetchOutcome -> gunbc.fabric_m0_commit manifest_read_of_origin_fetch ->
+// end_required_job -> process_exit_of_job_ending. Pending stays ActionRequired and therefore a
+// non-zero exit. Nothing here mints an OriginReading. Nothing here substitutes locally-sourced
+// bytes for an origin body. The fetch is RECEIVED.
+//
+// THE EXECUTING INSTRUMENT WHEN THE READ TOKEN EXISTS is fetch_absent:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_m0_origin_object_probe.dag --function fetch_absent
+// That entry needs the already-pinned READ secret via GUNBC_GCP_ACCESS_TOKEN_FILE and the origin
+// GET producer that stages its own output. This change does not add that producer, does not run
+// run_object_write, and does not retire write-frontier rows. roundtrip needs the write pin, which
+// does not exist yet, and is not this canary.
+//
+// THIS CANARY DOES NOT PUT. fetch_absent asks for a key nothing wrote. The transport this fold
+// supplies is therefore StoreDidNotAnswer with that cause -- an honest absence of a store verdict,
+// not a fabricated StoreAnswered. ManifestNotFound then remains pending (ActionRequired), which is
+// the live arm until a write exists.
+//
+// Consumers: test.claim.fabric_m0_origin_object_probe_witness.
+
+data canary_identity: NonEmptyStr = "gunbc.fabric-m0.canary:1"
+
+data canary_namespace: NonEmptyStr = "probe/fabric-m0-canary/v1/commit"
+
+data canary_attempt: NonEmptyStr = "attempt-1"
+
+data absent_key: NonEmptyStr = "probe/fabric-m0-origin-object/never-written"
+
+data fetch_absent_instrument: NonEmptyStr = "tools.fabric_m0_origin_object_probe.fetch_absent"
+
+fn canary_recorded_manifest_digest() -> Sha256Digest {
+  Sha256Digest { hex: "47e3f235ff09282e7d5f556dd41b39f95ea05f4f04f643ff65740b7f28cd55ba" as Sha256DigestHex }
+}
+
+fn canary_work() -> Work<NonEmptyStr> {
+  work_for(
+    principal: "gunbc" as NonEmptyStr,
+    contract: WorkContract {
+      program: canary_identity,
+      steps: [WorkStep { step_id: "fabric-m0-canary", resumability: ReceiptSatisfiable }],
+      source: "source:1", inputs: "inputs:1", runtime_closure: "runtime:1",
+      effect_contract: "effects:1", output_contract: "outputs:1",
+      output_obligations: DeclaredOutputObligations { required: [] },
+    },
+    requirements: ExecutionRequirements {
+      capacity_class: ControlPlaneCapacity,
+      shape: Shape { hard: HardRequirements { threads: hardware_thread_count(8) }, envelope: unstated_envelope() },
+      capabilities: "linux-arm64", trust_domain: "fleet-owned", isolation: shared_kernel_sandbox_profile(),
+    },
+  )
+}
+
+fn fetch_absent_transport() -> CommitTransportOutcome {
+  StoreDidNotAnswer {
+    slot: commit_slot_key(namespace: canary_namespace as CommitNamespace, attempt: canary_attempt as AttemptIdentity),
+    cause: "fetch_absent does not PUT; the write pin does not exist",
+  }
+}
+
+// THE WIRE. Given an origin fetch (the value fetch_absent will obtain when that producer exists),
+// the process exit is the JobEnding's conclusion. There is no try-the-gate-then-return-old-success
+// arm.
+fn canary_exit_from_origin_fetch(fetch: OriginFetchOutcome) -> ProcessExit {
+  process_exit_of_job_ending(
+    ending: end_required_job(
+      work: canary_work(),
+      attempt: canary_attempt as AttemptIdentity,
+      computation: ComputationSucceeded,
+      committed: [] as List<CommittedOutput>,
+      observations: [] as List<OriginObservation>,
+      namespace: canary_namespace as CommitNamespace,
+      manifest_digest: canary_recorded_manifest_digest(),
+      members: [] as List<ManifestMember>,
+      transport: fetch_absent_transport(),
+      observed: manifest_read_of_origin_fetch(fetch: fetch),
+    )
+  )
+}
+
+fn canary_exit_is_zero(fetch: OriginFetchOutcome) -> Bool {
+  exit_ok(e: canary_exit_from_origin_fetch(fetch: fetch))
+}

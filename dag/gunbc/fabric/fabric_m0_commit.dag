@@ -11,6 +11,10 @@ import gunbc.fabric_m0_origin_readback {
   OriginReadingOutcome,
   OriginReadingTaken,
   OriginReadingUnavailable,
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
 }
 import gunbc.fabric_m0_completion {
   ComputationOutcome,
@@ -127,6 +131,21 @@ fn manifest_read_of(outcome: OriginReadingOutcome) -> ManifestReadbackObservatio
   match outcome {
     OriginReadingTaken { reading: r } => ManifestRead { reading: r }
     OriginReadingUnavailable { staged_path: _, cause: c } => ManifestReadUnavailable { cause: c }
+  }
+}
+
+// THE SAME FOLD OVER A SELF-STAGING FETCH, and the one that reaches ManifestNotFound. manifest_read_of
+// above cannot: a caller-named file that is not there is an UNAVAILABLE reading, because nothing
+// about a missing local file says the ORIGIN holds no object. A fetch that asked the origin for the
+// manifest's key and was told there is none is the only route to absence, and it arrives here as
+// the fetch's own arm rather than as a caller's assertion. The staged arm carries the reading the
+// fetch minted over its own output, so a confirmation reached through this fold digested bytes the
+// origin returned, at a path the caller never chose. This change adds the fold, not the producer.
+fn manifest_read_of_origin_fetch(fetch: OriginFetchOutcome) -> ManifestReadbackObservation {
+  match fetch {
+    OriginObjectStaged { key: _, reading: r } => ManifestRead { reading: r }
+    OriginObjectAbsent { key: _ } => ManifestNotFound
+    OriginFetchUnavailable { key: _, cause: c } => ManifestReadUnavailable { cause: c }
   }
 }
 
