@@ -106,11 +106,11 @@ fn lbc_repair_roster() -> RepairSiteRoster {
   RepairSiteRoster { sites: [lbc_repair_site()] }
 }
 
-fn lbc_repair_subject() -> LegacyRepairObservationSubject {
+fn lbc_repair_subject(source_set: String, artifact: String) -> LegacyRepairObservationSubject {
   LegacyRepairObservationSubject {
     semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
-    source_set_digest: structural_content_hash(digest: "2222222222222222"),
-    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    source_set_digest: structural_content_hash(digest: source_set),
+    compiler_artifact_digest: structural_content_hash(digest: artifact),
     repairer_identity: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_census"),
     repair_site_roster_digest: repair_site_roster_identity(roster: lbc_repair_roster()),
     resolution_registry_digest: structural_content_hash(digest: "5555555555555555")
@@ -121,9 +121,9 @@ type LbcRepairOutcome
   = LbcRepairDeclined
   | LbcRepairApplied
 
-fn lbc_repair_observation(sites: List<RepairSite>) -> LegacyRepairObservation<LbcRepairOutcome> {
+fn lbc_repair_observation(sites: List<RepairSite>, source_set: String, artifact: String) -> LegacyRepairObservation<LbcRepairOutcome> {
   LegacyRepairObservation {
-    subject: lbc_repair_subject(),
+    subject: lbc_repair_subject(source_set: source_set, artifact: artifact),
     rows: sites |> map(s => LegacyRepairObservationRow { site: s, outcome: LbcRepairDeclined })
   }
 }
@@ -187,7 +187,9 @@ fn lbc_run(
   observed_artifact: String,
   rows: List<Int>,
   expected_refs: List<Int>,
-  repair_sites: List<RepairSite>
+  repair_sites: List<RepairSite>,
+  repair_source_set: String,
+  repair_artifact: String
 ) -> LbcOutcome {
   match lbc_oid(hex: requested) {
     Absent => LbcFixtureRefused
@@ -218,7 +220,11 @@ fn lbc_run(
                     ids: rows
                   ),
                   transport: t,
-                  repair_observation: lbc_repair_observation(sites: repair_sites),
+                  repair_observation: lbc_repair_observation(
+                    sites: repair_sites,
+                    source_set: repair_source_set,
+                    artifact: repair_artifact
+                  ),
                   repair_roster: lbc_repair_roster()
                 ) {
                   LegacyBaselineCaptured { capture: _ } => "captured"
@@ -228,7 +234,7 @@ fn lbc_run(
                   LegacyBaselineObservationIncomplete { completeness: _ } => "observation-incomplete"
                   LegacyBaselineRepairRosterMalformed { sites: _ } => "repair-roster-malformed"
                   LegacyBaselineRepairRosterMismatch { subject_digest: _, roster_digest: _ } => "repair-roster-mismatch"
-                  LegacyBaselineRepairSubjectDiverged { field: _ } => "repair-subject-diverged"
+                  LegacyBaselineRepairSubjectDiverged { field: f } => concat("repair-subject-diverged:", f)
                   LegacyBaselineRepairIncomplete { completeness: _ } => "repair-incomplete"
                   LegacyBaselineExecutionRefused { phase: _, cause: _ } => "execution-refused"
                 }
@@ -252,7 +258,8 @@ test fn a_materialized_head_that_is_not_the_requested_commit_refuses_first() -> 
     expected_source_set: "2222222222222222", observed_source_set: "7777777777777777",
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10],
-    repair_sites: [lbc_repair_site()]
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "head-mismatch"
@@ -269,7 +276,8 @@ test fn a_dirty_worktree_refuses_before_the_subject_is_compared() -> Bool {
     expected_source_set: "2222222222222222", observed_source_set: "7777777777777777",
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10],
-    repair_sites: [lbc_repair_site()]
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "worktree-mismatch"
@@ -285,7 +293,8 @@ test fn an_observation_of_a_different_source_set_refuses_as_subject_mismatch() -
     expected_source_set: "2222222222222222", observed_source_set: "7777777777777777",
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10],
-    repair_sites: [lbc_repair_site()]
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "subject-mismatch:source_set_digest"
@@ -302,7 +311,8 @@ test fn an_observation_from_a_different_compiler_artifact_refuses_as_subject_mis
     expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
     expected_artifact: "3333333333333333", observed_artifact: "8888888888888888",
     rows: [10], expected_refs: [10],
-    repair_sites: [lbc_repair_site()]
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "subject-mismatch:compiler_artifact_digest"
@@ -320,7 +330,8 @@ test fn an_observation_missing_an_expected_occurrence_refuses_as_incomplete() ->
     expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10, 11],
-    repair_sites: [lbc_repair_site()]
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "observation-incomplete"
@@ -336,7 +347,8 @@ test fn a_fully_agreeing_capture_mints_the_baseline() -> Bool {
     expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10, 11], expected_refs: [10, 11],
-    repair_sites: [lbc_repair_site()]
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "captured"
@@ -351,10 +363,43 @@ test fn a_repair_observation_missing_a_roster_site_refuses_as_repair_incomplete(
     expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10, 11], expected_refs: [10, 11],
-    repair_sites: []
+    repair_sites: [],
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "repair-incomplete"
+  }
+}
+
+test fn a_repair_observation_of_a_different_source_set_refuses_as_repair_subject_diverged() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10, 11], expected_refs: [10, 11],
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "9999999999999999", repair_artifact: "3333333333333333"
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "repair-subject-diverged:source_set_digest"
+  }
+}
+
+test fn a_repair_observation_from_a_different_compiler_artifact_refuses_as_repair_subject_diverged() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10, 11], expected_refs: [10, 11],
+    repair_sites: [lbc_repair_site()],
+    repair_source_set: "2222222222222222", repair_artifact: "9999999999999999"
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "repair-subject-diverged:compiler_artifact_digest"
   }
 }
 
