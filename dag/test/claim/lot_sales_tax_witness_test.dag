@@ -28,20 +28,19 @@ import product.lot_sales_tax {
   unread_or_unrecorded_lot_count,
   lot_tax_is_attested_not_read,
   lot_tax_residual_is_owed,
-  sales_tax_rate,
-  sales_tax_rate_eq,
   lot_tax_covers_ledgers,
   LotTaxJoinCovered,
   LedgerMissingTax,
   TaxWithoutLedger,
   LotTaxJoinRepeatedLot,
 }
+import std.measure { parts_per_million, parts_per_million_count }
 import extdeps.tax.new_jersey_sales_and_use {
-  nj_statewide_sales_tax_rate_millionths_of_unity,
-  nj_uez_reduced_sales_tax_rate_millionths_of_unity,
+  nj_statewide_sales_tax_rate,
+  nj_uez_reduced_sales_tax_rate,
 }
 import extdeps.tax.new_york_city_sales_and_use {
-  nyc_combined_sales_tax_rate_millionths_of_unity,
+  nyc_combined_sales_tax_rate,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -60,7 +59,7 @@ data lot_unrecorded: InventoryLotIdentity = mint_inventory_lot_identity(alloc: t
 
 data nyc_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
   destination_jurisdiction: "New York City" as NonEmptyStr,
-  destination_combined_rate: sales_tax_rate(count: nyc_combined_sales_tax_rate_millionths_of_unity),
+  destination_combined_rate: nyc_combined_sales_tax_rate,
 }
 
 data fixture_population: List<LotTaxEvidence> = [
@@ -69,7 +68,7 @@ data fixture_population: List<LotTaxEvidence> = [
     standing: SalesTaxCollected {
       collection: RateDerivedFromReceiptBaseAndTax {
         jurisdiction: "New Jersey statewide" as NonEmptyStr,
-        rate: sales_tax_rate(count: nj_statewide_sales_tax_rate_millionths_of_unity),
+        rate: nj_statewide_sales_tax_rate,
       },
       residual: nyc_residual,
     },
@@ -79,7 +78,7 @@ data fixture_population: List<LotTaxEvidence> = [
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
         jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
-        rate: sales_tax_rate(count: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
+        rate: nj_uez_reduced_sales_tax_rate,
         receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
       },
       residual: nyc_residual,
@@ -108,19 +107,11 @@ data fixture_population: List<LotTaxEvidence> = [
 ]
 
 test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
-  sales_tax_rate_eq(
-    left: sales_tax_rate(count: nj_statewide_sales_tax_rate_millionths_of_unity),
-    right: sales_tax_rate(count: 66250),
-  )
-    && sales_tax_rate_eq(
-      left: sales_tax_rate(count: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
-      right: sales_tax_rate(count: 33125),
-    )
-    && sales_tax_rate_eq(
-      left: sales_tax_rate(count: nyc_combined_sales_tax_rate_millionths_of_unity),
-      right: sales_tax_rate(count: 88750),
-    )
-    && nj_uez_reduced_sales_tax_rate_millionths_of_unity * 2 == nj_statewide_sales_tax_rate_millionths_of_unity
+  parts_per_million_count(m: nj_statewide_sales_tax_rate) == 66250
+    && parts_per_million_count(m: nj_uez_reduced_sales_tax_rate) == 33125
+    && parts_per_million_count(m: nyc_combined_sales_tax_rate) == 88750
+    && parts_per_million_count(m: nj_uez_reduced_sales_tax_rate) * 2
+      == parts_per_million_count(m: nj_statewide_sales_tax_rate)
 }
 
 test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
@@ -161,7 +152,7 @@ test fn w_unread_residual_is_not_a_known_owe() -> Bool {
   !lot_tax_residual_is_owed(standing: SalesTaxCollected {
     collection: RateTranscribedFromNamedReceiptLine {
       jurisdiction: "elsewhere" as NonEmptyStr,
-      rate: sales_tax_rate(count: 1),
+      rate: parts_per_million(count: 1),
       receipt_line_label: "tax" as NonEmptyStr,
     },
     residual: ResidualUseTaxUnread { read_obligation: "destination rate unread" as NonEmptyStr },

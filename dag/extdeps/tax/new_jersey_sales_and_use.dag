@@ -1,7 +1,7 @@
 module extdeps.tax.new_jersey_sales_and_use
 
 import std.types { NonEmptyStr }
-import std.nat { Nat }
+import std.measure { PartsPerMillion, parts_per_million }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -29,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.tax.new_jersey_sales_and_use",
-      decl_name: "nj_statewide_sales_tax_rate_millionths_of_unity",
+      decl_name: "nj_statewide_sales_tax_rate",
       field: WholeDeclaration
     }
   },
@@ -37,11 +37,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [nj_uez_rate_authority]
 }
 
-// Millionths of unity so 6.625 percent is exact: 66250 / 1_000_000 = 0.06625.
-// std.measure Percent is Nat-denominated whole points and cannot carry this rate.
-data nj_statewide_sales_tax_rate_millionths_of_unity: Nat = 66250
+// Division of Taxation publishes 6.625 percent. Percent is whole points; this is that
+// published rate at Micro scale (66250 parts per million of unity).
+data nj_statewide_sales_tax_rate: PartsPerMillion = parts_per_million(count: 66250)
 
 data nj_statewide_rate_effective: NonEmptyStr = "on and after 2018-01-01, N.J.S.A. 54:32B-3 as published by the Division of Taxation Rates and Boundaries page"
 
 // Half the statewide rate under N.J.S.A. 52:27H-80, published as 3.3125 percent.
-data nj_uez_reduced_sales_tax_rate_millionths_of_unity: Nat = 33125
+data nj_uez_reduced_sales_tax_rate: PartsPerMillion = parts_per_million(count: 33125)

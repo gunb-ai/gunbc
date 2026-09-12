@@ -2,7 +2,7 @@ module product.lot_sales_tax
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { Measure, Dimensionless, Micro, measure_count }
+import std.measure { PartsPerMillion }
 import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
@@ -19,33 +19,21 @@ import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 // marketplace collection, and an unrecorded treatment are different states with different
 // next reads. Collapsing them is the defect this type exists to make unwritable as a Bool.
 
-// A sales-tax rate is a dimensionless ratio at Micro scale: count 66250 is 6.625 percent of
-// unity. Percent/BasisPoint already occupy Dimensionless at One with incompatible count
-// meanings; this is the Micro scale of the same Measure authority, not a third nickname
-// and not a product-module unit. Dissolve-on: Ratio<Scale> in std.measure.
-fn sales_tax_rate(count: Nat) -> Measure<Dimensionless, Micro, Nat> {
-  Measure { count: count }
-}
-
-fn sales_tax_rate_eq(left: Measure<Dimensionless, Micro, Nat>, right: Measure<Dimensionless, Micro, Nat>) -> Bool {
-  measure_count(m: left) == measure_count(m: right)
-}
-
 type CollectedTaxRateStanding
   = RateTranscribedFromNamedReceiptLine {
       jurisdiction: NonEmptyStr
-      rate: Measure<Dimensionless, Micro, Nat>
+      rate: PartsPerMillion
       receipt_line_label: NonEmptyStr
     }
   | RateDerivedFromReceiptBaseAndTax {
       jurisdiction: NonEmptyStr
-      rate: Measure<Dimensionless, Micro, Nat>
+      rate: PartsPerMillion
     }
 
 type UseTaxResidualStanding
   = ResidualUseTaxOwed {
       destination_jurisdiction: NonEmptyStr
-      destination_combined_rate: Measure<Dimensionless, Micro, Nat>
+      destination_combined_rate: PartsPerMillion
     }
   | ResidualUseTaxNone
   | ResidualUseTaxUnread { read_obligation: NonEmptyStr }

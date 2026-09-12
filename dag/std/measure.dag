@@ -1419,6 +1419,19 @@ fn basis_point_unity_count() -> Nat {
   parts_per_ten_thousand_unity_count()
 }
 
+// Dimensionless ratio at Micro scale: count 66250 is 6.625 percent of unity. Percent and
+// BasisPoint occupy Dimensionless at One with whole-point / permyriad counts and cannot carry
+// this remainder. This is the third scale of the same authority, not a product-module unit.
+type PartsPerMillion = Measure<Dimensionless, Micro, Nat>
+
+fn parts_per_million(count: Nat) -> PartsPerMillion {
+  Measure { count: count }
+}
+
+fn parts_per_million_count(m: PartsPerMillion) -> Nat {
+  measure_count(m)
+}
+
 // One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same
 // Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed
 // margin envelopes.

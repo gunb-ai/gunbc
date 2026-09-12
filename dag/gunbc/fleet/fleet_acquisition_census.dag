@@ -38,7 +38,6 @@ import product.lot_sales_tax {
   ResidualUseTaxOwed,
   ResidualUseTaxNone,
   UseTaxResidualStanding,
-  sales_tax_rate,
   lot_tax_covers_ledgers,
   LotTaxJoinCovered,
   LedgerMissingTax,
@@ -49,11 +48,11 @@ import product.lot_sales_tax {
   unread_or_unrecorded_lot_count,
 }
 import extdeps.tax.new_jersey_sales_and_use {
-  nj_statewide_sales_tax_rate_millionths_of_unity,
-  nj_uez_reduced_sales_tax_rate_millionths_of_unity,
+  nj_statewide_sales_tax_rate,
+  nj_uez_reduced_sales_tax_rate,
 }
 import extdeps.tax.new_york_city_sales_and_use {
-  nyc_combined_sales_tax_rate_millionths_of_unity,
+  nyc_combined_sales_tax_rate,
 }
 
 // ONE JOIN of procurement lots the operator owns. Spark lots stay in
@@ -76,7 +75,7 @@ data fleet_acquisition_census_standing: AcquisitionCensusStanding = CensusFloor 
 
 data nyc_use_tax_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
   destination_jurisdiction: "New York City" as NonEmptyStr,
-  destination_combined_rate: sales_tax_rate(count: nyc_combined_sales_tax_rate_millionths_of_unity),
+  destination_combined_rate: nyc_combined_sales_tax_rate,
 }
 
 fn private_received_lot(
@@ -292,7 +291,7 @@ data spark_micro_center_lot_tax: LotTaxEvidence = LotTaxEvidence {
   standing: SalesTaxCollected {
     collection: RateTranscribedFromNamedReceiptLine {
       jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
-      rate: sales_tax_rate(count: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
+      rate: nj_uez_reduced_sales_tax_rate,
       receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
     },
     residual: nyc_use_tax_residual,
@@ -311,7 +310,7 @@ data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
   standing: SalesTaxCollected {
     collection: RateDerivedFromReceiptBaseAndTax {
       jurisdiction: "New Jersey statewide" as NonEmptyStr,
-      rate: sales_tax_rate(count: nj_statewide_sales_tax_rate_millionths_of_unity),
+      rate: nj_statewide_sales_tax_rate,
     },
     residual: nyc_use_tax_residual,
   },
