@@ -7,6 +7,17 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // DESIGN 4d: a citation grounds the factual basis, not the prediction derived from it.
 // DESIGN 4b is an independent axis: this module does not assign compiler guarantee rungs.
 // Scope is a conjunction. Narrowing adds a restriction; it cannot silently widen the old scope.
+//
+// DESIGN 3b boundary with std.claim_evidence: Claim and RecordedFact are shared identities.
+// This carrier replays a prediction's test protocol over supplied observations; its receipts do
+// not admit those observations as descriptive evidence under an EvidenceAdmissionPolicy.
+// EvidenceLink requires an inference rule, PROV entity/activity/agent, exact maximum conclusion,
+// fidelity and a whole-link relation. The historical consumers have reports and incomplete
+// ordering evidence, not that grounded provenance. Filling those dimensions with inferred IDs
+// merely to wrap a receipt would fabricate the missing evidence. No test-match-to-EvidenceSupports
+// adapter is therefore supplied. A consumer that needs descriptive evidence or readiness must
+// supply the missing grounds and inhabit EvidenceLink/EvidenceInference and the canonical
+// admission policy; it cannot use PredictiveStanding as a ClaimReadinessReceipt.
 type PredictionRestriction<S> {
   reason: NonEmptyStr
   admits: fn(S) -> Bool
@@ -32,6 +43,9 @@ type Prediction<S, O> {
 }
 
 // Isolation is a property of the design, not a confidence number inferred from a match.
+// PredictionTestDiscrimination is the domain vocabulary suitable for EvidenceLink's open
+// Independence parameter when that grounded link exists. It describes the supplied test design;
+// keeping it on a protocol receipt does not establish canonical evidence admission.
 type PredictionTestDiscrimination
   = IsolatedMechanism { isolation_evidence: DeclarationRef }
   | ConfoundedMechanisms { first_confound: NonEmptyStr, further_confounds: List<NonEmptyStr> }
@@ -46,6 +60,10 @@ type PostOutcomePredictionArchive {
   report: DeclarationRef
 }
 
+// Registration records ordering and artifact-identity limitations, which EvidenceProvenance's
+// entity/activity/agent IDs and EvidenceFreshness's maximum conclusion do not express. It is not
+// a replacement provenance claim: even PreregisteredPrediction is conditional on supplied clock
+// observations, and an archive's Git identity supplies no missing PROV agent or activity witness.
 type PredictionRegistration
   = ConversationOnly { report: DeclarationRef }
   | CommittedPredictionWithoutWitnessedOrder { commit: CommitSha, artifact: FilePath, report: DeclarationRef }
@@ -58,6 +76,11 @@ type PredictionRegistration
       observed_at: EpochMs,
     }
 
+// This deliberate protocol vocabulary compares an observed O to the declared expected O and
+// falsifier O. Consistency is not EvidenceSupports: the restart proxy can match while its cause
+// remains unknown. Inconclusive means neither declared outcome matched, not a decision by an
+// EvidenceAdmissionPolicy about otherwise applicable evidence. EvidenceDirection and
+// EvidenceInsufficiency remain the authority when a grounded descriptive inference is made.
 type PredictionTestVerdict
   = ConsistentWithPrediction
   | ContradictsPrediction
@@ -364,6 +387,11 @@ fn predictive_next_obligation<S, O>(model: PredictiveModel<S, O>) -> PredictiveN
   }
 }
 
+// ClaimAssessment/claim_information_state answer the support/challenge information question.
+// These counts instead preserve prospective-test strength and falsification-driven revision
+// history: neither the four information states nor ClaimReadinessReceipt distinguishes an
+// untested narrowed revision from five surviving tests. No standing here discharges evidence
+// admission or establishes readiness; the continuing testing obligation remains a separate fact.
 type PredictiveStanding
   = UntestedPrediction
   | NarrowedPredictionAwaitingTest { revisions: Int }
