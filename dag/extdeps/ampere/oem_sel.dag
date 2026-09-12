@@ -1,6 +1,6 @@
 module extdeps.ampere.oem_sel
 
-import std.types { Int, List }
+import std.types { Bool, Int, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -87,4 +87,33 @@ data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelPr
     ampere_openbmc_dimm_train_fail_log,
     ampere_misc_altra_host_error_monitor,
   ],
+}
+
+// §3c frontier: ampere_oem_sel_record_match. Consumer: the PreOs OEM-decode / SEL axis in
+// gunbc.machine_intake_pre_os_observation_capabilities on gunbc#11110 (this PR does not mint
+// that file). Until that lands, a 0xDE (222) record with Ampere's manufacturer bytes cannot
+// inhabit AmpereBootSyndromeOemSel.
+type AmpereOemSelRecordMatch
+  = AmpereBootSyndromeOemSel
+  | AmpereOemSelSensorOutsideLayout { sensor: Int }
+  | AmpereOemSelManufacturerIdNotThisPen
+
+fn ampere_oem_sel_record_match(
+  layout: AmpereOemSelProducerLayout,
+  sensor: Int,
+  manufacturer_id_byte0: Int,
+  manufacturer_id_byte1: Int,
+  manufacturer_id_byte2: Int,
+) -> AmpereOemSelRecordMatch {
+  if manufacturer_id_byte0 == layout.manufacturer_id_byte0
+    && manufacturer_id_byte1 == layout.manufacturer_id_byte1
+    && manufacturer_id_byte2 == layout.manufacturer_id_byte2 {
+    if sensor == layout.sensor_number {
+      AmpereBootSyndromeOemSel
+    } else {
+      AmpereOemSelSensorOutsideLayout { sensor: sensor }
+    }
+  } else {
+    AmpereOemSelManufacturerIdNotThisPen
+  }
 }

@@ -37,9 +37,11 @@ import extdeps.bmc.megarac {
   megarac_web_event_log_layout,
 }
 import extdeps.ampere.oem_sel {
-  ampere_iana_private_enterprise_number,
+  AmpereBootSyndromeOemSel,
+  AmpereOemSelManufacturerIdNotThisPen,
+  AmpereOemSelSensorOutsideLayout,
   ampere_oem_sel_producer_layout,
-  ampere_openbmc_boot_syndrome_sensor_number,
+  ampere_oem_sel_record_match,
 }
 import gunbc.machine_intake_sol_collector_observation {
   CollectorTerminatedExitZeroStdinEof,
@@ -199,10 +201,37 @@ test fn unacknowledged_session_never_claims_the_host_produced_no_bytes() -> Bool
     }
 }
 
-test fn ampere_oem_sel_layout_sensor_is_boot_syndrome_not_0xde() -> Bool {
-  ampere_oem_sel_producer_layout.iana_pen == ampere_iana_private_enterprise_number
-    && ampere_oem_sel_producer_layout.sensor_number == ampere_openbmc_boot_syndrome_sensor_number
-    && ampere_oem_sel_producer_layout.sensor_number != 222
+test fn ampere_oem_sel_layout_does_not_cover_sensor_0xde() -> Bool {
+  match ampere_oem_sel_record_match(
+    layout: ampere_oem_sel_producer_layout,
+    sensor: 235,
+    manufacturer_id_byte0: 58,
+    manufacturer_id_byte1: 205,
+    manufacturer_id_byte2: 0,
+  ) {
+    AmpereBootSyndromeOemSel =>
+      match ampere_oem_sel_record_match(
+        layout: ampere_oem_sel_producer_layout,
+        sensor: 222,
+        manufacturer_id_byte0: 58,
+        manufacturer_id_byte1: 205,
+        manufacturer_id_byte2: 0,
+      ) {
+        AmpereOemSelSensorOutsideLayout { sensor: 222 } =>
+          match ampere_oem_sel_record_match(
+            layout: ampere_oem_sel_producer_layout,
+            sensor: 235,
+            manufacturer_id_byte0: 0,
+            manufacturer_id_byte1: 0,
+            manufacturer_id_byte2: 0,
+          ) {
+            AmpereOemSelManufacturerIdNotThisPen => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> Bool {
