@@ -3,7 +3,9 @@ module test.claim.fs_box_published_claims_witness
 import std.types { Bool, NonEmptyStr }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import extdeps.transceiver.sff_8636 { transceiver_identifier_from_byte }
-import extdeps.instrument.fs_box_v4 { fs_box_v4_data_sheet }
+import extdeps.instrument.fs_box_v4 {
+  fs_box_v4_data_sheet, fs_box_v4_ordering_names_part, fs_box_v4_color_sku_count,
+}
 import extdeps.instrument.fs_box_v3_v4_v5_faq { fs_box_v3_v4_v5_faq }
 import product.breakout_leg_programming {
   fs_box_v4_leg_programming, fs_nvidia_eth_leg_coding,
@@ -46,11 +48,34 @@ test fn faq_names_hpe_compatible_optics_as_not_reconfigurable() -> Bool {
   )
 }
 
-test fn data_sheet_configurable_media_are_fs_optics_and_cables() -> Bool {
+test fn data_sheet_two_v4_colors_and_a_v3_ordering_line() -> Bool {
+  fs_box_v4_color_sku_count() == 2
+    && fs_box_v4_ordering_names_part(name: "FS BOX V3" as NonEmptyStr)
+}
+
+test fn data_sheet_battery_interrupt_is_endurance_not_write_recovery() -> Bool {
   string_contains(
-    s: fs_box_v4_data_sheet.configurable_media as String,
-    pattern: "FS transceivers and DAC/AOC cables",
+    s: fs_box_v4_data_sheet.battery_endurance_low_power_sfp as String,
+    pattern: "without interrupting configuration",
   )
+    && string_contains(s: fs_box_v4_data_sheet.battery_capacity as String, pattern: "3200mAh")
+    && string_contains(s: fs_box_v4_data_sheet.warranty as String, pattern: "5-year limited warranty")
+}
+
+test fn data_sheet_names_bluetooth_4_2_and_usb_c() -> Bool {
+  string_contains(s: fs_box_v4_data_sheet.bluetooth_protocol as String, pattern: "V4.2 BLE")
+    && string_contains(s: fs_box_v4_data_sheet.charging_connector as String, pattern: "USB Type-C")
+}
+
+test fn faq_trial_freezes_and_has_a_24_hour_buffer() -> Bool {
+  (fs_box_v3_v4_v5_faq.trial_period as String) == "seven-day"
+    && fs_box_v3_v4_v5_faq.trial_frozen_on_expiry
+    && (fs_box_v3_v4_v5_faq.formal_account_buffer as String) == "24-hour"
+    && fs_box_v3_v4_v5_faq.custom_compatible_brand_requires_engineering_approval
+    && string_contains(
+      s: fs_box_v3_v4_v5_faq.box_pro_customization_review as String,
+      pattern: "1-2 working days",
+    )
 }
 
 test fn faq_does_not_attest_byte_192_rewrite() -> Bool {

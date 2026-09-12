@@ -1,6 +1,6 @@
 module extdeps.instrument.fs_box_v4
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
@@ -21,16 +21,21 @@ import extdeps.uri { Uri, Https }
 //
 // WHAT THIS MODULE DOES NOT CLAIM. The data sheet does not mention QSFP56, SFP56, breakout legs,
 // per-leg programming, disconnection, write recoverability, EEPROM bytes, or NVIDIA (ETH)
-// coding. Those absences are the point of reading it. Mechanical, battery, connector and warranty
-// figures were read and are not declared: this change's executing consumers are form-factor
-// membership, the browser list, the stated configurable media, and the product name the
-// programming procedure already cites.
+// coding. Those absences are the point of reading it. Mechanical, connector, battery and warranty
+// figures are carried as the sheet printed them (not converted into a unit that would round
+// 28.7 mm or 3.7 V). The V3 line on the ordering table is a row of THIS document, not a V3
+// product module.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "resource.fs.com/mall/doc/20230224114704wojcth.pdf"
   }
+}
+
+type FsBoxOrderingLine {
+  part_number: NonEmptyStr
+  description: NonEmptyStr
 }
 
 type FsBoxV4DataSheet {
@@ -40,6 +45,19 @@ type FsBoxV4DataSheet {
   operating_systems: List<NonEmptyStr>
   browsers: List<NonEmptyStr>
   customization_fields: List<NonEmptyStr>
+  data_connector: NonEmptyStr
+  bluetooth_protocol: NonEmptyStr
+  charging_connector: NonEmptyStr
+  power_source: NonEmptyStr
+  battery_capacity: NonEmptyStr
+  battery_endurance_low_power_sfp: NonEmptyStr
+  battery_endurance_high_power_qsfp_dd: NonEmptyStr
+  case_material: NonEmptyStr
+  dimensions: NonEmptyStr
+  weight: NonEmptyStr
+  operating_temperature: NonEmptyStr
+  ordering: List<FsBoxOrderingLine>
+  warranty: NonEmptyStr
   standing: CitedFigureStanding
 }
 
@@ -68,15 +86,47 @@ data fs_box_v4_data_sheet: FsBoxV4DataSheet = FsBoxV4DataSheet {
     "serial number" as NonEmptyStr,
     "vendor name" as NonEmptyStr,
   ],
+  data_connector: "Bluetooth or USB Type-C" as NonEmptyStr,
+  bluetooth_protocol: "Bluetooth Specification V4.2 BLE" as NonEmptyStr,
+  charging_connector: "USB Type-C" as NonEmptyStr,
+  power_source: "3.7V battery powered or 5V USB powered" as NonEmptyStr,
+  battery_capacity: "3200mAh" as NonEmptyStr,
+  battery_endurance_low_power_sfp: "9 hours without interrupting configuration" as NonEmptyStr,
+  battery_endurance_high_power_qsfp_dd: "at least 3.5 hours without interrupting configuration" as NonEmptyStr,
+  case_material: "Rubber, Polycarbonate" as NonEmptyStr,
+  dimensions: "1.13 x 2.89 x 6.30 inches (28.7 x 73.5 x 160 mm)" as NonEmptyStr,
+  weight: "0.2Kg" as NonEmptyStr,
+  operating_temperature: "14F to 122F (-10C to 50C)" as NonEmptyStr,
+  ordering: [
+    FsBoxOrderingLine {
+      part_number: "FS BOX V4" as NonEmptyStr,
+      description: "FS BOX V4, Multi-Functional Transceiver Tool Kit, Support FS Transceivers & DAC/AOC Cables, Red" as NonEmptyStr,
+    },
+    FsBoxOrderingLine {
+      part_number: "FS BOX V4" as NonEmptyStr,
+      description: "FS BOX V4, Multi-Functional Transceiver Tool Kit, Support FS Transceivers & DAC/AOC Cables, Yellow" as NonEmptyStr,
+    },
+    FsBoxOrderingLine {
+      part_number: "FS BOX V3" as NonEmptyStr,
+      description: "FS BOX V3, Multi-Functional Transceiver Tool Kit, Support FS Transceivers & DAC/AOC Cables" as NonEmptyStr,
+    },
+  ],
+  warranty: "5-year limited warranty against defects in materials or workmanship" as NonEmptyStr,
   standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
 }
 
-fn fs_box_v4_data_sheet_lists_form_factor(name: NonEmptyStr) -> Bool {
+fn fs_box_v4_ordering_names_part(name: NonEmptyStr) -> Bool {
   fold(
-    fs_box_v4_data_sheet.supported_form_factors,
+    fs_box_v4_data_sheet.ordering,
     init: false,
-    f: (hit, f) => hit || (f as String) == (name as String),
+    f: (hit, line) => hit || (line.part_number as String) == (name as String),
   )
+}
+
+fn fs_box_v4_color_sku_count() -> Int {
+  fs_box_v4_data_sheet.ordering
+    |> filter(line => (line.part_number as String) == "FS BOX V4")
+    |> count
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

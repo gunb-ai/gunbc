@@ -12,10 +12,11 @@ import extdeps.uri { Uri, Https }
 // governed publication from the V4 data sheet. It is mostly service and account POLICY as FS
 // printed it, which still belongs here as a citation of that publication: inventing a second
 // "our policy" copy in workflow would nickname the same document. What THIS FLEET does with the
-// terms is a product join (product.fs_box_published_claims). Account-campaign rows (seven-day
-// trial, freeze, 24-hour formal-account buffer, free-BOX spend tiers) were read and are not
-// declared: no executing consumer in this change would read them, and DESIGN section 3c refuses
-// dangling declarations.
+// terms is a product join (product.fs_box_published_claims). Free-BOX spend-tier campaign
+// pricing was read and is not declared: it is a marketing offer with no executing consumer in
+// this change. Account trial/freeze/buffer and the BOX Pro review window are cited because a live
+// FS BOX account is a prerequisite of the programming intervention, and BOX Pro's writable-field
+// split is what keeps byte 192 from being read out of this FAQ.
 //
 // THE FAQ DOES NOT GROUND LEG PROGRAMMING. It has no hits for disconnect, individually, breakout,
 // QSFP56, EEPROM, byte 192, or 0x40. "Offline" is the internet requirement, not write recovery.
@@ -30,11 +31,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type FsBoxV3V4V5Faq {
   online_configuration_fields: List<NonEmptyStr>
   box_pro_fields: List<NonEmptyStr>
+  box_pro_customization_review: NonEmptyStr
+  custom_compatible_brand_requires_engineering_approval: Bool
   third_party_modules_supported: Bool
   reconfiguration_not_supported: List<NonEmptyStr>
   works_offline: Bool
   operating_systems: List<NonEmptyStr>
   browsers: List<NonEmptyStr>
+  trial_period: NonEmptyStr
+  trial_frozen_on_expiry: Bool
+  formal_account_buffer: NonEmptyStr
   standing: CitedFigureStanding
 }
 
@@ -49,6 +55,8 @@ data fs_box_v3_v4_v5_faq: FsBoxV3V4V5Faq = FsBoxV3V4V5Faq {
     "P/N" as NonEmptyStr,
     "S/N" as NonEmptyStr,
   ],
+  box_pro_customization_review: "1-2 working days" as NonEmptyStr,
+  custom_compatible_brand_requires_engineering_approval: true,
   third_party_modules_supported: false,
   reconfiguration_not_supported: [
     "HPE-compatible SFP+/SFP28/XFP/QSFP+/QSFP28 transceivers" as NonEmptyStr,
@@ -67,6 +75,9 @@ data fs_box_v3_v4_v5_faq: FsBoxV3V4V5Faq = FsBoxV3V4V5Faq {
     "Google Chrom(68 or newer)" as NonEmptyStr,
     "Firefox" as NonEmptyStr,
   ],
+  trial_period: "seven-day" as NonEmptyStr,
+  trial_frozen_on_expiry: true,
+  formal_account_buffer: "24-hour" as NonEmptyStr,
   standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
 }
 
