@@ -354,7 +354,7 @@ type FulfillmentRefusalCause
     }
 
 type LineResolution
-  = LineResolved { memory_context: MemoryFulfillmentContext, line: BomLine, fulfillment: Fulfillment }
+  = LineResolved { line: BomLine, fulfillment: Fulfillment }
   | LineRefused { line: BomLine, cause: FulfillmentRefusalCause }
 
 fn fulfillment_label(f: Fulfillment) -> NonEmptyStr {
@@ -369,7 +369,7 @@ fn fulfillment_label(f: Fulfillment) -> NonEmptyStr {
 
 fn resolution_label(r: LineResolution) -> NonEmptyStr {
   match r {
-    LineResolved { memory_context: _, line: _, fulfillment: f } => fulfillment_label(f: f)
+    LineResolved { line: _, fulfillment: f } => fulfillment_label(f: f)
     LineRefused { line: _, cause: _ } => "LineRefused" as NonEmptyStr
   }
 }
@@ -379,13 +379,11 @@ fn resolution_label(r: LineResolution) -> NonEmptyStr {
 // the ledger refused with.
 fn resolve_from_market(
   line: BomLine, market: MarketDepth, owned_available: Nat,
-  memory_context: MemoryFulfillmentContext,
 ) -> LineResolution {
   match market {
     MarketDepthCited { units_available: units, unit_price: price, authority: auth } =>
       if units >= line.quantity_per_build {
         LineResolved {
-          memory_context: memory_context,
           line: line,
           fulfillment: NewPurchase {
             part: line.part,
@@ -396,7 +394,6 @@ fn resolve_from_market(
         }
       } else {
         LineResolved {
-          memory_context: memory_context,
           line: line,
           fulfillment: SupplyMissing {
             part: line.part,
@@ -410,7 +407,6 @@ fn resolve_from_market(
       LineRefused { line: line, cause: MarketDepthNotRead { part: line.part, obligation: o } }
     MarketNotOffered =>
       LineResolved {
-        memory_context: memory_context,
         line: line,
         fulfillment: SupplyMissing {
           part: line.part,
@@ -441,7 +437,6 @@ fn resolve_from_offering(
   offering: LotOffering,
   market: MarketDepth,
   holder: NonEmptyStr,
-  memory_context: MemoryFulfillmentContext,
 ) -> LineResolution {
   match derive_inventory_balance(lot: offering.lot, events: offering.events) {
     BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
@@ -461,7 +456,6 @@ fn resolve_from_offering(
       ) {
         ConsumptionAdmissible { available_after: after } =>
           LineResolved {
-            memory_context: memory_context,
             line: line,
             fulfillment: OwnedInventory {
               lot: offering.lot.identity,
@@ -477,7 +471,7 @@ fn resolve_from_offering(
         ConsumptionRefused { cause: c, requested: req, available: avail } =>
           match c {
             InsufficientStock { position: _, requested: _, held: _ } =>
-              resolve_from_market(line: line, market: market, owned_available: b.available, memory_context: memory_context)
+              resolve_from_market(line: line, market: market, owned_available: b.available)
             _ =>
               LineRefused {
                 line: line,
@@ -493,7 +487,6 @@ fn resolve_from_owned(
   offerings: List<LotOffering>,
   market: MarketDepth,
   holder: NonEmptyStr,
-  memory_context: MemoryFulfillmentContext,
 ) -> LineResolution {
   if count(offerings) > 1 {
     LineRefused {
@@ -501,8 +494,8 @@ fn resolve_from_owned(
       cause: MultipleLotsOfferOneComponent { part: line.part, lots_offering: count(offerings) },
     }
   } else {
-    fold(offerings, init: resolve_from_market(line: line, market: market, owned_available: 0, memory_context: memory_context), f: fn(acc, o) {
-      resolve_from_offering(line: line, offering: o, market: market, holder: holder, memory_context: memory_context)
+    fold(offerings, init: resolve_from_market(line: line, market: market, owned_available: 0), f: fn(acc, o) {
+      resolve_from_offering(line: line, offering: o, market: market, holder: holder)
     })
   }
 }
@@ -511,22 +504,20 @@ fn resolve_supplied_line(
   line: BomLine,
   row: SupplyRow,
   holder: NonEmptyStr,
-  memory_context: MemoryFulfillmentContext,
 ) -> LineResolution {
   match row.compatibility {
     CompatibilityRefutedForPlatform { reason: r } =>
       LineRefused { line: line, cause: PartRefutedForPlatform { part: line.part, reason: r } }
     CompatibilityEvidenceUnread { obligation: o } =>
       LineResolved {
-        memory_context: memory_context,
         line: line,
         fulfillment: CompatibilityUnread { part: line.part, obligation: o },
       }
     CompatibilityEstablished =>
       match row.owned {
-        NoOwnedLot => resolve_from_market(line: line, market: row.market, owned_available: 0, memory_context: memory_context)
+        NoOwnedLot => resolve_from_market(line: line, market: row.market, owned_available: 0)
         OwnedLots { offerings: offerings } =>
-          resolve_from_owned(line: line, offerings: offerings, market: row.market, holder: holder, memory_context: memory_context)
+          resolve_from_owned(line: line, offerings: offerings, market: row.market, holder: holder)
       }
   }
 }
@@ -542,7 +533,6 @@ fn resolve_line(
   inclusions: List<SystemInclusion>,
   rows: List<SupplyRow>,
   holder: NonEmptyStr,
-  memory_context: MemoryFulfillmentContext,
 ) -> LineResolution {
   if line.quantity_per_build == 0 {
     LineRefused { line: line, cause: ZeroQuantityLine { part: line.part } }
@@ -550,7 +540,6 @@ fn resolve_line(
     let included = included_units(inclusions: inclusions, line: line)
     if included >= line.quantity_per_build {
       LineResolved {
-        memory_context: memory_context,
         line: line,
         fulfillment: IncludedInSystem { part: line.part, quantity: line.quantity_per_build },
       }
@@ -567,7 +556,7 @@ fn resolve_line(
       match supply_for(rows: rows, part: line.part) {
         SupplyAbsent => LineRefused { line: line, cause: SupplyRowAbsent { part: line.part } }
         SupplyDuplicated => LineRefused { line: line, cause: SupplyRowDuplicated { part: line.part } }
-        SupplyFound { row: row } => resolve_supplied_line(line: line, row: row, holder: holder, memory_context: memory_context)
+        SupplyFound { row: row } => resolve_supplied_line(line: line, row: row, holder: holder)
       }
     }
   }
@@ -615,16 +604,25 @@ fn memory_recipe_admission_refusal(recipe: NodeRecipe, assessment: MemoryChangeA
   } else { memory_change_admission_refusal(a: assessment, purpose: recipe.memory_purchase) }
 }
 
-fn resolve_build(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<LineResolution> {
+// Assessment and purchase purpose describe the whole build, including refused
+// and unfillable builds. Lines carry only their own fulfillment facts.
+type BuildResolution {
+  memory_context: MemoryFulfillmentContext
+  lines: List<LineResolution>
+}
+
+fn resolve_build(recipe: NodeRecipe, rows: List<SupplyRow>) -> BuildResolution {
   let assessment = evaluate_memory_change(proposal: recipe.memory, evidence: recipe.memory_evidence)
-  match memory_recipe_admission_refusal(recipe: recipe, assessment: assessment) {
-    Present { value: reason } => map(derive_bom(recipe: recipe), line =>
-      LineRefused { line: line, cause: MemoryProposalNotAdmitted { assessment: assessment, reason: reason } })
-    Absent => {
-      let screened = memory_screened_rows(recipe: recipe, rows: rows)
-      let memory_context = MemoryFulfillmentContext { assessment: assessment, purpose: recipe.memory_purchase }
-      map(derive_bom(recipe: recipe), line => resolve_line(line: line, inclusions: recipe.inclusions, rows: screened, holder: recipe.label, memory_context: memory_context))
-    }
+  BuildResolution {
+    memory_context: MemoryFulfillmentContext { assessment: assessment, purpose: recipe.memory_purchase },
+    lines: match memory_recipe_admission_refusal(recipe: recipe, assessment: assessment) {
+      Present { value: reason } => map(derive_bom(recipe: recipe), line =>
+        LineRefused { line: line, cause: MemoryProposalNotAdmitted { assessment: assessment, reason: reason } })
+      Absent => {
+        let screened = memory_screened_rows(recipe: recipe, rows: rows)
+        map(derive_bom(recipe: recipe), line => resolve_line(line: line, inclusions: recipe.inclusions, rows: screened, holder: recipe.label))
+      }
+    },
   }
 }
 
@@ -661,7 +659,7 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
     _ =>
       match r {
         LineRefused { line: l, cause: _ } => CashRefused { cause: CashLineRefused { part: l.part } }
-        LineResolved { memory_context: _, line: l, fulfillment: f } =>
+        LineResolved { line: l, fulfillment: f } =>
           match f {
             NewPurchase { part: p, quantity: q, unit_price: price, authority: _ } =>
               if price.currency != declared {
@@ -696,10 +694,10 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
 }
 
 fn incremental_cash_now(
-  resolutions: List<LineResolution>,
+  resolutions: BuildResolution,
   declared_currency: CurrencyCode,
 ) -> CashProjection {
-  fold(resolutions, init: CashNoPurchaseLines, f: fn(acc, r) {
+  fold(resolutions.lines, init: CashNoPurchaseLines, f: fn(acc, r) {
     cash_step(acc: acc, declared: declared_currency, r: r)
   })
 }
@@ -730,11 +728,11 @@ fn draw_step(acc: List<LotDraw>, lot: InventoryLotIdentity, quantity: Nat) -> Li
 // report one row of the summed quantity rather than two rows a consumer would
 // have to add up — and adding them up is precisely where a second draw against
 // an exhausted lot would hide.
-fn owned_stock_consumed(resolutions: List<LineResolution>) -> List<LotDraw> {
-  fold(resolutions, init: [], f: fn(acc, r) {
+fn owned_stock_consumed(resolutions: BuildResolution) -> List<LotDraw> {
+  fold(resolutions.lines, init: [], f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: _ } => acc
-      LineResolved { memory_context: _, line: _, fulfillment: f } =>
+      LineResolved { line: _, fulfillment: f } =>
         match f {
           OwnedInventory { lot: l, quantity: q, reservation: _, available_after: _ } =>
             draw_step(acc: acc, lot: l, quantity: q)

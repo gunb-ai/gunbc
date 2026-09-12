@@ -27,17 +27,18 @@ import gunbc.mtcollins_memory_change {
   mtcollins_training_collector, mtcollins_memory_position, mtcollins_ads_part,
 }
 import product.build_fulfillment {
-  NodeRecipe, SupplyRow, SystemInclusion, IncludedInSystem, MarketDepthCited, NoOwnedLot, CompatibilityEstablished, CompatibilityEvidenceUnread,
-  LineRefused, LineResolved, MemoryProposalNotAdmitted, NewPurchase, CashRefused,
+  BuildResolution, NodeRecipe, SupplyRow, SystemInclusion, IncludedInSystem, MarketDepthCited, MarketNotOffered, NoOwnedLot, CompatibilityEstablished, CompatibilityEvidenceUnread,
+  LineRefused, LineResolved, CompatibilityUnread, SupplyMissing, MemoryProposalNotAdmitted, NewPurchase, CashRefused, CashNoPurchaseLines, CeilingDerived,
   resolve_build, derive_bom, incremental_cash_now, memory_screened_rows,
 }
-import product.build_selection { line_missing }
+import gunbc.memory_change_report { explain_memory_change }
+import product.build_selection { BuildCandidate, candidate_missing_inputs, line_missing }
 import extdeps.currency.currency { Usd }
 import extdeps.memory.training { PhyWriteLeveling }
 import extdeps.memory.micron { mta36ads2g72pz_2g1a1_catalog }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, File }
-import std.measure { money_amount_micro, MoneyOnce }
+import std.measure { money_amount_micro, MoneyOnce, byte_size, watt, Bandwidth }
 import gunbc.host_memory_qualification {
   PartSampleQualificationRequired, PlatformTrainingFailure, InferredFromSequencePosition, HostMemoryStanding, ClassSupportedByBoard, PartQualificationUnobserved,
   TrainingOutcomeUnobserved, BootOutcomeUnobserved, ListedInVendorAvl, TrainingOperational, BootReachedOperatingSystem,
@@ -108,6 +109,18 @@ fn memory_test_recipe(configuration: MemoryConfiguration, production: Bool) -> N
     memory_purchase: if production { ProductionMemoryPurchase } else {
       QualificationMemoryPurchase { maximum_units: 16, completion: memory_operating_obligations }
     }, inclusions: [],
+  }
+}
+
+// Controlled axis readings isolate the admission-gap projection. Fulfillment
+// and its bound purpose/assessment come from resolve_build, not a fixture copy.
+fn memory_test_candidate(build: BuildResolution) -> BuildCandidate {
+  BuildCandidate {
+    identity: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "memory_test_candidate"),
+    display_label: "qualification projection control",
+    memory_capacity: byte_size(count: 1), wall_power: watt(count: 1), memory_bandwidth: Bandwidth { count: 1 },
+    resolutions: build, cash: CashNoPurchaseLines,
+    ceiling: CeilingDerived { builds: 1, bottlenecks: [], bottleneck_units: 1 },
   }
 }
 
@@ -184,7 +197,7 @@ test fn w_empty_coverage_cannot_admit_production() -> Bool {
 test fn w_production_fulfillment_refuses_witnessed_configuration() -> Bool {
   let recipe = memory_test_recipe(configuration: mtcollins_witnessed_configuration(), production: true)
   let lines = resolve_build(recipe: recipe, rows: [])
-  count(lines) > 0 && fold(lines, init: true, f: (ok, line) => ok && match line {
+  count(lines.lines) > 0 && fold(lines.lines, init: true, f: (ok, line) => ok && match line {
     LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment, reason: _ } } => memory_test_package_violates(a: assessment.final_configuration)
     _ => false
   }) && match incremental_cash_now(resolutions: lines, declared_currency: Usd) { CashRefused { cause: _ } => true, _ => false }
@@ -272,11 +285,11 @@ test fn w_qualification_purchase_is_bound_and_not_production_ranked() -> Bool {
       authority: ExternalAuthority { uri: Uri { scheme: File, locator: "dag/test/claim/host/memory_change_evaluation_witness_test.dag" } } },
   })
   let lines = resolve_build(recipe: recipe, rows: rows)
-  count(lines) > 0 && fold(lines, init: true, f: (ok, r) => ok && match r {
-    LineResolved { memory_context: context, line: _, fulfillment: NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } } =>
-      context.assessment.proposal == recipe.memory
-        && context.assessment.final_configuration.evidence.revision == recipe.memory_evidence.revision
-        && count(line_missing(acc: [], r: r)) > 0
+  count(lines.lines) > 0 && fold(lines.lines, init: true, f: (ok, r) => ok && match r {
+    LineResolved { line: _, fulfillment: NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } } =>
+      lines.memory_context.assessment.proposal == recipe.memory
+        && lines.memory_context.assessment.final_configuration.evidence.revision == recipe.memory_evidence.revision
+        && count(candidate_missing_inputs(candidate: memory_test_candidate(build: lines), declared: Usd)) == 2
     _ => false
   })
 }
@@ -338,14 +351,14 @@ test fn w_production_fulfillment_conflict_is_decisive_with_other_obligations_sat
     platform: uniform.platform, population: filter(uniform.population, dimm => dimm.position.socket == 0) })
   let bad = resolve_build(recipe: mixed, rows: memory_test_market(recipe: mixed))
   let good = resolve_build(recipe: homogeneous, rows: memory_test_market(recipe: homogeneous))
-  count(bad) > 0 && count(good) > 0
-    && fold(bad, init: true, f: (ok, r) => ok && match r {
+  count(bad.lines) > 0 && count(good.lines) > 0
+    && fold(bad.lines, init: true, f: (ok, r) => ok && match r {
       LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment, reason: _ } } => memory_test_package_violates(a: assessment.final_configuration)
       _ => false
     })
-    && fold(good, init: true, f: (ok, r) => ok && match r {
-      LineResolved { memory_context: context, line: _, fulfillment: NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } } =>
-        context.purpose == ProductionMemoryPurchase && count(line_missing(acc: [], r: r)) == 0
+    && fold(good.lines, init: true, f: (ok, r) => ok && match r {
+      LineResolved { line: _, fulfillment: NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } } =>
+        good.memory_context.purpose == ProductionMemoryPurchase && count(line_missing(acc: [], r: r)) == 0
       _ => false
     })
 }
@@ -359,8 +372,8 @@ test fn w_included_qualification_population_is_not_production_ranked() -> Bool {
     inclusions: map(derive_bom(recipe: r), line => SystemInclusion { role: line.role, part: line.part, quantity_included: line.quantity_per_build }),
   }
   let lines = resolve_build(recipe: recipe, rows: [])
-  count(lines) > 0 && fold(lines, init: true, f: (ok, line) => ok && match line {
-    LineResolved { memory_context: _, line: _, fulfillment: IncludedInSystem { part: _, quantity: _ } } => count(line_missing(acc: [], r: line)) > 0
+  count(lines.lines) > 0 && fold(lines.lines, init: true, f: (ok, line) => ok && match line {
+    LineResolved { line: _, fulfillment: IncludedInSystem { part: _, quantity: _ } } => count(candidate_missing_inputs(candidate: memory_test_candidate(build: lines), declared: Usd)) > 0
     _ => false
   })
 }
@@ -384,7 +397,7 @@ test fn w_supply_platform_must_match_the_assessed_board() -> Bool {
     baseboard_label: r.baseboard_label, memory: r.memory, memory_evidence: r.memory_evidence,
     memory_purchase: r.memory_purchase, inclusions: r.inclusions }
   let lines = resolve_build(recipe: changed, rows: memory_test_market(recipe: changed))
-  count(lines) > 0 && fold(lines, init: true, f: (ok, r) => ok && match r {
+  count(lines.lines) > 0 && fold(lines.lines, init: true, f: (ok, r) => ok && match r {
     LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment: _, reason } } => contains(reason as String, "board")
     _ => false
   })
@@ -416,7 +429,7 @@ test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() 
       CompatibilityEvidenceUnread { obligation: _ } => production
       CompatibilityEstablished => !production
       _ => false
-    }) && count(lines) > 0 && fold(lines, init: true, f: (passed, line) => passed &&
+    }) && count(lines.lines) > 0 && fold(lines.lines, init: true, f: (passed, line) => passed &&
       if production { match line {
         LineRefused { line: _, cause: MemoryProposalNotAdmitted { assessment, reason: _ } } =>
           any(assessment.final_configuration.results, result => result.obligation == MemoryTrainingFailureScreen && match result.assessment {
@@ -428,8 +441,8 @@ test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() 
           })
         _ => false
       } } else { match line {
-        LineResolved { line: _, memory_context: _, fulfillment: NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } } =>
-          count(line_missing(acc: [], r: line)) > 0
+        LineResolved { line: _, fulfillment: NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } } =>
+          count(candidate_missing_inputs(candidate: memory_test_candidate(build: lines), declared: Usd)) > 0
         _ => false
       } })
   })
@@ -463,4 +476,40 @@ test fn w_partial_inventory_cannot_establish_positive_qualification() -> Bool {
   memory_test_has_unknown(a: a, obligation: MemoryClassSupport)
     && memory_test_has_unknown(a: a, obligation: MemoryTraining)
     && memory_test_has_unknown(a: a, obligation: MemoryBoot)
+}
+
+// Each case runs the real fulfillment fold. The build-level qualification
+// cause occurs exactly once per affected axis, regardless of line outcomes.
+test fn w_qualification_gap_survives_unread_and_missing_supply_once() -> Bool {
+  let recipe = memory_test_recipe(configuration: memory_test_uniform(), production: false)
+  fold([true, false], init: true, f: (ok, unread) => {
+    let rows = map(memory_test_market(recipe: recipe), row => SupplyRow {
+      part: row.part, owned: row.owned,
+      compatibility: if unread { CompatibilityEvidenceUnread { obligation: "supplier compatibility unread" } } else { row.compatibility },
+      market: if unread { row.market } else { MarketNotOffered },
+    })
+    let build = resolve_build(recipe: recipe, rows: rows)
+    let gaps = candidate_missing_inputs(candidate: memory_test_candidate(build: build), declared: Usd)
+    ok && count(build.lines) > 1
+      && count(filter(gaps, gap => gap.cause == "qualification experiment is not a production-admitted build")) == 2
+      && count(gaps) == 2 + 2 * count(build.lines)
+      && fold(build.lines, init: true, f: (valid, line) => valid && match line {
+        LineResolved { line: _, fulfillment: CompatibilityUnread { part: _, obligation: _ } } => unread
+        LineResolved { line: _, fulfillment: SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } } => !unread
+        _ => false
+      })
+  })
+}
+
+test fn w_intermediate_initialization_explanation_locates_conflict() -> Bool {
+  let final = memory_test_uniform()
+  let proposal = memory_test_proposal(configuration: final, actions: [MemoryInitialize, MemoryPowerOff,
+    MemoryReplacePopulation { population: final.population }, MemoryReadbackRequired])
+  let assessment = evaluate_memory_change(proposal: proposal, evidence: memory_test_evidence())
+  let explanation = explain_memory_change(assessment: assessment)
+  !memory_test_package_violates(a: assessment.final_configuration)
+    && any(explanation.lines, line => line == "initialization at action 0")
+    && any(explanation.lines, line => contains(line as String, "byte6(decimal)=145")
+      && contains(line as String, "byte6(decimal)=0") && contains(line as String, "J9")
+      && contains(line as String, "210525") && contains(line as String, "source "))
 }

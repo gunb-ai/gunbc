@@ -291,7 +291,7 @@ fn board_row_not_offered() -> SupplyRow {
 }
 
 fn labels_of(rows: List<SupplyRow>) -> List<NonEmptyStr> {
-  map(resolve_build(recipe: dual_socket_recipe(), rows: rows), r => resolution_label(r: r))
+  map(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, r => resolution_label(r: r))
 }
 
 // --- the BOM derivation -------------------------------------------------------------------------
@@ -321,9 +321,9 @@ test fn w_owned_stock_resolves_to_a_reservation_against_the_lot() -> Bool {
     market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
-      LineResolved { memory_context: _, line: l, fulfillment: f } =>
+      LineResolved { line: l, fulfillment: f } =>
         match f {
           OwnedInventory { lot: lot, quantity: q, reservation: res, available_after: after } =>
             acc || (inventory_lot_identity_eq(left: lot, right: cpu_lot_identity())
@@ -366,11 +366,11 @@ fn broken_ledger_row(events: List<InventoryEvent>) -> SupplyRow {
 
 fn refuses_with_unreconciled_ledger(events: List<InventoryEvent>) -> Bool {
   let rows = [broken_ledger_row(events: events), market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)), board_row()]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { LotLedgerDoesNotReconcile { cause: _, event_ordinal: _, event_label: _ } => true, _ => false }
-      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
+      LineResolved { line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -407,11 +407,11 @@ test fn w_two_lots_offering_one_component_refuse_rather_than_picking() -> Bool {
     market: MarketNotOffered,
   }
   let rows = [two, market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)), board_row()]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { MultipleLotsOfferOneComponent { part: _, lots_offering: n } => n == 2, _ => false }
-      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
+      LineResolved { line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -424,9 +424,9 @@ test fn w_insufficient_owned_stock_falls_through_to_the_market() -> Bool {
     market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
-      LineResolved { memory_context: _, line: l, fulfillment: f } =>
+      LineResolved { line: l, fulfillment: f } =>
         match f {
           SupplyMissing { part: _, requested: req, owned_available: owned, market_units: mk } =>
             acc || (req == 2 && owned == 1 && mk == 0)
@@ -461,9 +461,9 @@ test fn w_unread_compatibility_is_pending_evidence_not_a_purchase() -> Bool {
     },
   }
   let rows = [owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62), unread, board_row_not_offered()]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
-      LineResolved { memory_context: _, line: _, fulfillment: f } =>
+      LineResolved { line: _, fulfillment: f } =>
         match f {
           CompatibilityUnread { part: _, obligation: o } =>
             o == "observe platform training evidence for PHY write leveling"
@@ -496,9 +496,9 @@ test fn w_included_processors_draw_no_stock_and_no_cash() -> Bool {
     board_row_not_offered(),
   ]
   let resolutions = resolve_build(recipe: recipe, rows: rows)
-  let included = fold(resolutions, init: false, f: fn(acc, r) {
+  let included = fold(resolutions.lines, init: false, f: fn(acc, r) {
     match r {
-      LineResolved { memory_context: _, line: _, fulfillment: f } =>
+      LineResolved { line: _, fulfillment: f } =>
         match f { IncludedInSystem { part: _, quantity: q } => acc || q == 2, _ => acc }
       LineRefused { line: _, cause: _ } => acc
     }
@@ -555,22 +555,22 @@ test fn w_duplicate_supply_row_refuses() -> Bool {
     market_row(part: dimm_ref, units: 64, unit_price: usd_micros(count: 90000000)),
     board_row_not_offered(),
   ]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { SupplyRowDuplicated { part: _ } => true, _ => false }
-      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
+      LineResolved { line: _, fulfillment: _ } => acc
     }
   })
 }
 
 test fn w_absent_supply_row_refuses_rather_than_reporting_missing() -> Bool {
   let rows = [owned_row(part: q8030_ref, lot: cpu_lot(quantity: 62), quantity: 62)]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { SupplyRowAbsent { part: _ } => true, _ => false }
-      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
+      LineResolved { line: _, fulfillment: _ } => acc
     }
   })
 }
@@ -780,11 +780,11 @@ test fn w_unread_market_depth_refuses_the_line() -> Bool {
     },
     board_row_not_offered(),
   ]
-  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows), init: false, f: fn(acc, r) {
+  fold(resolve_build(recipe: dual_socket_recipe(), rows: rows).lines, init: false, f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: c } =>
         acc || match c { MarketDepthNotRead { part: _, obligation: _ } => true, _ => false }
-      LineResolved { memory_context: _, line: _, fulfillment: _ } => acc
+      LineResolved { line: _, fulfillment: _ } => acc
     }
   })
 }

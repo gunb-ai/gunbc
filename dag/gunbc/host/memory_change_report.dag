@@ -14,7 +14,7 @@ import gunbc.memory_configuration {
   AdditionalMemoryRequirement,
 }
 import gunbc.memory_configuration_evaluation {
-  MemoryCounterexample, MemoryPackageConflict, MemoryStandingConflict,
+  MemoryObligationResult, MemoryCounterexample, MemoryPackageConflict, MemoryStandingConflict,
   MemoryTrainingScreenConflict, MemoryPositionConflict, MemoryUnknownFact,
   MemoryPackageMissing, MemoryVariantsMissing, MemoryProcurementCondition,
   MemoryFindingUnavailable, MemoryFirmwareScopeUnestablished, MemoryComparisonUnestablished,
@@ -85,9 +85,8 @@ type MemoryChangeExplanation {
 
 // Values are projected from the joined assessment; none is authored again in
 // the report. Unknown payloads remain available structurally in assessment.
-fn explain_memory_change(assessment: MemoryChangeAssessment) -> MemoryChangeExplanation {
-  MemoryChangeExplanation { assessment: assessment,
-    lines: fold(assessment.final_configuration.results, init: [], f: (lines, r) => {
+fn memory_obligation_lines(results: List<MemoryObligationResult>) -> List<NonEmptyStr> {
+  fold(results, init: [], f: (lines, r) => {
       let name = memory_obligation_label(obligation: r.obligation)
       concat(lines, match r.assessment {
         GoalSatisfied { evidence: _ } => [concat(name as String, ": SATISFIED for the modeled scope") as NonEmptyStr]
@@ -99,5 +98,18 @@ fn explain_memory_change(assessment: MemoryChangeAssessment) -> MemoryChangeExpl
             map(known_deviations, d => memory_counterexample_text(counterexample: d))))
         GoalAssessmentRefused { cause } => [concat(name as String, ": UNEVALUATED: ", cause as String) as NonEmptyStr]
       })
-    }) }
+    })
+}
+
+fn explain_memory_change(assessment: MemoryChangeAssessment) -> MemoryChangeExplanation {
+  MemoryChangeExplanation {
+    assessment: assessment,
+    lines: concat(
+      concat(["final configuration"], memory_obligation_lines(results: assessment.final_configuration.results)),
+      fold(assessment.workflow.initializations, init: [], f: (lines, initialization) =>
+        concat(lines, concat(
+          [concat("initialization at action ", to_string(initialization.action_ordinal)) as NonEmptyStr],
+          memory_obligation_lines(results: initialization.assessment.results)))),
+    ),
+  }
 }

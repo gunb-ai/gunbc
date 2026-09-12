@@ -1,6 +1,6 @@
 module test.claim.build_selection_witness
 
-import product.build_fulfillment { MemoryFulfillmentContext }
+import product.build_fulfillment { MemoryFulfillmentContext, BuildResolution }
 import gunbc.memory_change_evaluation { evaluate_memory_change, ProductionMemoryPurchase }
 import gunbc.mtcollins_memory_change { mtcollins_replay_proposal, mtcollins_memory_evidence_from_capture }
 
@@ -69,6 +69,16 @@ fn purchase_line() -> BomLine {
   }
 }
 
+fn selection_fixture_resolution(lines: List<LineResolution>) -> BuildResolution {
+  BuildResolution {
+    memory_context: MemoryFulfillmentContext {
+      assessment: evaluate_memory_change(proposal: mtcollins_replay_proposal(), evidence: mtcollins_memory_evidence_from_capture(payload: "")),
+      purpose: ProductionMemoryPurchase,
+    },
+    lines: lines,
+  }
+}
+
 // A candidate whose lines all resolved: nothing is missing, so it is comparable.
 fn candidate(
   identity: DeclarationRef,
@@ -85,7 +95,7 @@ fn candidate(
     memory_capacity: capacity,
     wall_power: wall_power,
     memory_bandwidth: bandwidth,
-    resolutions: [],
+    resolutions: selection_fixture_resolution(lines: []),
     cash: CashDerived { cash: cash },
     ceiling: CeilingDerived { builds: builds, bottlenecks: [purchase_line()], bottleneck_units: builds * 32 },
   }
@@ -148,19 +158,15 @@ fn pending_build() -> BuildCandidate {
     memory_capacity: one_terabyte,
     wall_power: watt(count: 200),
     memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: [
+    resolutions: selection_fixture_resolution(lines: [
       LineResolved {
-        memory_context: MemoryFulfillmentContext {
-          assessment: evaluate_memory_change(proposal: mtcollins_replay_proposal(), evidence: mtcollins_memory_evidence_from_capture(payload: "")),
-          purpose: ProductionMemoryPurchase,
-        },
         line: purchase_line(),
         fulfillment: CompatibilityUnread {
           part: part_ref,
           obligation: "sample-qualify one module on this platform" as NonEmptyStr,
         },
       },
-    ],
+    ]),
     cash: CashDerived { cash: usd_micros(count: 1) },
     ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
@@ -194,7 +200,7 @@ test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
     memory_capacity: one_terabyte,
     wall_power: watt(count: 300),
     memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: [],
+    resolutions: selection_fixture_resolution(lines: []),
     cash: CashDerived { cash: MoneyOnce { amount: money_amount_micro(count: 1), currency: Eur } },
     ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
@@ -214,7 +220,7 @@ test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
     memory_capacity: one_terabyte,
     wall_power: watt(count: 300),
     memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: [],
+    resolutions: selection_fixture_resolution(lines: []),
     cash: CashRefused { cause: CashLineUnfulfilled { part: part_ref } },
     ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
   }
@@ -235,7 +241,7 @@ test fn w_a_fully_owned_build_ranks_at_zero_cash() -> Bool {
     memory_capacity: one_terabyte,
     wall_power: watt(count: 300),
     memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: [],
+    resolutions: selection_fixture_resolution(lines: []),
     cash: CashNoPurchaseLines,
     ceiling: CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 },
   }
@@ -254,7 +260,7 @@ test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
     memory_capacity: one_terabyte,
     wall_power: watt(count: 300),
     memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: [],
+    resolutions: selection_fixture_resolution(lines: []),
     cash: CashNoPurchaseLines,
     ceiling: CeilingUnconstrainedByAnyLine,
   }
