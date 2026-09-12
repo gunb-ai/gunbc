@@ -169,14 +169,14 @@ type TwoBuilds
 // source, which is the whole point of a per-axis derivation claim.
 //
 // CONSEQUENCE, AND IT IS AN INCOMPLETENESS IN THE IDENTITY RATHER THAN A CAVEAT ON
-// COMPARING IT. Two generations can agree on all five model-side axes — same producer
-// compiler, same source closure, same target model, same toolchain, same DECLARED build
-// configuration — and still produce different artifact bytes, because build path is an
+// COMPARING IT. Two generations can agree on every model-side axis — same producer
+// compiler, same source closure, same target model, same toolchain, same required lens
+// contract, same DECLARED build configuration — and still produce different artifact bytes, because build path is an
 // input to the artifact that no axis names. So the axis set does not DETERMINE the
 // artifact; it identifies a generation up to build location. The promotion mechanism's
 // premise is that these axes identify a generation, and that premise is true only modulo
 // this. Exactly two honest remedies exist: --remap-path-prefix (or equivalent) removes path
-// from the output, and the five axes become an actual determinant; or build path joins
+// from the output, and the model-side axes become an actual determinant; or build path joins
 // build_configuration, and the axis tells the truth about what it covers. The third option
 // — leaving it implicit and absorbing it in a comparison — is the one this lane does not
 // take. NOT URGENT, because the direction is fail-closed: an identical build at a different
