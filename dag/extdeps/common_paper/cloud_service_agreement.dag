@@ -61,7 +61,13 @@ import extdeps.uri { Uri, Https }
 //    warranties apply - is a commercial position the operator takes on the Cover Page (see above).
 //    Under Common Paper that position is a Cover Page entry; under Bonterms it is an Additional
 //    Term amending Section 21, which is exactly the accepted-deviation class the compliance spine
-//    must escalate rather than author. The standard whose pilot is a Variable fits the layer split.
+//    must escalate rather than author. That is the advantage, not merely a difference: under
+//    Bonterms this fabric would inherit a US$1,000 pilot cap and a no-warranty, no-indemnity,
+//    no-SLA pilot position as a silent standard-term default nobody in this repository chose or
+//    escalated; under Common Paper the same position has to be written on a Cover Page, where it
+//    is visible as a commercial decision. A standard that forces a commercial position into the
+//    open beats one that supplies it by default, and it is what lets a downstream deviation list
+//    be honest about which positions were taken.
 //
 // 2. WHETHER THE POSTED TEXT DECLARES ITSELF FIXED. The Common Paper v2.1 page states that these
 //    Version 2.1 Standard Terms remain hosted on that page and any future change is issued under a
