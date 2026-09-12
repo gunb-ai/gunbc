@@ -69,10 +69,8 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   OtherStandardEvent,
   SolBannerOnly,
   SolCaptureReading,
-  SolHostBytesObserved,
   StatedByFirmware,
   TrainingRefusedByFirmwareStatement,
-  SolCaptureUnreadable,
   LocalizableFrom,
   oem_sel_empirical_association,
   pre_os_bringup_verdict,
@@ -486,8 +484,7 @@ fn mtcollins1_oem_association() -> OemSelEmpiricalAssociation {
 fn sol_readings_all_banner_only(captures: List<SolCaptureUnderCondition>) -> Bool {
   all(captures, c => match mtcollins1_sol_reading(capture: c) {
     SolBannerOnly { capture_path: _, bytes: _ } => true
-    SolHostBytesObserved { capture_path: _, bytes: _ } => false
-    SolCaptureUnreadable { capture_path: _ } => false
+    _ => false
   })
 }
 

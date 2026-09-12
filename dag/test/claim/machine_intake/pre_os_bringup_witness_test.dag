@@ -67,7 +67,10 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   NoRestartInWindow,
   SelStandardDecodeUnavailable,
   NothingObservedBeyondActivation,
+  SolBytesUnattributedToHost,
   SolHostBytesObserved,
+  ConsoleBytesUnattributedToHost,
+  sol_capture_reading,
   OemPayloadAbsentFromWindow,
   OemTimestamped,
   PhysicalRemediationRequired,
@@ -231,8 +234,8 @@ fn profile_with(console: ConsoleObservationCapability) -> PreOsObservationCapabi
   }
 }
 
-// THE PROFILE DECIDES WHICH COLLECTORS ARE REQUIRED: with no console, the console proof is not
-// demanded and readiness admits on the two controller-side collectors.
+// THE PROFILE DECIDES WHICH COLLECTORS ARE REQUIRED AND WHETHER A LEASE IS: with no console, an
+// honestly ABSENT lease is not a gap and readiness admits on the two controller-side collectors.
 test fn a_platform_with_no_console_does_not_require_a_console_collector() -> Bool {
   let no_console = profile_with(console: SolAbsent {
     established_by: DeclarationRef { module_path: "test.claim.machine_intake.pre_os_bringup_witness_test", decl_name: "profile_with", field: WholeDeclaration },
@@ -241,7 +244,7 @@ test fn a_platform_with_no_console_does_not_require_a_console_collector() -> Boo
     attempt: mtcollins1_ac_cycle_attempt,
     profile: no_console,
     sink: EvidenceSinkPresent { directory: "sink" },
-    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseAbsent),
     collectors: [
       CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
       CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
@@ -556,6 +559,32 @@ test fn host_bytes_stating_no_terminal_beside_an_empty_window_are_no_restart() -
     profile: mtcollins1_pre_os_capabilities,
   ) {
     BringupUndetermined { cause: NoRestartInWindow } => true
+    _ => false
+  }
+}
+
+// BYTES BEYOND THE BANNER THAT NO FIRMWARE LINE SHAPE EXPLAINS ARE NOT HOST OUTPUT (review 64441):
+// the keystroke probe's own `done rc=0` differs from the banner by digest and is nobody's evidence.
+test fn bytes_beyond_the_banner_with_no_recognized_firmware_line_are_unattributed() -> Bool {
+  match sol_capture_reading(
+    capture_path: "22-sol-probe.log",
+    bytes: byte_size(count: 96),
+    digest: Sha256Hash(Sha256Digest { hex: "e24f9ed8d9cedff87e6d11327c602c31fd7c3d9e2ba16e7e1ab0f8a91cdfe41e" }),
+    banner_digest: Sha256Hash(Sha256Digest { hex: "3aea4368b8745ae7bdca3c7ec052a324032974f7b849bca460e7d0e14f5e0871" }),
+    lines: ["tcgetattr: Inappropriate ioctl for device", "[SOL Session operational.  Use ~? for help]", "done rc=0"],
+  ) {
+    SolBytesUnattributedToHost { capture_path: _, bytes: _ } => true
+    _ => false
+  }
+}
+
+test fn unattributed_console_bytes_beside_an_empty_window_are_their_own_undetermined_cause() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: SolBytesUnattributedToHost { capture_path: "x", bytes: byte_size(count: 96) },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: ConsoleBytesUnattributedToHost } => true
     _ => false
   }
 }
