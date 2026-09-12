@@ -654,7 +654,28 @@ fn write_host_facts(
 pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
-    let tested_tree = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+    // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
+    // "local", and `tested_tree` is not telemetry: `gunbc.witness_v2_native_route`
+    // `native_route_tested_tree_recorded` admits on `tested_tree != ""`, so the default SATISFIED
+    // its own admission clause and the receipt then asserted it described a tree named `local`.
+    // That is the defect the rendered main fixes for its sibling field in this same change, and
+    // the clause-bearing field is the one where it actually buys a false green.
+    //
+    // WHY NOT FALL BACK TO `git rev-parse HEAD`, which the seed can do: on a dirty worktree HEAD
+    // names a commit whose content is NOT what ran, so it is the same plausible-identity defect
+    // wearing a real sha. An identity that is only sometimes true is worse here than none.
+    //
+    // A LOCAL RUN IS STILL AVAILABLE, and deliberately so: the operator sets GITHUB_SHA to the
+    // commit the tree describes, which makes the identity an assertion someone made rather than
+    // one the harness invented. Refusing without saying that would have turned an honesty fix into
+    // the removal of an operator-invoked instrument.
+    let tested_tree = std::env::var("GITHUB_SHA").map_err(|_| {
+        "V2-NATIVE REFUSAL cause=TestedTreeUnobservable — GITHUB_SHA is unset, so the tree this run \
+         describes cannot be observed. The receipt's tested_tree carries an admission clause, so a \
+         placeholder would green it and assert a tree that was never tested. Set GITHUB_SHA to the \
+         commit this worktree describes to run the route outside CI."
+            .to_string()
+    })?;
 
     // 1. PREPARATION. The seed emits the compiler closure once, in-process; cargo builds the
     // emitted crate; the receipt records all three identities. This is the seed's whole job.
