@@ -20,6 +20,9 @@ import gunbc.fleet_intent { srv1_host }
 import std.realization_reconcile { NotConverged }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
+import extdeps.apt { apt_installed_bin_path }
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -69,4 +72,20 @@ test fn posix_command_v_check_argv_shapes_a_command_v_invocation() -> Bool {
 
 test fn shell_test_is_executable_argv_shapes_a_test_dash_x_invocation() -> Bool {
   shell_test_is_executable_argv(path: "/usr/bin/curl" as FilePath) == ["test", "-x", "/usr/bin/curl"]
+}
+
+test fn fleet_ssh_apt_tool_presence_argv_is_portable() -> Bool {
+  match portable_remote_words(
+    raws: shell_test_is_executable_argv(path: apt_installed_bin_path(binary: "sshpass" as NonEmptyStr)),
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn posix_command_v_check_argv_is_not_portable() -> Bool {
+  match portable_remote_words(raws: posix_command_v_check_argv(command: "sshpass" as NonEmptyStr)) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
