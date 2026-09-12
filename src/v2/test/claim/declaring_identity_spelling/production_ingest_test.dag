@@ -5,7 +5,18 @@ import v2.compiler.declaring_identity_spelling_census {
   spelling_census_from_ingest,
   spelling_census_is_total
 }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.reference_site_collector { collect_reference_sites }
+import v2.compiler.resolution_provenance {
+  ProvenanceAmbiguous,
+  ProvenanceOwnerless,
+  ProvenanceResolved,
+  ProvenanceUnbound,
+  resolve_reference_provenance
+}
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
@@ -13,9 +24,20 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.qualified_name { qualified_name_to_dotted_string }
-import std.algebra { Cons, Empty }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name {
+  qualified_name_last_segment,
+  qualified_name_snoc,
+  qualified_name_to_dotted_string
+}
+import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
+import v2.test.claim.provenance.cross_file_provenance {
+  cfp_index,
+  cfp_own_module_site,
+  cfp_roster
+}
+import std.algebra { Cons, Empty, FreeMonoid }
 import std.declaring_identity_spelling {
   IdentityUnbound,
   IdentityAmbiguous,
@@ -139,11 +161,72 @@ test fn a_bare_value_mention_outside_a_call_reaches_the_census_holds() -> Bool {
   )
 }
 
-// The production site that observes today: a bare value mention outside a call.
-// It reaches the census and is IdentityUnbound: symbol_index_fill over this
-// normalized tree does not bind the mention, so SpelledShorter cannot fire here.
-// Discriminating Shorter is v2.test.claim.declaring_identity_spelling.verdict_fold.
-// This unbound arm reds when fill binds the mention.
+// CONTROL: the enrolled two-module provenance witness binds a same-module name
+// on resolve_reference_provenance. If this is green, IdentityUnbound on the
+// ingest census is not "v2 cannot compile a local name".
+test fn enrolled_same_module_site_binds_on_the_resolution_path_holds() -> Bool {
+  match resolve_reference_provenance(
+    index: cfp_index,
+    roster: cfp_roster,
+    site: cfp_own_module_site
+  ) {
+    ProvenanceResolved { site: _, target: _, owner: _ } => true
+    ProvenanceOwnerless { site: _, target: _ } => false
+    ProvenanceAmbiguous { site: _ } => false
+    ProvenanceUnbound { site: _ } => false
+  }
+}
+
+fn value_outside_call_roots() -> FreeMonoid<Node> {
+  match module_roots_from_source_root_ingest(
+    ingest: ingest_of(
+      text: value_outside_call_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+      unit: ^xl3_value_outside_call
+    ),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      normalized_tree_roots_to_nodes(roots: normalized)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn marker_site_fill_lookup_is_present() -> Bool {
+  let roots = value_outside_call_roots()
+  let collected = collect_reference_sites(roots: roots)
+  let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots)
+  fold_list(
+    xs: collected.sites,
+    empty: false,
+    cons: fn(acc, site) {
+      acc || (
+        qualified_name_to_dotted_string(qn: site.spelling) == "marker"
+          && match qualified_name_last_segment(qn: site.spelling) {
+            Absent => false
+            Present { value: name } =>
+              match symbol_index_lookup(
+                index: index,
+                qualified_path: qualified_name_snoc(qn: site.position, segment: name)
+              ) {
+                Present { value: _ } => true
+                Absent => false
+              }
+          }
+      )
+    }
+  )
+}
+
+// INDEX-PATH ONLY, not a fact about 03_resolve. Parser-keyed fill lookup at the
+// collector site's position. Green means fill never inserted `marker`; that is
+// the step that makes the census row IdentityUnbound.
+test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
+  !marker_site_fill_lookup_is_present()
+}
+
+// Retracted as a compiler fact. Kept as an index-path measurement: the census
+// row is Unbound because fill missed, not because the name cannot compile.
 test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
   authored_unbound(
     census: census_of(
@@ -190,8 +273,8 @@ test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
   )
 }
 
-// Census-row spelling "Int" on this single-module ingest. Not a hold of the
-// collector type-position class: user type-position names reach (see above).
+// Census-row spelling "Int": kernel types have no corpus declaration. Not a
+// type-position collector miss and not a lowering class.
 test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
   !authored_is(
     census: census_of(

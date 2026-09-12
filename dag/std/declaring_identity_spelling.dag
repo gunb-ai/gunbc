@@ -17,12 +17,10 @@ import v2.std.qualified_name { QualifiedName }
 // WHAT PRODUCTION INGEST ACTUALLY SEES is measured by
 // v2.test.claim.declaring_identity_spelling.production_ingest and
 // v2.test.claim.namespace_xl0.call_argument_mention_survival:
-// SURVIVES (unusable for requalification): a BARE name not inside a call -- value
-// or type-position (fixture 1: `x: Marker`; matched type_only).
-// DOES NOT: a QUALIFIED/dotted reference in ANY position (value Probe; type
-// ProvidedMarker); a call argument; a callee name.
-// Discriminator is qualification, not position. Body-lowering (#11207) is not
-// the qualified-reference trigger.
+// SURVIVES as sites (unusable for requalification): a BARE name not inside a call.
+// DOES NOT: names inside calls (body-lowering, eager-raven / #11207);
+// QUALIFIED/dotted references in any position (dotted-reference gap, not lowering);
+// kernel types, which have no corpus declaration.
 // A bare same-module name resolves inside its own module, so it is not the XL-3
 // population. The usable class is the qualified cross-module mention, absent with
 // no call anywhere; a trigger naming only body-lowering (#11207) does not cover it.
