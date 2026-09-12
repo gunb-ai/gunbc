@@ -62,6 +62,7 @@ import gunbc.rung_drop.transitional_admission_exception { transitional_admission
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
+import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -107,6 +108,7 @@ data rung_drop_roster: List<RungDrop> = [
   v2_native_route_off_the_merge_path,
   main_per_commit_floor_verdict,
   v1_consumer_census_live_population_off_the_merge_path(),
+  long_module_changed_witness_cpu_observed_only,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

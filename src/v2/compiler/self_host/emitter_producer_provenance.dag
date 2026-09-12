@@ -1,6 +1,8 @@
 module v2.compiler.self_host.emitter_producer_provenance
 
 import std.content_hash { content_hash_atom }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -223,6 +225,32 @@ fn v2_interpreted_emitter_closure_authority() -> RealizedEmitterClosure {
   realized_closure_for_v2_direct_rust_door_emit_run()
 }
 
+// THE v1 SEED INTERPRETER, owned here beside the seed emitter because it is the same KIND of
+// fact: which upstream module, appearing in a realized closure, disqualifies a producer that
+// claims not to be the seed. It reached this module from
+// v2.compiler.self_host.ancestry, where it was first written — the ancestry rule that forbids
+// it is a consumer of this classification, not a second home for it (review 63949).
+data v1_seed_interpreter_qualified_module: String = "v1_compiler.v1_interpreter"
+
+// AN EMPTY CLOSURE IS IGNORANCE, NOT INNOCENCE, and it is a producer x closure fact rather than
+// an ancestry one, which is why it lives here. Every clause below asks a NEGATIVE question —
+// is the seed emitter reachable, is the seed interpreter reachable — and negative questions are
+// ALL vacuously satisfied by a closure that names nothing. So RealizedEmitterClosure with no
+// module paths passed this entire admission and minted a V2Emitter* receipt on no evidence at
+// all: bottom-as-ignorance rendered as top-as-answer, DESIGN section 5. It bites hardest here
+// because the closure carrier is the ONLY evidence this fold consults, so an empty one is not a
+// weak observation but the absence of one.
+//
+// SCOPED TO THE V2Emitter* ARMS deliberately. V1SeedEmitter admits unconditionally by this
+// module's existing design — the seed's provenance is not the thing in question — and tightening
+// that arm would change what every current caller of mint_producer_emission_receipt may mint,
+// which is a different subject with its own consumers. Named here rather than silently skipped.
+data v2_emitter_closure_is_empty: String = "V2Emitter* producer mint refused: realized_closure names no modules at all, so every reachability clause is vacuously satisfied — an unobserved closure is not an admitted one"
+
+data v2_emitter_in_seed_interpreter_closure: String = "V2Emitter* producer mint refused: realized_closure reaches the v1 seed interpreter, so the seed executed on this route — interpreting the program that produced the bytes is producing them"
+
+data v2_native_emitter_in_interpreted_emit_closure: String = "V2EmitterNative producer mint refused: realized_closure reaches v2.compiler.emit, so the INTERPRETED emitter produced these bytes and the producer axis claims a native one. Refused only for V2EmitterNative: for V2EmitterInterpreted that same module is its own emitter and is exactly what its closure should name."
+
 data v2_emitter_in_seed_emit_rust_closure: String = "V2Emitter* producer mint refused: realized_closure contains v1.compiler.emit_rust (structural construction wall, calm-badger-682 ruling 2026-07-29)"
 
 type EmitterProducerMintAdmission
@@ -234,6 +262,53 @@ type EmitterProducerMintAdmission
 // admissibility — mint_producer_emission_receipt consumes this surface; no parallel hand-rolled
 // Bool admissibility predicates.
 
+// The clauses common to every V2Emitter* producer: the closure must be evidence at all, and it
+// must reach neither half of the v1 seed. Factored so the two arms cannot drift, which is the
+// same reason this module refuses to let a consumer re-derive the verdict.
+data v1_seed_emitter_unconditional_admission_frontier: DissolutionCondition = unbound_dissolution(
+  description: "declared frontier for the V1SeedEmitter arm of emitter_producer_mint_admission, which admits unconditionally while the V2Emitter* arms refuse an empty closure, a seed-emitter reach and a seed-interpreter reach. An empty closure is exactly as uninformative for the seed as for a v2 producer; what differs is blast radius, not logic. The frontier closes when the seed-produced population is itself enumerated and closed -- when every V1SeedEmitter mint site is reachable from one roster rather than discovered by search -- so that tightening the arm is a change whose refused set can be COMPUTED rather than hoped for. NOT satisfied by adding the empty-closure clause to the seed arm and fixing whatever goes red: that is per-site exception pricing, and it would land the wall without ever establishing what it refuses. Unbound deliberately: the condition is a population becoming enumerable, which is neither a declaration appearing nor one retiring." as NonEmptyStr
+)
+
+fn v2_emitter_closure_admission(
+  closure: RealizedEmitterClosure
+) -> EmitterProducerMintAdmission {
+  if length(xs: closure.emitter_module_paths) == 0 {
+    ProducerMintRefused { cause: ^v2_emitter_closure_is_empty }
+  } else if seed_emit_rust_reachable(closure: closure) {
+    ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
+  } else if realized_closure_contains_module(
+    closure: closure,
+    module: v1_seed_interpreter_qualified_module
+  ) {
+    ProducerMintRefused { cause: ^v2_emitter_in_seed_interpreter_closure }
+  } else {
+    ProducerMintAdmitted
+  }
+}
+
+// THE SEED ARM IS UNCONDITIONAL, AND THAT IS A DECLARED FRONTIER RATHER THAN A DECISION
+// THAT THE QUESTION DOES NOT ARISE. An empty realized closure is exactly as uninformative
+// here as it is for a V2Emitter* producer: v2_emitter_closure_admission refuses it there
+// because the closure is the only evidence the fold consults, and nothing about that
+// reasoning is special to a v2 producer. What differs is the blast radius, not the logic.
+//
+// CONSUMER POPULATION, enumerated rather than estimated, because that is what makes this a
+// frontier and not a shrug. Every site that mints under this arm today:
+// emitter_producer_provenance fabricated_v1_seed_producer_receipt (against
+// cssl_harness_realized_closure, which names v1.compile and v1.compiler.emit_rust), and the
+// four V1SeedEmitter mint sites in
+// v2.test.claim.self_host.direct_rust_door_group_algebra_test. All five supply a non-empty
+// closure, so tightening this arm would refuse none of them TODAY — which is precisely why
+// it must not be tightened casually: a wall that refuses nothing in the current population
+// is indistinguishable from one that is correct, and the arm's unconditional shape is load
+// bearing for callers that have not been written yet.
+//
+// The trigger is carried as a typed row rather than as this prose — see
+// v1_seed_emitter_unconditional_admission_frontier above. A dissolution condition in a comment
+// is unreachable from the ledger that folds them (DESIGN section 4c: a dissolution condition
+// belongs in a typed carrier), and this module's sibling frontiers in
+// v2.compiler.self_host.ancestry are already carried that way, so prose here would be the one
+// frontier of the three that nothing could count.
 fn emitter_producer_mint_admission(
   producer: EmitterProducer,
   closure: RealizedEmitterClosure
@@ -241,16 +316,22 @@ fn emitter_producer_mint_admission(
   match producer {
     V1SeedEmitter => ProducerMintAdmitted
     V2EmitterInterpreted =>
-      if seed_emit_rust_reachable(closure: closure) {
-        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
-      } else {
-        ProducerMintAdmitted
+      match v2_emitter_closure_admission(closure: closure) {
+        ProducerMintRefused { cause: c } => ProducerMintRefused { cause: c }
+        ProducerMintAdmitted => ProducerMintAdmitted
       }
     V2EmitterNative { generation: _ } =>
-      if seed_emit_rust_reachable(closure: closure) {
-        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
-      } else {
-        ProducerMintAdmitted
+      match v2_emitter_closure_admission(closure: closure) {
+        ProducerMintRefused { cause: c } => ProducerMintRefused { cause: c }
+        ProducerMintAdmitted =>
+          if realized_closure_contains_module(
+            closure: closure,
+            module: v2_emit_interpreted_qualified_module
+          ) {
+            ProducerMintRefused { cause: ^v2_native_emitter_in_interpreted_emit_closure }
+          } else {
+            ProducerMintAdmitted
+          }
       }
   }
 }

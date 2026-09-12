@@ -832,6 +832,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
+    let mut enrolled_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
     // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
     // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
@@ -996,6 +997,14 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             }
             if test_fn_names.contains(name) {
                 edited_test_fns.insert((file_norm.clone(), name.clone()));
+                // NEWLY ENROLLED, AND THE CONDITION IS THE PATH'S rather than the line's. A test
+                // fn in a path whose declaration set is established fresh at NEW has never
+                // executed under its current qualified identity; one in a modified path may be a
+                // long-standing witness whose body was touched. Only the first may be refused for
+                // its cost by a gate that must never red a PR for debt it did not author.
+                if added_paths.contains(&file_norm) {
+                    enrolled_test_fns.insert((file_norm.clone(), name.clone()));
+                }
             } else if *is_data {
                 overlapping_data_items.insert((file_norm.clone(), name.clone()));
             } else {
@@ -1011,6 +1020,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     Ok(FloorDiffEdits {
         overlapping_data_items,
         edited_test_fns,
+        enrolled_test_fns,
         touched_entry_files,
     })
 }
@@ -1047,20 +1057,31 @@ pub(crate) struct ChangedWitnessProjectionRow {
     pub cost: Option<ChangedWitnessCostObservation>,
 }
 
-/// THE CHANGED IDENTITIES, at the disposition receipt's own grain. The diff attribution is the
-/// floor's existing authority (`floor_diff_edits_from_line_ranges` over the resolved comparison
-/// baseline — the same observation every other diff consumer here makes), so "which test
-/// declarations did this change touch" has one producer; this function only spells the result
-/// as the qualified `module.function` identity the disposition receipt is keyed by. A wholly
-/// added `.dag` file contributes every test declaration it carries; a modified file contributes
-/// the declarations whose lines the diff reached. An observation or attribution failure
+/// THE CHANGED IDENTITIES AND THE NEWLY ENROLLED SUBSET, at the disposition receipt's own grain,
+/// FROM ONE DIFF OBSERVATION.
+///
+/// The diff attribution is the floor's existing authority (`floor_diff_edits_from_line_ranges` over
+/// the resolved comparison baseline — the same observation every other diff consumer here makes),
+/// so "which test declarations did this change touch" has ONE producer; this function only spells
+/// the result as the qualified `module.function` identity the disposition receipt is keyed by. A
+/// wholly added `.dag` file contributes every test declaration it carries; a modified file
+/// contributes the declarations whose lines the diff reached. An observation or attribution failure
 /// REFUSES — it never widens to "no changed witnesses".
-pub(crate) fn changed_witness_identities(source_roots: &[String]) -> Result<Vec<String>, String> {
-    let index = process_shared_index(source_roots);
-    changed_witness_identities_with_index(&index)
-}
-
-fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<String>, String> {
+///
+/// THE TWO PROJECTIONS COME BACK TOGETHER rather than from two calls. Each call re-runs
+/// `floor_observe_git_diff_unified_for_ci` — a wet observation over the whole diff — and two calls
+/// would let the two sets disagree about WHICH DIFF they describe, which is the join defect this
+/// floor keeps refusing elsewhere.
+///
+/// THIS FUNCTION EXTENDS THE ORIGINAL DERIVATION RATHER THAN STANDING BESIDE IT (review 64039).
+/// The enrolment gate first landed as a near-verbatim second copy of this body with one extra
+/// projection, which left two functions independently answering one question — the §3 fork that
+/// "always gets consolidated later", so a correctness concern rather than a style one. The copy and
+/// the `changed_witness_identities` wrapper above it (already callerless on `main`) are deleted
+/// here rather than left for that later consolidation.
+fn changed_and_enrolled_witness_identities_with_index(
+    index: &MultiEntryIndex,
+) -> Result<(Vec<String>, Vec<String>), String> {
     let diff_text = floor_git_diff_range()?;
     let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
     let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
@@ -1076,11 +1097,19 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
         &departed_paths,
         &added_paths,
     )?;
-    changed_witness_identities_from_edited_test_fns(
-        &process_workspace_root(),
+    let quarantined = quarantine_probe_admitted_pairs();
+    let root = process_workspace_root();
+    let changed = changed_witness_identities_from_edited_test_fns(
+        &root,
         &edits.edited_test_fns,
-        &quarantine_probe_admitted_pairs(),
-    )
+        &quarantined,
+    )?;
+    let enrolled = changed_witness_identities_from_edited_test_fns(
+        &root,
+        &edits.enrolled_test_fns,
+        &quarantined,
+    )?;
+    Ok((changed, enrolled))
 }
 
 /// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
@@ -1115,6 +1144,245 @@ fn quarantine_probe_admitted_pairs() -> std::collections::HashSet<(String, Strin
 /// touched witness through by virtue of the lane it happens to sit in, which is precisely what the
 /// changed-witness override exists to prevent. A long-home witness with no quarantine admission is
 /// selected, executes, and reds the floor exactly as before.
+/// THE ENROLMENT MARGIN GATE, HOST SIDE. Modeled authority:
+/// `v2.workflow.floor_enrolment_margin` — `EnrolmentMarginStanding`, `enrolment_margin_standing`,
+/// `enrolment_margin_standing_blocks`, `enrolment_margin_blocking_cause`,
+/// `enrolment_margin_blockers`. This enum is the host's rendering of that coproduct and adds no
+/// arm; the budget is READ OUT of the model rather than restated here, exactly as the CPU and wall
+/// deadlines are, so the seed and the model cannot drift into disagreement about the figure.
+#[derive(Clone, Debug)]
+pub(crate) enum EnrolmentMarginStanding {
+    WithinMargin {
+        exact_cpu_ms: u64,
+        budget_ms: u64,
+    },
+    OverMargin {
+        exact_cpu_ms: u64,
+        budget_ms: u64,
+    },
+    /// The bound is NOT a cost and is never rendered into a cost field — the reason the modeled
+    /// type keeps this arm separate from `OverMargin` instead of reusing its `exact_cpu_ms`.
+    CeilingCensored {
+        cpu_lower_bound_ms: u64,
+        censoring_ceiling_ms: u64,
+    },
+    NotMeasured {
+        cause: String,
+    },
+    /// The runner itself withheld this identity, so no measurement was ever going to exist and no
+    /// edit to the witness could produce one. Does NOT block here — it defers to
+    /// `changed_witness_blocking`, which refuses it carrying the disposition's own name.
+    OutsideThisRunsExecution {
+        disposition: String,
+    },
+}
+
+impl EnrolmentMarginStanding {
+    /// Mirror of `enrolment_margin_standing_blocks`.
+    fn blocks(&self) -> bool {
+        match self {
+            EnrolmentMarginStanding::WithinMargin { .. } => false,
+            EnrolmentMarginStanding::OverMargin { .. } => true,
+            EnrolmentMarginStanding::CeilingCensored { .. } => true,
+            EnrolmentMarginStanding::NotMeasured { .. } => true,
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
+        }
+    }
+
+    /// Mirror of `enrolment_margin_blocking_cause`. The three blocking causes are three distinct
+    /// strings because they have three different remedies; one shared cause would offer only the
+    /// rerun, which discharges none of them.
+    fn cause(&self) -> &'static str {
+        match self {
+            EnrolmentMarginStanding::WithinMargin { .. } => "",
+            EnrolmentMarginStanding::OverMargin { .. } => "enrolment_measured_over_margin",
+            EnrolmentMarginStanding::CeilingCensored { .. } => "enrolment_censored_at_ceiling",
+            EnrolmentMarginStanding::NotMeasured { .. } => "enrolment_not_measured",
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
+        }
+    }
+
+    /// Mirror of `enrolment_margin_standing_name`. Every standing has a NAME; only the refusing
+    /// ones have a CAUSE. The projection line prints the name, because a blank field reads as a
+    /// missing value rather than as a verdict — and that line is the only per-identity evidence
+    /// that the gate LOOKED at a row.
+    fn name(&self) -> &'static str {
+        match self {
+            EnrolmentMarginStanding::WithinMargin { .. } => "admitted",
+            EnrolmentMarginStanding::OverMargin { .. } => "measured_over_margin",
+            EnrolmentMarginStanding::CeilingCensored { .. } => "censored_at_ceiling",
+            EnrolmentMarginStanding::NotMeasured { .. } => "not_measured",
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
+                "outside_this_runs_execution"
+            }
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            EnrolmentMarginStanding::WithinMargin {
+                exact_cpu_ms,
+                budget_ms,
+            } => format!("observed_cpu_ms={exact_cpu_ms} budget_ms={budget_ms}"),
+            EnrolmentMarginStanding::OverMargin {
+                exact_cpu_ms,
+                budget_ms,
+            } => format!("observed_cpu_ms={exact_cpu_ms} budget_ms={budget_ms}"),
+            EnrolmentMarginStanding::CeilingCensored {
+                cpu_lower_bound_ms,
+                censoring_ceiling_ms,
+            } => format!(
+                "cost=UNMEASURED cpu_at_least_ms={cpu_lower_bound_ms} censoring_ceiling_ms={censoring_ceiling_ms}"
+            ),
+            EnrolmentMarginStanding::NotMeasured { cause } => {
+                format!("cost=UNMEASURED absence_cause={cause}")
+            }
+            EnrolmentMarginStanding::OutsideThisRunsExecution { disposition } => format!(
+                "not adjudicated here: this run withheld the identity (disposition={disposition}); \
+                 changed_witness_blocking owns it"
+            ),
+        }
+    }
+}
+
+/// THE MARGIN BUDGET, READ OUT OF THE MODEL. Not a Rust literal and not arithmetic repeated here:
+/// `v2.workflow.floor_enrolment_margin` `floor_enrolment_margin_budget_ms` derives it from the
+/// ceiling authority and the measured p90 runner envelope, and this reads that derivation's own
+/// answer. If the envelope is re-measured and the figure moves, the gate moves with it.
+///
+/// `v2.workflow.floor_enrolment_margin` is declared in `REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`,
+/// which is what makes evaluating it by name here legitimate rather than an undeclared reach.
+pub(crate) fn floor_enrolment_margin_budget_ms(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<u64, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let qualified = format!("{MODULE}.floor_enrolment_margin_budget_ms_count");
+    // STRICTLY POSITIVE AND STRICTLY BELOW THE CEILING. A zero or negative budget refuses every
+    // witness before it evaluates one; a budget at or above the ceiling is the decoration the
+    // model's own `the_enrolment_budget_is_strictly_below_the_ceiling` witness exists to forbid,
+    // permanently green by construction while still being reported as coverage.
+    let ceiling_ms = {
+        let policy_scope = claim_scope_for(prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
+        let policy_ctx = evaluation_frame(
+            &policy_scope,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        );
+        floor_required_int(&policy_ctx, "required_floor_claim_cpu_safety_limit_ms")?
+    };
+    match v1_interpreter::run_in_context(&ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < ceiling_ms => Ok(n as u64),
+        Ok(v1_interpreter::Value::Int(n)) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=EnrolmentMarginBudgetUngrounded {qualified} returned \
+             {n}ms against a {ceiling_ms}ms ceiling — a margin budget must be strictly positive \
+             and strictly below the ceiling it sits inside, or it gates nothing"
+        )),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a positive Int, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
+/// The per-claim cost population indexed by identity, built ONCE for the whole gate.
+///
+/// THE SCAN THIS REPLACES WAS A QUADRATIC FOLD, and it is fixed here rather than excused by the
+/// realized n. `find` over the cost rows inside the loop over newly enrolled identities is
+/// `enrolled x executed` string comparisons — 11 x 3,667 on the run that lands this gate, which is
+/// nothing, and that is exactly the argument DESIGN section 6's bare-minimum-cost rule refuses to
+/// accept: "n is small here" is not a time-stable fact, because the enrolled set is whatever a
+/// future change enrols and the executed set grows with the corpus.
+fn claim_cost_by_identity(
+    claim_cost: &[crate::cli_run::WitnessExecutionOccurrence],
+) -> HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> {
+    claim_cost
+        .iter()
+        .map(|row| (row.identity.as_str(), row))
+        .collect()
+}
+
+/// The standing of ONE newly enrolled identity, from the run's own per-claim cost population.
+///
+/// THE ABSENT CASE IS A LOOKUP MISS AND IS NOT A ZERO. An identity this run planned but never
+/// produced a cost row for has not been shown to be cheap; it has not been shown to be anything.
+/// Defaulting it to a zero cost would classify it `WithinMargin` and admit it silently, which is
+/// the absorbing fallback DESIGN section 5 forbids in its most ordinary costume.
+/// Whether THIS RUN undertook to execute one identity, from the disposition receipt that is the
+/// single authority on that question.
+///
+/// A MISSING ROW IS NOT PLANNED. `changed_witness_standing_blocks` already refuses a changed
+/// identity with no disposition row (`MissingDisposition`), so deferring here loses no refusal —
+/// and asserting "planned" about an identity the receipt never mentions would be the count-equality
+/// reasoning DESIGN section 5 refuses in favour of an identity join.
+fn enrolment_gate_execution_disposition<'a>(
+    identity: &str,
+    dispositions: &'a HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> Option<&'a crate::cli_run::RequiredFloorDisposition> {
+    dispositions.get(identity).copied()
+}
+
+pub(crate) fn enrolment_margin_standing_for(
+    identity: &str,
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+    budget_ms: u64,
+) -> EnrolmentMarginStanding {
+    // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
+    //
+    // The enrolled population is derived from the DIFF and is root-agnostic; the executed
+    // population is bounded by the discovery roots. Without this join a wholly-added test file
+    // homed outside those roots is enrolled, declined by the runner, absent from the cost
+    // population, and refused here as `not_measured` — demanding a measurement that no edit inside
+    // the offending PR could ever produce. That is the class the seed's own `undeclarable_changed`
+    // block exists to repair, and asking the cost population first rebuilds it one gate over.
+    match enrolment_gate_execution_disposition(identity, dispositions) {
+        Some(crate::cli_run::RequiredFloorDisposition::Planned)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        Some(other) => {
+            return EnrolmentMarginStanding::OutsideThisRunsExecution {
+                disposition: required_floor_disposition_label(other).to_string(),
+            };
+        }
+        None => {
+            return EnrolmentMarginStanding::OutsideThisRunsExecution {
+                disposition: "no_disposition_row".to_string(),
+            };
+        }
+    }
+    let Some(row) = claim_cost.get(identity) else {
+        return EnrolmentMarginStanding::NotMeasured {
+            cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
+        };
+    };
+    match &row.reading {
+        crate::cli_run::ClaimCostReading::Observed {
+            observed_cpu_ms, ..
+        } => {
+            if *observed_cpu_ms > budget_ms {
+                EnrolmentMarginStanding::OverMargin {
+                    exact_cpu_ms: *observed_cpu_ms,
+                    budget_ms,
+                }
+            } else {
+                EnrolmentMarginStanding::WithinMargin {
+                    exact_cpu_ms: *observed_cpu_ms,
+                    budget_ms,
+                }
+            }
+        }
+        crate::cli_run::ClaimCostReading::RightCensored(reading) => {
+            EnrolmentMarginStanding::CeilingCensored {
+                cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
+                censoring_ceiling_ms: reading.cpu_safety_limit_ms,
+            }
+        }
+    }
+}
+
 pub(crate) fn changed_witness_identities_from_edited_test_fns(
     base: &Path,
     edited_test_fns: &std::collections::HashSet<(String, String)>,
@@ -4086,21 +4354,26 @@ pub fn run_required_floor(
     // the closure seeds that make these modules executable and the tail projection that judges
     // their terminal rows. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let changed_witnesses = match changed_witness_identities_with_index(&gate_entry_index) {
-        Ok(changed) => Some(changed),
-        Err(e) if commit != "local" && !commit.is_empty() => {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
+    let (changed_witnesses, newly_enrolled_witnesses) =
+        match changed_and_enrolled_witness_identities_with_index(&gate_entry_index) {
+            Ok((changed, enrolled)) => (Some(changed), Some(enrolled)),
+            Err(e) if commit != "local" && !commit.is_empty() => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
                  changed-witness execution sublane could not observe or attribute the CI diff"
-            ));
-        }
-        Err(e) => {
-            eprintln!(
+                ));
+            }
+            Err(e) => {
+                eprintln!(
                 "[changed-witness] EXECUTION SUBLANE NOT EVALUATED (no CI diff baseline on a local run): {e}"
             );
-            None
-        }
-    };
+                // BOTH PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
+                // `None` here is "this run could not look", which is a different fact from "this run
+                // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
+                // own not-measured arm turns on, so it may not be lost at its source.
+                (None, None)
+            }
+        };
     let changed_witness_set: HashSet<String> = changed_witnesses
         .iter()
         .flat_map(|rows| rows.iter().cloned())
@@ -5159,7 +5432,30 @@ pub fn run_required_floor(
                 // deadline stays armed. A changed identity the roster does not enroll takes the
                 // ordinary policy and still reds when it crosses that line, so this is one
                 // intersection rather than a widening of the floor.
-                let cost_policy = if cost_debt_roster.contains(&identity) {
+                // THE LONG HOME IS THE SAME DECLARATION AS A COST-DEBT ROW (operator ruling A,
+                // 2026-09-11). Both say this identity is not run on an ordinary floor because the
+                // CPU line cannot carry it -- the roster per identity after measuring, the long
+                // home per module structurally. Reading only the roster left a changed witness in
+                // a long module on the armed line: the floor's own per-claim cost receipt for
+                // gunbc#11004 at 6b153bf8 reports three such witnesses refused at the line before
+                // reaching a verdict, none of them planned on any ordinary floor. `long_home` above is the same
+                // authored-name prefix match `required_floor_site_disposition` folds to reach
+                // `DeclinedLongModule`, so this is one classification read twice, not a second one.
+                //
+                // TWO SETS, AND THEY ANSWER DIFFERENT QUESTIONS -- the distinction this arm got
+                // wrong on its first draft. `cost_debt_seen` is ROSTER ACCOUNTING: it feeds
+                // reconcile_withheld_against_dispositions, so only a rostered identity may enter
+                // it, and inserting a long-module witness there would make a row look exercised
+                // that no roster line names, which is how a stale roster line hides.
+                // `cost_debt_verdict_only` is the PROJECTION's policy source, read by
+                // changed_witness_projection_rows and by nothing else. Every identity whose claim
+                // executed under the override must enter it, or execution and standing disagree:
+                // the CPU gate stands down and the row then projects as an ordinary
+                // planned-and-passed, laundering the cost fact into a pass that never happened
+                // that way, and CostObservationMissingUnderVerdictOnly can never fire for it.
+                // v2.workflow.floor_changed_witness says it directly -- the override "keeps the
+                // COST FACT in the standing rather than laundering it into an ordinary pass".
+                let cost_policy = if cost_debt_roster.contains(&identity) || long_home {
                     cost_debt_verdict_only.insert(identity.clone());
                     ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
                 } else {
@@ -6109,6 +6405,7 @@ pub fn run_required_floor(
         long_home_storage_agreement: storage_agreement_rows,
         changed_witness_rows: 0,
         changed_witness_blocking: Vec::new(),
+        enrolment_margin_blocking: Vec::new(),
     };
     let mut receipted: HashSet<String> = HashSet::new();
 
@@ -7880,6 +8177,74 @@ pub fn run_required_floor(
                 cause: r.cause.clone(),
             })
             .collect();
+    }
+    // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
+    // `v2.workflow.floor_enrolment_margin`.
+    //
+    // WHY IT RUNS HERE AND NOT BESIDE THE CEILING: the ceiling is a DEADLINE, enforced while a
+    // claim evaluates, and it stops the claim. The margin is a judgement about a COMPLETED
+    // measurement, so it can only be asked once the per-claim cost population exists — which is
+    // this point in the fold, the same point the changed-witness projection reads.
+    //
+    // ON A LOCAL RUN THE SET IS `None` AND THIS IS NOT EVALUATED, reported loudly rather than
+    // fabricated as empty, for the reason the changed-witness sublane states above: a run that
+    // could not observe the diff cannot say what the change enrols, and an empty set would be a
+    // silent claim that it enrols nothing.
+    if let Some(newly_enrolled) = newly_enrolled_witnesses {
+        let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
+        let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
+        let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
+            .required_floor_disposition
+            .iter()
+            .map(|row| (row.identity.as_str(), &row.disposition))
+            .collect();
+        let mut refused: Vec<ChangedWitnessBlocker> = Vec::new();
+        let mut deferred = 0usize;
+        for identity in &newly_enrolled {
+            let standing = enrolment_margin_standing_for(
+                identity,
+                &cost_by_identity,
+                &dispositions,
+                budget_ms,
+            );
+            eprintln!(
+                "[enrolment-margin] identity={identity} standing={} {}",
+                standing.name(),
+                standing.detail()
+            );
+            if matches!(
+                standing,
+                EnrolmentMarginStanding::OutsideThisRunsExecution { .. }
+            ) {
+                deferred += 1;
+            }
+            if standing.blocks() {
+                refused.push(ChangedWitnessBlocker {
+                    identity: identity.clone(),
+                    cause: standing.cause().to_string(),
+                });
+            }
+        }
+        // THE DEFERRED COUNT IS PRINTED, NEVER SILENTLY SUBTRACTED (DESIGN section 5: no silent
+        // caps). `adjudicated + deferred == newly_enrolled` is checkable on the line itself, so a
+        // gate that quietly stopped looking at most of its population cannot render as one that
+        // looked and found nothing.
+        eprintln!(
+            "required-floor: newly_enrolled={} adjudicated={} deferred_outside_execution={} \
+             enrolment_margin_blocking={} budget_ms={budget_ms} (p90 runner envelope over 12 runs \
+             / 3 hosts / 398 identities at identical eval_steps; authority \
+             v2.workflow.floor_enrolment_margin)",
+            newly_enrolled.len(),
+            newly_enrolled.len() - deferred,
+            deferred,
+            refused.len()
+        );
+        outcome.enrolment_margin_blocking = refused;
+    } else {
+        eprintln!(
+            "[enrolment-margin] GATE NOT EVALUATED (no CI diff baseline on a local run): the \
+             newly enrolled set is unobservable, so this run makes no claim about it"
+        );
     }
     Ok(outcome)
 }
