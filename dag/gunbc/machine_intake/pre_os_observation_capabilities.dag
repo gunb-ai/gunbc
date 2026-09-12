@@ -37,9 +37,13 @@ type SelReadCapability
 // a MEASURED answer -- the controller was asked and answered "unknown" -- and it is distinct from
 // OemDecodeNotProbed, where nobody asked. Only OemDecodeAvailable licenses a downstream decode, and
 // it must name the declaration that carries the decode table so the citation is checkable.
+// OemDecodeRenderedUncited is the fourth state: the controller's surface rendered SOME description
+// for OEM records, but no cited decode table stands behind it, so it licenses nothing either --
+// a rendering is not an authority (DESIGN section 4d).
 type OemSelDecodeCapability
   = OemDecodeAvailable { decode_authority: DeclarationRef }
   | OemDecodeControllerDeclaredUnknown
+  | OemDecodeRenderedUncited { rendering: NonEmptyStr }
   | OemDecodeNotProbed
 
 type WebEventLogCapability
@@ -60,11 +64,20 @@ type WebEventLogDecodeObservation {
   oem_sel_data_empty: Bool
 }
 
+// THE RENDERING THAT MEANS "NO DECODE" ON THIS SURFACE, as a row so the string the derivation turns
+// on is nameable.
+data web_event_log_unknown_rendering: NonEmptyStr = "unknown"
+
+// DERIVED FROM THE FIELDS, NOT FROM THE COUNT (review 64251): no OEM records served is not a probe;
+// a uniform "unknown" description WITH empty OEM bytes is the controller declining; anything else
+// the surface rendered is carried as an uncited rendering, which licenses no decode.
 fn oem_sel_decode_capability_of_web_log(observation: WebEventLogDecodeObservation) -> OemSelDecodeCapability {
   if observation.oem_records_served == 0 {
     OemDecodeNotProbed
-  } else {
+  } else if observation.advanced_event_description_uniformly == web_event_log_unknown_rendering && observation.oem_sel_data_empty {
     OemDecodeControllerDeclaredUnknown
+  } else {
+    OemDecodeRenderedUncited { rendering: observation.advanced_event_description_uniformly }
   }
 }
 

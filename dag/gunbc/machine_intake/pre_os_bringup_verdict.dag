@@ -17,6 +17,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   OemDecodeAvailable,
   OemDecodeControllerDeclaredUnknown,
   OemDecodeNotProbed,
+  OemDecodeRenderedUncited,
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
   console_silence_is_informative,
@@ -275,12 +276,14 @@ fn oem_payload_seen_in_window(observed: OemSelPayloadObserved) -> Bool {
 type OemSelDecodeStanding
   = ControllerDecodes { decode_authority: DeclarationRef }
   | ControllerDeclaredUnknown
+  | ControllerRenderedUncited { rendering: NonEmptyStr }
   | DecodeNotProbed
 
 fn oem_sel_decode_standing(profile: PreOsObservationCapabilities) -> OemSelDecodeStanding {
   match profile.oem_sel_decode {
     OemDecodeAvailable { decode_authority: a } => ControllerDecodes { decode_authority: a }
     OemDecodeControllerDeclaredUnknown => ControllerDeclaredUnknown
+    OemDecodeRenderedUncited { rendering: r } => ControllerRenderedUncited { rendering: r }
     OemDecodeNotProbed => DecodeNotProbed
   }
 }
@@ -396,6 +399,7 @@ fn association_is_decoded(association: OemSelEmpiricalAssociation) -> Bool {
   match association.decode_standing {
     ControllerDecodes { decode_authority: _ } => true
     ControllerDeclaredUnknown => false
+    ControllerRenderedUncited { rendering: _ } => false
     DecodeNotProbed => false
   }
 }

@@ -1,6 +1,6 @@
 module test.claim.machine_intake.pre_os_bringup_witness_test
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.process { ExitFailure, ExitSuccess, ProcessExit }
@@ -18,9 +18,14 @@ import extdeps.bmc.ipmi_sel {
   sel_record_type_of_code,
 }
 import gunbc.machine_intake_pre_os_observation_capabilities {
+  OemDecodeControllerDeclaredUnknown,
+  OemDecodeNotProbed,
+  OemDecodeRenderedUncited,
   PerSlotLocalizationExposed,
   PreOsObservationCapabilities,
   SolPresentEmitting,
+  WebEventLogDecodeObservation,
+  oem_sel_decode_capability_of_web_log,
 }
 import gunbc.machine_intake_pre_os_bringup_attempt {
   BmcControllerReset,
@@ -367,6 +372,50 @@ test fn a_payload_absent_from_the_window_has_no_first_seen_record() -> Bool {
   )
   match assoc.observed {
     OemPayloadAbsentFromWindow { payload: _ } => true
+    _ => false
+  }
+}
+
+// ── the web-log decode derivation ──────────────────────────────────────────────────────────────
+
+fn web_log(oem_records: Int, description: String, oem_bytes_empty: Bool) -> WebEventLogDecodeObservation {
+  WebEventLogDecodeObservation {
+    artifact_path: "fixture.json",
+    digest: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }),
+    records_served: 500,
+    oem_records_served: oem_records,
+    advanced_event_description_uniformly: description as NonEmptyStr,
+    oem_sel_data_empty: oem_bytes_empty,
+  }
+}
+
+// THE DECLINE IS READ FROM THE DESCRIPTION AND THE EMPTY BYTES, not from the record count
+// (review 64251): a surface that rendered a description is carried as uncited, and a surface
+// that served no OEM records was not probed.
+test fn a_uniform_unknown_with_empty_oem_bytes_is_the_controller_declining() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 67, description: "unknown", oem_bytes_empty: true)) {
+    OemDecodeControllerDeclaredUnknown => true
+    _ => false
+  }
+}
+
+test fn a_rendered_description_is_carried_as_uncited_not_as_unknown() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 67, description: "memory training failure", oem_bytes_empty: false)) {
+    OemDecodeRenderedUncited { rendering: r } => r == "memory training failure"
+    _ => false
+  }
+}
+
+test fn unknown_beside_present_oem_bytes_is_not_a_decline_either() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 67, description: "unknown", oem_bytes_empty: false)) {
+    OemDecodeRenderedUncited { rendering: _ } => true
+    _ => false
+  }
+}
+
+test fn no_oem_records_served_is_not_a_probe() -> Bool {
+  match oem_sel_decode_capability_of_web_log(observation: web_log(oem_records: 0, description: "unknown", oem_bytes_empty: true)) {
+    OemDecodeNotProbed => true
     _ => false
   }
 }
