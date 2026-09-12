@@ -68,7 +68,7 @@ fn gi_baseline() -> GenerationIdentity {
   }
 }
 
-// One perturbation per axis. Each moves EXACTLY one fact and holds the other five
+// One perturbation per axis. Each moves EXACTLY one fact and holds every other
 // fixed, so a carrier that folded the six into a single scalar would be unable to
 // tell these six apart — which is precisely what the per-axis assertions below
 // falsify.
@@ -185,7 +185,7 @@ test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
   )
 }
 
-// The five axes NOT perturbed must still agree, so a perturbation cannot be reported
+// The axes NOT perturbed must still agree, so a perturbation cannot be reported
 // as a whole-identity smear. Without this, an implementation that marked every axis
 // mismatched on any change would pass the naming assertion above by accident.
 test fn perturbing_one_axis_leaves_the_other_five_agreeing() -> Bool {
