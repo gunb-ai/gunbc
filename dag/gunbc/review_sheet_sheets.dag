@@ -25,7 +25,6 @@ import gunbc.review_sheet_projection {
   AppendListingRow,
   classify_review_sheet,
   conflict_reason,
-  a1_column,
   a1_cell_eq,
   a1_cell_wire,
   a1_origin_cell,
@@ -37,7 +36,6 @@ import gunbc.review_sheet_projection {
   A1WireOpenColumn,
   A1WireCell,
   A1WireUnreadable,
-  ReviewSheetSchema,
 }
 import extdeps.google.sheets {
   ValueRange,
@@ -136,26 +134,18 @@ type SheetA1Range {
   end: SheetA1End
 }
 
-fn sheet_a1_end_wire(end: SheetA1End) -> String {
-  match end {
-    A1EndOpen { column: c } => c.letter as String
-    A1EndClosed { cell: c } => a1_cell_wire(cell: c)
-    A1EndWholeTab => ""
-  }
-}
-
 fn sheet_a1_range_wire(range: SheetA1Range) -> String {
   match range.end {
     A1EndWholeTab => range.tab as String
-    A1EndOpen { column: _ } =>
+    A1EndOpen { column: c } =>
       concat(
         range.tab as String,
-        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", sheet_a1_end_wire(end: range.end)))),
+        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", c.letter as String))),
       )
-    A1EndClosed { cell: _ } =>
+    A1EndClosed { cell: c } =>
       concat(
         range.tab as String,
-        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", sheet_a1_end_wire(end: range.end)))),
+        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", a1_cell_wire(cell: c)))),
       )
   }
 }
@@ -178,10 +168,6 @@ fn review_sheet_get_values_request(tab: NonEmptyStr) -> SheetA1Range {
     origin: a1_origin_cell(),
     end: A1EndWholeTab,
   }
-}
-
-fn review_sheet_get_values_last_column(schema: ReviewSheetSchema) -> A1Column? {
-  a1_column(index: schema.columns |> count)
 }
 
 fn a1_readback_standing(range: String) -> A1ReadbackStanding {

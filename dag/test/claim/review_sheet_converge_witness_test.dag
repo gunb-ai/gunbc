@@ -57,7 +57,6 @@ import gunbc.review_sheet_sheets {
   review_sheet_batch_value_input_option,
   review_sheet_get_value_render_option,
   review_sheet_get_values_request,
-  review_sheet_get_values_last_column,
   sheet_a1_range_wire,
   SheetA1Range,
   A1EndOpen,
@@ -833,10 +832,6 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
         tab: "Review" as NonEmptyStr,
       ),
     ) == "Review"
-    && match review_sheet_get_values_last_column(schema: w_schema()) {
-      Present { value: col } => (col.letter as String) == "D"
-      Absent => false
-    }
     && match live_serviceusage_get_frontier {
       Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
         (b.decl_name as String) == "service_enablement_from_state_wire"
