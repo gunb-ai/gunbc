@@ -67,6 +67,9 @@ import v2.workflow.legacy_baseline_capture {
   legacy_baseline_capture_capability,
   capture_blocked_reason,
 }
+import v2.workflow.legacy_baseline_persisted_observation {
+  persisted_legacy_baseline_outstanding,
+}
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import gunbc.compiler_frontend_program_status {
   MilestoneStanding,
@@ -517,9 +520,8 @@ test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bo
 // THE SAME QUESTION. XL-1 used to delegate to NamespaceBaselineObservationComplete outright, which
 // made "the capture transaction can succeed" and "a capture has been taken against THIS base" one
 // row. They separate exactly on the CaptureAvailable arm: the stage clears (its deliverable is the
-// capability) while the milestone becomes NOT-DERIVABLE (no persisted observation against the
-// current base). This arm asserts the contract on whichever arm is live, so it does not red when
-// the capability legitimately becomes available -- it reds if the two are re-fused.
+// capability) while the milestone reads persisted_legacy_baseline_outstanding (unpinned live pin,
+// so outstanding until ACT-0 names a base). This arm asserts the contract on whichever arm is live.
 test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base() -> Bool {
   match legacy_baseline_capture_capability() {
     CaptureBlocked { phase: p, cause: c } =>
@@ -528,7 +530,9 @@ test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base
         expected: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c }))
     CaptureAvailable =>
       standing_is(want: ClassClear, s: stage_status(s: StageXL1BaselineCapture))
-        && standing_is(want: ClassNotDerivable, s: milestone_status(m: NamespaceBaselineObservationComplete))
+        && standing_agrees_with_population(
+          s: milestone_status(m: NamespaceBaselineObservationComplete),
+          expected: persisted_legacy_baseline_outstanding())
   }
 }
 
@@ -586,9 +590,8 @@ test fn the_wave_admission_milestone_is_wired_to_the_phase_roster() -> Bool {
 }
 
 // THE BASELINE MILESTONE'S TWO ARMS, CHECKED WITHOUT PINNING TODAY'S CAPABILITY. While capture is
-// blocked the milestone must carry exactly the capability fold's reasons; when capture becomes
-// available the contract is the NotDerivable arm, and this witness accepts it rather than redding
-// on that legitimate transition (the backward contract this file has been corrected for twice).
+// blocked the milestone must carry exactly the capability fold's reasons; when capture is available
+// it must carry the persist outstanding fold.
 test fn the_baseline_milestone_follows_the_capture_capability() -> Bool {
   match legacy_baseline_capture_capability() {
     CaptureBlocked { phase: p, cause: c } =>
@@ -596,7 +599,9 @@ test fn the_baseline_milestone_follows_the_capture_capability() -> Bool {
         s: milestone_status(m: NamespaceBaselineObservationComplete),
         expected: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c }))
     CaptureAvailable =>
-      standing_is(want: ClassNotDerivable, s: milestone_status(m: NamespaceBaselineObservationComplete))
+      standing_agrees_with_population(
+        s: milestone_status(m: NamespaceBaselineObservationComplete),
+        expected: persisted_legacy_baseline_outstanding())
   }
 }
 

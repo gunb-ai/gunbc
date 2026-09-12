@@ -42,6 +42,9 @@ import v2.workflow.legacy_baseline_capture {
   legacy_baseline_capture_capability,
   capture_blocked_reason,
 }
+import v2.workflow.legacy_baseline_persisted_observation {
+  persisted_legacy_baseline_outstanding,
+}
 import gunbc.required_ci_phase_roster {
   RequiredCiPhase,
   NamespaceWaveAdmissionPhase,
@@ -163,7 +166,6 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 // milestone -- stages_awaiting joins it.
 type MissingInstrument
   = PhaseCargoExecutionFact
-  | PersistedLegacyBaselineObservation
   | DeclaringIdentitySpellingCensus
   | RepairInputOriginRosterProducer
   | ExactOccurrenceResidualCensus
@@ -174,7 +176,6 @@ type MissingInstrument
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
-    PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
     DeclaringIdentitySpellingCensus => "a census of occurrences not spelled at their declaring identity (XL-3's population)"
     RepairInputOriginRosterProducer => "a repair-input origin roster producer: source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition (XL-0's population)"
     ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
@@ -249,7 +250,6 @@ type InstrumentObstacle
 fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
   match i {
     PhaseCargoExecutionFact => NotBuilt
-    PersistedLegacyBaselineObservation => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
     RepairInputOriginRosterProducer => NotBuilt
     ExactOccurrenceResidualCensus => NotBuilt
@@ -396,11 +396,9 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 // THE BLOCKED ARM IS OUTSTANDING, NOT NOT-DERIVABLE, since F-0: the capability fold IS the
 // milestone's readable population while a capture cannot complete -- each blocked reason is a
 // named, observed piece of outstanding work, and reporting it unanswerable hid real known
-// work behind the missing-instrument label. The AVAILABLE arm stays NotDerivable on purpose:
-// v2.workflow.legacy_baseline_capture rules out a receipts roster in its own words (a plain
-// row is not a relabel-safe durable form, and the question is re-asked per base), so once a
-// capture CAN complete, whether one HAS completed against the CURRENT base has no population
-// here until the persisted-observation instrument exists.
+// work behind the missing-instrument label. The AVAILABLE arm reads the persist outstanding
+// fold: v2.workflow.legacy_baseline_persisted_observation holds a capture by its own
+// GitObjectId, never a receipts roster, and the live pin is unpinned until ACT-0 names a base.
 // THE THREE DELETION MILESTONES, DERIVED FROM THE SUBJECT ROSTER SINCE F-0 -- at DECLARED-ROW
 // grain, stated at exactly that strength. gunbc.namespace_cut_subject_roster carries every
 // authority scheduled to disappear as string-identity probes (not authored citations, which
@@ -465,10 +463,12 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
             )
           )
         CaptureAvailable =>
-          NotDerivable {
-            why: "a capture can now complete, but no capture has been taken against the current pre-cut base. Any movement of that base invalidates a prior enrolment, so this is asked per base rather than accumulated -- and the capture module itself rules out a receipts roster as a relabel-unsafe durable form." as NonEmptyStr,
-            cause: needs(i: PersistedLegacyBaselineObservation)
-          }
+          standing_from_evidence(
+            e: observe_outstanding(
+              subject: "namespace Step 0.5 / XL-1: baseline capture against the current pre-cut base" as NonEmptyStr,
+              outstanding: persisted_legacy_baseline_outstanding()
+            )
+          )
       }
     NamespaceFirstSemanticWave =>
       NotDerivable {
@@ -694,7 +694,6 @@ fn join_names(names: List<String>) -> String {
 // ---------------------------------------------------------------------------------------------
 data all_missing_instruments: List<MissingInstrument> = [
   PhaseCargoExecutionFact,
-  PersistedLegacyBaselineObservation,
   DeclaringIdentitySpellingCensus,
   RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
@@ -715,16 +714,10 @@ fn milestone_missing_instruments(m: ProgramMilestone) -> List<MissingInstrument>
   }
 }
 
-// AN INSTRUMENT CAN BE AWAITED CONDITIONALLY: PersistedLegacyBaselineObservation is the
-// CaptureAvailable arm's contract on NamespaceBaselineObservationComplete, and while capture is
-// BLOCKED that arm is not live, so the awaited-by join over live standings counts it zero. Zero
-// here is not death -- deleting the row would delete the very contract the capability's
-// transition lands on -- so the conditional citation is declared once, and the liveness witness
-// admits exactly this roster's members beside the live join. A row in this list whose citing
-// arm is deleted outright IS dead, and pruning it means editing both the arm and this row.
-data conditionally_awaited_instruments: List<MissingInstrument> = [
-  PersistedLegacyBaselineObservation,
-]
+// Conditional await remains for instruments whose citing arm is not live on every standing.
+// PersistedLegacyBaselineObservation retired: the persist producer exists and the baseline
+// milestone reads its outstanding fold directly.
+data conditionally_awaited_instruments: List<MissingInstrument> = []
 
 fn milestones_awaiting(i: MissingInstrument) -> List<String> {
   fold(program_milestones, init: [], f: fn(acc, m) {

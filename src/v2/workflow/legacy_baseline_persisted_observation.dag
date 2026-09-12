@@ -1,0 +1,101 @@
+module v2.workflow.legacy_baseline_persisted_observation
+
+import std.types { String, List, Bool }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+import v2.workflow.legacy_baseline_capture {
+  LegacyBaselineCapture,
+  LegacyBaselineCaptureOutcome,
+  LegacyBaselineCaptured,
+  LegacyBaselineHeadMismatch,
+  LegacyBaselineWorktreeMismatch,
+  LegacyBaselineSubjectMismatch,
+  LegacyBaselineObservationIncomplete,
+  LegacyBaselineRepairRosterMalformed,
+  LegacyBaselineRepairRosterMismatch,
+  LegacyBaselineRepairSubjectDiverged,
+  LegacyBaselineRepairIncomplete,
+  LegacyBaselineExecutionRefused
+}
+
+// PERSISTENCE IS THE CAPTURE CARRIER, NOT A RECEIPTS ROSTER. A row of (base, identity) is a
+// relabeling constructor: it lets an identity captured at B be presented beside B+1.
+// persist_legacy_baseline is the only mint, and it accepts only LegacyBaselineCaptured. Lookup
+// compares the requested GitObjectId to capture.base_commit; a different id cannot be written onto
+// a held capture.
+//
+// THIS MODULE DOES NOT CLAIM A CORPUS ORACLE. The live pin is PreCutBaseUnpinned until ACT-0 names
+// a base. A fixture capture may be held in tests; it does not enroll HEAD. Consumers: capture
+// mint, gunbc.compiler_frontend_program_status NamespaceBaselineObservationComplete (outstanding
+// fold), ACT-0 BaselineCaptureReceipt (later digest of a re-run), XL-2 chain prerequisite via XL-1
+// capability, and the discriminating witnesses.
+
+type PersistedLegacyBaseline<O, R> sole_constructor {
+  capture: LegacyBaselineCapture<O, R>
+}
+
+type PersistAdmission<O, R>
+  = PersistAdmitted { persisted: PersistedLegacyBaseline<O, R> }
+  | PersistRefusedNotCaptured
+
+fn persist_legacy_baseline<O, R>(
+  outcome: LegacyBaselineCaptureOutcome<O, R>
+) -> PersistAdmission<O, R> {
+  match outcome {
+    LegacyBaselineCaptured { capture: c } =>
+      PersistAdmitted { persisted: PersistedLegacyBaseline { capture: c } }
+    LegacyBaselineHeadMismatch { requested: _, materialized: _ } => PersistRefusedNotCaptured
+    LegacyBaselineWorktreeMismatch { commit_tree: _, observed_tree: _ } => PersistRefusedNotCaptured
+    LegacyBaselineSubjectMismatch { field: _ } => PersistRefusedNotCaptured
+    LegacyBaselineObservationIncomplete { completeness: _ } => PersistRefusedNotCaptured
+    LegacyBaselineRepairRosterMalformed { sites: _ } => PersistRefusedNotCaptured
+    LegacyBaselineRepairRosterMismatch { subject_digest: _, roster_digest: _ } => PersistRefusedNotCaptured
+    LegacyBaselineRepairSubjectDiverged { field: _ } => PersistRefusedNotCaptured
+    LegacyBaselineRepairIncomplete { completeness: _ } => PersistRefusedNotCaptured
+    LegacyBaselineExecutionRefused { phase: _, cause: _ } => PersistRefusedNotCaptured
+  }
+}
+
+fn persisted_against_requested<O, R>(
+  persisted: PersistedLegacyBaseline<O, R>,
+  requested: GitObjectId
+) -> Bool {
+  git_object_id_eq(left: persisted.capture.base_commit, right: requested)
+}
+
+type PreCutBasePin
+  = PreCutBaseUnpinned
+  | PreCutBasePinned { base: GitObjectId }
+
+fn current_pre_cut_base_pin() -> PreCutBasePin {
+  PreCutBaseUnpinned
+}
+
+fn persisted_enrollment_outstanding<O, R>(
+  pin: PreCutBasePin,
+  held: PersistedLegacyBaseline<O, R>?
+) -> List<String> {
+  match pin {
+    PreCutBaseUnpinned =>
+      ["pre-cut base is unpinned; enrolment cannot bind a capture to an unnamed HEAD"]
+    PreCutBasePinned { base: b } =>
+      match held {
+        Absent =>
+          ["no LegacyBaselineCapture is held whose base_commit equals the pinned pre-cut base"]
+        Present { value: p } =>
+          if persisted_against_requested(persisted: p, requested: b) {
+            []
+          } else {
+            ["held capture.base_commit is not the pinned pre-cut base; relabel refused"]
+          }
+      }
+  }
+}
+
+fn persisted_legacy_baseline_outstanding() -> List<String> {
+  match current_pre_cut_base_pin() {
+    PreCutBaseUnpinned =>
+      ["pre-cut base is unpinned; enrolment cannot bind a capture to an unnamed HEAD"]
+    PreCutBasePinned { base: _ } =>
+      ["pinned pre-cut base has no held LegacyBaselineCapture joined by base_commit"]
+  }
+}

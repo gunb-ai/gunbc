@@ -1,9 +1,23 @@
 module v2.workflow.legacy_baseline_capture
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { ValidatedOccurrenceTransport }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
-import v2.workflow.legacy_repair_observation { CompleteLegacyRepairObservation }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+import v2.workflow.legacy_repair_observation {
+  CompleteLegacyRepairObservation,
+  LegacyRepairObservation,
+  RepairSite,
+  RepairSiteRoster,
+  RepairRosterProven,
+  RepairRosterRepeatedSite,
+  RepairRosterMismatch,
+  prove_repair_roster,
+  admit_complete_repair_observation,
+  RepairObservationAdmitted,
+  RepairObservationSubjectDiverged,
+  RepairObservationRefused
+}
 import std.observation_completeness { ObservationCompleteness }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
@@ -63,24 +77,15 @@ fn materialization_receipt(
   }
 }
 
-// THIS TYPE HAS NO CONSTRUCTOR AND THAT IS THE ENTIRE POINT. A complete BINDING observation must
-// not stand in for a complete REPAIR observation: O_X(B) records which binding the legacy resolver
-// selected, R_X(B) which use-line repair decisions it made -- separate facts that may share one
-// capture envelope. The repair census has a producer -- reference_derived_census over the retained
-// per-candidate disposition rows -- but no admission envelope with an independent denominator, and
-// that denominator is an open question in the census owner's subject, not a missing field here.
-//
-// Declaring the field with an unconstructable type made the accepted arm UNREACHABLE rather than
-// reachable-with-a-stub. A placeholder would admit a capture whose repair half was never taken --
-// fabricated plausible output at the exact seam the cut is authorised against.
-//
-// THAT PLACEHOLDER IS NOW GONE AND THE REAL CARRIER IS IMPORTED. It was a constructor-less,
-// field-less declaration standing in for v2.workflow.legacy_repair_observation before that
-// authority existed, and this module's annotation committed to its deletion by whichever change
-// landed second. #9440 landed first, so the deletion rides here -- in the same change that merges
-// it, never as a follow-up, because declaration names bind closure-globally and two declarations of
-// one name on main is a collision, not a shadowing. THE ACCEPTED ARM IS NOW CONSTRUCTIBLE FOR THE
-// FIRST TIME.
+// A complete BINDING observation must not stand in for a complete REPAIR observation: O_X(B)
+// records which binding the legacy resolver selected, R_X(B) which use-line repair decisions it
+// made -- separate facts that may share one capture envelope. The repair census producer remains
+// v1.compiler.emit_rust reference_derived_census; this module does not reconstruct it. What this
+// phase consumes is the admission envelope that already lives in
+// v2.workflow.legacy_repair_observation: a RepairSiteRoster stated before answering, proven against
+// the observation subject, then joined. The envelope is fed here, not re-scoped away, and not
+// replaced by XL-0's pre-eligibility origin roster, whose grain/superset/subset disagree with
+// repair sites.
 //
 // WHY THE DELETION COULD NOT WAIT FOR A FOLLOW-UP: neither author can observe this collision by
 // compiling their own branch. Both were green against main independently; the breakage exists only
@@ -97,9 +102,8 @@ fn materialization_receipt(
 // the emitter, and neither envelope may name it.
 
 // NO PUBLIC CONSTRUCTOR. Every field is either a proven equality or a carrier obtainable only by
-// having done the work: the observation is `sole_constructor` and minted only by the admission, the
-// repair observation has no constructor at all, and the commit and tree are constructor-validated
-// git object ids.
+// having done the work: both observations are `sole_constructor` and minted only by their
+// admissions, and the commit and tree are constructor-validated git object ids.
 //
 // AND THERE IS NO RELABELING CONSTRUCTOR. Nothing here projects a capture into a plainer record,
 // because a projection carrying (base, identity) as ordinary fields IS a relabeling constructor: it
@@ -123,8 +127,7 @@ type LegacyBaselineCapturePhase
   | RepairCensusPhase
 
 type LegacyBaselineCaptureRefusal
-  = RepairObservationEnvelopeAbsent
-  | ObserverNeverReachedDecision
+  = ObserverNeverReachedDecision
 
 // THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
 // different owners and different repairs: a source-set mismatch means the tree was not the one
@@ -152,6 +155,13 @@ type LegacyBaselineCaptureOutcome<O, R>
   | LegacyBaselineWorktreeMismatch { commit_tree: GitObjectId, observed_tree: GitObjectId }
   | LegacyBaselineSubjectMismatch { field: LegacyObservationSubjectField }
   | LegacyBaselineObservationIncomplete { completeness: ObservationCompleteness<Int> }
+  | LegacyBaselineRepairRosterMalformed { sites: List<RepairSite> }
+  | LegacyBaselineRepairRosterMismatch {
+      subject_digest: Fnv1a64Structural,
+      roster_digest: Fnv1a64Structural
+    }
+  | LegacyBaselineRepairSubjectDiverged { field: String }
+  | LegacyBaselineRepairIncomplete { completeness: ObservationCompleteness<RepairSite> }
   | LegacyBaselineExecutionRefused {
       phase: LegacyBaselineCapturePhase,
       cause: LegacyBaselineCaptureRefusal
@@ -207,7 +217,9 @@ fn capture_legacy_baseline<O, R>(
   materialization: CheckoutMaterialization,
   tree_subject: TreeDerivedSubjectReceipt,
   observation: LegacyBindingObservation<O>,
-  transport: ValidatedOccurrenceTransport
+  transport: ValidatedOccurrenceTransport,
+  repair_observation: LegacyRepairObservation<R>,
+  repair_roster: RepairSiteRoster
 ) -> LegacyBaselineCaptureOutcome<O, R> {
   if !git_object_id_eq(left: materialization.requested, right: materialization.observed_head) {
     LegacyBaselineHeadMismatch {
@@ -227,10 +239,27 @@ fn capture_legacy_baseline<O, R>(
       Absent =>
         match admit_complete_observation(observation: observation, transport: transport) {
           ObservationRefused { completeness: c } => LegacyBaselineObservationIncomplete { completeness: c }
-          ObservationAdmitted { admitted: _ } =>
-            LegacyBaselineExecutionRefused {
-              phase: RepairCensusPhase,
-              cause: RepairObservationEnvelopeAbsent
+          ObservationAdmitted { admitted: binding } =>
+            match prove_repair_roster(subject: repair_observation.subject, roster: repair_roster) {
+              RepairRosterRepeatedSite { sites: s } => LegacyBaselineRepairRosterMalformed { sites: s }
+              RepairRosterMismatch { subject_digest: sd, roster_digest: rd } =>
+                LegacyBaselineRepairRosterMismatch { subject_digest: sd, roster_digest: rd }
+              RepairRosterProven { proven: proven } =>
+                match admit_complete_repair_observation(observation: repair_observation, proven: proven) {
+                  RepairObservationSubjectDiverged { field: f } =>
+                    LegacyBaselineRepairSubjectDiverged { field: f }
+                  RepairObservationRefused { completeness: c } =>
+                    LegacyBaselineRepairIncomplete { completeness: c }
+                  RepairObservationAdmitted { admitted: repair } =>
+                    LegacyBaselineCaptured {
+                      capture: LegacyBaselineCapture {
+                        base_commit: materialization.requested,
+                        base_tree: materialization.observed_tree,
+                        observation: binding,
+                        repair_observation: repair
+                      }
+                    }
+                }
             }
         }
     }
@@ -238,19 +267,15 @@ fn capture_legacy_baseline<O, R>(
 }
 
 // THE MILESTONE'S POPULATION, AND IT IS DELIBERATELY NOT A ROSTER OF ROWS. There is no committed
-// list of captures, because a captured baseline has no relabel-safe durable form yet and a plain
-// row would be one. What a consumer can read is whether the capture operation is currently CAPABLE
-// of producing an accepted capture, and today it is not: the repair envelope is absent, so every
-// execution refuses at RepairCensusPhase.
-//
-// Any movement of the pre-cut base after capture invalidates enrolment, so this is a standing
-// question re-asked per base, not a fact that accumulates -- a second reason there is no roster.
+// list of captures: a plain (base, identity) row is a relabeling constructor. Capability answers
+// whether the capture transaction can mint; whether a mint is HELD against a named base is
+// v2.workflow.legacy_baseline_persisted_observation, which stores the capture carrier itself.
 type LegacyBaselineCaptureCapability
   = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
   | CaptureAvailable
 
 fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
-  CaptureBlocked { phase: RepairCensusPhase, cause: RepairObservationEnvelopeAbsent }
+  CaptureAvailable
 }
 
 fn capture_blocked_reason(c: LegacyBaselineCaptureCapability) -> List<String> {
@@ -273,7 +298,6 @@ fn capture_phase_label(p: LegacyBaselineCapturePhase) -> String {
 
 fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
   match cause {
-    RepairObservationEnvelopeAbsent => "R_X(B) has no admission envelope with an independent denominator"
     ObserverNeverReachedDecision => "the observer never reached its decision stage"
   }
 }
