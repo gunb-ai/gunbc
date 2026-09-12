@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import std.scoped_authorization { AttemptIdentity }
-import std.temporal_effect { LeaseAbsent, LeaseEpoch, LeaseRunningExpected, held_lease }
+import std.temporal_effect { LeaseAbsent, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, held_lease }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.ipmi_sel {
   FirmwareHang,
@@ -64,6 +64,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   FirmwareProgressRecord,
   LocalizableFrom,
   FirmwareEmittedUndecodedErrorCodes,
+  FirmwareStatedUnrecognizedError,
   NoRestartInWindow,
   SelStandardDecodeUnavailable,
   NothingObservedBeyondActivation,
@@ -180,6 +181,19 @@ test fn a_console_deadline_not_after_the_alive_instant_refuses_readiness() -> Bo
     ],
   ) {
     NotReady { gap: ConsoleDeadlineNotAfterAliveInstant { client_alive_at: 900, terminate_deadline: 900 } } => true
+    _ => false
+  }
+}
+
+test fn a_stale_console_lease_refuses_even_with_every_proof_present() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    profile: mtcollins1_pre_os_capabilities,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningStale),
+    collectors: proven_collectors(),
+  ) {
+    NotReady { gap: ConsoleLeaseNotHeld { verdict: _ } } => true
     _ => false
   }
 }
@@ -620,6 +634,18 @@ test fn undecoded_err_codes_beside_an_empty_window_are_their_own_undetermined_ca
   }
 }
 
+// AN `ERROR:` STATEMENT THIS GRAMMAR HAS NOT SEEN IS NOT A TRAINING REFUSAL (review 64457).
+test fn an_unrecognized_error_statement_is_undetermined_not_a_training_refusal() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
+    console: SolHostBytesObserved { capture_path: "x", bytes: byte_size(count: 500), report: firmware_console_report(lines: ["ERROR: unable to read boot device"]) },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: FirmwareStatedUnrecognizedError { statement: st } } => st == "ERROR: unable to read boot device"
+    _ => false
+  }
+}
+
 test fn a_statement_without_locus_lines_carries_an_absent_locus() -> Bool {
   match firmware_console_report(lines: ["ERROR:   Non-identical DIMM mixture NOT supported!"]) {
     TrainingRefusedByFirmware { statement: _, locus: l } =>
@@ -629,8 +655,8 @@ test fn a_statement_without_locus_lines_carries_an_absent_locus() -> Bool {
 }
 
 test fn a_malformed_locus_line_yields_absent_not_a_guess() -> Bool {
-  match firmware_console_report(lines: ["ERROR:   SK[x]: 00110010", "ERROR: refused"]) {
-    TrainingRefusedByFirmware { statement: st, locus: l } => st == "ERROR: refused" && match l.socket { Absent => true  _ => false }
+  match firmware_console_report(lines: ["ERROR:   SK[x]: 00110010", "ERROR: Non-identical DIMM mixture NOT supported!"]) {
+    TrainingRefusedByFirmware { statement: _, locus: l } => match l.socket { Absent => true  _ => false }
     _ => false
   }
 }

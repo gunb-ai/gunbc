@@ -211,9 +211,10 @@ fn first_collector_gap(profile: PreOsObservationCapabilities, collectors: List<C
 // then every required collector's proof; the first gap refuses and nothing downstream of it is
 // constructed. On a platform whose console capability is SolAbsent there is no session to hold,
 // so an honestly absent lease is not a gap there (review 64441); demanding one would be the
-// over-generalised prohibition DESIGN section 4d names. Note what is NOT an input: a power
-// action. Readiness is decided with no knowledge of what will be done, so it cannot be relaxed
-// for a "harmless" one.
+// over-generalised prohibition DESIGN section 4d names. The lease decision and the construction
+// live in ONE function so no helper can be handed an unchecked lease and asked to construct
+// (review 64457). Note what is NOT an input: a power action. Readiness is decided with no
+// knowledge of what will be done, so it cannot be relaxed for a "harmless" one.
 fn collectors_ready(
   attempt: AttemptIdentity,
   profile: PreOsObservationCapabilities,
@@ -221,52 +222,41 @@ fn collectors_ready(
   console_lease: HeldLease,
   collectors: List<CollectorStanding>,
 ) -> CollectorsReadiness {
+  let lease_gap = match profile.console {
+    SolAbsent { established_by: _ } => none
+    SolPresentSilent { established_by: _ } => console_lease_gap(console_lease: console_lease)
+    SolPresentEmitting { established_by: _ } => console_lease_gap(console_lease: console_lease)
+  }
   match sink {
     EvidenceSinkAbsent => NotReady { gap: EvidenceSinkMissing }
     EvidenceSinkPresent { directory: dir } =>
-      match profile.console {
-        SolAbsent { established_by: _ } =>
-          collectors_ready_after_lease(attempt: attempt, profile: profile, directory: dir, console_lease: console_lease, collectors: collectors)
-        SolPresentSilent { established_by: _ } =>
-          collectors_ready_with_held_lease(attempt: attempt, profile: profile, directory: dir, console_lease: console_lease, collectors: collectors)
-        SolPresentEmitting { established_by: _ } =>
-          collectors_ready_with_held_lease(attempt: attempt, profile: profile, directory: dir, console_lease: console_lease, collectors: collectors)
+      match lease_gap {
+        Present { value: gap } => NotReady { gap: gap }
+        Absent =>
+          match first_collector_gap(profile: profile, collectors: collectors) {
+            Present { value: gap } => NotReady { gap: gap }
+            Absent =>
+              Ready {
+                ready: CollectorsReady {
+                  attempt: attempt,
+                  evidence_sink: dir,
+                  console_lease: console_lease,
+                  collectors: collectors,
+                }
+              }
+          }
       }
   }
 }
 
-fn collectors_ready_with_held_lease(
-  attempt: AttemptIdentity,
-  profile: PreOsObservationCapabilities,
-  directory: NonEmptyStr,
-  console_lease: HeldLease,
-  collectors: List<CollectorStanding>,
-) -> CollectorsReadiness {
+// THE LEASE'S GAP, IF ANY, read through std.temporal_effect's own verdict: Converged is held,
+// every other verdict is carried into the refusal so a stale holder and a foreign holder stay
+// distinguishable to whoever repairs it.
+fn console_lease_gap(console_lease: HeldLease) -> CollectorGap? {
   let verdict = held_lease_observed_verdict(observed: console_lease.observed)
   match verdict {
-    Converged => collectors_ready_after_lease(attempt: attempt, profile: profile, directory: directory, console_lease: console_lease, collectors: collectors)
-    _ => NotReady { gap: ConsoleLeaseNotHeld { verdict: verdict } }
-  }
-}
-
-fn collectors_ready_after_lease(
-  attempt: AttemptIdentity,
-  profile: PreOsObservationCapabilities,
-  directory: NonEmptyStr,
-  console_lease: HeldLease,
-  collectors: List<CollectorStanding>,
-) -> CollectorsReadiness {
-  match first_collector_gap(profile: profile, collectors: collectors) {
-    Present { value: gap } => NotReady { gap: gap }
-    Absent =>
-      Ready {
-        ready: CollectorsReady {
-          attempt: attempt,
-          evidence_sink: directory,
-          console_lease: console_lease,
-          collectors: collectors,
-        }
-      }
+    Converged => none
+    _ => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
   }
 }
 

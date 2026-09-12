@@ -99,10 +99,26 @@ type FirmwareStatedLocus {
 // firmware emitted `ERR:` lines this parser cannot read and no `ERROR:` statement it can. Such a
 // capture must not fall through to "no restart in window", which reads like a pass; it is carried
 // as its own undetermined cause (eager-owl-205, 2026-09-12).
+// FirmwareErrorStatementUnrecognized is the second refusal arm (review 64457): an `ERROR:` line
+// that is not one of the training-refusal statements this grammar has seen establishes that the
+// firmware reported SOMETHING, not that memory training was refused. It is carried verbatim as
+// its own undetermined cause, never promoted to the training terminal.
 type FirmwareConsoleReport
   = NoTerminalStated
   | UndecodedErrorCodesOnly { err_lines: Int }
+  | FirmwareErrorStatementUnrecognized { statement: NonEmptyStr }
   | TrainingRefusedByFirmware { statement: NonEmptyStr, locus: FirmwareStatedLocus }
+
+// THE TRAINING-REFUSAL STATEMENTS THIS GRAMMAR RECOGNISES, one row per capture that showed one.
+// A statement is matched by containment after the `ERROR:` prefix and whitespace, so the
+// firmware's own indentation does not decide it.
+data firmware_training_refusal_statements: List<NonEmptyStr> = [
+  "Non-identical DIMM mixture NOT supported!",
+]
+
+fn is_training_refusal_statement(line: String) -> Bool {
+  any(firmware_training_refusal_statements, st => line |> contains(st as String))
+}
 
 data firmware_err_code_line_prefix: NonEmptyStr = "ERR:"
 
@@ -152,6 +168,7 @@ type FirmwareReportFold {
   statement: NonEmptyStr?
   socket: Int?
   memory_controller: Int?
+  unrecognized: NonEmptyStr?
 }
 
 fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReportFold {
@@ -162,31 +179,46 @@ fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReport
       statement: acc.statement,
       socket: match acc.socket { Present { value: _ } => acc.socket  Absent => bracketed_index_after(line: line, marker: firmware_socket_marker) },
       memory_controller: acc.memory_controller,
+      unrecognized: acc.unrecognized,
     }
   } else if line_carries_marker(line: line, marker: firmware_memory_controller_marker) {
     FirmwareReportFold {
       statement: acc.statement,
       socket: acc.socket,
       memory_controller: match acc.memory_controller { Present { value: _ } => acc.memory_controller  Absent => bracketed_index_after(line: line, marker: firmware_memory_controller_marker) },
+      unrecognized: acc.unrecognized,
     }
-  } else {
+  } else if is_training_refusal_statement(line: line) {
     FirmwareReportFold {
       statement: match acc.statement { Present { value: _ } => acc.statement  Absent => Present { value: trim(line) as NonEmptyStr } },
       socket: acc.socket,
       memory_controller: acc.memory_controller,
+      unrecognized: acc.unrecognized,
+    }
+  } else {
+    FirmwareReportFold {
+      statement: acc.statement,
+      socket: acc.socket,
+      memory_controller: acc.memory_controller,
+      unrecognized: match acc.unrecognized { Present { value: _ } => acc.unrecognized  Absent => Present { value: trim(line) as NonEmptyStr } },
     }
   }
 }
 
-// THE FIRST STATED CAUSE WINS, with the first socket and controller the firmware named; a capture
-// with no `ERROR:` statement reports no terminal, however many `ERR:` code lines it carries --
-// those are undecoded hex and are treated exactly as the OEM payload is.
+// THE FIRST RECOGNISED REFUSAL WINS, with the first socket and controller the firmware named; an
+// unrecognised `ERROR:` statement outranks bare `ERR:` codes and is carried verbatim; a capture
+// with neither reports no terminal, however many `ERR:` code lines it carries -- those are
+// undecoded hex and are treated exactly as the OEM payload is.
 fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
-  let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
+  let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none, unrecognized: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
   let err_lines = list_length(items: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
   match done.statement {
-    Absent => if err_lines > 0 { UndecodedErrorCodesOnly { err_lines: err_lines } } else { NoTerminalStated }
     Present { value: st } => TrainingRefusedByFirmware { statement: st, locus: FirmwareStatedLocus { socket: done.socket, memory_controller: done.memory_controller } }
+    Absent =>
+      match done.unrecognized {
+        Present { value: u } => FirmwareErrorStatementUnrecognized { statement: u }
+        Absent => if err_lines > 0 { UndecodedErrorCodesOnly { err_lines: err_lines } } else { NoTerminalStated }
+      }
   }
 }
 
@@ -320,6 +352,7 @@ fn remediation_localization(profile: PreOsObservationCapabilities) -> Remediatio
 
 type BringupUndeterminedCause
   = SelStandardDecodeUnavailable
+  | FirmwareStatedUnrecognizedError { statement: NonEmptyStr }
   | ConsoleBytesUnattributedToHost
   | FirmwareEmittedUndecodedErrorCodes { err_lines: Int }
   | NoRestartInWindow
@@ -369,6 +402,7 @@ fn pre_os_bringup_verdict(
   match stated {
     TrainingRefusedByFirmware { statement: st, locus: l } =>
       TrainingRefusedByFirmwareStatement { statement: st, localization: StatedByFirmware { locus: l } }
+    FirmwareErrorStatementUnrecognized { statement: st } => BringupUndetermined { cause: FirmwareStatedUnrecognizedError { statement: st } }
     UndecodedErrorCodesOnly { err_lines: _ } => sel_window_verdict(window: window, console: console, profile: profile)
     NoTerminalStated => sel_window_verdict(window: window, console: console, profile: profile)
   }
@@ -412,6 +446,7 @@ fn decoded_sel_window_verdict(
       SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
         match r {
           UndecodedErrorCodesOnly { err_lines: n } => BringupUndetermined { cause: FirmwareEmittedUndecodedErrorCodes { err_lines: n } }
+          FirmwareErrorStatementUnrecognized { statement: st } => BringupUndetermined { cause: FirmwareStatedUnrecognizedError { statement: st } }
           NoTerminalStated => BringupUndetermined { cause: NoRestartInWindow }
           TrainingRefusedByFirmware { statement: _, locus: _ } => BringupUndetermined { cause: NoRestartInWindow }
         }
