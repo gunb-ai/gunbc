@@ -474,6 +474,49 @@ fn witness_subject(entry: String, function: String, module_path: String) -> Witn
 // `gunbc.recurring_failure_mode required_lens_red_control_never_executes_from_its_home`, the red is
 // admitted in `gunbc.explicit_witness_admission` with a trigger naming the analyzer capability, and
 // the RESTORATION of this rung is that same trigger -- not the witness greening by any other route.
+//
+// THAT TRIGGER HAS NOW FIRED, AND THE RUNG STILL DOES NOT MOVE (gunbc#11142, 2026-09-12). The
+// analyzer capability the admission named is delivered: `port_reading` counted a named-argument
+// LABEL as a value identifier, which made the bare-name arm unreachable for every named-argument
+// call in the corpus, and with the census scoped to the argument's value the gate refuses the
+// fold-append specimen. `gate_red_quadratic_rejects` passes, its admission row is deleted in the
+// same change, and the witness is an ordinary permanent regression control again (DESIGN section
+// 4b(4)). The sentence above is left standing rather than reworded because it was true when
+// written and is the reason this paragraph exists.
+//
+// TWO EDITS ARE JOINTLY SUFFICIENT HERE, NOT ONE, AND THE ADMISSION ROW NAMED THIS EXACT HAZARD --
+// "it is deliberately NOT keyed on this witness greening, since editing the specimen or the control
+// would green the witness without the capability." The same change also re-points the specimen,
+// because gunbc#11019 moved `list_append`'s copied port from the left operand to the right (the
+// concat realization copies the appended side; `v2.std.fn_index` records that `v1_rt::rc_list_concat`
+// make_muts the left and clones the right). On the OLD specimen the carrier sat on the NON-copied
+// port, so the analyzer repair alone could not have minted a suspect. Attributing the green to the
+// repair alone would therefore be the rung inflation section 4b(1) forbids, measured on the wrong
+// path.
+//
+// WHAT DISCHARGES THE HAZARD IS A THREE-CELL MEASUREMENT, not the assurance above, and the cell that
+// matters is the one the admission row feared. Corrected specimen on the PRE-FIX seed -- origin/main
+// carrying only the `.root` repair, this PR's lens change absent -- `gate_red_quadratic_rejects`
+// FAILS, with `gate_green_identity_accepts_clean` passing beside it. So EDITING THE SPECIMEN ALONE
+// DOES NOT GREEN THE WITNESS: the route the row excluded is refuted by execution rather than by
+// promise. Corrected specimen WITH the lens repair passes. Old specimen with the lens repair cannot
+// pass, by the copied-port citation above. The capability is what closes the gap between the first
+// cell and the second, which is the trigger discharged on its own terms.
+//
+// WHAT HOLDS THE RUNG DOWN IS A DIFFERENT POPULATION, NOT THE REPAIRED ONE, which is why restoring
+// on the strength of the repair would be the inflation DESIGN section 4b(1) names. That section
+// takes the MINIMUM across a class's in-scope paths, and
+// `gunbc.recurring_failure_mode fold_shape_visible_to_no_lens` establishes a second population
+// where this gate's wall does not execute at all: a fold whose step is passed BY NAME lowers to
+// neither a substrate Loop nor a surviving surface fold call, so `count_fold_sites` reports 0 and
+// the lens never sees the site to refuse about -- its own `^fold_accumulator_unread` arm is
+// unreachable code. A copied accumulator inside such a fold is admitted in silence regardless of
+// how well the named-argument path now works. `Mitigatable` therefore remains the honest arm, and
+// the restoration condition is REPLACED rather than discharged: the lens observes every fold the
+// source declares at every lowering shape, at which point the lane that lands that capability
+// restores this rung with its own executed evidence. Operator ruling (eager-raven-113) on exactly
+// this question, recorded because a peer lane read it the other way and the disagreement is the
+// kind that decays into an unexplained stale row.
 data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
   identity: "accumulator_copy_root_lens" as NonEmptyStr,
   kind: RequiredRootLens,
@@ -496,13 +539,18 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.long.accumulator_copy_compile_gate"
     ),
     witness_subject(
+      entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis_test.dag",
+      function: "quadratic_fold_has_suspect",
+      module_path: "v2.test.long.accumulator_copy_fold_analysis"
+    ),
+    witness_subject(
       entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag",
       function: "roster_machine_code_zero_suspects_within_ratchet",
       module_path: "v2.test.claim.complexity.accumulator_copy_roster_gate"
     ),
   ],
   ceiling: StructurallyGuaranteed,
-  next_trigger: climbs_when(capability: "TWO CAPABILITIES, AND NEITHER IS A FILE MOVE. First, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Second, the native lane enters the door. Until the first lands no required run refuses on a copied-accumulator tree; until the second lands the executed rung stays Mitigatable however green the interpreted side becomes"),
+  next_trigger: climbs_when(capability: "THREE CAPABILITIES, AND NONE IS A FILE MOVE. First, THE LENS OBSERVES EVERY FOLD THE SOURCE DECLARES, AT EVERY LOWERING SHAPE a fold-family call can take — a step passed BY NAME lowers to neither a substrate Loop nor a surviving surface fold call, so count_fold_sites reports 0 and the lens never sees the site to refuse about, its own ^fold_accumulator_unread arm standing as unreachable code (gunbc.recurring_failure_mode fold_shape_visible_to_no_lens). A copied accumulator inside such a fold is admitted in silence however well the named-argument path reads, so this is the capability that holds the rung down under DESIGN section 4b(1)'s minimum-across-paths and it is named FIRST because it is the binding one. Second, the gate's own witnesses become affordable on the per-PR fold so the gunbc.ci_layer_roots witness_exclusion_frontier patterns 'claim/complexity/accumulator_copy_roster_gate' and 'test/claim/long/' retire on their own dissolution conditions rather than being edited around — the exclusion rows exist because the walks were priced out, so the trigger is the cost, not the pattern. Third, the native lane enters the door. Until the first lands a whole population of folds is outside the wall entirely; until the second lands no required run refuses on a copied-accumulator tree; until the third lands the executed rung stays Mitigatable however green the interpreted side becomes"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the seed's own folds are never presented to this gate, so a copied accumulator authored in stage0 Rust is invisible to the complexity lens that exists to make it unwritable" as NonEmptyStr
   },
