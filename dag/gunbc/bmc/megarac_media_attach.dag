@@ -1,0 +1,180 @@
+module gunbc.bmc.megarac_media_attach
+
+import std.types { Bool, NonEmptyStr, String }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
+import gunbc.bmc.megarac_media {
+  MegaRacAlreadyPresented,
+  MegaRacAttachIndeterminate,
+  MegaRacAttachOutcome,
+  MegaRacAttached,
+  MegaRacImageListingEmpty,
+  MegaRacImageListingUnparseable,
+  MegaRacImageAmbiguous,
+  MegaRacImageNotEnumerated,
+  MegaRacImagesUnreadable,
+  MegaRacPresentationUnreadable,
+  megarac_attach_image,
+}
+import gunbc.bmc.megarac_session {
+  MegaRacScratchCleanup,
+  MegaRacScratchDiscardFailed,
+  MegaRacScratchDiscarded,
+  MegaRacScratchRetained,
+  MegaRacSessionAcquired,
+  MegaRacSessionAllocationEffectUnresolved,
+  MegaRacSessionDenied,
+  MegaRacSessionNeverOpened,
+  MegaRacSessionRelease,
+  MegaRacSessionReleaseConfirmed,
+  MegaRacSessionReleaseUnverifiable,
+  MegaRacSessionStagingFailed,
+  MegaRacSessionStillLive,
+  MegaRacSessionTeardown,
+  MegaRacSessionUnusable,
+  megarac_acquire_session,
+  megarac_release_session,
+}
+// ATTACHING REMOTE MEDIA TO ANY MEGARAC CONTROLLER, as one host-parametric entry point. The lane
+// this replaces had two modules for this -- a generic operation and a per-unit wrapper naming one
+// machine -- and the wrapper existed only because the operation could not take a host. Seven such
+// wrappers accumulated in a namespace that claimed to be generic. The controller, the credential and
+// the image are arguments here, so a second unit adds a call, not a module.
+//
+// THE SESSION IS ACQUIRED AND RELEASED AROUND THE ATTACH, ON EVERY PATH INCLUDING REFUSALS, because
+// the controller's session table is finite and a refusal allocates exactly what a success does.
+fn render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
+  match outcome {
+    MegaRacAlreadyPresented { image_name: _ } => ExitSuccess
+    MegaRacAttached { image_name: _, image_index: _ } => ExitSuccess
+    MegaRacPresentationUnreadable { detail: d } =>
+      exit_failure(reason: concat("megarac attach: refusing to write over an unreadable state -- ", d))
+    MegaRacImagesUnreadable { detail: d } =>
+      exit_failure(reason: concat("megarac attach: the available-image listing could not be read: ", d))
+    MegaRacImageListingUnparseable { detail: d } =>
+      exit_failure(reason: concat("megarac attach: the available-image listing was not valid JSON, which is a protocol failure rather than an absent image: ", d))
+    MegaRacImageListingEmpty =>
+      exit_failure(reason: "megarac attach: the image is not presented AND the controller offers nothing available to attach; check that the export is reachable from the controller and holds the file. Do NOT toggle mount_cd to 'refresh' this -- it works by detaching every presented image, so on a host booted from that medium it withdraws what the running system is reading from")
+    MegaRacImageAmbiguous { image_name: n, occurrences: k } =>
+      exit_failure(reason: concat("megarac attach: the controller enumerates '", n as String, "' ", k as String, " times, so which file it denotes is ambiguous and no attach was attempted. Picking one would be a coin flip that selects a boot medium."))
+    MegaRacImageNotEnumerated { image_name: n } =>
+      exit_failure(reason: concat("megarac attach: the image is not presented, and the controller offers other images but not '", n as String, "' -- so it is absent from the share as the controller sees it, rather than already in use"))
+    MegaRacAttachIndeterminate { image_name: n, transport_completed: _, evidence: e } =>
+      exit_failure(reason: concat("megarac attach: INDETERMINATE for '", n as String, "'. start-media was issued and the read-back does not yet confirm it. This is NOT a refusal: this firmware answers non-2xx on writes that take effect, so the write may be settling. Re-read before retrying -- a retry here can re-issue a write already underway. Evidence: ", e))
+  }
+}
+
+// ALL THREE AXES ARE RENDERED, ALWAYS, and the previous version is why this is stated as a rule.
+// It examined the release standing only when the attach had rendered success and returned the attach
+// failure otherwise, so on every refusal the stranded-session signal vanished behind the first
+// error -- while the annotation directly above it claimed a stranded session is "reported beside the
+// attach verdict, never folded into it". The prose was right and the code did the opposite.
+fn render_session_standing(standing: MegaRacSessionRelease) -> String {
+  match standing {
+    MegaRacSessionReleaseConfirmed => ""
+    MegaRacSessionNeverOpened => ""
+    MegaRacSessionStillLive { scope: _, detail: d } =>
+      concat(" SESSION STRANDED: ", d)
+    MegaRacSessionReleaseUnverifiable { scope: _, detail: d } =>
+      concat(" SESSION RELEASE UNVERIFIED: ", d)
+  }
+}
+
+// A RETAINED SCRATCH DIRECTORY IS REPORTED RATHER THAN PASSED OVER, because it holds a live cookie
+// jar on local disk. It is deliberate -- it is the bearer that can retry the teardown -- but a
+// deliberate secret left on disk that nobody is told about is the same as an accidental one.
+fn render_scratch_cleanup(cleanup: MegaRacScratchCleanup) -> String {
+  match cleanup {
+    MegaRacScratchDiscarded => ""
+    MegaRacScratchRetained { scratch_dir: d, reason: r } =>
+      concat(" SCRATCH RETAINED at ", d as String, " (holds a live cookie jar; ", r, ")")
+    MegaRacScratchDiscardFailed { scratch_dir: d } =>
+      concat(" SCRATCH NOT REMOVED at ", d as String, " -- a credential or cookie jar may remain on disk")
+  }
+}
+
+fn teardown_is_clean(teardown: MegaRacSessionTeardown) -> Bool {
+  let released = match teardown.standing {
+    MegaRacSessionReleaseConfirmed => true
+    MegaRacSessionNeverOpened => true
+    _ => false
+  }
+  let discarded = match teardown.cleanup {
+    MegaRacScratchDiscarded => true
+    _ => false
+  }
+  released && discarded
+}
+
+fn render_teardown(teardown: MegaRacSessionTeardown) -> String {
+  concat(
+    render_session_standing(standing: teardown.standing),
+    render_scratch_cleanup(cleanup: teardown.cleanup),
+  )
+}
+
+// THE ATTACH VERDICT AND THE TEARDOWN VERDICT ARE BOTH REPORTED, AND EITHER CAN FAIL THE RUN. A
+// successful attach that stranded a session is still a successful attach -- but it is not a clean
+// run, and the caller has to be told which of the two happened.
+fn render_attach_and_teardown(outcome: MegaRacAttachOutcome, teardown: MegaRacSessionTeardown) -> ProcessExit {
+  match render_attach(outcome: outcome) {
+    ExitSuccess =>
+      if teardown_is_clean(teardown: teardown) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat("megarac attach: the image is presented, but the session did not tear down cleanly.", render_teardown(teardown: teardown)))
+      }
+    other => render_failed_attach_with_teardown(attach_exit: other, teardown: teardown)
+  }
+}
+
+fn render_failed_attach_with_teardown(attach_exit: ProcessExit, teardown: MegaRacSessionTeardown) -> ProcessExit {
+  if teardown_is_clean(teardown: teardown) {
+    attach_exit
+  } else {
+    match attach_exit {
+      ExitSuccess => attach_exit
+      ExitFailure { reason: r } =>
+        exit_failure(reason: concat(r, " |", render_teardown(teardown: teardown)))
+    }
+  }
+}
+
+func megarac_attach_remote_media(
+  bmc_host: String,
+  username: String,
+  password: String,
+  image_name: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if password == "" {
+    return exit_failure(reason: "megarac attach: no controller password supplied; refusing before any request")
+  }
+  if image_name == "" {
+    return exit_failure(reason: "megarac attach: no image name supplied; refusing rather than attaching whatever the controller happens to list first")
+  }
+  let acquired = megarac_acquire_session(
+    bmc_host: bmc_host as NonEmptyStr,
+    username: username as NonEmptyStr,
+    password: password as NonEmptyStr,
+  )
+  return match acquired {
+    MegaRacSessionAllocationEffectUnresolved { attempted_endpoint: e, scratch_dir: sd, detail: d } =>
+      exit_failure(reason: concat("megarac attach: ALLOCATION UNRESOLVED against ", e as String, ". No bearer was received, so nothing local can decide whether the controller allocated a session -- probing this jar would only prove the JAR does not authenticate. An orphan session may exist and can be discharged only by a server-side session census or a modeled expiry policy, neither of which this lane has. Scratch RETAINED at ", sd as String, " for correlation. Detail: ", d))
+    MegaRacSessionStagingFailed { detail: d } =>
+      exit_failure(reason: concat("megarac attach: credential staging failed, no request was made: ", d))
+    MegaRacSessionDenied { detail: d } =>
+      exit_failure(reason: concat("megarac attach: the controller denied the login: ", d))
+    MegaRacSessionUnusable { scope: sc, detail: d } =>
+      render_unusable(detail: d, teardown: megarac_release_session(scope: sc))
+    MegaRacSessionAcquired { session: s } =>
+      render_attach_and_teardown(
+        outcome: megarac_attach_image(session: s, image_name: image_name as NonEmptyStr),
+        teardown: megarac_release_session(scope: s.scope),
+      )
+  }
+}
+
+fn render_unusable(detail: String, teardown: MegaRacSessionTeardown) -> ProcessExit {
+  exit_failure(reason: concat("megarac attach: the login succeeded but the session was unusable (", detail, "), so no attach was attempted.", render_teardown(teardown: teardown)))
+}

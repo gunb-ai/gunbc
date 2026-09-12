@@ -1,0 +1,351 @@
+module gunbc.bmc.megarac_http_realization
+
+import std.types { Bool, FilePath, NonEmptyStr, String }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.bmc.megarac { MegaRacImageRedirectionOn, megarac_image_redirection_wire }
+import extdeps.languages.json.emit { json_int, json_kv, json_object, json_string, serialize_json }
+import extdeps.languages.json.parse {
+  JsonArray,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonMemberFound,
+  JsonNumber,
+  JsonString,
+  JsonValue,
+  json_object_unique_member,
+  parse_json_document,
+}
+
+// THE CONCRETE HTTP AND FILESYSTEM REALIZATION OF THE MEGARAC REST SURFACE. extdeps.bmc.megarac owns
+// the cited shape -- the paths, methods and contract notes of the SP-X API -- and this module is ONE
+// realization of it: curl invocations, a cookie jar, an owner-only scratch directory, and the
+// transport outcomes those produce.
+//
+// THE SPLIT EXISTS BECAUSE THE PREVIOUS ARRANGEMENT PUT ALL OF THIS IN THE EXTDEPS MODULE, whose own
+// scope declaration says rows there answer at the FAMILY grain and that behaviour seen on one
+// shipping build stays build-scoped. A transport choice and a set of single-build observations were
+// being advertised as the behaviour of every MegaRAC controller. What one build was measured doing
+// now lives in gunbc.bmc.megarac_observed_behavior; how a request is issued lives here.
+//
+// A SECOND REALIZATION -- a native HTTP client, or these calls issued from another host over a
+// different transport -- binds to the same cited operations without touching this file.
+// THE TWO JSON READERS THIS MODULE NEEDS, over the repository's single recognition authority rather
+// than a regex against a response body. A document the parser cannot read is unreadable rather than
+// partially believed, which is what lets the session folds below distinguish "the controller said
+// no" from "the controller said something we do not understand".
+fn json_string_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonString { value: s } => Present { value: s }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn json_number_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNumber { lexeme: n } => Present { value: n }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+// THE THREE SESSION OPERATIONS, WITH THEIR RATIONALE HOISTED HERE because an operation lives inside
+// a service body and only module-item grain is modeled (DESIGN section 4c) -- the same placement
+// extdeps.filesystem.filesystem_io records for its own operation rows.
+//
+// Open: THE CREDENTIAL REACHES CURL THROUGH A FILE, NOT ARGV. The earlier form spelled
+// -d "username=...&password=..." which puts the secret in the process table for every local reader,
+// and hand-concatenates a form body -- so a password containing & or = would silently change the
+// fields being submitted rather than failing. --data-urlencode reads the password from a file and
+// percent-encodes both fields, fixing the exposure and the encoding together.
+//
+// -k IS STILL HERE AND IT IS A DECLARED GAP, not an oversight. The controller presents a
+// self-signed certificate and this repository has no pinned trust anchor for it, so the endpoint's
+// TLS identity is UNVERIFIED: a LAN-position attacker could answer for it. The credential is no
+// longer in argv, but it is still handed to whoever terminates that connection. This dissolves when
+// a controller certificate is enrolled the way host keys are.
+//
+// Close: NO CSRF HEADER, because the measurement recorded at MegaRacSessionRelease shows teardown
+// does not require one, and because omitting it is what lets the token-unreadable acquisition arm
+// clean up after itself. The response status is deliberately not consulted by the fold; the probe
+// decides.
+//
+// Probe: IT READS A BODY RATHER THAN A STATUS CODE, for a mechanical reason. curl spells the status
+// with --write-out '%{http_code}', whose braces collide with this transport's own argv substitution
+// syntax; reading the body avoids inventing an escape for one call site, and the two shapes are
+// unambiguous and already measured -- an unauthenticated read answers
+// { "cc": 7, "error": "Invalid Authentication" } and an authenticated one answers the settings
+// object carrying id. --fail was rejected for the same job because it collapses every non-2xx to
+// one exit: a 500 would then read as "released" while the session was still live, under-reporting
+// exactly the leak this probe exists to find.
+service megarac.Session {
+  operation Open {
+    input {
+      bmc_host: NonEmptyStr
+      username: NonEmptyStr
+      password_file: NonEmptyStr
+      cookie_jar: NonEmptyStr
+    }
+    output {
+      body: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    transport shell {
+      argv: [
+        "curl", "-sS", "-k",
+        "-c", "{cookie_jar}",
+        "--data-urlencode", "username={username}",
+        "--data-urlencode", "password@{password_file}",
+        "https://{bmc_host}/api/session"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the controller session endpoint"
+    }
+  }
+
+  operation Close {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-X", "DELETE", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the controller session endpoint to close"
+    }
+  }
+
+  operation Probe {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "https://{bmc_host}/api/settings/media/general"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the controller to probe session validity"
+    }
+  }
+}
+
+// THE THREE MEDIA OPERATIONS, rationale hoisted for the module-item grain rule (DESIGN section 4c).
+//
+// Images: THIS LISTING ENUMERATES WHAT IS AVAILABLE TO ATTACH, NOT WHAT THE SHARE HOLDS. Measured
+// on a Mt. Collins unit 2026-09-06 with two ISOs exported: the listing named both; after start-media
+// attached one it returned ONLY THE OTHER, and the survivor's image_index moved from 1 to 0. The
+// attached image had not vanished -- it had moved to Configurations, which is where a presented
+// image lives. An earlier reading of this as a stale cache produced the operator-facing remedy
+// "re-assert mount_cd", which appears to work only because toggling mount_cd DETACHES EVERYTHING,
+// returning the image to the available pool. That remedy is retracted: it repairs a listing by
+// undoing the attachment the caller asked for.
+//
+// Configurations: THE PRESENTED SET, and the authority for whether an attach is done. It is read
+// BEFORE anything is written, so the converged case performs no write at all -- start-media against
+// an already-presented image is a write whose effect on a booted host is unmodelled, and reading
+// first is how that write is avoided rather than merely made idempotent.
+//
+// StartMedia: image_redirection MUST be 1 or the firmware refuses with opaque codes 13410/13460,
+// recovered from the firmware's own UI bundle rather than from documentation. The body is rendered
+// inside this module so a caller cannot omit it.
+service megarac.Media {
+  operation Images {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}",
+             "https://{bmc_host}/api/settings/media/remote/images"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not read the remote image listing"
+    }
+  }
+
+  operation Configurations {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}",
+             "https://{bmc_host}/api/settings/media/remote/configurations"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not read the presented media configurations"
+    }
+  }
+
+  operation Start {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}",
+             "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}",
+             "https://{bmc_host}/api/settings/media/remote/start-media"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl could not reach the start-media endpoint"
+    }
+  }
+}
+
+
+// THE SCRATCH DIRECTORY IS THIS MODULE'S CONCERN BECAUSE IT IS PART OF THE TRANSPORT, not of the
+// session's meaning. A session needs a bearer; that this realization keeps the bearer in a cookie
+// jar beside an owner-only credential file, in a directory made by mktemp, is a property of driving
+// curl. A native client realization would carry the same session with no files at all.
+//
+// THE COOKIE JAR IS PRE-CREATED OWNER-ONLY, and measuring the first version is what showed why.
+// curl creates a jar given with -c under the ambient umask, which on this host produced mode 0664 --
+// group and world readable. The jar IS the bearer once login succeeds, so that is the same
+// disclosure as a readable password file, and the 0600 spent on the credential beside it bought
+// nothing. Writing the path owner-only first means curl truncates an existing 0600 file rather than
+// creating a new one, so the mode is established before any secret reaches it.
+//
+// THE ENCLOSING DIRECTORY IS 0700 AND THAT IS NOT THE ARGUMENT. It does contain the exposure today,
+// which is why this is a hardening rather than an incident -- but a mode that is correct only
+// because of its parent is correct by coincidence, and this lane has already shipped one guarantee
+// that held by coincidence.
+type MegaRacScratchStaging
+  = MegaRacScratchStaged {
+      scratch_dir: NonEmptyStr
+      credential_path: NonEmptyStr
+      cookie_jar: NonEmptyStr
+    }
+  | MegaRacScratchStagingFailed { detail: String }
+
+func megarac_stage_scratch(password: NonEmptyStr) -> MegaRacScratchStaging
+  uses net: std.resources.Network
+{
+  scratch = shell.Mktemp.Dir()
+  if scratch.success == false {
+    return MegaRacScratchStagingFailed { detail: "mktemp -d failed; refusing to place a credential at a predictable path" }
+  }
+
+  let dir = scratch.path as String
+  let credential_path = join([dir, "/credential"], "") as NonEmptyStr
+  let cookie_jar = join([dir, "/jar"], "") as NonEmptyStr
+
+  wrote = Filesystem.WriteOwnerOnly(path: credential_path as String, content: password as String)
+  if wrote.success == false {
+    cleaned = shell.Remove.RecursiveForce(path: scratch.path)
+    return MegaRacScratchStagingFailed { detail: concat("could not stage the credential owner-only: ", wrote.error) }
+  }
+
+  jarred = Filesystem.WriteOwnerOnly(path: cookie_jar as String, content: "")
+  if jarred.success == false {
+    cleaned_jar = shell.Remove.RecursiveForce(path: scratch.path)
+    return MegaRacScratchStagingFailed { detail: concat("could not pre-create the cookie jar owner-only: ", jarred.error) }
+  }
+
+  return MegaRacScratchStaged {
+    scratch_dir: dir as NonEmptyStr,
+    credential_path: credential_path,
+    cookie_jar: cookie_jar,
+  }
+}
+
+// THE CREDENTIAL FILE IS DELETED AS SOON AS THE LOGIN HAS BEEN ISSUED. Nothing after Open needs the
+// password -- the cookie is the bearer for every subsequent request -- so keeping it for the
+// lifetime of the attach widened the window in which it could be read, for no purpose. The jar
+// stays until teardown is confirmed, because it is what teardown uses.
+func megarac_discard_credential(credential_path: NonEmptyStr) -> Bool
+  uses net: std.resources.Network
+{
+  discarded = shell.Remove.FileForce(path: credential_path as FilePath)
+  return discarded.success
+}
+// THE REMOVAL'S OWN RESULT IS OBSERVED, which the previous version bound and then ignored. An
+// ignored cleanup means the credential or the jar can remain on disk while the modeled outcome says
+// the scratch was discarded -- a claim about the filesystem that nothing checked.
+func megarac_discard_scratch(scratch_dir: NonEmptyStr) -> MegaRacScratchCleanup
+  uses net: std.resources.Network
+{
+  discarded = shell.Remove.RecursiveForce(path: scratch_dir as FilePath)
+  return if discarded.success {
+    MegaRacScratchDiscarded
+  } else {
+    MegaRacScratchDiscardFailed { scratch_dir: scratch_dir }
+  }
+}
+
+
+// WHETHER THE JAR ACTUALLY HOLDS A BEARER, which is a different question from whether the login
+// request completed and the session fold needs both. A Netscape cookie file that received no cookie
+// still exists and is still readable -- curl writes the header comment regardless -- so its presence
+// proves nothing. What proves a bearer is a non-comment, non-blank line.
+//
+// THIS EXISTS BECAUSE PROBING AN EMPTY JAR PROVES THE WRONG THING. If the controller allocated a
+// session and the reply carrying Set-Cookie was lost, the local jar is empty; a teardown with it
+// cannot name the session, and the follow-up probe answers "unauthenticated" -- which the release
+// decoder would read as a confirmed release. That would be a confirmation about the JAR being
+// reported as a fact about the CONTROLLER.
+type MegaRacJarBearer
+  = MegaRacJarHoldsBearer
+  | MegaRacJarEmpty
+  | MegaRacJarUnreadable { detail: String }
+
+// #HttpOnly_ IS A COOKIE LINE, NOT A COMMENT, and reading it as one is the trap this predicate was
+// written into. The Netscape cookie format uses a leading # for comments, but libcurl marks an
+// HttpOnly cookie by PREFIXING its ordinary tab-separated record with #HttpOnly_ -- so the record
+// still carries domain, path, expiry, name and value. This controller's session cookie is HttpOnly,
+// so an entire jar holding a live bearer looked like nothing but comments, and a login that had
+// plainly succeeded was reported as an unresolved allocation.
+//
+// IT FAILED CLOSED, WHICH IS HOW IT WAS FOUND. The wrong answer was "no bearer, so an orphan session
+// may exist" on a run that had authenticated. Had the predicate defaulted the other way -- assume a
+// bearer unless proven absent -- the same bug would have silently claimed a bearer that a genuinely
+// lost Set-Cookie never delivered, which is the exact case the unresolved standing exists to catch.
+fn megarac_jar_line_is_bearer(line: String) -> Bool {
+  let t = trim(s: line)
+  if t.length() == 0 {
+    false
+  } else {
+    if starts_with(s: t, prefix: "#HttpOnly_") {
+      true
+    } else {
+      starts_with(s: t, prefix: "#") == false
+    }
+  }
+}
+
+func megarac_jar_bearer(cookie_jar: NonEmptyStr) -> MegaRacJarBearer
+  uses net: std.resources.Network
+{
+  let read = Filesystem.Read(path: cookie_jar as String)
+  if read.success == false {
+    return MegaRacJarUnreadable { detail: read.error }
+  }
+  return if split(s: read.content, delimiter: "\n") |> any(l => megarac_jar_line_is_bearer(line: l)) {
+    MegaRacJarHoldsBearer
+  } else {
+    MegaRacJarEmpty
+  }
+}
+
+// THE START BODY IS SERIALIZED, NOT CONCATENATED, through the same authority that parses JSON read
+// back off the wire. The previous form interpolated the image name straight into a hand-spelled
+// document, so a name carrying a quote, a backslash or a control character changed which document
+// was submitted rather than failing -- a caller-supplied string deciding the SHAPE of a request that
+// attaches a boot medium. Names on this share do not currently contain those characters, which is
+// exactly why this was invisible.
+fn megarac_start_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "image_name", value: json_string(s: image_name as String)),
+    json_kv(key: "image_type", value: json_int(n: 1)),
+    json_kv(key: "image_index", value: json_string(s: image_index)),
+    json_kv(key: "image_redirection", value: json_string(s: megarac_image_redirection_wire(r: MegaRacImageRedirectionOn) as String)),
+  ])) as NonEmptyStr
+}

@@ -1,0 +1,217 @@
+module test.claim.megarac_decoder_witness
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, String }
+import extdeps.languages.json.parse { JsonValue, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.bmc.megarac_http_realization { megarac_jar_line_is_bearer, megarac_start_body }
+import gunbc.bmc.megarac_media {
+  MegaRacImageNotPresented,
+  MegaRacImagePresented,
+  MegaRacIndexAmbiguous,
+  MegaRacIndexAbsent,
+  MegaRacIndexLookup,
+  MegaRacIndexResolved,
+  MegaRacIndexRowUnreadable,
+  MegaRacPresentationReading,
+  MegaRacPresentationRowUnreadable,
+  megarac_index_of_named,
+  megarac_json_elements,
+  megarac_presentation_reading,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PURE CONTROLS FOR THE FOLDS THAT DECIDE WHETHER A HOST'S BOOT MEDIUM IS ALREADY IN PLACE. Every
+// one of these ran only against a live controller until now, which meant the arms that matter most
+// -- the refusals -- were the arms hardware never produced. A controller that behaves correctly
+// cannot show you what happens when it answers something you did not model, so those paths were
+// carried by reading rather than by execution.
+//
+// THE BODIES BELOW ARE AUTHORED, NOT CAPTURED, which is what makes them an oracle rather than a
+// snapshot of the current tree. Each is the smallest document that puts one decoder in one state.
+//
+// THESE EXECUTE, AND THE GRAIN OF THAT CLAIM IS NARROWER THAN IT LOOKS. A required-floor run reports
+// all nineteen planned-and-passed -- but with disposition `planned_as_changed_witness`, which is the
+// selection in v2.workflow.required_floor that plans a witness THIS CHANGE TOUCHED regardless of the
+// static gate. They are therefore executing evidence for the change that introduces them and NOT
+// standing regression controls: on a later run that does not touch this module, the ordinary
+// disposition applies, and because no rostered `required_gate_prefixes` row transitively imports
+// gunbc.bmc.megarac_*, that ordinary disposition is DeclinedOutsideGateClosure.
+//
+// THAT RESIDUAL IS AN EXISTING DECLARED DROP AND NOT A NEW GAP: gunbc.rung_drop
+// required_gate_bankruptcy names "every module OUTSIDE THE REQUIRED FLOOR GATE CLOSURE" in its
+// population, and its restoration trigger is a required run whose population is derived from the
+// change. Widening the static roster would move that population rather than retire it, and the
+// roster's own header excludes product and fleet witnesses by operator ruling -- so a row for this
+// lane is a wall-clock decision for the operator, not a repair an author may make here.
+//
+// AN EARLIER REVISION OF THIS BLOCK SAID THESE CLAIMS DO NOT RUN AT ALL. That was measured on a run
+// taken while this file was still untracked, and the floor discovers claims from tracked sources.
+// The reading offered for it -- gate closure -- was a real mechanism that was not the cause, which
+// is worth recording because a correct-sounding diagnosis attached to a real measurement is the
+// hardest kind to catch.
+
+fn rows(body: String) -> MegaRacPresentationReading {
+  match megarac_json_elements(body: body) {
+    Absent => MegaRacPresentationRowUnreadable { detail: "fixture body is not a JSON array" }
+    Present { value: es } => megarac_presentation_reading(rows: es, image_name: "target.iso")
+  }
+}
+
+fn is_presented(r: MegaRacPresentationReading) -> Bool {
+  match r {
+    MegaRacImagePresented => true
+    _ => false
+  }
+}
+
+fn is_unreadable(r: MegaRacPresentationReading) -> Bool {
+  match r {
+    MegaRacPresentationRowUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+fn is_not_presented(r: MegaRacPresentationReading) -> Bool {
+  match r {
+    MegaRacImageNotPresented => true
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL. Without it every refusal test below is satisfied by a fold that refuses
+// everything, which would be useless while looking green.
+test fn a_presenting_row_reads_as_presented() -> Bool {
+  is_presented(r: rows(body: "[{\"image_name\":\"target.iso\",\"media_type\":1,\"redirection_status\":1}]"))
+}
+
+test fn the_other_observed_presenting_status_also_reads_as_presented() -> Bool {
+  is_presented(r: rows(body: "[{\"image_name\":\"target.iso\",\"media_type\":1,\"redirection_status\":100}]"))
+}
+
+// THE SECOND CONTROL: a row that genuinely says not-presented must not refuse, or the fold would
+// never reach the write it exists to guard.
+test fn a_zero_status_row_reads_as_not_presented() -> Bool {
+  is_not_presented(r: rows(body: "[{\"image_name\":\"target.iso\",\"media_type\":1,\"redirection_status\":0}]"))
+}
+
+test fn an_unrelated_image_reads_as_not_presented() -> Bool {
+  is_not_presented(r: rows(body: "[{\"image_name\":\"other.iso\",\"media_type\":1,\"redirection_status\":1}]"))
+}
+
+// THE REDS. Each is a row this fold cannot interpret, and each previously folded to `false` --
+// indistinguishable from "not presented", after which the caller issued start-media. These are the
+// writes-on-an-unreadable-state that hardware never demonstrates.
+test fn an_unknown_redirection_status_refuses_rather_than_presenting() -> Bool {
+  is_unreadable(r: rows(body: "[{\"image_name\":\"target.iso\",\"media_type\":1,\"redirection_status\":7}]"))
+}
+
+test fn a_row_missing_redirection_status_refuses() -> Bool {
+  is_unreadable(r: rows(body: "[{\"image_name\":\"target.iso\",\"media_type\":1}]"))
+}
+
+test fn a_row_missing_media_type_refuses() -> Bool {
+  is_unreadable(r: rows(body: "[{\"image_name\":\"target.iso\",\"redirection_status\":1}]"))
+}
+
+test fn a_row_with_no_image_name_refuses() -> Bool {
+  is_unreadable(r: rows(body: "[{\"media_type\":1,\"redirection_status\":1}]"))
+}
+
+// ONE UNREADABLE ROW REFUSES THE WHOLE READING, even when a later row would have answered. A fold
+// that skipped the bad row and kept going would answer from the rows it happened to understand,
+// while the row it could not read may have BEEN the image.
+test fn one_unreadable_row_refuses_even_beside_a_readable_one() -> Bool {
+  is_unreadable(r: rows(body: "[{\"image_name\":\"target.iso\",\"redirection_status\":1},{\"image_name\":\"other.iso\",\"media_type\":1,\"redirection_status\":0}]"))
+}
+
+// ── the available-image index lookup ────────────────────────────────────────────────────────────
+
+fn lookup(body: String) -> MegaRacIndexLookup {
+  match megarac_json_elements(body: body) {
+    Absent => MegaRacIndexRowUnreadable { detail: "fixture body is not a JSON array" }
+    Present { value: es } => megarac_index_of_named(elements: es, image_name: "target.iso")
+  }
+}
+
+fn resolved_to(l: MegaRacIndexLookup, expected: String) -> Bool {
+  match l {
+    MegaRacIndexResolved { image_index: i } => i == expected
+    _ => false
+  }
+}
+
+fn is_ambiguous(l: MegaRacIndexLookup) -> Bool {
+  match l {
+    MegaRacIndexAmbiguous { occurrences: _ } => true
+    _ => false
+  }
+}
+
+test fn a_single_named_row_resolves_its_index() -> Bool {
+  resolved_to(l: lookup(body: "[{\"image_name\":\"other.iso\",\"image_index\":0},{\"image_name\":\"target.iso\",\"image_index\":1}]"), expected: "1")
+}
+
+test fn an_absent_name_reports_absent_not_an_index() -> Bool {
+  match lookup(body: "[{\"image_name\":\"other.iso\",\"image_index\":0}]") {
+    MegaRacIndexAbsent => true
+    _ => false
+  }
+}
+
+// THE RED FOR THE COIN FLIP. The previous fold kept the first match and attached it; the two rows
+// carry different indices and nothing can say which file either denotes.
+test fn a_duplicated_name_is_ambiguous_rather_than_the_first_match() -> Bool {
+  is_ambiguous(l: lookup(body: "[{\"image_name\":\"target.iso\",\"image_index\":0},{\"image_name\":\"target.iso\",\"image_index\":3}]"))
+}
+
+test fn a_named_row_without_an_index_refuses_rather_than_defaulting() -> Bool {
+  match lookup(body: "[{\"image_name\":\"target.iso\"}]") {
+    MegaRacIndexRowUnreadable { detail: _ } => true
+    _ => false
+  }
+}
+
+// ── the cookie jar bearer predicate ─────────────────────────────────────────────────────────────
+
+// THE RED THAT A LIVE CONTROLLER PRODUCED AND THIS PINS. libcurl marks an HttpOnly cookie by
+// prefixing its ordinary tab-separated record with #HttpOnly_, and this controller's session cookie
+// is HttpOnly -- so reading a leading # as "comment" made a jar holding a live bearer look empty,
+// and a successful login reported as an unresolved allocation.
+test fn an_httponly_cookie_line_is_a_bearer() -> Bool {
+  megarac_jar_line_is_bearer(line: "#HttpOnly_192.168.1.228\tFALSE\t/\tTRUE\t0\tQSESSIONID\tabc123")
+}
+
+test fn an_ordinary_cookie_line_is_a_bearer() -> Bool {
+  megarac_jar_line_is_bearer(line: "192.168.1.228\tFALSE\t/\tTRUE\t0\tQSESSIONID\tabc123")
+}
+
+// THE CONTROLS. Without these the predicate could answer true for everything and the tests above
+// would still pass, while the unresolved-allocation standing became unreachable.
+test fn a_comment_line_is_not_a_bearer() -> Bool {
+  megarac_jar_line_is_bearer(line: "# Netscape HTTP Cookie File") == false
+}
+
+test fn a_blank_line_is_not_a_bearer() -> Bool {
+  megarac_jar_line_is_bearer(line: "   ") == false
+}
+
+// ── the start body ──────────────────────────────────────────────────────────────────────────────
+
+// THE INJECTION RED. A name carrying a quote previously changed which document was submitted rather
+// than failing, because the body was concatenated by hand. Serialized through the JSON authority the
+// quote is escaped, so the document still has four members and the name survives as data.
+test fn a_quote_in_the_image_name_is_escaped_rather_than_reshaping_the_document() -> Bool {
+  match parse_json_document(s: megarac_start_body(image_name: "evil\".iso" as NonEmptyStr, image_index: "0") as String) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: _ } => true
+  }
+}
+
+test fn an_ordinary_start_body_is_readable_json() -> Bool {
+  match parse_json_document(s: megarac_start_body(image_name: "target.iso" as NonEmptyStr, image_index: "1") as String) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: _ } => true
+  }
+}
