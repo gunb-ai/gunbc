@@ -3312,7 +3312,8 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 // Overlapping-permutation control:
 // `v1.compiler.compiler_tests_rust` `ct_overlapping_use_line_dedupe_permutation_test`.
 // THE V2 DETERMINISM GATE DOES NOT REACH THIS SEED SITE: `determinism_lens` sits in
-// `always_required_root_lenses` of `v2.compiler.compile` and classifies declared primitives; the
+// the CompileLensRoot partition of `required_compile_lens_roster` in `v2.compiler.compile`, and
+// classifies declared primitives; the
 // seed emitter is compiled by stage0. The terminal wall is that gate covering the emitter once it is
 // v2-compiled. SECOND FINDING, NOT A WIDENING: this site previously walked via `unique_strings`
 // (fold + membership map, never `map_keys`), so the lens would NOT have classified it
