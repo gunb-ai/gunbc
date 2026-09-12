@@ -1,6 +1,7 @@
 module extdeps.systemd.systemctl
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.types { NonEmptyStr, List, Bool, Int, Unit }
+import std.string_type { String }
 import std.algebra { trim }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 

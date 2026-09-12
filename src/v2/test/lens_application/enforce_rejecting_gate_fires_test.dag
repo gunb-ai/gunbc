@@ -1,7 +1,9 @@
 module v2.test.lens_application.enforce_rejecting_gate_fires
 
+import std.decl_ref { decl_ref }
 import v2.compiler.compile {
   CompileLens,
+  CompileLensRoot,
   CompileLensEnforce,
   apply_compile_lens,
   compile_lens_gate_rejected_diagnostic
@@ -36,7 +38,11 @@ fn enforce_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data enforce_rejecting_lens: CompileLens = CompileLens { gate: enforce_rejecting_gate }
+data enforce_rejecting_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.test.lens_application.enforce_rejecting_gate_fires", decl_name: "enforce_rejecting_gate"),
+  grain: CompileLensRoot,
+  gate: enforce_rejecting_gate
+}
 
 test fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
   match apply_compile_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: CompileLensEnforce) {
