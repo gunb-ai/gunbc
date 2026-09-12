@@ -222,6 +222,17 @@ fn lifecycle_intent_cannot_orphan(intent: RunnerUnitLifecycleIntent, listener_is
 // was asserted because one decisive-feeling measurement made it FEEL closed, while a measurement
 // already taken contradicted it. A sufficient mechanism is not the operating mechanism.
 //
+// THE OPERATING MECHANISM, FOUND 2026-09-11, AND WHY NRestarts COULD NOT SEE IT. NRestarts counts
+// only the restarts systemd schedules itself under Restart=; an explicit `systemctl restart` issued
+// by another process is not counted. needrestart issues exactly that after an unattended upgrade
+// replaces a library the runners map: srv1's unattended-upgrades dpkg log records `systemctl restart
+// actions-runner@srv1-01.service ...` on ten separate days since June, and on 2026-09-11 the journal
+// shows every slot stopped at 06:36:58 with its in-flight Runner.Worker left running and a new
+// listener taking a new job into the same directory thirteen seconds later. So srv4-03's detached
+// generations at NRestarts=0 are what an externally issued restart looks like, not a contradiction
+// of one. gunbc.runner_host_file_converge carries both halves of the repair -- this intent as a
+// drop-in, and a needrestart deferral so the upgrade stops issuing the restart.
+//
 // THE DECLARED INTENT DOES NOT DEPEND ON THAT CHAIN, WHICH IS WHY THE RETRACTION DOES NOT MOVE IT.
 // ExitTypeCgroup plus KillModeControlGroup is warranted by what a teardown must reach, and by the
 // executed fact that today's teardown reaches only the main process. Whether the ordinary path

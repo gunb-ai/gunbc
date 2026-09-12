@@ -29,6 +29,7 @@ import gunbc.remote_operation {
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileConvergenceRefused,
+  RemoteFileAsSessionPrincipal,
   converge_typed_remote_file,
 }
 
@@ -56,6 +57,7 @@ fn run_remote_operation(
               context: ctx,
               admission: TypedRemoteFileWriteAdmitted { write: w },
               mode: m,
+              privilege: RemoteFileAsSessionPrincipal,
             ),
           }
         LocalShell =>

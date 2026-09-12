@@ -1,6 +1,7 @@
 module gunbc.harness.harness_wire
 
-import std.measure { TokenCount, token_count }
+import std.measure { TokenCount, token_count, token_count_value }
+import std.checked_arithmetic { nat_magnitude }
 import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -14,6 +15,7 @@ import extdeps.languages.json.parse {
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Glm53FlashOnVllm, DeepseekV4FlashOnVllm,
   harness_unit_model_id, harness_unit_reasoning_field, harness_unit_reasoning_field_aliases,
+  harness_unit_declared_context_ceiling,
 }
 import extdeps.llm.anthropic_messages_api {
   AnthropicToolDefinition,
@@ -22,7 +24,7 @@ import extdeps.llm.anthropic_messages_api {
 }
 import extdeps.ollama.api { ollama_default_port }
 import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint, host_lan_address }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups, spark_pair_serving_head }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
 import product.placement_supply { HostIdentity }
 
 // THE WIRE CODEC FOR THE DEDICATED HARNESS, over the shape DCH-1 already hoisted off the vendor.
@@ -121,91 +123,359 @@ type HarnessWireBlock
   | WireThinkingBlock { thinking: String }
   | WireToolUseBlock { id: String, name: String, input: JsonValue }
 
+// USAGE RIDES ON THE PARSED RESPONSE AS A READ, NOT AS TWO INTS, and the shape is the safety.
+//
+// A decoded response and a counted usage are two independent observations: a turn whose content
+// decoded perfectly may carry a usage object this codec cannot read, and collapsing that into
+// `input_tokens: 0` makes the second observation's ABSENCE wear the first one's success. Carrying
+// HarnessUsageRead forces every consumer to say what it does when the counts were not observed --
+// which is the whole point, because the consumer that matters (the context budget check in
+// gunbc.harness.harness_turn) must stop the line rather than compare against a number nobody
+// measured. This is the same move the turn already makes for the clock: ClockUnixMillisRead carries
+// its refusal into the event stream instead of fabricating an epoch.
 type HarnessResponseRead
   = HarnessResponseParsed {
       blocks: List<HarnessWireBlock>
       stop_reason: AnthropicStopReason
-      input_tokens: Int
-      output_tokens: Int
+      usage: HarnessUsageRead
     }
   | HarnessResponseUnreadable { cause: String }
 
-fn harness_member_string(doc: JsonValue, key: String) -> String? {
+// A STRING MEMBER IS READ, GENUINELY ABSENT, OR MALFORMED -- THREE ANSWERS, because two collapsed
+// the second and third and that is this file's own failure class read one level up (review from the
+// operator's side chat, 2026-09-11).
+//
+// `json_object_unique_member` already distinguishes four outcomes: found, absent, DUPLICATED, and
+// not-an-object. The predecessor of this function mapped the last three onto one `none`, so a
+// response carrying a member TWICE was indistinguishable from one carrying it not at all. That is
+// not a hypothetical shape: `tool_calls` arriving twice made the decoder report zero tool calls,
+// which `harness_turn_round` reads as "the model finished talking", writes `turn.completed` for,
+// and exits zero on -- a duplicated member becoming a successful completion. Absence is the only
+// outcome that may take a no-op arm; a member this codec cannot read uniquely is a refusal.
+//
+// PRESENT-AND-NULL IS THE FOURTH ANSWER, and collapsing it into the third was this repair's own
+// over-correction (side-chat review, 2026-09-11). The OpenAI chat completion schema vLLM serves
+// types the assistant message's `content` and its reasoning field as NULLABLE strings, so a
+// tool-only round arrives as `"content": null` on a perfectly well-formed body. Reading that as
+// malformed refuses a response the peer was entitled to send -- and refuses it BEFORE its tool
+// calls are decoded, so the model's commands are lost to a decoder defect rather than to a wire
+// one. `null` is the peer SAYING there is no string here; absent is the peer not speaking; a
+// duplicate is unknowable; a number is a type error. Four wire facts, four outcomes, and each
+// consumer decides what present-null means for ITS member rather than the codec deciding once.
+type HarnessStringRead
+  = StringRead { value: String }
+  | StringAbsent
+  | StringNull
+  | StringMalformed { cause: String }
+
+fn harness_member_string(doc: JsonValue, key: String) -> HarnessStringRead {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: s } => Present { value: s }
-        _ => none
+        JsonString { value: s } => StringRead { value: s }
+        JsonNull => StringNull
+        _ => StringMalformed { cause: join(["member '", key, "' is not a JSON string"], "") }
       }
-    _ => none
+    JsonMemberAbsent => StringAbsent
+    JsonMemberDuplicated =>
+      StringMalformed { cause: join(["member '", key, "' appears more than once; which one the sender meant is unknowable"], "") }
+    JsonMemberNotAnObject =>
+      StringMalformed { cause: join(["the value that should carry member '", key, "' is not a JSON object"], "") }
   }
 }
 
-fn harness_member_int(doc: JsonValue, key: String) -> Int {
+// AN INTEGER MEMBER IS READ OR THE GAP IS NAMED. The predecessor of this function answered 0 for
+// every way of not having a number -- member absent, member present but not a number, number whose
+// lexeme does not parse as an integer -- and 0 is a LEGAL token count, so three distinct wire faults
+// arrived at the consumer wearing the costume of a real measurement. That is the absorbing fallback
+// of DESIGN section 5 in the position where it costs the most: input_tokens is what
+// gunbc.harness.harness_turn harness_context_exhausted and harness_compaction_due compare against
+// the declared budget, so a defaulted 0 says "the context is empty" for a turn that may be at the
+// ceiling, and the two mechanisms that exist to stop the line never fire.
+//
+// THE LOOKUP'S FOUR OUTCOMES ARE CARRIED THROUGH HERE TOO, AND A WILDCARD IS WHAT LOST THEM
+// (review 63762). The first version of this reader closed with `_ => IntAbsent`, so a usage object
+// carrying `prompt_tokens` TWICE, and a `usage` member that is not an object at all, both arrived
+// at the diagnostic as "carries no 'prompt_tokens' member". Nothing failed open -- the turn still
+// refuses, and the count is still unavailable rather than zero -- but the refusal STATED A FALSE
+// FACT ABOUT THE WIRE, which is exactly the collapse this module removed one type over for strings,
+// surviving in the place a reader is least likely to look: the text of a message that is already
+// saying no. A diagnostic is read by a person deciding what to fix, and "the field is missing"
+// sends them somewhere different from "the field arrived twice". So the arms are written out and
+// there is no wildcard: adding a fifth lookup outcome must break this fold rather than be absorbed
+// by it.
+type HarnessIntRead
+  = IntRead { value: Int }
+  | IntAbsent
+  | IntDuplicated
+  | IntNotAnObject
+  | IntNotANumber
+  | IntNotAnInteger { lexeme: String }
+
+fn harness_member_int(doc: JsonValue, key: String) -> HarnessIntRead {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
       match v {
-        JsonNumber { lexeme: lex } => string_to_int_or_zero(s: lex as String)
-        _ => 0
+        JsonNumber { lexeme: lex } =>
+          match parse_int(s: lex as String) {
+            Present { value: n } => IntRead { value: n }
+            Absent => IntNotAnInteger { lexeme: lex as String }
+          }
+        _ => IntNotANumber
       }
-    _ => 0
+    JsonMemberAbsent => IntAbsent
+    JsonMemberDuplicated => IntDuplicated
+    JsonMemberNotAnObject => IntNotAnObject
   }
 }
 
-fn string_to_int_or_zero(s: String) -> Int {
-  match parse_int(s: s) {
-    Present { value: n } => n
-    Absent => 0
+fn harness_int_read_gap(key: String, read: HarnessIntRead) -> String {
+  match read {
+    IntRead { value: n } => join(["member '", key, "' was read as ", to_string(value: n)], "")
+    IntAbsent => join(["carries no '", key, "' member"], "")
+    IntDuplicated =>
+      join(["carries member '", key, "' duplicated; which count the sender meant is unknowable"], "")
+    IntNotAnObject => join(["is not a JSON object, so member '", key, "' could not be read"], "")
+    IntNotANumber => join(["member '", key, "' is not a JSON number"], "")
+    IntNotAnInteger { lexeme: lx } => join(["member '", key, "' is not an integer: '", lx, "'"], "")
   }
 }
 
-fn harness_decode_block(v: JsonValue) -> HarnessWireBlock? {
+// THE USAGE OBJECT IS READ AS A PAIR OR THE TURN STAYS UNREADABLE, never as a pair of zeros. The
+// two counts are read together because they are one observation: a response that reports only one of
+// them is not a response with a missing field, it is a usage object this codec does not understand,
+// and reading the half that parsed would report a measurement that was never made.
+type HarnessUsageRead
+  = UsageRead { input_tokens: TokenCount, output_tokens: TokenCount }
+  | UsageUnreadable { cause: String }
+
+// THE COUNTS ARE TokenCount, NOT Int, and that is the other half of this repair rather than a
+// flourish (review 63491). std.measure already owns the concept, and the same consumer already
+// speaks it: gunbc.harness.harness_turn declares context_budget: TokenCount, so a bare Int decoded
+// here had to be unwrapped through token_count_value to be compared against the budget -- and an
+// unwrap-to-compare is the tell that the carrier exists and is being stepped around (DESIGN
+// section 2: net concepts must not grow by re-invention). A PR whose thesis is that a token count
+// must not be INVENTED owes the matching half, that a token count must be TYPED as one.
+//
+// A NEGATIVE COUNT REFUSES RATHER THAN BECOMING A MAGNITUDE. TokenCount is Nat-valued, so the
+// crossing has to happen somewhere; it happens after the sign is checked, which is why
+// nat_magnitude is exact here and fabricates nothing -- for a value already proven nonnegative the
+// magnitude IS the value. Reversing that order would turn "-3 tokens" into "3 tokens", which is
+// this file's own failure class one field over.
+fn harness_token_count_of(n: Int) -> TokenCount {
+  token_count(count: nat_magnitude(a: n))
+}
+
+// THE TWO WILDCARDS INSIDE ARE OVER HarnessIntRead, NOT OVER A LOOKUP, and they forward the read
+// itself to harness_int_read_gap, which names every non-read arm by outcome -- absent, duplicated,
+// not-an-object, not-a-number, not-an-integer. So the sentence a refusal here produces is specific
+// even though the match is not; this is the one shape the wildcard sweep (review 63850) leaves
+// standing, because the arms are enumerated one call away rather than collapsed.
+fn harness_usage_read(doc: JsonValue, input_key: String, output_key: String) -> HarnessUsageRead {
+  match json_object_unique_member(v: doc, key: "usage") {
+    JsonMemberFound { value: u } => {
+      let i = harness_member_int(doc: u, key: input_key)
+      let o = harness_member_int(doc: u, key: output_key)
+      match i {
+        IntRead { value: iv } =>
+          match o {
+            IntRead { value: ov } =>
+              if iv < 0 {
+                UsageUnreadable { cause: join(["response usage member '", input_key, "' is negative"], "") }
+              } else if ov < 0 {
+                UsageUnreadable { cause: join(["response usage member '", output_key, "' is negative"], "") }
+              } else {
+                UsageRead {
+                  input_tokens: harness_token_count_of(n: iv),
+                  output_tokens: harness_token_count_of(n: ov),
+                }
+              }
+            _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: output_key, read: o)], "") }
+          }
+        _ => UsageUnreadable { cause: join(["response usage ", harness_int_read_gap(key: input_key, read: i)], "") }
+      }
+    }
+    JsonMemberAbsent => UsageUnreadable {
+      cause: "response carries no usage object; the token counts the context budget is checked against were not observed",
+    }
+    JsonMemberDuplicated => UsageUnreadable {
+      cause: "response carries the usage object more than once; which counts the sender meant is unknowable",
+    }
+    JsonMemberNotAnObject => UsageUnreadable {
+      cause: "the response body is not a JSON object, so its usage could not be read",
+    }
+  }
+}
+
+// A BLOCK IS READ, DECLARED UNMODELLED, OR REFUSED -- three answers, because the predecessor had
+// two and the missing one was the one that mattered.
+//
+// The old decoder returned an option, so "this is a block kind a later vendor version added" and
+// "this is a block kind we DO model, arriving malformed" were the same answer: drop it. Dropping the
+// first is correct and is why BlockNotModelled survives. Dropping the second deletes work the model
+// actually did -- a tool_use block whose id is missing is a command the model issued, and a decoder
+// that silently omits it produces a turn in which the model asked for nothing.
+//
+// THE SHARPEST CASE IS `input`. A tool_use block whose input member is absent used to decode as an
+// EMPTY OBJECT, which is not a marker: it is a well-formed, dispatchable set of arguments. The
+// dispatcher in gunbc.harness.harness_tool then reads the tool's parameters off that object and
+// finds none. WHAT HAPPENS NEXT IS NARROWER THAN AN EARLIER DRAFT OF THIS COMMENT CLAIMED (side-chat
+// review, 2026-09-11): harness_execute_tool_use declares run_command's `command` required and
+// refuses a call without it as ToolInputMemberMissing, so on today's one implemented tool nothing
+// executes. The harm is a MISATTRIBUTION plus a spent round -- the model's real arguments are
+// discarded and the model is told back that it sent a call with no command, which is a fact about
+// the codec reported as a fact about the model. That refusal is a property of run_command's single
+// required member, not of the decoder: a tool with an optional or defaulted parameter would
+// dispatch on the empty object. The fabricated value is INDISTINGUISHABLE at every consumer from a
+// model that genuinely sent `{}`, which is why the repair belongs here rather than in the
+// dispatcher, and why it is silent wrongness rather than a weak default.
+//
+// The rule is therefore: an unknown `type` is not modelled and is skipped; a MODELLED kind missing a
+// member its shape requires is a refusal naming the kind and the member.
+type HarnessBlockRead
+  = BlockRead { block: HarnessWireBlock }
+  | BlockNotModelled
+  | BlockUnreadable { cause: String }
+
+fn harness_block_member_gap(kind: String, key: String) -> String {
+  join(["a ", kind, " content block carries no string '", key, "' member"], "")
+}
+
+// PRESENT-AND-NULL IS A REFUSAL FOR EVERY MEMBER A SHAPE REQUIRES. Nullability is a fact about a
+// specific member of a specific schema, not a property of JSON, so it is granted one member at a
+// time: the chat assistant message's content and reasoning are typed nullable upstream and take a
+// no-text arm, and every other member here is required, so `null` there is the peer declining to
+// send something the shape says must be present. Naming it separately from a type error keeps the
+// diagnostic honest about which of the two happened.
+fn harness_null_member_cause(subject: String, key: String) -> String {
+  join([subject, " carries '", key, "' as null; the shape requires a string there"], "")
+}
+
+// A LOOKUP HAS FOUR OUTCOMES AND A REFUSAL MAY NOT STATE A FALSE FACT ABOUT WHICH ONE HAPPENED.
+// Every `json_object_unique_member` in this file now writes its three non-found arms out; the
+// wildcards that used to close them reported "carries no 'function' member" for a tool_call that
+// carried `function` TWICE, and the same for `message`, `choices` and the messages shape's
+// `content` (review 63850). Nothing failed open -- each still refused -- but the sentence sent a
+// reader looking for a member that was in fact there, and a diagnostic is read by a person
+// deciding what to fix. These two helpers are the arms that were missing; the absent arm stays
+// per-site because what a missing member COSTS differs at each one.
+fn harness_duplicate_member_cause(subject: String, key: String) -> String {
+  join([subject, " carries '", key, "' more than once; which one the sender meant is unknowable"], "")
+}
+
+fn harness_not_an_object_cause(subject: String, key: String) -> String {
+  join([subject, " is not a JSON object, so its '", key, "' could not be read"], "")
+}
+
+fn harness_decode_block(v: JsonValue) -> HarnessBlockRead {
   match harness_member_string(doc: v, key: "type") {
-    Absent => none
-    Present { value: kind } =>
+    StringAbsent => BlockUnreadable { cause: "a content block carries no string type member; its kind is unknown" }
+    StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a content block", key: "type") }
+    StringMalformed { cause: c } => BlockUnreadable { cause: join(["a content block's type is unreadable: ", c], "") }
+    StringRead { value: kind } =>
       if kind == "text" {
         match harness_member_string(doc: v, key: "text") {
-          Present { value: t } => Present { value: WireTextBlock { text: t } }
-          Absent => none
+          StringRead { value: t } => BlockRead { block: WireTextBlock { text: t } }
+          StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "text", key: "text") }
+          StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a text block", key: "text") }
+          StringMalformed { cause: c } => BlockUnreadable { cause: join(["a text block is unreadable: ", c], "") }
         }
       } else if kind == "thinking" {
         match harness_member_string(doc: v, key: "thinking") {
-          Present { value: t } => Present { value: WireThinkingBlock { thinking: t } }
-          Absent => none
+          StringRead { value: t } => BlockRead { block: WireThinkingBlock { thinking: t } }
+          StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "thinking", key: "thinking") }
+          StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a thinking block", key: "thinking") }
+          StringMalformed { cause: c } => BlockUnreadable { cause: join(["a thinking block is unreadable: ", c], "") }
         }
       } else if kind == "tool_use" {
         match harness_member_string(doc: v, key: "id") {
-          Absent => none
-          Present { value: id } =>
+          StringAbsent => BlockUnreadable {
+            cause: "a tool_use block carries no string id member; its result could not be addressed back to the call",
+          }
+          StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a tool_use block", key: "id") }
+          StringMalformed { cause: c } => BlockUnreadable { cause: join(["a tool_use block's id is unreadable: ", c], "") }
+          StringRead { value: id } =>
             match harness_member_string(doc: v, key: "name") {
-              Absent => none
-              Present { value: name } =>
-                Present {
-                  value: WireToolUseBlock {
-                    id: id,
-                    name: name,
-                    input: match json_object_unique_member(v: v, key: "input") {
-                      JsonMemberFound { value: iv } => iv
-                      _ => json_object([])
-                    },
-                  },
+              StringAbsent => BlockUnreadable { cause: harness_block_member_gap(kind: "tool_use", key: "name") }
+              StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a tool_use block", key: "name") }
+              StringMalformed { cause: c } => BlockUnreadable { cause: join(["a tool_use block's name is unreadable: ", c], "") }
+              StringRead { value: name } =>
+                match json_object_unique_member(v: v, key: "input") {
+                  JsonMemberFound { value: iv } =>
+                    BlockRead { block: WireToolUseBlock { id: id, name: name, input: iv } }
+                  JsonMemberAbsent => BlockUnreadable {
+                    cause: join([
+                      "the tool_use block calling '", name, "' carries no input member; refusing rather than ",
+                      "dispatching that tool with its arguments removed",
+                    ], ""),
+                  }
+                  JsonMemberDuplicated => BlockUnreadable {
+                    cause: join(["the tool_use block calling '", name, "' carries input twice; which arguments the model meant is unknowable"], ""),
+                  }
+                  JsonMemberNotAnObject => BlockUnreadable {
+                    cause: join(["the tool_use block calling '", name, "' is not a JSON object"], ""),
+                  }
                 }
             }
         }
       } else {
-        none
+        BlockNotModelled
       }
   }
 }
 
-fn harness_decode_blocks(v: JsonValue) -> List<HarnessWireBlock> {
+type HarnessBlocksRead
+  = BlocksRead { blocks: List<HarnessWireBlock> }
+  | BlocksUnreadable { cause: String }
+
+// ONE FOLD FOR BOTH SHAPES, PARAMETERIZED BY THE PER-ELEMENT DECODER. The two wire shapes decode
+// DIFFERENT elements -- a messages content block, a chat tool_call -- but they fold them the same
+// way: skip what is not modelled, keep what read, and let the first refusal decide for the list.
+// That is one concept, and it had been written twice (review 63807); the copy is what let the
+// SEMANTICS drift too, since a later edit to either arm has no reason to reach the other.
+//
+// THE FOLD IS FAIL-CLOSED ACROSS THE WHOLE LIST: one unreadable element makes the response
+// unreadable, because a partially decoded content list is exactly the fabricated-plausible-output
+// shape -- it reads as a complete turn that happens to be shorter.
+//
+// AND IT IS LINEAR. Both predecessors recursed on `els.skip(n: 1)`, which COPIES the remainder in
+// this realization, so decoding n elements copied n + (n-1) + ... elements -- quadratic in the
+// block count for a fold that reads each element once. DESIGN section 6: a proven cost-shape defect
+// is always fixed regardless of the realized n, because n is not a time-stable fact. Three linear
+// passes over the decoded reads -- map, the first-refusal scan, flat_map -- replace the recursion,
+// and the only behaviour that changes is that a refused list still decodes its remaining elements
+// before answering, which is work on the path that ends the turn.
+fn harness_decode_each(els: List<JsonValue>, decode: fn(JsonValue) -> HarnessBlockRead) -> HarnessBlocksRead {
+  let reads = map(els, e => decode(e))
+  match fold(reads, init: none, f: (acc, r) =>
+         match acc {
+           Present { value: c } => Present { value: c }
+           Absent =>
+             match r {
+               BlockUnreadable { cause: c } => Present { value: c }
+               BlockNotModelled => none
+               BlockRead { block: _ } => none
+             }
+         }) {
+    Present { value: c } => BlocksUnreadable { cause: c }
+    Absent =>
+      BlocksRead { blocks: flat_map(reads, r =>
+        match r {
+          BlockRead { block: b } => [b]
+          BlockNotModelled => []
+          BlockUnreadable { cause: _ } => []
+        }) }
+  }
+}
+
+// THE WILDCARD BELOW IS OVER THE VALUE'S TYPE, NOT OVER A LOOKUP, which is why it survives the
+// sweep that wrote every lookup's arms out (review 63850): duplicated and not-an-object were
+// already decided by the lookup that PRODUCED this value and cannot reach here, so "not an array"
+// is the only fact left to state.
+fn harness_decode_blocks(v: JsonValue) -> HarnessBlocksRead {
   match v {
-    JsonArray { elements: els } =>
-      els |> flat_map(e => match harness_decode_block(v: e) {
-        Present { value: b } => [b]
-        Absent => []
-      })
-    _ => []
+    JsonArray { elements: els } => harness_decode_each(els: els, decode: e => harness_decode_block(v: e))
+    _ => BlocksUnreadable { cause: "the response content member is not an array of content blocks" }
   }
 }
 
@@ -224,11 +494,15 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
       }
     JsonDocumentParsed { value: doc } =>
       match harness_member_string(doc: doc, key: "stop_reason") {
-        Absent =>
+        StringAbsent =>
           HarnessResponseUnreadable {
             cause: "response carries no string stop_reason member; the turn's terminal state is unknown",
           }
-        Present { value: wire } =>
+        StringNull =>
+          HarnessResponseUnreadable { cause: harness_null_member_cause(subject: "the response", key: "stop_reason") }
+        StringMalformed { cause: c } =>
+          HarnessResponseUnreadable { cause: join(["the response stop_reason is unreadable: ", c], "") }
+        StringRead { value: wire } =>
           match harness_decode_stop_reason(wire: wire) {
             StopReasonUnrecognized { wire: w } =>
               HarnessResponseUnreadable {
@@ -238,20 +512,26 @@ fn harness_decode_response(body: String) -> HarnessResponseRead {
                 ], ""),
               }
             StopReasonRead { reason: r } =>
-              HarnessResponseParsed {
-                blocks: match json_object_unique_member(v: doc, key: "content") {
-                  JsonMemberFound { value: c } => harness_decode_blocks(v: c)
-                  _ => []
-                },
-                stop_reason: r,
-                input_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "input_tokens")
-                  _ => 0
-                },
-                output_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                  JsonMemberFound { value: u } => harness_member_int(doc: u, key: "output_tokens")
-                  _ => 0
-                },
+              match json_object_unique_member(v: doc, key: "content") {
+                JsonMemberFound { value: c } =>
+                  match harness_decode_blocks(v: c) {
+                    BlocksUnreadable { cause: bc } => HarnessResponseUnreadable { cause: bc }
+                    BlocksRead { blocks: bs } =>
+                      HarnessResponseParsed {
+                        blocks: bs,
+                        stop_reason: r,
+                        usage: harness_usage_read(doc: doc, input_key: "input_tokens", output_key: "output_tokens"),
+                      }
+                  }
+                JsonMemberDuplicated => HarnessResponseUnreadable {
+                  cause: harness_duplicate_member_cause(subject: "the response", key: "content"),
+                }
+                JsonMemberNotAnObject => HarnessResponseUnreadable {
+                  cause: harness_not_an_object_cause(subject: "the response body", key: "content"),
+                }
+                JsonMemberAbsent => HarnessResponseUnreadable {
+                  cause: "response carries no content member; what the model produced this round is unknown",
+                }
               }
           }
       }
@@ -342,44 +622,18 @@ fn harness_backend_url(address: String, shape: HarnessWireShape) -> String {
 
 
 
-// THE HARNESS TALKS TO THE ENGINE DIRECTLY. OPERATOR RULING 2026-09-04: gunbc must not depend on
-// ctrl's session-dashboard router (192.168.1.188:3738), which is co-tenanted with that dashboard's
-// process and closed every in-flight request on each rollout restart (curl exit 52; five runs lost
-// in one morning, the long Think Max steps preferentially). There is nothing to route: one model,
-// served by two vLLM replicas that each answer the OpenAI surface on port 30000, measured
-// 2026-09-04 (/v1/models 200 on both, advertising harness_engine_model). A replica is chosen per
-// worker from a seed (the worktree path) so concurrent attempts spread across both machines
-// without a process in the middle; a transport refusal stays a typed turn failure, never a widen.
-// THE ROSTER IS DERIVED, NOT AUTHORED: one replica per serving pair, at the pair's HEAD, because the
-// vLLM front door of a TP=2 pair answers on its head unit only. Which unit is a pair's head is the
-// attributable row `gunbc.spark.pair_serving_desired` `spark_pair_serving_head`, and the address is
-// the fleet topology's LAN endpoint for that host (`gunbc.fleet_intent_network` `host_lan_address`).
-// A head with no LAN endpoint row makes the roster UNRESOLVED, which the backend observer refuses on
-// naming the host -- never a shorter list. History, because it is the reason this is a derivation:
-// the row was `[srv6.address, "192.168.1.232"]`, .232 being srv7 as the first pair's front door;
-// the heads moved to srv6 and srv9, nothing observed the literal, and a dispatch on 2026-09-05
-// refused against a dead address while both heads served. NEXT MOVE, deliberately not here: the LAN
-// answer is still a locality choice made by this module. The fabric owes a locus-to-locus resolution
-// (dispatching host -> head's front door), the same relation `gunbc.fleet_ssh_locus`
-// `fleet_locus_ssh_target` computes for ssh; when it exists this fn asks it and stops naming Lan.
-data harness_engine_port: Int = 30000
-
-type HarnessReplicaRoster
-  = HarnessReplicasResolved { addresses: List<String> }
-  | HarnessReplicasUnresolved { hosts: List<HostIdentity> }
-
-fn harness_engine_replica_roster() -> HarnessReplicaRoster {
-  let heads = map(spark_pair_serving_groups, g => spark_pair_serving_head(group: g))
-  let unresolved = filter(heads, h => match host_lan_address(host: h) { Present { value: _ } => false  Absent => true })
-  if count(unresolved) > 0 {
-    HarnessReplicasUnresolved { hosts: unresolved }
-  } else {
-    HarnessReplicasResolved { addresses: flat_map(heads, h => match host_lan_address(host: h) { Present { value: a } => [a as String]  Absent => [] }) }
-  }
-}
-
-fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> String {
-  harness_backend_url_on_port(address: address, port: harness_engine_port, shape: shape)
+// THE ROUTE'S FRONT DOOR IS NOT A HARNESS FACT, and this is where that was discovered. A single
+// harness_engine_port row and a replica roster derived from the CONVERGENCE roster stood here: the
+// port made a second route on a second port unreachable without an edit, and the roster made
+// "who this repository deploys" answer "who a turn may be offered to". Both moved to
+// gunbc.serving.serving_enrollment, which owns routes -- head, front door and declared ceiling, one
+// shape per route -- and the harness is one client of them.
+//
+// WHAT IS KEPT HERE IS THE WIRE SHAPE, which genuinely is the harness's: which PATH a request goes
+// to depends on whether this client speaks the chat-completions or the messages surface, and that is
+// a property of the client and not of the route.
+fn harness_backend_url_for_endpoint(shape: HarnessWireShape, endpoint: ServingRouteEndpoint) -> String {
+  join(["http://", serving_route_endpoint_wire(e: endpoint) as String, harness_backend_path(shape: shape)], "")
 }
 
 
@@ -412,26 +666,23 @@ fn harness_backend_url_for_address(shape: HarnessWireShape, address: String) -> 
 // shared-standard modelling bought: a second implementation of the same wire reused the decoder
 // with no second decoder written.
 
-// WHICH SERVING UNIT THE HARNESS TALKS TO. This row replaced a bare model STRING, and the
-// replacement is the point: the string was one of three independent spellings of one model identity
-// (this row, the pair's observed served_model_name, and the llama.cpp router's observed alias), so
-// a model change had to be remembered in three places and could be forgotten in two. The unit is now
-// the single thing chosen, and the model id is DERIVED from it through the seam, which in turn
-// derives it from the model's own upstream authority.
+// THE GLOBAL SERVING SELECTOR IS DELETED, AND ITS DELETION IS THE POINT RATHER THAN A SIDE EFFECT.
 //
-// THE ORDINARY HARNESS TALKS TO DEEPSEEK, BECAUSE THAT IS WHAT THE PRODUCTION ROUTE SERVES. This row
-// briefly read Glm53FlashOnVllm while the pair route this harness reaches was restored to DeepSeek --
-// so the global selector carried a canary experiment, and every ordinary harness action would have
-// encoded GLM's reasoning kwargs, effort key and tool parser into requests aimed at an endpoint
-// serving DeepSeek from an image measured not to register GLM at all.
+// Two rows stood here: the unit the harness talks to, and the model id derived from it. Together
+// they were the reason a route serving anything else was unusable -- every request named the id this
+// selector chose, so the probe had to demand that id, and a group serving a perfectly good different
+// model was invisible to placement.
 //
-// A CANARY IS NOT A DEFAULT. The GLM arm is reached through gunbc.spark.glm_canary_converge, which
-// names its own host, port and alias together; a caller that wants it selects that binding explicitly
-// rather than inheriting it from a row every other caller also reads. Making the one global selector
-// carry an experiment is how an experiment becomes production without anyone deciding it should.
-data harness_serving_unit: HarnessServingUnit = DeepseekV4FlashOnVllm
-
-data harness_engine_model: String = harness_unit_model_id(unit: harness_serving_unit) as String
+// WHAT REPLACED THEM IS NOT ANOTHER DEFAULT. A placed turn takes its unit and its model id from the
+// route that granted the seat, observed on that route's own probe and carried on the binding
+// (gunbc.harness.harness_seat HarnessSeatBound). So there is nothing left for an unplaced caller to
+// inherit, which is exactly the property that keeps this widening from being a promotion: the canary
+// is not the new default, because there is no default.
+//
+// AND THE ROWS ARE DELETED RATHER THAN LEFT STANDING. A selector nothing reads is the declaration
+// DESIGN section 3c calls red -- and worse than ordinarily red, because the next entry point that
+// needs "the model" would reach for it and silently reintroduce the single-model demand this change
+// removed.
 
 // THE ROUTER'S WINDOW IS DECLARED BESIDE THE ROUTER, for the reason the model directly above it is.
 // gunbc.spark.serving_desired owns spark_serving_desired_context_length, and that row is the OLLAMA
@@ -475,9 +726,28 @@ data harness_engine_model: String = harness_unit_model_id(unit: harness_serving_
 // harness decides how much of a shared pool it is entitled to. A single row would have made the
 // client's choice indistinguishable from the server's limit, which is precisely the confusion that
 // put 1,048,576 in the window field in the first place.
-data harness_engine_admission_cap: TokenCount = token_count(count: 1048576)
-
+// THE ADMISSION CAP IS THE ROUTE'S, SO IT IS ASKED OF THE UNIT THAT ROUTE IS SERVING. It was one
+// row reading 1,048,576, which was the pair route's engine and nothing else -- and the moment a turn
+// can land on a second route serving a second model, a single row is a cap belonging to whichever
+// engine happened to be written down. The canary's window is a quarter of it, so sending a request
+// sized by the old row to the route that is actually up would have been rejected mid-run with the
+// turn's work already spent. Each unit's ceiling comes from its own upstream authority through the
+// seam, which already owns that question.
 data harness_engine_context_window: TokenCount = token_count(count: 200000)
+
+// THE WORKING WINDOW IS THE SMALLER OF WHAT THIS CLIENT CHOOSES TO SPEND AND WHAT THE ROUTE WILL
+// ADMIT, and both halves are real. The client's choice is a share of a pool it does not own; the
+// route's ceiling is a hard limit whose breach is a refusal after the work is done. Taking the
+// minimum is the same asymmetry the tolerant seat ceiling uses: a decision bounds optimism and an
+// external limit may always refuse below it.
+fn harness_context_budget_for(unit: HarnessServingUnit) -> TokenCount {
+  let declared = harness_unit_declared_context_ceiling(unit: unit)
+  if token_count_value(t: declared) < token_count_value(t: harness_engine_context_window) {
+    declared
+  } else {
+    harness_engine_context_window
+  }
+}
 
 // THE CHAT COMPLETIONS DECODER, to the same carrier the messages decoder fills. finish_reason maps
 // onto the stop vocabulary the harness already consumes: stop is an end of turn, tool_calls is a
@@ -500,51 +770,161 @@ fn harness_chat_finish_reason(wire: String) -> HarnessStopReasonRead {
   }
 }
 
-fn harness_chat_tool_call_block(v: JsonValue) -> HarnessWireBlock? {
+// THE CHAT SHAPE'S TOOL CALL CARRIES THE SAME THREE OBLIGATIONS AS THE MESSAGES SHAPE'S, and its
+// predecessor fabricated all three.
+//
+// The id defaulted to the EMPTY STRING. That id is what gunbc.harness.harness_turn writes into the
+// tool_result message so the server can join a result to the call it answers; an empty one is not a
+// missing id on the wire, it is a well-formed id that matches nothing, so the model is handed the
+// output of a command it cannot attribute -- and when two calls arrive in one round they both carry
+// it and become indistinguishable.
+//
+// The arguments defaulted to an EMPTY OBJECT twice over: once when the member was absent and once
+// when it was present but not parseable as JSON. The second is the worse of the pair, because
+// malformed arguments are a thing a model actually produces under sampling -- a truncated object, a
+// trailing comma -- and answering `{}` converts "the model emitted a call this codec could not
+// read" into "the model called this tool with no arguments" -- and hands that invented call to the
+// dispatcher, which on run_command refuses it as ToolInputMemberMissing for a member the model
+// actually sent, spending the round and reporting the codec's fault as the model's.
+fn harness_chat_tool_call_block(v: JsonValue) -> HarnessBlockRead {
   match json_object_unique_member(v: v, key: "function") {
     JsonMemberFound { value: f } =>
       match harness_member_string(doc: f, key: "name") {
-        Absent => none
-        Present { value: name } =>
-          Present { value: WireToolUseBlock {
-            id: match harness_member_string(doc: v, key: "id") { Present { value: i } => i  Absent => "" },
-            name: name,
-            input: match harness_member_string(doc: f, key: "arguments") {
-              Absent => json_object([])
-              Present { value: args } =>
-                match parse_json_document(s: args) {
-                  JsonDocumentParsed { value: a } => a
-                  JsonDocumentUnreadable { gap: _ } => json_object([])
+        StringAbsent => BlockUnreadable { cause: "a chat tool_call carries no string function.name member" }
+        StringNull => BlockUnreadable { cause: harness_null_member_cause(subject: "a chat tool_call", key: "function.name") }
+        StringMalformed { cause: c } => BlockUnreadable { cause: join(["a chat tool_call's function.name is unreadable: ", c], "") }
+        StringRead { value: name } =>
+          match harness_member_string(doc: v, key: "id") {
+            StringAbsent => BlockUnreadable {
+              cause: join([
+                "the chat tool_call for '", name, "' carries no string id member; its result could not ",
+                "be addressed back to the call",
+              ], ""),
+            }
+            StringNull => BlockUnreadable {
+              cause: harness_null_member_cause(subject: join(["the chat tool_call for '", name, "'"], ""), key: "id"),
+            }
+            StringMalformed { cause: c } =>
+              BlockUnreadable { cause: join(["the chat tool_call for '", name, "' has an unreadable id: ", c], "") }
+            StringRead { value: id } =>
+              match harness_member_string(doc: f, key: "arguments") {
+                StringAbsent => BlockUnreadable {
+                  cause: join([
+                    "the chat tool_call for '", name, "' carries no arguments member; refusing rather ",
+                    "than dispatching that tool with its arguments removed",
+                  ], ""),
                 }
-            },
-          } }
+                StringNull => BlockUnreadable {
+                  cause: harness_null_member_cause(subject: join(["the chat tool_call for '", name, "'"], ""), key: "arguments"),
+                }
+                StringMalformed { cause: c } =>
+                  BlockUnreadable { cause: join(["the chat tool_call for '", name, "' has unreadable arguments: ", c], "") }
+                StringRead { value: args } =>
+                  match parse_json_document(s: args) {
+                    JsonDocumentParsed { value: a } =>
+                      BlockRead { block: WireToolUseBlock { id: id, name: name, input: a } }
+                    JsonDocumentUnreadable { gap: g } => BlockUnreadable {
+                      cause: join([
+                        "the chat tool_call for '", name, "' carries arguments that are not a JSON document: ",
+                        json_document_gap_text(gap: g),
+                      ], ""),
+                    }
+                  }
+              }
+          }
       }
-    _ => none
+    JsonMemberDuplicated =>
+      BlockUnreadable { cause: harness_duplicate_member_cause(subject: "a chat tool_call", key: "function") }
+    JsonMemberNotAnObject =>
+      BlockUnreadable { cause: harness_not_an_object_cause(subject: "a chat tool_call", key: "function") }
+    JsonMemberAbsent => BlockUnreadable { cause: "a chat tool_call carries no function member" }
   }
 }
 
-fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> List<HarnessWireBlock> {
-  let reasoning = match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
-    Present { value: r } => [WireThinkingBlock { thinking: r }]
-    Absent =>
-      match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
-        Present { value: r } => if r == "" { [] } else { [WireThinkingBlock { thinking: r }] }
-        Absent => []
+// THE THREE PARTS OF A CHAT MESSAGE ARE READ INDEPENDENTLY AND ANY ONE OF THEM CAN REFUSE.
+//
+// Reasoning and content are legitimately ABSENT -- a round may be all tool calls, or all prose --
+// so absence takes the empty arm. Neither may be MALFORMED silently: a duplicated content member
+// would drop the assistant's message, and a duplicated tool_calls member would drop the model's
+// commands and leave a response that reads as a completed turn with nothing in it. That last one
+// is the sharpest arm in this function and the reason it is written out rather than closed with a
+// wildcard: zero tool calls is what `harness_turn_round` reads as "the model stopped talking", so
+// it writes `turn.completed`, returns TurnProviderStopped, and the process exits ZERO. A member
+// this codec cannot read uniquely must never reach that arm.
+fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
+  match harness_chat_message_reasoning(unit: unit, msg: msg) {
+    BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+    BlocksRead { blocks: reasoning } =>
+      match harness_chat_message_text(msg: msg) {
+        BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+        BlocksRead { blocks: text } =>
+          match harness_chat_message_calls(msg: msg) {
+            BlocksUnreadable { cause: c } => BlocksUnreadable { cause: c }
+            BlocksRead { blocks: calls } => BlocksRead { blocks: concat(concat(reasoning, text), calls) }
+          }
       }
   }
-  let text = match harness_member_string(doc: msg, key: "content") {
-    Present { value: c } => if c == "" { [] } else { [WireTextBlock { text: c }] }
-    Absent => []
+}
+
+// REASONING IS NULLABLE ON THIS SHAPE, AND A NULL PRIMARY STILL CONSULTS THE ALIASES. The upstream
+// schema types the reasoning field as an optional string, and a serving build that populates the
+// alias spelling while leaving the primary explicitly null is a shape this decoder has to read: the
+// two spellings are one fact, so a null on one of them is not yet an answer about the fact. Only
+// when the alias fold also reports null or absence is there no reasoning to carry.
+fn harness_chat_message_reasoning(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
+  match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
+    StringRead { value: r } => BlocksRead { blocks: [WireThinkingBlock { thinking: r }] }
+    StringMalformed { cause: c } =>
+      BlocksUnreadable { cause: join(["the chat message's reasoning field is unreadable: ", c], "") }
+    StringNull => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
+    StringAbsent => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
   }
-  let calls = match json_object_unique_member(v: msg, key: "tool_calls") {
+}
+
+fn harness_chat_message_reasoning_alias(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
+  match harness_first_member_string(doc: msg, keys: harness_unit_reasoning_field_aliases(unit: unit)) {
+    StringRead { value: r } =>
+      BlocksRead { blocks: if r == "" { [] } else { [WireThinkingBlock { thinking: r }] } }
+    StringMalformed { cause: c } =>
+      BlocksUnreadable { cause: join(["the chat message's reasoning alias is unreadable: ", c], "") }
+    StringNull => BlocksRead { blocks: [] }
+    StringAbsent => BlocksRead { blocks: [] }
+  }
+}
+
+// CONTENT IS NULLABLE ON THIS SHAPE AND NULL IS NOT A FAULT. A tool-only round is served as
+// `"content": null` beside a populated `tool_calls`, so refusing here would discard the model's
+// commands over a member the schema explicitly permits to be null -- the decoder's own defect
+// wearing the costume of a wire fault. Present-null and absent both mean the same thing for THIS
+// member, no assistant text, and they are written as separate arms rather than one wildcard because
+// they are different wire facts and a later member may need to tell them apart. A duplicated or
+// wrong-typed content member still refuses: those are unknowable, not empty.
+fn harness_chat_message_text(msg: JsonValue) -> HarnessBlocksRead {
+  match harness_member_string(doc: msg, key: "content") {
+    StringRead { value: c } => BlocksRead { blocks: if c == "" { [] } else { [WireTextBlock { text: c }] } }
+    StringNull => BlocksRead { blocks: [] }
+    StringAbsent => BlocksRead { blocks: [] }
+    StringMalformed { cause: c } =>
+      BlocksUnreadable { cause: join(["the chat message's content is unreadable: ", c], "") }
+  }
+}
+
+// THE INNER WILDCARD IS OVER THE VALUE'S TYPE: the lookup's three non-found outcomes are the arms
+// at the bottom of this match, so a duplicated tool_calls member never reaches "is not an array".
+fn harness_chat_message_calls(msg: JsonValue) -> HarnessBlocksRead {
+  match json_object_unique_member(v: msg, key: "tool_calls") {
     JsonMemberFound { value: tc } =>
       match tc {
-        JsonArray { elements: es } => flat_map(es, e => match harness_chat_tool_call_block(v: e) { Present { value: b } => [b]  Absent => [] })
-        _ => []
+        JsonArray { elements: es } =>
+          harness_decode_each(els: es, decode: e => harness_chat_tool_call_block(v: e))
+        _ => BlocksUnreadable { cause: "the chat message tool_calls member is not an array" }
       }
-    _ => []
+    JsonMemberAbsent => BlocksRead { blocks: [] }
+    JsonMemberDuplicated => BlocksUnreadable {
+      cause: "the chat message carries tool_calls more than once; refusing rather than reporting a round with no tool calls, which reads as a completed turn",
+    }
+    JsonMemberNotAnObject => BlocksUnreadable { cause: "the chat completion message is not a JSON object" }
   }
-  concat(concat(reasoning, text), calls)
 }
 
 fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> HarnessResponseRead {
@@ -553,37 +933,66 @@ fn harness_decode_chat_completion(unit: HarnessServingUnit, body: String) -> Har
       HarnessResponseUnreadable { cause: join(["response body is not a JSON document: ", json_document_gap_text(gap: g)], "") }
     JsonDocumentParsed { value: doc } =>
       match json_object_unique_member(v: doc, key: "choices") {
-        JsonMemberFound { value: JsonArray { elements: choices } } =>
+        JsonMemberDuplicated => HarnessResponseUnreadable {
+          cause: harness_duplicate_member_cause(subject: "the chat completion", key: "choices"),
+        }
+        JsonMemberNotAnObject => HarnessResponseUnreadable {
+          cause: harness_not_an_object_cause(subject: "the chat completion body", key: "choices"),
+        }
+        JsonMemberAbsent => HarnessResponseUnreadable { cause: "chat completion carries no choices array" }
+        JsonMemberFound { value: cv } =>
+          harness_decode_chat_choices(unit: unit, doc: doc, choices_value: cv)
+      }
+  }
+}
+
+// THE CHOICES MEMBER IS FOUND, THEN IT IS AN ARRAY, AND THOSE ARE TWO FACTS. Reading them in one
+// nested pattern left the not-an-array case to the lookup's wildcard, where "choices is a string"
+// came out as "carries no choices array" -- true of nothing that happened.
+fn harness_decode_chat_choices(unit: HarnessServingUnit, doc: JsonValue, choices_value: JsonValue) -> HarnessResponseRead {
+  match choices_value {
+    JsonArray { elements: choices } =>
           match choices.first() {
             Absent => HarnessResponseUnreadable { cause: "chat completion carries no choices" }
             Present { value: choice } =>
               match harness_member_string(doc: choice, key: "finish_reason") {
-                Absent => HarnessResponseUnreadable { cause: "chat completion choice carries no finish_reason" }
-                Present { value: fr } =>
+                StringAbsent => HarnessResponseUnreadable { cause: "chat completion choice carries no finish_reason" }
+                StringNull => HarnessResponseUnreadable {
+                  cause: harness_null_member_cause(subject: "the chat completion choice", key: "finish_reason"),
+                }
+                StringMalformed { cause: c } =>
+                  HarnessResponseUnreadable { cause: join(["the chat completion finish_reason is unreadable: ", c], "") }
+                StringRead { value: fr } =>
                   match harness_chat_finish_reason(wire: fr) {
                     StopReasonUnrecognized { wire: w } =>
                       HarnessResponseUnreadable { cause: join(["chat completion carries an unrecognized finish_reason '", w, "'"], "") }
                     StopReasonRead { reason: r } =>
-                      HarnessResponseParsed {
-                        blocks: match json_object_unique_member(v: choice, key: "message") {
-                          JsonMemberFound { value: m } => harness_chat_message_blocks(unit: unit, msg: m)
-                          _ => []
-                        },
-                        stop_reason: r,
-                        input_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "prompt_tokens")
-                          _ => 0
-                        },
-                        output_tokens: match json_object_unique_member(v: doc, key: "usage") {
-                          JsonMemberFound { value: u } => harness_member_int(doc: u, key: "completion_tokens")
-                          _ => 0
-                        },
+                      match json_object_unique_member(v: choice, key: "message") {
+                        JsonMemberFound { value: m } =>
+                          match harness_chat_message_blocks(unit: unit, msg: m) {
+                            BlocksUnreadable { cause: bc } => HarnessResponseUnreadable { cause: bc }
+                            BlocksRead { blocks: bs } =>
+                              HarnessResponseParsed {
+                                blocks: bs,
+                                stop_reason: r,
+                                usage: harness_usage_read(doc: doc, input_key: "prompt_tokens", output_key: "completion_tokens"),
+                              }
+                          }
+                        JsonMemberDuplicated => HarnessResponseUnreadable {
+                          cause: harness_duplicate_member_cause(subject: "the chat completion choice", key: "message"),
+                        }
+                        JsonMemberNotAnObject => HarnessResponseUnreadable {
+                          cause: harness_not_an_object_cause(subject: "the chat completion choice", key: "message"),
+                        }
+                        JsonMemberAbsent =>
+                          HarnessResponseUnreadable { cause: "the chat completion choice carries no message member" }
                       }
                   }
               }
           }
-        _ => HarnessResponseUnreadable { cause: "chat completion carries no choices array" }
-      }
+    _ => HarnessResponseUnreadable {
+      cause: "the chat completion's choices member is not an array; what the model returned this round is unknown",
+    }
   }
 }
 
@@ -597,14 +1006,24 @@ fn harness_decode_for_shape(unit: HarnessServingUnit, shape: HarnessWireShape, b
 // THE ALIAS FOLD. A unit may expose the same reasoning text under a second spelling -- vLLM's
 // "reasoning" beside the guide's reasoning_content -- and a unit may expose none. Folding a LIST
 // rather than branching on an empty sentinel keeps "this unit has no alias" as an empty list, which
-// is the state itself rather than a string standing in for it.
-fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> String? {
+// is the state itself rather than a string standing in for it. A spelling that is present and NULL
+// ends the scan rather than continuing it: null is the unit answering about that spelling, and the
+// caller decides what the answer means, which for reasoning is no thinking block.
+//
+// THIS ONE RECURSES ON `keys.skip` AND STAYS, unlike the two block folds (review 63807): the list
+// is a unit's declared alias spellings -- one, today -- so the copy is bounded by a constant the
+// corpus authors rather than by anything on the wire. Said out loud because a reader who has just
+// seen the block folds linearized will ask, and because the exemption is the bound, not the size:
+// if a unit ever declared aliases by the dozen this would be the same defect.
+fn harness_first_member_string(doc: JsonValue, keys: List<NonEmptyStr>) -> HarnessStringRead {
   match keys.first() {
-    Absent => none
+    Absent => StringAbsent
     Present { value: k } =>
       match harness_member_string(doc: doc, key: k as String) {
-        Present { value: v } => Present { value: v }
-        Absent => harness_first_member_string(doc: doc, keys: keys.skip(n: 1))
+        StringRead { value: v } => StringRead { value: v }
+        StringMalformed { cause: c } => StringMalformed { cause: c }
+        StringNull => StringNull
+        StringAbsent => harness_first_member_string(doc: doc, keys: keys.skip(n: 1))
       }
   }
 }

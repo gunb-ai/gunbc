@@ -1,0 +1,86 @@
+module test.claim.generated_artifact_producer_coverage_witness_test
+
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import gunbc.generated_artifact {
+  GeneratedArtifactProducerRow,
+  GeneratedArtifactProducerCoverage, GeneratedArtifactProducerCovered, GeneratedArtifactProducerUncovered,
+  generated_artifact_producer_rows,
+  generated_artifact_producer_refusals,
+  generated_artifact_producer_refusals_over,
+  generated_artifact_producer_coverage_over,
+  generated_artifact_producer_coverage_rendered,
+  every_generated_artifact_producer_covered
+}
+import v2.std.decl_ref_resolution { DeclarationRefDeclarationAbsent, DeclarationRefModuleAbsent, DeclarationRefResolved, DeclarationRefFieldAbsent, DeclarationRefAmbiguous }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE JOIN IS ASKED OF THE SAME ROOTS THE CONSUMER CENSUS JOINS, so a producer this witness finds
+// covered is one the .dag-medium join can reach, and a producer it finds uncovered is one that join
+// cannot see -- for whatever reason the resolver names.
+data coverage_pool_roots: List<String> = ["dag", "src/v2"]
+
+// POSITIVE CONTROL, over the real registry: every rostered artifact's producer resolves. This is
+// the arm that goes red when a producer is renamed, moved or deleted without the map following it.
+test fn every_registered_artifact_producer_resolves_in_the_dag_population() -> Bool {
+  every_generated_artifact_producer_covered(pool_roots: coverage_pool_roots)
+    && count(generated_artifact_producer_refusals(pool_roots: coverage_pool_roots)) == 0
+    && count(generated_artifact_producer_rows()) > 0
+}
+
+// THE PLANTED RED. GeneratedArtifact is closed and every rostered producer resolves, so the only
+// way to author an uncovered artifact is to hand the fold a row the registry does not contain. Its
+// producer names a declaration THIS module carries -- real, so the citation wall does not read it
+// as a stale reference -- but v2.std.decl_index decl_facts skips witness modules deliberately
+// (std.decl_ref OutsideDeclIndexTestWitnessModule), so the declaration is outside the population
+// the consumer census joins, which is exactly what "not covered by a producer in the .dag
+// population" means: a v1 reference authored there would be invisible to the join, and the fold
+// must say so rather than sweep for it.
+data planted_uncovered_producer: String = "a producer the joined .dag population cannot see"
+
+fn planted_row() -> GeneratedArtifactProducerRow {
+  GeneratedArtifactProducerRow {
+    artifact_path: "planted/never-generated.yml",
+    producer: decl_ref(
+      module_path: "test.claim.generated_artifact_producer_coverage_witness_test",
+      decl_name: "planted_uncovered_producer"
+    ),
+  }
+}
+
+fn coverage_is_uncovered_at(c: GeneratedArtifactProducerCoverage, path: String) -> Bool {
+  match c {
+    GeneratedArtifactProducerCovered { row: _ } => false
+    GeneratedArtifactProducerUncovered { row: r, resolution: res } =>
+      r.artifact_path == path
+        && match res {
+             DeclarationRefDeclarationAbsent { reference: _ } => true
+             DeclarationRefModuleAbsent { reference: _ } => false
+             DeclarationRefResolved { declaration_identity: _ } => false
+             DeclarationRefFieldAbsent { reference: _ } => false
+             DeclarationRefAmbiguous { reference: _, candidates: _ } => false
+           }
+  }
+}
+
+test fn a_planted_artifact_whose_producer_is_outside_the_population_refuses_by_name() -> Bool {
+  let rows = concat(generated_artifact_producer_rows(), [planted_row()])
+  let refusals = generated_artifact_producer_refusals_over(rows: rows, pool_roots: coverage_pool_roots)
+  count(refusals) == 1
+    && all(refusals, c => coverage_is_uncovered_at(c: c, path: "planted/never-generated.yml"))
+    && all(refusals, c => generated_artifact_producer_coverage_rendered(c: c)
+         == "generated artifact planted/never-generated.yml UNCOVERED: producer test.claim.generated_artifact_producer_coverage_witness_test::planted_uncovered_producer declaration-absent")
+}
+
+// THE REFUSAL IS ON THE PLANT, NOT ON ITS NEIGHBOURS: the real rows beside the plant stay covered
+// in the same fold, so the red is located rather than a population-wide flip.
+test fn the_planted_refusal_leaves_every_real_row_covered() -> Bool {
+  let rows = concat(generated_artifact_producer_rows(), [planted_row()])
+  let coverage = generated_artifact_producer_coverage_over(rows: rows, pool_roots: coverage_pool_roots)
+  count(coverage) == count(rows)
+    && count(filter(coverage, c => match c {
+         GeneratedArtifactProducerCovered { row: _ } => true
+         GeneratedArtifactProducerUncovered { row: _, resolution: _ } => false
+       })) == count(generated_artifact_producer_rows())
+}

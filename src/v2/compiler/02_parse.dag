@@ -639,7 +639,7 @@ fn parse_table_for_production_analyzed(
     artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
     provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
     materialization: v2.compiler.materialization_carriers.parse_table_memo_materialization(),
-    grammar_digest: parse_grammar_digest(validated: validated),
+    grammar_digest: analysis.grammar_digest,
     token_stream_digest: parse_token_stream_digest(all_tokens: all_tokens),
     entries: empty_map(),
     memo_hits: 0,
@@ -647,7 +647,7 @@ fn parse_table_for_production_analyzed(
     memo_lookup_calls: 0,
     nullable_set: analysis.nullable_set,
     first_rows: analysis.first_rows,
-    productions_by_name: grammar_production_index(productions: validated.root.productions),
+    productions_by_name: analysis.productions_by_name,
     prepared_exprs: analysis.prepared_exprs
   }
 }
@@ -1311,10 +1311,28 @@ type GrammarExprFirstFold {
 // every parse of `.dag` source demands could never store, and every demanding claim recomputed
 // it until its own CPU budget stopped the fill mid-flight. The field is the enumeration it
 // always was; `first_rows` beside it was already enumeration-shaped.
+// THE GRAMMAR DIGEST AND THE PRODUCTION INDEX ARE ONCE-PER-GRAMMAR FACTS AND LIVE HERE, beside
+// the FIRST analysis they were already computed next to. Until this carrier held them,
+// parse_table_for_production_analyzed re-derived both on EVERY parse call -- a content hash of
+// the whole grammar node tree (grammar_to_node over the 200-production dag grammar, then
+// content_hash) plus an O(P) map build -- for a value that prepare_grammar had fixed before the
+// first token was read. The required floor's own cross-claim demand census (main run
+// 34556223550, required_floor_cross_claim_demand.tsv) named it: parse_grammar_digest at
+// claims=19 evals=19, ~128ms per claim on the lane's runner, every one of them a claim that
+// parses `.dag` text against the warm-shared dag_prepared_grammar -- so the preparation was
+// shared and the invariant derived FROM it was not, which is the DESIGN §6 per-call rebuild
+// #10992's write-up flagged. prepared_exprs is the precedent: a per-grammar derivation carried
+// once and read per parse. Nothing about the digest's value changes; only where it is paid.
+// The same per-parse rebuild had a second site: parse_production_prepared derived the grammar's
+// own locus eagerly (node_locus over grammar_to_node of the whole grammar) although only the
+// rejection arm that carried no diagnostic of its own ever read it; it is now derived on that
+// arm alone.
 type GrammarFirstAnalysis {
   nullable_set: List<Symbol>
   first_rows: Map<Symbol, List<Symbol>>
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+  grammar_digest: Hash
+  productions_by_name: Map<Symbol, GrammarProduction>
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {
@@ -1713,7 +1731,9 @@ fn compute_grammar_first_analysis_given(
           value: prepare_grammar_expr(expr: p.expression, nullable_set: nullable_set, first_rows: first_rows).tree
         )
       }
-    )
+    ),
+    grammar_digest: parse_grammar_digest(validated: ValidatedGrammarRoot { root: root }),
+    productions_by_name: grammar_production_index(productions: root.productions)
   }
 }
 
@@ -2652,7 +2672,6 @@ fn parse_production_prepared(
   production_name: Symbol
 ) -> Outcome<ParseArtifact> {
   let root = validated.root
-  let at = node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
       let prov = parse_prov_initial()
@@ -2683,7 +2702,9 @@ fn parse_production_prepared(
           Rejected {
             diagnostics: parse_diags_to_non_empty(
               diags: diags,
-              default: parse_e1_syntax_error_diagnostic(at: at)
+              default: parse_e1_syntax_error_diagnostic(
+                at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+              )
             )
           }
       }

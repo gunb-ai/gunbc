@@ -406,6 +406,8 @@ pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
 
 pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
 
+pub type MemoryControllerCount = Rc<Measure<Count, One, i64>>;
+
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
 pub type Watt = Rc<Measure<Power, One, i64>>;
@@ -1112,6 +1114,18 @@ pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub fn token_count_remaining_in_window(window: TokenCount, used: TokenCount) -> TokenCount {
+    {
+        let w = token_count_value(window.clone());
+        let u = token_count_value(used.clone());
+        if (u.clone() >= w.clone()) {
+            token_count(0)
+        } else {
+            token_count((w.clone() - u.clone()))
+        }
+    }
+}
+
 pub fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1164,6 +1178,17 @@ pub fn power_cord_count(count: Nat) -> PowerCordCount {
 }
 
 pub fn power_cord_count_value(c: PowerCordCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn memory_controller_count(count: Nat) -> MemoryControllerCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn memory_controller_count_value(c: MemoryControllerCount) -> Nat {
     measure_count(c.clone())
 }
 

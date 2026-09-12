@@ -4179,7 +4179,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
 }),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
-    err: Some(parse_error("expected item declaration (alias, type, fn, service, resource, data, extern, pattern, interface)".to_string(), span.clone())),
+    err: Some(parse_error("expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)".to_string(), span.clone())),
 }),
 }
     }
@@ -7079,6 +7079,177 @@ pub fn parse_optional_from_key(
     }
 }
 
+pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+    {
+        let start_span = token_span(token_stream_first(tokens.clone()));
+        let dummy = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "".to_string(),
+            span: start_span.clone(),
+            ident_span: std::option::Option::None,
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let r = expect(
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
+                text: "fn".to_string(),
+            }),
+        );
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        parse_fn_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
+    }
+}
+
+pub fn parse_fn_after_kw(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    start_span: Rc<SourceSpan>,
+) -> Rc<ItemResult> {
+    {
+        let dummy = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "".to_string(),
+            span: start_span.clone(),
+            ident_span: std::option::Option::None,
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let r = expect_ident(tokens.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let name = r.name.clone();
+        let name_span = r.span.clone();
+        let tokens = r.tokens.clone();
+        let named_dummy = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let r = parse_params(tokens.clone(), ctx.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let params = r.params.clone();
+        let tokens = r.tokens.clone();
+        let ctx = r.ctx.clone();
+        let ret = parse_optional_inferred(tokens.clone(), ctx.clone());
+        if has_err(ret.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: ret.tokens.clone(),
+                ctx: ret.ctx.clone(),
+                err: ret.err.clone(),
+            });
+        }
+        let inferred = ret.inferred.clone();
+        let tokens = ret.tokens.clone();
+        let ctx = ret.ctx.clone();
+        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let body = r.expr.clone();
+        let minted = mint_parsed_node_identity(r.ctx.clone());
+        let item = Rc::new(Node {
+            occurrence_identity: minted.identity.clone(),
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            params: params.clone(),
+            inferred: inferred.clone(),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: Some(body.clone()),
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(ItemResult {
+            item: item.clone(),
+            tokens: skip_newlines(r.tokens.clone()),
+            ctx: minted.ctx.clone(),
+            err: std::option::Option::None,
+        })
+    }
+}
+
 pub fn admit_callers_property_nonempty(field: Rc<Node>) -> bool {
     {
         let list_val = crate::v1_std_core::field_init_node_value(field.clone());
@@ -7168,7 +7339,7 @@ pub fn parse_fn_body_from_prefix(
             params: all_params.clone(),
             inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
-            uses: prefix.uses.clone(),
+            uses: Rc::new(vec![]),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
             transport: std::option::Option::None,
@@ -7181,14 +7352,6 @@ pub fn parse_fn_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        if (((type_params.clone().len() as i64) > 0) && ((prefix.uses.clone().len() as i64) > 0)) {
-            return Rc::new(ItemResult {
-    item: named_dummy.clone(),
-    tokens: prefix.tokens.clone(),
-    ctx: prefix.ctx.clone(),
-    err: Some(parse_error(v1_rt::concat("generic effectful declaration is not realized: `".to_string(), v1_rt::concat(name.clone(), "` carries both type parameters and a `uses` row. No emitter plumbs type parameters through the effectful path -- the Rust, Python and Go effectful emitters each construct the resource-aware body directly and none routes through the generic-fn split. Declare it with type parameters and no `uses`, or with a `uses` row and no type parameters.".to_string())), name_span.clone())),
-});
-        }
         let tokens = skip_newlines(prefix.tokens.clone());
         let admit_r = parse_optional_admit_callers(tokens.clone(), ctx.clone());
         if has_err(admit_r.err.clone()) {
@@ -7256,7 +7419,7 @@ pub fn parse_fn_body_from_prefix(
             params: all_params.clone(),
             inferred: inferred.clone(),
             return_cardinality: Cardinality::Required,
-            uses: prefix.uses.clone(),
+            uses: Rc::new(vec![]),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
             transport: std::option::Option::None,
@@ -7272,6 +7435,247 @@ pub fn parse_fn_body_from_prefix(
         Rc::new(ItemResult {
             item: item.clone(),
             tokens: skip_newlines(body_result.tokens.clone()),
+            ctx: minted.ctx.clone(),
+            err: std::option::Option::None,
+        })
+    }
+}
+
+pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+    {
+        let start_span = token_span(token_stream_first(tokens.clone()));
+        let dummy = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "".to_string(),
+            span: start_span.clone(),
+            ident_span: std::option::Option::None,
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let kw = tok_keyword_text(token_stream_first(tokens.clone()));
+        let r = if (kw.clone() == "func".to_string()) {
+            expect(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "func".to_string(),
+                }),
+            )
+        } else {
+            if (kw.clone() == "pattern".to_string()) {
+                expect(
+                    tokens.clone(),
+                    Rc::new(ExpectedToken::ExpectKeyword {
+                        text: "pattern".to_string(),
+                    }),
+                )
+            } else {
+                if (kw.clone() == "interface".to_string()) {
+                    expect(
+                        tokens.clone(),
+                        Rc::new(ExpectedToken::ExpectKeyword {
+                            text: "interface".to_string(),
+                        }),
+                    )
+                } else {
+                    expect(
+                        tokens.clone(),
+                        Rc::new(ExpectedToken::ExpectKeyword {
+                            text: "func".to_string(),
+                        }),
+                    )
+                }
+            }
+        };
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let has_uses = (kw.clone() == "func".to_string());
+        let form = Rc::new(ItemForm {
+            kind: ItemFormKind::OtherForm,
+            keyword: kw.clone(),
+            has_type_params: false,
+            has_params: true,
+            has_return_type: true,
+            return_required: false,
+            has_uses: has_uses.clone(),
+            body_kind: BodyKind::BlockBody,
+        });
+        let prefix = parse_item_prefix(r.tokens.clone(), ctx.clone(), form.clone());
+        if has_err(prefix.err.clone()) {
+            return Rc::new(ItemResult {
+                item: dummy.clone(),
+                tokens: prefix.tokens.clone(),
+                ctx: prefix.ctx.clone(),
+                err: prefix.err.clone(),
+            });
+        }
+        parse_block_body_from_prefix(prefix.clone(), start_span.clone())
+    }
+}
+
+pub fn parse_block_item_after_kw(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    start_span: Rc<SourceSpan>,
+    form: Rc<ItemForm>,
+) -> Rc<ItemResult> {
+    {
+        let dummy = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "".to_string(),
+            span: start_span.clone(),
+            ident_span: std::option::Option::None,
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let r = expect_ident(tokens.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let name = r.name.clone();
+        let name_span = r.span.clone();
+        let tokens = r.tokens.clone();
+        let named_dummy = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let r = parse_params(tokens.clone(), ctx.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let params = r.params.clone();
+        let tokens = r.tokens.clone();
+        let ctx = r.ctx.clone();
+        let ret = parse_optional_inferred(tokens.clone(), ctx.clone());
+        if has_err(ret.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: ret.tokens.clone(),
+                ctx: ret.ctx.clone(),
+                err: ret.err.clone(),
+            });
+        }
+        let inferred = ret.inferred.clone();
+        let tokens = ret.tokens.clone();
+        let ctx = ret.ctx.clone();
+        let uses_r = if form.has_uses.clone() {
+            parse_uses_clause(skip_newlines(tokens.clone()), ctx.clone())
+        } else {
+            Rc::new(UsesResult {
+                uses: Rc::new(vec![]),
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
+                err: std::option::Option::None,
+            })
+        };
+        if has_err(uses_r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: uses_r.tokens.clone(),
+                ctx: uses_r.ctx.clone(),
+                err: uses_r.err.clone(),
+            });
+        }
+        let uses = uses_r.uses.clone();
+        let tokens = uses_r.tokens.clone();
+        let ctx = uses_r.ctx.clone();
+        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(ItemResult {
+                item: named_dummy.clone(),
+                tokens: r.tokens.clone(),
+                ctx: r.ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let body = r.expr.clone();
+        let minted = mint_parsed_node_identity(r.ctx.clone());
+        let item = Rc::new(Node {
+            occurrence_identity: minted.identity.clone(),
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            params: params.clone(),
+            inferred: inferred.clone(),
+            return_cardinality: Cardinality::Required,
+            uses: uses.clone(),
+            body: Some(body.clone()),
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(ItemResult {
+            item: item.clone(),
+            tokens: skip_newlines(r.tokens.clone()),
             ctx: minted.ctx.clone(),
             err: std::option::Option::None,
         })
@@ -11677,9 +12081,10 @@ pub struct HeadsDataValueSkipResult {
 }
 
 pub fn heads_token_starts_item(tok: Option<Rc<Token>>) -> bool {
-    ((((((((tok_is_keyword(tok.clone(), "alias".to_string())
+    (((((((((tok_is_keyword(tok.clone(), "alias".to_string())
         || tok_is_keyword(tok.clone(), "type".to_string()))
         || tok_is_keyword(tok.clone(), "fn".to_string()))
+        || tok_is_keyword(tok.clone(), "func".to_string()))
         || tok_is_keyword(tok.clone(), "service".to_string()))
         || tok_is_keyword(tok.clone(), "resource".to_string()))
         || tok_is_keyword(tok.clone(), "data".to_string()))

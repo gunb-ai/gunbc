@@ -8,7 +8,6 @@ import gunbc.spark.bootstrap_credential {
   CredentialMaterialized,
   CredentialMaterializationPending,
 }
-import std.algebra { trim }
 import std.effect_grant { NamespacePosition, FilesystemPathTree, Write }
 import std.content_hash { content_hash_of_value }
 import std.scoped_authorization {
@@ -18,22 +17,28 @@ import std.scoped_authorization {
   AuthorizationRequest,
 }
 import std.resources { Network }
-import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
-  shape_fleet_ssh_exec,
   portable_remote_words,
+}
+import gunbc.fleet_bootstrap_principal_session {
+  BootstrapCredentialInRunEnvironment,
+  read_fleet_bootstrap_credential_path,
+  FleetBootstrapCredentialPathReady,
+  FleetBootstrapCredentialPathAbsent,
+  exec_as_fleet_principal_with_stdin,
+  FleetPrincipalLegRan,
+  FleetPrincipalLegRefused,
 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   spark_managed_grant_wire,
   spark_managed_grant_sudoers_command,
-  spark_operator_bootstrap_login,
 }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // THE JOIN BETWEEN AUTHORIZATION AND EXECUTION, which is the one thing this vertical was missing.
 //
@@ -115,7 +120,7 @@ fn spark_bootstrap_credential_lease(
     ],
     subject: SparkBootstrapSubject {
       host: host,
-      bootstrap_principal: spark_operator_bootstrap_login as NonEmptyStr,
+      bootstrap_principal: fleet_bootstrap_principal_login(),
       administrator: administrator,
     },
     attempt: attempt_identity as AttemptIdentity,
@@ -286,11 +291,13 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
 // RUNNER_TEMP file at 0600, and wipes the file when the step ends. The .dag reads that path at the
 // moment it needs it and never before.
 //
-// WHY A PATH IN THE ENVIRONMENT AND NOT THE SECRET IN THE ENVIRONMENT. An environment variable
-// holding the credential is readable by every child process the run spawns and is printed by any
-// diagnostic that dumps the environment -- and this repository's receipts do dump argv. A path is
-// not the secret; whoever cannot read the file learns nothing from knowing where it was.
-data spark_grant_credential_path_env: NonEmptyStr = "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE" as NonEmptyStr
+// THE ENVIRONMENT-VARIABLE NAME MOVED, and the move is what made the transport repair expressible.
+// It lived here as `spark_grant_credential_path_env`; the password session that actually consumes it
+// lives in gunbc.fleet_bootstrap_principal_session, and a module that EXECUTES a password leg cannot
+// import the module that merely named the file without closing an import cycle. So the declaration is
+// now fleet_bootstrap_credential_path_env there, beside the session fact it serves, and this module
+// reads it rather than owning it. The argument for a PATH rather than the secret is recorded at the
+// new home; it is unchanged.
 
 // WHICH SECRET THE STEP MUST MATERIALIZE, read off the lease rather than spelled a second time. The
 // CI step that fetches the version and the code that consumes it are then one authority: a step
@@ -380,27 +387,18 @@ fn classify_credential_read(
   }
 }
 
+// WHERE THE FILE IS reaches this function through the same resolution the password TRANSPORT uses,
+// rather than a second copy of it. This body used to read the environment and validate the path
+// itself, so after the transport repair there were two resolutions of one fact and they could
+// disagree on what an untrimmed or empty value means -- the sudo credential and the sshpass file would
+// then come from different places in the same leg. One resolver, two consumers.
 fn read_bootstrap_credential() -> BootstrapCredentialMaterialization {
-  match shell.Env.Get(name: spark_grant_credential_path_env).value {
-    Absent =>
-      BootstrapCredentialNotMaterialized {
-        cause: join([
-          "no ", spark_grant_credential_path_env as String,
-          " in the environment: the run did not materialize an administrator credential",
-        ], "") as NonEmptyStr,
-      }
-    Present { value: raw } => {
-      let path = trim(s: raw)
-      if path == "" {
-        BootstrapCredentialNotMaterialized {
-          cause: join([
-            spark_grant_credential_path_env as String, " is set but empty, which is not a path",
-          ], "") as NonEmptyStr,
-        }
-      } else {
-        let read = Filesystem.Read(path: path)
-        classify_credential_read(success: read.success, error: read.error, content: read.content)
-      }
+  match read_fleet_bootstrap_credential_path() {
+    FleetBootstrapCredentialPathAbsent { cause: why } =>
+      BootstrapCredentialNotMaterialized { cause: why }
+    FleetBootstrapCredentialPathReady { path: path } => {
+      let read = Filesystem.Read(path: path as String)
+      classify_credential_read(success: read.success, error: read.error, content: read.content)
     }
   }
 }
@@ -412,6 +410,19 @@ fn read_bootstrap_credential() -> BootstrapCredentialMaterialization {
 // sudo consumes the first line of stdin as the password. The trailing newline is what terminates its
 // read; without it sudo waits for one and the step hangs rather than failing, which is the failure
 // mode with no diagnostic at all.
+// THE SESSION IS DERIVED FROM THE PRINCIPAL, NOT CHOSEN HERE. This leg used to shape
+// itself with shape_fleet_ssh_exec -- the KEY session -- while naming
+// lease.subject.bootstrap_principal as the user, and the administrator password only
+// ever reached sudo's stdin. So on any host where that principal holds no fleet key the
+// leg refused at authentication with the credential untouched, which is every host this
+// repository bootstrapped rather than hand-keyed: measured on srv9-srv12 on 2026-09-11.
+// gunbc.fleet_bootstrap_principal_session now decides the session from the principal, so
+// the password reaches the TRANSPORT as well as sudo.
+// A leg that never opened is not a command that failed. The only way this arm is
+// reached is a run holding no materialized credential path, which is the same
+// condition CredentialNotMaterialized already names -- so it lands there with the
+// session's own located cause rather than minting an exit code for an ssh that never
+// ran.
 fn run_privileged_step(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -434,30 +445,32 @@ fn run_privileged_step(
                 exit_code: 0,
                 stderr: "the admitted root argv is not portable under the far-side shell re-parse",
               }
-            Present { value: words } => {
-              let result = ssh_session_exec_portable_words_with_stdin(
-                client_args: shape_fleet_ssh_exec(
-                  context: context,
-                  target: SshTarget {
-                    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-                    principal: lease.subject.bootstrap_principal,
-                  },
-                  words: words,
-                ),
+            Present { value: words } =>
+              match exec_as_fleet_principal_with_stdin(
+                context: context,
+                target: SshTarget {
+                  endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+                  principal: lease.subject.bootstrap_principal,
+                },
+                words: words,
                 stdin_payload: join([secret, "\n"], ""),
-              )
-              if result.success {
-                PrivilegedCommandSucceeded { command: command }
-              } else if sudo_rejected_the_credential(stderr: result.stderr) {
-                CredentialRejected { lease: lease }
-              } else {
-                PrivilegedCommandFailed {
-                  command: command,
-                  exit_code: result.exit_code,
-                  stderr: result.stderr,
-                }
+                credential: BootstrapCredentialInRunEnvironment,
+              ) {
+                FleetPrincipalLegRefused { cause: why } =>
+                  CredentialNotMaterialized { lease: lease, cause: why as String }
+                FleetPrincipalLegRan { session: _, result: result } =>
+                  if result.success {
+                    PrivilegedCommandSucceeded { command: command }
+                  } else if sudo_rejected_the_credential(stderr: result.stderr) {
+                    CredentialRejected { lease: lease }
+                  } else {
+                    PrivilegedCommandFailed {
+                      command: command,
+                      exit_code: result.exit_code,
+                      stderr: result.stderr,
+                    }
+                  }
               }
-            }
           }
       }
   }

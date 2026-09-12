@@ -26,7 +26,6 @@ import std.measure {
   watt_count,
 }
 import extdeps.external_authority {
-  ExternalAuthority,
   CitedFigureStanding,
   CitedToAuthority,
   TranscribedUncited,
@@ -77,45 +76,36 @@ type MemoryElectricalContext {
   two_dpc_ceilings: TwoDpcRateCeilingTable
 }
 
-// THE 2DPC DERATING TABLE, AND ITS EVIDENCE STANDING BESIDE IT. These ceilings arrived with the
-// physics relocated from the deleted product.hardware_selection, where they were uncited literals.
-// Moving them into extdeps/ under the citation duty needs an authority actually read, and the Altra
-// platform module's coverage note says it transcribes running text and NOT tables — exactly what a
-// derating table is. Minting a citation there would be the fabricated-symbol defect its notes exist
-// to prevent.
+// THE 2DPC DERATING TABLE, AND THE CITATION ON THE TABLE. These ceilings arrived with the
+// physics relocated from the deleted product.hardware_selection, where they were uncited literals
+// 2933 MT/s (min two ranks) and 2400 MT/s (min four ranks). Moving them onto an Ampere citation
+// needs an authority actually read.
 //
-// So the figures are carried where consumed, with their uncitedness TYPED rather than invisible: a
-// consumer can ask whether the ceiling it used is grounded, and the read obligation names what
-// would ground it. A declared boundary fact, not a silent constant.
+// READ 2026-09-10: Ampere Altra Rev A1 Processor Datasheet issue 1.50 section 2.10 states "Up to
+// DDR4-3200" and "Up to 2 DPC" and does not publish a rank-dependent 2DPC derate table. The Altra
+// Platform Hardware Design Specification v1.00 carries 2DPC topology (section 2.2) and no rate
+// table. The OCP Mt. Jade specification rev 1.0 (Ampere-contributed) states DIMM speed as
+// DDR4-3200 at 2DPC (section 7.1). Those figures are a PLATFORM CEILING, not an operating rate
+// for every 1R/2R/4R two-DIMM fill. THE TRANSCRIBED 2933/2400 FIGURES ARE NOT IN THE PUBLIC
+// AMPERE SOURCES THIS REPOSITORY MAY CARRY, and they stay retracted. Gated AVL / PCB Layout
+// Guidelines remain unread (HTTP 403): that unreadness cannot prove a derate and cannot prove
+// there is none. An empty row list is therefore UNRESOLVED for a 2DPC effective rate, not a
+// cited default of the maximum.
 type TwoDpcRateCeiling {
   min_rank_count: Nat
   ceiling: MegatransfersPerSecond
-  evidence: CitedFigureStanding
 }
 
 type TwoDpcRateCeilingTable {
   rows: List<TwoDpcRateCeiling>
+  evidence: CitedFigureStanding
 }
 
-// The ceilings held today, all uncited. One declaration so the population is countable and a later
-// citation edits one row rather than hunting literals.
 data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
-  rows: [
-    TwoDpcRateCeiling {
-      min_rank_count: 4,
-      ceiling: megatransfers_per_second(count: 2400),
-      evidence: TranscribedUncited {
-        read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for quad-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
-      },
-    },
-    TwoDpcRateCeiling {
-      min_rank_count: 2,
-      ceiling: megatransfers_per_second(count: 2933),
-      evidence: TranscribedUncited {
-        read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for dual-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
-      },
-    },
-  ],
+  rows: [],
+  evidence: TranscribedUncited {
+    read_obligation: "Ampere Customer Connect AVL issue 1.15 and Altra PCB Layout Guidelines (HTTP 403): rank-dependent 2DPC operating rate" as NonEmptyStr,
+  },
 }
 
 // A full-channel population is as deep as its topology says; a partial one has
@@ -128,9 +118,9 @@ fn populated_dimms_per_channel(population: PopulationOption) -> Nat {
   }
 }
 
-// THE 2DPC DOWNCLOCK, and it is rank-dependent. A second module on a channel loads the bus by an
-// amount depending on how many ranks it presents: a single-rank pair keeps the platform's rated
-// speed while a quad-rank pair falls to 2400 MT/s. These are the platform's published 2DPC table.
+// THE 2DPC CLOCK IS UNRESOLVED UNLESS A RANK-SPECIFIC ROW APPLIES. The platform maximum
+// (context.max_data_rate) is a capability ceiling, never the init of this fold: folding from
+// that maximum over an empty table manufactures 3200 for every rank count.
 fn min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
@@ -141,30 +131,73 @@ fn min_rate(a: MegatransfersPerSecond, b: MegatransfersPerSecond) -> Megatransfe
   )
 }
 
-// The deepest ceiling any row applies to this rank count. A fold over the table, not a literal
-// ladder, so a third derating row is data, not a new branch — and the table above is genuinely the
-// authority for the numbers.
-fn ceiling_for_ranks(
-  table: TwoDpcRateCeilingTable,
-  rated: MegatransfersPerSecond,
+type ChannelClockUnresolvedCause
+  = RankSpecificRateMissing
+  | RankSpecificRateUncited { read_obligation: NonEmptyStr }
+
+type ChannelClock
+  = ChannelClockAdmitted { rate: MegatransfersPerSecond }
+  | ChannelClockUnresolved {
+      dimms_per_channel: Nat
+      rank_count: Nat
+      platform_max: MegatransfersPerSecond
+      cause: ChannelClockUnresolvedCause
+    }
+
+fn apply_rank_ceiling_row(
+  acc: MegatransfersPerSecond?,
+  row: TwoDpcRateCeiling,
   rank_count: Nat,
-) -> MegatransfersPerSecond {
-  fold(table.rows, init: rated, f: fn(acc, row) {
-    if rank_count >= row.min_rank_count { min_rate(a: acc, b: row.ceiling) } else { acc }
-  })
+) -> MegatransfersPerSecond? {
+  if rank_count >= row.min_rank_count {
+    match acc {
+      Absent => Present { value: row.ceiling }
+      Present { value: acc_rate } => Present { value: min_rate(a: acc_rate, b: row.ceiling) }
+    }
+  } else {
+    acc
+  }
 }
 
-fn effective_data_rate(
+fn rank_specific_2dpc_clock(
+  table: TwoDpcRateCeilingTable,
+  platform_max: MegatransfersPerSecond,
+  rank_count: Nat,
+) -> ChannelClock {
+  let matched = fold(table.rows, init: none, f: fn(acc, row) {
+    apply_rank_ceiling_row(acc: acc, row: row, rank_count: rank_count)
+  })
+  match matched {
+    Absent => ChannelClockUnresolved {
+      dimms_per_channel: 2,
+      rank_count: rank_count,
+      platform_max: platform_max,
+      cause: RankSpecificRateMissing,
+    }
+    Present { value: ceiling } => match table.evidence {
+      TranscribedUncited { read_obligation: obligation } => ChannelClockUnresolved {
+        dimms_per_channel: 2,
+        rank_count: rank_count,
+        platform_max: platform_max,
+        cause: RankSpecificRateUncited { read_obligation: obligation },
+      }
+      CitedToAuthority { authority: _ } =>
+        ChannelClockAdmitted { rate: min_rate(a: ceiling, b: platform_max) }
+    }
+  }
+}
+
+fn cited_channel_clock(
   context: MemoryElectricalContext,
   dimms_per_channel: Nat,
   rank_count: Nat,
-) -> MegatransfersPerSecond {
+) -> ChannelClock {
   if dimms_per_channel <= 1 {
-    context.max_data_rate
+    ChannelClockAdmitted { rate: context.max_data_rate }
   } else {
-    ceiling_for_ranks(
+    rank_specific_2dpc_clock(
       table: context.two_dpc_ceilings,
-      rated: context.max_data_rate,
+      platform_max: context.max_data_rate,
       rank_count: rank_count,
     )
   }
@@ -182,27 +215,48 @@ fn rank_interleave_percent(rank_count: Nat) -> Percent {
 
 // The platform downclocks to the SLOWEST module present, so the rated figure is
 // the minimum of what the module can do and what the topology admits.
+type MemoryBandwidthReading
+  = MemoryBandwidthDerived { bandwidth: Bandwidth }
+  | MemoryBandwidthUnresolved {
+      dimms_per_channel: Nat
+      rank_count: Nat
+      platform_max: MegatransfersPerSecond
+      cause: ChannelClockUnresolvedCause
+    }
+
 fn memory_bandwidth(
   context: MemoryElectricalContext,
   population: PopulationOption,
-) -> Bandwidth {
+) -> MemoryBandwidthReading {
   let module = population.module
-  let rated = min_nat(
-    a: module.data_rate_mts,
-    b: megatransfers_per_second_count(
-      r: effective_data_rate(
-        context: context,
-        dimms_per_channel: populated_dimms_per_channel(population: population),
-        rank_count: module.rank_count,
-      ),
-    ),
-  )
-  let interleaved = rated * percent_count(p: rank_interleave_percent(rank_count: module.rank_count)) / 100
-  Bandwidth {
-    count: interleaved
-      * mega_factor()
-      * byte_size_count(b: dram_channel_bus_bytes())
-      * context.geometry.channels,
+  let dpc = populated_dimms_per_channel(population: population)
+  match cited_channel_clock(
+    context: context,
+    dimms_per_channel: dpc,
+    rank_count: module.rank_count,
+  ) {
+    ChannelClockUnresolved { dimms_per_channel: d, rank_count: r, platform_max: m, cause: c } =>
+      MemoryBandwidthUnresolved {
+        dimms_per_channel: d,
+        rank_count: r,
+        platform_max: m,
+        cause: c,
+      }
+    ChannelClockAdmitted { rate: er } => {
+      let rated = min_nat(
+        a: module.data_rate_mts,
+        b: megatransfers_per_second_count(r: er),
+      )
+      let interleaved = rated * percent_count(p: rank_interleave_percent(rank_count: module.rank_count)) / 100
+      MemoryBandwidthDerived {
+        bandwidth: Bandwidth {
+          count: interleaved
+            * mega_factor()
+            * byte_size_count(b: dram_channel_bus_bytes())
+            * context.geometry.channels,
+        },
+      }
+    }
   }
 }
 

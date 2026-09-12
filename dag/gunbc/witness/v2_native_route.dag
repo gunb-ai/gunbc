@@ -16,6 +16,7 @@ import v2.workflow.compile_door_ledger {
 }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
+import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -445,6 +446,35 @@ type NativeRouteOldRouteControl
   | OldRouteFalsifierArmed { falsifier_identity: String }
   | OldRouteControlAbsent
 
+// THE EMITTED COMPILER'S BUILD, AS A RECEIPT RATHER THAN AS A SIDE EFFECT OF ONE. Before this row
+// the lane recorded that the emitted binary EXISTED (its path and content digest) and nothing about
+// the compilation that produced it, so "the emitted crate compiled" was true of whatever cargo the
+// runner happened to run under whatever RUSTFLAGS the toolchain step exported. Measured: CI's
+// toolchain action defaults RUSTFLAGS to `-D warnings`, a workstation exports none, and the same
+// crate compiled on one and refused with status 101 on the other with the receipt unable to say
+// why. The five facts here are the ones that decide whether one run's "compiled" can be compared
+// with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that spawn
+// (never inherited -- the value is the repository's own row, gunbc.repo_self_build
+// repo_self_warning_denial_rustflags, applied at the invocation, on BOTH channels cargo reads),
+// the one compiler executable cargo was BOUND to (RUSTC set on the spawn, both wrapper channels
+// disabled there -- a receipt naming a compiler cargo was free to replace via config or a
+// wrapper would be evidence about a build that did not happen), that executable's
+// self-reported identity in its keyed `--version --verbose` form (extdeps.rust.rustc
+// rustc_version_verbose, asked from the crate's own directory), cargo's own
+// exit status, and the count of `warning` diagnostic headers on its stderr. The count is carried
+// so the receipt names it, and admission requires it zero: under the denial a lint arrives as an
+// error and stops the build, so a non-zero count on a zero status can only be a warning rustc
+// did not own (cargo's own, or a build script's), which is still a warning the receipt would
+// otherwise have swallowed.
+type NativeRouteEmittedBuild {
+  cargo_argv: List<String>
+  rustflags: String
+  compiler_path: String
+  rustc_identity: String
+  exit_status: Int
+  warning_count: Int
+}
+
 // THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
 // seed used ONLY to prepare the emitted compiler (recorded honestly — this job does not claim
 // native bootstrap); the emitted closure's identity; the executed binary's path AND content
@@ -468,6 +498,7 @@ type NativeRouteReceipt {
   true_control: Optional<NativeTestVerdict>
   malformed_control: NativeRouteMalformedControl
   old_route_control: NativeRouteOldRouteControl
+  emitted_build: NativeRouteEmittedBuild
 }
 
 // ADMISSION IS THE CONTRACT, ONE AUTHORITY, ONE CLAUSE PER PREDICATE. The job greens only when
@@ -505,6 +536,10 @@ type NativeRouteAdmissionRefusalCause
   | TrueControlNotObserved
   | MalformedControlAcceptedByRoute
   | OldRouteControlNeverInstalled
+  | EmittedBuildRustcUnrecorded
+  | EmittedBuildCompilerUnbound
+  | EmittedBuildWarningsNotDenied
+  | EmittedBuildNotClean
 
 type NativeRouteAdmission
   = NativeRouteAdmitted
@@ -745,6 +780,26 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   }
 }
 
+// The build clauses read the emitted-build receipt and nothing else: rustc named itself; the
+// RUSTFLAGS the lane set are exactly the repository's denial row (equality, not containment --
+// a flag string that carries the denial plus something else is a different build environment
+// and the receipt must say so); and the build completed with status 0 and no warning header.
+fn native_route_emitted_build_rustc_recorded(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_build.rustc_identity != ""
+}
+
+fn native_route_emitted_build_compiler_bound(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_build.compiler_path != ""
+}
+
+fn native_route_emitted_build_warnings_denied(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_build.rustflags == repo_self_warning_denial_rustflags()
+}
+
+fn native_route_emitted_build_clean(receipt: NativeRouteReceipt) -> Bool {
+  receipt.emitted_build.exit_status == 0 && receipt.emitted_build.warning_count == 0
+}
+
 fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
   let expected_red = floor_expected_red_roster()
   let route_gap = floor_route_gap_roster()
@@ -775,7 +830,11 @@ fn native_route_admission(receipt: NativeRouteReceipt) -> NativeRouteAdmission {
     NativeRouteClauseCheck { holds: native_route_false_control_holds(receipt: receipt), cause: FalseControlNotObserved },
     NativeRouteClauseCheck { holds: native_route_true_control_holds(receipt: receipt), cause: TrueControlNotObserved },
     NativeRouteClauseCheck { holds: native_route_malformed_control_holds(receipt: receipt), cause: MalformedControlAcceptedByRoute },
-    NativeRouteClauseCheck { holds: native_route_old_route_closed(receipt: receipt), cause: OldRouteControlNeverInstalled }
+    NativeRouteClauseCheck { holds: native_route_old_route_closed(receipt: receipt), cause: OldRouteControlNeverInstalled },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_rustc_recorded(receipt: receipt), cause: EmittedBuildRustcUnrecorded },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_compiler_bound(receipt: receipt), cause: EmittedBuildCompilerUnbound },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_warnings_denied(receipt: receipt), cause: EmittedBuildWarningsNotDenied },
+    NativeRouteClauseCheck { holds: native_route_emitted_build_clean(receipt: receipt), cause: EmittedBuildNotClean }
   ]
   let causes = fold_list(
     xs: checks,
@@ -815,6 +874,10 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     TrueControlNotObserved => "true_control_not_observed"
     MalformedControlAcceptedByRoute => "malformed_control_accepted_by_route"
     OldRouteControlNeverInstalled => "old_route_control_never_installed"
+    EmittedBuildRustcUnrecorded => "emitted_build_rustc_unrecorded"
+    EmittedBuildCompilerUnbound => "emitted_build_compiler_unbound"
+    EmittedBuildWarningsNotDenied => "emitted_build_warnings_not_denied"
+    EmittedBuildNotClean => "emitted_build_not_clean"
   }
 }
 

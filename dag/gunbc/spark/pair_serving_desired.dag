@@ -41,9 +41,8 @@ import gunbc.spark.pair_serving_observed { first_pair_observed_head }
 // What this module decides, and refuses to decide:
 //   - the engine tuple is the operator's observed-safe tuple (fp8_ds_mla KV, 82% utilization,
 //     1048576 context, Ray executor with a zero monitor refresh interval); nothing here re-derives it;
-//   - max-num-seqs is BY MEASURED POOL of the first launch of that group: a group whose pool has
-//     been read from its own engine carries a capacity whose basis is that pool; a group whose pool
-//     has not been read carries the first pair's measured 32 and a basis that says it is inherited;
+//   - max-num-seqs is a LAUNCH ARGUMENT with a typed provenance: operator policy, a measurement of
+//     this group's own engine, or unmeasured (refused). Copying an argv flag is not a measurement;
 //   - each rank's host address and interface are resolved through the switched rail
 //     (gunbc.spark.fabric_rail_desired over the observed lane), never spelled here;
 //   - a group whose member still holds an undischarged llama.cpp RPC peer reservation is refused;
@@ -59,34 +58,31 @@ fn spark_pair_serving_role_wire(role: SparkPairServingRole) -> NonEmptyStr {
 }
 
 // THREE ARMS, BECAUSE "CHOSEN" AND "MEASURED" ARE DIFFERENT CLAIMS AND COLLAPSING THEM IS WHAT
-// STARTED THIS. `SeqCapacityByOperatorPolicy` says a human picked the number and nothing derives it;
-// `SeqCapacityMeasured` says a launch line for THIS model on THIS group produced it. The old type had
-// only the second, so an operator choice had to be dressed as a measurement to be expressible -- and
-// that is exactly how DeepSeek's 32 came to be carried as evidence for every model thereafter.
+// STARTED THIS. `SeqCapacityByOperatorPolicy` says a human picked the number and nothing derives it --
+// including copying `--max-num-seqs` from a launch argv, which is a chosen argument, not evidence.
+// `SeqCapacityMeasured` says THIS group's own engine was observed independently of the argv it was
+// asked to launch with (pool standing, scheduler occupancy). The old type had only the second, so
+// an operator choice had to be dressed as a measurement to be expressible -- and that is exactly how
+// DeepSeek's 32 came to be carried as evidence for every model thereafter.
 type SparkPairServingSeqCapacity
   = SeqCapacityByOperatorPolicy { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityMeasured { max_num_seqs: Nat, basis: NonEmptyStr }
   | SeqCapacityUnmeasured
 
-// THE COUNT IS THE ONE MEASURED FOR THIS EXACT SCENARIO, AND THAT IS NOT THE DEFECT THE BRANCH SET
-// OUT TO FIX. The defect was carrying 32 -- read from one DeepSeek V4 Flash launch, at one
-// quantisation, under fp8_ds_mla, at tensor-parallel 2 -- ACROSS MODELS. Used for the model, layout
-// and fabric it was actually taken on, it is a measurement in its own scenario, which is the whole
-// rule.
+// THE LIVE COUNT IS A LAUNCH ARGUMENT. 32 is the `--max-num-seqs` this route still asks vLLM to
+// start with. That flag lives on the 2026-09-03 argv recorded in
+// `gunbc.spark.pair_serving_observed first_pair_vllm_serve`; repeating it here as
+// `SeqCapacityMeasured` would treat a chosen argument as pool evidence, which is the collapse the
+// type exists to forbid. Nothing derives 32 from this group's pool.
 //
 // A REVISION OF THIS BRANCH ANSWERED `SeqCapacityUnmeasured` HERE AND THAT DEADLOCKED THE FLEET: the
-// unit refused, so the realization refused, so the apply plan refused, so no engine could start --
-// and the launch line that would supply a measurement can only come from an engine that started. It
-// was then repaired to an operator-policy 16 for a GLM cutover; with this route restored to DeepSeek,
-// neither is right. The scenario's own measurement is.
-//
-// THE DEADLOCK REPAIR HAD A CONSEQUENCE WORTH RECORDING, because it is why a witness went red rather
-// than a compile: while this row refused, the served-model name could point anywhere harmlessly,
-// since nothing downstream rendered. Un-refusing it made a GLM name on a DeepSeek-only image
-// REACHABLE. An accidental guard is not a guard, and removing one is a change in its own right.
-data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityMeasured {
+// unit refused, so the realization refused, so the apply plan refused, so no engine could start.
+// Unmeasured remains the wall for a group with neither a choice nor an independent observation; it
+// is not this row's provenance. The number may not travel to another model, quantisation or KV
+// layout; a GLM arm carries its own.
+data spark_pair_serving_seq_capacity: SparkPairServingSeqCapacity = SeqCapacityByOperatorPolicy {
   max_num_seqs: 32,
-  basis: "read from the first pair's own vLLM launch line on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_vllm_serve), for DeepSeek V4 Flash at the fp8_ds_mla KV layout on this fabric. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own. THE SCENARIO CLAUSE THAT STOOD HERE -- that this is the scenario the route still serves -- WAS WITHDRAWN 2026-09-08: the route serves nothing. Its five gunbc-spark-pair containers run sleep infinity, and the DeepSeek answering on 192.168.1.225:30000 was launched out of band from a container that has since exited. So this figure is a reading of a launch line from five days ago whose topology nothing has re-verified, and the sentence asserting it still applied was the kind of claim that ages without anyone touching it" as NonEmptyStr,
+  basis: "operator launch argument for this DeepSeek V4 Flash route: --max-num-seqs 32, the same flag recorded on 2026-09-03 in gunbc.spark.pair_serving_observed first_pair_vllm_serve at the fp8_ds_mla KV layout. It is a chosen bound, not a measurement of this group's pool. It may not travel to another model, quantisation or KV layout; a GLM arm carries its own" as NonEmptyStr,
 }
 
 // A GROUP'S OWN POOL DOES NOT SUPPLY THE COUNT EITHER, and the arm this replaced said so in its own
@@ -164,10 +160,17 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // authorities at once. It does not restore group A, does not diagnose the restarts, and does not
 // establish a DeepSeek control -- there is currently no serving DeepSeek to be the control.
 //
-// THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing routes to it today, and that is a guard being
-// quiet rather than a guard being dead: the arm is reachable the moment B is promoted again, and
-// deleting it because the current roster does not reach it would be reading occupancy as
+// THE HEAD ROW BELOW KEEPS ITS FabricGroupB ARM. Nothing converges to it today, and that is a guard
+// being quiet rather than a guard being dead: the arm is reachable the moment B is claimed again,
+// and deleting it because the current roster does not reach it would be reading occupancy as
 // reachability. The withdrawal belongs in the ROSTER, which is the thing that decides.
+//
+// AND THIS ROSTER NO LONGER DECIDES WHERE A TURN GOES, which is the repair that let group B be
+// enrolled for SERVING without restoring the claim this row withdrew. It answered two questions that
+// move for different reasons -- whose hosts this repository claims and converges, and which routes a
+// turn may be offered to -- and gunbc.serving.serving_enrollment now owns the second. This row is
+// the first question only, and it still says what it said on 2026-09-08: group B's hosts are the
+// canary's and are not claimed here.
 data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
 
 // WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair

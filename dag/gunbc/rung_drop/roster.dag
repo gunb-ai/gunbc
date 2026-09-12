@@ -59,6 +59,10 @@ import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_referenc
 import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_debt_straddling_produced_decl }
 import gunbc.rung_drop.determinism_transitive_reachability { determinism_transitive_reachability }
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
+import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
+import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
+import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
+import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -101,6 +105,10 @@ data rung_drop_roster: List<RungDrop> = [
   floor_cost_debt_straddling_produced_decl,
   determinism_transitive_reachability,
   transitional_admission_exception(),
+  v2_native_route_off_the_merge_path,
+  main_per_commit_floor_verdict,
+  v1_consumer_census_live_population_off_the_merge_path(),
+  long_module_changed_witness_cpu_observed_only,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

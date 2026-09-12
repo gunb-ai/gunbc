@@ -137,15 +137,28 @@ fn crawl_leaf_subject() -> ObservationSubject {
   }
 }
 
+// THE CAPTURE PREDATES THE FLOOR'S CURRENT SAMPLE. Run 30044816605 was the batched plan/walk floor;
+// its heartbeat read cgroup current, swap and PSI, none of which the one-attempt floor's sample
+// carries any more (its record was replaced when the projection was restored, 2026-09-11 -- see
+// HeartbeatSample). What the capture DID read and the sample still carries is the cgroup charge;
+// every other vital is honestly MeasuredUnavailable with the capture named as the cause, which is
+// what a replay of a real log must say rather than inventing a cpu figure the run never printed.
+data crawl_not_captured_cause: NonEmptyStr = "not captured by run 30044816605" as NonEmptyStr
+
 fn crawl_heartbeat() -> HeartbeatSample {
   HeartbeatSample {
     elapsed: millisecond(count: 1980000),
     active: crawl_leaf_subject(),
-    entry_index: 214,
-    entry_total: 602,
-    rss: MeasuredValue { value: byte_size(crawl_heartbeat_rss_bytes) },
-    swap: MeasuredValue { value: byte_size(crawl_heartbeat_swap_bytes) },
-    pressure: MeasuredValue { value: basis_point(count: crawl_heartbeat_pressure_bp) }
+    cpu: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    major_faults: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    rss: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    cgroup_charge: MeasuredValue { value: byte_size(crawl_heartbeat_rss_bytes) },
+    cgroup_high_events: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    cgroup_max_events: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    cgroup_local_high_events: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    host_swap_in: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    host_major_faults: MeasuredUnavailable { cause: crawl_not_captured_cause },
+    stall: MeasuredUnavailable { cause: crawl_not_captured_cause }
   }
 }
 
@@ -163,15 +176,16 @@ test fn w_human_units_replace_raw_byte_dumps() -> Bool {
 test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   string_contains(s: line.text, pattern: crawl_quiet_module) &&
-  string_contains(s: line.text, pattern: "entry 214 of 602") &&
-  string_contains(s: line.text, pattern: "15.0 GiB") &&
+  string_contains(s: line.text, pattern: "still in witness discovery, now typecheck v2.compiler.normalized_tree") &&
+  string_contains(s: line.text, pattern: "cgroup charge 15.0 GiB") &&
+  string_contains(s: line.text, pattern: "cpu unreadable (not captured by run 30044816605)") &&
   !string_contains(s: line.text, pattern: to_string(crawl_heartbeat_rss_bytes))
 }
 
 test fn w_heartbeat_puts_identity_before_vitals() -> Bool {
   let line = ci_heartbeat_line(sample: crawl_heartbeat())
   starts_with(s: line.text, prefix: "33 minutes in — still in witness discovery") &&
-  string_contains(s: line.text, pattern: "memory 15.0 GiB")
+  string_contains(s: line.text, pattern: "cgroup charge 15.0 GiB")
 }
 
 test fn w_heartbeat_uses_the_clock_pulse_glyph() -> Bool {

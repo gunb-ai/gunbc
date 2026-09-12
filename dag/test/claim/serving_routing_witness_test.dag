@@ -1,0 +1,347 @@
+module test.claim.serving_routing_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.nat { Nat }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.serving.serving_enrollment {
+  serving_enrolled_groups, serving_route, serving_route_ceiling, serving_route_endpoint_wire,
+  serving_route_turn_ceiling_count, ServingRouteResolved, ServingRouteUnresolved,
+  CeilingByDeclaredPolicy, CeilingFromRouteLaunch,
+}
+import gunbc.serving.admitted_model {
+  serving_admits_id, serving_admit_advertised, ServingModelAdmitted, ServingModelNotAdmitted,
+}
+import gunbc.harness.harness_reasoning_wire {
+  DeepseekV4FlashOnVllm, Glm53FlashOnVllm, harness_unit_model_id,
+  harness_unit_declared_context_ceiling,
+}
+import gunbc.harness.harness_wire { harness_context_budget_for }
+import gunbc.serving.turn_admission {
+  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
+  GroupIdle, GroupOccupied, CoTenancyUnread,
+  ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity, CapacityPressureUnread,
+  SeatStandingRead, SeatStandingUnread,
+  ServingGroupAdmission, AdmissibleForClass, InadmissibleQualityTurnInFlight, InadmissibleGroupNotIdle,
+  InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
+  AdmissibilityUnread, serving_group_admission,
+}
+import gunbc.harness.harness_backend {
+  HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted,
+  HarnessBackendUnreachable, HarnessBackendUnreadable,
+}
+import gunbc.harness.harness_seat {
+  harness_seat_partition, harness_serving_readiness, harness_interactive_quality_seats,
+  ServingModelRequirement, AnyAdmittedModel, ExactServingUnit, harness_requirement_admits,
+  harness_required_capability,
+}
+import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved }
+import std.measure { token_count_value }
+import product.fabric.demand { ObservationReceiptRef }
+
+// ── 1. BOTH GROUPS ARE ENROLLED, AND EACH ROUTE CARRIES ITS OWN FRONT DOOR ────────────────────
+//
+// THE DISCRIMINATING HALF IS THE PORT, not the count. A roster of two whose routes shared one port
+// row would pass a membership count and would still be the defect this change removed: the second
+// route answers on its own front door, and a single global port made it unreachable without an edit.
+// So the two endpoints are asserted DIFFERENT and each is asserted to resolve, which no single-port
+// spelling can satisfy.
+fn w_endpoint(group: FabricGroup) -> String {
+  match serving_route(group: group) {
+    ServingRouteUnresolved { group: _, obligation: _ } => "unresolved"
+    ServingRouteResolved { endpoint: e, ceiling: _ } => serving_route_endpoint_wire(e: e) as String
+  }
+}
+
+test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool {
+  length(serving_enrolled_groups) == 2
+    && w_endpoint(group: FabricGroupA) != "unresolved"
+    && w_endpoint(group: FabricGroupB) != "unresolved"
+    && w_endpoint(group: FabricGroupA) != w_endpoint(group: FabricGroupB)
+    && ends_with(s: w_endpoint(group: FabricGroupA), suffix: ":30000")
+    && ends_with(s: w_endpoint(group: FabricGroupB), suffix: ":30001")
+}
+
+// ── 2. A ROUTE'S CEILING IS A DECLARED DECISION, AND THE TWO ROUTES DISAGREE ──────────────────
+//
+// Asserting the counts alone would go green on a single shared row, so the row that matters is that
+// the two routes carry DIFFERENT ceilings from DIFFERENT authorities -- group A's declared
+// allocation and group B's canary arm bound -- which no single constant can produce.
+fn w_ceiling(group: FabricGroup) -> Nat {
+  serving_route_turn_ceiling_count(c: serving_route_ceiling(group: group))
+}
+
+test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool {
+  w_ceiling(group: FabricGroupA) == 4
+    && w_ceiling(group: FabricGroupB) == 1
+    && w_ceiling(group: FabricGroupA) != w_ceiling(group: FabricGroupB)
+    && (match serving_route_ceiling(group: FabricGroupA) {
+          CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
+            (d as String) != "" && (on as String) == "2026-09-11"
+          CeilingFromRouteLaunch { count: _, basis: _ } => false
+        })
+}
+
+// ── 3. THE ADMITTED SET TAKES WHAT A ROUTE ADVERTISES ─────────────────────────────────────────
+//
+// THE DISCRIMINATING ROW IS THE SECOND MODEL. Admitting the harness's own selector id proves
+// nothing -- that is what the refused design already did. What this asserts is that an id the global
+// selector does NOT name resolves anyway, to its own unit, and that an id nothing models is refused:
+// those two together cannot be satisfied by an exact demand and cannot be satisfied by accepting
+// whatever answers.
+fn w_admits(id: String) -> Bool {
+  match serving_admits_id(id: id) {
+    ServingModelAdmitted { id: _, unit: _ } => true
+    ServingModelNotAdmitted { advertised: _ } => false
+  }
+}
+
+fn w_unit_is_glm(id: String) -> Bool {
+  match serving_admits_id(id: id) {
+    ServingModelNotAdmitted { advertised: _ } => false
+    ServingModelAdmitted { id: _, unit: u } =>
+      match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false }
+  }
+}
+
+test fn a_route_advertising_an_admitted_model_other_than_the_selectors_is_taken() -> Bool {
+  w_admits(id: harness_unit_model_id(unit: DeepseekV4FlashOnVllm) as String)
+    && w_admits(id: harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
+    && w_admits(id: "glm-5.3-flash-exl3-canary")
+    && w_unit_is_glm(id: "glm-5.3-flash-exl3-canary")
+    && !w_admits(id: "tinyllama-1.1b")
+    && !w_admits(id: "")
+    && (harness_unit_model_id(unit: DeepseekV4FlashOnVllm) as String) != (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
+}
+
+// THE FIRST ADMITTED ID IN THE ROUTE'S OWN ORDER WINS, and a list carrying nothing admitted refuses
+// with the whole list rather than with a bare fact of mismatch.
+test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with_the_list() -> Bool {
+  (match serving_admit_advertised(advertised: ["tinyllama-1.1b", "glm-5.3-flash-exl3-canary"]) {
+     ServingModelAdmitted { id: i, unit: _ } => (i as String) == "glm-5.3-flash-exl3-canary"
+     ServingModelNotAdmitted { advertised: _ } => false
+   })
+    && (match serving_admit_advertised(advertised: ["tinyllama-1.1b", "nomic-embed"]) {
+          ServingModelAdmitted { id: _, unit: _ } => false
+          ServingModelNotAdmitted { advertised: a } => a == "tinyllama-1.1b, nomic-embed"
+        })
+    && (match serving_admit_advertised(advertised: []) {
+          ServingModelAdmitted { id: _, unit: _ } => false
+          ServingModelNotAdmitted { advertised: _ } => true
+        })
+}
+
+// THE ADMITTED ID IS THE ONE THE ROUTE ANSWERS TO, AND IT IS NOT THE UNIT'S CANONICAL ID.
+//
+// THIS IS THE CONTROL FOR A DEFECT THAT SHIPPED IN THIS BRANCH AND WAS CAUGHT IN REVIEW. A consumer
+// held the resolved UNIT and re-derived the request's model field from it by name, which is correct
+// for group A by coincidence and wrong for group B in the way that matters: its engine is launched
+// with --served-model-name glm-5.3-flash-exl3-canary and answers to that alias alone, so a turn
+// naming the unit's canonical Zhipu id is refused at the request -- the exact failure this branch
+// exists to remove, reintroduced one layer further in.
+//
+// The assertion is therefore that the two strings DIFFER and that resolution keeps the advertised
+// one. An equality against the alias alone would stay green on a build that had gone back to
+// deriving the id from the unit, if the two ever coincided.
+test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -> Bool {
+  (match serving_admits_id(id: "glm-5.3-flash-exl3-canary") {
+     ServingModelAdmitted { id: i, unit: u } =>
+       (i as String) == "glm-5.3-flash-exl3-canary"
+         && (i as String) != (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
+         && (match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false })
+     ServingModelNotAdmitted { advertised: _ } => false
+   })
+    && (harness_unit_model_id(unit: Glm53FlashOnVllm) as String) != "glm-5.3-flash-exl3-canary"
+}
+
+// ── 4. MEMBERSHIP IS OBSERVED: A ROUTE THAT DOES NOT ANSWER IS NOT SELECTABLE ─────────────────
+//
+// A declared route that is down must not reach an offer. The readiness fold is where that is
+// decided, and every non-serving standing -- including the one this branch introduced, a reachable
+// route advertising nothing admitted -- must be unobserved, because an offer is bound only on an
+// observed readiness.
+fn w_ready(standing: HarnessBackendStanding) -> Bool {
+  match harness_serving_readiness(standing: standing, now: 1757200000) {
+    ServingObserved { ready_at: _, receipt: _ } => true
+    ServingUnobserved { obligation: _ } => false
+  }
+}
+
+test fn a_route_that_does_not_answer_is_never_ready_and_one_that_answers_wrongly_is_not_either() -> Bool {
+  w_ready(standing: HarnessBackendServing { model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm })
+    && !w_ready(standing: HarnessBackendUnreachable { url: "http://192.168.1.236:30000/v1/models" })
+    && !w_ready(standing: HarnessBackendUnreadable { cause: "unexpected token" })
+    && !w_ready(standing: HarnessBackendModelNotAdmitted { advertised: "tinyllama-1.1b" })
+}
+
+// ── 5. THE CO-TENANCY LAW ─────────────────────────────────────────────────────────────────────
+//
+// The positive this branch exists for and the negative that keeps it honest are asserted together,
+// because either alone is satisfiable by a wrong law: admitting two tolerant turns is satisfied by
+// deleting the wall, and refusing beside a quality turn is satisfied by the scalar ceiling of one
+// this replaces. Only both at once discriminate.
+fn w_admit(incoming: ServingCoTenancyClass, occupants: Nat, quality_held: Nat, tolerant_held: Nat, pressure: ServingCapacityPressure, ceiling: Nat) -> ServingGroupAdmission {
+  serving_group_admission(
+    incoming: incoming,
+    tenancy: if occupants == 0 { GroupIdle } else { GroupOccupied { occupants: occupants } },
+    pressure: pressure,
+    seats: SeatStandingRead { quality_held: quality_held, tolerant_held: tolerant_held },
+    ceiling: ceiling,
+    receipt: "test.claim.serving-routing" as ObservationReceiptRef,
+  )
+}
+
+fn w_admitted(a: ServingGroupAdmission) -> Bool {
+  match a {
+    AdmissibleForClass { class: _, receipt: _ } => true
+    _ => false
+  }
+}
+
+// TWO MUTUALLY ADMISSIBLE TURNS BOTH GET IN. One tolerant turn is in flight and seated, the route
+// reports no capacity pressure, and the declared ceiling has room: the second tolerant turn is
+// admitted. Under the scalar ceiling this replaces, this row is red.
+test fn two_mutually_admissible_tolerant_turns_are_both_admitted() -> Bool {
+  w_admitted(a: w_admit(incoming: BatchQualityTolerant, occupants: 0, quality_held: 0, tolerant_held: 0, pressure: RouteAdmittingMore, ceiling: 4))
+    && w_admitted(a: w_admit(incoming: BatchQualityTolerant, occupants: 1, quality_held: 0, tolerant_held: 1, pressure: RouteAdmittingMore, ceiling: 4))
+    && w_admitted(a: w_admit(incoming: BatchQualityTolerant, occupants: 3, quality_held: 0, tolerant_held: 3, pressure: RouteAdmittingMore, ceiling: 4))
+}
+
+// AND THE NEGATIVE THAT BOUNDS IT. A tolerant turn arriving beside a turn somebody is reading is
+// refused, whatever the ceiling says; a quality-sensitive turn requires an idle route, because
+// nothing here observes whether the turns already in flight are past their prefill.
+test fn a_turn_the_co_tenancy_law_forbids_is_refused_however_much_ceiling_remains() -> Bool {
+  (match w_admit(incoming: BatchQualityTolerant, occupants: 1, quality_held: 1, tolerant_held: 0, pressure: RouteAdmittingMore, ceiling: 4) {
+     InadmissibleQualityTurnInFlight { held: h, basis: _ } => h == 1
+     _ => false
+   })
+    && (match w_admit(incoming: InteractiveQualitySensitive, occupants: 1, quality_held: 0, tolerant_held: 1, pressure: RouteAdmittingMore, ceiling: 4) {
+          InadmissibleGroupNotIdle { occupied_by: n, basis: _ } => n == 1
+          _ => false
+        })
+    && (match w_admit(incoming: InteractiveQualitySensitive, occupants: 0, quality_held: 1, tolerant_held: 0, pressure: RouteAdmittingMore, ceiling: 4) {
+          InadmissibleGroupNotIdle { occupied_by: _, basis: _ } => true
+          _ => false
+        })
+    && w_admitted(a: w_admit(incoming: InteractiveQualitySensitive, occupants: 0, quality_held: 0, tolerant_held: 0, pressure: RouteAdmittingMore, ceiling: 4))
+}
+
+// THE CEILING BOUNDS OPTIMISM AND THE ROUTE'S OWN READING MAY ALWAYS REFUSE UNDER IT. Both halves
+// are asserted, because either alone is a different and wrong design: a ceiling alone is a static
+// claim about a stateless box, and a reading alone admits every arrival that finds it momentarily
+// quiet.
+test fn admission_is_the_minimum_of_the_declared_ceiling_and_the_routes_own_signal() -> Bool {
+  (match w_admit(incoming: BatchQualityTolerant, occupants: 4, quality_held: 0, tolerant_held: 4, pressure: RouteAdmittingMore, ceiling: 4) {
+     InadmissibleClassCeilingReached { held: h, ceiling: c } => h == 4 && c == 4
+     _ => false
+   })
+    && (match w_admit(incoming: BatchQualityTolerant, occupants: 1, quality_held: 0, tolerant_held: 1, pressure: RouteHoldingForCapacity { held: 2 }, ceiling: 4) {
+          InadmissibleRouteHoldingForCapacity { held: h } => h == 2
+          _ => false
+        })
+    && (match w_admit(incoming: BatchQualityTolerant, occupants: 0, quality_held: 0, tolerant_held: 0, pressure: CapacityPressureUnread { obligation: "no series" as NonEmptyStr }, ceiling: 4) {
+          AdmissibilityUnread { obligation: _ } => true
+          _ => false
+        })
+}
+
+// AN OCCUPANT THE LEDGER NEVER ADMITTED IS TREATED AS ONE SOMEBODY IS READING. The engine on this
+// fleet was launched out of band and anything can post to it, so a turn we did not seat has an
+// unknowable class -- and nothing is placed beside it, for either class.
+test fn an_occupant_the_seat_ledger_did_not_admit_blocks_both_classes() -> Bool {
+  (match w_admit(incoming: BatchQualityTolerant, occupants: 3, quality_held: 0, tolerant_held: 1, pressure: RouteAdmittingMore, ceiling: 4) {
+     InadmissibleUnexplainedOccupancy { occupants: n, seated: s } => n == 3 && s == 1
+     _ => false
+   })
+    && (match w_admit(incoming: InteractiveQualitySensitive, occupants: 1, quality_held: 0, tolerant_held: 0, pressure: RouteAdmittingMore, ceiling: 1) {
+          InadmissibleUnexplainedOccupancy { occupants: _, seated: _ } => true
+          _ => false
+        })
+    && (match serving_group_admission(
+           incoming: BatchQualityTolerant,
+           tenancy: CoTenancyUnread { obligation: "no answer" as NonEmptyStr },
+           pressure: RouteAdmittingMore,
+           seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+           ceiling: 4,
+           receipt: "test.claim.serving-routing" as ObservationReceiptRef,
+         ) {
+          AdmissibilityUnread { obligation: _ } => true
+          _ => false
+        })
+    && (match serving_group_admission(
+           incoming: BatchQualityTolerant,
+           tenancy: GroupIdle,
+           pressure: RouteAdmittingMore,
+           seats: SeatStandingUnread { obligation: "pool unreadable" as NonEmptyStr },
+           ceiling: 4,
+           receipt: "test.claim.serving-routing" as ObservationReceiptRef,
+         ) {
+          AdmissibilityUnread { obligation: _ } => true
+          _ => false
+        })
+}
+
+// ── 6. THE CLASSES HOLD SEPARATE POOLS, AND THE QUALITY ONE IS UNCHANGED ──────────────────────
+//
+// The quality partition keeps its exact name so its history continues rather than restarting empty,
+// and the quality ceiling is still one. A branch that widened the reader's protection would fail
+// here, which is the control the ruling asked for.
+test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Bool {
+  (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-a-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-b-quality-seat-v1"
+    && (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant, ceiling: 4) as String) == "group-group-a-tolerant-seat-c4-v1"
+    && (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: 1) as String) != (harness_seat_partition(group: FabricGroupA, class: BatchQualityTolerant, ceiling: 4) as String)
+    && harness_interactive_quality_seats == 1
+}
+
+// ── A CEILING THAT MOVES NAMES A DIFFERENT POOL, WHICH IS THE POINT OF PUTTING IT IN THE NAME ──
+//
+// THE FAILURE THIS FORBIDS. The tolerant ceiling is derived from rows in OTHER modules -- the
+// declared allocation for group A, the canary arm's bound for group B -- so the author who moves it
+// is editing a file that never mentions this partition. If the name did not carry the ceiling,
+// acquire events written under the old one would be replayed against the new root and reinterpreted
+// rather than continued, which is the module's own invariant violated by an edit made somewhere that
+// gives no reason to think about it.
+//
+// AN EARLIER VERSION OF THIS BLOCK SAID THE CEILING MOVES WITH NO EDIT AT ALL, which is not true
+// today: the canary's bound is a static row and nothing observes the running container. It becomes
+// true when CeilingFromRouteLaunch has a producer, and this control is what makes that landing safe
+// rather than silent.
+//
+// The quality partition is asserted UNCHANGED under the same reading, because its ceiling is a row
+// in this repository that an author must edit to move, and its history must continue rather than
+// restart. Both halves together are what discriminate: a build that versioned everything would break
+// the quality pool's continuity, and one that versioned nothing would reinterpret the tolerant
+// pool's history.
+test fn the_tolerant_partition_is_keyed_by_its_ceiling_and_the_quality_partition_is_not() -> Bool {
+  (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 1) as String)
+      != (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 2) as String)
+    && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 1) as String)
+      == (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: 2) as String)
+    && (harness_seat_partition(group: FabricGroupB, class: BatchQualityTolerant, ceiling: 1) as String) == "group-group-b-tolerant-seat-c1-v1"
+}
+
+// ── 7. A MODEL-INDIFFERENT DEMAND AND AN EXACT ONE ARE DIFFERENT DEMANDS ──────────────────────
+//
+// The capability a demand requires is compared by exact equality at the fabric, so the two
+// requirements must produce two different references, and the exact one must refuse a route serving
+// the other model. Asserting only that AnyAdmittedModel admits both would pass on a screen that
+// admits everything.
+test fn an_exact_model_requirement_still_refuses_a_route_serving_another_model() -> Bool {
+  harness_requirement_admits(requirement: AnyAdmittedModel, observed: DeepseekV4FlashOnVllm)
+    && harness_requirement_admits(requirement: AnyAdmittedModel, observed: Glm53FlashOnVllm)
+    && harness_requirement_admits(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, observed: Glm53FlashOnVllm)
+    && !harness_requirement_admits(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, observed: DeepseekV4FlashOnVllm)
+    && (harness_required_capability(requirement: AnyAdmittedModel) as String) != (harness_required_capability(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }) as String)
+}
+
+// ── 8. THE WORKING WINDOW FOLLOWS THE BOUND UNIT ──────────────────────────────────────────────
+//
+// A turn placed on the canary must not be sized by the pair route's engine cap. The two units'
+// budgets are asserted to be no larger than their own declared ceilings, which is the property that
+// was structurally unavailable while one global row answered for every route.
+test fn the_context_budget_never_exceeds_the_bound_units_own_declared_ceiling() -> Bool {
+  token_count_value(t: harness_context_budget_for(unit: DeepseekV4FlashOnVllm))
+      <= token_count_value(t: harness_unit_declared_context_ceiling(unit: DeepseekV4FlashOnVllm))
+    && token_count_value(t: harness_context_budget_for(unit: Glm53FlashOnVllm))
+      <= token_count_value(t: harness_unit_declared_context_ceiling(unit: Glm53FlashOnVllm))
+}

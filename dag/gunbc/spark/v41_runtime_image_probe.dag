@@ -1,0 +1,747 @@
+module gunbc.spark.v41_runtime_image_probe
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.content_hash { serialize_content_hash }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.docker.cli { docker_run_ephemeral_command, docker_image_pull_command, docker_image_digest_command }
+import extdeps.vllm.deepseek_v4_1_sm12 {
+  VllmCompiledSurface,
+  v41_fp4_weight_surface, v41_csa2_surface, v41_dspark_surface,
+  v41_sm12_demand_symbols,
+  v41_kv_cache_dtype_candidates, v41_sm12_admitted_kv_cache_dtypes,
+  v41_sm12_kv_layout, v41_sparse_mla_backend_class, v41_device_capability_class,
+}
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext, SshTarget,
+  fleet_ssh_attempt_identity,
+  materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
+  fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
+  fleet_openssh_trust_policy_of,
+}
+import gunbc.fleet_ssh_credential_verify {
+  FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
+  fleet_ssh_credential_verification_refusal_reason,
+}
+import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
+  SnapshotAcquisitionExecutor, HostCli,
+}
+import gunbc.spark.grant_privileged_operation {
+  read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
+}
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
+}
+import gunbc.fleet_multi_principal_probe {
+  probe_agent_credential_verification,
+  SparkConvergeTargetSelection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly,
+  SparkConvergeTargetRefused, spark_converge_target_selection,
+}
+import gunbc.spark.fabric_reach { ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.v41_published_image_observation { v41_published_arm64_reference }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import gunbc.spark.serving_runtime_capability_probe {
+  RuntimeKernelCapability, ArchitectureRegistered, Fp4WeightKernels, Fp4WeightSupportedHere,
+  MlaKvCacheLayoutAdmitted, FlashInferSparseMlaSm120Symbols, Csa2CompressorKernels, DSparkSpeculator,
+  runtime_kernel_capability_label,
+}
+import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe, spark_build_host_admissible, admissible_spark_build_hosts }
+
+// ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
+//
+// WHY THE BUILD DOES NOT ANSWER THIS. A build ends with a DIGEST, and a digest is an identity for
+// bytes -- it says which bytes, not which inputs produced them. Even taken together with the recipe
+// that requested the build, it does not establish that those inputs are what the daemon compiled;
+// that is why the identity record carries provenance as its own field with an unestablished arm. It cannot say whether a kernel
+// compiled, because upstream's own build silently omits a kernel set whose architecture block found
+// no compatible arch -- it prints a `Not building ...` line and exits zero. So a green build log is
+// not a capability reading, which is exactly what gunbc.spark.serving_runtime_capability_probe's
+// build obligation says: the obligation is discharged by running the probe inside the digest.
+//
+// THE SCRIPT IS DERIVED FROM THE DEMANDS, NOT TYPED BESIDE THEM. Every symbol this probe looks for
+// comes from extdeps.vllm.deepseek_v4_1_sm12, which read them out of upstream's tree at the pinned
+// revision: the operator names from the STABLE_TORCH_LIBRARY registrations, the modules from the
+// files that exist. A hand-written probe script is a second spelling of that roster, and a second
+// spelling is how a probe comes to ask for a symbol upstream never defined -- which reads as a
+// measured absence in every image and makes the obligation undischargeable by construction.
+//
+// 🟡 dissolve-on: v41_probe_script -- THIS FUNCTION ASSEMBLES A PYTHON PROGRAM AS TEXT, and that is a
+// hand-written foreign medium standing beside extdeps.languages.python, which is this corpus's
+// authority for Python surface syntax. It is marked rather than silently tolerated because the
+// largest foreign-language blob in this lane should not be the one carrier without a stated exit.
+// WHY THAT AUTHORITY DOES NOT DISSOLVE IT TODAY: extdeps.languages.python is a TARGET MODEL -- a table
+// of keywords, container templates and method spellings that the compiler's generic emitter consumes
+// to translate THIS repository's declarations into Python. The content here is not a declaration this
+// repository owns; it is reflection over a foreign runtime's import table and operator registry
+// (importlib.util.find_spec, getattr(torch.ops, ...), a vendor classmethod's keyword arguments). There
+// is nothing in .dag to emit FROM, so routing it through that emitter today would mean first minting
+// .dag declarations for symbols whose whole point is that we do not own them.
+// DISSOLVES WHEN a modeled foreign-reflection surface exists -- "does this runtime resolve this name",
+// "what does this predicate answer", expressible as .dag and emitted through the existing Python
+// target -- at which point this function becomes a fold over the same roster it already folds over,
+// and the text stops being authored here. The precedent for the interim shape is
+// gunbc.instruments.emit_host_fixtures, which carries Python, Go and TypeScript program text as
+// declared strings for the same reason: a small program shipped to a foreign runtime.
+//
+// PYTHON IS THE IRREDUCIBLE KERNEL HERE, and it is worth saying why it is not the unmodeled
+// realization DESIGN §6 warns about. The question is "does this Python runtime resolve this name",
+// and only that runtime can answer it; there is no .dag expression of another process's import
+// table. What IS modelled is everything around it: which names are asked, in what image, on what
+// host, over what transport, and how the answer is read back.
+
+// ── THE CAPABILITY NAMES COME FROM THE AUTHORITY THAT OWNS THEM ──────────────────────────────
+//
+// gunbc.spark.serving_runtime_capability_probe owns RuntimeKernelCapability and the label each one
+// renders to. This lane spelled those strings itself while that module was in flight (#11016); it has
+// landed, so the spellings are gone and the probe asks its questions by the authority's own names. A
+// label this module wrote and a label that module wrote agreeing today is not a property anything
+// preserves tomorrow, and a probe printing a verdict under a name no reader looks up is a run that
+// measured an image and told nobody.
+//
+// THE CAST IS TO THE TYPE THE SCRIPT GENERATOR NEEDS, NOT A CLAIM ABOUT THE LABEL. Every arm of that
+// match is a non-empty literal, so no label can be empty; the cast is what lets a rendered name be
+// quoted into the program the same way an authored symbol is.
+fn v41_probe_label(c: RuntimeKernelCapability) -> NonEmptyStr {
+  runtime_kernel_capability_label(c: c) as NonEmptyStr
+}
+
+// ── THE SCRIPT ────────────────────────────────────────────────────────────────────────────────
+
+// PATH-RESOLVED, DELIBERATELY. An absolute interpreter path would be a claim about the filesystem of
+// an image this repository built but has not read, and the image's own PATH is what its vLLM
+// installation was configured against -- the same reasoning extdeps.tools.mkdir records for a host
+// nobody has observed. A missing python3 is then a plain spawn failure, which reads as a refused
+// probe rather than as a capability the image lacks.
+data v41_probe_interpreter: NonEmptyStr = "python3" as NonEmptyStr
+fn v41_py_quote(s: NonEmptyStr) -> String {
+  join(["\"", s as String, "\""], "")
+}
+
+fn v41_py_list(xs: List<NonEmptyStr>) -> String {
+  join(["[", join(map(xs, x => v41_py_quote(s: x)), ", "), "]"], "")
+}
+
+fn v41_py_capability_call(label: NonEmptyStr, surface: VllmCompiledSurface) -> String {
+  join([
+    "report(", v41_py_quote(s: label),
+    ", ops=", v41_py_list(xs: surface.torch_operators),
+    ", modules=", v41_py_list(xs: surface.python_modules),
+    ", attrs=[])\n",
+  ], "")
+}
+
+// THE THREE KINDS OF LOOKUP ARE THREE FUNCTIONS, because they fail differently and a single
+// `hasattr` over all of them would report a missing torch library and a missing .py file as the same
+// fact. An operator lives in a torch library namespace and is registered by the compiled extension;
+// a module is a file in the wheel; an attribute is a name inside an imported module, which is how
+// FlashInfer's decode entry points and its SM120 dispatch table are reached.
+// THE LAYOUT QUESTION IS ASKED BY CALLING THE ADMISSION RULE, NOT BY LOOKING UP SYMBOLS. The backend
+// class this imports is the one that decides -- its supports_combination returns None for an admitted
+// combination and a reason string otherwise -- so the answer is the engine's own, taken at the device
+// capability the host reports rather than at one this script assumed. That same call is what reaches
+// has_flashinfer_sparse_mla_sm120 on the major-12 arm, so a FlashInfer package that cannot serve the
+// SM120 sparse decode shows up here as a refusal reason instead of as a separate guess.
+//
+// AN EXCEPTION PRINTS NO VERDICT LINE, DELIBERATELY. If the import fails or the signature has moved,
+// the reading is UNREAD rather than absent: a probe that could not ask must not produce evidence
+// against the image, which is the same rule gunbc.spark.serving_runtime_capability_probe applies to a
+// refused probe.
+fn v41_py_fp4_support_block() -> String {
+  join([
+    "try:\n",
+    "    _supports_fp4 = bool(torch.ops._C.cutlass_scaled_mm_supports_fp4(major * 10 + minor))\n",
+    "    print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: Fp4WeightSupportedHere)), ", \"call\", \"_C.cutlass_scaled_mm_supports_fp4\", \"found\", str(_supports_fp4))\n",
+    "    print(\"VERDICT\", ", v41_py_quote(s: v41_probe_label(c: Fp4WeightSupportedHere)), " + \"=\" + (\"present\" if _supports_fp4 else \"absent\"))\n",
+    "except Exception as _error:\n",
+    "    print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: Fp4WeightSupportedHere)), ", \"call\", \"_C.cutlass_scaled_mm_supports_fp4\", \"errored\", repr(_error))\n",
+  ], "")
+}
+
+fn v41_py_kv_layout_block() -> String {
+  join([
+    "try:\n",
+    "    from vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse import DeepseekV4FlashInferMLASparseBackend as _backend\n",
+    "    from vllm.platforms.interface import DeviceCapability as _capability\n",
+    "    import torch as _torch\n",
+    "    _admitted = []\n",
+    "    for _dtype in ", v41_py_list(xs: v41_kv_cache_dtype_candidates), ":\n",
+    "        _reason = _backend.supports_combination(\n",
+    "            head_size=512, dtype=_torch.bfloat16, kv_cache_dtype=_dtype, block_size=64,\n",
+    "            use_mla=True, has_sink=True, use_sparse=True, use_mm_prefix=False,\n",
+    "            device_capability=_capability(major, minor))\n",
+    "        print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: MlaKvCacheLayoutAdmitted)), ", \"layout\", _dtype, \"admitted\" if _reason is None else \"rejected:\" + str(_reason))\n",
+    "        if _reason is None:\n",
+    "            _admitted.append(_dtype)\n",
+    "    print(\"ADMITTED_LAYOUTS\", \",\".join(_admitted))\n",
+    "    print(\"VERDICT\", ", v41_py_quote(s: v41_probe_label(c: MlaKvCacheLayoutAdmitted)),
+    " + \"=\" + (\"present\" if ", v41_py_quote(s: v41_sm12_kv_layout), " in _admitted else \"absent\"))\n",
+    "except Exception as _error:\n",
+    "    print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: MlaKvCacheLayoutAdmitted)), ", \"error\", repr(_error))\n",
+  ], "")
+}
+
+// AN EXCEPTION IS NOT AN ABSENCE, AND AN EARLIER REVISION MADE IT ONE. The helpers caught every
+// exception and returned False, so a broken interpreter, a partially installed package or an import
+// that raised for its own reasons all read as "this image does not have the symbol" -- evidence
+// against the image, manufactured by the instrument. They now return three answers: found, genuinely
+// absent, or ERRORED, and an errored check suppresses the capability's VERDICT line entirely, which
+// the reader reads as UNREAD.
+//
+// THE ABSENCE ARM IS NARROW ON PURPOSE, AND "ModuleNotFoundError" ALONE IS NOT NARROW ENOUGH. A module
+// that EXISTS raises ModuleNotFoundError when its own import of an unrelated dependency fails, so
+// catching the exception type and reporting MISSING turns "this image is missing a dependency of the
+// thing I asked about" into "this image does not have the thing I asked about" -- an absence
+// manufactured by the instrument, which is the defect this arm was already corrected for once and
+// still had at a finer grain. `ModuleNotFoundError.name` carries WHICH module was not found: the
+// reading is MISSING only when that name is the target or one of its ancestors, and ERRORED otherwise,
+// which suppresses the verdict and reads UNREAD.
+fn v41_probe_script() -> String {
+  join([
+    "import importlib\n",
+    "import importlib.util\n",
+    "import torch\n",
+    "import vllm\n",
+    "import vllm._custom_ops\n",
+    "\n",
+    "FOUND = \"found\"\n",
+    "MISSING = \"missing\"\n",
+    "ERRORED = \"errored\"\n",
+    "\n",
+    "def has_op(qualified):\n",
+    "    namespace, name = qualified.split(\".\", 1)\n",
+    "    try:\n",
+    "        library = getattr(torch.ops, namespace, None)\n",
+    "        if library is None:\n",
+    "            return (MISSING, \"no such torch.ops namespace\")\n",
+    "        return (FOUND, \"\") if hasattr(library, name) else (MISSING, \"\")\n",
+    "    except Exception as error:\n",
+    "        return (ERRORED, repr(error))\n",
+    "\n",
+    "def missing_name_is_target(error, target):\n",
+    "    name = getattr(error, \"name\", None)\n",
+    "    if not name:\n",
+    "        return False\n",
+    "    return target == name or target.startswith(name + \".\")\n",
+    "\n",
+    "def has_module(path):\n",
+    "    try:\n",
+    "        return (FOUND, \"\") if importlib.util.find_spec(path) is not None else (MISSING, \"\")\n",
+    "    except ModuleNotFoundError as error:\n",
+    "        if missing_name_is_target(error, path):\n",
+    "            return (MISSING, repr(error))\n",
+    "        return (ERRORED, repr(error))\n",
+    "    except Exception as error:\n",
+    "        return (ERRORED, repr(error))\n",
+    "\n",
+    "def has_attr(path):\n",
+    "    module_path, _, name = path.rpartition(\".\")\n",
+    "    try:\n",
+    "        module = importlib.import_module(module_path)\n",
+    "    except ModuleNotFoundError as error:\n",
+    "        if missing_name_is_target(error, module_path):\n",
+    "            return (MISSING, repr(error))\n",
+    "        return (ERRORED, repr(error))\n",
+    "    except Exception as error:\n",
+    "        return (ERRORED, repr(error))\n",
+    "    try:\n",
+    "        return (FOUND, \"\") if hasattr(module, name) else (MISSING, \"\")\n",
+    "    except Exception as error:\n",
+    "        return (ERRORED, repr(error))\n",
+    "\n",
+    "def report(label, ops, modules, attrs):\n",
+    "    present = True\n",
+    "    errored = False\n",
+    "    for kind, probe, symbols in ((\"op\", has_op, ops), (\"module\", has_module, modules), (\"attr\", has_attr, attrs)):\n",
+    "        for symbol in symbols:\n",
+    "            state, detail = probe(symbol)\n",
+    "            print(\"DETAIL\", label, kind, symbol, state, detail)\n",
+    "            if state == ERRORED:\n",
+    "                errored = True\n",
+    "            elif state == MISSING:\n",
+    "                present = False\n",
+    "    if errored:\n",
+    "        print(\"DETAIL\", label, \"suppressed\", \"no-verdict\", ERRORED, \"a check errored, so this capability is unread rather than measured\")\n",
+    "        return\n",
+    "    print(\"VERDICT\", label + \"=\" + (\"present\" if present else \"absent\"))\n",
+    "\n",
+    "major, minor = torch.cuda.get_device_capability(0)\n",
+    "print(\"COMPUTE_CAPABILITY_MAJOR\", major)\n",
+    "print(\"COMPUTE_CAPABILITY_MINOR\", minor)\n",
+    "print(\"VLLM_VERSION\", vllm.__version__)\n",
+    "from vllm.model_executor.models.registry import ModelRegistry\n",
+    "architectures = sorted(ModelRegistry.get_supported_archs())\n",
+    "print(\"REGISTRY_COUNT\", len(architectures))\n",
+    "for architecture in architectures:\n",
+    "    print(\"REGISTERED\", architecture)\n",
+    "print(\"DETAIL\", ", v41_py_quote(s: v41_probe_label(c: ArchitectureRegistered)), ", \"registry\", ", v41_py_quote(s: deepseek_v4_1_flash_architecture_class), ", \"found\" if ", v41_py_quote(s: deepseek_v4_1_flash_architecture_class), " in architectures else \"missing\", \"\")\n",
+    "print(\"VERDICT\", ", v41_py_quote(s: v41_probe_label(c: ArchitectureRegistered)),
+    " + \"=\" + (\"present\" if ", v41_py_quote(s: deepseek_v4_1_flash_architecture_class), " in architectures else \"absent\"))\n",
+    v41_py_capability_call(label: v41_probe_label(c: Fp4WeightKernels), surface: v41_fp4_weight_surface),
+    v41_py_fp4_support_block(),
+    v41_py_kv_layout_block(),
+    v41_py_capability_call(label: v41_probe_label(c: Csa2CompressorKernels), surface: v41_csa2_surface),
+    v41_py_capability_call(label: v41_probe_label(c: DSparkSpeculator), surface: v41_dspark_surface),
+    "report(", v41_py_quote(s: v41_probe_label(c: FlashInferSparseMlaSm120Symbols)),
+    ", ops=[], modules=[], attrs=", v41_py_list(xs: v41_sm12_demand_symbols()), ")\n",
+  ], "")
+}
+
+// ── ASKING IT ─────────────────────────────────────────────────────────────────────────────────
+//
+// THE BUILD ROOT IS BIND-MOUNTED READ-ONLY AND THE SCRIPT IS RUN FROM IT, rather than the script
+// being baked into a derived image: a derived image would be a second artifact with its own digest,
+// and the reading has to be about the digest the build produced. `--rm` removes the container, so the
+// probe leaves the host exactly as it found it.
+//
+type V41CapabilityReading
+  = V41CapabilityPresent { capability: NonEmptyStr }
+  | V41CapabilityAbsent { capability: NonEmptyStr }
+  | V41CapabilityUnread { capability: NonEmptyStr, cause: String }
+
+// A CAPABILITY IS READ BY PARSING THE LINES THE SCRIPT PRINTED, NOT BY SEARCHING THE OUTPUT.
+//
+// SUBSTRING SEARCH WAS THE WRONG INSTRUMENT AND IT SHOWED IN TWO PLACES. An earlier revision asked
+// `string_contains(stdout, "VERDICT <cap>=present")`, which answers yes for a capability whose name is
+// a PREFIX of another one's, cannot tell a verdict line from the same text appearing inside a
+// diagnostic, and could only detect a contradictory pair by searching twice and comparing the two
+// answers. The output is a line-oriented record; reading it as one means splitting it into lines,
+// keeping the ones that are verdicts, and looking a capability up by KEY.
+//
+// CONTRADICTION IS THEN A STRUCTURAL PROPERTY rather than a coincidence of two searches: a capability
+// that appears twice with different values has two rows, and the fold below reports that as UNREAD
+// because the output does not say what it found. That arm exists because a generator defect produced
+// exactly this once -- a vacuous `=present` line emitted ahead of the real verdict by a reporter
+// called with empty symbol lists, in the one capability the whole lane exists to establish.
+// THE LINE SHAPE THE SCRIPT PRINTS, AND THE ONLY ONE THIS READER ADMITS: the word VERDICT, one
+// space, then `<capability>=<value>`. `print("VERDICT", label + "=" + value)` produces exactly two
+// space-separated tokens, so a line with any other shape is not a verdict and is skipped rather than
+// guessed at.
+data v41_verdict_keyword: NonEmptyStr = "VERDICT" as NonEmptyStr
+
+type V41VerdictRow sole_constructor {
+  capability: NonEmptyStr
+  value: NonEmptyStr
+}
+
+fn v41_verdict_row_of_line(line: String) -> V41VerdictRow? {
+  let tokens = split(s: trim(s: line), delimiter: " ")
+  if length(tokens) != 2 {
+    none
+  } else {
+    match first(tokens) {
+      Absent => none
+      Present { value: keyword } =>
+        if keyword != (v41_verdict_keyword as String) {
+          none
+        } else {
+          match last(tokens) {
+            Absent => none
+            Present { value: pair } => {
+              let parts = split(s: pair, delimiter: "=")
+              if length(parts) != 2 {
+                none
+              } else {
+                match first(parts) {
+                  Absent => none
+                  Present { value: key } =>
+                    match last(parts) {
+                      Absent => none
+                      Present { value: value } =>
+                        if key == "" || value == "" {
+                          none
+                        } else {
+                          Present { value: V41VerdictRow { capability: key as NonEmptyStr, value: value as NonEmptyStr } }
+                        }
+                    }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn v41_verdict_rows(stdout: String) -> List<V41VerdictRow> {
+  flat_map(split(s: stdout, delimiter: "\n"), l =>
+    match v41_verdict_row_of_line(line: l) {
+      Absent => [] as List<V41VerdictRow>
+      Present { value: r } => [r]
+    })
+}
+
+fn v41_rows_for_capability(stdout: String, capability: NonEmptyStr) -> List<V41VerdictRow> {
+  filter(v41_verdict_rows(stdout: stdout), r => (r.capability as String) == (capability as String))
+}
+
+// Neither arm is a default: a capability with no verdict row is UNREAD, never absent, because a
+// script that died before reaching a question establishes nothing about it -- the same distinction
+// gunbc.spark.serving_runtime_capability_probe draws between a measured negative and a refused probe,
+// and the one that keeps a broken probe from ranking an image out.
+fn v41_capability_reading(stdout: String, capability: NonEmptyStr) -> V41CapabilityReading {
+  let rows = v41_rows_for_capability(stdout: stdout, capability: capability)
+  if length(rows) == 0 {
+    V41CapabilityUnread { capability: capability, cause: "the probe printed no VERDICT line for this capability" }
+  } else if length(rows) != 1 {
+    V41CapabilityUnread {
+      capability: capability,
+      cause: "the probe printed more than one VERDICT line for this capability, so its output does not say what it found",
+    }
+  } else {
+    match first(rows) {
+      Absent => V41CapabilityUnread { capability: capability, cause: "unreachable: a one-row list with no first element" }
+      Present { value: r } =>
+        if (r.value as String) == "present" {
+          V41CapabilityPresent { capability: capability }
+        } else if (r.value as String) == "absent" {
+          V41CapabilityAbsent { capability: capability }
+        } else {
+          V41CapabilityUnread {
+            capability: capability,
+            cause: join(["the probe printed a VERDICT value this reader does not admit: ", r.value as String], ""),
+          }
+        }
+    }
+  }
+}
+
+// THE QUESTIONS THIS PROBE PUTS, AS THE AUTHORITY'S CAPABILITIES RATHER THAN AS NAMES. The list is
+// this lane's, not the authority's: it is what THIS script asks, which is a superset of what any one
+// serving profile requires, and a probe that asked fewer questions than it reports on would leave a
+// reader unable to tell an unasked question from a missing one.
+data v41_probed_capabilities: List<RuntimeKernelCapability> = [
+  ArchitectureRegistered,
+  Fp4WeightKernels,
+  Fp4WeightSupportedHere,
+  MlaKvCacheLayoutAdmitted,
+  Csa2CompressorKernels,
+  DSparkSpeculator,
+  FlashInferSparseMlaSm120Symbols,
+]
+
+fn v41_capability_reading_line(r: V41CapabilityReading) -> String {
+  match r {
+    V41CapabilityPresent { capability: c } => join(["capability ", c as String, " present\n"], "")
+    V41CapabilityAbsent { capability: c } => join(["capability ", c as String, " absent\n"], "")
+    V41CapabilityUnread { capability: c, cause: why } => join(["capability ", c as String, " UNREAD ", why, "\n"], "")
+  }
+}
+
+// WHAT A PROBE READ IS ABOUT: A REFERENCE AND THE DIGEST THE DAEMON REPORTED FOR IT. Nothing else.
+// An earlier revision carried a whole VllmImageIdentity here, which meant a PULL-ONLY operation
+// arrived with a recipe and a build key attached -- fields describing a build nobody requested, and
+// the receipt printed that fallback key beside a published image. AdoptedUnderExpectedTag said the
+// source equality was unestablished, which was true and beside the point: the problem was not a weak
+// claim about a build, it was a build request manufactured where there was none.
+type V41ProbeOutcome
+  = V41ProbeRead { reference: NonEmptyStr, observed_digest: NonEmptyStr, stdout: String, readings: List<V41CapabilityReading> }
+  | V41ProbeRefused { step: NonEmptyStr, cause: String }
+
+fn v41_probe_all_present(o: V41ProbeOutcome) -> Bool {
+  match o {
+    V41ProbeRefused { step: _, cause: _ } => false
+    V41ProbeRead { reference: _, observed_digest: _, stdout: _, readings: rs } =>
+      fold(rs, init: true, f: (acc, r) =>
+        match r {
+          V41CapabilityPresent { capability: _ } => acc
+          V41CapabilityAbsent { capability: _ } => false
+          V41CapabilityUnread { capability: _, cause: _ } => false
+        })
+  }
+}
+
+fn v41_probe_body(o: V41ProbeOutcome) -> String {
+  match o {
+    V41ProbeRefused { step: st, cause: why } => join(["probe REFUSED step=", st as String, " cause=", why, "\n"], "")
+    V41ProbeRead { reference: ref, observed_digest: digest, stdout: out, readings: rs } =>
+      join([
+        join(["probed reference=", ref as String, " observed_digest=", digest as String, "\n"], ""),
+        join(["absent=", join(map(v41_absent_capabilities_of(readings: rs), c => c as String), ","),
+              " unread=", join(map(v41_unread_capabilities_of(readings: rs), c => c as String), ","), "\n"], ""),
+        join(map(rs, r => v41_capability_reading_line(r: r)), ""),
+        "--- probe stdout ---\n",
+        out,
+        "\n",
+      ], "")
+  }
+}
+
+// ── WHAT THIS LANE READ THAT IS NOT A CAPABILITY ──────────────────────────────────────────────
+//
+// EXECUTED, NOT PREDICTED. The rows below were produced by the generated script above running inside
+// the digest gunbc.spark.serving_runtime_capability_probe names for this image, through `docker run
+// --rm --entrypoint python3 --gpus all`, on a GB10 whose interpreter reported compute capability 12.1
+// and whose vLLM reported the version string that CONTAINS the lead commit -- which is what the
+// packager stamped, not proof that these bytes were compiled from it. It is evidence about the
+// artifact; it is not provenance, for the same reason extdeps.vllm.server declines to read a server's
+// version prefix as runtime provenance.
+//
+// AND THE SEVEN CAPABILITY READINGS ARE NOT AMONG THEM. They are in the authority's roster, where a
+// consumer sweeping every probed image finds them. What is here is what that vocabulary does not ask:
+// a companion registry fact, and the layout sets the backend returned. Both are joined in the
+// witnesses against an INDEPENDENT source -- what upstream's code says at the pinned revision, read by
+// extdeps.vllm.deepseek_v4_1_sm12 -- because two differently-sourced facts agreeing is evidence and a
+// sentence matching itself is not.
+//
+// A DEEPSEEK NAME THE IMAGE DOES ANSWER FOR, recorded because it is what makes the absence
+// discriminating: the registry is not missing DeepSeek entries, it is missing the V4.1 one.
+//
+// THE ABSENCE ITSELF IS NOT HERE. It is a capability reading, and capability readings have one home:
+// gunbc.spark.serving_runtime_capability_probe's roster, where this digest's ArchitectureRegistered
+// row sits beside every other image's. What stays here is the COMPANION fact that rules out the two
+// readings a bare absence is compatible with -- an empty registry, and a probe that never imported
+// one -- because it is a different question about the same run and nothing in the capability
+// vocabulary asks it.
+data v41_probed_sibling_architecture: NonEmptyStr = "DeepseekV4ForCausalLM" as NonEmptyStr
+data v41_probed_sibling_architecture_present: Bool = true
+
+// THE LAYOUTS THE BACKEND ADMITTED AND REJECTED, called inside the image at DeviceCapability(12, 1).
+// These are the rows a witness joins against extdeps.vllm.deepseek_v4_1_sm12's reading of the same
+// rule at the pinned revision -- source and execution, independently obtained, required to agree.
+data v41_probed_admitted_kv_layouts: List<NonEmptyStr> = [
+  "fp8" as NonEmptyStr,
+  "fp8_e4m3" as NonEmptyStr,
+  "fp8_ds_mla" as NonEmptyStr,
+]
+
+data v41_probed_rejected_kv_layouts: List<NonEmptyStr> = [
+  "auto" as NonEmptyStr,
+  "bfloat16" as NonEmptyStr,
+  "nvfp4_ds_mla" as NonEmptyStr,
+]
+
+fn v41_probed_layout_admitted(dtype: NonEmptyStr) -> Bool {
+  fold(v41_probed_admitted_kv_layouts, init: false, f: (acc, d) =>
+    if acc { true } else { d as String == dtype as String })
+}
+
+// ── WHAT A RUN READ, PARTITIONED ──────────────────────────────────────────────────────────────
+//
+// THE READINGS THIS LANE TOOK ARE NOT HERE ANY MORE, AND THAT IS THE POINT. They were rows in this
+// module while gunbc.spark.serving_runtime_capability_probe was in flight; it has landed, so this
+// image's seven readings sit in ITS roster, keyed by the digest they were taken in and by the
+// vendor-qualified device they were taken on, beside every other image's. One image's capability
+// readings kept apart from the rest is a sweep whose denominator has silently split in two.
+//
+// WHAT STAYS IS THE PARTITION ITSELF, applied to what a LIVE probe just read. A run parses one
+// verdict line per capability and gets three answers, and the two that are not `present` rank the
+// image out for different reasons: an absence is a fact about the image, an unread is a fact about
+// the run. Folded together -- as an earlier revision folded them, into one "unmet" list -- a question
+// nobody asked reads as a capability nobody has, and the fix is a re-probe rather than a rebuild.
+//
+// THE FOLDS TAKE THEIR READINGS AS AN ARGUMENT, which is what lets a witness exercise them against
+// readings it builds. Asserting which capability a RECORDED roster lands in would compare this
+// change's rows to this change's rows and go red only when an author edits one; that the two buckets
+// stay disjoint at all is a property of the folds, and it is checkable.
+fn v41_absent_capabilities_of(readings: List<V41CapabilityReading>) -> List<NonEmptyStr> {
+  fold(readings, init: [], f: (acc, r) =>
+    match r {
+      V41CapabilityAbsent { capability: c } => append(acc, c)
+      V41CapabilityPresent { capability: _ } => acc
+      V41CapabilityUnread { capability: _, cause: _ } => acc
+    })
+}
+
+fn v41_unread_capabilities_of(readings: List<V41CapabilityReading>) -> List<NonEmptyStr> {
+  fold(readings, init: [], f: (acc, r) =>
+    match r {
+      V41CapabilityUnread { capability: c, cause: _ } => append(acc, c)
+      V41CapabilityPresent { capability: _ } => acc
+      V41CapabilityAbsent { capability: _ } => acc
+    })
+}
+
+// ── THE SAME QUESTIONS, OVER THE PRIVILEGED ROUTE THE FLEET ALREADY MODELS ─────────────────────
+//
+// WHY A SECOND EXECUTION SHAPE AND NOT A SECOND DOCKER ROUTE. Docker's socket on a Spark is
+// root-owned, and gunbc-automation -- the account the modeled bootstrap converges and the one every
+// key-authenticated leg in this lane uses -- is in no docker group on any of them. The corpus already
+// has exactly one route that drives docker on these hosts:
+// gunbc.spark.model_snapshot_materialize spark_remote_run, briansrls over a password session with
+// `sudo -S`, whose own header records this very finding as the reason it exists. So the docker legs
+// bind to THAT, rather than this lane inventing a second way to reach the same daemon (operator
+// ruling, 2026-09-11). The credential never enters an authoring session: it is resolved inside the
+// boundary where the entry runs.
+//
+// AND THE SCRIPT STOPS BEING A FILE. spark_remote_run shell-quotes every argv element, so the whole
+// probe program crosses as ONE argument to `python3 -c` -- which deletes the staged file, the bind
+// mount, the chmod and the three-step write-readback-rename that carrying it as a file required. The
+// program is the same generated text; what is gone is everything that existed only to get it there.
+fn v41_probe_privileged_argv(image_reference: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_run_ephemeral_command(
+    image: image_reference,
+    gpus_all: true,
+    mounts: [],
+    entrypoint: v41_probe_interpreter,
+    argv: ["-c", v41_probe_script()],
+  ))
+}
+
+fn v41_probe_pull_argv(image_reference: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_pull_command(image: image_reference))
+}
+
+fn v41_probe_digest_argv(image_reference: NonEmptyStr) -> List<String> {
+  argv_words(command: docker_image_digest_command(image: image_reference))
+}
+
+// A REMOTE RUN THAT DID NOT LAND AND ONE THAT RAN AND FAILED ARE DIFFERENT FACTS, and spark_remote_run
+// already keeps them apart; this preserves that rather than folding both into "the probe failed".
+fn v41_privileged_outcome(step: NonEmptyStr, run: SparkRemoteRun) -> V41ProbeOutcome? {
+  match run {
+    RemoteUnreachable { cause: why } => Present { value: V41ProbeRefused { step: step, cause: why } }
+    RemoteRan { exit_code: code, stdout: _, stderr: err } =>
+      if code != 0 {
+        Present { value: V41ProbeRefused { step: step, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") } }
+      } else {
+        none
+      }
+  }
+}
+
+fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
+  match run {
+    RemoteUnreachable { cause: _ } => ""
+    RemoteRan { exit_code: _, stdout: out, stderr: _ } => out
+  }
+}
+
+// PULL, READ THE DIGEST BACK, THEN ASK INSIDE IT. The readback is what makes the reading's subject
+// the bytes rather than the reference: a tag or even a manifest-list digest can resolve to different
+// content per architecture, and what the probe must name is the image the daemon actually holds.
+fn v41_probe_published_image(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
+  uses net: Network
+{
+  match v41_privileged_outcome(step: "image-pull" as NonEmptyStr, run: spark_remote_run(ctx: ctx, argv: v41_probe_pull_argv(image_reference: reference))) {
+    Present { value: refusal } => refusal
+    Absent => {
+      let digest_run = spark_remote_run(ctx: ctx, argv: v41_probe_digest_argv(image_reference: reference))
+      match v41_privileged_outcome(step: "image-digest" as NonEmptyStr, run: digest_run) {
+        Present { value: refusal } => refusal
+        Absent => {
+          let digest = trim(s: v41_privileged_stdout(run: digest_run))
+          if digest == "" {
+            V41ProbeRefused { step: "image-digest" as NonEmptyStr, cause: "the pull reported success and no image carries the reference it was asked to fetch" }
+          } else {
+            let probe_run = spark_remote_run(ctx: ctx, argv: v41_probe_privileged_argv(image_reference: digest as NonEmptyStr))
+            match v41_privileged_outcome(step: "probe-run" as NonEmptyStr, run: probe_run) {
+              Present { value: refusal } => refusal
+              Absent => {
+                let out = v41_privileged_stdout(run: probe_run)
+                V41ProbeRead {
+                  reference: reference,
+                  observed_digest: digest as NonEmptyStr,
+                  stdout: out,
+                  readings: map(v41_probed_capabilities, c => v41_capability_reading(stdout: out, capability: v41_probe_label(c: c))),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE ROUTE-A ENTRY, RUN WHERE THE CREDENTIAL LIVES ─────────────────────────────────────────
+//
+// THE HOST COMES FROM SPARK_CONVERGE_TARGET, because this entry runs as a fleet-converge MODE on the
+// pinned runner, where the Spark administrator credential is materialized inside the boundary. That is
+// the same input every other spark_* mode reads, resolved against
+// gunbc.spark.credential_workflow's administrator roster rather than against a spelled pair -- the
+// roster is an identity join with procurement, which is why a target it does not carry REFUSES
+// instead of fanning out.
+//
+// AND ENROLMENT IS NOT ADMISSIBILITY. That roster answers "does this Spark have an administrator
+// credential", which srv5 and srv6 do -- and they are the serving pair. An earlier revision stopped at
+// the roster, so a dispatch naming a serving host would have pulled 9.6 GB and started a container on
+// it. The entry now applies the same subtraction the build does, so a rostered host that is serving or
+// reserved refuses here too.
+//
+// OBSERVE-ONLY IS A REFUSAL HERE. spark_converge_target_selection admits an absent target as
+// "every enrolled Spark, observing only" for readers that legitimately sweep; this entry PULLS a 9.6
+// GB image and starts a container, so an unset target must stop rather than pick.
+data v41_probe_ci_attempt_raw: String = "v41-runtime-image-probe-ci"
+data v41_probe_ci_receipt_path: String = "target/v41-published-image-probe-receipt.txt"
+
+fn v41_probe_ci_body(at: String, host: NonEmptyStr, reference: NonEmptyStr, outcome: V41ProbeOutcome) -> String {
+  join([
+    join(["v41 published image probe probed_at=", at, " host=", host as String, " reference=", reference as String, "\n"], ""),
+    v41_probe_body(o: outcome),
+  ], "")
+}
+
+fn v41_published_image_probe_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode pulls an image and starts a container on ONE host, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: target_host } =>
+      if !spark_build_host_admissible(host: target_host) {
+        exit_failure(reason: join([target_host as String, " is a rostered Spark but not an admissible target for this lane: ", join(map(admissible_spark_build_hosts(), h => h as String), ", "), " are the non-serving, non-reserved members. Pulling a 9.6 GB image and starting a container on a serving host is exactly what the roster excludes"], ""))
+      } else {
+      match observe_executor_reach() {
+        ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_published_image_probe_ci: ", c], ""))
+        ExecutorReachKnown { short_hostname: executor, path: path } =>
+          match read_bootstrap_credential() {
+            BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+            BootstrapCredentialReady { secret: administrator } =>
+              match fleet_ssh_attempt_identity(raw: v41_probe_ci_attempt_raw) {
+                Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+                Present { value: attempt } => {
+                  let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+                  match fleet_openssh_trust_policy_of(outcome: materialization) {
+                    Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+                    Present { value: trust } =>
+                      match with_materialized_ssh_key_file(
+                        identity_file_name: "gunbc-v41-published-image-probe-admin-password" as NonEmptyStr,
+                        secret_bytes: administrator as Secret,
+                        use: fn(file) {
+                          v41_probe_published_image(
+                            ctx: SparkMaterializeContext {
+                              host: target_host,
+                              trust: trust,
+                              path: path,
+                              admin_credential: administrator as Secret,
+                              admin_credential_file: file,
+                              executor: HostCli,
+                            },
+                            reference: v41_published_arm64_reference(),
+                          )
+                        },
+                      ) {
+                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                        MaterializedSshKeyFileBracketCompleted { value: outcome } => {
+                          let body = join([
+                            v41_probe_ci_body(at: probed_at_word(reading: now) as String, host: target_host as NonEmptyStr, reference: v41_published_arm64_reference(), outcome: outcome),
+                            join(["executor=", executor, "\n"], ""),
+                            known_hosts_materialization_receipt(outcome: materialization),
+                          ], "")
+                          let w = Filesystem.Write(path: v41_probe_ci_receipt_path, content: body)
+                          if !w.success {
+                            exit_failure(reason: join(["v41 published image probe receipt write failed: ", w.error], ""))
+                          } else if v41_probe_all_present(o: outcome) {
+                            ExitSuccess
+                          } else {
+                            exit_failure(reason: join(["the published image does not carry every required capability:\n", body], ""))
+                          }
+                        }
+                      }
+                  }
+                }
+              }
+          }
+      }
+      }
+  }
+}

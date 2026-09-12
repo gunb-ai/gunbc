@@ -3,16 +3,30 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, v2_native_lane_needs }
-import gunbc.witness_v2_native_route { required_v2_native_job_name }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, required_lanes_roster, witness_floor_lane_job_ids, build_lane_needs, witness_floor_lane_needs, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression, witness_floor_triggers }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
-import extdeps.languages.yaml.gha_workflow { pr_activity_string }
-import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed }
+import extdeps.languages.yaml.gha_workflow { pr_activity_string, workflow_triggers_yaml }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed, github_event_name_pull_request, github_event_name_push, github_event_name_merge_group, github_event_name_workflow_dispatch }
 import extdeps.github.actions { RunStep, UsesStep }
+import extdeps.github.expressions {
+  interpolate,
+  ContextAccess,
+  Github,
+  FunctionCall,
+  Format,
+  StringLiteral,
+  ExpressionEvaluationRefused,
+  ExpressionValue,
+  UnmodeledContext,
+  UnmodeledFormat,
+  FormatArityNotOneSubstitution,
+  github_path_key
+}
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc
@@ -254,20 +268,17 @@ test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool
 test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
   !any(fleet_converge_workflow.jobs, j => j.id == build_lane_job_id)
     && !any(fleet_converge_workflow.jobs, j => j.id == floor_lane_job_id)
-    && !any(fleet_converge_workflow.jobs, j => j.id == required_v2_native_job_name)
     && build_lane_job_id != floor_lane_job_id
-    && build_lane_job_id != required_v2_native_job_name
     && build_lane_job_id != witness_floor_workflow_job_id
-    && floor_lane_job_id != required_v2_native_job_name
     && floor_lane_job_id != witness_floor_workflow_job_id
-    && required_v2_native_job_name != witness_floor_workflow_job_id
 }
 
 // NO LANE WAITS ON ANOTHER, WHICH IS THE ENTIRE CONTENT OF "PARALLEL" -- and the
 // aggregation job waits on all of them, which is what keeps the split fail-closed. The
-// roster was two lanes at the split (build, floor); the required v2-native lane's enrolment
-// (gunbc.witness_v2_native_route) makes it three, and the witness name keeps the split's
-// original identity rather than re-authoring the row.
+// roster was two lanes at the split (build, floor); the required v2-native lane made it three
+// from 2026-09-09 until the 2026-09-11 ruling deleted that job (gunbc.rung_drop
+// v2_native_route_off_the_merge_path), so it is two again, and the witness name keeps the
+// split's original identity rather than re-authoring the row.
 //
 // THE EARLIER FORM OF THIS ROW ASSERTED THAT THE FILE CONTAINED NO `needs:` AT ALL, and that
 // was the right claim for a workflow shape that was WRONG. Review of gunbc#9203 found it: the
@@ -279,7 +290,7 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 //
 // The claim is therefore stated at the grain that actually matters. The typed lane jobs must
 // carry no `needs`, while the one roster from which the aggregate derives its `needs` must carry
-// exactly the three lane identities. Reading those narrow producers avoids serializing the aggregate's
+// exactly the two lane identities. Reading those narrow producers avoids serializing the aggregate's
 // large gate program merely to recover fields that existed before serialization. This remains a
 // strictly sharper discriminator than the old token count: it distinguishes the serialization
 // being forbidden from the aggregation being demanded, which "no needs anywhere" could not.
@@ -289,8 +300,7 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   length(xs: build_lane_needs()) == 0
     && length(xs: witness_floor_lane_needs()) == 0
-    && length(xs: v2_native_lane_needs()) == 0
-    && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 3
+    && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 2
     && count_where(
       xs: non_empty_to_list(xs: required_lanes_roster()),
       predicate: fn(lane) { lane.job_id == build_lane_job_id },
@@ -298,10 +308,6 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
     && count_where(
       xs: non_empty_to_list(xs: required_lanes_roster()),
       predicate: fn(lane) { lane.job_id == floor_lane_job_id },
-    ) == 1
-    && count_where(
-      xs: non_empty_to_list(xs: required_lanes_roster()),
-      predicate: fn(lane) { lane.job_id == required_v2_native_job_name },
     ) == 1
 }
 
@@ -321,7 +327,10 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 //
 // PERMANENT AFTER OBSERVED RED (DESIGN 4b(4)). Run 33924210916 supplied `fabric-evidence` and
 // observed this exact identity return Bool(false). This probe is therefore a regression control,
-// not scaffolding: keep it enrolled for as long as any of the three citing rung drops stands.
+// not scaffolding: keep it enrolled for as long as any of the citing rung drops stands.
+// `required-v2-native` joined the deleted set 2026-09-11 (gunbc.rung_drop
+// v2_native_route_off_the_merge_path): its ~4h wall on every push, with no supersession,
+// starved the two lanes that gate. Re-adding it into the same envelope authors RED here.
 // POSITIVE-CONTROL SEAM: the countable must author RED when a deleted lane is supplied. Without
 // this input boundary, a planned/pass receipt would not distinguish a live absence wall from a
 // vacuous projection that always returned an empty list.
@@ -330,14 +339,16 @@ fn deleted_lane_job_ids_are_absent(job_ids: List<String>) -> Bool {
       job_id == "fabric-evidence"
         || job_id == "rust-unit-tests"
         || job_id == "emit-copy-qualification-battery"
+        || job_id == "required-v2-native"
     })
 }
 
 test fn w_RED_the_deleted_lanes_do_not_return() -> Bool {
   deleted_lane_job_ids_are_absent(job_ids: witness_floor_lane_job_ids())
     && !deleted_lane_job_ids_are_absent(job_ids: ["fabric-evidence"])
+    && !deleted_lane_job_ids_are_absent(job_ids: ["required-v2-native"])
     && !any(xs: non_empty_to_list(xs: required_lanes_roster()), predicate: fn(lane) {
-      lane.var_name == "FABRIC_EVIDENCE"
+      lane.var_name == "FABRIC_EVIDENCE" || lane.var_name == "V2_NATIVE"
     })
 }
 
@@ -457,15 +468,161 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
 // (the reversion this row exists to catch) and emptying the activity list entirely (the
 // over-deletion an absence-only row would have passed). Both went FAIL; the unmutated tree went
 // PASS.
+//
+// SOURCE->EMISSION IS THIS FRAGMENT, NOT A FULL WORKFLOW SERIALIZE. The bytes asserted here are
+// `workflow_triggers_yaml(witness_floor_triggers())` -- the same projector `project_workflow_to_yaml`
+// uses for the workflow `on:` block -- so a mutation that drops `witness_floor_pull_request_activity_types`
+// from that trigger and inlines another list still fails. The heal/regen drift gate already
+// establishes that committed witnesses.yml equals the full projection; fragment plus that gate
+// cover the path end to end. A per-claim `expected_witness_floor_yml()` read is the whole-file
+// serialize this row must not pay (measured 1823ms against the 500ms line).
 test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
-  match expected_witness_floor_yml() {
-    WitnessFloorGenerated { content: yml } =>
-      string_contains(
-        s: yml,
-        pattern: concat("    types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
-      )
-        && !string_contains(s: yml, pattern: pr_activity_string(a: ReadyForReview))
-        && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
-    WitnessFloorGenerationRefused { reason: _ } => false
+  let yml = serialize_yaml(v: workflow_triggers_yaml(triggers: witness_floor_triggers()))
+  string_contains(
+    s: yml,
+    pattern: concat("types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
+  )
+    && !string_contains(s: yml, pattern: pr_activity_string(a: ReadyForReview))
+    && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
+}
+
+test fn w_RED_the_pull_request_activity_set_excludes_ready_for_review() -> Bool {
+  count_where(
+    xs: witness_floor_pull_request_activity_types,
+    predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: ReadyForReview) }
+  ) == 0
+}
+
+test fn w_RED_the_pull_request_activity_set_excludes_closed() -> Bool {
+  count_where(
+    xs: witness_floor_pull_request_activity_types,
+    predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Closed) }
+  ) == 0
+}
+
+fn group_resolved_as(fx: WitnessFloorGroupFixture, expected: String) -> Bool {
+  match resolve_witness_floor_concurrency_group(fx: fx) {
+    WitnessFloorGroupResolved { group: g } => g == expected
+    WitnessFloorGroupRefused { cause: _ } => false
   }
+}
+
+fn group_fx(event: String, inputs: List<DispatchInputBinding>) -> WitnessFloorGroupFixture {
+  WitnessFloorGroupFixture {
+    event: event,
+    sha: "mgsha",
+    run_id: "rid",
+    pull_request_number: "7",
+    github_ref: "refs/heads/main",
+    dispatch_inputs: inputs
+  }
+}
+
+test fn w_concurrency_group_resolves_merge_group_to_mg_sha() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_merge_group, inputs: []),
+    expected: "witness-floor-mg-mgsha"
+  )
+}
+
+test fn w_concurrency_group_resolves_heal_dispatch_to_heal_sha() -> Bool {
+  group_resolved_as(
+    fx: group_fx(
+      event: github_event_name_workflow_dispatch,
+      inputs: [DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "healsha" }]
+    ),
+    expected: "witness-floor-heal-healsha"
+  )
+}
+
+test fn w_concurrency_group_resolves_empty_heal_input_to_run_id() -> Bool {
+  group_resolved_as(
+    fx: group_fx(
+      event: github_event_name_workflow_dispatch,
+      inputs: [DispatchInputBinding { name: ci_heal_expected_healed_sha_input_name, value: "" }]
+    ),
+    expected: "witness-floor-run-rid"
+  )
+}
+
+test fn w_concurrency_group_resolves_bare_dispatch_to_run_id() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_workflow_dispatch, inputs: []),
+    expected: "witness-floor-run-rid"
+  )
+}
+
+test fn w_concurrency_group_resolves_pull_request_to_pr_number() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_pull_request, inputs: []),
+    expected: "witness-floor-pr-7"
+  )
+}
+
+test fn w_concurrency_group_resolves_push_to_github_ref() -> Bool {
+  group_resolved_as(
+    fx: group_fx(event: github_event_name_push, inputs: []),
+    expected: "witness-floor-refs/heads/main"
+  )
+}
+
+test fn w_concurrency_group_push_is_not_grouped_as_a_pr() -> Bool {
+  !group_resolved_as(
+    fx: group_fx(event: github_event_name_push, inputs: []),
+    expected: "witness-floor-pr-7"
+  )
+}
+
+test fn w_emitted_group_expression_names_each_event_branch() -> Bool {
+  let s = interpolate(expression: witness_floor_group_expression())
+  string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_merge_group, "' && format('mg-{0}', github.sha)")))
+    && string_contains(
+         s: s,
+         pattern: concat(
+           "github.event_name == '",
+           concat(
+             github_event_name_workflow_dispatch,
+             concat(
+               "' && github.event.inputs.",
+               concat(
+                 ci_heal_expected_healed_sha_input_name,
+                 concat(" != '' && format('heal-{0}', github.event.inputs.", concat(ci_heal_expected_healed_sha_input_name, ")"))
+               )
+             )
+           )
+         )
+       )
+    && string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_pull_request, "' && format('pr-{0}', github.event.pull_request.number)")))
+    && string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_push, "' && github.ref")))
+    && !string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_push, "' && format('pr-{0}'")))
+}
+
+test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool {
+  let fx = WitnessFloorGroupFixture {
+    event: github_event_name_push,
+    sha: "mgsha",
+    run_id: "rid",
+    pull_request_number: "7",
+    github_ref: "refs/heads/main",
+    dispatch_inputs: []
+  }
+  let two_arg_format = FunctionCall {
+    function: Format,
+    args: [StringLiteral { value: "x-{0}" }, StringLiteral { value: "a" }, StringLiteral { value: "b" }]
+  }
+  let base_ref_expr = ContextAccess { context: Github, path: ["base_ref"] }
+  match evaluate_against_group_fixture(expression: two_arg_format, fx: fx) {
+    ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: n } } } => n == 3
+    ExpressionEvaluationRefused { cause: _ } => false
+    ExpressionValue { value: _ } => false
+  }
+    && match evaluate_against_group_fixture(expression: base_ref_expr, fx: fx) {
+      ExpressionEvaluationRefused { cause: UnmodeledContext { context: Github, path: p } } => github_path_key(path: p) == "base_ref"
+      ExpressionEvaluationRefused { cause: _ } => false
+      ExpressionValue { value: _ } => false
+    }
+    && match resolve_witness_floor_concurrency_group(fx: fx) {
+      WitnessFloorGroupResolved { group: g } => g == "witness-floor-refs/heads/main"
+      WitnessFloorGroupRefused { cause: _ } => false
+    }
 }

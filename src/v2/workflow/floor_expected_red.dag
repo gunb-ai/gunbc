@@ -1093,8 +1093,31 @@ fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
 
 }
 
+// THE DECLARATION-FACT VALUE-BLINDNESS ACCEPTANCE RED. decl_facts_at composed with
+// atom_identities_in_node carries no authored string value, in any initializer shape, so a
+// lexeme-keyed consumer answers identically for a row that names v1 and one that names
+// nothing — and answers rather than refuses, which greens a discovery gate on the population
+// it exists to find. Class:
+// gunbc.recurring_failure_mode.projection_drops_the_value_its_consumer_keys_on.
+//
+// These three are written as the behaviour that SHOULD hold (different authored values project
+// different atoms), so they are red until the projection carries values and go green exactly
+// when it does. They are that change's acceptance red, and under DESIGN section 4b(4) they
+// flip to permanent regression controls there rather than retiring. The file's positive
+// control — every_specimen_resolves_and_projects_a_nonempty_atom_population — is deliberately
+// NOT enrolled: it must stay green, and it is what separates "the projection drops values"
+// from "the lookup missed" or "the reader returns nothing".
+//
+// NAMED RATHER THAN NUMBERED, per this file's own note above chunk 24 that concurrent branches
+// each mint the same next number and collide on merge.
+fn floor_expected_red_chunk_decl_fact_value_projection() -> List<String> {
+  Cons { head: "test.claim.decl_fact_value_projection_witness.bare_string_rows_with_different_values_project_different_atoms",
+  tail: Cons { head: "test.claim.decl_fact_value_projection_witness.list_rows_with_different_elements_project_different_atoms",
+  tail: Cons { head: "test.claim.decl_fact_value_projection_witness.record_rows_with_different_string_fields_project_different_atoms", tail: Empty {} } } }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_decl_fact_value_projection(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in

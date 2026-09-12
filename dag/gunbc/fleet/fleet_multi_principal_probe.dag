@@ -55,12 +55,12 @@ import gunbc.spark.managed_access_bootstrap {
   BootstrapProceedsUnprivileged,
   OperatorBootstrapCredentialRequired,
   spark_bootstrap_effect_label,
-  spark_operator_bootstrap_login,
   spark_bootstrap_plan_effects,
 }
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import product.placement_supply { HostIdentity }
+import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
 // whether the fleet key is already enrolled for SOME pre-existing account on srv3/srv4.
@@ -98,6 +98,15 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // ONE LEG, and every option it carries derived from the sealed context rather than assembled here.
 // The words go through portable_remote_words, so a command this probe cannot transport safely
 // refuses before the leg rather than being quoted into something the remote shell may re-split.
+//
+// THE ONE PLACE THAT NAMES THE KEY SHAPER ON PURPOSE, and it is a declared exemption from
+// gunbc.fleet_bootstrap_principal_session rather than an unmigrated caller. Every other consumer
+// derives its session from the principal, because every other consumer wants to REACH the principal.
+// This one wants to MEASURE whether the fleet key reaches it, per principal, including the bootstrap
+// account -- which is exactly the measurement that established briansrls holds no key on a host this
+// repository provisioned. Deriving the session here would silently swap the question: the briansrls
+// row would become a password-session probe and report reach that says nothing about the key. So the
+// key shaper is the subject of this probe, not its transport choice, and it stays named.
 fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> SshSessionExecResult? {
   match portable_remote_words(raws: raw_words) {
     Absent => none
@@ -510,7 +519,7 @@ fn spark_grant_report_text(report: SparkGrantReport) -> String {
 fn spark_exact_grant_report(context: FleetSshExecutionContext) -> SparkGrantReport {
   let rows = flat_map(spark_standing_hosts, h => [
     spark_exact_grant_row(context: context, host: h, principal: "gunbc-automation"),
-    spark_exact_grant_row(context: context, host: h, principal: spark_operator_bootstrap_login),
+    spark_exact_grant_row(context: context, host: h, principal: fleet_bootstrap_principal_login() as String),
   ])
   match list_head(rows) {
     HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }

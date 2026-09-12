@@ -1,6 +1,6 @@
 module gunbc.spark.glm_canary_converge
 
-import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Secret, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, byte_size_count, basis_point_count }
 import extdeps.vllm.engine_args {
@@ -122,7 +122,7 @@ type GlmCanaryArm {
   memory_request: VllmMemoryRequest
   prefix_caching_request: VllmPrefixCachingRequest
   prefix_cache_partition: PrefixCachePartitionPolicy
-  port: Nat
+  port: Port
   container_name: NonEmptyStr
 }
 
