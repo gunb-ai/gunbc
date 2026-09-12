@@ -189,6 +189,7 @@ fn lbc_run(
   rows: List<Int>,
   expected_refs: List<Int>,
   repair_sites: List<RepairSite>,
+  repair_roster: RepairSiteRoster,
   repair_source_set: String,
   repair_artifact: String
 ) -> LbcOutcome {
@@ -226,7 +227,7 @@ fn lbc_run(
                     source_set: repair_source_set,
                     artifact: repair_artifact
                   ),
-                  repair_roster: lbc_repair_roster()
+                  repair_roster: repair_roster
                 ) {
                   LegacyBaselineCaptured { capture: _ } => "captured"
                   LegacyBaselineHeadMismatch { requested: _, materialized: _ } => "head-mismatch"
@@ -235,7 +236,7 @@ fn lbc_run(
                   LegacyBaselineObservationIncomplete { completeness: _ } => "observation-incomplete"
                   LegacyBaselineRepairRosterMalformed { sites: _ } => "repair-roster-malformed"
                   LegacyBaselineRepairRosterMismatch { subject_digest: _, roster_digest: _ } => "repair-roster-mismatch"
-                  LegacyBaselineRepairSubjectDiverged { field: f } => concat("repair-subject-diverged:", f)
+                  LegacyBaselineRepairSubjectDiverged { field: f } => concat("repair-subject-diverged:", subject_field_label(f: f) as String)
                   LegacyBaselineRepairIncomplete { completeness: _ } => "repair-incomplete"
                   LegacyBaselineExecutionRefused { phase: _, cause: _ } => "execution-refused"
                   LegacyBaselineObservedTransportRefused { refusal: _ } => "observed-transport-refused"
@@ -261,6 +262,7 @@ test fn a_materialized_head_that_is_not_the_requested_commit_refuses_first() -> 
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -279,6 +281,7 @@ test fn a_dirty_worktree_refuses_before_the_subject_is_compared() -> Bool {
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -296,6 +299,7 @@ test fn an_observation_of_a_different_source_set_refuses_as_subject_mismatch() -
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -314,6 +318,7 @@ test fn an_observation_from_a_different_compiler_artifact_refuses_as_subject_mis
     expected_artifact: "3333333333333333", observed_artifact: "8888888888888888",
     rows: [10], expected_refs: [10],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -333,6 +338,7 @@ test fn an_observation_missing_an_expected_occurrence_refuses_as_incomplete() ->
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10], expected_refs: [10, 11],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -350,6 +356,7 @@ test fn a_fully_agreeing_capture_mints_the_baseline() -> Bool {
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10, 11], expected_refs: [10, 11],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -366,6 +373,7 @@ test fn a_repair_observation_missing_a_roster_site_refuses_as_repair_incomplete(
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10, 11], expected_refs: [10, 11],
     repair_sites: [],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -382,6 +390,7 @@ test fn a_repair_observation_of_a_different_source_set_refuses_as_repair_subject
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10, 11], expected_refs: [10, 11],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "9999999999999999", repair_artifact: "3333333333333333"
   ) {
     LbcFixtureRefused => false
@@ -398,10 +407,47 @@ test fn a_repair_observation_from_a_different_compiler_artifact_refuses_as_repai
     expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
     rows: [10, 11], expected_refs: [10, 11],
     repair_sites: [lbc_repair_site()],
+    repair_roster: lbc_repair_roster(),
     repair_source_set: "2222222222222222", repair_artifact: "9999999999999999"
   ) {
     LbcFixtureRefused => false
     LbcComputed { verdict: v } => v == "repair-subject-diverged:compiler_artifact_digest"
+  }
+}
+
+test fn a_roster_that_names_one_site_twice_refuses_as_repair_roster_malformed() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10, 11], expected_refs: [10, 11],
+    repair_sites: [lbc_repair_site()],
+    repair_roster: RepairSiteRoster { sites: [lbc_repair_site(), lbc_repair_site()] },
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "repair-roster-malformed"
+  }
+}
+
+test fn a_roster_whose_identity_is_not_the_subject_digest_refuses_as_repair_roster_mismatch() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10, 11], expected_refs: [10, 11],
+    repair_sites: [lbc_repair_site()],
+    repair_roster: RepairSiteRoster {
+      sites: [RepairSite { module_name: "std.types" as NonEmptyStr, name: "Int" as NonEmptyStr }]
+    },
+    repair_source_set: "2222222222222222", repair_artifact: "3333333333333333"
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "repair-roster-mismatch"
   }
 }
 
