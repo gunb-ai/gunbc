@@ -176,6 +176,25 @@ type Sha256       = String
 type RetryCount   = Int where range(min: 1, max: 5)
 type HttpStatus   = Int where range(min: 100, max: 599)
 
+// THE ONE ADMISSION FOLD FOR AN Int THAT CLAIMS TO BE AN HttpStatus. The refinement above is
+// reported by the compiler as unenforced (predicate deferred), so a value arriving from a parse --
+// curl's --write-out, a wire body, a log line -- has to be admitted somewhere, and that somewhere
+// must be HERE, beside the range, rather than a copied pair of literals at each parse site that
+// drifts silently if the range row ever moves. The bounds are read from the two rows the fold
+// consumes; the refinement keeps the same numbers as literals because a where-clause cannot name
+// a data row. That pairing is a language-layer gap, not a reader check: its next-rung trigger is
+// gunbc.where_refinement_predicate_vocabulary
+// http_status_where_clause_names_declaration_frontier_rows (capability: a where-clause names a
+// declaration). A parse site consumes http_status_of and matches its Absent arm; it does not
+// compare against 100 or 599 itself.
+data http_status_min: Int = 100
+
+data http_status_max: Int = 599
+
+fn http_status_of(n: Int) -> HttpStatus? {
+  if n < http_status_min || n > http_status_max { none } else { Present { value: n } }
+}
+
 type Email        = String
 type Port         = Int where range(min: 1, max: 65535)
 
