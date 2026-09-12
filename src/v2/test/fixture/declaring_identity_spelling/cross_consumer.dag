@@ -1,3 +1,5 @@
 module v2.test.fixture.declaring_identity_spelling.cross_consumer
 
 fn go() -> Int { v2.test.fixture.declaring_identity_spelling.cross_provider.Probe }
+
+fn uses(x: v2.test.fixture.declaring_identity_spelling.cross_provider.ProvidedMarker) -> Int { 0 }

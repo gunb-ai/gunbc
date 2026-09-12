@@ -1,3 +1,5 @@
 module v2.test.fixture.declaring_identity_spelling.cross_provider
 
 data Probe: Int = 0
+
+type ProvidedMarker {}
