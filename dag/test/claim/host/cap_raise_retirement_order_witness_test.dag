@@ -1,0 +1,90 @@
+module test.claim.host.cap_raise_retirement_order_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import gunbc.host_axis_caps {
+  CapRaiseAdmitted,
+  CapRaiseBlockedPendingRetirement,
+  CapRaiseBlockedUnobserved,
+  SurplusSlotsObserved,
+  SurplusSlotsUnobserved,
+  admitted_runner_memory_cap_members,
+  cap_raise_standing,
+  cap_raise_standing_blocks,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ORDER BETWEEN SHRINKING AND RAISING IS WHAT THESE ROWS DEFEND, and it is the one property a
+// model cannot get from admission alone. Admission answers WHETHER a host may be written to;
+// nothing before this answered WHEN. Narrowing a host's width from 21 to 12 narrows which units the
+// drop-ins target -- it does not stop slots 13..21 existing or serving -- so a raise applied then
+// commits the host to twelve slots at the new ceiling plus nine still holding the old one.
+
+// THE POSITIVE CONTROL. Without it every row below is satisfied by a gate that blocks everything,
+// which is the failure mode a refusal-only suite cannot see.
+test fn an_empty_surplus_admits_the_raise() -> Bool {
+  match cap_raise_standing(
+    observation: SurplusSlotsObserved { retired: ["actions-runner@srv1-13.service"], still_present: [] }
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// A SLOT STILL PRESENT BLOCKS, and the standing names WHICH -- a blocked raise that cannot say what
+// it is waiting for gives an operator nothing to act on.
+test fn a_surviving_surplus_slot_blocks_the_raise() -> Bool {
+  match cap_raise_standing(
+    observation: SurplusSlotsObserved {
+      retired: ["actions-runner@srv1-13.service"],
+      still_present: ["actions-runner@srv1-14.service"],
+    }
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
+    CapRaiseAdmitted => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// THE ARM THAT MATTERS MOST: AN UNOBSERVED SURPLUS IS NOT AN EMPTY ONE. Rendering "I could not see
+// the retiring set" as "there is nothing left to retire" is the empty-observation narrow, and it is
+// what makes a shrink silently unsafe instead of loudly blocked.
+test fn an_unobserved_surplus_blocks_rather_than_reading_as_empty() -> Bool {
+  match cap_raise_standing(
+    observation: SurplusSlotsUnobserved { cause: "no unit census was taken on this host" }
+  ) {
+    CapRaiseBlockedUnobserved { cause: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+  }
+}
+
+// THE CONTENT IS THE STANDING'S OUTPUT, not a caller's choice. A blocked raise must be unable to
+// AUTHOR drop-in content at all; authoring it and trusting a caller to decline is the gap this
+// whole change exists to close one layer up.
+test fn a_blocked_raise_authors_no_cap_content() -> Bool {
+  admitted_runner_memory_cap_members(
+    observation: SurplusSlotsUnobserved { cause: "unobserved" }
+  ).length() == 0
+    && admitted_runner_memory_cap_members(
+      observation: SurplusSlotsObserved {
+        retired: [],
+        still_present: ["actions-runner@srv1-14.service"],
+      }
+    ).length() == 0
+    && admitted_runner_memory_cap_members(
+      observation: SurplusSlotsObserved { retired: [], still_present: [] }
+    ).length() == 2
+}
+
+test fn both_blocked_standings_report_as_blocking() -> Bool {
+  cap_raise_standing_blocks(
+    standing: CapRaiseBlockedUnobserved { cause: "unobserved" }
+  )
+    && cap_raise_standing_blocks(
+      standing: CapRaiseBlockedPendingRetirement { still_present: ["actions-runner@srv1-14.service"] }
+    )
+    && !cap_raise_standing_blocks(standing: CapRaiseAdmitted)
+}
