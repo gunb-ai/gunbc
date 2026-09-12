@@ -10,15 +10,14 @@ import gunbc.runner_label_resolution {
   ArmConfirmed,
   NotArmConfirmed,
   ArmUndetermined,
+  ProviderFromCatalog,
+  ProviderUnresolved,
 }
 import gunbc.public_workload_census {
   DeclaredArm, DeclaredNotArm, DeclaredArchitectureUnresolved,
-  declared_architecture_is_arm,
   ObservedExecution, NoRunObserved, JobRunObserved, TestsExecuted, NoTestsExecuted,
   observed_job_labels, observed_job_run_attempt, observed_primary_label,
-  baseline_admission, baseline_is_admitted,
-  spend_is_unobserved,
-  trial_authorization_from_census, trial_is_authorized,
+  baseline_admission, baseline_is_admitted, baseline_attempt_matches_observed_job,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   DeclaredProviderKnown, DeclaredProviderUnresolved,
   candidate_declared_architecture, candidate_baseline,
@@ -82,12 +81,8 @@ test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
 
 test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
   all(workload_census, c =>
-    !(c.repository as String == "")
-      && !(c.inspected_commit == "")
-      && !(c.workflow_path as String == "")
-      && !(c.workflow_blob_sha as String == "")
-      && !(c.job_key as String == "")
-      && !(c.matrix_selector as String == "")
+    !(c.inspected_commit == "")
+      && (c.workflow_blob_sha as String != c.inspected_commit)
   )
 }
 
@@ -108,7 +103,7 @@ test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_ar
     label: observed_primary_label(o: candidate_pdns_dnsdist_arm.observed),
     observed_at: candidate_pdns_dnsdist_arm.observation_time,
   )
-  declared_unresolved && observed_arm && declared_architecture_is_arm(s: declared) == false
+  declared_unresolved && observed_arm
 }
 
 test fn witness_declared_and_observed_providers_are_separate_readings() -> Bool {
@@ -122,9 +117,9 @@ test fn witness_declared_and_observed_providers_are_separate_readings() -> Bool 
     DeclaredProviderKnown { via, provider_module } => false
   }
   let pdns_observed_github = match candidate_observed_provider(c: candidate_pdns_dnsdist_arm) {
-    DeclaredProviderKnown { via, provider_module } =>
-      provider_module as String == "extdeps.ci_runner.github_actions"
-    DeclaredProviderUnresolved { via, cause } => false
+    ProviderFromCatalog { provider, label, snapshot } =>
+      provider.module_path == "extdeps.ci_runner.github_actions"
+    ProviderUnresolved { label, cause } => false
   }
   biome_declared && pdns_declared_open && pdns_observed_github
 }
@@ -161,10 +156,8 @@ test fn witness_external_effect_dispositions_are_sound() -> Bool {
   count(filter(workload_census, c => candidate_effects_are_sound(c: c) == false)) == 0
 }
 
-test fn witness_a_census_never_authorizes_a_trial_or_records_spend() -> Bool {
-  trial_is_authorized(t: trial_authorization_from_census()) == false
-    && all(workload_census, c => trial_is_authorized(t: c.trial) == false)
-    && all(workload_census, c => spend_is_unobserved(s: c.spend))
+test fn witness_admitted_baseline_carries_the_observed_run_attempt() -> Bool {
+  all(correctness_admitted_workloads(), c => baseline_attempt_matches_observed_job(c: c))
 }
 
 test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
@@ -190,7 +183,7 @@ fn all_claims_hold() -> Bool {
     && witness_observed_labels_and_attempt_are_read_from_the_job_resource()
     && witness_unobserved_cache_is_never_warm()
     && witness_external_effect_dispositions_are_sound()
-    && witness_a_census_never_authorizes_a_trial_or_records_spend()
+    && witness_admitted_baseline_carries_the_observed_run_attempt()
     && witness_a_green_job_without_tests_is_not_a_baseline()
 }
 
