@@ -8,8 +8,10 @@ import std.algebra { trim }
 import extdeps.bmc.ipmi_sel {
   OemSelPayload,
   SystemBootInitiatedOffset,
+  FirmwareError,
+  FirmwareHang,
+  FirmwareProgress,
   SystemFirmwareProgressOffset,
-  firmware_offset_is_progress,
   oem_sel_payload_eq,
 }
 import gunbc.machine_intake_pre_os_observation_capabilities {
@@ -218,13 +220,14 @@ fn boot_cycle_step(acc: BootCycleWindow, event: SelWindowEvent) -> BootCycleWind
       match acc.open {
         Absent => acc
         Present { value: c } =>
-          if firmware_offset_is_progress(offset: fo) {
-            BootCycleWindow {
-              closed: acc.closed,
-              open: Present { value: BootCycleReading { restart_record_id: c.restart_record_id, restart_offset: c.restart_offset, progress_seen: true } },
-            }
-          } else {
-            acc
+          match fo {
+            FirmwareProgress { progress_rendering: _ } =>
+              BootCycleWindow {
+                closed: acc.closed,
+                open: Present { value: BootCycleReading { restart_record_id: c.restart_record_id, restart_offset: c.restart_offset, progress_seen: true } },
+              }
+            FirmwareError => acc
+            FirmwareHang => acc
           }
       }
     OemTimestamped { payload: _ } => acc
@@ -362,17 +365,10 @@ fn sel_window_verdict(
   }
 }
 
-// WHETHER A VERDICT PERMITS ANOTHER POWER ACTION. Bounded, not retry-until-green: the remediation
-// arm answers false, and a caller that wants to actuate again must obtain a NEW readiness for a
-// NEW attempt after a human has changed the physical population.
-fn verdict_permits_further_actuation(verdict: PreOsBringupVerdict) -> Bool {
-  match verdict {
-    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => true
-    BringupUndetermined { cause: _ } => true
-    PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => false
-    TrainingRefusedByFirmwareStatement { statement: _, localization: _ } => false
-  }
-}
+// WHETHER A VERDICT PERMITS ANOTHER POWER ACTION is decided by matching it: the two terminal arms
+// -- PhysicalRemediationRequired and TrainingRefusedByFirmwareStatement -- permit none, and a
+// caller that wants to actuate again must obtain a NEW readiness for a NEW attempt after a human
+// has changed the physical population. Bounded, not retry-until-green.
 
 // ── the OEM record, as three facts ─────────────────────────────────────────────────────────────
 
@@ -382,20 +378,6 @@ fn verdict_permits_further_actuation(verdict: PreOsBringupVerdict) -> Bool {
 type OemSelPayloadObserved
   = OemPayloadAbsentFromWindow { payload: OemSelPayload }
   | OemPayloadSeen { payload: OemSelPayload, occurrences: Int, first_record_id: Int, last_record_id: Int }
-
-fn oem_observed_payload(observed: OemSelPayloadObserved) -> OemSelPayload {
-  match observed {
-    OemPayloadAbsentFromWindow { payload: p } => p
-    OemPayloadSeen { payload: p, occurrences: _, first_record_id: _, last_record_id: _ } => p
-  }
-}
-
-fn oem_payload_seen_in_window(observed: OemSelPayloadObserved) -> Bool {
-  match observed {
-    OemPayloadAbsentFromWindow { payload: _ } => false
-    OemPayloadSeen { payload: _, occurrences: _, first_record_id: _, last_record_id: _ } => true
-  }
-}
 
 // FACT TWO: WHAT THE MANUFACTURER'S REALIZATION SAID WHEN ASKED TO DECODE IT. Derived from the
 // capability profile so it cannot be authored more generously than the profile measured.
@@ -496,6 +478,13 @@ fn payloads_co_occur_in_a_cycle(window: List<SelWindowEvent>, a: OemSelPayload, 
   done.co_occurred || (done.saw_a_this_cycle && done.saw_b_this_cycle)
 }
 
+// CANDIDATES PARTITIONED BY THE OBSERVATION ARM THEY PRODUCED, in one fold, matching the coproduct
+// directly rather than through a Bool view of it (review 64321).
+type CandidatePartition {
+  present: List<OemSelPayload>
+  absent: List<OemSelPayload>
+}
+
 // THE ASSOCIATION IS COMPUTED, NOT AUTHORED, so a "never beside" claim the window contradicts
 // cannot be written, and a candidate the window never shows cannot masquerade as one it shows
 // often and never beside the payload.
@@ -505,27 +494,26 @@ fn oem_sel_empirical_association(
   never_beside_candidates: List<OemSelPayload>,
   profile: PreOsObservationCapabilities,
 ) -> OemSelEmpiricalAssociation {
-  let candidate_readings = map(never_beside_candidates, c => oem_payload_observed(window: window, payload: c))
-  let present = map(filter(xs: candidate_readings, f: r => oem_payload_seen_in_window(observed: r)), r => oem_observed_payload(observed: r))
-  let absent = map(filter(xs: candidate_readings, f: r => oem_payload_seen_in_window(observed: r) == false), r => oem_observed_payload(observed: r))
+  let partitioned = fold(
+    never_beside_candidates,
+    init: CandidatePartition { present: [], absent: [] },
+    f: (acc, c) => match oem_payload_observed(window: window, payload: c) {
+      OemPayloadSeen { payload: p, occurrences: _, first_record_id: _, last_record_id: _ } =>
+        CandidatePartition { present: append(acc.present, [p]), absent: acc.absent }
+      OemPayloadAbsentFromWindow { payload: p } =>
+        CandidatePartition { present: acc.present, absent: append(acc.absent, [p]) }
+    },
+  )
   OemSelEmpiricalAssociation {
     observed: oem_payload_observed(window: window, payload: payload),
-    never_within_same_cycle_as: filter(xs: present, f: c => payloads_co_occur_in_a_cycle(window: window, a: payload, b: c) == false),
-    candidates_absent_from_window: absent,
+    never_within_same_cycle_as: filter(xs: partitioned.present, f: c => payloads_co_occur_in_a_cycle(window: window, a: payload, b: c) == false),
+    candidates_absent_from_window: partitioned.absent,
     decode_standing: oem_sel_decode_standing(profile: profile),
   }
 }
 
-// WHETHER AN ASSOCIATION MAY BE READ AS A DECODE: only when the manufacturer's realization decodes
-// it, and then the decode is THEIRS, cited by the authority the standing carries -- never this
-// module's. On every other standing the answer is false, however many occurrences the association
-// counts, which is the arity repair
+// WHETHER AN ASSOCIATION MAY BE READ AS A DECODE is answered by matching `decode_standing` where it
+// is consumed: only ControllerDecodes licenses it, and then the decode is THEIRS, cited by the
+// authority the arm carries -- never this module's. On every other arm the answer is no, however
+// many occurrences the association counts, which is the arity repair
 // gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission prescribes.
-fn association_is_decoded(association: OemSelEmpiricalAssociation) -> Bool {
-  match association.decode_standing {
-    ControllerDecodes { decode_authority: _ } => true
-    ControllerDeclaredUnknown => false
-    ControllerRenderedUncited { rendering: _ } => false
-    DecodeNotProbed => false
-  }
-}

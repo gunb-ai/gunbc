@@ -100,15 +100,3 @@ type SystemFirmwareProgressOffset
   = FirmwareError
   | FirmwareHang
   | FirmwareProgress { progress_rendering: NonEmptyStr }
-
-// A FIRMWARE PROGRESS RECORD IS THE STANDARD, DECODED EVIDENCE THAT THE HOST GOT PAST RESET. The
-// specification assigns it; no OEM registry is needed to read it. This predicate is the whole
-// basis on which a downstream reader may say "restart, then progress" versus "restart, no
-// progress" -- and it is deliberately the ONLY basis: an OEM payload contributes nothing to it.
-fn firmware_offset_is_progress(offset: SystemFirmwareProgressOffset) -> Bool {
-  match offset {
-    FirmwareError => false
-    FirmwareHang => false
-    FirmwareProgress { progress_rendering: _ } => true
-  }
-}

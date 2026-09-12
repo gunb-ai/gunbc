@@ -55,6 +55,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   BringupUndetermined,
   NothingObservedBeyondActivation,
   ControllerDeclaredUnknown,
+  ControllerDecodes,
   FirmwareProgressObserved,
   OemPayloadAbsentFromWindow,
   OemPayloadSeen,
@@ -73,13 +74,11 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   TrainingRefusedByFirmwareStatement,
   SolCaptureUnreadable,
   LocalizableFrom,
-  association_is_decoded,
   oem_sel_empirical_association,
   pre_os_bringup_verdict,
   restart_without_progress_terminal_threshold,
   sel_window_after_cursor,
   sol_capture_reading,
-  verdict_permits_further_actuation,
 }
 
 // MT. COLLINS UNIT 1 AFTER THE 16-TO-32 DIMM CHANGE, 2026-09-11: THE REGRESSION CORPUS FOR THE
@@ -588,10 +587,11 @@ fn check_bounded_terminal() -> ProcessExit {
       }
     _ => exit_failure(reason: "bounded-terminal: the 32-DIMM window -- twenty restarts, zero firmware-progress records -- did not resolve to PhysicalRemediationRequired")
   }
-  let bounded = if verdict_permits_further_actuation(verdict: mtcollins1_32dimm_verdict()) {
-    exit_failure(reason: "bounded-terminal: a stable terminal still permitted further actuation")
-  } else {
-    ExitSuccess
+  let bounded = match mtcollins1_32dimm_verdict() {
+    PhysicalRemediationRequired { restarts_without_progress: _, localization: _ } => ExitSuccess
+    TrainingRefusedByFirmwareStatement { statement: _, localization: _ } => ExitSuccess
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => exit_failure(reason: "bounded-terminal: the stable terminal was read as progress, which would permit further actuation")
+    BringupUndetermined { cause: _ } => exit_failure(reason: "bounded-terminal: the stable terminal was read as undetermined, which would permit further actuation")
   }
   let control = match mtcollins1_last_16dimm_verdict() {
     FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => ExitSuccess
@@ -619,13 +619,10 @@ fn check_opaque_oem_stays_opaque() -> ProcessExit {
   } else {
     exit_failure(reason: "opaque-oem: the completed-boot OEM pair -- present in the window at 0x3ec/0x3ed -- was found in a cycle beside 0fde70330102, or a candidate was dropped or reported absent")
   }
-  let undecoded = if association_is_decoded(association: assoc) {
-    exit_failure(reason: "opaque-oem: an association over a payload the controller does not decode was read as decoded")
-  } else {
-    match assoc.decode_standing {
-      ControllerDeclaredUnknown => ExitSuccess
-      _ => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
-    }
+  let undecoded = match assoc.decode_standing {
+    ControllerDeclaredUnknown => ExitSuccess
+    ControllerDecodes { decode_authority: _ } => exit_failure(reason: "opaque-oem: an association over a payload the controller does not decode was read as decoded")
+    _ => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
   }
   first_failure(checks: [seen, never_beside, undecoded])
 }
