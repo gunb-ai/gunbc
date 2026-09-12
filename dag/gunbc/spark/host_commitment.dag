@@ -371,21 +371,30 @@ fn spark_host_standing(host: HostIdentity) -> SparkHostStanding? {
 // the causes are mapped once and joined once through operations the carrier already has.
 //
 // THAT SENTENCE USED TO SAY "FreeMonoid inhabits the collection profile", AND THE REWRITE IS THE
-// LESSON. A reviewer checking the claim grepped for the phrase "collection profile" -- taken from
-// this annotation, because prose was all it had to grep -- found only this annotation, and reported
-// that the method surface resolves nowhere in the tree (review 64412). The claim was true and my
-// citation made it unverifiable, which to an honest audit is indistinguishable from false. That is
-// DESIGN section 3's cite-the-symbol rule biting from the direction it is usually not felt: the cost
-// of a bad citation is not only that it rots, it is that it makes a correct claim fail a real check.
+// LESSON. The earlier annotation did not name the declarations supporting its claim, so a reviewer
+// checking it had only an explanatory phrase to search for, found that phrase nowhere but in the
+// annotation itself, and reported the method surface as resolving nowhere in the tree (review 64412).
+// A failed search for an explanatory phrase did not establish that the operations are absent -- an
+// unestablished claim and an established false one are different evidentiary states, and collapsing
+// them would license treating any failed grep as a disproof. What the episode does establish is the
+// duty: DESIGN section 3 asks for the symbol, the symbol citations above locate the declared
+// operations, and resolution and execution require their own evidence beyond any citation.
 //
-// AND THE ANNOTATION IS NOT THE EVIDENCE, which section 4c settles: no Accepted program can read one.
+// AND THE ANNOTATION IS NOT THAT EVIDENCE, which section 4c settles: no Accepted program can read one.
 // The executing evidence is
-// `test.claim.spark.spark_host_commitment_witness` `a_multi_cause_host_renders_every_cause_with_its_separator`,
+// `test.claim.spark.spark_host_commitment_witness` `a_multi_cause_host_renders_every_cause_with_both_separators`,
 // which renders a host committed by a cell role AND a claimed serving group AND a held reservation at
-// once and asserts all three causes and the separator survive. It exists because the finding above
-// was right about a real gap even while wrong about the mechanism: every other test here exercises a
-// SINGLE cause, and a passing single-element render is consistent with the separator logic being
-// entirely broken.
+// once and compares the result to a written expectation carrying both separators.
+//
+// WHY THAT WITNESS EXISTS, stated exactly, because an earlier version of this note got the coverage
+// history wrong. It is NOT that every other assertion here exercised a single cause --
+// `a_committed_host_carries_every_cause_that_commits_it` already constructs and inspects a three-cause
+// payload, and the admission witness already reads a refusal text. The distinction is between PAYLOAD
+// COVERAGE and JOINT RENDERING: those assertions did not require the complete three-cause rendering
+// and both intervening separators to survive together, and this one exercises that composition
+// through the production renderer. The general form of the error is worth keeping -- an assertion's
+// SCOPE and the PATH IT EXECUTES are different things, and checking one fragment of an output does
+// not establish that only one input was processed.
 fn spark_commitment_causes_text(c: FreeSemigroup<SparkHostCommitment>) -> String {
   let every_cause = Cons { head: c.head, tail: c.tail }
   every_cause.map(x => spark_host_commitment_wire(c: x) as String).join("; ")

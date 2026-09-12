@@ -208,10 +208,22 @@ test fn each_commitment_cause_renders_distinctly() -> Bool {
     && string_contains(s: armed, pattern: "glm_canary_arm")
 }
 
-// MULTI-CAUSE RENDERING IS EXERCISED, because a host with ONE cause cannot distinguish a working
-// join from a fold that drops its tail. srv9 in this fixture is committed by a role, a claimed group
-// and a held reservation at once, so the rendered text must carry all three and the separator.
-test fn a_multi_cause_host_renders_every_cause_with_its_separator() -> Bool {
+// THE COMPLETE THREE-CAUSE RENDERING, BOTH SEPARATORS INCLUDED, AGAINST A WRITTEN EXPECTATION.
+//
+// WHAT THE FIRST CUT OF THIS CLAIM ACTUALLY ESTABLISHED, which is less than its name promised: it
+// required the three cause fragments and AT LEAST ONE "; ". Three causes need TWO separators, so a
+// render that dropped the second one -- "...cell role; ...claimsholding an undischarged..." -- carried
+// every fragment, carried a separator, and passed. It discriminated against dropping the whole tail
+// and against omitting every separator, which is why it was worth having, and it did not establish
+// the property it is named for.
+//
+// SO THE EXPECTATION IS WRITTEN OUT, not recomputed. The expected text is a literal for this
+// controlled fixture; deriving it through the same map-and-join composition under test would compare
+// the renderer to itself, which is the oracle defect DESIGN section 5 names -- a measurement taken
+// from the subject is not an oracle for the subject.
+data expected_three_cause_rendering: String = "committed to a Spark cell role; a member of a serving group this repository claims; holding an undischarged llama.cpp RPC peer reservation"
+
+test fn a_multi_cause_host_renders_every_cause_with_both_separators() -> Bool {
   match spark_host_standing_in(
     units: fixture_units,
     assignments: fixture_assignments,
@@ -222,13 +234,8 @@ test fn a_multi_cause_host_renders_every_cause_with_its_separator() -> Bool {
   ) {
     Absent => false
     Present { value: SparkHostUncommitted { host: _ } } => false
-    Present { value: SparkHostCommitted { host: _, commitments: c } } => {
-      let text = spark_commitment_causes_text(c: c) as String
-      string_contains(s: text, pattern: "cell role")
-        && string_contains(s: text, pattern: "serving group")
-        && string_contains(s: text, pattern: "llama.cpp RPC")
-        && string_contains(s: text, pattern: "; ")
-    }
+    Present { value: SparkHostCommitted { host: _, commitments: c } } =>
+      (spark_commitment_causes_text(c: c) as String) == expected_three_cause_rendering
   }
 }
 
