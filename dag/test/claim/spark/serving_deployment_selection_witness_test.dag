@@ -72,12 +72,14 @@ import gunbc.spark.serving_deployment_selection {
   v4_1_artifact_components, legacy_undecomposed_artifact,
   artifact_decomposition_defect, candidate_resident_footprint, sum_component_footprints,
   footprint_bytes, component_route_reading,
+  route_obligation_marker, route_obligation_cause, id_route_consumer,
   FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
   VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
   v4_1_selection_frontier, kv_layout_wire,
 }
+import gunbc.fabric.engram_materialization { engram_component_identity }
 import extdeps.vllm.deepseek_v4_1_sm12 {
   v41_sm12_kv_layout,
   v41_sm12_kv_cache_dtype_admitted,
@@ -1015,15 +1017,68 @@ fn needs_name_axis(needs: List<SelectionEvidenceNeed>, axis: DeclarationRef) -> 
   })
 }
 
-test fn the_live_v4_1_serving_decision_reports_the_component_route_evidence_need() -> Bool {
+// OBSERVING AN AXIS NAME IS NOT EVIDENCE THE ROUTE'S RESULT REACHED THE ROOT. A first cut asserted
+// only that some UnfundedAxis named ax_component_route -- and `std.decision` `unread_axis_gaps`
+// synthesises exactly that on any hard-constrained axis with no reading. So removing the route
+// contribution from candidate_gaps, while keeping the funded axis, its constraint and the open
+// placement's absent reading, left the selector fabricating a gap on the same axis and the control
+// accepted it identically: it could not distinguish the connected path from the disconnected one.
+//
+// The oracle now requires a ROUTE-PRODUCED obligation -- marked with the component identity and the
+// exact serving context it was decided under, neither of which the selector's fallback knows. The
+// negative below is the disconnection itself, expressed as the selector's own generic gap, and it is
+// rejected.
+// THE THREE THINGS A ROUTE-PRODUCED OBLIGATION CARRIES AND THE SELECTOR'S FALLBACK CANNOT: the
+// marker, the component SUBJECT the route authority decided about, and the consumer that derived the
+// serving context. Each is computed from the same declaration production uses, so this oracle carries
+// no transcribed string that could drift away from what the code emits.
+fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr> {
+  flat_map(needs, n => match n {
+    UnfundedAxis { gap: g } =>
+      if declaration_ref_eq(a: g.axis, b: ax_component_route)
+        && string_contains(s: g.cause as String, pattern: route_obligation_marker as String)
+        && string_contains(s: g.cause as String, pattern: declaration_ref_display_key(ref: engram_component_identity))
+        && string_contains(s: g.cause as String, pattern: declaration_ref_display_key(ref: id_route_consumer)) {
+        [g.cause]
+      } else { [] }
+    CandidateStandingIncomplete { candidate: _, cause: _ } => []
+    SubjectClosureIncomplete { subject: _, obligation: _ } => []
+  })
+}
+
+test fn the_live_v4_1_serving_decision_reports_a_route_produced_obligation() -> Bool {
   match select_serving_deployment(input: deepseek_v4_1_decision_input) {
     ServingDeploymentNeedsEvidence { needs: ns } =>
-      count(ns) > 0 && needs_name_axis(needs: ns, axis: ax_component_route)
+      count(ns) > 0
+        && needs_name_axis(needs: ns, axis: ax_component_route)
+        && count(route_produced_causes(needs: ns)) > 0
     ServingDeploymentSelected { selected: _ } => false
     ServingDeploymentNeedsPolicy { survivors: _ } => false
     NoFeasibleServingDeployment { causes: _ } => false
     ServingDeploymentSelectionRefused { defects: _ } => false
   }
+}
+
+// THE DISCONNECTION NEGATIVE. This is what the field looks like when the route contribution is gone
+// but the axis, the constraint and the absent reading remain: the selector still reports a gap on
+// ax_component_route, and the oracle above must NOT accept it. Without this arm the positive control
+// is satisfied by the very state it is supposed to detect.
+fn disconnected_route_gap() -> AxisGap {
+  AxisGap {
+    axis: ax_component_route,
+    cause: "required funded-axis reading absent" as NonEmptyStr,
+  }
+}
+
+test fn the_selectors_generic_missing_axis_gap_does_not_satisfy_the_route_oracle() -> Bool {
+  count(route_produced_causes(needs: [UnfundedAxis { gap: disconnected_route_gap() }])) == 0
+    && needs_name_axis(needs: [UnfundedAxis { gap: disconnected_route_gap() }], axis: ax_component_route)
+    && count(route_produced_causes(needs: [UnfundedAxis {
+      gap: AxisGap {
+        axis: ax_component_route,
+        cause: join([route_obligation_marker as String, "[some.other.component@some.other.context] open"], "") as NonEmptyStr,
+      },
+    }])) == 0
 }
 
 // AND THE ROUTE AXIS IS THIS SUBJECT'S, NOT EVERY SUBJECT'S. GLM and V4-Flash declare no components,

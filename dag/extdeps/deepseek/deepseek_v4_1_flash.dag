@@ -21,6 +21,10 @@ import extdeps.safetensors.format {
   SafetensorsPopulationReading, PopulationScanned,
   SafetensorsPopulationStanding, safetensors_population_standing,
   safetensors_population_entries, safetensors_population_declared_bytes,
+  SafetensorsIndexMember, safetensors_index_member,
+  MembershipClosure, MembershipScopedToReadRows,
+  SafetensorsShardedEntry, safetensors_sharded_entries,
+  safetensors_population_bytes_in_shard,
   SafetensorsShardFile, safetensors_shard_file,
 }
 
@@ -528,11 +532,67 @@ data deepseek_v4_1_flash_engram_entries_layer_14: List<SafetensorsEntry> = [
   safetensors_entry(name: "layers.14.engram.wkv.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [800, 192], begin_offset: 101537772368, end_offset: 101537925968),
 ]
 
+// ── THE INDEX ROWS, AS THEIR OWN INPUT RATHER THAN AS PROSE ABOUT ONE ─────────────────────────
+//
+// `model.safetensors.index.json` at this revision maps 96085 tensor names to 48 shards. Exactly
+// twelve of those names contain `.engram.`, and these are those twelve rows with the shard each one
+// is assigned to. They are declared SEPARATELY from the header entries above because they are a
+// different source answering a different question -- the index says which tensors exist and where,
+// the headers say what each one is -- and the component's population is the JOIN of the two.
+//
+// The first cut carried this account in comments and a count scalar while the population fold saw
+// only the header side, so any internally consistent list of twelve entries established. Renaming a
+// tensor to another unique `.engram.` name of the same dtype, shape and span preserved the count and
+// the byte total and passed. These rows are what make that a refusal.
+//
+// SCOPE OF THE CLAIM, stated because it is narrower than "the index contains exactly twelve": these
+// rows are the `.engram.` members read from the index at dba1be0a. Reconciling against them
+// establishes that the header population is exactly the set the index names HERE. It does not
+// re-derive the selection from all 96085 names, which this module does not carry.
+data deepseek_v4_1_flash_engram_index_members: List<SafetensorsIndexMember> = [
+  safetensors_index_member(name: "layers.1.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.embed.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.q_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.k_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.wkv.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.1.engram.wkv.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_1_path),
+  safetensors_index_member(name: "layers.14.engram.embed.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.embed.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.q_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.k_weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.wkv.weight" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+  safetensors_index_member(name: "layers.14.engram.wkv.scale" as NonEmptyStr, shard: deepseek_v4_1_flash_engram_shard_14_path),
+]
+
+// THE HEADER ENTRIES KEEP THE SHARD THEY WERE READ FROM. Offsets are shard-relative, so a flat
+// concatenation makes per-shard placement, non-overlap and coverage undecidable from the value.
+data deepseek_v4_1_flash_engram_sharded_entries: List<SafetensorsShardedEntry> = concat(
+  safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1),
+  safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_14_path, entries: deepseek_v4_1_flash_engram_entries_layer_14),
+)
+
 data deepseek_v4_1_flash_engram_population_reading: SafetensorsPopulationReading = PopulationScanned {
-  entries: concat(deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14),
+  entries: deepseek_v4_1_flash_engram_sharded_entries,
+}
+
+// THE RESIDUAL, TYPED. These rows are the `.engram.` members read from the index at this revision;
+// the revision's full index population -- 96085 names -- is not enumerated here, so a THIRTEENTH
+// Engram tensor at this revision would be neither reconciled nor refused. That is a real gap and it
+// is carried as an obligation a fold can read, because a scoped claim whose remainder lives in a
+// comment is how a partial gets consumed as complete.
+data deepseek_v4_1_flash_engram_membership_closure: MembershipClosure = MembershipScopedToReadRows {
+  read_rows: 12,
+  unenumerated: join([
+    "the ", to_string(deepseek_v4_1_flash_index_tensor_count),
+    " names in ", deepseek_v4_1_flash_safetensors_index_path as String,
+    " at revision ", deepseek_v4_1_flash_revision as String,
+    " are not enumerated in this repository, so membership closes against the rows read rather than against the index; an Engram tensor present at this revision and absent from these rows is neither reconciled nor refused",
+  ], "") as NonEmptyStr,
 }
 
 data deepseek_v4_1_flash_engram_population: SafetensorsPopulationStanding = safetensors_population_standing(
+  members: deepseek_v4_1_flash_engram_index_members,
+  closure: deepseek_v4_1_flash_engram_membership_closure,
   reading: deepseek_v4_1_flash_engram_population_reading,
 )
 

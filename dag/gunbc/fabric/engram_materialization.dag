@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_re
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.interval { OrderedClosedInterval, degenerate_interval }
-import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic }
+import std.content_hash { ContentHash, Sha256Digest, serialize_content_hash }
 import std.realization { Placement, LocalInProcess, LocalFilesystem, RemoteNetwork, LocalAccelerator }
 import std.materialization_ladder {
   CacheProvider, provider_row, ProviderTier, ReferenceTier, CopyTier, MemoTier, ArtifactTier, CasTier,
@@ -42,6 +42,7 @@ import extdeps.safetensors.format {
   PopulationEstablished, PopulationIncomplete, PopulationRefused,
   SafetensorsShardFile,
   safetensors_population_declared_bytes, safetensors_population_entries,
+  safetensors_population_closure_obligations,
 }
 
 // ── PLACING ONE COMPONENT OF A CHECKPOINT, AS A MATERIALIZATION QUESTION ───────────────────────
@@ -90,7 +91,7 @@ type ComponentSubject sole_constructor {
   upstream_revision: NonEmptyStr
   population: SafetensorsPopulationStanding
   published_encoding: PhysicalEncoding
-  published_shard_digests: List<Sha256Digest>
+  published_identity: EncodingIdentity
   population_standing: CitedFigureStanding
 }
 
@@ -127,7 +128,7 @@ fn component_subject(
   upstream_revision: NonEmptyStr,
   population: SafetensorsPopulationStanding,
   published_encoding: PhysicalEncoding,
-  published_shard_digests: List<Sha256Digest>,
+  published_identity: EncodingIdentity,
   population_standing: CitedFigureStanding,
 ) -> ComponentSubject {
   ComponentSubject {
@@ -136,13 +137,13 @@ fn component_subject(
     upstream_revision: upstream_revision,
     population: population,
     published_encoding: published_encoding,
-    published_shard_digests: published_shard_digests,
+    published_identity: published_identity,
     population_standing: population_standing,
   }
 }
 
 type ComponentSubjectStanding
-  = ComponentSubjectEstablished { subject: ComponentSubject, declared_bytes: ByteSize, tensor_count: Nat }
+  = ComponentSubjectEstablished { subject: ComponentSubject, declared_bytes: ByteSize, tensor_count: Nat, residual: List<NonEmptyStr> }
   | ComponentSubjectPopulationIncomplete { identity: DeclarationRef, obligation: NonEmptyStr }
   | ComponentSubjectRefused { identity: DeclarationRef, defects: List<NonEmptyStr> }
 
@@ -150,6 +151,10 @@ type ComponentSubjectStanding
 // for a size summary, so a component cannot be given a byte count that its tensors do not add up
 // to -- which is the structural version of "derive totals from the population rather than
 // transcribing another size summary".
+// THE MEMBERSHIP RESIDUAL TRAVELS WITH THE ESTABLISHED SUBJECT. Reconciling against index rows
+// someone read is a weaker claim than closing against the revision's whole index, and the difference
+// is an obligation a consumer must be able to see -- carried onto the established arm so it reaches
+// the decision as an open question rather than living in a comment nothing can refuse.
 fn establish_component_subject(subject: ComponentSubject) -> ComponentSubjectStanding {
   match subject.population {
     PopulationRefused { defects: ds } => ComponentSubjectRefused { identity: subject.identity, defects: ds }
@@ -165,14 +170,15 @@ fn establish_component_subject(subject: ComponentSubject) -> ComponentSubjectSta
       ComponentSubjectEstablished {
         subject: subject,
         declared_bytes: p.declared_bytes,
-        tensor_count: count(p.entries),
+        tensor_count: count(p.members),
+        residual: safetensors_population_closure_obligations(s: subject.population),
       }
   }
 }
 
 fn component_subject_declared_bytes(s: ComponentSubjectStanding) -> ByteSize? {
   match s {
-    ComponentSubjectEstablished { subject: _, declared_bytes: b, tensor_count: _ } => Present { value: b }
+    ComponentSubjectEstablished { subject: _, declared_bytes: b, tensor_count: _, residual: _ } => Present { value: b }
     ComponentSubjectPopulationIncomplete { identity: _, obligation: _ } => none
     ComponentSubjectRefused { identity: _, defects: _ } => none
   }
@@ -180,7 +186,7 @@ fn component_subject_declared_bytes(s: ComponentSubjectStanding) -> ByteSize? {
 
 fn component_subject_identity(s: ComponentSubjectStanding) -> DeclarationRef {
   match s {
-    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _ } => sub.identity
+    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _, residual: _ } => sub.identity
     ComponentSubjectPopulationIncomplete { identity: i, obligation: _ } => i
     ComponentSubjectRefused { identity: i, defects: _ } => i
   }
@@ -188,56 +194,175 @@ fn component_subject_identity(s: ComponentSubjectStanding) -> DeclarationRef {
 
 fn component_subject_obligations(s: ComponentSubjectStanding) -> List<NonEmptyStr> {
   match s {
-    ComponentSubjectEstablished { subject: _, declared_bytes: _, tensor_count: _ } => []
+    ComponentSubjectEstablished { subject: _, declared_bytes: _, tensor_count: _, residual: rs } => rs
     ComponentSubjectPopulationIncomplete { identity: _, obligation: o } => [o]
     ComponentSubjectRefused { identity: _, defects: ds } => ds
   }
 }
 
 // ── THE MATERIALIZED ENCODING, AND THE RELATION THAT MAKES IT THE SUBJECT'S ────────────────────
+// ── A MULTI-FILE ENCODING HAS A MULTI-FILE IDENTITY ───────────────────────────────────────────
+//
+// A first cut gave the artifact a single `ContentHash` and then handed the two-shard published
+// encoding the whole-file digest of ONE of its shards, and handed the resident parameter encoding the
+// digest of the OTHER shard's on-disk file. Neither is the identity of the thing it labels. A shard
+// set's identity is its shards and their digests; a loaded parameter representation's identity is not
+// a file digest at all.
+//
+// And the fold never looked. `realize_component` compared the encoding DESCRIPTION and the evidence's
+// digest list against the subject's published list, then copied the artifact's own digest into the
+// faithful arm without ever evaluating it -- so changing the artifact digest to any other valid value
+// left the verdict unchanged. The identity below is compared, and that comparison is what the faithful
+// arm is made of.
+type ShardIdentity sole_constructor {
+  path: NonEmptyStr
+  sha256: Sha256Digest
+}
+
+fn shard_identity(path: NonEmptyStr, sha256: Sha256Digest) -> ShardIdentity {
+  ShardIdentity { path: path, sha256: sha256 }
+}
+
+fn shard_identity_eq(a: ShardIdentity, b: ShardIdentity) -> Bool {
+  (a.path as String) == (b.path as String) && (a.sha256.hex as String) == (b.sha256.hex as String)
+}
+
+fn shard_identity_render(s: ShardIdentity) -> String {
+  join([s.path as String, "@sha256:", s.sha256.hex as String], "")
+}
+
+// THREE ARMS, AND THE THIRD IS THE HONEST ONE FOR ANYTHING NOBODY HAS DIGESTED. An encoding whose
+// identity is unestablished is not an encoding with a placeholder identity.
+type EncodingIdentity
+  = ShardSetIdentity { shards: List<ShardIdentity> }
+  | SingleObjectIdentity { digest: ContentHash }
+  | EncodingIdentityUnestablished { obligation: NonEmptyStr }
+
+fn encoding_identity_render(i: EncodingIdentity) -> String {
+  match i {
+    ShardSetIdentity { shards: ss } => join(["shard-set[", join(map(ss, x => shard_identity_render(s: x)), ","), "]"], "")
+    SingleObjectIdentity { digest: d } => join(["object|", serialize_content_hash(hash: d)], "")
+    EncodingIdentityUnestablished { obligation: _ } => "unestablished"
+  }
+}
+
+fn shard_identity_lists_match(a: List<ShardIdentity>, b: List<ShardIdentity>) -> Bool {
+  count(a) == count(b)
+    && all(a, x => any(b, y => shard_identity_eq(a: x, b: y)))
+    && all(b, y => any(a, x => shard_identity_eq(a: x, b: y)))
+}
+
+// SIZE HAS THE SAME THREE-VALUED TREATMENT. The first cut gave the resident parameter encoding the
+// SUM OF TWO SAFETENSORS FILE SIZES, which is a fact about two files on a publisher's object store
+// and not an established size of a loaded representation.
+type EncodedSize
+  = EncodedBytes { bytes: ByteSize }
+  | EncodedSizeUnestablished { obligation: NonEmptyStr }
+
+// ── PRESERVED PROPERTIES ARE A CLOSED VOCABULARY, NOT FREE TEXT ────────────────────────────────
+//
+// The transform arm used to accept a declaration reference plus any non-empty list of prose, and for
+// the published encoding it accepted an EMPTY list. So a one-byte repacked artifact became a faithful
+// realization of a 203 GB component given a relation name and the words "tensor names and shapes".
+type PreservedProperty
+  = PreservesTensorNames
+  | PreservesDeclaredShapes
+  | PreservesDtypes
+  | PreservesBlockScalePairing
+  | PreservesElementValues
+
+fn preserved_property_wire(p: PreservedProperty) -> NonEmptyStr {
+  match p {
+    PreservesTensorNames => "tensor-names" as NonEmptyStr
+    PreservesDeclaredShapes => "declared-shapes" as NonEmptyStr
+    PreservesDtypes => "dtypes" as NonEmptyStr
+    PreservesBlockScalePairing => "block-scale-pairing" as NonEmptyStr
+    PreservesElementValues => "element-values" as NonEmptyStr
+  }
+}
+
+fn preserved_contains(ps: List<PreservedProperty>, wanted: PreservedProperty) -> Bool {
+  any(ps, p => (preserved_property_wire(p: p) as String) == (preserved_property_wire(p: wanted) as String))
+}
+
+// WHAT A SERVING REALIZATION MUST PRESERVE TO BE ONE, declared once here rather than judged per
+// caller. Names locate a tensor; shapes and element values are what the runtime computes with.
+data required_preservation: List<PreservedProperty> = [
+  PreservesTensorNames,
+  PreservesDeclaredShapes,
+  PreservesElementValues,
+]
+
+fn preservation_shortfall(ps: List<PreservedProperty>) -> List<NonEmptyStr> {
+  flat_map(required_preservation, r =>
+    if preserved_contains(ps: ps, wanted: r) {
+      []
+    } else {
+      [join(["the relation does not state that it preserves ", preserved_property_wire(p: r) as String], "") as NonEmptyStr]
+    })
+}
+
+// A RELATION BOUND TO BOTH ENDS. A relation that names neither what it maps FROM nor what it maps TO
+// relates nothing, however well documented it is.
+type FaithfulnessRelation sole_constructor {
+  relation: DeclarationRef
+  subject: DeclarationRef
+  source_encoding: PhysicalEncoding
+  target_encoding: PhysicalEncoding
+  preserved: List<PreservedProperty>
+}
+
+fn faithfulness_relation(
+  relation: DeclarationRef,
+  subject: DeclarationRef,
+  source_encoding: PhysicalEncoding,
+  target_encoding: PhysicalEncoding,
+  preserved: List<PreservedProperty>,
+) -> FaithfulnessRelation {
+  FaithfulnessRelation {
+    relation: relation,
+    subject: subject,
+    source_encoding: source_encoding,
+    target_encoding: target_encoding,
+    preserved: preserved,
+  }
+}
+
 type MaterializedComponentArtifact sole_constructor {
   subject: DeclarationRef
   encoding: PhysicalEncoding
-  digest: ContentHash
-  encoded_bytes: ByteSize
+  identity: EncodingIdentity
+  encoded_size: EncodedSize
 }
 
 fn materialized_component_artifact(
   subject: DeclarationRef,
   encoding: PhysicalEncoding,
-  digest: ContentHash,
-  encoded_bytes: ByteSize,
+  identity: EncodingIdentity,
+  encoded_size: EncodedSize,
 ) -> MaterializedComponentArtifact {
-  MaterializedComponentArtifact { subject: subject, encoding: encoding, digest: digest, encoded_bytes: encoded_bytes }
+  MaterializedComponentArtifact { subject: subject, encoding: encoding, identity: identity, encoded_size: encoded_size }
 }
 
 // FAITHFULNESS IS EVIDENCE, NOT A FLAG. Byte identity is available only where the encoding IS the
 // published one; anything else needs a relation that someone wrote down and that this module can
 // name. `FaithfulnessUnestablished` is the honest arm and is the one every non-published encoding
 // starts in.
+// `IdenticalToPublishedEncoding` CARRIES NO PAYLOAD ON PURPOSE. The old arm carried a digest list, and
+// the fold checked THAT against the subject while ignoring the artifact -- so the arm was satisfiable
+// by editing a parameter beside the thing being judged. With nothing to supply, the claim is that this
+// artifact's OWN identity is the subject's published identity, and the fold compares exactly that.
 type FaithfulnessEvidence
-  = ByteIdenticalToPublishedEncoding { shard_digests: List<Sha256Digest> }
-  | StructurePreservingTransform { relation: DeclarationRef, preserved: List<NonEmptyStr> }
+  = IdenticalToPublishedEncoding
+  | StructurePreservingTransform { relation: FaithfulnessRelation }
   | FaithfulnessUnestablished { obligation: NonEmptyStr }
 
 type FaithfulComponentRealization
-  = RealizationFaithful { subject: DeclarationRef, artifact_digest: ContentHash, evidence: FaithfulnessEvidence }
+  = RealizationFaithful { subject: DeclarationRef, artifact_identity: EncodingIdentity, evidence: FaithfulnessEvidence }
   | RealizationUnfaithful { subject: DeclarationRef, defects: List<NonEmptyStr> }
   | RealizationEvidenceMissing { subject: DeclarationRef, obligation: NonEmptyStr }
 
-fn sha256_digest_list_eq(a: List<Sha256Digest>, b: List<Sha256Digest>) -> Bool {
-  count(a) == count(b)
-    && all(a, x => any(b, y => (x.hex as String) == (y.hex as String)))
-    && all(b, y => any(a, x => (x.hex as String) == (y.hex as String)))
-}
-
-// THE ONLY PRODUCER OF A FAITHFUL REALIZATION, and it is a comparison rather than an assertion.
-//
-// THE LOAD-BEARING ARM IS THE SECOND ONE: a byte-identity claim over an encoding that is NOT the
-// published encoding is refused rather than believed. That is the exact state a repacked row store
-// would be in if someone carried the safetensors digests forward with it, and it is the reason
-// "different physical encodings require an explicit faithfulness relation" is a wall here rather
-// than a sentence.
+// THE ONLY PRODUCER OF A FAITHFUL REALIZATION, and every arm of it is a COMPARISON.
 fn realize_component(
   standing: ComponentSubjectStanding,
   artifact: MaterializedComponentArtifact,
@@ -247,7 +372,7 @@ fn realize_component(
     ComponentSubjectRefused { identity: i, defects: ds } => RealizationUnfaithful { subject: i, defects: ds }
     ComponentSubjectPopulationIncomplete { identity: i, obligation: o } =>
       RealizationEvidenceMissing { subject: i, obligation: o }
-    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _ } =>
+    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _, residual: _ } =>
       if !declaration_ref_eq(a: artifact.subject, b: sub.identity) {
         RealizationUnfaithful {
           subject: sub.identity,
@@ -256,47 +381,118 @@ fn realize_component(
       } else {
         match evidence {
           FaithfulnessUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
-          ByteIdenticalToPublishedEncoding { shard_digests: ds } =>
-            if !physical_encoding_eq(a: artifact.encoding, b: sub.published_encoding) {
+          IdenticalToPublishedEncoding => realize_by_identity(sub: sub, artifact: artifact)
+          StructurePreservingTransform { relation: r } => realize_by_relation(sub: sub, artifact: artifact, r: r)
+        }
+      }
+  }
+}
+
+// THE IDENTITY ARM COMPARES THE ARTIFACT'S OWN IDENTITY against the subject's published one. A single
+// object digest cannot be the identity of a shard set, and an unestablished identity DEFERS rather
+// than failing -- the distinction the faithfulness axis then carries as absent-versus-zero.
+fn realize_by_identity(sub: ComponentSubject, artifact: MaterializedComponentArtifact) -> FaithfulComponentRealization {
+  if !physical_encoding_eq(a: artifact.encoding, b: sub.published_encoding) {
+    RealizationUnfaithful {
+      subject: sub.identity,
+      defects: [join([
+        "identity with the published encoding was claimed for encoding ",
+        physical_encoding_key(e: artifact.encoding),
+        ", which is not the published encoding ",
+        physical_encoding_key(e: sub.published_encoding),
+        "; a different physical layout cannot share the published bytes and needs an explicit faithfulness relation instead",
+      ], "") as NonEmptyStr],
+    }
+  } else {
+    match artifact.identity {
+      EncodingIdentityUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
+      SingleObjectIdentity { digest: _ } => RealizationUnfaithful {
+        subject: sub.identity,
+        defects: [join([
+          "this artifact carries a single-object identity while the published encoding is ",
+          encoding_identity_render(i: sub.published_identity),
+          "; one file's digest is not the identity of a set of them",
+        ], "") as NonEmptyStr],
+      }
+      ShardSetIdentity { shards: mine } =>
+        match sub.published_identity {
+          ShardSetIdentity { shards: theirs } =>
+            if shard_identity_lists_match(a: mine, b: theirs) {
+              RealizationFaithful {
+                subject: sub.identity,
+                artifact_identity: artifact.identity,
+                evidence: IdenticalToPublishedEncoding,
+              }
+            } else {
               RealizationUnfaithful {
                 subject: sub.identity,
                 defects: [join([
-                  "byte identity to the published encoding was claimed for encoding ",
-                  physical_encoding_key(e: artifact.encoding),
-                  ", which is not the published encoding ",
-                  physical_encoding_key(e: sub.published_encoding),
-                  "; a different physical layout cannot share the published bytes' digest and needs an explicit faithfulness relation instead",
+                  "this artifact's identity ", encoding_identity_render(i: artifact.identity),
+                  " is not the subject's published identity ", encoding_identity_render(i: sub.published_identity),
                 ], "") as NonEmptyStr],
               }
-            } else {
-              if sha256_digest_list_eq(a: ds, b: sub.published_shard_digests) {
-                RealizationFaithful { subject: sub.identity, artifact_digest: artifact.digest, evidence: evidence }
-              } else {
-                RealizationUnfaithful {
-                  subject: sub.identity,
-                  defects: ["the digests offered are not the published shard digests for this revision" as NonEmptyStr],
-                }
-              }
             }
-          StructurePreservingTransform { relation: r, preserved: ps } =>
-            if physical_encoding_eq(a: artifact.encoding, b: sub.published_encoding) {
-              RealizationFaithful { subject: sub.identity, artifact_digest: artifact.digest, evidence: evidence }
-            } else {
-              if count(ps) == 0 {
-                RealizationEvidenceMissing {
-                  subject: sub.identity,
-                  obligation: join([
-                    "encoding ", physical_encoding_key(e: artifact.encoding),
-                    " cites relation ", declaration_ref_display_key(ref: r),
-                    " but names nothing it preserves; a faithfulness relation that preserves no stated property relates nothing",
-                  ], "") as NonEmptyStr,
-                }
-              } else {
-                RealizationFaithful { subject: sub.identity, artifact_digest: artifact.digest, evidence: evidence }
-              }
-            }
+          SingleObjectIdentity { digest: _ } => RealizationUnfaithful {
+            subject: sub.identity,
+            defects: ["the subject's published identity is a single object and this artifact claims a shard set" as NonEmptyStr],
+          }
+          EncodingIdentityUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
         }
+    }
+  }
+}
+
+// THE RELATION MUST NAME THIS SUBJECT, THE ENCODING IT MAPS FROM, AND THE ENCODING THIS ARTIFACT
+// ACTUALLY IS -- each compared, so a relation about some other pair is refused rather than accepted
+// for being well formed. And the artifact still needs an identity of its own: a transform that cannot
+// say what it produced has not produced a realization anyone can name.
+fn realize_by_relation(
+  sub: ComponentSubject,
+  artifact: MaterializedComponentArtifact,
+  r: FaithfulnessRelation,
+) -> FaithfulComponentRealization {
+  let mismatches = concat(
+    concat(
+      if declaration_ref_eq(a: r.subject, b: sub.identity) {
+        []
+      } else {
+        [join([
+          "the relation ", declaration_ref_display_key(ref: r.relation), " is about subject ",
+          declaration_ref_display_key(ref: r.subject), ", not ", declaration_ref_display_key(ref: sub.identity),
+        ], "") as NonEmptyStr]
+      },
+      if physical_encoding_eq(a: r.source_encoding, b: sub.published_encoding) {
+        []
+      } else {
+        [join([
+          "the relation maps from ", physical_encoding_key(e: r.source_encoding),
+          ", which is not this subject's published encoding ", physical_encoding_key(e: sub.published_encoding),
+        ], "") as NonEmptyStr]
+      }),
+    concat(
+      if physical_encoding_eq(a: r.target_encoding, b: artifact.encoding) {
+        []
+      } else {
+        [join([
+          "the relation maps to ", physical_encoding_key(e: r.target_encoding),
+          ", which is not the encoding this artifact is, ", physical_encoding_key(e: artifact.encoding),
+        ], "") as NonEmptyStr]
+      },
+      preservation_shortfall(ps: r.preserved)))
+  if count(mismatches) > 0 {
+    RealizationUnfaithful { subject: sub.identity, defects: mismatches }
+  } else {
+    match artifact.identity {
+      EncodingIdentityUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
+      ShardSetIdentity { shards: _ } => RealizationFaithful {
+        subject: sub.identity, artifact_identity: artifact.identity,
+        evidence: StructurePreservingTransform { relation: r },
       }
+      SingleObjectIdentity { digest: _ } => RealizationFaithful {
+        subject: sub.identity, artifact_identity: artifact.identity,
+        evidence: StructurePreservingTransform { relation: r },
+      }
+    }
   }
 }
 
@@ -319,7 +515,7 @@ type ComponentRealizationStanding
 
 fn component_realization_standing(r: FaithfulComponentRealization) -> ComponentRealizationStanding {
   match r {
-    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => RealizationSettledFaithful
+    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => RealizationSettledFaithful
     RealizationUnfaithful { subject: _, defects: _ } => RealizationSettledUnfaithful
     RealizationEvidenceMissing { subject: _, obligation: _ } => RealizationStandingOpen
   }
@@ -335,7 +531,7 @@ fn faithfulness_reading(r: FaithfulComponentRealization) -> AxisReading? {
 
 fn realization_obligations(r: FaithfulComponentRealization) -> List<NonEmptyStr> {
   match r {
-    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => []
+    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => []
     RealizationUnfaithful { subject: _, defects: _ } => []
     RealizationEvidenceMissing { subject: _, obligation: o } => [o]
   }
@@ -343,7 +539,7 @@ fn realization_obligations(r: FaithfulComponentRealization) -> List<NonEmptyStr>
 
 fn realization_defects(r: FaithfulComponentRealization) -> List<NonEmptyStr> {
   match r {
-    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => []
+    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => []
     RealizationUnfaithful { subject: _, defects: ds } => ds
     RealizationEvidenceMissing { subject: _, obligation: _ } => []
   }
@@ -465,7 +661,42 @@ fn route_key(r: MaterializationRoute) -> String {
 //
 // ONE TOKEN-TIME HOP, AT THE TAIL. The thing the runtime reads on every token is a single place.
 // A route with two is not a chain, and a route with none serves nothing.
-fn route_defects(r: MaterializationRoute, origin_provider_id: String) -> List<NonEmptyStr> {
+// THE PEER RESTRICTION IS THE ONE A FIRST CUT GOT WRONG. It checked the ORIGIN position -- head hop,
+// required provider id, exactly one durable origin -- and the PR body then claimed the no-peer-mesh
+// boundary was structurally enforced. It was not: this chain passed unchallenged, because nothing
+// examined the fill hops at all.
+//
+//   M0/DurableOrigin -> peer-serving-host/FillSource -> resident-provider/TokenTimeAccess
+//
+// A serving host as a FILL SOURCE is exactly what the plan forbids, and it is the shape a peer mesh
+// actually takes -- nobody proposes making a peer the durable origin. So admission is over the
+// PROVIDER ROSTER for every hop in every role: a provider this subject has not declared cannot appear
+// anywhere in a chain, which forecloses the fill case, the retained case, and any position added later
+// without another check having to be remembered.
+fn route_defects(
+  r: MaterializationRoute,
+  origin_provider_id: String,
+  admitted_provider_ids: List<String>,
+) -> List<NonEmptyStr> {
+  concat(
+    route_provider_admission_defects(r: r, admitted_provider_ids: admitted_provider_ids),
+    route_shape_defects(r: r, origin_provider_id: origin_provider_id))
+}
+
+fn route_provider_admission_defects(r: MaterializationRoute, admitted_provider_ids: List<String>) -> List<NonEmptyStr> {
+  flat_map(r.hops, h =>
+    if any(admitted_provider_ids, id => id == h.provider.id) {
+      []
+    } else {
+      [join([
+        "route ", declaration_ref_display_key(ref: r.identity), " names provider ",
+        h.provider.id, " in the ", route_role_wire(r: h.role) as String,
+        " role, and it is not an admitted provider for this component; FABRIC-M0 permits no peer serving host in ANY position of a chain, fill sources included",
+      ], "") as NonEmptyStr]
+    })
+}
+
+fn route_shape_defects(r: MaterializationRoute, origin_provider_id: String) -> List<NonEmptyStr> {
   concat(
     concat(
       if count(r.hops) > 0 {
@@ -525,12 +756,13 @@ type RouteStructuralStanding
   = RouteWellFormed
   | RouteMalformed { defects: List<NonEmptyStr> }
 
-fn route_structural_standing(r: MaterializationRoute, origin_provider_id: String) -> RouteStructuralStanding {
-  if count(route_defects(r: r, origin_provider_id: origin_provider_id)) == 0 {
-    RouteWellFormed
-  } else {
-    RouteMalformed { defects: route_defects(r: r, origin_provider_id: origin_provider_id) }
-  }
+fn route_structural_standing(
+  r: MaterializationRoute,
+  origin_provider_id: String,
+  admitted_provider_ids: List<String>,
+) -> RouteStructuralStanding {
+  let ds = route_defects(r: r, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids)
+  if count(ds) == 0 { RouteWellFormed } else { RouteMalformed { defects: ds } }
 }
 
 // WHERE THE DIGEST IS CHECKED IS A ROUTE FACT WITH A COST. Verifying at fill is one pass per host
@@ -560,11 +792,53 @@ fn route_integrity_standing(r: MaterializationRoute) -> RouteIntegrityStanding {
   }
 }
 
-fn route_integrity_holds(s: RouteIntegrityStanding) -> Bool {
+// ADDRESSING CAPABILITY IS NOT VERIFIED INTEGRITY, and this fold only ever established the first.
+// It locates a hop by role and asks whether that provider keys on CONTENT -- a fact about how the
+// store is addressed, which is a precondition for verifying a digest and is not a verification. No
+// digest observation for this route's artifact is consumed anywhere, and naming the M0 authority does
+// not supply one.
+//
+// So the two are separate standings. This one keeps its name for what it actually decides, and
+// `RouteVerificationStanding` below is the evidence question -- currently unestablished for every
+// route, which is why it gaps rather than scores. DO NOT read ContentKeyed as "verified".
+fn route_addressing_admits_verification(s: RouteIntegrityStanding) -> Bool {
   match s {
     IntegrityContentAddressedAt { role: _, provider_id: _ } => true
     IntegrityNotContentAddressed { role: _, because: _ } => false
     IntegrityVerificationPointAbsent { role: _ } => false
+  }
+}
+
+// ── WHETHER THIS ROUTE'S ARTIFACT WAS ACTUALLY VERIFIED, WHICH IS A DIFFERENT QUESTION ─────────
+//
+// `gunbc.fabric_m0_origin_readback` does derive a digest over a named staged file and carries that
+// binding in its own reading, with its provenance limits documented. Consuming it means naming the
+// exact subject that readback was about and carrying its limits forward -- not asserting verification
+// because a provider happens to be content-keyed. Until a route does that, this is unestablished.
+type RouteVerificationStanding
+  = RouteArtifactVerifiedAtOrigin { readback: DeclarationRef, subject: NonEmptyStr, limits: NonEmptyStr }
+  | RouteVerificationUnestablished { obligation: NonEmptyStr }
+
+fn route_verification_reading(v: RouteVerificationStanding) -> AxisReading? {
+  match v {
+    RouteArtifactVerifiedAtOrigin { readback: _, subject: _, limits: _ } =>
+      Present { value: route_reading(axis: ax_route_verified_integrity, v: 1) }
+    RouteVerificationUnestablished { obligation: _ } => none
+  }
+}
+
+fn route_verification_gap(v: RouteVerificationStanding, route: DeclarationRef) -> List<AxisGap> {
+  match v {
+    RouteArtifactVerifiedAtOrigin { readback: _, subject: _, limits: _ } => []
+    RouteVerificationUnestablished { obligation: o } =>
+      [AxisGap {
+        axis: ax_route_verified_integrity,
+        cause: join([
+          "route ", declaration_ref_display_key(ref: route),
+          " has no digest observation for its artifact: ", o as String,
+          ". A content-keyed provider makes verification POSSIBLE and does not perform it",
+        ], "") as NonEmptyStr,
+      }]
   }
 }
 
@@ -785,6 +1059,7 @@ type RouteEvidence sole_constructor {
   access: RoutePhysicalAccessStanding
   mechanism: NonResidentMechanismStanding
   runtime: RouteRuntimeFeasibility
+  verification: RouteVerificationStanding
 }
 
 fn route_evidence(
@@ -794,6 +1069,7 @@ fn route_evidence(
   access: RoutePhysicalAccessStanding,
   mechanism: NonResidentMechanismStanding,
   runtime: RouteRuntimeFeasibility,
+  verification: RouteVerificationStanding,
 ) -> RouteEvidence {
   RouteEvidence {
     route: route,
@@ -802,6 +1078,7 @@ fn route_evidence(
     access: access,
     mechanism: mechanism,
     runtime: runtime,
+    verification: verification,
   }
 }
 
@@ -865,6 +1142,7 @@ data id_resident_memory_unestablished: DeclarationRef = decl_ref(module_path: "g
 data ax_route_faithful_realization: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_faithful_realization")
 data ax_route_well_formed: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_well_formed")
 data ax_route_integrity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_integrity")
+data ax_route_verified_integrity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_verified_integrity")
 data ax_route_nonresident_mechanism: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_nonresident_mechanism")
 data ax_route_runtime_observed: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_runtime_observed")
 data ax_route_resident_bytes: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_resident_bytes")
@@ -879,6 +1157,7 @@ data component_route_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_route_faithful_realization, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_well_formed, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_integrity, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_route_verified_integrity, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_nonresident_mechanism, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_runtime_observed, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_resident_bytes, goal: LowerIsBetter },
@@ -896,6 +1175,7 @@ data component_route_constraints: List<HardConstraint> = [
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_faithful_realization, bound_micro: 1 },
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_well_formed, bound_micro: 1 },
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_integrity, bound_micro: 1 },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_verified_integrity, bound_micro: 1 },
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_nonresident_mechanism, bound_micro: 1 },
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_runtime_observed, bound_micro: 1 },
 ]
@@ -975,10 +1255,70 @@ fn mechanism_gap(m: NonResidentMechanismStanding) -> List<AxisGap> {
 // AND THE LAUNCH GATE IS SEPARATE, AND IS KEYED. A receipt taken under another context does not
 // satisfy this axis: the witness's own subject key must equal the one being decided, so a
 // transported receipt reads as unobserved rather than as a pass.
-fn route_runtime_reading(r: RouteRuntimeFeasibility, wanted: RouteSubjectKey) -> AxisReading? {
+// THE RECEIPT MUST BE ABOUT THIS ROUTE, NOT MERELY FILED UNDER IT. A first cut checked only the
+// serving context and never the receipt's own `route` or the token-time provider it observed -- and the
+// outer evidence row matching a route does not establish that its CONTAINED receipt is about that
+// route. That matters most for C versus D: keeping the two route declarations distinct is worthless if
+// one token-time path's launch evidence can satisfy the other's runtime axis under the same context.
+// THE COMPARISON IS EXPOSED, THE CONSTRUCTOR IS NOT. `RouteLaunchReceipt` is sole_constructor with no
+// builder precisely so a caller cannot mint "the runtime served this route" -- and that seal makes the
+// RED for this check unauthorable in a witness, which DESIGN section 4b says to resolve by exposing
+// the evidence, not by opening the wall. So the join over a receipt's FIELDS is public and the receipt
+// itself stays sealed: a fixture can ask whether these three facts agree without being able to claim
+// they were observed.
+fn route_receipt_fields_mismatches(
+  receipt_route: DeclarationRef,
+  receipt_subject: RouteSubjectKey,
+  observed_token_time_provider_id: String,
+  route: MaterializationRoute,
+  wanted: RouteSubjectKey,
+) -> List<NonEmptyStr> {
+  concat(
+    concat(
+      if route_subject_key_eq(a: receipt_subject, b: wanted) {
+        []
+      } else {
+        [join([
+          "the launch receipt was taken under ", route_subject_key_render(k: receipt_subject),
+          " and this decision is about ", route_subject_key_render(k: wanted),
+        ], "") as NonEmptyStr]
+      },
+      if declaration_ref_eq(a: receipt_route, b: route.identity) {
+        []
+      } else {
+        [join([
+          "the launch receipt is about route ", declaration_ref_display_key(ref: receipt_route),
+          " and this candidate is ", declaration_ref_display_key(ref: route.identity),
+        ], "") as NonEmptyStr]
+      }),
+    match (route_hops_with_role(r: route, role: TokenTimeAccess)).first() {
+      Absent => ["this route declares no token-time hop, so no launch receipt can be about its token-time path" as NonEmptyStr]
+      Present { value: h } =>
+        if observed_token_time_provider_id == h.provider.id {
+          []
+        } else {
+          [join([
+            "the launch observed the runtime reading from ", observed_token_time_provider_id,
+            " and this route's token-time hop is ", h.provider.id,
+            "; NFS-on-the-token-path and NFS-for-fill-only are different routes and one's evidence is not the other's",
+          ], "") as NonEmptyStr]
+        }
+    })
+}
+
+fn route_launch_receipt_mismatches(w: RouteLaunchReceipt, route: MaterializationRoute, wanted: RouteSubjectKey) -> List<NonEmptyStr> {
+  route_receipt_fields_mismatches(
+    receipt_route: w.route,
+    receipt_subject: w.subject,
+    observed_token_time_provider_id: w.observed_token_time_provider_id,
+    route: route,
+    wanted: wanted)
+}
+
+fn route_runtime_reading(r: RouteRuntimeFeasibility, route: MaterializationRoute, wanted: RouteSubjectKey) -> AxisReading? {
   match r {
     RouteObservedInLaunch { witness: w } =>
-      if route_subject_key_eq(a: w.subject, b: wanted) {
+      if count(route_launch_receipt_mismatches(w: w, route: route, wanted: wanted)) == 0 {
         Present { value: route_reading(axis: ax_route_runtime_observed, v: 1) }
       } else {
         none
@@ -987,21 +1327,12 @@ fn route_runtime_reading(r: RouteRuntimeFeasibility, wanted: RouteSubjectKey) ->
   }
 }
 
-fn route_runtime_gap(r: RouteRuntimeFeasibility, wanted: RouteSubjectKey) -> List<AxisGap> {
+fn route_runtime_gap(r: RouteRuntimeFeasibility, route: MaterializationRoute, wanted: RouteSubjectKey) -> List<AxisGap> {
   match r {
     RouteObservedInLaunch { witness: w } =>
-      if route_subject_key_eq(a: w.subject, b: wanted) {
-        []
-      } else {
-        [AxisGap {
-          axis: ax_route_runtime_observed,
-          cause: join([
-            "the launch receipt offered for this route was taken under ",
-            route_subject_key_render(k: w.subject), " and this decision is about ",
-            route_subject_key_render(k: wanted),
-          ], "") as NonEmptyStr,
-        }]
-      }
+      map(
+        route_launch_receipt_mismatches(w: w, route: route, wanted: wanted),
+        m => AxisGap { axis: ax_route_runtime_observed, cause: m })
     RouteRuntimeUnobserved { subject: _, route: rt, obligation: o } =>
       [AxisGap {
         axis: ax_route_runtime_observed,
@@ -1046,14 +1377,18 @@ fn resident_gap(s: RouteResidentMemoryStanding, route: DeclarationRef) -> List<A
 // zero for them is honest -- unlike faithfulness, where the subject's population and the relation
 // are evidence and can be missing. If a future route verified at a hop whose KEYING were itself
 // unobserved, that would be a third state and would need its own absent reading.
-fn route_structural_readings(c: RouteCandidate, origin_provider_id: String) -> List<AxisReading> {
+fn route_structural_readings(
+  c: RouteCandidate,
+  origin_provider_id: String,
+  admitted_provider_ids: List<String>,
+) -> List<AxisReading> {
   [
     route_reading(
       axis: ax_route_well_formed,
-      v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id)) == 0)),
+      v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids)) == 0)),
     route_reading(
       axis: ax_route_integrity,
-      v: route_flag(b: route_integrity_holds(s: route_integrity_standing(r: c.route)))),
+      v: route_flag(b: route_addressing_admits_verification(s: route_integrity_standing(r: c.route)))),
   ]
 }
 
@@ -1061,17 +1396,20 @@ fn route_candidate_readings(
   c: RouteCandidate,
   realization: FaithfulComponentRealization,
   origin_provider_id: String,
+  admitted_provider_ids: List<String>,
   evidence: RouteEvidence,
   wanted: RouteSubjectKey,
 ) -> List<AxisReading> {
   concat(
     concat(
       concat(
-        route_structural_readings(c: c, origin_provider_id: origin_provider_id),
+        route_structural_readings(c: c, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids),
         optional_route_reading(r: faithfulness_reading(r: realization))),
-      optional_route_reading(r: mechanism_reading(m: evidence.mechanism))),
+      concat(
+        optional_route_reading(r: mechanism_reading(m: evidence.mechanism)),
+        optional_route_reading(r: route_verification_reading(v: evidence.verification)))),
     concat(
-      optional_route_reading(r: route_runtime_reading(r: evidence.runtime, wanted: wanted)),
+      optional_route_reading(r: route_runtime_reading(r: evidence.runtime, route: c.route, wanted: wanted)),
       optional_route_reading(r: resident_reading(s: evidence.resident_memory))))
 }
 
@@ -1096,7 +1434,9 @@ fn route_candidate_gaps(
           realization_obligations(r: realization),
           component_subject_obligations(s: standing)),
         o => AxisGap { axis: ax_route_faithful_realization, cause: o }),
-      concat(mechanism_gap(m: evidence.mechanism), route_runtime_gap(r: evidence.runtime, wanted: wanted))),
+      concat(
+        concat(mechanism_gap(m: evidence.mechanism), route_verification_gap(v: evidence.verification, route: c.route.identity)),
+        route_runtime_gap(r: evidence.runtime, route: c.route, wanted: wanted))),
     concat(
       concat(
         resident_gap(s: evidence.resident_memory, route: c.route.identity),
@@ -1113,6 +1453,7 @@ fn project_route_candidate(
   c: RouteCandidate,
   standing: ComponentSubjectStanding,
   origin_provider_id: String,
+  admitted_provider_ids: List<String>,
   rows: List<RouteEvidence>,
   wanted: RouteSubjectKey,
 ) -> ParetoEntry {
@@ -1121,14 +1462,14 @@ fn project_route_candidate(
     RouteEvidenceFound { evidence: e } => ParetoEntry {
       identity: c.route.identity,
       display_label: c.route.label,
-      readings: route_candidate_readings(c: c, realization: realization, origin_provider_id: origin_provider_id, evidence: e, wanted: wanted),
+      readings: route_candidate_readings(c: c, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, evidence: e, wanted: wanted),
       missing_inputs: route_candidate_gaps(c: c, standing: standing, realization: realization, evidence: e, wanted: wanted),
     }
     RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os } =>
-      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, wanted: w,
+      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os }))
     RouteEvidenceAbsent { route: rt, wanted: w } =>
-      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, wanted: w,
+      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceAbsent { route: rt, wanted: w }))
   }
 }
@@ -1140,6 +1481,7 @@ fn route_entry_without_evidence(
   c: RouteCandidate,
   realization: FaithfulComponentRealization,
   origin_provider_id: String,
+  admitted_provider_ids: List<String>,
   wanted: RouteSubjectKey,
   causes: List<NonEmptyStr>,
 ) -> ParetoEntry {
@@ -1147,14 +1489,16 @@ fn route_entry_without_evidence(
     identity: c.route.identity,
     display_label: c.route.label,
     readings: concat(
-      route_structural_readings(c: c, origin_provider_id: origin_provider_id),
+      route_structural_readings(c: c, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids),
       optional_route_reading(r: faithfulness_reading(r: realization))),
     missing_inputs: concat(
       concat(
         map(causes, cz => AxisGap { axis: ax_route_nonresident_mechanism, cause: cz }),
         map(causes, cz => AxisGap { axis: ax_route_runtime_observed, cause: cz })),
       concat(
-        map(causes, cz => AxisGap { axis: ax_route_resident_bytes, cause: cz }),
+        concat(
+          map(causes, cz => AxisGap { axis: ax_route_resident_bytes, cause: cz }),
+          map(causes, cz => AxisGap { axis: ax_route_verified_integrity, cause: cz })),
         map(unmeasured_route_axes, a => AxisGap { axis: a, cause: unmeasured_route_axis_cause(axis: a, subject: wanted) }))),
   }
 }
@@ -1239,6 +1583,7 @@ type ComponentRouteField sole_constructor {
   component: DeclarationRef
   candidates: List<RouteCandidate>
   origin_provider_id: String
+  admitted_provider_ids: List<String>
 }
 
 fn component_route_field(
@@ -1246,8 +1591,15 @@ fn component_route_field(
   component: DeclarationRef,
   candidates: List<RouteCandidate>,
   origin_provider_id: String,
+  admitted_provider_ids: List<String>,
 ) -> ComponentRouteField {
-  ComponentRouteField { identity: identity, component: component, candidates: candidates, origin_provider_id: origin_provider_id }
+  ComponentRouteField {
+    identity: identity,
+    component: component,
+    candidates: candidates,
+    origin_provider_id: origin_provider_id,
+    admitted_provider_ids: admitted_provider_ids,
+  }
 }
 
 fn select_component_route(
@@ -1262,7 +1614,7 @@ fn select_component_route(
     candidate_field_identity: field.identity,
     field: map(
       field.candidates,
-      c => project_route_candidate(c: c, standing: standing, origin_provider_id: field.origin_provider_id, rows: rows, wanted: context)),
+      c => project_route_candidate(c: c, standing: standing, origin_provider_id: field.origin_provider_id, admitted_provider_ids: field.admitted_provider_ids, rows: rows, wanted: context)),
     axes: component_route_axes,
     constraints: component_route_constraints,
     constraint_authority: id_route_constraint_authority,
@@ -1277,8 +1629,15 @@ fn select_component_route(
 // it. A three-armed projection would preserve the words and delete `SelectionNeedsPolicy` and the
 // difference between an infeasible field and a defective one -- which is the fork §3d exists to
 // prevent. The only thing added is the arm for a component this subject is not about.
+// THREE ARMS, BECAUSE "THE QUESTION DOES NOT APPLY" AND "THE QUESTION WAS ASKED AND NOTHING ANSWERED
+// IT" ARE DIFFERENT FACTS. A first cut had two, and the consumer scored `NotThisSubject` as a settled
+// placement -- correct for a resident component, and WRONG for one declared `ComponentPlacedByRoute`
+// against a subject no authority covers. That path asked for a placement, got no answer, and read as
+// though the placement were settled: `ax_component_route` scored 1 with no evidence need. It is the
+// same green-for-the-wrong-reason class as the open-versus-settled collapse, one layer along.
 type ComponentRouteStanding
   = ComponentRouteNotThisSubject
+  | ComponentRouteSubjectHasNoAuthority { component: DeclarationRef, context: RouteSubjectKey }
   | ComponentRouteDecided {
       component: DeclarationRef
       context: RouteSubjectKey
@@ -1294,35 +1653,57 @@ fn route_in_list(routes: List<MaterializationRoute>, identity: DeclarationRef) -
 // THE RESIDENT SHARE A CONSUMER MAY ADD TO ITS FOOTPRINT, and there are only three answers. A
 // selected route with an established upper bound contributes that number. A selected route without
 // one, and every state in which no route is selected, contribute an OBLIGATION -- never zero.
+// ── THE RESIDENT SHARE KEEPS ITS PROVENANCE AND ITS BOUND DIRECTION ───────────────────────────
+//
+// A first cut reduced BOTH an observed quantity and an upper bound to one `bytes` field, losing the
+// receipt and losing which of the two it was. Those support different conclusions: an observation can
+// feed a capacity verdict, and an upper bound cannot feed a LOWER-bound impossibility screen at all.
+// Flattening them meant a genuine fleet observation arriving through the selected-route path could no
+// longer be one by the time it reached the screen that needed it.
 type ComponentResidentShare
-  = ComponentResidentBytes { bytes: ByteSize, route: DeclarationRef }
+  = ComponentResidentObserved { bytes: ByteSize, receipt: DeclarationRef, route: DeclarationRef }
+  | ComponentResidentBoundedAbove { upper_bound: ByteSize, authority: DeclarationRef, route: DeclarationRef }
   | ComponentResidentUnderivable { because: NonEmptyStr }
   | ComponentNotDecomposedHere
 
 fn component_resident_share(s: ComponentRouteStanding) -> ComponentResidentShare {
   match s {
     ComponentRouteNotThisSubject => ComponentNotDecomposedHere
-    ComponentRouteDecided { component: comp, context: ctx, result: res, routes: rs, evidence: rows } =>
-      match res {
-        SelectedWithin { candidate: e, receipt: _ } =>
-          match route_in_list(routes: rs, identity: e.identity) {
+    ComponentRouteSubjectHasNoAuthority { component: c, context: ctx } => ComponentResidentUnderivable {
+      because: join([
+        "component ", declaration_ref_display_key(ref: c),
+        " is declared as placed by a route and no route authority covers that subject, so under ",
+        route_subject_key_render(k: ctx),
+        " nothing establishes what it keeps resident -- and it must not fall back to its whole declared footprint as though it were resident",
+      ], "") as NonEmptyStr,
+    }
+    ComponentRouteDecided { component: comp, context: ctx, result: _, routes: rs, evidence: rows } =>
+      match component_route_placement_standing(s: s) {
+        ComponentPlacementNotThisSubject => ComponentNotDecomposedHere
+        ComponentPlacementExcluded { causes: cs } => ComponentResidentUnderivable {
+          because: join([
+            "every route for component ", declaration_ref_display_key(ref: comp),
+            " violated a hard constraint, so this component has no admissible placement under ",
+            route_subject_key_render(k: ctx), ": ",
+            join(map(cs, cz => cz as String), "; "),
+          ], "") as NonEmptyStr,
+        }
+        ComponentPlacementOpen { remedy: r } => ComponentResidentUnderivable {
+          because: join([
+            "no route is selected for component ", declaration_ref_display_key(ref: comp),
+            " under ", route_subject_key_render(k: ctx),
+            ", so the bytes it keeps resident are not established and must not be read as zero: ",
+            join(map(placement_remedy_causes(r: r), cz => cz as String), "; "),
+          ], "") as NonEmptyStr,
+        }
+        ComponentPlacementSettled { selected: sel, receipt: _ } =>
+          match route_in_list(routes: rs, identity: sel) {
             Absent => ComponentResidentUnderivable {
               because: "the selection returned a route identity that resolves to no declared route, which is a projector contradiction rather than a placement" as NonEmptyStr,
             }
-            Present { value: r } =>
-              match route_evidence_for(route: r.identity, wanted: ctx, rows: rows) {
-                RouteEvidenceFound { evidence: ev } =>
-                  match resident_memory_upper_bound(s: ev.resident_memory) {
-                    Present { value: b } => ComponentResidentBytes { bytes: b, route: r.identity }
-                    Absent => ComponentResidentUnderivable {
-                      because: join([
-                        "route ", declaration_ref_display_key(ref: r.identity),
-                        " was selected for ", route_subject_key_render(k: ctx),
-                        " and has no established upper bound on the bytes it keeps resident, so its contribution to the memory screen is an obligation rather than a number -- and specifically not zero: ",
-                        join(map(resident_memory_obligations(s: ev.resident_memory), o => o as String), "; "),
-                      ], "") as NonEmptyStr,
-                    }
-                  }
+            Present { value: rt } =>
+              match route_evidence_for(route: rt.identity, wanted: ctx, rows: rows) {
+                RouteEvidenceFound { evidence: ev } => resident_share_from_standing(s: ev.resident_memory, route: rt.identity)
                 RouteEvidenceForeignProfile { route: rr, wanted: ww, offered: oo } => ComponentResidentUnderivable {
                   because: join(map(route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rr, wanted: ww, offered: oo }), o => o as String), "; ") as NonEmptyStr,
                 }
@@ -1331,56 +1712,33 @@ fn component_resident_share(s: ComponentRouteStanding) -> ComponentResidentShare
                 }
               }
           }
-        SelectionNeedsEvidence { needs: ns } => ComponentResidentUnderivable {
-          because: join([
-            "no route is selected for component ", declaration_ref_display_key(ref: comp),
-            " under ", route_subject_key_render(k: ctx), ": ", to_string(count(ns)),
-            " evidence needs are open, so the bytes this component keeps resident are not established and must not be read as zero",
-          ], "") as NonEmptyStr,
-        }
-        SelectionNeedsPolicy { survivors: sv } => ComponentResidentUnderivable {
-          because: join([
-            "route selection for component ", declaration_ref_display_key(ref: comp),
-            " reached a front of ", to_string(count(sv)),
-            " non-dominated routes with no policy to separate them; a front is not a winner and no resident share follows from it",
-          ], "") as NonEmptyStr,
-        }
-        NoFeasibleRealization { causes: cs } => ComponentResidentUnderivable {
-          because: join([
-            "every route for component ", declaration_ref_display_key(ref: comp),
-            " violated a hard constraint, so this component has no admissible placement under ",
-            route_subject_key_render(k: ctx), ": ",
-            join(map(cs, cz => cz as String), "; "),
-          ], "") as NonEmptyStr,
-        }
-        CandidateFieldUnestablished { causes: cs } => ComponentResidentUnderivable {
-          because: join([
-            "the route candidate field for component ", declaration_ref_display_key(ref: comp),
-            " is not established (", to_string(count(cs)), " causes)",
-          ], "") as NonEmptyStr,
-        }
-        RealizationSelectionRefused { defects: ds } => ComponentResidentUnderivable {
-          because: join([
-            "route selection for component ", declaration_ref_display_key(ref: comp),
-            " is refused as defective (", to_string(count(ds)), " defects)",
-          ], "") as NonEmptyStr,
-        }
       }
   }
 }
 
-fn component_route_needs(s: ComponentRouteStanding) -> List<SelectionEvidenceNeed> {
+// THE LOWER-BOUND-ONLY ARM DOES NOT BECOME A SHARE. A floor can rule a fit out and can never rule one
+// in, and the consumer of this value is the quantity a screen DIVIDES -- so handing it a floor dressed
+// as a share is exactly the generous substitution the screen exists to prevent. It reports the
+// obligation and names the floor inside it.
+fn resident_share_from_standing(s: RouteResidentMemoryStanding, route: DeclarationRef) -> ComponentResidentShare {
   match s {
-    ComponentRouteNotThisSubject => []
-    ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
-      match res {
-        SelectionNeedsEvidence { needs: ns } => ns
-        SelectedWithin { candidate: _, receipt: _ } => []
-        SelectionNeedsPolicy { survivors: _ } => []
-        NoFeasibleRealization { causes: _ } => []
-        CandidateFieldUnestablished { causes: _ } => []
-        RealizationSelectionRefused { defects: _ } => []
-      }
+    ResidentMemoryObserved { bytes: b, receipt: rc } => ComponentResidentObserved { bytes: b, receipt: rc, route: route }
+    ResidentMemoryBoundedAbove { upper_bound: b, authority: a } => ComponentResidentBoundedAbove { upper_bound: b, authority: a, route: route }
+    ResidentMemoryLowerBoundOnly { lower_bound: b, authority: a, obligation: o } => ComponentResidentUnderivable {
+      because: join([
+        "route ", declaration_ref_display_key(ref: route), " has only a FLOOR of ",
+        to_string(byte_size_count(b: b)), " resident bytes, cited to ",
+        declaration_ref_display_key(ref: a),
+        "; a floor can rule a fit out and can never establish one, so it is not this component's resident share: ",
+        o as String,
+      ], "") as NonEmptyStr,
+    }
+    ResidentMemoryUnestablished { obligation: o } => ComponentResidentUnderivable {
+      because: join([
+        "route ", declaration_ref_display_key(ref: route),
+        " has no established bound on the bytes it keeps resident: ", o as String,
+      ], "") as NonEmptyStr,
+    }
   }
 }
 
@@ -1391,53 +1749,134 @@ fn component_route_needs(s: ComponentRouteStanding) -> List<SelectionEvidenceNee
 // established infeasibility scores zero and excludes; a settled placement scores one; and every
 // state in which the route question is still open answers ABSENT, which is what makes the serving
 // decision report the need.
+// ── WHAT IS OPEN, AND WHICH REMEDY WOULD CLOSE IT ──────────────────────────────────────────────
+//
+// The child selection has six outcomes and a first cut projected four onto one word, Open.
+// SelectionNeedsEvidence, SelectionNeedsPolicy, CandidateFieldUnestablished and
+// RealizationSelectionRefused all became the same value, so a DEFECTIVE child selection read to the
+// parent as an UNDER-EVIDENCED one -- and those have opposite remedies: one needs a measurement, the
+// other needs the selection input repaired. Worse, for SelectionNeedsPolicy the needs list and the
+// defects list both came back empty, so the surviving route identities and the policy cause were gone.
+//
+// That is a second semantic selection authority at the consumer boundary -- not because projecting is
+// forbidden, but because this projection is what the parent consumes and it CHANGED THE MEANING of
+// outcomes std.decision already distinguishes. So the remedy travels with the openness. The scoring
+// fold reads only settled/excluded/open; the remedy is for the consumer's diagnostic, never for its
+// arithmetic.
+//
+// THE SURVIVORS ARE CARRIED BUT NOT PROMOTED. `PlacementNeedsPolicy` names the route identities that
+// tied so a reader can see WHICH tradeoff is unresolved; a parent must not merge them into its own
+// deployment-survivor namespace, which belongs to a different decision's field.
+type PlacementRemedy
+  = PlacementNeedsRouteEvidence { needs: List<SelectionEvidenceNeed> }
+  | PlacementNeedsPolicy { survivors: List<DeclarationRef> }
+  | PlacementNeedsCandidateFieldRepair { causes: List<NonEmptyStr> }
+  | PlacementSelectionDefective { defects: List<NonEmptyStr> }
+  | PlacementSubjectHasNoRouteAuthority { component: DeclarationRef }
+
+fn placement_remedy_causes(r: PlacementRemedy) -> List<NonEmptyStr> {
+  match r {
+    PlacementNeedsRouteEvidence { needs: ns } => map(ns, n => selection_evidence_need_cause(n: n))
+    PlacementNeedsPolicy { survivors: sv } =>
+      [join([
+        "route selection reached a front of ", to_string(count(sv)),
+        " non-dominated routes with no policy to separate them (",
+        join(map(sv, x => declaration_ref_display_key(ref: x)), ", "),
+        "); a front is not a winner, and the remedy is a policy rather than another measurement",
+      ], "") as NonEmptyStr]
+    PlacementNeedsCandidateFieldRepair { causes: cs } =>
+      map(cs, cz => join(["the route candidate field is not established: ", cz as String], "") as NonEmptyStr)
+    PlacementSelectionDefective { defects: ds } =>
+      map(ds, d => join(["the route selection input is defective, which is a repair rather than an evidence need: ", d as String], "") as NonEmptyStr)
+    PlacementSubjectHasNoRouteAuthority { component: c } =>
+      [join([
+        "this candidate declares component ", declaration_ref_display_key(ref: c),
+        " as placed by a route, and no route authority in this closure covers that subject -- so a placement was asked for and nothing answered it. That is a defect in the candidate, not a measurement anyone can take",
+      ], "") as NonEmptyStr]
+  }
+}
+
+// THE REMEDY KIND IS READABLE, so a consumer routes a defect somewhere different from an evidence gap
+// without re-deriving the distinction from cause text.
+fn placement_remedy_is_defect(r: PlacementRemedy) -> Bool {
+  match r {
+    PlacementSelectionDefective { defects: _ } => true
+    PlacementNeedsCandidateFieldRepair { causes: _ } => true
+    PlacementSubjectHasNoRouteAuthority { component: _ } => true
+    PlacementNeedsRouteEvidence { needs: _ } => false
+    PlacementNeedsPolicy { survivors: _ } => false
+  }
+}
+
+// FOUR STANDINGS, AND THE SETTLED ONE CARRIES THE CHILD'S RECEIPT. `ComponentPlacementNotThisSubject`
+// is separated from `ComponentPlacementSettled` because "this component is not routed here" and "a
+// route was selected for it" are different facts that a first cut spelled the same way.
 type ComponentRoutePlacementStanding
-  = ComponentPlacementSettled
-  | ComponentPlacementExcluded
-  | ComponentPlacementOpen
+  = ComponentPlacementSettled { selected: DeclarationRef, receipt: SelectionReceipt }
+  | ComponentPlacementNotThisSubject
+  | ComponentPlacementExcluded { causes: List<NonEmptyStr> }
+  | ComponentPlacementOpen { remedy: PlacementRemedy }
 
 fn component_route_placement_standing(s: ComponentRouteStanding) -> ComponentRoutePlacementStanding {
   match s {
-    ComponentRouteNotThisSubject => ComponentPlacementSettled
+    ComponentRouteNotThisSubject => ComponentPlacementNotThisSubject
+    ComponentRouteSubjectHasNoAuthority { component: c, context: _ } =>
+      ComponentPlacementOpen { remedy: PlacementSubjectHasNoRouteAuthority { component: c } }
     ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
       match res {
-        SelectedWithin { candidate: _, receipt: _ } => ComponentPlacementSettled
-        NoFeasibleRealization { causes: _ } => ComponentPlacementExcluded
-        SelectionNeedsEvidence { needs: _ } => ComponentPlacementOpen
-        SelectionNeedsPolicy { survivors: _ } => ComponentPlacementOpen
-        CandidateFieldUnestablished { causes: _ } => ComponentPlacementOpen
-        RealizationSelectionRefused { defects: _ } => ComponentPlacementOpen
+        SelectedWithin { candidate: e, receipt: rc } => ComponentPlacementSettled { selected: e.identity, receipt: rc }
+        NoFeasibleRealization { causes: cs } => ComponentPlacementExcluded { causes: cs }
+        SelectionNeedsEvidence { needs: ns } => ComponentPlacementOpen { remedy: PlacementNeedsRouteEvidence { needs: ns } }
+        SelectionNeedsPolicy { survivors: sv } => ComponentPlacementOpen { remedy: PlacementNeedsPolicy { survivors: sv } }
+        CandidateFieldUnestablished { causes: cs } => ComponentPlacementOpen { remedy: PlacementNeedsCandidateFieldRepair { causes: cs } }
+        RealizationSelectionRefused { defects: ds } => ComponentPlacementOpen { remedy: PlacementSelectionDefective { defects: ds } }
       }
   }
 }
 
-fn component_route_defects(s: ComponentRouteStanding) -> List<NonEmptyStr> {
-  match s {
-    ComponentRouteNotThisSubject => []
-    ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
-      match res {
-        RealizationSelectionRefused { defects: ds } => ds
-        CandidateFieldUnestablished { causes: cs } => cs
-        SelectedWithin { candidate: _, receipt: _ } => []
-        SelectionNeedsEvidence { needs: _ } => []
-        SelectionNeedsPolicy { survivors: _ } => []
-        NoFeasibleRealization { causes: _ } => []
-      }
+// EVERY CAUSE THE CHILD PRODUCED, WHATEVER ARM IT CAME FROM. A first cut returned empty lists for the
+// policy and field arms, so the only outcomes reaching the parent were the two it had folds for.
+fn component_route_causes(s: ComponentRouteStanding) -> List<NonEmptyStr> {
+  match component_route_placement_standing(s: s) {
+    ComponentPlacementSettled { selected: _, receipt: _ } => []
+    ComponentPlacementNotThisSubject => []
+    ComponentPlacementExcluded { causes: cs } => cs
+    ComponentPlacementOpen { remedy: r } => placement_remedy_causes(r: r)
   }
 }
 
-fn component_route_infeasibility_causes(s: ComponentRouteStanding) -> List<NonEmptyStr> {
+// THE COMPONENT AND THE CONTEXT A STANDING WAS DECIDED UNDER, readable by a consumer that has to mark
+// its own diagnostics with facts the selection spine's generic fallback cannot know.
+fn component_route_standing_component(s: ComponentRouteStanding) -> DeclarationRef {
   match s {
-    ComponentRouteNotThisSubject => []
-    ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
-      match res {
-        NoFeasibleRealization { causes: cs } => cs
-        SelectedWithin { candidate: _, receipt: _ } => []
-        SelectionNeedsEvidence { needs: _ } => []
-        SelectionNeedsPolicy { survivors: _ } => []
-        CandidateFieldUnestablished { causes: _ } => []
-        RealizationSelectionRefused { defects: _ } => []
-      }
+    ComponentRouteNotThisSubject => no_routed_component
+    ComponentRouteSubjectHasNoAuthority { component: c, context: _ } => c
+    ComponentRouteDecided { component: c, context: _, result: _, routes: _, evidence: _ } => c
+  }
+}
+
+fn component_route_standing_context(s: ComponentRouteStanding) -> RouteSubjectKey {
+  match s {
+    ComponentRouteNotThisSubject => no_routed_context
+    ComponentRouteSubjectHasNoAuthority { component: _, context: ctx } => ctx
+    ComponentRouteDecided { component: _, context: ctx, result: _, routes: _, evidence: _ } => ctx
+  }
+}
+
+data no_routed_component: DeclarationRef = decl_ref(
+  module_path: "gunbc.fabric.engram_materialization",
+  decl_name: "no_routed_component")
+
+data no_routed_context: RouteSubjectKey = route_subject_key(
+  consumer: no_routed_component,
+  context_digest: "no routed component, so no route context")
+
+fn component_route_has_defect(s: ComponentRouteStanding) -> Bool {
+  match component_route_placement_standing(s: s) {
+    ComponentPlacementOpen { remedy: r } => placement_remedy_is_defect(r: r)
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+    ComponentPlacementExcluded { causes: _ } => false
   }
 }
 
@@ -1627,64 +2066,85 @@ data engram_published_encoding: PhysicalEncoding = SafetensorsShardSet {
   shard_paths: map(deepseek_v4_1_flash_engram_shards, s => s.file.path),
 }
 
-data deepseek_v4_1_engram_component: ComponentSubject = ComponentSubject {
+data engram_published_identity: EncodingIdentity = ShardSetIdentity {
+  shards: map(deepseek_v4_1_flash_engram_shards, s => shard_identity(path: s.file.path, sha256: s.sha256)),
+}
+
+data deepseek_v4_1_engram_component: ComponentSubject = component_subject(
   identity: engram_component_identity,
   label: "DeepSeek-V4.1-Flash Engram tables, layers 1 and 14" as NonEmptyStr,
   upstream_revision: deepseek_v4_1_flash_revision,
   population: deepseek_v4_1_flash_engram_population,
   published_encoding: engram_published_encoding,
-  published_shard_digests: map(deepseek_v4_1_flash_engram_shards, s => s.sha256),
+  published_identity: engram_published_identity,
   population_standing: deepseek_v4_1_flash_engram_population_standing,
-}
+)
 
 data engram_component_standing: ComponentSubjectStanding = establish_component_subject(
   subject: deepseek_v4_1_engram_component,
 )
 
-// THE ENCODING EACH ROUTE READS AT TOKEN TIME. Routes B, C and D read the published safetensors
-// shards from wherever their chain put them, so their artifact is the published encoding and its
-// faithfulness is byte identity. Route A reads parameter tensors the loader built from those bytes
-// -- a DIFFERENT physical encoding, so it may not claim byte identity and instead names the
-// reference loader as its structure-preserving relation. That asymmetry is the whole point of
-// keeping the three facts apart.
+// ── THE PUBLISHED ARTIFACT: THE ONE ENCODING THIS REVISION ESTABLISHES AN IDENTITY FOR ─────────
+//
+// Its identity is the publisher's per-shard digests at the pin -- the same value the fold compares
+// against, so `IdenticalToPublishedEncoding` cannot be satisfied by editing something beside the
+// artifact. Its size is the sum of the two FILE sizes, labelled as the object store's figure rather
+// than as resident bytes.
 data engram_shard_set_bytes: ByteSize = byte_size(
   count: fold(deepseek_v4_1_flash_engram_shards, init: 0, f: (acc, s) => acc + byte_size_count(b: s.file.file_bytes)))
 
 data engram_published_artifact: MaterializedComponentArtifact = materialized_component_artifact(
   subject: engram_component_identity,
   encoding: engram_published_encoding,
-  digest: as_content_hash_cryptographic(digest: deepseek_v4_1_flash_engram_shard_1.sha256),
-  encoded_bytes: engram_shard_set_bytes,
+  identity: engram_published_identity,
+  encoded_size: EncodedBytes { bytes: engram_shard_set_bytes },
 )
 
-data engram_published_faithfulness: FaithfulnessEvidence = ByteIdenticalToPublishedEncoding {
-  shard_digests: map(deepseek_v4_1_flash_engram_shards, s => s.sha256),
-}
+data engram_published_faithfulness: FaithfulnessEvidence = IdenticalToPublishedEncoding
 
+// ── THE RESIDENT ENCODING HAS NO ESTABLISHED IDENTITY AND NO ESTABLISHED SIZE, AND SAYS SO ─────
+//
+// A first cut gave it the whole-file digest of shard 48 and the sum of two safetensors file sizes.
+// Neither is a fact about parameter tensors a loader built in memory: the digest names bytes on the
+// publisher's object store, and the size is that store's. Nobody has digested or measured the loaded
+// form, so both are unestablished.
+//
+// THE CONSEQUENCE IS DELIBERATE AND IT IS THE CORRECT OUTPUT. Because the faithfulness axis DEFERS
+// rather than excludes on missing evidence, route A cannot be selected at this head for want of
+// grounds -- reported as an evidence need, not as an impossibility. Establishing an identity here
+// without grounds is the overclaim this section exists to remove, and the earlier repair to the
+// faithfulness fold is what makes the honest state informative instead of a false exclusion.
 data engram_resident_encoding: PhysicalEncoding = ResidentParameterTensors {
   framework: "torch parameters allocated by the reference inference loader" as NonEmptyStr,
 }
 
-data engram_loader_relation: DeclarationRef = decl_ref(
-  module_path: "extdeps.deepseek.deepseek_v4_1_flash",
-  decl_name: "deepseek_v4_1_flash_inference_model_path")
+data engram_resident_identity_obligation: NonEmptyStr = "nobody has established an identity for the loaded parameter representation of this component. A safetensors file digest names bytes on the publisher's object store, not the tensors a loader built from them, and those are different subjects. Establishing it needs a digest or structural identity computed over the loaded form" as NonEmptyStr
 
 data engram_resident_artifact: MaterializedComponentArtifact = materialized_component_artifact(
   subject: engram_component_identity,
   encoding: engram_resident_encoding,
-  digest: as_content_hash_cryptographic(digest: deepseek_v4_1_flash_engram_shard_14.sha256),
-  encoded_bytes: engram_shard_set_bytes,
+  identity: EncodingIdentityUnestablished { obligation: engram_resident_identity_obligation },
+  encoded_size: EncodedSizeUnestablished {
+    obligation: "the resident size of the loaded parameter representation is unmeasured; the two safetensors file sizes include headers and say nothing about allocator padding or alignment in memory" as NonEmptyStr,
+  },
 )
 
-// WHAT THE LOADER PRESERVES, NAMED. A relation that preserves nothing stated relates nothing, and
-// `realize_component` refuses an empty list for exactly that reason.
+// THE LOADER RELATION IS DECLARED AND BOUND TO BOTH ENDS -- this subject, the published encoding it
+// maps from, the resident encoding it maps to -- so establishing the artifact's identity is the ONLY
+// remaining step rather than leaving a future author to invent the relation as well. It is not yet
+// evidence: the artifact it relates to has no identity, so `realize_component` answers
+// RealizationEvidenceMissing.
+data engram_loader_relation: DeclarationRef = decl_ref(
+  module_path: "extdeps.deepseek.deepseek_v4_1_flash",
+  decl_name: "deepseek_v4_1_flash_inference_model_path")
+
 data engram_resident_faithfulness: FaithfulnessEvidence = StructurePreservingTransform {
-  relation: engram_loader_relation,
-  preserved: [
-    "tensor names, one parameter per header entry" as NonEmptyStr,
-    "declared shapes, unpadded embedding row counts included" as NonEmptyStr,
-    "the fp8 payload and ue8m0 scale pairing at the declared block size" as NonEmptyStr,
-  ],
+  relation: faithfulness_relation(
+    relation: engram_loader_relation,
+    subject: engram_component_identity,
+    source_encoding: engram_published_encoding,
+    target_encoding: engram_resident_encoding,
+    preserved: [PreservesTensorNames, PreservesDeclaredShapes, PreservesDtypes, PreservesBlockScalePairing, PreservesElementValues]),
 }
 
 fn engram_route_candidate(r: MaterializationRoute) -> RouteCandidate {
@@ -1695,11 +2155,23 @@ fn engram_route_candidate(r: MaterializationRoute) -> RouteCandidate {
   }
 }
 
+// THE ADMITTED PROVIDER ROSTER FOR THIS COMPONENT. Every hop of every route must name one of these,
+// in any role. A serving peer is absent from it, which is what makes the no-peer-mesh boundary
+// structural rather than a check on the origin position only.
+data engram_admitted_provider_ids: List<String> = [
+  engram_origin_provider_id,
+  engram_nfs_provider_id,
+  engram_host_nvme_provider_id,
+  engram_page_cache_provider_id,
+  engram_resident_provider_id,
+]
+
 data engram_route_field: ComponentRouteField = component_route_field(
   identity: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_field"),
   component: engram_component_identity,
   candidates: map(engram_routes, r => engram_route_candidate(r: r)),
   origin_provider_id: engram_origin_provider_id,
+  admitted_provider_ids: engram_admitted_provider_ids,
 )
 
 // ── THE EVIDENCE THAT EXISTS TODAY, WHICH IS ALMOST NONE, STATED AS SUCH ───────────────────────
@@ -1753,6 +2225,17 @@ fn engram_mechanism_standing_for(r: MaterializationRoute) -> NonResidentMechanis
   }
 }
 
+// NO ROUTE'S ARTIFACT HAS BEEN DIGEST-VERIFIED ON THIS FLEET. `gunbc.fabric_m0_origin_readback` is the
+// authority that could supply it -- it derives a digest over a named staged file and carries that
+// binding with its provenance limits -- but consuming it means naming the exact subject that readback
+// was about, and no such reading exists for this component. A content-keyed provider makes verification
+// possible and is not verification, so this stays unestablished and the axis gaps.
+data engram_verification_obligation: NonEmptyStr = join([
+  "no digest observation exists for this component's artifact on any route. ",
+  declaration_ref_display_key(ref: engram_m0_origin_authority),
+  " derives a digest over a named staged file and would supply this with its subject binding and stated limits; until such a reading names THIS component's artifact, a content-keyed hop establishes only that verification is possible",
+], "") as NonEmptyStr
+
 fn engram_route_evidence_for(r: MaterializationRoute, context: RouteSubjectKey) -> RouteEvidence {
   route_evidence(
     route: r.identity,
@@ -1765,6 +2248,7 @@ fn engram_route_evidence_for(r: MaterializationRoute, context: RouteSubjectKey) 
       route: r.identity,
       obligation: "no launch receipt names this route under this context, and a mechanism or import probe cannot mint one" as NonEmptyStr,
     },
+    verification: RouteVerificationUnestablished { obligation: engram_verification_obligation },
   )
 }
 
@@ -1786,7 +2270,7 @@ data engram_route_evidence_snapshot: DeclarationRef = decl_ref(
 // one authored duplication of the expensive half, at the ancestor that has both demands.
 fn engram_route_standing(component: DeclarationRef, context: RouteSubjectKey) -> ComponentRouteStanding {
   if !declaration_ref_eq(a: component, b: engram_component_identity) {
-    ComponentRouteNotThisSubject
+    ComponentRouteSubjectHasNoAuthority { component: component, context: context }
   } else {
     let rows = engram_route_evidence_rows(context: context)
     ComponentRouteDecided {

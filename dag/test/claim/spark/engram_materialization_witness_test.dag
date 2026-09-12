@@ -31,6 +31,10 @@ import extdeps.safetensors.format {
   SafetensorsPopulationReading, PopulationScanned, PopulationPartiallyScanned, PopulationUnscanned,
   SafetensorsPopulationStanding, PopulationEstablished, PopulationIncomplete, PopulationRefused,
   safetensors_population_standing, safetensors_population_entries, safetensors_population_declared_bytes,
+  safetensors_population_members, safetensors_population_closure_obligations, safetensors_population_total,
+  SafetensorsIndexMember, safetensors_index_member,
+  SafetensorsShardedEntry, safetensors_sharded_entry, safetensors_sharded_entries,
+  MembershipClosure, MembershipClosedAgainstFullIndex, MembershipScopedToReadRows,
   safetensors_shard_file,
   SafetensorsShardAgreement, ShardPayloadMatchesPopulation, ShardPayloadDisagreesWithPopulation, ShardPayloadUnderivable,
   safetensors_shard_payload_agreement, safetensors_shard_payload, SafetensorsShardPayload,
@@ -64,7 +68,13 @@ import gunbc.fabric.engram_materialization {
   component_subject_declared_bytes,
   PhysicalEncoding, SafetensorsShardSet, ResidentParameterTensors, RepackedRowStore,
   MaterializedComponentArtifact, materialized_component_artifact,
-  FaithfulnessEvidence, ByteIdenticalToPublishedEncoding, StructurePreservingTransform, FaithfulnessUnestablished,
+  FaithfulnessEvidence, IdenticalToPublishedEncoding, StructurePreservingTransform, FaithfulnessUnestablished,
+  FaithfulnessRelation, faithfulness_relation,
+  PreservedProperty, PreservesTensorNames, PreservesDeclaredShapes, PreservesDtypes,
+  PreservesBlockScalePairing, PreservesElementValues,
+  ShardIdentity, shard_identity, EncodingIdentity, ShardSetIdentity, SingleObjectIdentity,
+  EncodingIdentityUnestablished, EncodedSize, EncodedBytes, EncodedSizeUnestablished,
+  engram_published_identity, engram_admitted_provider_ids,
   FaithfulComponentRealization, RealizationFaithful, RealizationUnfaithful, RealizationEvidenceMissing,
   realize_component,
   ComponentRealizationStanding, RealizationSettledFaithful, RealizationSettledUnfaithful, RealizationStandingOpen,
@@ -74,7 +84,8 @@ import gunbc.fabric.engram_materialization {
   MaterializationRoute, materialization_route, route_defects, route_key, route_hop_reaches_storage,
   RouteStructuralStanding, RouteWellFormed, RouteMalformed, route_structural_standing,
   RouteIntegrityStanding, IntegrityContentAddressedAt, IntegrityNotContentAddressed, IntegrityVerificationPointAbsent,
-  route_integrity_standing, route_integrity_holds,
+  route_integrity_standing, route_addressing_admits_verification,
+  RouteVerificationStanding, RouteArtifactVerifiedAtOrigin, RouteVerificationUnestablished,
   RouteSubjectKey, route_subject_key,
   RouteResidentMemoryStanding, ResidentMemoryObserved, ResidentMemoryBoundedAbove,
   ResidentMemoryLowerBoundOnly, ResidentMemoryUnestablished,
@@ -91,7 +102,8 @@ import gunbc.fabric.engram_materialization {
   RouteCandidate, route_candidate,
   ComponentRouteField, component_route_field, select_component_route,
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteDecided,
-  ComponentResidentShare, ComponentResidentBytes, ComponentResidentUnderivable, ComponentNotDecomposedHere,
+  ComponentResidentShare, ComponentResidentObserved, ComponentResidentBoundedAbove,
+  ComponentResidentUnderivable, ComponentNotDecomposedHere,
   component_resident_share,
   ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementExcluded, ComponentPlacementOpen,
   component_route_placement_standing,
@@ -105,6 +117,14 @@ import gunbc.fabric.engram_materialization {
   engram_route_field, engram_route_evidence_rows, engram_route_standing, engram_pool_relief,
   engram_route_evidence_snapshot,
   route_provider_serves_token_time, route_provider_is_fill_only,
+  route_receipt_fields_mismatches, route_verification_reading,
+  component_route_causes, component_route_has_defect, component_route_placement_standing,
+  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementNotThisSubject,
+  ComponentPlacementExcluded, ComponentPlacementOpen,
+  PlacementRemedy, placement_remedy_is_defect,
+  ComponentRouteSubjectHasNoAuthority,
+  component_subject_obligations, ComponentSubjectEstablished,
+  engram_route_evidence_for, engram_resident_encoding,
   component_route_axes, component_route_constraints,
   ax_route_faithful_realization, ax_route_well_formed, ax_route_integrity,
   ax_route_nonresident_mechanism, ax_route_runtime_observed, ax_route_resident_bytes,
@@ -259,8 +279,8 @@ test fn every_engram_entry_span_agrees_with_its_shape_and_dtype() -> Bool {
 // other tensor, so the file size minus the 8-byte prefix and the JSON header is exactly the six
 // spans -- another independent join between the tree listing and the headers.
 test fn each_engram_shard_file_is_its_header_plus_exactly_that_layers_payload() -> Bool {
-  let l1 = safetensors_population_standing(reading: PopulationScanned { entries: deepseek_v4_1_flash_engram_entries_layer_1 })
-  let l14 = safetensors_population_standing(reading: PopulationScanned { entries: deepseek_v4_1_flash_engram_entries_layer_14 })
+  let l1 = shard_population(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1)
+  let l14 = shard_population(shard: deepseek_v4_1_flash_engram_shard_14_path, entries: deepseek_v4_1_flash_engram_entries_layer_14)
   match safetensors_population_declared_bytes(s: l1) {
     Absent => false
     Present { value: b1 } => match safetensors_population_declared_bytes(s: l14) {
@@ -374,7 +394,10 @@ fn fixture_entry(name: String, rows: Nat, cols: Nat, begin_offset: Nat) -> Safet
 }
 
 fn population_is_refused(entries: List<SafetensorsEntry>) -> Bool {
-  match safetensors_population_standing(reading: PopulationScanned { entries: entries }) {
+  let sharded = safetensors_sharded_entries(shard: "fixture.safetensors" as NonEmptyStr, entries: entries)
+  match fixture_population(
+    members: map(entries, e => safetensors_index_member(name: e.name, shard: "fixture.safetensors" as NonEmptyStr)),
+    entries: sharded) {
     PopulationRefused { defects: ds } => count(ds) > 0
     PopulationEstablished { population: _ } => false
     PopulationIncomplete { obligation: _, partial_entry_count: _ } => false
@@ -418,19 +441,19 @@ test fn a_zero_length_dimension_refuses() -> Bool {
 // the incomplete arm, which has no path to `PopulationEstablished`, so neither can be consumed as
 // the component. The partial arm keeps the row count it did read.
 test fn a_partial_or_failed_scan_stays_incomplete_rather_than_becoming_empty() -> Bool {
-  match safetensors_population_standing(reading: PopulationUnscanned { obligation: "the shard headers were never read" as NonEmptyStr }) {
+  match safetensors_population_standing(members: [], closure: fixture_closure(), reading: PopulationUnscanned { obligation: "the shard headers were never read" as NonEmptyStr }) {
     PopulationIncomplete { obligation: _, partial_entry_count: k } => k == 0
     PopulationEstablished { population: _ } => false
     PopulationRefused { defects: _ } => false
-  } && match safetensors_population_standing(reading: PopulationPartiallyScanned {
-    entries: deepseek_v4_1_flash_engram_entries_layer_1,
+  } && match safetensors_population_standing(members: deepseek_v4_1_flash_engram_index_members, closure: fixture_closure(), reading: PopulationPartiallyScanned {
+    entries: safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1),
     unread: "shard 48's header was not reached" as NonEmptyStr,
   }) {
     PopulationIncomplete { obligation: _, partial_entry_count: k } => k == 6
     PopulationEstablished { population: _ } => false
     PopulationRefused { defects: _ } => false
-  } && match safetensors_population_declared_bytes(s: safetensors_population_standing(reading: PopulationPartiallyScanned {
-    entries: deepseek_v4_1_flash_engram_entries_layer_1,
+  } && match safetensors_population_declared_bytes(s: safetensors_population_standing(members: deepseek_v4_1_flash_engram_index_members, closure: fixture_closure(), reading: PopulationPartiallyScanned {
+    entries: safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1),
     unread: "shard 48's header was not reached" as NonEmptyStr,
   })) {
     Absent => true
@@ -446,9 +469,9 @@ fn fixture_subject(reading: SafetensorsPopulationReading) -> ComponentSubject {
     identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_subject"),
     label: "fixture component" as NonEmptyStr,
     upstream_revision: "fixture-revision" as NonEmptyStr,
-    population: safetensors_population_standing(reading: reading),
+    population: safetensors_population_standing(members: deepseek_v4_1_flash_engram_index_members, closure: fixture_closure(), reading: reading),
     published_encoding: SafetensorsShardSet { shard_paths: ["fixture.safetensors" as NonEmptyStr] },
-    published_shard_digests: [fixture_digest_a()],
+    published_identity: ShardSetIdentity { shards: [shard_identity(path: "fixture.safetensors" as NonEmptyStr, sha256: fixture_digest_a())] },
     population_standing: deepseek_v4_1_flash_engram_population_standing,
   )
 }
@@ -485,9 +508,9 @@ fn fixture_relation() -> DeclarationRef {
 fn repacked_artifact() -> MaterializedComponentArtifact {
   materialized_component_artifact(
     subject: engram_component_identity,
-    encoding: RepackedRowStore { layout: "gather-ordered row store" as NonEmptyStr, record_stride_established: false },
-    digest: as_content_hash_cryptographic(digest: fixture_digest_a()),
-    encoded_bytes: byte_size(count: 1),
+    encoding: repacked_encoding(),
+    identity: SingleObjectIdentity { digest: as_content_hash_cryptographic(digest: fixture_digest_a()) },
+    encoded_size: EncodedBytes { bytes: byte_size(count: 1) },
   )
 }
 
@@ -497,35 +520,47 @@ test fn a_repacked_encoding_may_not_claim_the_published_byte_identity() -> Bool 
     artifact: repacked_artifact(),
     evidence: engram_published_faithfulness) {
     RealizationUnfaithful { subject: _, defects: ds } => count(ds) > 0
-    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => false
+    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => false
     RealizationEvidenceMissing { subject: _, obligation: _ } => false
   } && match realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
     evidence: StructurePreservingTransform {
-      relation: fixture_relation(),
-      preserved: ["tensor names and shapes" as NonEmptyStr],
+      relation: faithfulness_relation(
+        relation: fixture_relation(), subject: engram_component_identity,
+        source_encoding: engram_published_encoding, target_encoding: repacked_encoding(),
+        preserved: [PreservesTensorNames, PreservesDeclaredShapes, PreservesElementValues]),
     }) {
-    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => true
+    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => true
     RealizationUnfaithful { subject: _, defects: _ } => false
     RealizationEvidenceMissing { subject: _, obligation: _ } => false
   }
 }
 
-// A RELATION THAT PRESERVES NOTHING STATED RELATES NOTHING, so an empty preserved list is an
-// evidence gap rather than a pass.
-test fn a_faithfulness_relation_preserving_nothing_is_not_evidence() -> Bool {
+// A RELATION THAT PRESERVES TOO LITTLE RELATES SOMETHING ELSE. An empty preserved list used to be
+// accepted for the published encoding and any non-empty list of prose for anything else; the required
+// minimum is now declared once and the shortfall is named.
+test fn a_faithfulness_relation_preserving_nothing_is_refused() -> Bool {
   match realize_component(
     standing: engram_component_standing,
     artifact: repacked_artifact(),
-    evidence: StructurePreservingTransform { relation: fixture_relation(), preserved: [] }) {
-    RealizationEvidenceMissing { subject: _, obligation: _ } => true
-    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => false
-    RealizationUnfaithful { subject: _, defects: _ } => false
+    evidence: StructurePreservingTransform {
+      relation: faithfulness_relation(
+        relation: fixture_relation(), subject: engram_component_identity,
+        source_encoding: engram_published_encoding, target_encoding: repacked_encoding(),
+        preserved: []),
+    }) {
+    RealizationUnfaithful { subject: _, defects: ds } => count(ds) == 3
+    RealizationFaithful { subject: _, artifact_identity: _, evidence: _ } => false
+    RealizationEvidenceMissing { subject: _, obligation: _ } => false
   }
 }
 
-test fn the_published_encoding_is_faithful_and_a_wrong_digest_is_not() -> Bool {
+// THE TWO ENCODINGS THIS SUBJECT ACTUALLY DECLARES, AND THEY LAND DIFFERENTLY. The published shard set
+// has an established identity that matches, so it is faithful. The resident parameter representation
+// has none, so it DEFERS -- and that asymmetry is the whole point of keeping identity, encoding and
+// faithfulness apart.
+test fn the_published_encoding_is_faithful_and_the_resident_one_defers() -> Bool {
   match component_realization_standing(r: realize_component(
     standing: engram_component_standing,
     artifact: engram_published_artifact,
@@ -537,16 +572,9 @@ test fn the_published_encoding_is_faithful_and_a_wrong_digest_is_not() -> Bool {
     standing: engram_component_standing,
     artifact: engram_resident_artifact,
     evidence: engram_resident_faithfulness)) {
-    RealizationSettledFaithful => true
-    RealizationSettledUnfaithful => false
-    RealizationStandingOpen => false
-  } && match component_realization_standing(r: realize_component(
-    standing: engram_component_standing,
-    artifact: engram_published_artifact,
-    evidence: ByteIdenticalToPublishedEncoding { shard_digests: [fixture_digest_a()] })) {
-    RealizationSettledUnfaithful => true
+    RealizationStandingOpen => true
     RealizationSettledFaithful => false
-    RealizationStandingOpen => false
+    RealizationSettledUnfaithful => false
   }
 }
 
@@ -554,7 +582,7 @@ test fn the_published_encoding_is_faithful_and_a_wrong_digest_is_not() -> Bool {
 
 test fn the_four_declared_routes_are_well_formed() -> Bool {
   count(engram_routes) == 4
-    && all(engram_routes, r => match route_structural_standing(r: r, origin_provider_id: engram_origin_provider_id) {
+    && all(engram_routes, r => match route_structural_standing(r: r, origin_provider_id: engram_origin_provider_id, admitted_provider_ids: engram_admitted_provider_ids) {
       RouteWellFormed => true
       RouteMalformed { defects: _ } => false
     })
@@ -567,7 +595,8 @@ fn malformed(hops: List<RouteHop>, verify: RouteRole) -> Bool {
       label: "fixture route" as NonEmptyStr,
       hops: hops,
       digest_verified_at: verify),
-    origin_provider_id: engram_origin_provider_id) {
+    origin_provider_id: engram_origin_provider_id,
+    admitted_provider_ids: engram_admitted_provider_ids) {
     RouteMalformed { defects: ds } => count(ds) > 0
     RouteWellFormed => false
   }
@@ -641,7 +670,7 @@ test fn cas_tier_alone_does_not_establish_content_addressed_integrity() -> Bool 
 // the content-keyed origin and passes; a route that named the NFS token-time hop as its only
 // verification point does not. That red is what keeps the integrity axis from being a decoration.
 test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addressed() -> Bool {
-  all(engram_routes, r => route_integrity_holds(s: route_integrity_standing(r: r)))
+  all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r)))
     && match route_integrity_standing(r: materialization_route(
       identity: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "fixture_nfs_verified_route"),
       label: "fixture: verified only where the runtime reads over NFS" as NonEmptyStr,
@@ -783,6 +812,7 @@ fn fixture_evidence(
     access: PhysicalAccessUnobserved { obligation: "fixture: unmeasured" as NonEmptyStr },
     mechanism: mechanism,
     runtime: runtime,
+    verification: RouteVerificationUnestablished { obligation: "fixture: unverified" as NonEmptyStr },
   )
 }
 
@@ -791,6 +821,7 @@ fn entry_for(route: MaterializationRoute, rows: List<RouteEvidence>, ctx: RouteS
     c: route_candidate(route: route, artifact: engram_published_artifact, faithfulness: engram_published_faithfulness),
     standing: engram_component_standing,
     origin_provider_id: engram_origin_provider_id,
+    admitted_provider_ids: engram_admitted_provider_ids,
     rows: rows,
     wanted: ctx,
   )
@@ -885,12 +916,14 @@ test fn the_live_engram_route_selection_needs_evidence_rather_than_picking_a_win
 test fn an_undecided_route_contributes_an_obligation_and_never_zero_bytes() -> Bool {
   match component_resident_share(s: engram_route_standing(component: engram_component_identity, context: context_a())) {
     ComponentResidentUnderivable { because: _ } => true
-    ComponentResidentBytes { bytes: _, route: _ } => false
+    ComponentResidentObserved { bytes: _, receipt: _, route: _ } => false
+    ComponentResidentBoundedAbove { upper_bound: _, authority: _, route: _ } => false
     ComponentNotDecomposedHere => false
   } && match engram_route_standing(
     component: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "some_other_component"),
     context: context_a()) {
     ComponentRouteNotThisSubject => true
+    ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => false
     ComponentRouteDecided { component: _, context: _, result: _, routes: _, evidence: _ } => false
   }
 }
@@ -904,10 +937,12 @@ test fn the_route_decision_is_parameterized_by_the_consumer_context() -> Bool {
     ComponentRouteDecided { component: _, context: ca, result: _, routes: rs, evidence: _ } =>
       count(rs) == 4 && ca.context_digest == "tp8-x1-ctx300k"
     ComponentRouteNotThisSubject => false
+    ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => false
   } && match b {
     ComponentRouteDecided { component: _, context: cb, result: _, routes: _, evidence: _ } =>
       cb.context_digest == "tp4-x2-ctx128k"
     ComponentRouteNotThisSubject => false
+    ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => false
   }
 }
 
@@ -995,15 +1030,17 @@ test fn every_candidate_violating_a_hard_constraint_is_infeasible_not_refused() 
 // unrelated reasons. Three states, three answers, and only the settled one scores.
 test fn an_open_route_question_is_absent_rather_than_scoring_not_yet_excluded() -> Bool {
   match component_route_placement_standing(s: engram_route_standing(component: engram_component_identity, context: context_a())) {
-    ComponentPlacementOpen => true
-    ComponentPlacementSettled => false
-    ComponentPlacementExcluded => false
+    ComponentPlacementOpen { remedy: _ } => true
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+    ComponentPlacementExcluded { causes: _ } => false
   } && match component_route_placement_standing(s: engram_route_standing(
     component: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "unrelated_component"),
     context: context_a())) {
-    ComponentPlacementSettled => true
-    ComponentPlacementOpen => false
-    ComponentPlacementExcluded => false
+    ComponentPlacementNotThisSubject => true
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementOpen { remedy: _ } => false
+    ComponentPlacementExcluded { causes: _ } => false
   }
 }
 
@@ -1021,12 +1058,15 @@ fn half_read_component_standing() -> ComponentSubjectStanding {
     identity: engram_component_identity,
     label: "fixture: the Engram population with shard 48 unread" as NonEmptyStr,
     upstream_revision: "fixture-revision" as NonEmptyStr,
-    population: safetensors_population_standing(reading: PopulationPartiallyScanned {
-      entries: deepseek_v4_1_flash_engram_entries_layer_1,
-      unread: "shard 48's header was not reached" as NonEmptyStr,
-    }),
+    population: safetensors_population_standing(
+      members: deepseek_v4_1_flash_engram_index_members,
+      closure: fixture_closure(),
+      reading: PopulationPartiallyScanned {
+        entries: safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1),
+        unread: "shard 48's header was not reached" as NonEmptyStr,
+      }),
     published_encoding: engram_published_encoding,
-    published_shard_digests: [fixture_digest_a()],
+    published_identity: ShardSetIdentity { shards: [shard_identity(path: "fixture.safetensors" as NonEmptyStr, sha256: fixture_digest_a())] },
     population_standing: deepseek_v4_1_flash_engram_population_standing,
   ))
 }
@@ -1078,3 +1118,275 @@ test fn a_decided_unfaithful_encoding_still_reads_zero_and_excludes() -> Bool {
     Absent => false
   }
 }
+
+// ── FIXTURE HELPERS FOR THE RECONCILED POPULATION ──────────────────────────────────────────────
+fn fixture_closure() -> MembershipClosure {
+  MembershipScopedToReadRows { read_rows: 12, unenumerated: "fixture: the index is not enumerated" as NonEmptyStr }
+}
+
+fn shard_population(shard: NonEmptyStr, entries: List<SafetensorsEntry>) -> SafetensorsPopulationStanding {
+  safetensors_population_standing(
+    members: map(entries, e => safetensors_index_member(name: e.name, shard: shard)),
+    closure: fixture_closure(),
+    reading: PopulationScanned { entries: safetensors_sharded_entries(shard: shard, entries: entries) })
+}
+
+fn fixture_population(members: List<SafetensorsIndexMember>, entries: List<SafetensorsShardedEntry>) -> SafetensorsPopulationStanding {
+  safetensors_population_standing(members: members, closure: fixture_closure(), reading: PopulationScanned { entries: entries })
+}
+
+// ── FINDING 2's COUNTEREXAMPLE, IN BOTH DIRECTIONS ─────────────────────────────────────────────
+//
+// Renaming one tensor to another unique `.engram.` name of the same dtype, shape and span preserves
+// the count AND the byte total, so the count-and-sum check this replaced passed it. Reconciliation
+// reports it TWICE -- the renamed entry is absent from the index, and the index member it displaced is
+// absent from the headers -- and the two-directional report is what makes it a real strengthening
+// rather than a rephrasing.
+data renamed_engram_entries: List<SafetensorsShardedEntry> = concat(
+  safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1),
+  safetensors_sharded_entries(
+    shard: deepseek_v4_1_flash_engram_shard_14_path,
+    entries: map(deepseek_v4_1_flash_engram_entries_layer_14, e =>
+      if (e.name as String) == "layers.14.engram.q_weight" {
+        safetensors_entry(name: "layers.14.engram.q_weight_renamed" as NonEmptyStr, dtype: e.dtype, shape: e.shape, begin_offset: e.begin_offset, end_offset: e.end_offset)
+      } else { e })))
+
+test fn a_renamed_tensor_is_reported_as_both_extra_and_missing() -> Bool {
+  let before = safetensors_population_total(entries: deepseek_v4_1_flash_engram_sharded_entries)
+  let after = safetensors_population_total(entries: renamed_engram_entries)
+  byte_size_count(b: before) == byte_size_count(b: after)
+    && count(renamed_engram_entries) == count(deepseek_v4_1_flash_engram_sharded_entries)
+    && match fixture_population(members: deepseek_v4_1_flash_engram_index_members, entries: renamed_engram_entries) {
+      PopulationRefused { defects: ds } =>
+        any(ds, d => string_contains(s: d as String, pattern: "which the index at this revision does not name"))
+          && any(ds, d => string_contains(s: d as String, pattern: "no header entry was read for it"))
+      PopulationEstablished { population: _ } => false
+      PopulationIncomplete { obligation: _, partial_entry_count: _ } => false
+    }
+}
+
+// AND A MISASSIGNED MEMBER IS ITS OWN STATE. Same names, same spans, one entry read from the other
+// shard: count and total again unchanged, and the two sources now disagree about where it lives.
+test fn a_tensor_in_the_wrong_shard_is_refused_as_misassigned() -> Bool {
+  match fixture_population(
+    members: deepseek_v4_1_flash_engram_index_members,
+    entries: concat(
+      safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_1),
+      safetensors_sharded_entries(shard: deepseek_v4_1_flash_engram_shard_1_path, entries: deepseek_v4_1_flash_engram_entries_layer_14))) {
+    PopulationRefused { defects: ds } =>
+      any(ds, d => string_contains(s: d as String, pattern: "the two sources disagree about where it lives"))
+    PopulationEstablished { population: _ } => false
+    PopulationIncomplete { obligation: _, partial_entry_count: _ } => false
+  }
+}
+
+// THE LIVE POPULATION RECONCILES, AND CARRIES ITS RESIDUAL. The scoped closure is not a silent
+// weakening: the obligation is readable, and the established subject surfaces it.
+test fn the_live_population_reconciles_and_carries_its_scoped_residual() -> Bool {
+  count(safetensors_population_members(s: deepseek_v4_1_flash_engram_population)) == 12
+    && count(safetensors_population_closure_obligations(s: deepseek_v4_1_flash_engram_population)) == 1
+    && count(component_subject_obligations(s: engram_component_standing)) == 1
+    && match engram_component_standing {
+      ComponentSubjectEstablished { subject: _, declared_bytes: _, tensor_count: k, residual: rs } =>
+        k == 12 && count(rs) == 1
+      ComponentSubjectRefused { identity: _, defects: _ } => false
+      ComponentSubjectPopulationIncomplete { identity: _, obligation: _ } => false
+    }
+}
+
+// ── FINDING 1: THE DIGEST IS COMPARED, NOT COPIED ──────────────────────────────────────────────
+//
+// The published artifact with ANOTHER valid identity must not be faithful. A first cut compared the
+// evidence's digest list against the subject and copied the artifact's own digest into the faithful arm
+// without evaluating it, so changing the artifact identity alone left the verdict unchanged.
+fn artifact_with_identity(i: EncodingIdentity) -> MaterializedComponentArtifact {
+  materialized_component_artifact(
+    subject: engram_component_identity,
+    encoding: engram_published_encoding,
+    identity: i,
+    encoded_size: EncodedBytes { bytes: byte_size(count: 1) })
+}
+
+test fn changing_only_the_artifact_identity_changes_the_faithfulness_verdict() -> Bool {
+  match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: artifact_with_identity(i: engram_published_identity),
+    evidence: IdenticalToPublishedEncoding)) {
+    RealizationSettledFaithful => true
+    RealizationSettledUnfaithful => false
+    RealizationStandingOpen => false
+  } && match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: artifact_with_identity(i: ShardSetIdentity {
+      shards: [shard_identity(path: "model-00047-of-00048.safetensors" as NonEmptyStr, sha256: fixture_digest_a())],
+    }),
+    evidence: IdenticalToPublishedEncoding)) {
+    RealizationSettledUnfaithful => true
+    RealizationSettledFaithful => false
+    RealizationStandingOpen => false
+  } && match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: artifact_with_identity(i: EncodingIdentityUnestablished { obligation: "fixture: nobody digested it" as NonEmptyStr }),
+    evidence: IdenticalToPublishedEncoding)) {
+    RealizationStandingOpen => true
+    RealizationSettledFaithful => false
+    RealizationSettledUnfaithful => false
+  }
+}
+
+// A RELATION MUST NAME BOTH ENDS AND PRESERVE THE REQUIRED PROPERTIES. Each clause is its own red,
+// because a relation that is merely well formed used to be accepted.
+test fn a_relation_about_another_subject_or_encoding_or_too_little_is_refused() -> Bool {
+  let good_target = engram_resident_encoding
+  match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: repacked_artifact(),
+    evidence: StructurePreservingTransform {
+      relation: faithfulness_relation(
+        relation: fixture_relation(), subject: fixture_relation(),
+        source_encoding: engram_published_encoding, target_encoding: repacked_encoding(),
+        preserved: [PreservesTensorNames, PreservesDeclaredShapes, PreservesElementValues]),
+    })) {
+    RealizationSettledUnfaithful => true
+    RealizationSettledFaithful => false
+    RealizationStandingOpen => false
+  } && match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: repacked_artifact(),
+    evidence: StructurePreservingTransform {
+      relation: faithfulness_relation(
+        relation: fixture_relation(), subject: engram_component_identity,
+        source_encoding: engram_published_encoding, target_encoding: good_target,
+        preserved: [PreservesTensorNames, PreservesDeclaredShapes, PreservesElementValues]),
+    })) {
+    RealizationSettledUnfaithful => true
+    RealizationSettledFaithful => false
+    RealizationStandingOpen => false
+  } && match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: repacked_artifact(),
+    evidence: StructurePreservingTransform {
+      relation: faithfulness_relation(
+        relation: fixture_relation(), subject: engram_component_identity,
+        source_encoding: engram_published_encoding, target_encoding: repacked_encoding(),
+        preserved: [PreservesTensorNames]),
+    })) {
+    RealizationSettledUnfaithful => true
+    RealizationSettledFaithful => false
+    RealizationStandingOpen => false
+  }
+}
+
+// THE RESIDENT ROUTE IS OPEN AT THIS HEAD, DELIBERATELY. Its encoding has no established identity, so
+// faithfulness defers -- which is why no route is selectable and the result is an evidence need rather
+// than an impossibility.
+test fn the_resident_encoding_has_no_established_identity_so_route_a_defers() -> Bool {
+  match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: engram_resident_artifact,
+    evidence: engram_resident_faithfulness)) {
+    RealizationStandingOpen => true
+    RealizationSettledFaithful => false
+    RealizationSettledUnfaithful => false
+  } && match faithfulness_reading(r: realize_component(
+    standing: engram_component_standing,
+    artifact: engram_resident_artifact,
+    evidence: engram_resident_faithfulness)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── FINDING 7: A SERVING PEER AS A FILL SOURCE IS REFUSED ──────────────────────────────────────
+//
+// The chain a first cut admitted unchallenged, because nothing examined the fill hops at all. Admission
+// is over the provider roster for EVERY hop now, so this refuses, and so would a peer in any position
+// added later.
+test fn a_peer_serving_host_as_a_fill_source_refuses() -> Bool {
+  malformed(hops: [
+    route_hop(provider: engram_origin_provider, role: DurableOrigin),
+    route_hop(provider: peer_host_provider(), role: FillSource),
+    route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
+  ], verify: DurableOrigin)
+    && malformed(hops: [
+      route_hop(provider: engram_origin_provider, role: DurableOrigin),
+      route_hop(provider: peer_host_provider(), role: RetainedWorkingSet),
+      route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
+    ], verify: DurableOrigin)
+    && count(engram_admitted_provider_ids) == 5
+    && !any(engram_admitted_provider_ids, id => id == "peer-serving-host")
+}
+
+// ── FINDING 7b: CONTENT-KEYED IS NOT VERIFIED ──────────────────────────────────────────────────
+//
+// Every declared route's verification point is addressed by content, so verification is POSSIBLE --
+// and no route has a digest observation, so the verification axis gaps rather than scoring. Reading
+// ContentKeyed as "verified" is exactly the inference this separation refuses.
+test fn addressing_capability_does_not_establish_verified_integrity() -> Bool {
+  all(engram_routes, r => route_addressing_admits_verification(s: route_integrity_standing(r: r)))
+    && all(engram_routes, r => match engram_route_evidence_for(r: r, context: context_a()).verification {
+      RouteVerificationUnestablished { obligation: _ } => true
+      RouteArtifactVerifiedAtOrigin { readback: _, subject: _, limits: _ } => false
+    })
+    && all(engram_routes, r => match route_verification_reading(v: engram_route_evidence_for(r: r, context: context_a()).verification) {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+// ── FINDING 9: A LAUNCH RECEIPT MUST BE ABOUT THIS ROUTE AND ITS TOKEN-TIME PROVIDER ───────────
+//
+// C and D share a serving context and differ in which provider serves token time. A receipt naming D's
+// token-time provider must not satisfy C's runtime axis, and a receipt filed under the right context but
+// about the wrong route must not either.
+test fn a_launch_receipt_for_another_route_or_provider_does_not_satisfy_this_one() -> Bool {
+  count(route_receipt_fields_mismatches(
+    receipt_route: engram_route_d_identity, receipt_subject: context_a(),
+    observed_token_time_provider_id: engram_host_nvme_provider_id,
+    route: engram_route_c_nfs_token_time, wanted: context_a())) > 0
+    && count(route_receipt_fields_mismatches(
+      receipt_route: engram_route_c_identity, receipt_subject: context_a(),
+      observed_token_time_provider_id: engram_host_nvme_provider_id,
+      route: engram_route_c_nfs_token_time, wanted: context_a())) > 0
+    && count(route_receipt_fields_mismatches(
+      receipt_route: engram_route_c_identity, receipt_subject: context_b(),
+      observed_token_time_provider_id: engram_nfs_provider_id,
+      route: engram_route_c_nfs_token_time, wanted: context_a())) > 0
+    && count(route_receipt_fields_mismatches(
+      receipt_route: engram_route_c_identity, receipt_subject: context_a(),
+      observed_token_time_provider_id: engram_nfs_provider_id,
+      route: engram_route_c_nfs_token_time, wanted: context_a())) == 0
+}
+
+// ── THE NO-AUTHORITY ARM: A PLACEMENT ASKED AND UNANSWERED IS NOT A SETTLED ONE ────────────────
+//
+// A component declared as placed by a route against a subject no authority covers used to read as
+// `NotThisSubject` and score as settled -- green with no evidence need, for a question nothing answered.
+// It is now open with a DEFECT remedy, and its resident share is an obligation rather than the
+// component's whole declared footprint.
+test fn a_routed_subject_no_authority_covers_is_open_and_defective() -> Bool {
+  let unknown = decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "unknown_component_subject")
+  let st = engram_route_standing(component: unknown, context: context_a())
+  match st {
+    ComponentRouteSubjectHasNoAuthority { component: c, context: _ } => declaration_ref_eq(a: c, b: unknown)
+    ComponentRouteNotThisSubject => false
+    ComponentRouteDecided { component: _, context: _, result: _, routes: _, evidence: _ } => false
+  } && match component_route_placement_standing(s: st) {
+    ComponentPlacementOpen { remedy: r } => placement_remedy_is_defect(r: r)
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+    ComponentPlacementExcluded { causes: _ } => false
+  } && component_route_has_defect(s: st)
+    && count(component_route_causes(s: st)) > 0
+    && match component_resident_share(s: st) {
+      ComponentResidentUnderivable { because: _ } => true
+      ComponentResidentObserved { bytes: _, receipt: _, route: _ } => false
+      ComponentResidentBoundedAbove { upper_bound: _, authority: _, route: _ } => false
+      ComponentNotDecomposedHere => false
+    }
+}
+
+fn repacked_encoding() -> PhysicalEncoding {
+  RepackedRowStore { layout: "gather-ordered row store" as NonEmptyStr, record_stride_established: false }
+}
+

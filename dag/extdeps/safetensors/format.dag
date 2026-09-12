@@ -209,14 +209,193 @@ fn safetensors_duplicate_defects(entries: List<SafetensorsEntry>) -> List<Safete
 // an entry list that has silently lost the information that the scan did not finish. A partial
 // read keeps BOTH the rows it got and the obligation for the rest; it can never be consumed as a
 // complete population, because the completeness fold below has no arm that accepts it.
+// ── THE INDEX AND THE HEADERS ARE TWO SOURCES, AND A POPULATION IS THE JOIN OF THEM ────────────
+//
+// A checkpoint's `model.safetensors.index.json` maps every tensor NAME to the shard that holds it.
+// A shard's own header declares each tensor's dtype, shape and byte span but knows nothing about
+// which shard it is in. So neither source alone identifies a component's population:
+//
+//   the index says WHICH tensors exist and WHERE they live
+//   the header says WHAT each tensor is and WHICH BYTES it occupies
+//
+// A first cut checked only the header side -- non-emptiness, per-entry shape/span consistency, and
+// duplicate names -- and called that established. It was not. Any internally consistent list of
+// entries passed, so RENAMING one tensor to another unique name of the same dtype, shape and span
+// preserved both the count and the byte total and nothing caught it. Equal totals establish
+// arithmetic, never membership: they cannot tell you that a population is THE population at a
+// revision rather than some other set that happens to add up.
+//
+// So membership is a RECONCILIATION against index rows read at the same revision, and its refusal
+// keeps the five ways it can fail apart, because they have different remedies: a MISSING member
+// means the header scan is incomplete, an EXTRA entry means the header holds something the index
+// does not name, a MISASSIGNED one means the two sources disagree about where it lives, a
+// DUPLICATED one means the population is ambiguous, and an OVERLAPPING span means two tensors claim
+// the same bytes.
+type SafetensorsIndexMember sole_constructor {
+  name: NonEmptyStr
+  shard: NonEmptyStr
+}
+
+fn safetensors_index_member(name: NonEmptyStr, shard: NonEmptyStr) -> SafetensorsIndexMember {
+  SafetensorsIndexMember { name: name, shard: shard }
+}
+
+// AN ENTRY KEEPS ITS SHARD THROUGH EVERY COMBINATION. The first cut concatenated two per-shard
+// lists into one flat population, at which point per-shard placement, non-overlap and coverage were
+// no longer decidable from the value -- offsets are shard-relative, so two entries from different
+// shards legitimately share a span and the flat list cannot tell that from a real collision.
+type SafetensorsShardedEntry sole_constructor {
+  shard: NonEmptyStr
+  entry: SafetensorsEntry
+}
+
+fn safetensors_sharded_entry(shard: NonEmptyStr, entry: SafetensorsEntry) -> SafetensorsShardedEntry {
+  SafetensorsShardedEntry { shard: shard, entry: entry }
+}
+
+fn safetensors_sharded_entries(shard: NonEmptyStr, entries: List<SafetensorsEntry>) -> List<SafetensorsShardedEntry> {
+  map(entries, e => safetensors_sharded_entry(shard: shard, entry: e))
+}
+
+type SafetensorsMembershipDefect
+  = MemberMissingFromHeaders { name: NonEmptyStr, shard: NonEmptyStr }
+  | EntryAbsentFromIndex { name: NonEmptyStr, shard: NonEmptyStr }
+  | MemberInWrongShard { name: NonEmptyStr, index_shard: NonEmptyStr, header_shard: NonEmptyStr }
+  | MemberDuplicatedInIndex { name: NonEmptyStr, occurrences: Nat }
+  | EntrySpansOverlapWithinShard { shard: NonEmptyStr, left: NonEmptyStr, right: NonEmptyStr }
+
+fn safetensors_membership_defect_display(d: SafetensorsMembershipDefect) -> NonEmptyStr {
+  match d {
+    MemberMissingFromHeaders { name: n, shard: sh } =>
+      join([
+        "the index at this revision names ", n as String, " in ", sh as String,
+        " and no header entry was read for it; a member the headers do not carry is an unfinished scan, not a smaller component",
+      ], "") as NonEmptyStr
+    EntryAbsentFromIndex { name: n, shard: sh } =>
+      join([
+        "a header entry in ", sh as String, " declares ", n as String,
+        ", which the index at this revision does not name; equal counts and equal byte totals do not establish membership",
+      ], "") as NonEmptyStr
+    MemberInWrongShard { name: n, index_shard: i, header_shard: h } =>
+      join([
+        "the index places ", n as String, " in ", i as String,
+        " and its header entry was read from ", h as String, "; the two sources disagree about where it lives",
+      ], "") as NonEmptyStr
+    MemberDuplicatedInIndex { name: n, occurrences: k } =>
+      join([
+        "the index rows name ", n as String, " ", to_string(k), " times; a member must be unique",
+      ], "") as NonEmptyStr
+    EntrySpansOverlapWithinShard { shard: sh, left: l, right: r } =>
+      join([
+        "within ", sh as String, ", ", l as String, " and ", r as String,
+        " claim overlapping byte spans, so they cannot both be what their header says",
+      ], "") as NonEmptyStr
+  }
+}
+
+fn safetensors_entry_for_name(entries: List<SafetensorsShardedEntry>, name: NonEmptyStr) -> SafetensorsShardedEntry? {
+  (filter(entries, se => (se.entry.name as String) == (name as String))).first()
+}
+
+fn safetensors_index_names_occurrences(members: List<SafetensorsIndexMember>, name: NonEmptyStr) -> Nat {
+  count(filter(members, m => (m.name as String) == (name as String)))
+}
+
+fn safetensors_spans_overlap(a: SafetensorsEntry, b: SafetensorsEntry) -> Bool {
+  a.begin_offset < b.end_offset && b.begin_offset < a.end_offset
+}
+
+fn safetensors_overlap_defects(entries: List<SafetensorsShardedEntry>) -> List<SafetensorsMembershipDefect> {
+  flat_map(entries, l =>
+    flat_map(
+      filter(entries, r =>
+        (r.shard as String) == (l.shard as String)
+          && (r.entry.name as String) != (l.entry.name as String)
+          && (l.entry.name as String) < (r.entry.name as String)
+          && safetensors_spans_overlap(a: l.entry, b: r.entry)),
+      r => [EntrySpansOverlapWithinShard { shard: l.shard, left: l.entry.name, right: r.entry.name }]))
+}
+
+fn safetensors_membership_defects(
+  members: List<SafetensorsIndexMember>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<SafetensorsMembershipDefect> {
+  concat(
+    concat(
+      flat_map(members, m =>
+        match safetensors_entry_for_name(entries: entries, name: m.name) {
+          Absent => [MemberMissingFromHeaders { name: m.name, shard: m.shard }]
+          Present { value: se } =>
+            if (se.shard as String) == (m.shard as String) {
+              []
+            } else {
+              [MemberInWrongShard { name: m.name, index_shard: m.shard, header_shard: se.shard }]
+            }
+        }),
+      flat_map(entries, se =>
+        if safetensors_index_names_occurrences(members: members, name: se.entry.name) == 0 {
+          [EntryAbsentFromIndex { name: se.entry.name, shard: se.shard }]
+        } else { [] })),
+    concat(
+      fold(members, init: [], f: (acc, m) =>
+        if safetensors_index_names_occurrences(members: members, name: m.name) > 1
+          && !any(acc, d => match d {
+            MemberDuplicatedInIndex { name: n, occurrences: _ } => (n as String) == (m.name as String)
+            MemberMissingFromHeaders { name: _, shard: _ } => false
+            EntryAbsentFromIndex { name: _, shard: _ } => false
+            MemberInWrongShard { name: _, index_shard: _, header_shard: _ } => false
+            EntrySpansOverlapWithinShard { shard: _, left: _, right: _ } => false
+          }) {
+          concat(acc, [MemberDuplicatedInIndex {
+            name: m.name,
+            occurrences: safetensors_index_names_occurrences(members: members, name: m.name),
+          }])
+        } else { acc }),
+      safetensors_overlap_defects(entries: entries)))
+}
+
+// ── HOW FAR THE RECONCILIATION CLOSES, AS A VALUE A FOLD CAN READ ─────────────────────────────
+//
+// Reconciling against index rows SOMEONE READ establishes that the header population is exactly the
+// set those rows name. It does not establish that those rows are every member at the revision --
+// that needs the full index population, which a caller may not have enumerated. The two are
+// different claims and the weaker one leaves a residual: a member the index holds but nobody listed
+// would be neither reconciled nor refused.
+//
+// THAT RESIDUAL IS CARRIED, NOT ANNOTATED. A scoped claim whose remainder lives in a comment is how
+// a partial population comes to be read as complete by the next author: prose cannot refuse, and
+// nothing downstream can tell the two closures apart. So the closure is a field on the established
+// population, its obligation is reachable by a fold, and discharging it is a value change rather
+// than an edit to a sentence.
+type MembershipClosure
+  = MembershipClosedAgainstFullIndex { index_population_count: Nat, how: NonEmptyStr }
+  | MembershipScopedToReadRows { read_rows: Nat, unenumerated: NonEmptyStr }
+
+fn membership_closure_obligations(c: MembershipClosure) -> List<NonEmptyStr> {
+  match c {
+    MembershipClosedAgainstFullIndex { index_population_count: _, how: _ } => []
+    MembershipScopedToReadRows { read_rows: k, unenumerated: u } =>
+      [join([
+        "membership is reconciled against ", to_string(k),
+        " index rows that were read, not against the revision's full index population: ", u as String,
+      ], "") as NonEmptyStr]
+  }
+}
+
+// A SCAN THAT FAILED IS NOT AN EMPTY POPULATION. The reading is the outer fact and the entries are
+// inside it, so there is no way to hand a fold an entry list that has silently lost the information
+// that the scan did not finish. A partial read keeps BOTH the rows it got and the obligation for the
+// rest; it can never be consumed as a complete population, because the fold below has no arm that
+// accepts it.
 type SafetensorsPopulationReading
-  = PopulationScanned { entries: List<SafetensorsEntry> }
-  | PopulationPartiallyScanned { entries: List<SafetensorsEntry>, unread: NonEmptyStr }
+  = PopulationScanned { entries: List<SafetensorsShardedEntry> }
+  | PopulationPartiallyScanned { entries: List<SafetensorsShardedEntry>, unread: NonEmptyStr }
   | PopulationUnscanned { obligation: NonEmptyStr }
 
 type SafetensorsPopulation sole_constructor {
-  entries: List<SafetensorsEntry>
+  members: List<SafetensorsShardedEntry>
   declared_bytes: ByteSize
+  closure: MembershipClosure
 }
 
 type SafetensorsPopulationStanding
@@ -224,46 +403,91 @@ type SafetensorsPopulationStanding
   | PopulationIncomplete { obligation: NonEmptyStr, partial_entry_count: Nat }
   | PopulationRefused { defects: List<NonEmptyStr> }
 
-fn safetensors_population_defects(entries: List<SafetensorsEntry>) -> List<NonEmptyStr> {
+fn safetensors_population_defects(
+  members: List<SafetensorsIndexMember>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
   concat(
-    if count(entries) > 0 {
-      []
-    } else {
-      ["a safetensors population with no entries is not a component; an empty list is the shape a failed scan takes when its failure was discarded" as NonEmptyStr]
-    },
-    map(
-      concat(flat_map(entries, e => safetensors_entry_defects(e: e)), safetensors_duplicate_defects(entries: entries)),
-      d => safetensors_entry_defect_display(d: d)))
+    concat(
+      if count(members) > 0 {
+        []
+      } else {
+        ["a population reconciled against no index rows is not reconciled; an empty expectation admits anything, which is the shape a dropped read takes" as NonEmptyStr]
+      },
+      if count(entries) > 0 {
+        []
+      } else {
+        ["a safetensors population with no entries is not a component; an empty list is the shape a failed scan takes when its failure was discarded" as NonEmptyStr]
+      }),
+    concat(
+      map(
+        concat(
+          flat_map(entries, se => safetensors_entry_defects(e: se.entry)),
+          safetensors_duplicate_defects(entries: map(entries, se => se.entry))),
+        d => safetensors_entry_defect_display(d: d)),
+      map(
+        safetensors_membership_defects(members: members, entries: entries),
+        d => safetensors_membership_defect_display(d: d))))
 }
 
-fn safetensors_population_total(entries: List<SafetensorsEntry>) -> ByteSize {
-  byte_size(count: fold(entries, init: 0, f: (acc, e) => acc + safetensors_entry_span(e: e)))
+fn safetensors_population_total(entries: List<SafetensorsShardedEntry>) -> ByteSize {
+  byte_size(count: fold(entries, init: 0, f: (acc, se) => acc + safetensors_entry_span(e: se.entry)))
 }
 
-// THE ONLY PRODUCER OF AN ESTABLISHED POPULATION, and its total is DERIVED from the entries it
-// admitted rather than accepted beside them. A caller cannot supply a size summary here.
-fn safetensors_population_standing(reading: SafetensorsPopulationReading) -> SafetensorsPopulationStanding {
+fn safetensors_shard_names(entries: List<SafetensorsShardedEntry>) -> List<NonEmptyStr> {
+  fold(entries, init: [], f: (acc, se) =>
+    if any(acc, n => (n as String) == (se.shard as String)) { acc } else { concat(acc, [se.shard]) })
+}
+
+fn safetensors_population_bytes_in_shard(entries: List<SafetensorsShardedEntry>, shard: NonEmptyStr) -> ByteSize {
+  safetensors_population_total(entries: filter(entries, se => (se.shard as String) == (shard as String)))
+}
+
+// THE ONLY PRODUCER OF AN ESTABLISHED POPULATION. Membership is reconciled against the index rows
+// read at the same revision, and the total is DERIVED from the entries that reconciliation admitted
+// -- there is no parameter here for a size summary, so a caller cannot supply one.
+fn safetensors_population_standing(
+  members: List<SafetensorsIndexMember>,
+  closure: MembershipClosure,
+  reading: SafetensorsPopulationReading,
+) -> SafetensorsPopulationStanding {
   match reading {
     PopulationUnscanned { obligation: o } => PopulationIncomplete { obligation: o, partial_entry_count: 0 }
     PopulationPartiallyScanned { entries: es, unread: u } =>
       PopulationIncomplete { obligation: u, partial_entry_count: count(es) }
     PopulationScanned { entries: es } =>
-      if count(safetensors_population_defects(entries: es)) == 0 {
+      if count(safetensors_population_defects(members: members, entries: es)) == 0 {
         PopulationEstablished {
           population: SafetensorsPopulation {
-            entries: es,
+            members: es,
             declared_bytes: safetensors_population_total(entries: es),
+            closure: closure,
           },
         }
       } else {
-        PopulationRefused { defects: safetensors_population_defects(entries: es) }
+        PopulationRefused { defects: safetensors_population_defects(members: members, entries: es) }
       }
   }
 }
 
-fn safetensors_population_entries(s: SafetensorsPopulationStanding) -> List<SafetensorsEntry> {
+fn safetensors_population_members(s: SafetensorsPopulationStanding) -> List<SafetensorsShardedEntry> {
   match s {
-    PopulationEstablished { population: p } => p.entries
+    PopulationEstablished { population: p } => p.members
+    PopulationIncomplete { obligation: _, partial_entry_count: _ } => []
+    PopulationRefused { defects: _ } => []
+  }
+}
+
+fn safetensors_population_entries(s: SafetensorsPopulationStanding) -> List<SafetensorsEntry> {
+  map(safetensors_population_members(s: s), se => se.entry)
+}
+
+// THE RESIDUAL TRAVELS WITH THE POPULATION. A consumer that establishes a subject over this reads
+// the obligation and carries it onto its own evidence axis, so an unenumerated index shows up as an
+// open question in the decision rather than as a sentence in this file.
+fn safetensors_population_closure_obligations(s: SafetensorsPopulationStanding) -> List<NonEmptyStr> {
+  match s {
+    PopulationEstablished { population: p } => membership_closure_obligations(c: p.closure)
     PopulationIncomplete { obligation: _, partial_entry_count: _ } => []
     PopulationRefused { defects: _ } => []
   }

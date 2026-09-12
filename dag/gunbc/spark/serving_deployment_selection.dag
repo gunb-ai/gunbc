@@ -26,7 +26,7 @@ import std.decision {
   PhysicalModelEstablished, CausalModelEstablished, VendorDocumentedCoupling,
   SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
   RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
-  select_realization, selection_evidence_need_cause,
+  select_realization,
 }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -52,13 +52,17 @@ import gunbc.spark.runtime_architecture_registry_reading {
 }
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
 import gunbc.fabric.engram_materialization {
-  ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteDecided,
-  ComponentResidentShare, ComponentResidentBytes, ComponentResidentUnderivable, ComponentNotDecomposedHere,
+  ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority, ComponentRouteDecided,
+  ComponentResidentShare, ComponentResidentObserved, ComponentResidentBoundedAbove,
+  ComponentResidentUnderivable, ComponentNotDecomposedHere,
   RouteSubjectKey, route_subject_key,
-  component_resident_share, component_route_needs,
-  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementExcluded, ComponentPlacementOpen,
+  component_resident_share, component_route_causes, component_route_has_defect,
+  component_route_standing_component, component_route_standing_context,
+  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementNotThisSubject,
+  ComponentPlacementExcluded, ComponentPlacementOpen,
   component_route_placement_standing,
-  component_route_defects, component_route_infeasibility_causes,
+  PlacementRemedy, PlacementNeedsRouteEvidence, PlacementNeedsPolicy,
+  PlacementNeedsCandidateFieldRepair, PlacementSelectionDefective, PlacementSubjectHasNoRouteAuthority,
   engram_route_standing, engram_component_identity,
   engram_pool_relief, engram_route_a_resident,
   PoolReliefStanding, NoPoolReliefEveryHopInMemoryPool, PoolReliefBoundedByWorkingSet, PoolReliefNeedsWorkingSetEvidence,
@@ -260,6 +264,11 @@ fn v4_1_component_source(part: String) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
+// THE ENGRAM COMPONENT'S BYTES ARE THE DERIVED SUM OF THE TWELVE RECONCILED TENSORS, not the
+// partition summary. A first cut read the summary while claiming the population derived it, so the
+// derivation was a cross-check beside the figure rather than its producer. When the population is not
+// established there is no byte count to state, which is why that arm is unread rather than zero.
+//
 // THE V4.1 DECOMPOSITION, AND IT SUMS TO THE INDEX TOTAL BY CONSTRUCTION OF THE UPSTREAM PARTITION.
 // The four parts are the shard headers' name partition at the pin, so their sum IS
 // `deepseek_v4_1_flash_safetensors_index_total_size` -- which is the same number the whole-artifact
@@ -280,9 +289,14 @@ data v4_1_artifact_components: List<ArtifactComponent> = [
   artifact_component(
     identity: v4_1_component_id(name: "engram"),
     label: "V4.1 Engram tables, layers 1 and 14" as NonEmptyStr,
-    footprint: FootprintReportedExternally {
-      bytes: deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes,
-      source: v4_1_component_source(part: "the twelve `.engram.` tensors, whose spans are carried one by one in deepseek_v4_1_flash_engram_population"),
+    footprint: match deepseek_v4_1_flash_engram_derived_bytes() {
+      Present { value: b } => FootprintReportedExternally {
+        bytes: b,
+        source: v4_1_component_source(part: "the sum of the twelve reconciled `.engram.` tensor spans in deepseek_v4_1_flash_engram_population"),
+      }
+      Absent => FootprintUnread {
+        obligation: "the Engram tensor population is not established at this revision, so no byte count for this component follows from it" as NonEmptyStr,
+      }
     },
     placement: ComponentPlacedByRoute { component_subject: engram_component_identity }),
   artifact_component(
@@ -314,30 +328,45 @@ data artifact_deepseek_v4_flash_native: ModelArtifact = ModelArtifact {
   components: legacy_undecomposed_artifact,
 }
 
+// THE WHOLE FOOTPRINT IS PRODUCED BY THE DECOMPOSITION. A first cut carried the index total here and
+// merely CHECKED the component sum against it, which is a cross-check rather than the derivation the
+// section claims: the scalar was still independently supplied, so the two could be edited apart and
+// only the check would notice. Now the components produce it, and the upstream index total stays as a
+// separate agreement fact -- `v4_1_upstream_total_agrees_with_components` -- which is what a check
+// should be.
 data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
   label: "DeepSeek V4.1 Flash, native checkpoint" as NonEmptyStr,
-  footprint: FootprintReportedExternally {
-    bytes: deepseek_v4_1_flash_safetensors_index_total_size,
-    source: join([
-      "extdeps.deepseek.deepseek_v4_1_flash CitedToAuthority payload bytes=",
-      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)),
-      " (backbone ",
-      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.backbone_bytes)),
-      ", Engram ",
-      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes)),
-      ", vision ",
-      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.vision_bytes)),
-      ", draft ",
-      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.draft_bytes)),
-      "); Hub tree file size ",
-      to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)),
-      " is a different quantity. Publisher figure, not a Spark reading",
-    ], "") as NonEmptyStr,
-  },
+  footprint: sum_component_footprints(cps: v4_1_artifact_components),
   weight_treatment: PublishedNativeWeights,
   components: v4_1_artifact_components,
 }
+
+// THE UPSTREAM TOTAL, KEPT AS AN INDEPENDENT AGREEMENT RATHER THAN AS THE FIGURE. The index's
+// metadata.total_size is a different source from the per-tensor spans; that the two agree is evidence
+// about the partition, and it is stated as such instead of one standing in for the other.
+data v4_1_upstream_total_agrees_with_components: Bool = match footprint_bytes(f: sum_component_footprints(cps: v4_1_artifact_components)) {
+    Absent => false
+    Present { value: parts } =>
+      byte_size_count(b: parts) == byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)
+  }
+
+// WHAT THE UPSTREAM PARTITION SAYS, kept beside the agreement so a reader can see both sources.
+data v4_1_upstream_partition_note: NonEmptyStr = join([
+  "extdeps.deepseek.deepseek_v4_1_flash CitedToAuthority index metadata.total_size=",
+  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_index_total_size)),
+  " partitioned by name prefix as backbone ",
+  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.backbone_bytes)),
+  ", Engram ",
+  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes)),
+  ", vision ",
+  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.vision_bytes)),
+  ", draft ",
+  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_payload_footprint.draft_bytes)),
+  "; Hub tree file size ",
+  to_string(byte_size_count(b: deepseek_v4_1_flash_safetensors_tree_file_bytes)),
+  " is a different quantity again. Publisher figures, not a Spark reading",
+], "") as NonEmptyStr
 
 data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
@@ -749,7 +778,7 @@ data v4_1_selection_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "engram_standing" as NonEmptyStr),
     reason: "the pool-gain half is now structural; what remains open is the resident working set of every non-resident route",
-    dissolution: unbound_dissolution(description: "PARTLY DISCHARGED: weight_fit_of now divides candidate_resident_footprint rather than the whole-artifact figure, candidate_readings and candidate_gaps carry ax_component_route, and the pool-gain fact is derived by gunbc.fabric.engram_materialization engram_pool_relief from the hops' own placements -- so a route that treats host-RAM or UVA placement as extra pool has no constructor rather than being caught by a check. WHAT REMAINS: no route has an established resident working set, so the routed component contributes FootprintUnread and the fit stays underivable. TRIGGER: a bounded measurement on separately admitted resources giving ResidentMemoryObserved or ResidentMemoryBoundedAbove for a route under an exact serving context. SUFFICIENT FOR: component_resident_share returns ComponentResidentBytes for that candidate, so weight_fit_of divides a number instead of reporting an obligation." as NonEmptyStr),
+    dissolution: unbound_dissolution(description: "PARTLY DISCHARGED: weight_fit_of now divides candidate_resident_footprint rather than the whole-artifact figure, candidate_readings and candidate_gaps carry ax_component_route, and the pool-gain fact is derived by gunbc.fabric.engram_materialization engram_pool_relief from the hops' own placements -- so a route that treats host-RAM or UVA placement as extra pool has no constructor rather than being caught by a check. WHAT REMAINS: no route has an established resident working set, so the routed component contributes FootprintUnread and the fit stays underivable. TRIGGER: a bounded measurement on separately admitted resources giving ResidentMemoryObserved or ResidentMemoryBoundedAbove for a route under an exact serving context. SUFFICIENT FOR: component_resident_share returns ComponentResidentObserved for that candidate, so weight_fit_of divides a number instead of reporting an obligation." as NonEmptyStr),
   ),
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "component_route_gap_over" as NonEmptyStr),
@@ -1099,15 +1128,36 @@ fn candidate_component_route_standings(c: DeploymentCandidate, p: ServingDecisio
 // arm that does not exist is zero. Writing zero here is what would make a narrow topology look
 // feasible on the strength of a measurement nobody took, and it would do it on the single screen
 // whose whole job is to rule impossible weights out.
+// A ROUTED COMPONENT CONTRIBUTES WHAT ITS SELECTED ROUTE KEEPS RESIDENT, AND THE PROVENANCE SURVIVES.
+//
+// A first cut converted every established share to `FootprintReportedExternally` -- the arm
+// `weight_fit_over` explicitly refuses as insufficient for a fleet verdict -- so a genuine fleet
+// OBSERVATION arriving through the selected-route path could not remain one at the screen that needs
+// it. An observation stays `FootprintObservedOnFleet` and carries its receipt.
+//
+// AN UPPER BOUND IS NOT RELABELLED AS AN OBSERVATION. `weight_fit_over` is a LOWER-bound
+// impossibility screen: it divides a quantity and asks whether even that much fits. A ceiling cannot
+// answer that question -- it would make the screen generous in exactly the direction it must not be --
+// so a bounded-above share reports an obligation naming the bound rather than passing as a figure.
+// The one arm that does not exist here is zero.
 fn component_resident_footprint(cp: ArtifactComponent, st: ComponentRouteStanding) -> ArtifactFootprint {
   match component_resident_share(s: st) {
     ComponentNotDecomposedHere => cp.footprint
-    ComponentResidentBytes { bytes: b, route: r } =>
-      FootprintReportedExternally {
+    ComponentResidentObserved { bytes: b, receipt: rc, route: r } =>
+      FootprintObservedOnFleet {
         bytes: b,
-        source: join([
-          "the resident working set of route ", declaration_ref_display_key(ref: r),
-          " selected for this exact candidate",
+        how: join([
+          "resident working set observed on this fleet for route ", declaration_ref_display_key(ref: r),
+          " under this exact serving candidate, receipt ", declaration_ref_display_key(ref: rc),
+        ], "") as NonEmptyStr,
+      }
+    ComponentResidentBoundedAbove { upper_bound: b, authority: a, route: r } =>
+      FootprintUnread {
+        obligation: join([
+          "route ", declaration_ref_display_key(ref: r), " has an UPPER BOUND of ",
+          to_string(byte_size_count(b: b)), " resident bytes cited to ",
+          declaration_ref_display_key(ref: a),
+          ", and this screen is a lower-bound impossibility test: a ceiling cannot establish that a share fits, so it is carried as an obligation rather than divided",
         ], "") as NonEmptyStr,
       }
     ComponentResidentUnderivable { because: why } => FootprintUnread { obligation: why }
@@ -1579,11 +1629,46 @@ fn evidence_snapshot_key(e: ServingDeploymentEvidenceSnapshot) -> String {
 // combination key is a STRUCTURAL value with its own equality rather than a rendered string, and a
 // duplicate in the DECLARED domain refuses -- previously two identical expected keys both matched the
 // same single actual row, so a duplicated declaration passed unnoticed.
+// THE KEY CARRIES EVERY FACT THE PROJECTION CONSUMES. A first cut keyed on artifact identity,
+// topology, profile digest and weight treatment -- and NOT on the component decomposition or its
+// placements. So a candidate could carry a different ModelArtifact with the same identity and
+// treatment and `components: []`, match the declared combination exactly, and be projected with no
+// routed components and placement read as settled -- while the field revision stayed unchanged
+// because its key omitted the facts that differed. A decision identity that does not move when a
+// consumed fact moves cannot detect a stale choice, which is the whole job of the receipt.
 type CombinationKey sole_constructor {
   artifact: DeclarationRef
   topology: TopologyShape
   profile_digest: String
   treatment_digest: String
+  decomposition_digest: String
+}
+
+fn component_placement_key(pl: ArtifactComponentPlacement) -> String {
+  match pl {
+    ComponentResident => "resident"
+    ComponentPlacedByRoute { component_subject: sj } => join(["routed|", declaration_ref_display_key(ref: sj)], "")
+  }
+}
+
+fn artifact_decomposition_digest(art: ModelArtifact) -> String {
+  if count(art.components) == 0 {
+    "undecomposed"
+  } else {
+    join(map(art.components, cp => join([
+      declaration_ref_display_key(ref: cp.identity),
+      ":", component_placement_key(pl: cp.placement),
+      ":", footprint_key(f: cp.footprint),
+    ], "")), ",")
+  }
+}
+
+fn footprint_key(f: ArtifactFootprint) -> String {
+  match f {
+    FootprintObservedOnFleet { bytes: b, how: _ } => join(["observed", to_string(byte_size_count(b: b))], "")
+    FootprintReportedExternally { bytes: b, source: _ } => join(["cited", to_string(byte_size_count(b: b))], "")
+    FootprintUnread { obligation: _ } => "unread"
+  }
 }
 
 fn combination_key_eq(a: CombinationKey, b: CombinationKey) -> Bool {
@@ -1591,10 +1676,11 @@ fn combination_key_eq(a: CombinationKey, b: CombinationKey) -> Bool {
     && topology_shape_eq(a: a.topology, b: b.topology)
     && a.profile_digest == b.profile_digest
     && a.treatment_digest == b.treatment_digest
+    && a.decomposition_digest == b.decomposition_digest
 }
 
 fn combination_key_render(k: CombinationKey) -> String {
-  join([declaration_ref_display_key(ref: k.artifact), "|", k.treatment_digest, "|tp", to_string(k.topology.tensor_parallel_degree), "|x", to_string(k.topology.replica_count), "|", k.profile_digest], "")
+  join([declaration_ref_display_key(ref: k.artifact), "|", k.treatment_digest, "|tp", to_string(k.topology.tensor_parallel_degree), "|x", to_string(k.topology.replica_count), "|", k.profile_digest, "|", k.decomposition_digest], "")
 }
 
 type ServingDeploymentChoiceDomain sole_constructor {
@@ -1617,6 +1703,7 @@ fn combination_for_profile(a: ModelArtifact, t: TopologyShape, p: ServingDecisio
     topology: t,
     profile_digest: parameters_key(p: p),
     treatment_digest: weight_treatment_key(t: a.weight_treatment),
+    decomposition_digest: artifact_decomposition_digest(art: a),
   }
 }
 
@@ -1638,6 +1725,7 @@ fn candidate_combination(c: DeploymentCandidate) -> CombinationKey {
     topology: c.topology,
     profile_digest: parameters_key(p: c.profile),
     treatment_digest: weight_treatment_key(t: c.artifact.weight_treatment),
+    decomposition_digest: artifact_decomposition_digest(art: c.artifact),
   }
 }
 
@@ -1717,6 +1805,11 @@ type ServingFieldStanding
   = ServingFieldEstablished
   | ServingFieldUnestablished { causes: List<NonEmptyStr> }
 
+// THE ARTIFACT VALIDATED IS THE ONE PROJECTED. A first cut checked decomposition on
+// `field.domain.artifacts` while projection consumed each candidate's own `c.artifact`, so a candidate
+// carrying a different ModelArtifact with the same identity was validated through the domain row it
+// did not use. Both are checked now, and a defective child route selection is a field defect here
+// rather than an evidence gap downstream.
 fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
   let expected = expected_combinations(d: field.domain)
   let actual = map(field.candidates, c => candidate_combination(c: c))
@@ -1725,13 +1818,23 @@ fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> 
   let duplicated_actual = filter(expected, k => key_occurrences(keys: actual, k: k) > 1)
   let duplicated_declared = filter(expected, k => key_occurrences(keys: expected, k: k) > 1)
   let param_defect = domain_profiles_defect(d: field.domain)
-  let decomposition_defect = flat_map(field.domain.artifacts, a =>
-    match artifact_decomposition_defect(art: a) {
-      Present { value: d } => [d]
-      Absent => []
-    })
+  let decomposition_defect = concat(
+    flat_map(field.domain.artifacts, a =>
+      match artifact_decomposition_defect(art: a) {
+        Present { value: d } => [d]
+        Absent => []
+      }),
+    flat_map(field.candidates, k =>
+      match artifact_decomposition_defect(art: k.artifact) {
+        Present { value: d } => [join([
+          "candidate ", declaration_ref_display_key(ref: k.identity), " carries ", d as String,
+        ], "") as NonEmptyStr]
+        Absent => []
+      }))
+  let route_defect = flat_map(field.candidates, k => candidate_route_defects(c: k, p: k.profile))
   if count(missing) == 0 && count(extra) == 0 && count(duplicated_actual) == 0
-    && count(duplicated_declared) == 0 && count(param_defect) == 0 && count(decomposition_defect) == 0 {
+    && count(duplicated_declared) == 0 && count(param_defect) == 0 && count(decomposition_defect) == 0
+    && count(route_defect) == 0 {
     ServingFieldEstablished
   } else {
     ServingFieldUnestablished {
@@ -1743,7 +1846,7 @@ fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> 
           concat(
             map(duplicated_actual, k => join(["the combination ", combination_key_render(k: k), " appears more than once among the candidates, so the population is ambiguous"], "") as NonEmptyStr),
             map(duplicated_declared, k => join(["the DECLARED domain produces ", combination_key_render(k: k), " more than once, so its expected population is ambiguous and a duplicate would be satisfied by a single candidate"], "") as NonEmptyStr))),
-        concat(param_defect, decomposition_defect)),
+        concat(param_defect, concat(decomposition_defect, route_defect))),
     }
   }
 }
@@ -1852,22 +1955,40 @@ fn workload_gap(e: ServingDeploymentEvidenceSnapshot) -> List<AxisGap> {
 // An established route INFEASIBILITY still scores zero and still excludes this candidate -- and only
 // this candidate, because the route was evaluated under this candidate's own context.
 fn component_route_reading(route_standings: List<ComponentRouteStanding>) -> AxisReading? {
-  if any(route_standings, st => match component_route_placement_standing(s: st) {
-    ComponentPlacementExcluded => true
-    ComponentPlacementSettled => false
-    ComponentPlacementOpen => false
-  }) {
+  if any(route_standings, st => placement_is_excluded(st: st)) {
     Present { value: reading(axis: ax_component_route, v: 0) }
   } else {
-    if all(route_standings, st => match component_route_placement_standing(s: st) {
-      ComponentPlacementSettled => true
-      ComponentPlacementExcluded => false
-      ComponentPlacementOpen => false
-    }) {
+    if all(route_standings, st => placement_is_settled(st: st)) {
       Present { value: reading(axis: ax_component_route, v: 1) }
     } else {
       none
     }
+  }
+}
+
+// THE SCORE READS ONLY WHICH OF THE THREE STATES HOLDS. The remedy the child attached to an open
+// placement is for the diagnostic that reaches the product root, never for this arithmetic -- so these
+// two folds destructure the arms and ignore their payloads deliberately.
+fn placement_is_excluded(st: ComponentRouteStanding) -> Bool {
+  match component_route_placement_standing(s: st) {
+    ComponentPlacementExcluded { causes: _ } => true
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+    ComponentPlacementOpen { remedy: _ } => false
+  }
+}
+
+// `ComponentPlacementNotThisSubject` SCORES AS SETTLED AND THAT IS ONLY CORRECT FOR A RESIDENT
+// COMPONENT. It reaches here only from `ComponentResident`, where no route question was ever asked.
+// A component declared `ComponentPlacedByRoute` against a subject no authority covers now produces
+// `ComponentRouteSubjectHasNoAuthority`, which is OPEN with a defect remedy -- so the "placement asked
+// and unanswered" path can no longer borrow the resident path's pass.
+fn placement_is_settled(st: ComponentRouteStanding) -> Bool {
+  match component_route_placement_standing(s: st) {
+    ComponentPlacementSettled { selected: _, receipt: _ } => true
+    ComponentPlacementNotThisSubject => true
+    ComponentPlacementExcluded { causes: _ } => false
+    ComponentPlacementOpen { remedy: _ } => false
   }
 }
 
@@ -1881,15 +2002,57 @@ fn component_route_reading(route_standings: List<ComponentRouteStanding>) -> Axi
 // rather than through the exclusion text. Widening the spine's exclusion cause to carry a
 // candidate's own reason is a `std.decision` change this brief did not ask for; it is a frontier row
 // (`serving_exclusion_cause_carries_identities_only`) rather than something done quietly here.
+// ── A ROUTE-PRODUCED OBLIGATION IS DISTINGUISHABLE FROM THE SELECTOR'S GENERIC FALLBACK ────────
+//
+// `std.decision` `unread_axis_gaps` synthesises its own gap on any hard-constrained axis with no
+// reading, with a generic cause. So a control that merely observes an `UnfundedAxis` naming
+// `ax_component_route` cannot tell the connected path from a disconnected one: remove this
+// contribution entirely, keep the funded axis and its constraint and the open placement's absent
+// reading, and the selector fabricates a gap on THAT SAME AXIS which such a control accepts
+// identically. Observing an axis NAME is not evidence the route's result reached the root.
+//
+// So every cause this fold emits is PREFIXED with a marker naming the component and the exact serving
+// context it was decided under -- facts the selector's fallback cannot know and does not carry. The
+// product-root control then discriminates on the marker rather than on the axis, and the disconnection
+// it claims to detect actually reds it.
+data route_obligation_marker: NonEmptyStr = "component-route-obligation" as NonEmptyStr
+
+fn route_obligation_cause(component: DeclarationRef, context: RouteSubjectKey, cause: NonEmptyStr) -> NonEmptyStr {
+  join([
+    route_obligation_marker as String,
+    "[", declaration_ref_display_key(ref: component),
+    "@", route_subject_key_render(k: context),
+    "] ", cause as String,
+  ], "") as NonEmptyStr
+}
+
 fn component_route_gap_over(standings: List<ComponentRouteStanding>) -> List<AxisGap> {
   flat_map(standings, st =>
     map(
-      concat(
-        concat(
-          map(component_route_needs(s: st), n => selection_evidence_need_cause(n: n)),
-          component_route_defects(s: st)),
-        component_route_infeasibility_causes(s: st)),
-      cz => AxisGap { axis: ax_component_route, cause: cz }))
+      component_route_causes(s: st),
+      cz => AxisGap {
+        axis: ax_component_route,
+        cause: route_obligation_cause(
+          component: component_route_standing_component(s: st),
+          context: component_route_standing_context(s: st),
+          cause: cz),
+      }))
+}
+
+// A DEFECTIVE CHILD SELECTION IS A DEFECT HERE TOO, not an evidence gap. `std.decision` separates a
+// malformed selection input from an unresolved one, and a first cut flattened both into ordinary
+// AxisGaps on this axis -- so a route field that needed REPAIR read as one that needed a
+// MEASUREMENT. The field-establishment path is where a defective input belongs, so that is where it
+// goes, and the product root reports it as a structural refusal rather than an open question.
+fn candidate_route_defects(c: DeploymentCandidate, p: ServingDecisionParameters) -> List<NonEmptyStr> {
+  flat_map(
+    filter(candidate_component_route_standings(c: c, p: p), st => component_route_has_defect(s: st)),
+    st => map(
+      component_route_causes(s: st),
+      cz => join([
+        "candidate ", declaration_ref_display_key(ref: c.identity),
+        " carries a defective component-route selection: ", cz as String,
+      ], "") as NonEmptyStr))
 }
 
 fn kv_bytes_gap(c: DeploymentCandidate) -> List<AxisGap> {
@@ -2128,10 +2291,16 @@ fn assessment_for(input: ServingDeploymentDecisionInput) -> DecisionAssessment {
 }
 
 // ── THE SEALED RESULT, AND IT IS A SHAPE RATHER THAN A LAUNCH ─────────────────────────────────
+// THE CHILD OUTCOME TRAVELS WITH THE PARENT'S. A first cut discarded the component-route result once
+// the standings became scalar readings, so a selected deployment could not say WHICH route was
+// selected for its routed components or under what receipt -- the composition kept the arithmetic and
+// dropped the attribution. `component_routes` carries the typed child standing, scoped to this exact
+// candidate because that is the context it was decided under.
 type SelectedServingDeployment sole_constructor {
   input: ServingDeploymentDecisionInput
   candidate: DeploymentCandidate
   receipt: SelectionReceipt
+  component_routes: List<ComponentRouteStanding>
   snapshot_key: String
 }
 
@@ -2174,6 +2343,7 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
                 input: input,
                 candidate: chosen,
                 receipt: r,
+                component_routes: candidate_component_route_standings(c: chosen, p: chosen.profile),
                 snapshot_key: decision_snapshot_key(input: input),
               },
             }
