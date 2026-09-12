@@ -15,7 +15,7 @@ import v2.std.algebra {
 import v2.std.collection { Absent, Present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.decl_index { DeclFact }
-import v2.std.node { Edge, Named, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node }
+import v2.std.node { Edge, Named, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node, labeled_named_is, edge_label_of }
 
 type OuterRecordConstructorLexeme = String
 
@@ -63,10 +63,7 @@ fn resolve_decl_fact_by_qualified_name(
 data authored_string_literal_edge_name: Symbol = ^authored_string_literal
 
 fn skeleton_edge_is_authored_string_literal(e: Edge) -> Bool {
-  match e.label {
-    Named { name: nm } => nm == authored_string_literal_edge_name
-    Positional => false
-  }
+  labeled_named_is(x: e, label_of: edge_label_of, wanted: authored_string_literal_edge_name)
 }
 
 fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
