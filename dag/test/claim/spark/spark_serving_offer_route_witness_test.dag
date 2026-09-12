@@ -8,7 +8,12 @@ import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.first_party_serving { SparkServingRealization }
+import gunbc.spark.first_party_serving {
+  SparkServingRealization, spark_serving_usage_stats_unread_cause, SparkTelemetryUnreadCause,
+  TelemetryReadbackUnresolved, TelemetryReportedPathDiffers, TelemetryDeclaredPathUnpinned,
+  TelemetryNoHostMembership, TelemetryHostsWithoutObservedLanes,
+  TelemetryConfigurationMatchedButUnread,
+}
 import v2.std.optional { Present, Absent }
 import gunbc.spark.vllm_observed {
   ModelsRouteDocumentUnreadable, ModelsRouteRead, vllm_models_route_readback,
@@ -28,7 +33,7 @@ import gunbc.spark.serving_offer {
   SparkServingRoute, ServingRouteObserved, ServingRouteOperatorAsserted, ServingRouteRegionUnobserved,
   ServingRouteServiceUnidentified,
   spark_serving_route_standing, spark_serving_route_region_obligation,
-  spark_serving_route_hosts_unreadable_obligation,
+  spark_serving_route_hosts_unreadable_obligation, spark_serving_route_service_identity_obligation,
   bind_spark_serving_offer,
 }
 
@@ -58,7 +63,7 @@ fn t_declared_path() -> String {
 // THE REALIZATION WHOSE REPORTED CONFIGURATION MATCHES, which is NOT the same as one whose service
 // is established -- an earlier spelling of this comment said it was, and that sentence is the defect
 // in one line. The engine reports exactly the path the pair-serving launch is declared to serve, so
-// the identity join answers RealizationIsPairServing; that is configuration agreement, and a second
+// the identity join answers RealizationMatchesPairServingConfiguration; that is configuration agreement, and a second
 // deployment configured the same way reports the same string. This fixture therefore drives the
 // MOTIVATING case rather than a happy path: the one where everything a consumer might mistake for
 // identity is present and the service still may not be named.
@@ -124,11 +129,17 @@ fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
 // POSITIVE CONTROL, AND IT CARRIES THE EXACT ROUTE RATHER THAN MERELY BINDING. A binder that
 // bound while dropping the route on the floor would satisfy "it bound" and leave the offer in the
 // state this whole change exists to make unwritable.
+// THE SERVICE CONJUNCT IS THE ONE THAT WAS MISSING, AND ITS ABSENCE WAS THE WORST PLACE FOR IT. This
+// row compared region and provider and never the SERVICE -- two of the route's three fields -- while
+// the service is the exact field this whole change is about. So the accepting branch of the binder
+// was controlled by a test that was silent on the thing under review, and the row's own name
+// promised "the offer carries the route" while establishing something narrower.
 test fn an_observed_route_binds_and_the_offer_carries_it() -> Bool {
   match t_bind(route: ServingRouteObserved { route: t_observed_route() }) {
     SparkOfferBound { bound: p } =>
       (p.offer.route.region as String) == (t_observed_route().region as String)
         && (p.offer.route.provider as String) == (t_observed_route().provider as String)
+        && (p.offer.route.service as String) == (t_observed_route().service as String)
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
   }
 }
@@ -189,14 +200,42 @@ test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
 // IT ASSERTS THE DIAGNOSIS, NOT MERELY THE ARM. A refusal that said "unreadable" here would be the
 // wrong reason and would hide that the match was the case being refused, so this pins the obligation
 // to the configuration-agreement sentence.
+// THE DIAGNOSIS IS ASSERTED ON THE TYPED CAUSE, not by grepping the refusal sentence. The telemetry
+// causes were typed for exactly this reason and the route rows were left grepping prose, which is
+// the same asymmetry one seam over -- a sentence can be reworded without the arm changing, and a
+// case mismatch in that pattern already cost a floor run on this branch. What still uses a substring
+// is the SERVICE-IDENTITY obligation itself, and that is compared against the producer's own row
+// rather than a literal, so it cannot drift into agreeing with a copy of itself.
+fn t_cause_is_readback_unresolved(realization: SparkServingRealization) -> Bool {
+  match spark_serving_usage_stats_unread_cause(realization: realization) {
+    TelemetryReadbackUnresolved => true
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+  }
+}
+
+fn t_cause_is_configuration_matched(realization: SparkServingRealization) -> Bool {
+  match spark_serving_usage_stats_unread_cause(realization: realization) {
+    TelemetryConfigurationMatchedButUnread { configured_model_path: p } => (p as String) == t_declared_path()
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+  }
+}
+
 test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bool {
   match spark_serving_route_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
     ServingRouteObserved { route: _ } => false
     ServingRouteOperatorAsserted { route: _, allocation: _ } => false
     ServingRouteRegionUnobserved { obligation: _ } => false
     ServingRouteServiceUnidentified { allocation: _, obligation: o } =>
-      string_contains(s: o as String, pattern: "configuration agreement and not identity")
-        && string_contains(s: o as String, pattern: t_declared_path())
+      t_cause_is_configuration_matched(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6]))
+        && string_contains(s: o as String, pattern: spark_serving_route_service_identity_obligation as String)
   }
 }
 
@@ -260,7 +299,7 @@ test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_th
     ServingRouteServiceUnidentified { allocation: a, obligation: o } =>
       (a.decided_on as String) == "2026-09-11"
         && string_contains(s: o as String, pattern: "the REGION is established")
-        && string_contains(s: o as String, pattern: "did not resolve")
+        && t_cause_is_readback_unresolved(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))
         && !string_contains(s: o as String, pattern: "srv5")
   }
 }
