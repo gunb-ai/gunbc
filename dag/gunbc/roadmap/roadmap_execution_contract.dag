@@ -238,11 +238,11 @@ fn non_agent_work_mode_label(mode: NonAgentWorkMode) -> String {
 
 fn non_agent_work_mode_from_label(label: String) -> NonAgentWorkMode? {
   if label == non_agent_work_mode_label(mode: OperatorExclusiveMode) {
-    some(OperatorExclusiveMode)
+    Present { value: OperatorExclusiveMode }
   } else if label == non_agent_work_mode_label(mode: ExternalLeadMode) {
-    some(ExternalLeadMode)
+    Present { value: ExternalLeadMode }
   } else if label == non_agent_work_mode_label(mode: CalendarObservationMode) {
-    some(CalendarObservationMode)
+    Present { value: CalendarObservationMode }
   } else {
     none
   }
