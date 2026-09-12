@@ -237,7 +237,7 @@ fn seat_bind_detail(group: FabricGroup, text: String) -> String {
 // Nothing in this module decides which group wins.
 fn harness_serving_readiness(standing: HarnessBackendStanding, now: EpochSecs) -> SparkServingReadiness {
   match standing {
-    HarnessBackendServing { model: _, unit: _ } =>
+    HarnessBackendServing { model: _, unit: _, readback: _ } =>
       ServingObserved { ready_at: to_string(now), receipt: "gunbc.harness.models-probe" as ObservationReceiptRef }
     HarnessBackendModelNotAdmitted { advertised: a } =>
       ServingUnobserved { obligation: join(["the route advertises no model this harness is admitted to ask; it advertises: ", a], "") as NonEmptyStr }
@@ -509,7 +509,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
       let group = endpoint.group
       let standing = harness_observe_replica(endpoint: endpoint)
       match standing {
-        HarnessBackendServing { model: observed_model, unit: observed_unit } =>
+        HarnessBackendServing { model: observed_model, unit: observed_unit, readback: _ } =>
           if !harness_requirement_admits(requirement: requirement, observed: observed_unit) {
             harness_no_candidate(
               acc: acc,
