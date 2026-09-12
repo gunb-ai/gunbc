@@ -27,6 +27,7 @@ import v2.lens.module_graph {
   module_declaration_facts_live,
   path_matches_touched
 }
+import v2.std.text { string_eq }
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
 data no_declared_pool_files: List<String> = []
@@ -42,10 +43,6 @@ data empty_decl_list: List<FnArrowDecl> = []
 data empty_string_list: List<String> = []
 data empty_symbol_list: List<Symbol> = []
 data empty_node_list: List<Node> = []
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn carrier_home_module(home: LiveReadCarrierHome) -> String {
   home.module

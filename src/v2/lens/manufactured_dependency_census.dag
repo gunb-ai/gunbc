@@ -8,7 +8,7 @@ import v2.std.algebra { contains, fold_list, length, list_reverse, list_snoc_ite
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 import v2.lens.module_graph {
   ImportResolutionFact,
   import_resolution_facts_live,
@@ -66,10 +66,6 @@ type ManufacturedDependencyTally {
   reference_edges: Int
   manufactured_edges: Int
   modules_with_manufactured_edges: Int
-}
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
 }
 
 fn snoc_unseen(acc: List<String>, item: String) -> List<String> {

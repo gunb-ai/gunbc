@@ -1780,7 +1780,441 @@ pub struct TransitionAdmission {
 /// (base: the producer's own declaration; head: the identical declaration in its new home), which
 /// `names_leaf` cannot see as authored resolution. Required floor run 34573949372 printed all five
 /// as unadjudicated; they are admitted here by the same exact identity as the rest.
+/// gunbc#11138 string_eq collapse (2026-09-12). The 37 rows below admit the relocation this
+/// change makes, one per call site the required floor enumerated.
+///
+/// NOTHING IS RETIRED BY THIS ENTRY. This change was authored believing it owed both the
+/// `gunbc#11137` row and the three `gunbc#11071` consumed-row deletions; other branches reached
+/// the roster first and paid them, and main carries that history above. The original claims are
+/// retracted rather than carried: a ledger recording one deletion twice is worse than one
+/// recording it once, and a cohort header carrying an already-satisfied trigger is how the wrong
+/// rows get retired on the next roster touch (§4b(3)).
+///
+/// WHAT THE CHANGE DID. `fn string_eq(a: String, b: String) -> Bool { a == b }` was declared NINE
+/// times, byte-identical, across `v2.lens`. Those nine are deleted and an authority is landed in
+/// `v2.std.text`, beside `char_eq`, its exact peer: both are equality folds over that module's
+/// own carrier, and `char_eq` is already the `eq` argument to `list_starts_with` exactly as
+/// `string_eq` is the `eq` argument to `contains`.
+///
+/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on
+/// both sides at every one of the 37 sites below, and what changed is which declaration it
+/// admits: base `{<the consuming module itself>}`, head `{v2.std.text}`. A name answered by the
+/// consumer's own copy is now answered by the shared one. That is a relocation, not an
+/// `AuthoredReferenceResolution`.
+///
+/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. THE NINE DELETED BODIES WERE
+/// BYTE-IDENTICAL -- `a == b`, same signature -- so every call site denotes exactly the function
+/// it denoted at the base. A body differing anywhere would have made this a semantic change
+/// wearing a relocation's name, which is what this adjudication exists to rule out, so all nine
+/// were compared before the collapse rather than assumed equal from the shared spelling.
+///
+/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the gap is larger than the
+/// nine copies this change deletes.
+///
+/// THE SURVIVOR POPULATION IS NAMED BY ITS INSTRUMENT, NOT ENUMERATED HERE (§6), because an
+/// enumeration in this file is a transcription that rots -- and the first attempt at one was
+/// already wrong, short by six, assembled by a NARROWER search than the command it was filed
+/// under. Re-derive with:
+///
+///   grep -rn '^fn [a-z_]*string_eq[a-z_]*(' --include=*.dag dag/ src/v2
+///
+/// Every hit whose body is `a == b` over `(a: String, b: String) -> Bool` is one home for this
+/// concept. `v2.std.text` is the authority; every other hit is a fork of it.
+///
+/// WHAT THAT COMMAND SHOWS THAT THE DELETION DID NOT REACH: four survivors are in `v2.lens`
+/// itself -- `grammar_coverage`, `lens_module_gate`, `fn_index_depth_agreement`,
+/// `module_impact_query` -- all byte-identical, all under NICKNAMED spellings. So this change
+/// does not clear even its own stated scope: it collapsed the copies spelled exactly `string_eq`
+/// and left the ones spelled otherwise, which is §3's NICKNAME surviving precisely because a
+/// name-shaped search does not find it.
+///
+/// DECLARED FRONTIER (§3c), with a trigger that adjudicates itself against the tree rather than
+/// against a list this file keeps: the frontier closes when the command above returns exactly ONE
+/// declaration, in `v2.std.text`. A trigger adjudicated against an enumeration would have been
+/// satisfiable while the concept stayed forked, because the enumeration was wrong -- the §4b(1)
+/// inflation this phrasing exists to avoid.
+///
+/// WHY THE REST IS NOT IN THIS CHANGE: each further consumer produces its own `TargetChanged`
+/// delta needing an adjudicated row, and the `dag/` files would be the first `dag/` modules
+/// importing `v2.std.text` for this name -- legal under acyclicity, a different reach question,
+/// and one that deserves its own evidence.
+///
+/// TRIGGER for the 37 rows: they go when #11138 merges, at which point the base carries the
+/// shared declaration, the deltas stop being producible, and CONSUMED comes due on the roster's
+/// next touch -- adjudicated by the declaring-module join, not by this sentence.
+const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std.text";
+
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.complexity_linearity_audit",
+            in_declaration: "migration_roster_contains",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "callee_text_is_host_sink",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "data_init_belongs_to_modules",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "flow_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "path_literal_from_lexeme",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.effect_reach",
+            in_declaration: "sink_kind_for_callee",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.enforcement.vocab",
+            in_declaration: "scope_roster_covers",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.fact_cardinality",
+            in_declaration: "add_unseen_key",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "callee_text_is_known_carrier",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carrier_for_callee_text",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "carrier_homes_in_closure",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "classification_has_literal_path",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "decls_with_qualified_name",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "live_read_carrier_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "module_facts_for_path",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "modules_of_closure_paths",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "path_pattern_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "path_pattern_from_lexeme",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.live_read_classification",
+            in_declaration: "runtime_read_carrier_module_names",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.manufactured_dependency_census",
+            in_declaration: "edge_is_manufactured",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.manufactured_dependency_census",
+            in_declaration: "snoc_unseen",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "add_unseen",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "bfs_absorb_neighbor",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "path_matches_touched",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.module_graph",
+            in_declaration: "snoc_unseen_list",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "decl_contains_atom",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "decl_contains_callee",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "maybe_snoc_callee_text",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "node_contains_atom_text",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "site_row_already_present",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.production_qualification_origin_probe",
+            in_declaration: "structural_red_control_live_fixture_mint_site_discovered",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_corpus_paths_live",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_fact_eq",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_import_facts_at_path",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_neighbor_paths_from_facts",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_paths_from_import_edges",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: STRING_EQ_COLLAPSE_LABEL,
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.reference_deps",
+            in_declaration: "reference_paths_from_module_declarations",
+            spelling: "string_eq",
+            expected_candidates: &["v2.std.text"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
     TransitionAdmission {
         label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
         subject: AdmissionSubject::Binding {

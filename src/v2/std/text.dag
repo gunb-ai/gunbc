@@ -67,6 +67,10 @@ fn char_eq(a: Char, b: Char) -> Bool {
   a == b
 }
 
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
 fn string_split_step(state: StringSplitState, delimiter: String) -> StringSplitState {
   if list_starts_with(xs: state.rest, prefix: delimiter, eq: char_eq) {
     StringSplitState {

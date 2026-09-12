@@ -44,7 +44,7 @@ import v2.std.node {
   TypeNode,
   fold_node,
 }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 
 // Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a
 // repository-wide census. fn_arrow_decl_facts_live(pool_roots:) now answers over the roots its
@@ -141,10 +141,6 @@ data direct_rust_door_inferred_tree_atom: String = "direct_rust_door_inferred_tr
 
 // CompilerDerived is declared but UNWRITABLE at skeleton grain: callee identity proves a qualification boundary was called, not that the InferredTree argument came from production infer(assemble(...)). Until call/dataflow evidence connects arguments, non-fixture mint surfaces classify UnknownOrigin and fail admission.
 data ingest_mint_entry_name_suffix: String = "generate_provenanced_rust_candidate_from_ingest"
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn production_qualification_origin_eq(
   left: ProductionQualificationOrigin,
