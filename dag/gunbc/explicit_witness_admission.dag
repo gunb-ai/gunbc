@@ -386,6 +386,14 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget; this row deletes and the green wet SelfHostWetReceiptBinding restores")
   ),
   known_red_probe(
+    entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+    f: "gate_red_quadratic_rejects",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "THE DISCRIMINATING RED OF A REQUIRED LENS, FAILING ON MAIN, FOUND ONLY BECAUSE gunbc#11073 RAN IT. gunbc.v2_compile_obligation_census accumulator_copy_obligation names this witness as its discriminating red and claims MechanicallyPreventable, but its home test/claim/long/ is a gunbc.ci_layer_roots witness_exclusion_frontier pattern, so no required run had ever planned it. Its first real execution failed on srv3-02 with no thrash. The failure is not a wrong reason and not an upstream refusal: measured with a three-way discriminator, the specimen normalizes and accumulator_copy_compile_gate ACCEPTS it, because v2.lens.complexity_accumulator_copy.analyze accumulator_copy_findings returns NO suspect for fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) }) -- the shape the lens exists to refuse. Verified latent rather than regressed: one binary, same functions, FAIL against origin/main and FAIL against the PR head, with both sibling controls PASS on both sides. The class is gunbc.recurring_failure_mode required_lens_red_control_never_executes_from_its_home, which also records that the census rung is asserted rather than established and is downgraded in the same change. Owner: the accumulator-copy analyzer lane." as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "v2.lens.complexity_accumulator_copy.analyze accumulator_copy_findings returns a NON-EMPTY suspects list for the fold-append accumulator specimen, and accumulator_copy_compile_gate consequently refuses that tree with reason accumulator_copy_poly2_suspect. That fact is FALSE TODAY and was measured false by execution on both origin/main and this head, so the trigger cannot be satisfied by anything short of the analyzer change; it is deliberately NOT keyed on this witness greening, since editing the specimen or the control would green the witness without the capability. When the analyzer lands, this row deletes in that same change and the unchanged witness promotes to ordinary discovery as the permanent regression control per DESIGN 4b(4)")
+  ),
+  known_red_probe(
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     f: "witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
     kind: CorpusWitnessKind,

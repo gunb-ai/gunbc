@@ -24,7 +24,13 @@ import std.pareto {
   axis_comparison,
   dominance_of_comparisons,
 }
-import std.primitive_identity { RealizationTarget, primitive_identity_eq }
+import std.primitive_identity {
+  CoarseCostOnly,
+  PrimitiveCostFact,
+  RealizationTarget,
+  StructuredCost,
+  primitive_identity_eq,
+}
 import std.primitive_projection { PrimitiveIdentity }
 import std.types { Int, List, String }
 import std.logic { Bool }
@@ -64,23 +70,30 @@ import std.logic { Bool }
 // and the realization would then agree by construction, which is the failure this join is built to
 // make impossible. A second, smaller trigger retires `ModeledCostNotStructured` independently, and
 // it is stated at the grain of what this module actually duplicates rather than at the grain that
-// sounded adjacent: `std.primitive_identity` `PrimitiveCostFact` already keys a modeled cost on
-// `PrimitiveIdentity` and stores it as a `CostShape`, which is the COARSE projection of the
-// structured form `ModeledCostBoundFact` carries. Those are two carriers for one fact at two
-// grains, the fork is real, and naming only the `std.primitives` contract-cost strings understated
-// it -- a loss sentence about one carrier under a trigger about another, which is the grain
-// mismatch DESIGN section 4b(3) names as the review tell.
+// sounded adjacent: `std.primitive_identity` `PrimitiveCostFact` already keyed a modeled cost on
+// `PrimitiveIdentity` and stored it as a `CostShape`, while this module carried a second
+// `ModeledCostBoundFact` of the same key at the structured grain. THAT FORK IS CLOSED: the coarse
+// field became `PrimitiveModeledCost`, this module's duplicate carrier was deleted, and the join
+// below reads `PrimitiveCostFact` directly, so one carrier answers at both grains. What remains is
+// the realized side, which is the frontier the paragraph above states.
 //
-// WHY THE CUT IS NOT MECHANICAL, stated because the obvious repair looks like a substitution and is
-// not one. Migrating `PrimitiveCostFact.cost` to `CostBound` and deriving the coarse rank through
-// `cost_bound_to_shape` would close the fork -- but the six populated rows record a shape and NO
-// PARAMETER, and every `CostBound` constructor needs one. The parameter is load-bearing here, not
-// decoration: `param_axis_comparison` keys on it and `param_union` matches it across the modeled
-// and realized sides, so an invented name produces a spurious axis and a fabricated verdict.
-// Recovering each row's real parameter from its primitive is modelling per primitive, not a
-// rewrite, and doing it by pattern-substitution would manufacture exactly the kind of fact this
-// authority exists to catch. The cut is therefore named here and sequenced separately rather than
-// performed inside a change that cannot establish its inputs.
+// WHY THE CUT WAS NOT MECHANICAL, AND WHAT PERFORMING IT ESTABLISHED. This paragraph used to defer
+// the migration, saying it was named here and sequenced separately; it has since been PERFORMED, so
+// what remains is the finding rather than the plan. The obvious repair looked like a substitution
+// and was not one: every `CostBound` constructor needs a parameter, `param_axis_comparison` keys on
+// it and `param_union` matches it across the modeled and realized sides, so an invented name
+// produces a spurious axis and a fabricated verdict -- the exact fact this authority exists to
+// catch, authored into its own inputs.
+//
+// TWO THINGS THE MIGRATION FOUND THAT THE DEFERRAL HAD ASSUMED. There are FIVE populated rows, not
+// the six this note claimed: the sixth was the `type PrimitiveCostFact` declaration, counted by a
+// grep. And NO row's parameter is recoverable from its signature -- three are `SignatureUngrounded`
+// and each states that authoring one would fabricate it, while the two grounded rows use
+// `FinitelySupportedFunctionProfile`, which supplies type params and a `FiniteSupport`
+// classification but NO cardinality variable. The axis for those two is therefore DERIVED from the
+// carrier's declared support by a single producer, and the other three carry their coarse fact with
+// a typed cause. `std.primitive_identity` owns that derivation and states its own next rung, which
+// is a parameter identity replacing the bare `String` in `AtomicCost`.
 //
 // WHAT THAT MEANS FOR A READER OF A GREEN RUN TODAY: this module can state a divergence and has
 // never been asked about a real one. Its arms are proven against authored costs, and the population
@@ -135,11 +148,6 @@ type CostFidelity
 type RealizationCostFact {
   primitive: PrimitiveIdentity
   target: RealizationTarget
-  cost: CostBound
-}
-
-type ModeledCostBoundFact {
-  primitive: PrimitiveIdentity
   cost: CostBound
 }
 
@@ -384,7 +392,8 @@ fn realization_cost_for(
 }
 
 fn realization_cost_fidelity_row(
-  modeled: ModeledCostBoundFact,
+  modeled: PrimitiveCostFact,
+  bound: CostBound,
   target: RealizationTarget,
   facts: List<RealizationCostFact>,
 ) -> RealizationCostFidelityRow {
@@ -392,7 +401,7 @@ fn realization_cost_fidelity_row(
   RealizationCostFidelityRow {
     primitive: modeled.primitive,
     target: target,
-    modeled: Present { value: modeled.cost },
+    modeled: Present { value: bound },
     realized: match lookup {
       RealizationCostFactSingleton { cost: c } => Present { value: c }
       RealizationCostFactAbsent => none
@@ -400,10 +409,10 @@ fn realization_cost_fidelity_row(
     },
     fidelity: match lookup {
       RealizationCostFactAbsent => RealizationCostUnknown
-      RealizationCostFactSingleton { cost: r } => cost_fidelity_of(modeled: modeled.cost, realized: r)
+      RealizationCostFactSingleton { cost: r } => cost_fidelity_of(modeled: bound, realized: r)
       RealizationCostFactsDuplicated { count: n } => RealizationCostFactsContradict { count: n }
     },
-    projected_shape: cost_bound_to_shape(b: modeled.cost),
+    projected_shape: cost_bound_to_shape(b: bound),
   }
 }
 
@@ -432,10 +441,23 @@ fn unstructured_modeled_row(
 // defect at a shorter range. None of it is a per-row fact: it is the input's SHAPE that is wrong,
 // so the whole report refuses rather than emitting rows derived from a premise that does not hold
 // (DESIGN section 5: a failure arm refuses, it never widens).
+// THE PARTITION REFUSAL LOST TWO OF ITS THREE ARMS TO CONSTRUCTION, WHICH IS A CLIMB AND NOT A
+// DELETION. This join used to take two lists -- `modeled` and `unstructured` -- and a primitive
+// appearing in BOTH was a contradiction about one key that only a check could catch, so
+// `PrimitiveIsBothStructuredAndUnstructured` and `UnstructuredPrimitiveDuplicated` existed to catch
+// it. It now takes ONE list of `PrimitiveCostFact`, whose `cost` is a coproduct: a row is
+// structured or coarse-only, never both, because there is no way to write both. DESIGN section 5
+// prefers a single authority the realization is derived from over a check that flags the bad state
+// afterwards, and section 4b calls this the climb from mechanically preventable to structurally
+// impossible. The surviving arm is the one that is still writable: the same primitive on two rows.
+//
+// AND IT IS RENAMED, because the old name stopped being true. `StructuredPrimitiveDuplicated` said
+// "structured" when there were two lists; the single list holds structured and coarse-only rows
+// alike, so the arm now fires for a duplicate of either kind. Keeping the old spelling would leave
+// one name covering two materially different populations -- the DESIGN section 3 meaning fork this
+// PR is closing one layer up.
 type FidelityInputRefusal
-  = PrimitiveIsBothStructuredAndUnstructured { primitive: PrimitiveIdentity }
-  | StructuredPrimitiveDuplicated { primitive: PrimitiveIdentity }
-  | UnstructuredPrimitiveDuplicated { primitive: PrimitiveIdentity }
+  = PrimitiveDuplicatedInSubjects { primitive: PrimitiveIdentity }
 
 type RealizationCostFidelityReport
   = FidelityInputRefused { cause: FidelityInputRefusal }
@@ -447,75 +469,48 @@ fn primitive_occurrences(ps: List<PrimitiveIdentity>, p: PrimitiveIdentity) -> I
   })
 }
 
-fn modeled_primitives(modeled: List<ModeledCostBoundFact>) -> List<PrimitiveIdentity> {
+fn modeled_primitives(modeled: List<PrimitiveCostFact>) -> List<PrimitiveIdentity> {
   reverse(modeled |> fold(init: [], f: fn(acc, m) { concat([m.primitive], acc) }))
 }
 
-fn fidelity_input_refusal(
-  modeled: List<ModeledCostBoundFact>,
-  unstructured: List<PrimitiveIdentity>,
-) -> FidelityInputRefusal? {
-  let structured = modeled_primitives(modeled: modeled)
-  let duplicated_structured = structured |> fold(init: none, f: fn(acc, p) {
+// ONE LIST, ONE PASS, ONE WRITABLE CONTRADICTION. Two of the three former arms are gone because the
+// states they compared cannot both be written of one row any more; what remains is a primitive
+// appearing on two rows of the SAME list, which no coproduct can prevent.
+fn fidelity_input_refusal(modeled: List<PrimitiveCostFact>) -> FidelityInputRefusal? {
+  let subjects = modeled_primitives(modeled: modeled)
+  subjects |> fold(init: none, f: fn(acc, p) {
     match acc {
       Present { value: c } => Present { value: c }
       Absent =>
-        if primitive_occurrences(ps: structured, p: p) > 1 {
-          Present { value: StructuredPrimitiveDuplicated { primitive: p } }
+        if primitive_occurrences(ps: subjects, p: p) > 1 {
+          Present { value: PrimitiveDuplicatedInSubjects { primitive: p } }
         } else {
           none
         }
     }
   })
-  match duplicated_structured {
-    Present { value: c } => Present { value: c }
-    Absent => {
-      let duplicated_unstructured = unstructured |> fold(init: none, f: fn(acc, p) {
-        match acc {
-          Present { value: c } => Present { value: c }
-          Absent =>
-            if primitive_occurrences(ps: unstructured, p: p) > 1 {
-              Present { value: UnstructuredPrimitiveDuplicated { primitive: p } }
-            } else {
-              none
-            }
-        }
-      })
-      match duplicated_unstructured {
-        Present { value: c } => Present { value: c }
-        Absent =>
-          structured |> fold(init: none, f: fn(acc, p) {
-            match acc {
-              Present { value: c } => Present { value: c }
-              Absent =>
-                if primitive_occurrences(ps: unstructured, p: p) > 0 {
-                  Present { value: PrimitiveIsBothStructuredAndUnstructured { primitive: p } }
-                } else {
-                  none
-                }
-            }
-          })
-      }
-    }
-  }
 }
 
+// THE DENOMINATOR IS THE WHOLE SUBJECT UNIVERSE, AND IT IS NOW ONE FOLD. Every row of the input
+// produces exactly one report row: a structured cost is compared, a coarse-only cost reports the
+// frontier arm. The population that has not been migrated stays IN the denominator, which is what
+// the two-list form was for and what the coproduct now gives for free.
 fn realization_cost_fidelity_rows(
-  modeled: List<ModeledCostBoundFact>,
-  unstructured: List<PrimitiveIdentity>,
+  modeled: List<PrimitiveCostFact>,
   target: RealizationTarget,
   facts: List<RealizationCostFact>,
 ) -> RealizationCostFidelityReport {
-  match fidelity_input_refusal(modeled: modeled, unstructured: unstructured) {
+  match fidelity_input_refusal(modeled: modeled) {
     Present { value: cause } => FidelityInputRefused { cause: cause }
-    Absent => {
-      let structured_rows = modeled |> fold(init: [], f: fn(acc, m) {
-        concat([realization_cost_fidelity_row(modeled: m, target: target, facts: facts)], acc)
-      })
-      FidelityRows { rows: reverse(unstructured |> fold(init: structured_rows, f: fn(acc, p) {
-        concat([unstructured_modeled_row(primitive: p, target: target)], acc)
+    Absent =>
+      FidelityRows { rows: reverse(modeled |> fold(init: [], f: fn(acc, m) {
+        concat([match m.cost {
+          StructuredCost { bound: b } =>
+            realization_cost_fidelity_row(modeled: m, bound: b, target: target, facts: facts)
+          CoarseCostOnly { shape: _, cause: _ } =>
+            unstructured_modeled_row(primitive: m.primitive, target: target)
+        }], acc)
       })) }
-    }
   }
 }
 
