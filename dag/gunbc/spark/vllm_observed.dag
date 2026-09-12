@@ -500,25 +500,32 @@ type VllmModelsEntrySelection {
   unexaminable: Int
 }
 
-fn vllm_models_entry_id_matches(entry: JsonValue, served_model_id: NonEmptyStr) -> Bool {
-  match json_object_unique_member(v: entry, key: "id") {
-    JsonMemberFound { value: idv } =>
-      match idv {
-        JsonString { value: sv } => sv == (served_model_id as String)
-        _ => false
-      }
-    _ => false
-  }
-}
+// ONE LOOKUP PER ENTRY, AND ONE AUTHORITY FOR WHAT ITS id IS. An earlier spelling asked the same
+// question twice with two predicates -- does this entry's id match, and is this entry's id readable
+// -- and their least common ancestor ran both filters over the same list, so json_object_unique_member
+// executed twice per entry (DESIGN 2: a repetition whose ancestor can carry the first value is
+// authored duplication, not a cache obligation).
+//
+// THE TRAVERSAL WAS THE CHEAP HALF OF THE COST. The expensive half was that two independent readings
+// of one value decided two numbers -- matched and unexaminable -- which
+// vllm_models_route_standing then uses to choose between absent, read and duplicated. Widening one
+// predicate's notion of readable without the other is a silent fork between those numbers, and the
+// two matches had already drifted in structure. One reading, one accumulator, and the fork has no
+// spelling (review 64237).
+type VllmModelsEntryIdReading
+  = EntryIdRead { id: String }
+  | EntryIdUnreadable
 
-fn vllm_models_entry_id_is_readable(entry: JsonValue) -> Bool {
+fn vllm_models_entry_id(entry: JsonValue) -> VllmModelsEntryIdReading {
   match json_object_unique_member(v: entry, key: "id") {
     JsonMemberFound { value: idv } =>
       match idv {
-        JsonString { value: _ } => true
-        _ => false
+        JsonString { value: sv } => EntryIdRead { id: sv }
+        _ => EntryIdUnreadable
       }
-    _ => false
+    JsonMemberAbsent => EntryIdUnreadable
+    JsonMemberDuplicated { count: _ } => EntryIdUnreadable
+    JsonMemberNotAnObject => EntryIdUnreadable
   }
 }
 
@@ -547,23 +554,41 @@ fn vllm_models_data_standing(doc: JsonValue) -> VllmModelsDataStanding {
   }
 }
 
-fn vllm_models_entry_selection(entries: List<JsonValue>, served_model_id: NonEmptyStr) -> VllmModelsEntrySelection {
-  VllmModelsEntrySelection {
-    matched: filter(entries, e => vllm_models_entry_id_matches(entry: e, served_model_id: served_model_id)),
-    unexaminable: count(filter(entries, e => !vllm_models_entry_id_is_readable(entry: e))),
+// THE READING IS TAKEN ONCE PER ENTRY AND BOTH ANSWERS ARE DERIVED FROM IT. A fold accumulating
+// matched with concat would read each id once too, but it would copy the accumulator on every
+// append -- the copied-accumulator cost shape DESIGN 6 says to fix regardless of the realized n, and
+// this list is small today only because one route advertises one model. Mapping the reading across
+// the entries first and deriving both answers from THAT list keeps one lookup per entry, one
+// authority for what an entry's id is, and two linear passes over a value already computed.
+type VllmModelsEntryReading {
+  entry: JsonValue
+  id: VllmModelsEntryIdReading
+}
+
+fn vllm_models_entry_id_is(reading: VllmModelsEntryIdReading, served_model_id: NonEmptyStr) -> Bool {
+  match reading {
+    EntryIdRead { id: v } => v == (served_model_id as String)
+    EntryIdUnreadable => false
   }
 }
 
-// THE NON-OBJECT ARMS BELOW ARE TOTALITY, NOT A WALL, AND THEY GET NO STANDING ARM OF THEIR OWN.
-// An earlier spelling gave "the entry is not an object" its own arm of the standing, and review
-// 64206 is right that nothing could ever observe it: an entry only reaches this function after
-// vllm_models_entry_id_matches answered JsonMemberFound for its id, which a scalar cannot do. So the
-// state is unreachable BY CONSTRUCTION on this path, and an arm no producer can inhabit is
-// decoration that will later be cited as coverage (DESIGN 4b). The match still answers the case
-// because the coproduct is total; it answers it as an unreadable field rather than as a distinct
-// outcome the type promises a reader they might see. A scalar entry IS reported, one level up, where
-// it is genuinely observable: vllm_models_entry_selection counts it as unexaminable.
-//
+fn vllm_models_entry_id_was_unreadable(reading: VllmModelsEntryIdReading) -> Bool {
+  match reading {
+    EntryIdRead { id: _ } => false
+    EntryIdUnreadable => true
+  }
+}
+
+fn vllm_models_entry_selection(entries: List<JsonValue>, served_model_id: NonEmptyStr) -> VllmModelsEntrySelection {
+  let readings = map(entries, e => VllmModelsEntryReading { entry: e, id: vllm_models_entry_id(entry: e) })
+  VllmModelsEntrySelection {
+    matched: map(
+      filter(readings, r => vllm_models_entry_id_is(reading: r.id, served_model_id: served_model_id)),
+      r => r.entry),
+    unexaminable: count(filter(readings, r => vllm_models_entry_id_was_unreadable(reading: r.id))),
+  }
+}
+
 // ONE MATCH PER FIELD AND NO SEED. Each member is looked up once, every lookup arm has its own
 // sentence, and there is nowhere to substitute a default: an entry missing root does not become an
 // empty path, an entry that is a scalar is not reported as an entry missing a field, and a
