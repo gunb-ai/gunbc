@@ -50,7 +50,8 @@ import tools.docs_projection_gate {
   artifact_is_docs_located,
   artifact_has_docs_producer,
   docs_located_artifacts,
-  committed_docs_located_artifacts
+  committed_docs_located_artifacts,
+  docs_projection_producer_coverage_over
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { String, List, NonEmptyStr }
@@ -219,12 +220,38 @@ test fn only_the_first_day_priority_answers_first_day() -> Bool {
     && !reading_priority_is_first_day(pr: WhenItBites)
 }
 
-// DERIVED MEMBERSHIP: THE POSITIVE CONTROL. Every docs-located artifact in the registry has a
-// producer, so the gate compares all of them rather than the two it used to name literally.
-test fn every_docs_located_artifact_has_a_producer() -> Bool {
-  let all_docs = docs_located_artifacts()
-  count(all_docs) > 0
-    && fold(all_docs, init: true, f: fn(acc, a) { acc && artifact_has_docs_producer(a: a) })
+// DERIVED MEMBERSHIP: THE POSITIVE CONTROL AND ITS DISCRIMINATING RED, OVER AN AUTHORED
+// POPULATION (enrolment margin, run 34711672318).
+//
+// The previous form folded the LIVE registry, which resolved every plan, autoinstall spec and
+// sudoers row to answer a question about three, and the required floor refused its enrolment as
+// measured over margin. It was also unable to go red: every docs-located variant has a producer,
+// so no hermetic input could falsify it. Handing the fold an authored population fixes both at
+// once -- the three real docs artifacts must be covered, and a non-docs artifact must REFUSE,
+// which is the arm that would have caught a producer match answering Absent for a docs path.
+//
+// What is NOT weakened: production still derives its population from the registry, and
+// docs_projection_producer_coverage refuses on the real acceptance path. This tests the predicate
+// production calls, with an input production cannot be handed.
+//
+// THE POPULATION IS ONE ROW ON PURPOSE. Asking whether a producer exists RENDERS the document,
+// because the producer match returns the bytes -- so each artifact in a fixture costs its own
+// projection. Two rows measured 110ms against the 2ms of the red below, and the enrolment margin
+// is the thing that refused this arm's predecessor. One row pairs with the red, which is all the
+// positive control owes; the claim that EVERY docs-located artifact is covered belongs to
+// production, which derives that population and refuses on the real acceptance path.
+test fn an_authored_docs_population_is_fully_covered() -> Bool {
+  match docs_projection_producer_coverage_over(artifacts: [ContributorOnboardingArtifact]) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+test fn an_artifact_with_no_producer_is_refused() -> Bool {
+  match docs_projection_producer_coverage_over(artifacts: [GitignoreArtifact]) {
+    ExitFailure { code: _, reason: _ } => true
+    ExitSuccess => false
+  }
 }
 
 // DERIVED MEMBERSHIP: THE DISCRIMINATING RED. A non-docs artifact must NOT be admitted to the

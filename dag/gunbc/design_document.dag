@@ -3,9 +3,9 @@ module gunbc.design_document
 
 import std.markdown {
   MarkdownDocument, MarkdownBlock,
-  CodeBlock,
+  HeadingBlock, TextInline, H1, CodeBlock,
 }
-import gunbc.plans.md_helpers { h1, h2, h3, p, li, ul, ol, hr }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
@@ -15,6 +15,7 @@ import gunbc.design_argument { conformance_domains, ConformanceDomain, conforman
 import gunbc.roadmap.roadmap_review_criteria { review_home_text }
 
 
+fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 fn preamble_blocks() -> List<MarkdownBlock> {
   [
     h1(text: "gunbc — Design"),

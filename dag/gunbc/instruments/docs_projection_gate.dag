@@ -126,8 +126,22 @@ fn artifact_has_docs_producer(a: GeneratedArtifact) -> Bool {
 // says the bytes live under `docs`; this module says nothing produces them. One of the two is
 // wrong, and neither answer is "skip it" -- skipping is the silence the failure-mode row is
 // about. So the population is named in the diagnostic and the line stops.
-fn docs_projection_producer_coverage() -> ProcessExit {
-  let uncovered = filter(docs_located_artifacts(), a => !artifact_has_docs_producer(a: a))
+// THE POPULATION IS A PARAMETER, AND THAT IS WHAT MAKES THE REFUSAL AUTHORABLE.
+//
+// Production passes the derived population; a fixture passes one it authored. Before this split
+// the fold read `docs_located_artifacts()` directly, and the consequence was the shape DESIGN
+// section 4b warns about from the other end: the refusing state was unreachable from any fixture,
+// because every docs-located variant in the registry HAS a producer, so no hermetic input could
+// make this arm red. A caller-supplied population fixes that -- pass an artifact with no producer
+// and the refusal fires -- and it costs nothing, because the filter no longer resolves the whole
+// registry to answer a question about three rows.
+//
+// The docs-located filter deliberately does NOT live in here. Production filters on location
+// before calling; this fold asks only whether everything it was handed can be produced. That is
+// what lets a fixture hand it a non-docs artifact and get a refusal, which is the discriminating
+// input, and it keeps one responsibility per function.
+fn docs_projection_producer_coverage_over(artifacts: List<GeneratedArtifact>) -> ProcessExit {
+  let uncovered = filter(artifacts, a => !artifact_has_docs_producer(a: a))
   if count(uncovered) == 0 {
     ExitSuccess
   } else {
@@ -137,6 +151,10 @@ fn docs_projection_producer_coverage() -> ProcessExit {
       f: fn(acc, a) { concat(acc, concat(" ", artifact_path(a: a))) }
     ))
   }
+}
+
+fn docs_projection_producer_coverage() -> ProcessExit {
+  docs_projection_producer_coverage_over(artifacts: docs_located_artifacts())
 }
 
 fn write_docs_projection(path: String, content: String) -> ProcessExit {
