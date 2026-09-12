@@ -64,7 +64,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the collector is blind to this tree generally and the probe is uninformative.
 data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport v2.std.logic { Bool }\n\ndata xl0_provided_value: Bool = true\n"
 
-data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n"
 
 fn xl0_provider_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -214,8 +214,20 @@ test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
   !sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
 }
 
-// A TYPE-POSITION NAME *DOES* REACH THE COLLECTOR, AND THE ROW THAT SAID OTHERWISE WAS THE
-// TRUNCATED CENSUS TALKING.
+// WHAT "Bool REACHES THE COLLECTOR" ACTUALLY MEASURES, AND IT IS NOT WHAT ITS FIRST NAME CLAIMED.
+//
+// THIS ROW HAS NOW BEEN WRONG TWICE IN OPPOSITE DIRECTIONS. First it asserted a type-position name
+// was ABSENT, which was the truncated census talking. Then it asserted a type-position name
+// REACHED -- and that was green for the wrong reason: this collector does NOT exclude import
+// statements, `Bool` appears in `import v2.std.logic { Bool }` in both fixture modules, and a
+// spelling match cannot tell an import mention from a type-position one. XL-3 measured the same
+// pair on its own route and found an IMPORTED type name absent from type position while a
+// USER-DECLARED type in the same position reaches, which is the finer split and the correct one.
+//
+// So the row is renamed to what it can honestly establish -- the spelling reaches the collector
+// SOMEWHERE, import statement included -- and the real type-position question is asked below by a
+// name that appears in no import at all. A test whose name claims more than its predicate measures
+// is worse than a red one, because it is cited as coverage.
 //
 // This assertion was authored as "is absent" and passed, and it was WRONG: fixture_sites folded the
 // roots while discarding the accumulator, so it answered over the LAST root only. `Bool` is
@@ -228,8 +240,15 @@ test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
 // type-position row on its declared frontier. A negative claim measured over a silently truncated
 // population is exactly the fabricated plausible output DESIGN section 5 forbids, and it travelled
 // further than the file it lived in.
-test fn a_type_position_name_reaches_the_collector_holds() -> Bool {
+test fn an_imported_type_name_reaches_the_collector_somewhere_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "Bool")
+}
+
+// THE DISCRIMINATOR THAT SEPARATES A REAL TYPE-POSITION HIT FROM AN IMPORT-STATEMENT HIT.
+// `Xl0UserType` is declared in this module and used ONLY as a parameter type -- it appears in no
+// import statement anywhere, so a site spelling it can only have come from the type position.
+test fn a_user_declared_type_in_parameter_position_reaches_the_collector_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
 // EVERY root, not the last one. This fold dropped `acc` too -- the same defect the review found in
