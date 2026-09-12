@@ -1767,14 +1767,22 @@ pub struct TransitionAdmission {
 /// The worst case of an eager deletion is a loud refusal naming the delta, closed by authoring a
 /// row; it is never a silent admission.
 ///
-/// THE SHAPE TO FIX WHEN THIS ROSTER IS NEXT DESIGNED, rather than when it is next touched, and this
-/// is at least the fourth occurrence of it: 53 rows once outlived their subject and refused every
-/// unrelated PR, a later state had 314 reporting stale, #9689 measured six, and tonight it was one.
-/// A row whose retirement is a SENTENCE naming a merge does not retire when that merge happens. The
-/// trigger is readable by people and by nothing else, so the row outlives its own condition and the
-/// cost lands on whoever opens the next pull request. Deriving the retirement from the merge -- the
-/// same positive proof `admission_consumed_at_base` already performs for the consumed arm -- would
-/// make the deletion structural instead of a debt paid by whichever lane refuses next.
+/// THE SHAPE, AND IT IS AT LEAST THE FOURTH OCCURRENCE: 53 rows once outlived their subject and
+/// refused every unrelated PR, a later state had 314 reporting stale, #9689 measured six, and
+/// tonight it was one. A row whose retirement is a SENTENCE naming a merge does not retire when that
+/// merge happens -- the trigger is readable by people and by nothing else, so the row outlives its
+/// own condition and the cost lands on whoever opens the next pull request.
+///
+/// THAT IS BEING FIXED AT THE ROOT RATHER THAN LEFT AS A HAZARD FOR THIS RECORD TO WARN ABOUT, and
+/// naming the fix is the point of this paragraph: gunbc#11165 "Derive admission consumption from
+/// exact candidate sets" (quick-carp-281) checks Binding.expected_candidates by EQUALITY at head
+/// before admission is granted, derives consumption from the same proof at base, and REMOVES the
+/// hand-written lifecycle prediction so the evaluator prints the computed disposition instead. This
+/// record therefore states the defect as it stood on 2026-09-12 and does not propose the remedy --
+/// that work exists and is in flight. DECLARED FRONTIER, with its trigger: when #11165 lands, a
+/// row's retirement stops being a sentence anyone has to honour, stale means NEGLECT rather than
+/// structural impossibility, and the "unreachable CONSUMED" shape above becomes unwritable rather
+/// than documented.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
