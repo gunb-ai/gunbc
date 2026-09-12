@@ -470,8 +470,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
-    dissolution: excl_local_repo_wet_dissolve}
-  },
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "emit_source_store_test.dag",
     classification: OfflineLocalRecipe,
