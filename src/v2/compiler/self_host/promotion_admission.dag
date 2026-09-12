@@ -249,6 +249,8 @@ type PromotionRefusalCause
   | RequiredLensObligationNotCovered { receipt: Symbol, lens: String }
   | RequiredLensObligationCoveredAtWrongGrain { receipt: Symbol, lens: String }
   | RequiredLensContractMaterialUnbound { receipt: Symbol, derived: String }
+  | RequiredLensCoverageRanADifferentRoster { receipt: Symbol, derived: String, observed: String }
+  | RequiredLensCoverageRowDuplicated { receipt: Symbol, lens: String }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -489,13 +491,38 @@ fn concat_causes(
 // already had the answer: `required_lens_registration_keys` builds exactly this Map in one pass.
 // Reproducing its shape here rather than inventing one keeps the two joins recognisably the same
 // operation.
+// LAST-WINS WOULD ERASE THE ROW IT DISAGREES WITH. A submitted coverage carrying a lens twice --
+// once at the wrong grain, once at the right one -- resolved to whichever row came last, so the
+// wrong-grain observation was silently dropped instead of refused, and the obligation walk then
+// reported a population it had already edited. The compile-side join refuses a duplicate
+// registration by name (`RegistrationDuplicated`); a coverage receipt that reports the same lens
+// twice is the same defect one layer out, so it carries its own cause rather than a resolution rule.
+type CoverageObservationIndex {
+  seen: Map<String, CompileLensGrain>
+  duplicated: List<String>
+}
+
 fn coverage_observation_index(
   rows: List<RequiredLensCoverageRow>
-) -> Map<String, CompileLensGrain> {
+) -> CoverageObservationIndex {
   fold_list(
     xs: rows,
-    empty: empty_map(),
-    cons: fn(acc, row) { map_insert(acc, declaration_ref_display_key(ref: row.lens), row.grain) }
+    empty: CoverageObservationIndex { seen: empty_map(), duplicated: freemonoid_empty() },
+    cons: fn(acc, row) {
+      let key = declaration_ref_display_key(ref: row.lens)
+      match map_lookup(acc.seen, key) {
+        Absent =>
+          CoverageObservationIndex {
+            seen: map_insert(acc.seen, key, row.grain),
+            duplicated: acc.duplicated
+          }
+        Present { value: _ } =>
+          CoverageObservationIndex {
+            seen: acc.seen,
+            duplicated: list_snoc_item(xs: acc.duplicated, item: key)
+          }
+      }
+    }
   )
 }
 
@@ -511,8 +538,19 @@ fn lens_coverage_uncovered_causes(
   required: List<CompileLens>,
   rows: List<RequiredLensCoverageRow>
 ) -> List<PromotionRefusalCause> {
-  let observed = coverage_observation_index(rows: rows)
-  fold_list(
+  let index = coverage_observation_index(rows: rows)
+  let observed = index.seen
+  let duplicate_causes = fold_list(
+    xs: index.duplicated,
+    empty: freemonoid_empty(),
+    cons: fn(acc, key) {
+      list_snoc_item(
+        xs: acc,
+        item: RequiredLensCoverageRowDuplicated { receipt: receipt, lens: key }
+      )
+    }
+  )
+  concat_causes(parts: [duplicate_causes, fold_list(
     xs: required,
     empty: freemonoid_empty(),
     cons: fn(acc, reg) {
@@ -534,7 +572,7 @@ fn lens_coverage_uncovered_causes(
           }
       }
     }
-  )
+  )])
 }
 
 fn contract_axis_of_roster_digest(digest: String) -> Hash {
@@ -553,10 +591,9 @@ fn contract_axis_of_roster_digest(digest: String) -> Hash {
 // was never established would be answering a question the receipt cannot pose.
 fn lens_contract_binding_cause(
   receipt: Symbol,
-  coverage: GenerationLensCoverage,
+  derived: String,
   expected: GenerationIdentity
 ) -> List<PromotionRefusalCause> {
-  let derived = required_lens_roster_digest_of(lenses: coverage.contract_material)
   if contract_axis_of_roster_digest(digest: derived) == expected.required_lens_contract {
     freemonoid_empty()
   } else {
@@ -567,6 +604,15 @@ fn lens_contract_binding_cause(
   }
 }
 
+// TWO RELATIONS, AND THE BINDING IS ONLY ONE OF THEM. The material is pinned to the generation's
+// `required_lens_contract` axis, which the submitter does not supply -- that is what stops the
+// obligations from shrinking. It says nothing about WHICH roster the join that produced these rows
+// ran over, and the closed observation states that itself. Holding a roster beside a summary of a
+// different roster with no arm relating them is the rostered class
+// `subject_and_its_digest_as_independent_parameters`; the earlier revision of this branch compared
+// the observed digest to one derived from the same submitted list, which agreed by construction and
+// was correctly deleted. The comparison here is not that one: `derived` is now anchored to the axis,
+// so an observed digest that disagrees with it names a roster the contract does not.
 fn lens_coverage_causes(
   receipt: Symbol,
   coverage: GenerationLensCoverage,
@@ -577,9 +623,10 @@ fn lens_coverage_causes(
     subject: coverage.subject,
     expected: expected
   )
+  let derived = required_lens_roster_digest_of(lenses: coverage.contract_material)
   let binding = lens_contract_binding_cause(
     receipt: receipt,
-    coverage: coverage,
+    derived: derived,
     expected: expected
   )
   if length(xs: binding) > 0 {
@@ -600,12 +647,26 @@ fn lens_coverage_causes(
               cause: required_lens_join_cause_reason(cause: cause)
             }
           )
-        RequiredLensCoverageClosed { roster_digest: _, rows: rows } =>
-          lens_coverage_uncovered_causes(
-            receipt: receipt,
-            required: coverage.contract_material,
-            rows: rows
-          )
+        RequiredLensCoverageClosed { roster_digest: roster_digest, rows: rows } =>
+          concat_causes(parts: [
+            if roster_digest == derived {
+              freemonoid_empty()
+            } else {
+              list_snoc_item(
+                xs: freemonoid_empty(),
+                item: RequiredLensCoverageRanADifferentRoster {
+                  receipt: receipt,
+                  derived: derived,
+                  observed: roster_digest
+                }
+              )
+            },
+            lens_coverage_uncovered_causes(
+              receipt: receipt,
+              required: coverage.contract_material,
+              rows: rows
+            )
+          ])
       }
     ])
   }
@@ -750,6 +811,10 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_required_lens_obligation_covered_at_wrong_grain
     RequiredLensContractMaterialUnbound { receipt: _, derived: _ } =>
       ^refusal_required_lens_contract_material_unbound
+    RequiredLensCoverageRanADifferentRoster { receipt: _, derived: _, observed: _ } =>
+      ^refusal_required_lens_coverage_ran_a_different_roster
+    RequiredLensCoverageRowDuplicated { receipt: _, lens: _ } =>
+      ^refusal_required_lens_coverage_row_duplicated
   }
 }
 

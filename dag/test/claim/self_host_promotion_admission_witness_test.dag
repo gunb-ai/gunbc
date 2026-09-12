@@ -1770,3 +1770,75 @@ test fn coverage_at_the_registered_grain_promotes() -> Bool {
     PromotionRefused { causes: _ } => false
   }
 }
+
+// ---- THE ROWS MUST COME FROM THE ROSTER THE CONTRACT PINS ----
+//
+// The binding relates the MATERIAL to the generation's axis. It says nothing about which roster the
+// join that produced these rows actually ran over, and the closed observation carries that fact
+// itself as `roster_digest`. Without an arm relating the two, the coverage holds a roster and a
+// summary of a DIFFERENT roster side by side, both from one submitter -- the rostered class
+// `subject_and_its_digest_as_independent_parameters`. This is the state that construction admits:
+// every required identity has a row at the registered grain, and the summary names another roster.
+fn pa_coverage_rows_from_another_roster() -> GenerationLensCoverage {
+  pa_coverage_for(
+    subject: pa_candidate_identity(),
+    material: pa_contract_material(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: required_lens_roster_digest_of(lenses: pa_subtree_material()),
+      rows: [
+        pa_coverage_row(lens: pa_lens_alpha()),
+        pa_coverage_row(lens: pa_lens_beta())
+      ]
+    }
+  )
+}
+
+test fn coverage_summarising_another_roster_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_with_coverage(
+      candidate_cov: pa_coverage_rows_from_another_roster(),
+      successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
+    )
+  )
+  promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_ran_a_different_roster)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_contract_material_unbound)
+}
+
+// ---- ONE LENS, TWO ROWS ----
+//
+// The index used to be a last-wins fold, so a coverage reporting alpha twice -- once at the grain it
+// was NOT registered at, once at the grain it was -- resolved to the later row and the disagreement
+// disappeared. The obligation walk then reported a population it had itself edited. The compile-side
+// join refuses a duplicate registration by name; a duplicate coverage row is that defect one layer
+// out. Both rows here are for alpha, so the wrong-grain one is the row last-wins would erase.
+fn pa_coverage_with_a_duplicated_row() -> GenerationLensCoverage {
+  pa_coverage_for(
+    subject: pa_candidate_identity(),
+    material: pa_contract_material(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: required_lens_roster_digest_of(lenses: pa_contract_material()),
+      rows: [
+        RequiredLensCoverageRow {
+          lens: pa_lens_alpha().identity,
+          grain: CompileLensSubtree,
+          observations: 1
+        },
+        pa_coverage_row(lens: pa_lens_alpha()),
+        pa_coverage_row(lens: pa_lens_beta())
+      ]
+    }
+  )
+}
+
+test fn a_lens_reported_twice_in_one_coverage_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_with_coverage(
+      candidate_cov: pa_coverage_with_a_duplicated_row(),
+      successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
+    )
+  )
+  promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_row_duplicated)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_ran_a_different_roster)
+}
