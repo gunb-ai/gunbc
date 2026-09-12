@@ -177,6 +177,16 @@ test fn unauthorized_v4_1_runtime_is_excluded_before_unread_axes() -> Bool {
     }
 }
 
+test fn matching_the_authorized_v4_1_digest_does_not_establish_source() -> Bool {
+  any(deepseek_v4_1_candidate_field.candidates, c =>
+    authorized_v4_1_runtime_holds(c: c)
+      && match c.profile.runtime.vllm_source {
+        VllmSourceRevisionUnestablished { reported_version: _, obligation: _ } => true
+        VllmSourceRevisionEstablished { git: _ } => false
+      })
+    && any(deepseek_v4_1_candidate_field.candidates, c => !authorized_v4_1_runtime_holds(c: c))
+}
+
 // ── FIXTURES ──────────────────────────────────────────────────────────────────────────────────
 data suite_ref: DeclarationRef = decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref")
 

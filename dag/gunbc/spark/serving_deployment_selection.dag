@@ -42,6 +42,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 }
 import gunbc.spark.v41_published_image_observation {
   v41_published_arm64_reference,
+  v41_published_arm64_digest,
   v41_published_distribution_name,
   v41_published_stamped_identifier_lookup,
   public_commit_lookup_wire,
@@ -921,11 +922,17 @@ fn no_redundancy_holds(c: DeploymentCandidate) -> Bool {
   c.topology.replica_count == 1
 }
 
-// OPERATOR RULING: this V4.1 deployment uses the published arm64 image by digest. Matching
-// that digest does not establish vLLM source; published stays VllmSourceRevisionUnestablished.
-// Diagnostic alternative runtimes remain in the field and are excluded here before Pareto.
+// OPERATOR RULING: this V4.1 deployment uses the published arm64 image by digest.
+// RuntimeRevision.image is a NonEmptyStr pin, not a digest field. The authorized
+// digest identity is v41_published_arm64_digest. The only join onto the pin is
+// v41_published_arm64_reference(), the unique repository@digest rendering of that
+// digest — a future digest-typed runtime slot compares v41_published_arm64_digest
+// directly. Matching the digest does not establish vLLM source; published stays
+// VllmSourceRevisionUnestablished. Diagnostic alternative runtimes remain in the
+// field and are excluded here before Pareto.
 fn authorized_v4_1_runtime_holds(c: DeploymentCandidate) -> Bool {
   (c.profile.runtime.image as String) == (v41_published_arm64_reference() as String)
+    && string_contains(s: c.profile.runtime.image as String, pattern: v41_published_arm64_digest as String)
 }
 
 // ENGRAM OFFLOAD DOES NOT GROW THE SPARK POOL. vLLM Engram offload uses pinned host memory via
