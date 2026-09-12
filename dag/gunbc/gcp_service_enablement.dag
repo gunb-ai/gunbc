@@ -5,7 +5,7 @@ import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ensure {
-  EnsureMayApply,
+  EnsurePolicy,
   EnsureObserved,
   EnsureInaccessible,
   EnsurePlanAvailable,
@@ -81,6 +81,7 @@ fn service_enablement_from_state_wire(
 }
 
 fn decide_service_enablement(
+  policy: EnsurePolicy,
   desired: ServiceEnablementDesire,
   observed: ServiceEnablementObservation,
 ) -> UpsertDecision<EnableApiPlan> {
@@ -91,7 +92,7 @@ fn decide_service_enablement(
       match observed {
         ServiceEnablementUnobserved { project: op, service_id: os } =>
           ensure_decide(
-            policy: EnsureMayApply,
+            policy: policy,
             observation: EnsureInaccessible {
               reason: join(
                 [
@@ -111,7 +112,7 @@ fn decide_service_enablement(
         ServiceObservedEnabled { project: op, service_id: os } =>
           if service_enablement_subject_eq(project: p, service_id: s, other_project: op, other_service_id: os) {
             ensure_decide(
-              policy: EnsureMayApply,
+              policy: policy,
               observation: EnsureObserved { evidence: observed },
               observation_satisfies: true,
               mismatch_reason: "already enabled",
@@ -125,7 +126,7 @@ fn decide_service_enablement(
         ServiceObservedDisabled { project: op, service_id: os } =>
           if service_enablement_subject_eq(project: p, service_id: s, other_project: op, other_service_id: os) {
             ensure_decide(
-              policy: EnsureMayApply,
+              policy: policy,
               observation: EnsureObserved { evidence: observed },
               observation_satisfies: false,
               mismatch_reason: "desired enabled, observed disabled",
@@ -156,9 +157,10 @@ fn decide_service_enablement(
   }
 }
 
-// GetService / EnableService have no live caller in this PR. The folds consume an observation and
-// an EnableApiPlan; sunny-carp-475 (or a later adapter) binds the operations. Until then this is
-// owed work, not a terminal.
+// GetService / EnableService have no live caller in this PR. The folds consume an observation,
+// a caller EnsurePolicy, and an EnableApiPlan; sunny-carp-475 (or a later adapter) binds the
+// operations. Policy is the caller's EnsurePolicy, never a literal in this module. Until then
+// this is owed work, not a terminal.
 data live_serviceusage_get_frontier: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {

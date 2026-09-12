@@ -10,6 +10,7 @@ import std.human_intervention {
   DischargedAt,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy }
 import gunbc.gcp_service_enablement {
   ServiceEnablementDesire,
   ServiceDesiredEnabled,
@@ -36,10 +37,15 @@ fn sheets_api_desired_enablement(project: GcpProjectId) -> ServiceEnablementDesi
 }
 
 fn sheets_api_enablement_decision(
+  policy: EnsurePolicy,
   project: GcpProjectId,
   observed: ServiceEnablementObservation,
 ) -> UpsertDecision<EnableApiPlan> {
-  decide_service_enablement(desired: sheets_api_desired_enablement(project: project), observed: observed)
+  decide_service_enablement(
+    policy: policy,
+    desired: sheets_api_desired_enablement(project: project),
+    observed: observed,
+  )
 }
 
 fn serviceusage_enable_iam_grant_intervention(
@@ -176,6 +182,7 @@ fn admit_review_sheet_operator(
   project: GcpProjectId,
   writer: ServiceAccountEmail,
   enablement: ServiceEnablementObservation,
+  enablement_policy: EnsurePolicy,
   spreadsheet: BuyerReviewSpreadsheet,
   serviceusage_enable_iam: HumanIntervention,
   share: HumanIntervention,
@@ -186,8 +193,9 @@ fn admit_review_sheet_operator(
             NoDischargeSiteModeled =>
               ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
             DischargedAt { evidence: _ } =>
-            match decide_service_enablement(
-              desired: sheets_api_desired_enablement(project: project),
+            match sheets_api_enablement_decision(
+              policy: enablement_policy,
+              project: project,
               observed: enablement,
             ) {
               Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
