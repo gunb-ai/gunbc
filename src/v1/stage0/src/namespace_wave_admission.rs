@@ -1760,8 +1760,17 @@ const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std
 /// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
 /// stops being producible, and CONSUMED comes due on the roster's next touch.
 ///
-/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11138) -- WHICH DISSOLVES NOTHING, and is numbered
-/// here only to keep the ledger's sequence honest about the order these landed in. This change was
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11138). The `gunbc#11137 extdeps.tools.sha256sum
+/// names Filesystem instead of reaching it` row is deleted. #11137 merged, so the narrowed import
+/// is at the base, the delta it admitted stopped being producible, and the required floor on this
+/// head reported it as `STALE ADMISSION` -- a row matching no delta, which blocks the phase. Its
+/// own recorded TRIGGER was "this row goes when #11137 merges", and this change is the roster
+/// touch on which that came due.
+///
+/// THIS CHANGE WAS ALSO AUTHORED BELIEVING IT OWED THE THREE `gunbc#11071` DELETIONS, and it did
+/// not: #11137 reached the roster first and paid them. The original text claimed that deletion;
+/// the claim is retracted rather than carried, because a ledger recording one deletion twice is
+/// worse than one recording it once. This change was
 /// authored believing it owed the three `gunbc#11071` consumed-row deletions; #11137 reached the
 /// roster first and paid them, so by the time this merged there was no debt left to pay. The
 /// original text claimed the deletion; that claim is corrected rather than carried, because a
@@ -1796,20 +1805,6 @@ const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std
 /// `v2.std.text`, the delta stops being producible, and CONSUMED comes due on the roster's next
 /// touch -- adjudicated by the declaring-module join, not by this sentence.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-        // The rationale, the safety adjudication and the trigger are in the doc comment on this
-        // const rather than repeated here. In one line: the bare `import
-        // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-        // spelling's candidate set without changing what it resolves to.
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.tools.sha256sum",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            target: "extdeps.tools.sha256sum",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: STRING_EQ_COLLAPSE_LABEL,
         subject: AdmissionSubject::Binding {
