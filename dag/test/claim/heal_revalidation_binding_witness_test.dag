@@ -248,8 +248,8 @@ test fn the_heal_terminal_does_not_dispatch_the_healed_head() -> Bool {
     && string_contains(s: script, pattern: concat(gunbc_invoke_root_stamp_script(), "git config user.name"))
 }
 
-// The dispatch carries the immutable subject and the moving ref as SEPARATE inputs. One of them
-// standing in for the other is the fabricated revalidation this whole cut exists to prevent.
+// The helper still exists for a named manual dispatch; this row asserts its inputs stay
+// separate. Heal does not splice it into the produced-a-heal arm (the row above).
 test fn the_heal_dispatch_binds_the_healed_head_and_the_branch_ref_separately() -> Bool {
   let invoke = gunbc_ci_heal_dispatch_invoke()
   string_contains(s: invoke, pattern: "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\"")
