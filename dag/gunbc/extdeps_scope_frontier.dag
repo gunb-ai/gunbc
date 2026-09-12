@@ -327,6 +327,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/github/push_event.dag",
   "dag/extdeps/instrument/pip_boy_3000.dag",
   "dag/extdeps/instrument/pip_boy_3000_mk_v.dag",
+  "dag/extdeps/instrument/fs_box_v4.dag",
+  "dag/extdeps/instrument/fs_box_v3_v4_v5_faq.dag",
   "dag/extdeps/linux/edac.dag",
   "dag/extdeps/linux/kernel.dag",
   "dag/extdeps/linux/proc_self_cgroup.dag",
