@@ -1412,7 +1412,7 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
             None,
             None,
         );
-        floor_required_int(&policy_ctx, "required_floor_claim_cpu_safety_limit_ms")?
+        floor_required_int(&policy_ctx, "required_floor_claim_work_envelope_ms")?
     };
     match v1_interpreter::run_in_context(&ctx, &qualified, false) {
         Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < ceiling_ms => Ok(n as u64),
@@ -1516,9 +1516,26 @@ pub(crate) fn enrolment_margin_standing_for(
             }
         }
         crate::cli_run::ClaimCostReading::RightCensored(reading) => {
-            EnrolmentMarginStanding::CeilingCensored {
-                cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
-                censoring_ceiling_ms: reading.cpu_safety_limit_ms,
+            // WHICH CEILING CENSORED IT, AND THE ARM FOR "NOT A CPU ONE". `CeilingCensored`
+            // reports a CPU lower bound beside the CPU ceiling that stopped it, and since
+            // 2026-09-12 no required-floor claim arms a CPU deadline at all — so a censored row
+            // was stopped by the WALL deadline and there is no CPU ceiling to name. Reporting the
+            // wall limit in a field called `censoring_ceiling_ms`, beside a CPU bound, would be a
+            // clock fusion of exactly the shape `std.measure` `measure_clock_basis_note` exists to
+            // forbid: two magnitudes read from different clocks compared as if they were one.
+            //
+            // `NotMeasured` IS THE HONEST ARM AND NOT A DEGRADATION. Both arms block identically,
+            // and what this row's CPU reading actually is — a lower bound with no ceiling it can be
+            // compared against — is what `NotMeasured`'s cause says. Nothing is widened: the
+            // enrolment question stays unanswered and the row stays refused.
+            EnrolmentMarginStanding::NotMeasured {
+                cause: format!(
+                    "interrupted at cpu_at_least_ms={} by {} with NO CPU ceiling armed (the claim \
+                     ceiling gates on eval_steps since 2026-09-12), so this row has no CPU cost to \
+                     compare against the enrolment margin",
+                    reading.elapsed_cpu_at_least_ms,
+                    reading.raised_by.label()
+                ),
             }
         }
     }
@@ -4727,8 +4744,8 @@ pub fn run_required_floor(
     // over a token scan of every `.dag` and `.rs` file in the tree, built once; on main runs
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
     // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
-    // corpus_rust_language_has_external_consumer` at 412ms against the 500ms
-    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower, which is the
+    // corpus_rust_language_has_external_consumer` at 412ms against the 500ms CPU safety deadline
+    // standing at the time — red on any runner a fifth slower, which is the
     // class `gunbc.rung_drop floor_cost_claim_qualification_unavailable` now carries with its measurements and
     // its restoration trigger; this comment states the instance and does not restate the class — while its
     // sibling in the same file, reading the identical memo milliseconds later, measured 0ms.
@@ -5045,8 +5062,8 @@ pub fn run_required_floor(
     // Reading all three from separate `.dag` constants is what makes the fusion structurally
     // impossible to reintroduce here — there is no longer a single value a future edit could
     // hand to more than one role by accident.
-    let claim_cpu_safety_limit_ms =
-        floor_required_int(&hermetic, "required_floor_claim_cpu_safety_limit_ms")?;
+    let claim_eval_step_budget =
+        floor_required_int(&hermetic, "required_floor_claim_eval_step_budget")?;
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
@@ -5503,7 +5520,7 @@ pub fn run_required_floor(
                     module_path: file.module_path.clone(),
                     function: function.clone(),
                     execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                    cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                    eval_step_budget: claim_eval_step_budget,
                     wall_safety_limit_ms: claim_wall_safety_limit_ms,
                     cost_line_ms: claim_cost_line_ms,
                     cost_policy,
@@ -5577,7 +5594,7 @@ pub fn run_required_floor(
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                eval_step_budget: claim_eval_step_budget,
                 wall_safety_limit_ms: claim_wall_safety_limit_ms,
                 cost_line_ms: claim_cost_line_ms,
                 cost_policy: ChangedWitnessCostPolicy::Ordinary,
@@ -6661,10 +6678,18 @@ pub fn run_required_floor(
         // still carried on the claim and is published against the debt identity below. The wall
         // budget is armed identically under both policies — a claim that is blocked or stuck
         // still reaches no verdict, and that is still a red.
-        frame.set_witness_eval_budget(match claim.cost_policy {
-            ChangedWitnessCostPolicy::Ordinary => Some(claim.cpu_safety_limit_ms),
-            ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly => None,
-        });
+        // NO CPU DEADLINE IS ARMED, FOR ANY CLAIM (operator ruling via fierce-lark-661,
+        // 2026-09-12; `v2.workflow.required_floor` `claim_cost_basis_standing` reports
+        // `CpuTimeBasis` as `BasisObservedOnly`). The `match` on `cost_policy` that stood here
+        // armed the deadline for an ordinary changed witness and stood it down for a cost-debt
+        // one; the ruling generalised the stand-down to every claim, so the branch selected
+        // between two identical answers.
+        //
+        // `None` IS PASSED EXPLICITLY rather than the call being deleted, because the interpreter
+        // retains a per-frame CPU budget and a frame that never sets it would be relying on a
+        // default. What replaces the deadline is the completed-claim eval-step comparison below,
+        // and the wall budget on the next line, which is unchanged and still armed.
+        frame.set_witness_eval_budget(None);
         frame.set_witness_wall_budget(Some(claim.wall_safety_limit_ms));
         // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
         // it rather than to nobody. The wall time this row is about to be charged is not
@@ -6723,7 +6748,6 @@ pub fn run_required_floor(
             &result,
             &receipt,
             WitnessSafetyPolicy {
-                cpu_ms: claim.cpu_safety_limit_ms,
                 wall_ms: claim.wall_safety_limit_ms,
             },
         );
@@ -6746,6 +6770,44 @@ pub fn run_required_floor(
             cost_line_ms: claim.cost_line_ms,
             preemption_reachability: preemption_reachability_label(&receipt.opaque_host_call_reach),
         });
+        // ── THE CLAIM CEILING, COMPARED ONCE AGAINST A COMPLETED CLAIM'S WORK ──────────────
+        //
+        // THIS IS THE WALL THAT REPLACED THE CPU DEADLINE (operator ruling via fierce-lark-661,
+        // 2026-09-12; `v2.workflow.required_floor` `claim_eval_step_standing` is the model, and
+        // `required_floor_claim_eval_step_budget` the declared budget it reads). It is a
+        // COMPARISON and not a deadline: nothing preempts a claim on steps, so this cannot miss an
+        // interrupt the way a cooperative poll can. It runs here, immediately after the receipt is
+        // minted and from the SAME receipt the cost row above was minted from, so the summary and
+        // the refusal cannot disagree about how many steps a claim performed.
+        //
+        // THE STEPS ARE THE MARGINAL ONES. `run_claim_measured` subtracts shared-artifact fill from
+        // both the CPU figure and the step count, so a first-touch payer is not charged the work of
+        // a build every later claim reads for free — the same basis the cost row reports.
+        //
+        // IT DOES NOT FIRE ON A CLAIM THAT REACHED NO VERDICT. An interrupted claim's step count is
+        // quantised by whichever poll stopped it and is a lower bound on nothing anyone asked
+        // about; that row is already reported through `interrupted_before_verdict`, and adding a
+        // budget sentence to it would report the same occurrence twice under two remedies.
+        if matches!(terminality, ClaimTerminality::VerdictReached { .. })
+            && receipt.eval_steps > claim.eval_step_budget
+        {
+            outcome.completed_over_cost_requirement.push(format!(
+                "{} reached its verdict and performed {} eval steps against a budget of {} \
+                 (observed cpu_ms={}, wall_ms={}, recorded and NOT gated on). The budget is \
+                 declared policy — v2.workflow.required_floor \
+                 required_floor_claim_eval_step_budget, grounded through the pinned calibration \
+                 fixture in v2.workflow.floor_eval_step_calibration — so this is a statement about \
+                 the claim's own work and not about the runner it landed on. Reduce what the \
+                 witness reaches for, or enrol it in a lane that declares its own ceiling AND \
+                 names the row as an executing consumer; relocating the file does not discharge \
+                 it.",
+                claim.qualified,
+                receipt.eval_steps,
+                claim.eval_step_budget,
+                receipt.cpu_nanos / 1_000_000,
+                receipt.wall_nanos / 1_000_000,
+            ));
+        }
         // PUBLISH THE COST AGAINST THE DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator ruling
         // 2026-08-30). Standing down a gate without putting a measurement in its place is the
         // absorbing-fallback shape DESIGN §5 forbids — the deficit stops being counted at the
@@ -6757,7 +6819,7 @@ pub fn run_required_floor(
             let observation = ChangedWitnessCostObservation {
                 cpu_clock_nanos: receipt.cpu_nanos,
                 wall_clock_nanos: receipt.wall_nanos,
-                cpu_line_ms: claim.cpu_safety_limit_ms,
+                cpu_line_ms: claim.cost_line_ms,
             };
             eprintln!(
                 "[floor-cost-debt-observation] identity={} standing={} marginal_cpu_ms={} \
@@ -8119,7 +8181,10 @@ pub fn run_required_floor(
     // nothing reads `over_cost_line_diagnostic` to fail a run, and a row named here has already
     // been admitted and has already answered. The pairing the operator asked for is a warning at
     // 100ms and a hard error at 500ms, and those are two different mechanisms rather than two
-    // tiers of one: the hard error is `required_floor_claim_cpu_safety_limit_ms`, which refuses.
+    // tiers of one. THE HARD ERROR IS NO LONGER ON THIS CLOCK (2026-09-12): it is the eval-step
+    // comparison against `required_floor_claim_eval_step_budget`, and the 500ms figure it replaced
+    // survives as `required_floor_claim_work_envelope_ms`, the policy that budget is grounded
+    // against. This 100ms line is unchanged and still decides nothing.
     //
     // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~924 rows
     // on the measured corpus, and this file already carries the receipt for what that does to a
