@@ -1,5 +1,7 @@
 module gunbc.machine_intake_mtcollins1_memory_census_observation
 
+import gunbc.machine_intake_mtcollins1_access_observation { MtCollins1ControllerFruIdentity, mtcollins1_controller_fru_identity }
+
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
@@ -651,11 +653,15 @@ data mtcollins1_boot_delivery_observation: MtCollins1BootDeliveryObservation = M
 // which is provenance held by the author rather than a fact a reader can check inside the artifact.
 //
 // A SECOND CAPTURE CLOSES IT, and the closure is an EQUALITY BETWEEN TWO INDEPENDENT READS rather
-// than a stronger assertion of the same one. The host, reading its own SMBIOS Type 2 under Linux,
-// reports board serial 02030A800TEXFT02L. gunbc.machine_intake_mtcollins1_access_observation
-// reports the same serial from the CONTROLLER's IPMI FRU, over a different transport, from a
-// different agent, recorded days earlier. Host-side DMI and controller-side FRU agreeing on one
-// serial is what makes this an observation OF A UNIT; either alone is an observation of a reading.
+// than a stronger assertion of the same one: host-side SMBIOS Type 2 under Linux against
+// controller-side IPMI FRU, a different transport and a different agent. Either alone is an
+// observation of a reading; the two agreeing is an observation OF A UNIT.
+//
+// THE SERIALS ARE DELIBERATELY NOT REPEATED HERE. They were, and that made this annotation a second
+// copy of a value the declarations already carry -- which DESIGN section 4c forbids, and which is
+// also why the equality went unchecked for so long: prose restating a value reads like evidence for
+// it. The join is now structural, held by mtcollins1_subject_binding.corroborating_controller_read
+// against mtcollins1_controller_fru_identity, and exercised by a fold rather than described here.
 // THE ATTEMPT LABEL INSIDE THIS ARTIFACT IS NOT AN ATTEMPT IDENTITY, AND THAT IS A PRODUCER DEFECT
 // rather than a transcription slip. The capture's own header reads "attempt=3" — but so does the
 // FAILED run recorded at mtcollins1_attempt3_failure, whose artifact is committed as
@@ -788,12 +794,18 @@ data mtcollins1_host_capture_observed_at: EpochMs = 1789090010000
 // EVERY SECTION OF THAT CAPTURE CARRIES ITS ARGV AND ITS EXIT STATUS, which is what makes a
 // missing reading distinguishable from a zero one. All nineteen sections exited 0, so no field
 // below is standing on a command that failed quietly.
+// corroborating_controller_read WAS A PROSE String AND IS GONE. It said "Two transports, two
+// agents, one serial" -- the load-bearing claim of the whole module -- in a field no fold could
+// check, while the peer value lived in a // annotation the compiler cannot read (DESIGN 4c). Review
+// 64267 found both ends were prose and the witness had substituted a literal copied from the
+// declaration under test. The carrier is now the controller's own typed row, so the equality is
+// foldable and the claim is exercised rather than asserted.
 type MtCollins1SubjectBinding {
   smbios_board_serial: NonEmptyStr
   smbios_system_serial: NonEmptyStr
   smbios_system_uuid: NonEmptyStr
   baseboard_product: NonEmptyStr
-  corroborating_controller_read: NonEmptyStr
+  corroborating_controller_read: MtCollins1ControllerFruIdentity
 }
 
 data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBinding {
@@ -801,7 +813,7 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
   smbios_system_serial: "MXX2080619",
   smbios_system_uuid: "d5b80e46-903a-1000-01e6-4cd68a3cc128",
   baseboard_product: "FOXCONN Mt. Collins, board version 02030A800-600-G",
-  corroborating_controller_read: "gunbc.machine_intake_mtcollins1_access_observation reads board serial 02030A800TEXFT02L from the controller's IPMI FRU. The host reads the same serial from its own SMBIOS Type 2 under Linux. Two transports, two agents, one serial.",
+  corroborating_controller_read: mtcollins1_controller_fru_identity,
 }
 
 // THE FAILED ATTEMPT IS PRESERVED, WHICH IS THE POINT OF PRESERVING IT. Attempt 3 was built to

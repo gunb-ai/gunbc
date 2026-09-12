@@ -113,6 +113,39 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
   firmware: mtcollins1_firmware,
 }
 
+// THE CONTROLLER SIDE OF THE UNIT JOIN, TYPED SO IT CAN BE FOLDED. Review 64267 found that the
+// corroboration claim -- host SMBIOS and controller FRU reading the SAME serial, which is what
+// makes this an observation of a UNIT rather than of an address -- existed only as prose on BOTH
+// ends: an annotation here and a String field in the census. DESIGN section 4c is explicit that an
+// annotation is never evidence a machine claim holds, because no Accepted program can read one. So
+// the equality that carries the whole claim was unfoldable, and the census witness had substituted
+// a literal copied from the declaration it was testing.
+//
+// Re-read from the controller at 2026-09-12T03:1xZ rather than transcribed from the older capture,
+// and committed as artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt, sha256
+// dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c, whose first lines carry the
+// argv and whose last line carries exit=0 -- so a missing read is distinguishable from a zero one.
+// Both serials corroborate, not just the board serial the review asked for.
+type MtCollins1ControllerFruIdentity {
+  board_serial: NonEmptyStr
+  product_serial: NonEmptyStr
+  board_part_number: NonEmptyStr
+  board_manufacturer: NonEmptyStr
+}
+
+data mtcollins1_controller_fru_identity: MtCollins1ControllerFruIdentity = MtCollins1ControllerFruIdentity {
+  board_serial: "02030A800TEXFT02L",
+  product_serial: "MXX2080619",
+  board_part_number: "02030A800-600-G",
+  board_manufacturer: "FOXCONN",
+}
+
+data mtcollins1_controller_fru_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt"
+
+data mtcollins1_controller_fru_digest: ContentHash = Sha256Hash(Sha256Digest {
+  hex: "dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c",
+})
+
 // THE OBSERVATION'S raw_response NAMES A MANIFEST, NOT ONE CAPTURE, and that is a correction rather
 // than a refinement. It previously named the intake capture alone, while the observation's own
 // fields made claims that capture does not contain: the SEL read behind SurfaceEventLog, the clock
