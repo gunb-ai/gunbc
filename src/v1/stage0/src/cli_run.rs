@@ -23498,7 +23498,7 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
 struct WorkspaceRootRelativeEntry(&'static str);
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_source_authority.dag");
 
 fn resolve_workspace_entry(
     source_roots: &[String],
