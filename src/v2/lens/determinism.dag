@@ -227,7 +227,8 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 //
 // WHY THIS PRODUCER IS PURE AND PARAMETERIZED, and why no live read is here. v2.compiler.compile
 // imports THIS module, so anything reachable from here is reachable from every compile-importing
-// entry. always_required_root_lenses records what happened the last time a corpus scan was
+// entry. The root-grain partition of required_compile_lens_roster records what happened the last
+// time a corpus scan was
 // reachable from the door: lens_module_gate was DE-ENROLLED after its wrapper ran a nullary live
 // walk on every compile, putting 31 SubstrateInputsOnly stamps in the lying-stamp census. Calling
 // this judgment "determinism" would not have made that live read tree-grain. So the facts arrive as

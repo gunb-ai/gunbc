@@ -90,9 +90,14 @@ import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compi
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.types { NonEmptyStr }
 import std.algebra { Cons, Empty, FreeMonoid, trim }
 import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_find_first, list_reverse, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -162,21 +167,113 @@ type CompileLensOutcome = Outcome<Witness<Node>>
 
 type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 
+// IDENTITY-BEARING REGISTRATION. A registration used to carry its gate function and nothing else,
+// so a witness coming back out of the door named no producer: roster and observations could not be
+// joined, and "the required lenses ran" was a claim about a list length. A registration now carries
+// the DeclarationRef of the gate authority that decides it and the GRAIN that gate is legitimate
+// at, and every witness is stamped with both -- so registration and observation form one closed,
+// machine-checkable join (required_lens_coverage) rather than two lists of equal length.
+//
+// WHAT THAT JOIN DOES NOT ESTABLISH, AND ITS RUNG (review 64177, DESIGN section 4b(2)). The join
+// closes over the identity FIELD. Nothing binds that field to the `gate` beside it: both are
+// authored on the same row by hand, so swapping two rows' gates, or repointing a `gate` at a
+// different wrapper while leaving `identity` alone, leaves the join closed and the roster digest
+// unchanged. Coverage is therefore closed over a NAME, and the claim it supports is "a gate
+// registered under this identity ran at this grain", not "the declaration this identity names ran".
+// The residual sits at MITIGATION: a typed field, authored and unverified.
+// The class is `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`: the join's
+// two sides here are the authored name and a witness stamped FROM that same authored name.
+//
+// NO DISCRIMINATING RED IS AUTHORABLE TODAY, which is why this is a stated ceiling rather than a
+// missing test. A control would have to recover a declaration identity FROM a function value and
+// compare it to the authored one; a `CompileLensGate` is an opaque function value in this
+// substrate, and nothing about the declaration it came from survives into it. A control comparing
+// the authored identity to itself would be the decoration DESIGN section 4b warns about at the top
+// rung -- permanently green, and worse than absent because it would be cited as coverage of exactly
+// the gap it does not close.
+//
+// NEXT-RUNG TRIGGER: a reified declaration identity for function values -- the substrate carrying,
+// on a function value, the DeclarationRef of the declaration it was built from. With that, the
+// identity field stops being authored at all: it is DERIVED from the gate, the two cannot disagree
+// by construction, and this row's identity/gate pair collapses to one fact. That is the climb from
+// mitigation to structural impossibility, and it is a language-layer capability rather than
+// something this module can build.
+// ONE ROSTER, PARTITIONED BY GRAIN. The two grains stay semantically load-bearing (see
+// required_lens_grain_note) but they are no longer two registration surfaces: grain is a field and
+// required_lenses_at_grain derives each execution's roster from the single roster. A second list
+// would be the fork this registration exists to close (DESIGN section 3).
+// DIVERGENCE, STATED (DESIGN section 3b): the brief named a new type RequiredCompileLens beside
+// CompileLens. Requiredness is membership in required_compile_lens_roster, not a property of the
+// carrier -- a caller-supplied lens has the same three facts and must stamp its witnesses the same
+// way for the join to be closed at all -- so one carrier gains the two fields instead.
+type CompileLensGrain
+  = CompileLensRoot
+  | CompileLensSubtree
+
 type CompileLens {
+  identity: DeclarationRef
+  grain: CompileLensGrain
   gate: CompileLensGate
+}
+
+fn compile_lens_grain_name(grain: CompileLensGrain) -> String {
+  match grain {
+    CompileLensRoot => "root"
+    CompileLensSubtree => "subtree"
+  }
+}
+
+fn compile_lens_grain_eq(a: CompileLensGrain, b: CompileLensGrain) -> Bool {
+  match a {
+    CompileLensRoot =>
+      match b {
+        CompileLensRoot => true
+        CompileLensSubtree => false
+      }
+    CompileLensSubtree =>
+      match b {
+        CompileLensRoot => false
+        CompileLensSubtree => true
+      }
+  }
 }
 
 type CompileLensMode
   = CompileLensEnforce
   | CompileLensIntrospect
 
+// A witness names the registration that produced it and the grain it was produced at. Both are
+// required for the join to refuse rather than widen: identity answers "which lens", grain answers
+// "was it run where it is legitimate", and neither is recoverable from Witness<Node>.
 type LensGateWitness {
+  lens: DeclarationRef
+  grain: CompileLensGrain
   witness: Witness<Node>
 }
 
+// THE COVERAGE RECEIPT IS A DECLARED FRONTIER, AND THIS IS ITS TRIGGER (DESIGN section 3c).
+// The JOIN is consumed by execution in this change -- validate_then_compile refuses a compile whose
+// coverage is not closed, which is the gate. The receipt CARRIED here is a different declaration
+// with a different consumer, and today nothing outside this module reads it. Naming the census as a
+// consumer without a trigger would be the half-classification section 3c refuses, so the trigger is
+// stated as the capability rather than as an artifact:
+//
+//   CONSUMER: self-host promotion admission -- the candidate and successor coverage fields on
+//   SelfHostCandidate, where promotion refuses BY NAME on a lens that did not run.
+//   ROUTE: the candidate compile path runs through validate_then_compile, so the receipt this field
+//   carries is what admission reads rather than re-deriving; re-deriving it there would be a second
+//   authority on which lenses ran (DESIGN section 3).
+//   TRIGGER: the promotion path routing its candidate through this door and refusing on a named
+//   uncovered lens -- sufficient that a candidate cannot be promoted without its coverage having
+//   been observed on the same compile that produced it.
+//
+// If that capability does not land, this field is redundant work and the honest move is to DELETE
+// it rather than to keep it: the refusal above is already the gate, and a receipt nobody reads is
+// section 2's redundant work however well shaped it is.
 type Validated<T> {
   value: T
   lens_witnesses: List<LensGateWitness>
+  required_lens_coverage: RequiredLensCoverage
 }
 
 fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
@@ -203,48 +300,357 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_alias_compile_gate }
-
-data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
-
-data lifecycle_carrier_lens: CompileLens = CompileLens { gate: lifecycle_carrier_compile_gate }
-
-fn always_required_lenses() -> List<CompileLens> {
-  [fact_density_lens, unit_modeling_lens, lifecycle_carrier_lens]
+data fact_density_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.fact_density", decl_name: "fact_density_hollow_alias_gate"),
+  grain: CompileLensSubtree,
+  gate: fact_density_hollow_alias_compile_gate
 }
 
-data required_lens_grain_note: String = "Two required-roster grains, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). always_required_lenses runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling — each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). always_required_root_lenses runs ONCE at the tree root — the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). Witness accumulation on the subtree fold uses prepend-then-reverse, not append-in-step. Root-required lenses fire on every validate_then_compile call regardless of caller-supplied lenses, exactly like the subtree roster."
+data unit_modeling_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.unit_modeling", decl_name: "unit_modeling_gate"),
+  grain: CompileLensSubtree,
+  gate: unit_modeling_compile_gate
+}
 
-data accumulator_copy_lens: CompileLens = CompileLens { gate: accumulator_copy_root_gate }
+data lifecycle_carrier_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.lifecycle_carrier", decl_name: "lifecycle_carrier_gate"),
+  grain: CompileLensSubtree,
+  gate: lifecycle_carrier_compile_gate
+}
 
-data determinism_lens: CompileLens = CompileLens { gate: determinism_root_gate }
+data accumulator_copy_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.complexity_accumulator_copy.compile_gate", decl_name: "accumulator_copy_compile_gate"),
+  grain: CompileLensRoot,
+  gate: accumulator_copy_root_gate
+}
 
-data machine_shape_lens: CompileLens = CompileLens { gate: machine_shape_root_gate }
-data undecidable_verdict_collapse_lens: CompileLens = CompileLens { gate: undecidable_verdict_collapse_root_gate }
+data determinism_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.determinism", decl_name: "determinism_compile_gate"),
+  grain: CompileLensRoot,
+  gate: determinism_root_gate
+}
 
-data mandatory_tag_lens: CompileLens = CompileLens { gate: mandatory_tag_root_gate }
+data machine_shape_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.machine_shape", decl_name: "machine_shape_compile_gate"),
+  grain: CompileLensRoot,
+  gate: machine_shape_root_gate
+}
 
-// always_required_root_lenses is TREE-GRAIN only: every enrolled gate is a pure fold over the
-// InferredTree being compiled (accumulator_copy, determinism, machine_shape, mandatory_tag read
-// tree.root and nothing else). lens_module_gate was DE-ENROLLED here (census follow-on to run
-// 29892063728 receipts): its compile_gate wrapper discarded the tree argument and ran the nullary
-// corpus scan lens_module_gate_blocking_holds - a live walk of src/v2/lens on every compile, making
-// every compile-importing entry reach a live-read carrier and putting 31 SubstrateInputsOnly
-// witness stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement is NOT
-// reduced: the invariant executes per-PR via its honestly-stamped consumer
+data mandatory_tag_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.mandatory_tag", decl_name: "mandatory_tag_compile_gate"),
+  grain: CompileLensRoot,
+  gate: mandatory_tag_root_gate
+}
+
+data undecidable_verdict_collapse_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.undecidable_verdict_collapse", decl_name: "undecidable_verdict_collapse_compile_gate"),
+  grain: CompileLensRoot,
+  gate: undecidable_verdict_collapse_root_gate
+}
+
+data required_lens_grain_note: String = "Two registered grains, one roster, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). A CompileLensSubtree registration runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling, lifecycle_carrier -- each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). A CompileLensRoot registration runs ONCE at the tree root -- the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). The grain is a FIELD on the registration and required_lenses_at_grain derives each execution's list from the one roster, so this cost argument is carried by the row rather than by which of two lists a lens was written into. Witness accumulation on the subtree fold CONCATENATES the child's accumulated list into the accumulator at every step and reverses once at the end, which copies one operand per step and is the accumulator-copy shape this very door's own lens exists to refuse (DESIGN 7 self-application, measured and named rather than asserted away). It is stated here because this string is a COMPARED VALUE and a false cost claim in it would be green by equality on both sides. The repair is not an argument order: list_append costs its LEFT operand and the carrier's rc_list_concat copies its RIGHT one, and neither the accumulator nor a child's subtree accumulation is reliably the shorter, so a fold over a tree stays superlinear whichever way it is written. The defect, its capability trigger and the experiment already falsified against it are carried by gunbc.recurring_failure_mode enforcement_exhibits_the_shape_it_refuses. Required registrations at both grains fire on every validate_then_compile call regardless of caller-supplied lenses, and a caller-supplied lens now runs at ITS OWN declared grain rather than at root whatever it declared."
+
+// THE SINGLE REGISTRATION ROSTER. Every lens the compile door is obliged to run is a row here, at
+// the grain it is legitimate at; the two execution sites derive their lists from this one roster
+// through required_lenses_at_grain. Adding a lens is one row, and the row is what the coverage
+// join, the roster digest and (downstream) the obligation census all key on.
+//
+// WHAT IS NOT ELIGIBLE FOR A ROW, carried forward verbatim in force from the two-list form this
+// roster replaced, because the prohibition is about the DOOR and not about which list held it.
+// lens_module_gate was DE-ENROLLED from the root grain (census follow-on to run 29892063728
+// receipts): its compile_gate wrapper discarded the tree argument and ran the nullary corpus scan
+// lens_module_gate_blocking_holds - a live walk of src/v2/lens on every compile, making every
+// compile-importing entry reach a live-read carrier and putting 31 SubstrateInputsOnly witness
+// stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement was NOT reduced: the
+// invariant executes per-PR via its honestly-stamped consumer
 // v2.test.claim.enforcement.lens_module_gate_witness (live_tree_disposition: ReadsLiveTree, never
-// predict-skips), which reds the floor when registry completeness breaks. A corpus-grain invariant
-// enrolls on the corpus cadence with a ReadsLiveTree stamp, never in the per-tree door -
-// re-enrolling a nullary gate here re-opens the census class.
-
-fn always_required_root_lenses() -> List<CompileLens> {
+// predict-skips), which reds the floor when registry completeness breaks.
+// SO THE ELIGIBILITY RULE, stated because "adding a lens is one row" would otherwise read as an
+// invitation to the exact regression: a row here must be a PURE FOLD OVER THE TREE BEING COMPILED
+// at its declared grain. A nullary gate, a corpus scan, or any gate that reads the live tree rather
+// than its InferredTree argument is not eligible at either grain - a corpus-grain invariant enrolls
+// on the corpus cadence with a ReadsLiveTree stamp, never in the per-tree door, and re-registering
+// one here re-opens the census class.
+fn required_compile_lens_roster() -> List<CompileLens> {
   [
+    fact_density_lens,
+    unit_modeling_lens,
+    lifecycle_carrier_lens,
     accumulator_copy_lens,
     determinism_lens,
     machine_shape_lens,
     mandatory_tag_lens,
     undecidable_verdict_collapse_lens
   ]
+}
+
+fn lenses_at_grain(lenses: List<CompileLens>, grain: CompileLensGrain) -> List<CompileLens> {
+  list_reverse(xs: fold_list(
+    xs: lenses,
+    empty: Empty,
+    cons: fn(acc, lens) {
+      if compile_lens_grain_eq(a: lens.grain, b: grain) { Cons { head: lens, tail: acc } } else { acc }
+    }
+  ))
+}
+
+fn required_lenses_at_grain(grain: CompileLensGrain) -> List<CompileLens> {
+  lenses_at_grain(lenses: required_compile_lens_roster(), grain: grain)
+}
+
+// THE ROSTER DIGEST IS OVER IDENTITY AND GRAIN, IN ROSTER ORDER, and the order is part of it: two
+// consumers re-deriving from this one entry point see one order, so a receipt carrying a digest is
+// a claim about WHICH IDENTITIES were obliged, not merely how many. It deliberately does not cover
+// the gate function -- and the honest reading is narrower than "the gate is named by the identity
+// it is registered under", which is what this sentence used to say: nothing verifies that pairing
+// (see the registration annotation above), so a digest is a claim about the registered names and
+// their grains, and is unchanged by a gate swap underneath them.
+fn required_lens_roster_digest_text(lenses: List<CompileLens>) -> String {
+  fold_list(
+    xs: lenses,
+    empty: "",
+    cons: fn(acc, lens) {
+      concat(
+        concat(concat(acc, declaration_ref_display_key(ref: lens.identity)), "@"),
+        concat(compile_lens_grain_name(grain: lens.grain), "\n")
+      )
+    }
+  )
+}
+
+fn required_lens_roster_digest_of(lenses: List<CompileLens>) -> String {
+  serialize_content_hash(
+    hash: content_hash_of_value(value: required_lens_roster_digest_text(lenses: lenses) as NonEmptyStr)
+  )
+}
+
+fn required_lens_roster_digest() -> String {
+  required_lens_roster_digest_of(lenses: required_compile_lens_roster())
+}
+
+// THE BIDIRECTIONAL JOIN. Registration and observation are two sides of one fact, and every way
+// they can disagree is an arm -- none of them a skip, none of them a widen (DESIGN section 5). A
+// registration nobody observed is the silent hole this whole change exists to close; an observation
+// naming no registration is a lens running through the door off the roster; a grain disagreement
+// means the gate ran somewhere its own cost argument does not hold; a root lens observed twice means
+// the root roster was run more than once per tree. Subtree-grain registrations are observed ONCE PER
+// NODE by construction, so their obligation is at-least-one, and only the root grain can state
+// exactly-one -- stating exactly-one for both would refuse every tree with more than one node.
+type RequiredLensCoverageRow {
+  lens: DeclarationRef
+  grain: CompileLensGrain
+  observations: Int
+}
+
+type RequiredLensJoinCause
+  = RequiredLensRosterEmpty
+  | RegistrationDuplicated { lens: DeclarationRef }
+  | RegistrationUnobserved { lens: DeclarationRef }
+  | ObservationUnregistered { lens: DeclarationRef }
+  | ObservedAtWrongGrain { lens: DeclarationRef }
+  | RootLensObservedMoreThanOnce { lens: DeclarationRef }
+
+type RequiredLensCoverage
+  = RequiredLensCoverageClosed {
+      roster_digest: String
+      rows: List<RequiredLensCoverageRow>
+    }
+  | RequiredLensCoverageRefused { cause: RequiredLensJoinCause }
+
+fn required_lens_join_cause_reason(cause: RequiredLensJoinCause) -> Symbol {
+  match cause {
+    RequiredLensRosterEmpty => ^required_lens_roster_empty
+    RegistrationDuplicated { lens: _ } => ^required_lens_registration_duplicated
+    RegistrationUnobserved { lens: _ } => ^required_lens_registration_unobserved
+    ObservationUnregistered { lens: _ } => ^required_lens_observation_unregistered
+    ObservedAtWrongGrain { lens: _ } => ^required_lens_observed_at_wrong_grain
+    RootLensObservedMoreThanOnce { lens: _ } => ^required_lens_root_observed_more_than_once
+  }
+}
+
+type RequiredLensTally {
+  grain: CompileLensGrain
+  observations: Int
+  mixed_grain: Bool
+}
+
+// Joins are keyed through map_lookup on the display key, never through map_keys: a key-order read
+// is exactly what the determinism lens registered here refuses, and the join must be linear in the
+// observation count rather than quadratic over the roster (DESIGN section 6, bare minimum cost).
+fn required_lens_tally_observations(witnesses: List<LensGateWitness>) -> Map<String, RequiredLensTally> {
+  fold_list(
+    xs: witnesses,
+    empty: empty_map(),
+    cons: fn(acc, w) {
+      match map_lookup(acc, declaration_ref_display_key(ref: w.lens)) {
+        Absent =>
+          map_insert(acc, declaration_ref_display_key(ref: w.lens),
+            RequiredLensTally { grain: w.grain, observations: 1, mixed_grain: false })
+        Present { value: t } =>
+          map_insert(acc, declaration_ref_display_key(ref: w.lens),
+            RequiredLensTally {
+              grain: t.grain,
+              observations: t.observations + 1,
+              mixed_grain: t.mixed_grain || !compile_lens_grain_eq(a: t.grain, b: w.grain)
+            })
+      }
+    }
+  )
+}
+
+fn required_lens_registration_keys(lenses: List<CompileLens>) -> Map<String, CompileLensGrain> {
+  fold_list(
+    xs: lenses,
+    empty: empty_map(),
+    cons: fn(acc, lens) { map_insert(acc, declaration_ref_display_key(ref: lens.identity), lens.grain) }
+  )
+}
+
+fn required_lens_first_duplicate(lenses: List<CompileLens>) -> Optional<DeclarationRef> {
+  let scan = fold_list(
+    xs: lenses,
+    empty: RequiredLensDuplicateScan { seen: empty_map(), duplicate: Absent },
+    cons: fn(acc, lens) {
+      match map_lookup(acc.seen, declaration_ref_display_key(ref: lens.identity)) {
+        Absent =>
+          RequiredLensDuplicateScan {
+            seen: map_insert(acc.seen, declaration_ref_display_key(ref: lens.identity), true),
+            duplicate: acc.duplicate
+          }
+        Present { value: _ } =>
+          RequiredLensDuplicateScan {
+            seen: acc.seen,
+            duplicate: match acc.duplicate {
+              Absent => Present { value: lens.identity }
+              Present { value: d } => Present { value: d }
+            }
+          }
+      }
+    }
+  )
+  scan.duplicate
+}
+
+type RequiredLensDuplicateScan {
+  seen: Map<String, Bool>
+  duplicate: Optional<DeclarationRef>
+}
+
+type RequiredLensRowScan {
+  rows_reversed: List<RequiredLensCoverageRow>
+  cause: Optional<RequiredLensJoinCause>
+}
+
+fn required_lens_row_scan_refuse(
+  acc: RequiredLensRowScan,
+  cause: RequiredLensJoinCause
+) -> RequiredLensRowScan {
+  match acc.cause {
+    Absent => RequiredLensRowScan { rows_reversed: acc.rows_reversed, cause: Present { value: cause } }
+    Present { value: _ } => acc
+  }
+}
+
+fn required_lens_row_for_registration(
+  acc: RequiredLensRowScan,
+  lens: CompileLens,
+  tallies: Map<String, RequiredLensTally>
+) -> RequiredLensRowScan {
+  match map_lookup(tallies, declaration_ref_display_key(ref: lens.identity)) {
+    Absent => required_lens_row_scan_refuse(acc: acc, cause: RegistrationUnobserved { lens: lens.identity })
+    Present { value: t } =>
+      if t.mixed_grain || !compile_lens_grain_eq(a: t.grain, b: lens.grain) {
+        required_lens_row_scan_refuse(acc: acc, cause: ObservedAtWrongGrain { lens: lens.identity })
+      } else {
+        match lens.grain {
+          CompileLensRoot =>
+            if t.observations == 1 {
+              RequiredLensRowScan {
+                rows_reversed: Cons {
+                  head: RequiredLensCoverageRow { lens: lens.identity, grain: lens.grain, observations: t.observations },
+                  tail: acc.rows_reversed
+                },
+                cause: acc.cause
+              }
+            } else {
+              required_lens_row_scan_refuse(acc: acc, cause: RootLensObservedMoreThanOnce { lens: lens.identity })
+            }
+          CompileLensSubtree =>
+            RequiredLensRowScan {
+              rows_reversed: Cons {
+                head: RequiredLensCoverageRow { lens: lens.identity, grain: lens.grain, observations: t.observations },
+                tail: acc.rows_reversed
+              },
+              cause: acc.cause
+            }
+        }
+      }
+  }
+}
+
+fn required_lens_unregistered_observation(
+  witnesses: List<LensGateWitness>,
+  registrations: Map<String, CompileLensGrain>
+) -> Optional<DeclarationRef> {
+  fold_list(
+    xs: witnesses,
+    empty: optional_absent(),
+    cons: fn(acc, w) {
+      match acc {
+        Present { value: d } => Present { value: d }
+        Absent =>
+          match map_lookup(registrations, declaration_ref_display_key(ref: w.lens)) {
+            Present { value: _ } => optional_absent()
+            Absent => Present { value: w.lens }
+          }
+      }
+    }
+  )
+}
+
+fn join_required_lens_coverage(
+  lenses: List<CompileLens>,
+  witnesses: List<LensGateWitness>
+) -> RequiredLensCoverage {
+  match lenses {
+    Empty => RequiredLensCoverageRefused { cause: RequiredLensRosterEmpty }
+    Cons { head: _, tail: _ } =>
+      match required_lens_first_duplicate(lenses: lenses) {
+        Present { value: d } => RequiredLensCoverageRefused { cause: RegistrationDuplicated { lens: d } }
+        Absent =>
+          match required_lens_unregistered_observation(
+            witnesses: witnesses,
+            registrations: required_lens_registration_keys(lenses: lenses)
+          ) {
+            Present { value: u } => RequiredLensCoverageRefused { cause: ObservationUnregistered { lens: u } }
+            Absent =>
+              let tallies = required_lens_tally_observations(witnesses: witnesses)
+              let scan = fold_list(
+                xs: lenses,
+                empty: RequiredLensRowScan { rows_reversed: Empty, cause: optional_absent() },
+                cons: fn(acc, lens) {
+                  required_lens_row_for_registration(acc: acc, lens: lens, tallies: tallies)
+                }
+              )
+              match scan.cause {
+                Present { value: cause } => RequiredLensCoverageRefused { cause: cause }
+                Absent =>
+                  RequiredLensCoverageClosed {
+                    roster_digest: required_lens_roster_digest_of(lenses: lenses),
+                    rows: list_reverse(xs: scan.rows_reversed)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn required_lens_coverage_not_closed_diagnostic(cause: RequiredLensJoinCause) -> Diagnostic {
+  Diagnostic {
+    reason: required_lens_join_cause_reason(cause: cause),
+    at: invariant_port_locus(port: ^required_lens_coverage, invariant: ^required_lens_coverage_closed),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 fn accumulator_copy_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -311,9 +717,13 @@ fn apply_compile_lens(
 
 fn prepend_lens_gate_witness(
   witnesses: List<LensGateWitness>,
+  lens: CompileLens,
   witness: Witness<Node>
 ) -> List<LensGateWitness> {
-  Cons { head: LensGateWitness { witness: witness }, tail: witnesses }
+  Cons {
+    head: LensGateWitness { lens: lens.identity, grain: lens.grain, witness: witness },
+    tail: witnesses
+  }
 }
 
 fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
@@ -340,6 +750,7 @@ fn run_required_lens_gates(
                   outcome_accepted(
                     value: prepend_lens_gate_witness(
                       witnesses: witnesses,
+                      lens: lens,
                       witness: w
                     )
                   )
@@ -436,14 +847,51 @@ fn compile(
 
 fn validated_from_compile_output(
   output: CompileOutput,
-  lens_witnesses: List<LensGateWitness>
+  lens_witnesses: List<LensGateWitness>,
+  coverage: RequiredLensCoverage
 ) -> Validated<CompileOutput> {
   Validated {
     value: output,
-    lens_witnesses: lens_witnesses
+    lens_witnesses: lens_witnesses,
+    required_lens_coverage: coverage
   }
 }
 
+// THE DOOR RUNS EACH LENS AT ITS REGISTERED GRAIN, INCLUDING CALLER-SUPPLIED ONES. Caller lenses
+// used to be appended to the root roster whatever grain they belonged to, which made the grain a
+// comment rather than a fact; they are partitioned by their own declared grain now, exactly like
+// registrations. The required roster still fires on every call regardless of caller lenses.
+// THE COVERAGE JOIN RUNS AT THIS DOOR, AND WHAT IT CATCHES HERE IS NARROWER THAN THE JOIN ITSELF.
+// It is a gate rather than a report -- a refusal by name fails the compile -- but this annotation
+// used to say that "an obligation that silently stopped executing stops the line", and that is
+// FALSE at this door (review 64196). Both sides of the join are derived from
+// `required_compile_lens_roster()` inside one call: `run_required_lens_gates` folds the roster and
+// stamps each witness with the `identity` and `grain` of the very row it is folding, so the
+// observation list is a structural image of the roster rather than an independent reading of it.
+// `required_lens_observations` then drops any witness whose identity is not a registration before
+// the join is even asked. So `RegistrationUnobserved`, `ObservedAtWrongGrain`,
+// `RootLensObservedMoreThanOnce` and `ObservationUnregistered` have NO authorable RED on this path.
+// What can fire here is `RegistrationDuplicated` -- two roster rows sharing an identity -- and
+// `RequiredLensRosterEmpty`. An obligation that stops executing does so by LEAVING THE ROSTER, and
+// a join whose both sides come from the roster cannot see that by construction.
+//
+// The arms are not decoration, because they are discriminated where their REDs are authorable: a
+// fixture may hand the join an observation set this door cannot produce, and
+// `v2.test.lens_application.required_lens_coverage_join` does exactly that for every arm. DESIGN
+// section 4b is explicit that a state unrepresentable in the accepted corpus may still be
+// representable as source handed to the compiler by a fixture, and that declining the evidence
+// there would be specification-without-execution. The honest statement is therefore about grain:
+// fixture-grain the join discriminates six ways; door-grain it catches a duplicated or empty roster.
+//
+// THE CLASS IS ROSTERED: `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`,
+// whose discriminator is the one sentence that finds this without reading any witness -- the
+// comparison's two operands have a common producer. Both of this file's instances are its specimens.
+//
+// TRIGGER for the door-grain claim to become the one this annotation used to make: an INDEPENDENT
+// observation channel -- a receipt carried out of the runner that executed the gates, rather than a
+// list re-derived from the roster it is compared against. Until an observation can disagree with a
+// registration at this door, no wording here may claim it would be caught (DESIGN sections 4b(1),
+// 4b(2), 5).
 fn validate_then_compile(
   source: CoreNode,
   lenses: List<CompileLens>,
@@ -453,37 +901,73 @@ fn validate_then_compile(
     o: infer(tree: source),
     f: fn(inferred) {
       bind_outcome(
-        o: run_required_lens_gates_on_subtree(inferred: inferred, lenses: always_required_lenses()),
-        f: fn(required_lens_witnesses) {
+        o: run_required_lens_gates_on_subtree(
+          inferred: inferred,
+          lenses: list_append(
+            left: required_lenses_at_grain(grain: CompileLensSubtree),
+            right: lenses_at_grain(lenses: lenses, grain: CompileLensSubtree)
+          )
+        ),
+        f: fn(subtree_witnesses) {
           bind_outcome(
             o: run_required_lens_gates(
               inferred: inferred,
-              lenses: list_append(left: always_required_root_lenses(), right: lenses)
-            ),
-            f: fn(caller_lens_witnesses) {
-              bind_outcome(
-                o: compile_inferred(
-                  inferred: inferred,
-                  mode: mode
-                ),
-                f: fn(compile_out) {
-                  outcome_accepted(
-                    value: validated_from_compile_output(
-                      output: compile_out,
-                      lens_witnesses: list_append(
-                        left: required_lens_witnesses,
-                        right: caller_lens_witnesses
-                      )
-                    )
-                  )
-                }
+              lenses: list_append(
+                left: required_lenses_at_grain(grain: CompileLensRoot),
+                right: lenses_at_grain(lenses: lenses, grain: CompileLensRoot)
               )
+            ),
+            f: fn(root_witnesses) {
+              let all_witnesses = list_append(left: subtree_witnesses, right: root_witnesses)
+              match join_required_lens_coverage(
+                lenses: required_compile_lens_roster(),
+                witnesses: required_lens_observations(
+                  witnesses: all_witnesses,
+                  lenses: required_compile_lens_roster()
+                )
+              ) {
+                RequiredLensCoverageRefused { cause: cause } =>
+                  outcome_rejected(d: required_lens_coverage_not_closed_diagnostic(cause: cause))
+                RequiredLensCoverageClosed { roster_digest: digest, rows: rows } =>
+                  bind_outcome(
+                    o: compile_inferred(inferred: inferred, mode: mode),
+                    f: fn(compile_out) {
+                      outcome_accepted(
+                        value: validated_from_compile_output(
+                          output: compile_out,
+                          lens_witnesses: all_witnesses,
+                          coverage: RequiredLensCoverageClosed { roster_digest: digest, rows: rows }
+                        )
+                      )
+                    }
+                  )
+              }
             }
           )
         }
       )
     }
   )
+}
+
+// The join is asked about the REQUIRED roster, so caller-supplied observations are selected out
+// before it runs rather than being excused inside it: an unregistered observation must stay a
+// refusal for the roster it is asked about.
+fn required_lens_observations(
+  witnesses: List<LensGateWitness>,
+  lenses: List<CompileLens>
+) -> List<LensGateWitness> {
+  let registrations = required_lens_registration_keys(lenses: lenses)
+  list_reverse(xs: fold_list(
+    xs: witnesses,
+    empty: Empty,
+    cons: fn(acc, w) {
+      match map_lookup(registrations, declaration_ref_display_key(ref: w.lens)) {
+        Present { value: _ } => Cons { head: w, tail: acc }
+        Absent => acc
+      }
+    }
+  ))
 }
 
 fn compile_ingest_with_admission(
