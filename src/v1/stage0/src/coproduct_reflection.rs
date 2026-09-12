@@ -146,8 +146,23 @@ pub struct ReflectionResolveRow {
     /// not count.
     pub visited_modules: usize,
     pub visited_items: usize,
+    /// The first scan, whole.
     pub lookup_cpu_nanos: u128,
+    /// Inside the first scan, summed per item: the shared index fetch (`map_get` over the
+    /// scope's `source_indices`) and the source-text slice (`source_text_at` over that file's
+    /// `char_codes`). The remainder of `lookup_cpu_nanos` is loop, compare and clock reads.
+    pub lookup_index_cpu_nanos: u128,
+    pub lookup_text_cpu_nanos: u128,
+    /// THE SAME SCAN RUN A SECOND TIME, IMMEDIATELY, with nothing between: the discriminator
+    /// for a first-touch cost. Equal to the first means the scan costs what it costs; far
+    /// below it means the first call paid something once that the second did not.
+    pub lookup_repeat_cpu_nanos: u128,
+    pub lookup_repeat_index_cpu_nanos: u128,
+    pub lookup_repeat_text_cpu_nanos: u128,
     pub marshal_cpu_nanos: u128,
+    /// Thread-CPU clock reads this row cost, COUNTED as they executed -- the instrument's own
+    /// price, priced by `reflection_clock_read_nanos`.
+    pub clock_reads: u64,
 }
 
 /// THE REFLECTION COST LEDGER, per evaluating thread, drained once per claim by
@@ -162,9 +177,10 @@ pub struct ReflectionResolveRow {
 /// two halves are recorded as SEPARATELY MEASURED quantities on the thread-CPU clock the
 /// ceiling itself is enforced on; they are never reported as shares of one total.
 ///
-/// WHAT THE INSTRUMENT COSTS. Four `thread_cpu_nanos` reads per call plus one ledger push;
-/// `reflection_clock_read_nanos` measures the read on the executing host so the reader can
-/// price `4 * calls` reads against the figures beside them rather than assume.
+/// WHAT THE INSTRUMENT COSTS. Every `thread_cpu_nanos` read is counted on the row as it
+/// executes (`clock_reads`: two per scanned item per scan, plus the brackets), and
+/// `reflection_clock_read_nanos` measures one read on the executing host, so the reader
+/// prices the instrument from two measured numbers rather than a transcribed one.
 #[derive(Debug, Default)]
 pub struct ReflectionResolveLedger {
     pub rows: Vec<ReflectionResolveRow>,
@@ -198,24 +214,57 @@ pub fn reflection_clock_read_nanos() -> u128 {
 pub(crate) struct TypeItemLookup<'a> {
     pub(crate) item: &'a Rc<Node>,
     pub(crate) matched_module: (String, usize),
+}
+
+/// What one scan visited and spent, on both arms.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct ScanCost {
     pub(crate) visited_modules: usize,
     pub(crate) visited_items: usize,
+    pub(crate) index_cpu_nanos: u128,
+    pub(crate) text_cpu_nanos: u128,
+    pub(crate) clock_reads: u64,
+}
+
+fn read_clock(reads: &mut u64) -> u128 {
+    *reads += 1;
+    crate::v1_interpreter::thread_cpu_nanos()
 }
 
 /// The scan, with its visit counts carried out on both arms: a refusal reports how far it
 /// walked before running out of scope exactly as a hit reports where it stopped.
+///
+/// The per-item name derivation is `authored_name_at` opened one level -- its `Some(index)`
+/// arm is the two operations timed here, and the other arms are delegated back to it
+/// unchanged -- so the split is over the same computation, not a second spelling of it.
 pub(crate) fn type_item_by_name<'a>(
     ctx: &'a InterpContext,
     type_name: &str,
-) -> Result<TypeItemLookup<'a>, (InterpError, usize, usize)> {
+    cost: &mut ScanCost,
+) -> Result<TypeItemLookup<'a>, InterpError> {
     let si = ctx.source_indices();
-    let mut visited_modules = 0usize;
-    let mut visited_items = 0usize;
     for (position, module) in ctx.modules.iter().enumerate() {
-        visited_modules += 1;
+        cost.visited_modules += 1;
         for item in module.items.iter() {
-            visited_items += 1;
-            let name = authored_name_at(si.clone(), item.clone());
+            cost.visited_items += 1;
+            let name = match item.ident_span.clone() {
+                Some(span) => {
+                    let t0 = read_clock(&mut cost.clock_reads);
+                    let index = crate::v1_rt::map_get(&si, span.file.clone());
+                    let t1 = read_clock(&mut cost.clock_reads);
+                    cost.index_cpu_nanos += t1.saturating_sub(t0);
+                    match index {
+                        Some(index) => {
+                            let text = source_text_at(index, span);
+                            let t2 = read_clock(&mut cost.clock_reads);
+                            cost.text_cpu_nanos += t2.saturating_sub(t1);
+                            text
+                        }
+                        None => authored_name_at(si.clone(), item.clone()),
+                    }
+                }
+                None => String::new(),
+            };
             if name != type_name {
                 continue;
             }
@@ -233,19 +282,13 @@ pub(crate) fn type_item_by_name<'a>(
                 return Ok(TypeItemLookup {
                     item,
                     matched_module: (module.func_env.name.clone(), position),
-                    visited_modules,
-                    visited_items,
                 });
             }
         }
     }
-    Err((
-        InterpError::TypeError {
-            msg: format!("resolve_type_node: unknown closed type `{type_name}`"),
-        },
-        visited_modules,
-        visited_items,
-    ))
+    Err(InterpError::TypeError {
+        msg: format!("resolve_type_node: unknown closed type `{type_name}`"),
+    })
 }
 
 fn nullary_connective_variant(ctx: &InterpContext, name: &str) -> Value {
@@ -424,42 +467,51 @@ pub fn eval_resolve_type_node(
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "resolve_type_node")?;
-    // TWO CLOCKS, TWO QUANTITIES. The lookup is bracketed on its own and the marshal on its
-    // own; a refused lookup still records its row (with what it visited) before the error
+    // TWO CLOCKS, TWO QUANTITIES, AND THE SCAN TWICE. The lookup is bracketed on its own and
+    // the marshal on its own; the lookup is then run a second time with nothing between, so a
+    // first-touch cost shows as the difference between two otherwise identical scans. A
+    // refused lookup still records its row (with what it visited) before the error
     // propagates, so a scan that ran the whole scope and found nothing is not invisible.
-    let lookup_started = crate::v1_interpreter::thread_cpu_nanos();
-    let found = type_item_by_name(ctx, type_name);
-    let lookup_cpu_nanos = crate::v1_interpreter::thread_cpu_nanos().saturating_sub(lookup_started);
+    let mut reads = 0u64;
+    let mut first = ScanCost::default();
+    let t0 = read_clock(&mut reads);
+    let found = type_item_by_name(ctx, type_name, &mut first);
+    let t1 = read_clock(&mut reads);
+    let lookup_cpu_nanos = t1.saturating_sub(t0);
+    let mut repeat = ScanCost::default();
+    let t2 = read_clock(&mut reads);
+    let repeated = type_item_by_name(ctx, type_name, &mut repeat);
+    let t3 = read_clock(&mut reads);
+    let lookup_repeat_cpu_nanos = t3.saturating_sub(t2);
+    drop(repeated);
+    let mut row = ReflectionResolveRow {
+        type_name: type_name.to_string(),
+        matched_module: None,
+        visited_modules: first.visited_modules,
+        visited_items: first.visited_items,
+        lookup_cpu_nanos,
+        lookup_index_cpu_nanos: first.index_cpu_nanos,
+        lookup_text_cpu_nanos: first.text_cpu_nanos,
+        lookup_repeat_cpu_nanos,
+        lookup_repeat_index_cpu_nanos: repeat.index_cpu_nanos,
+        lookup_repeat_text_cpu_nanos: repeat.text_cpu_nanos,
+        marshal_cpu_nanos: 0,
+        clock_reads: reads + first.clock_reads + repeat.clock_reads,
+    };
     let found = match found {
         Ok(found) => found,
-        Err((err, visited_modules, visited_items)) => {
-            REFLECTION_RESOLVE_LEDGER.with(|cell| {
-                cell.borrow_mut().rows.push(ReflectionResolveRow {
-                    type_name: type_name.to_string(),
-                    matched_module: None,
-                    visited_modules,
-                    visited_items,
-                    lookup_cpu_nanos,
-                    marshal_cpu_nanos: 0,
-                })
-            });
+        Err(err) => {
+            REFLECTION_RESOLVE_LEDGER.with(|cell| cell.borrow_mut().rows.push(row));
             return Err(err);
         }
     };
-    let marshal_started = crate::v1_interpreter::thread_cpu_nanos();
+    row.matched_module = Some(found.matched_module);
+    let t4 = read_clock(&mut reads);
     let marshaled = marshal_disj_type_item(ctx, &ctx.source_indices(), found.item);
-    let marshal_cpu_nanos =
-        crate::v1_interpreter::thread_cpu_nanos().saturating_sub(marshal_started);
-    REFLECTION_RESOLVE_LEDGER.with(|cell| {
-        cell.borrow_mut().rows.push(ReflectionResolveRow {
-            type_name: type_name.to_string(),
-            matched_module: Some(found.matched_module),
-            visited_modules: found.visited_modules,
-            visited_items: found.visited_items,
-            lookup_cpu_nanos,
-            marshal_cpu_nanos,
-        })
-    });
+    let t5 = read_clock(&mut reads);
+    row.marshal_cpu_nanos = t5.saturating_sub(t4);
+    row.clock_reads = reads + first.clock_reads + repeat.clock_reads;
+    REFLECTION_RESOLVE_LEDGER.with(|cell| cell.borrow_mut().rows.push(row));
     marshaled
 }
 

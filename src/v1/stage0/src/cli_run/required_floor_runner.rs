@@ -607,9 +607,10 @@ pub fn run_claim_measured(
 /// precedence order, and how many modules/items were walked to reach it, so a reader can
 /// see whether a cost moved because the scope grew or because the answer moved later in it.
 ///
-/// The instrument's own cost is stated once per process on the calibration line:
-/// `clock_read_ns` is the measured cost of one thread-CPU read on this host, and every call
-/// pays four of them.
+/// The instrument's own cost is two measured numbers: `clock_reads` on each row, counted as
+/// they executed, and `clock_read_ns` on the once-per-process calibration line, the measured
+/// cost of one thread-CPU read on this host. `lookup_repeat_cpu_us` is the same scan run a
+/// second time with nothing between -- the discriminator for a first-touch cost.
 fn emit_reflection_resolve_line(function: &str) {
     static CALIBRATED: std::sync::Once = std::sync::Once::new();
     let ledger = crate::coproduct_reflection::take_reflection_resolve_ledger();
@@ -618,14 +619,16 @@ fn emit_reflection_resolve_line(function: &str) {
     }
     CALIBRATED.call_once(|| {
         eprintln!(
-            "[floor-reflection-resolve-calibration] clock_read_ns={} reads_per_call=4",
+            "[floor-reflection-resolve-calibration] clock_read_ns={}",
             crate::coproduct_reflection::reflection_clock_read_nanos()
         );
     });
     let lookup_cpu_nanos: u128 = ledger.rows.iter().map(|r| r.lookup_cpu_nanos).sum();
+    let lookup_repeat_cpu_nanos: u128 = ledger.rows.iter().map(|r| r.lookup_repeat_cpu_nanos).sum();
     let marshal_cpu_nanos: u128 = ledger.rows.iter().map(|r| r.marshal_cpu_nanos).sum();
     let visited_modules: usize = ledger.rows.iter().map(|r| r.visited_modules).sum();
     let visited_items: usize = ledger.rows.iter().map(|r| r.visited_items).sum();
+    let clock_reads: u64 = ledger.rows.iter().map(|r| r.clock_reads).sum();
     let rows: Vec<String> = ledger
         .rows
         .iter()
@@ -635,25 +638,36 @@ fn emit_reflection_resolve_line(function: &str) {
                 None => ("<unresolved>", "-".to_string()),
             };
             format!(
-                "{}@{}#{}:modules={},items={},lookup_us={},marshal_us={}",
+                "{}@{}#{}:modules={},items={},lookup_us={},lookup_index_us={},\
+                 lookup_text_us={},repeat_us={},repeat_index_us={},repeat_text_us={},\
+                 marshal_us={},clock_reads={}",
                 r.type_name,
                 module,
                 position,
                 r.visited_modules,
                 r.visited_items,
                 r.lookup_cpu_nanos / 1_000,
-                r.marshal_cpu_nanos / 1_000
+                r.lookup_index_cpu_nanos / 1_000,
+                r.lookup_text_cpu_nanos / 1_000,
+                r.lookup_repeat_cpu_nanos / 1_000,
+                r.lookup_repeat_index_cpu_nanos / 1_000,
+                r.lookup_repeat_text_cpu_nanos / 1_000,
+                r.marshal_cpu_nanos / 1_000,
+                r.clock_reads,
             )
         })
         .collect();
     eprintln!(
         "[floor-reflection-resolve] claim={function} calls={} lookup_cpu_us={} \
-         marshal_cpu_us={} visited_modules={} visited_items={} rows={}",
+         lookup_repeat_cpu_us={} marshal_cpu_us={} visited_modules={} visited_items={} \
+         clock_reads={} rows={}",
         ledger.rows.len(),
         lookup_cpu_nanos / 1_000,
+        lookup_repeat_cpu_nanos / 1_000,
         marshal_cpu_nanos / 1_000,
         visited_modules,
         visited_items,
+        clock_reads,
         rows.join("+"),
     );
 }
