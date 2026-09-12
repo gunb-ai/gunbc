@@ -1,0 +1,193 @@
+module test.claim.mt_collins_dimm_physical_identity_witness
+
+import std.logic { Bool }
+import std.measure { byte_size }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ampere.mt_collins_2u_user_guide.subject { doslab_mirror_authority }
+import gunbc.specification_citation_read_provenance {
+  SpecificationCitationReadReceipt, DocumentMirrorLocatorFetchedAndTextIngested,
+  DocumentLocatorFetchRefused,
+  RecordedReadBytesAgree, RecordedReadBytesDiffer, ReadBytesNotComparable,
+  mt_collins_2u_user_guide_subject_ref, mt_collins_2u_publisher_citation_read_receipt,
+  mt_collins_2u_mirror_citation_read_receipt, specification_citation_read_byte_standing,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.machine_intake_mtcollins1_dimm_connector_observation {
+  observed_unit, colour_evidence_for_unit,
+  UnitColourEvidence, NoColourObservationForUnit,
+  PhysicalColourDiffersFromDiagramRole, ColourMeaningComparisonUnresolved,
+}
+import std.types { NonEmptyStr, list_length }
+import std.nat { Nat }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
+  mt_collins_channel_connector_pairs, mt_collins_population_32_dimms_as_printed,
+}
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  MtCollinsDimmFigureBank, dimm_figure_banks, memory_connector_layout_figure,
+  LeftOfProcessor, RightOfProcessor,
+}
+import gunbc.mt_collins_dimm_physical_identity {
+  MtCollinsDimmIdentityRefusalCause, DimmDiagramIdentityResolved, DimmDiagramIdentityRefused,
+  ConnectorMissingFromLayout, ConnectorRepeatedInLayout,
+  ConnectorMissingFromPairTable, ConnectorRepeatedInPairTable,
+  ProcessorSocketDisagrees, PopulationRoleUnresolved,
+  PopulationDiagramResolved, PopulationDiagramRefused,
+  PopulationCountDisagrees, PopulationConnectorRepeated,
+  resolve_dimm_diagram_identity, population_diagram_identity, sixteen_dimm_diagram_identity,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A declared test subject, never a real chassis or a second operator observation.
+// DeclarationRef fixtures must resolve even when testing an unknown unit.
+data synthetic_other_unit: NonEmptyStr = "Synthetic unit with no physical-colour observation"
+
+fn refuses(connector: Nat, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>, cause: MtCollinsDimmIdentityRefusalCause) -> Bool {
+  match resolve_dimm_diagram_identity(connector: connector, banks: banks, pairs: pairs) {
+    DimmDiagramIdentityRefused { connector: c, cause: r } => c == connector && r == cause
+    DimmDiagramIdentityResolved { identity: _ } => false
+  }
+}
+
+test fn w_missing_and_duplicate_identities_refuse() -> Bool {
+  refuses(connector: 1, banks: [], pairs: mt_collins_channel_connector_pairs, cause: ConnectorMissingFromLayout)
+  && refuses(connector: 1, banks: concat(dimm_figure_banks, dimm_figure_banks), pairs: mt_collins_channel_connector_pairs, cause: ConnectorRepeatedInLayout)
+  && refuses(connector: 1, banks: dimm_figure_banks, pairs: [], cause: ConnectorMissingFromPairTable)
+  && refuses(connector: 1, banks: dimm_figure_banks, pairs: concat(mt_collins_channel_connector_pairs, mt_collins_channel_connector_pairs), cause: ConnectorRepeatedInPairTable)
+}
+
+test fn w_socket_disagreement_and_role_deficit_refuse() -> Bool {
+  refuses(connector: 1, banks: dimm_figure_banks, pairs: [MtCollinsChannelConnectorPair {
+    processor_socket: 1, memory_controller: 0, table_left_connector: 1, table_right_connector: 2,
+  }], cause: ProcessorSocketDisagrees)
+  && refuses(connector: 1, banks: dimm_figure_banks, pairs: [MtCollinsChannelConnectorPair {
+    processor_socket: 0, memory_controller: 0, table_left_connector: 1, table_right_connector: 3,
+  }], cause: PopulationRoleUnresolved)
+}
+
+// Duplicating a key inside ONE bank or ONE pair must not evade a row-count check.
+test fn w_duplicate_within_a_row_refuses() -> Bool {
+  refuses(connector: 1, banks: [MtCollinsDimmFigureBank {
+    figure: memory_connector_layout_figure, processor_socket: 0, processor_figure_label: "CPU0",
+    side: LeftOfProcessor, connectors_left_to_right: [1, 1],
+  }], pairs: mt_collins_channel_connector_pairs, cause: ConnectorRepeatedInLayout)
+  && refuses(connector: 1, banks: dimm_figure_banks, pairs: [MtCollinsChannelConnectorPair {
+    processor_socket: 0, memory_controller: 0, table_left_connector: 1, table_right_connector: 1,
+  }], cause: ConnectorRepeatedInPairTable)
+}
+
+// All connector identities (not just the selected odd keys) must join. The reversed
+// banks distinguish spatial order from ascending numeric or channel order.
+test fn w_every_figure_connector_resolves() -> Bool {
+  fold(dimm_figure_banks, init: true, f: (acc, bank) => acc && fold(bank.connectors_left_to_right, init: true, f: (ok, c) => ok && match resolve_dimm_diagram_identity(connector: c, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    DimmDiagramIdentityResolved { identity: i } => i.connector == c && i.channel.processor_socket == bank.processor_socket
+    DimmDiagramIdentityRefused { connector: _, cause: _ } => false
+  }))
+  && match resolve_dimm_diagram_identity(connector: 16, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    DimmDiagramIdentityResolved { identity: i } => i.diagram_label == "J16" && i.bank.connectors_left_to_right.first() == 16 && i.bank.connectors_left_to_right.last() == 9 && i.channel.memory_controller == 7 && i.legend.slot_number == 1 && i.legend.drawing_colour == "blue" && i.bank.side == RightOfProcessor
+    DimmDiagramIdentityRefused { connector: _, cause: _ } => false
+  }
+}
+
+test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool {
+  match sixteen_dimm_diagram_identity() {
+    PopulationDiagramResolved { population: p, slots: slots, orientation: o, physical_gaps: gaps, photographed_colours: colours, user_guide_citation: citation, mirror_read: mirror } =>
+      list_length(items: slots) == p.dimm_count && p.dimm_count == 16
+      && o.left_processor_socket == 0 && o.right_processor_socket == 1
+      && list_length(items: gaps) == 2
+      && colours.first() == "blue" && colours.last() == "black"
+      && citation.figure == 19 && citation.page == 52 && mirror.standing == RecordedReadBytesAgree
+      && fold(slots, init: true, f: (acc, i) => acc && i.legend.slot_number == 0 && i.legend.drawing_colour == "yellow")
+    PopulationDiagramRefused { unresolved: _ } => false
+    PopulationCountDisagrees { declared: _, listed: _ } => false
+    PopulationConnectorRepeated { connectors: _ } => false
+  }
+}
+
+test fn w_bad_population_never_returns_partial_slots() -> Bool {
+  let missing = match population_diagram_identity(population: MtCollinsDimmPopulationRow { dimm_count: 2, connectors: [1, 99] }) {
+    PopulationDiagramRefused { unresolved: us } => list_length(items: us) == 1
+    PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: _, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => false
+    PopulationCountDisagrees { declared: _, listed: _ } => false
+    PopulationConnectorRepeated { connectors: _ } => false
+  }
+  let count_mismatch = match population_diagram_identity(population: mt_collins_population_32_dimms_as_printed) {
+    PopulationCountDisagrees { declared: d, listed: l } => d == 32 && l == 31
+    PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: _, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => false
+    PopulationDiagramRefused { unresolved: _ } => false
+    PopulationConnectorRepeated { connectors: _ } => false
+  }
+  let repeated = match population_diagram_identity(population: MtCollinsDimmPopulationRow { dimm_count: 2, connectors: [1, 1] }) {
+    PopulationConnectorRepeated { connectors: cs } => cs.first() == 1
+    PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: _, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => false
+    PopulationDiagramRefused { unresolved: _ } => false
+    PopulationCountDisagrees { declared: _, listed: _ } => false
+  }
+  missing && count_mismatch && repeated
+}
+
+// The operator report must never turn into a platform-wide colour lookup.
+test fn w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps() -> Bool {
+  let actual = match colour_evidence_for_unit(unit: observed_unit) {
+    UnitColourEvidence { divergence: d } => match d {
+      PhysicalColourDiffersFromDiagramRole { observation: o, observed_population_diagram: diagram, same_colour_diagram_role: role } =>
+        o.physical_colour == "blue" && role.slot_number == 1
+        && match diagram {
+          PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: gaps, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => list_length(items: gaps) == 2
+          PopulationDiagramRefused { unresolved: _ } => false
+          PopulationCountDisagrees { declared: _, listed: _ } => false
+          PopulationConnectorRepeated { connectors: _ } => false
+        }
+      ColourMeaningComparisonUnresolved { basis: _ } => false
+    }
+    NoColourObservationForUnit { requested_unit: _ } => false
+  }
+  let another = match colour_evidence_for_unit(unit: DeclarationRef {
+    module_path: "test.claim.mt_collins_dimm_physical_identity_witness",
+    decl_name: "synthetic_other_unit",
+    field: WholeDeclaration,
+  }) {
+    NoColourObservationForUnit { requested_unit: _ } => true
+    UnitColourEvidence { divergence: _ } => false
+  }
+  actual && another
+}
+
+// Agreement is a comparison of separate observations, not an authored constant.
+test fn w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts() -> Bool {
+  let different = SpecificationCitationReadReceipt {
+    subject: mt_collins_2u_user_guide_subject_ref,
+    provenance: DocumentMirrorLocatorFetchedAndTextIngested {
+      mirror: doslab_mirror_authority,
+      observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 11 },
+      http_status: 200,
+      byte_count: byte_size(count: 16148131),
+      content_digest: "sha256 deliberately-different-fixture-digest",
+      detail: "Controlled fixture, not an observed document.",
+    },
+  }
+  let unread = SpecificationCitationReadReceipt {
+    subject: mt_collins_2u_user_guide_subject_ref,
+    provenance: DocumentLocatorFetchRefused { http_status: 403, detail: "Controlled refusal fixture." },
+  }
+  let wrong_subject = SpecificationCitationReadReceipt {
+    subject: observed_unit,
+    provenance: mt_collins_2u_mirror_citation_read_receipt.provenance,
+  }
+  specification_citation_read_byte_standing(publisher: mt_collins_2u_publisher_citation_read_receipt, mirror: different) == RecordedReadBytesDiffer
+  && specification_citation_read_byte_standing(publisher: unread, mirror: mt_collins_2u_mirror_citation_read_receipt) == ReadBytesNotComparable
+  && specification_citation_read_byte_standing(publisher: mt_collins_2u_publisher_citation_read_receipt, mirror: wrong_subject) == ReadBytesNotComparable
+}
+
+fn main() -> Bool {
+  w_missing_and_duplicate_identities_refuse()
+  && w_socket_disagreement_and_role_deficit_refuse()
+  && w_duplicate_within_a_row_refuses()
+  && w_every_figure_connector_resolves()
+  && w_sixteen_dimm_join_keeps_orientation_and_physical_gaps()
+  && w_bad_population_never_returns_partial_slots()
+  && w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps()
+  && w_mirror_comparison_rejects_different_unread_and_wrong_subject_receipts()
+}

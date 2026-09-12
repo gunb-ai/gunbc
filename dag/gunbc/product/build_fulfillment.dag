@@ -12,6 +12,7 @@ import gunbc.host_memory_qualification {
   PartImplicatedByFailingStep,
   PartImplication,
   PartNotImplicated,
+  PartEvidenceUnresolved,
   PartSampleQualificationRequired,
 }
 import product.inventory {
@@ -193,17 +194,20 @@ type LineCompatibility
   | CompatibilityEvidenceUnread { obligation: NonEmptyStr }
   | CompatibilityRefutedForPlatform { reason: NonEmptyStr }
 
-// THE QUALIFICATION SEAM, READ RATHER THAN RE-DECIDED. gunbc.host_memory_qualification
-// grades an observed platform training failure against a module's structure and
-// against the STANDING of the evidence behind it; this maps its three verdicts
-// onto the three compatibility states above and adds nothing. In particular the
-// sample-required verdict does NOT drop a part: an association carrying
-// byte-identical status words is a reason to buy one and test it, and dropping
-// it here would shrink the market by construction — the exact defect that module
-// records having shipped once.
+// A negative failure screen cannot establish positive compatibility. Purchasing
+// retains the missing-evidence obligation; qualification does not call it a
+// counterexample. Positive compatibility needs evidence outside this screen.
 fn compatibility_of(implication: PartImplication) -> LineCompatibility {
   match implication {
-    PartNotImplicated => CompatibilityEstablished
+    PartNotImplicated => CompatibilityEvidenceUnread {
+      obligation: "qualify this exact part and population on the target platform; absence of an implicated training failure does not establish compatibility" as NonEmptyStr,
+    }
+    PartEvidenceUnresolved { step: s } => CompatibilityEvidenceUnread {
+      obligation: join(
+        ["observe platform training evidence for ", memory_training_step_label(step: s) as String],
+        "",
+      ) as NonEmptyStr,
+    }
     PartSampleQualificationRequired { step: s, standing: _ } =>
       CompatibilityEvidenceUnread {
         obligation: join(

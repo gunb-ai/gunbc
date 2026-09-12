@@ -1,6 +1,6 @@
 module test.claim.roadmap_dashboard_instance_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.types { Bool, String, NonEmptyStr, FilePath, Port }
 import extdeps.tmux { shape_tmux_ls_argv_for, DefaultTmuxServer }
 import gunbc.provider_account {
   CodexDefaultAccount,
@@ -64,6 +64,8 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_is_disjoint_from_public_builtins,
   isolated_dashboard_instance,
   srv1_dashboard_lab_root,
+  dashboard_declared_instances_listen_endpoints_are_unique,
+  dashboard_instances_listen_endpoints_are_unique,
   dashboard_declared_instance_ids_are_unique,
   dashboard_declared_repo_roots_are_unique,
   dashboard_host_lookup_subjects_are_unique,
@@ -968,12 +970,73 @@ test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
     && dashboard_instances_have_disjoint_owned_paths(a: live, b: lab)
 }
 
+// The incident's endpoint stays fixed in the control even when the live population changes.
+// The other two cases separate host identity from port: neither coordinate alone is unique.
+fn witness_endpoint_instance(
+  instance_id: NonEmptyStr,
+  layout: GunbcHostLayout,
+  listen_port: Port,
+) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: instance_id,
+    layout: layout,
+    root: dashboard_instance_child(
+      root: "/tmp/dashboard-endpoint-witness" as FilePath,
+      child: instance_id as String,
+    ),
+    serve_function: "endpoint_witness" as NonEmptyStr,
+    listen_port: listen_port,
+    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+test fn a_same_host_same_port_roster_is_refused() -> Bool {
+  !dashboard_instances_listen_endpoints_are_unique(instances: [
+    witness_endpoint_instance(
+      instance_id: "srv2-lab-v1-deletion" as NonEmptyStr,
+      layout: srv2_host_layout(),
+      listen_port: 18082,
+    ),
+    witness_endpoint_instance(
+      instance_id: "srv2-deploy" as NonEmptyStr,
+      layout: srv2_host_layout(),
+      listen_port: 18082,
+    ),
+  ])
+}
+
+test fn different_hosts_or_different_ports_do_not_collide() -> Bool {
+  let first = witness_endpoint_instance(
+    instance_id: "first" as NonEmptyStr,
+    layout: srv2_host_layout(),
+    listen_port: 18082,
+  )
+  dashboard_instances_listen_endpoints_are_unique(instances: [
+    first,
+    witness_endpoint_instance(
+      instance_id: "other-port" as NonEmptyStr,
+      layout: srv2_host_layout(),
+      listen_port: 18083,
+    ),
+  ]) && dashboard_instances_listen_endpoints_are_unique(instances: [
+    first,
+    witness_endpoint_instance(
+      instance_id: "other-host" as NonEmptyStr,
+      layout: srv1_host_layout(),
+      listen_port: 18082,
+    ),
+  ])
+}
+
 fn roster_has_id(id: NonEmptyStr) -> Bool {
   any(public_builtin_dashboard_instances(), i => i.instance_id == id)
 }
 
 test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
   dashboard_declared_instance_ids_are_unique()
+    && dashboard_declared_instances_listen_endpoints_are_unique()
     && dashboard_declared_repo_roots_are_unique()
     && dashboard_host_lookup_subjects_are_unique()
     && dashboard_declared_instances_owned_paths_are_pairwise_consistent()

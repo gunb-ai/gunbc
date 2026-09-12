@@ -1,6 +1,30 @@
 module v2.compiler.compile
 
 import std.compiler_entry { CompilerEntryDriver, SourceRootEvalDriver }
+import gunbc.witness_v2_native_route {
+  NativeRouteEmittedBuild,
+  NativeRouteMalformedControl,
+  NativeRouteMemberRow,
+  NativeRouteModuleSource,
+  NativeRouteReceipt,
+  NativeRouteTestIdentity,
+  NativeRouteOldRouteControl,
+  native_route_live_control_false_declaration,
+  native_route_live_control_module,
+  native_route_live_control_true_declaration,
+  native_route_universe_member,
+  required_v2_native_job_name
+}
+import v2.workflow.floor_discovery_source_authority {
+  FloorDiscoveryAccepted,
+  FloorDiscoveryRefused,
+  FloorDiscoveryWalkState,
+  discover_floor_rows_for_source,
+  floor_discovery_finalize_source_outcomes
+}
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.logic { Bool }
+import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { infer, InferredTree }
@@ -22,6 +46,20 @@ import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
   source_root_set_from_ingest
+}
+import v2.compiler.native_test_vocabulary {
+  NativeTestFileRefusal,
+  NativeTestObservation,
+  NativeTestPassed,
+  NativeTestRefused,
+  NativeTestReturnedFalse,
+  NativeTestReturnedOther,
+  NativeTestStage,
+  NativeTestStageContext,
+  NativeTestStageEntry,
+  NativeTestStageEval,
+  NativeTestStagePrepare,
+  NativeTestVerdict
 }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -52,9 +90,14 @@ import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compi
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_append, list_reverse, list_snoc_item }
-import v2.std.collection { List }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.types { NonEmptyStr }
+import std.algebra { Cons, Empty, FreeMonoid, trim }
+import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_find_first, list_reverse, list_snoc_item }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -77,7 +120,7 @@ import v2.std.diagnostic {
 import v2.std.node { Arrow, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -124,21 +167,113 @@ type CompileLensOutcome = Outcome<Witness<Node>>
 
 type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 
+// IDENTITY-BEARING REGISTRATION. A registration used to carry its gate function and nothing else,
+// so a witness coming back out of the door named no producer: roster and observations could not be
+// joined, and "the required lenses ran" was a claim about a list length. A registration now carries
+// the DeclarationRef of the gate authority that decides it and the GRAIN that gate is legitimate
+// at, and every witness is stamped with both -- so registration and observation form one closed,
+// machine-checkable join (required_lens_coverage) rather than two lists of equal length.
+//
+// WHAT THAT JOIN DOES NOT ESTABLISH, AND ITS RUNG (review 64177, DESIGN section 4b(2)). The join
+// closes over the identity FIELD. Nothing binds that field to the `gate` beside it: both are
+// authored on the same row by hand, so swapping two rows' gates, or repointing a `gate` at a
+// different wrapper while leaving `identity` alone, leaves the join closed and the roster digest
+// unchanged. Coverage is therefore closed over a NAME, and the claim it supports is "a gate
+// registered under this identity ran at this grain", not "the declaration this identity names ran".
+// The residual sits at MITIGATION: a typed field, authored and unverified.
+// The class is `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`: the join's
+// two sides here are the authored name and a witness stamped FROM that same authored name.
+//
+// NO DISCRIMINATING RED IS AUTHORABLE TODAY, which is why this is a stated ceiling rather than a
+// missing test. A control would have to recover a declaration identity FROM a function value and
+// compare it to the authored one; a `CompileLensGate` is an opaque function value in this
+// substrate, and nothing about the declaration it came from survives into it. A control comparing
+// the authored identity to itself would be the decoration DESIGN section 4b warns about at the top
+// rung -- permanently green, and worse than absent because it would be cited as coverage of exactly
+// the gap it does not close.
+//
+// NEXT-RUNG TRIGGER: a reified declaration identity for function values -- the substrate carrying,
+// on a function value, the DeclarationRef of the declaration it was built from. With that, the
+// identity field stops being authored at all: it is DERIVED from the gate, the two cannot disagree
+// by construction, and this row's identity/gate pair collapses to one fact. That is the climb from
+// mitigation to structural impossibility, and it is a language-layer capability rather than
+// something this module can build.
+// ONE ROSTER, PARTITIONED BY GRAIN. The two grains stay semantically load-bearing (see
+// required_lens_grain_note) but they are no longer two registration surfaces: grain is a field and
+// required_lenses_at_grain derives each execution's roster from the single roster. A second list
+// would be the fork this registration exists to close (DESIGN section 3).
+// DIVERGENCE, STATED (DESIGN section 3b): the brief named a new type RequiredCompileLens beside
+// CompileLens. Requiredness is membership in required_compile_lens_roster, not a property of the
+// carrier -- a caller-supplied lens has the same three facts and must stamp its witnesses the same
+// way for the join to be closed at all -- so one carrier gains the two fields instead.
+type CompileLensGrain
+  = CompileLensRoot
+  | CompileLensSubtree
+
 type CompileLens {
+  identity: DeclarationRef
+  grain: CompileLensGrain
   gate: CompileLensGate
+}
+
+fn compile_lens_grain_name(grain: CompileLensGrain) -> String {
+  match grain {
+    CompileLensRoot => "root"
+    CompileLensSubtree => "subtree"
+  }
+}
+
+fn compile_lens_grain_eq(a: CompileLensGrain, b: CompileLensGrain) -> Bool {
+  match a {
+    CompileLensRoot =>
+      match b {
+        CompileLensRoot => true
+        CompileLensSubtree => false
+      }
+    CompileLensSubtree =>
+      match b {
+        CompileLensRoot => false
+        CompileLensSubtree => true
+      }
+  }
 }
 
 type CompileLensMode
   = CompileLensEnforce
   | CompileLensIntrospect
 
+// A witness names the registration that produced it and the grain it was produced at. Both are
+// required for the join to refuse rather than widen: identity answers "which lens", grain answers
+// "was it run where it is legitimate", and neither is recoverable from Witness<Node>.
 type LensGateWitness {
+  lens: DeclarationRef
+  grain: CompileLensGrain
   witness: Witness<Node>
 }
 
+// THE COVERAGE RECEIPT IS A DECLARED FRONTIER, AND THIS IS ITS TRIGGER (DESIGN section 3c).
+// The JOIN is consumed by execution in this change -- validate_then_compile refuses a compile whose
+// coverage is not closed, which is the gate. The receipt CARRIED here is a different declaration
+// with a different consumer, and today nothing outside this module reads it. Naming the census as a
+// consumer without a trigger would be the half-classification section 3c refuses, so the trigger is
+// stated as the capability rather than as an artifact:
+//
+//   CONSUMER: self-host promotion admission -- the candidate and successor coverage fields on
+//   SelfHostCandidate, where promotion refuses BY NAME on a lens that did not run.
+//   ROUTE: the candidate compile path runs through validate_then_compile, so the receipt this field
+//   carries is what admission reads rather than re-deriving; re-deriving it there would be a second
+//   authority on which lenses ran (DESIGN section 3).
+//   TRIGGER: the promotion path routing its candidate through this door and refusing on a named
+//   uncovered lens -- sufficient that a candidate cannot be promoted without its coverage having
+//   been observed on the same compile that produced it.
+//
+// If that capability does not land, this field is redundant work and the honest move is to DELETE
+// it rather than to keep it: the refusal above is already the gate, and a receipt nobody reads is
+// section 2's redundant work however well shaped it is.
 type Validated<T> {
   value: T
   lens_witnesses: List<LensGateWitness>
+  required_lens_coverage: RequiredLensCoverage
 }
 
 fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
@@ -165,48 +300,357 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_alias_compile_gate }
-
-data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
-
-data lifecycle_carrier_lens: CompileLens = CompileLens { gate: lifecycle_carrier_compile_gate }
-
-fn always_required_lenses() -> List<CompileLens> {
-  [fact_density_lens, unit_modeling_lens, lifecycle_carrier_lens]
+data fact_density_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.fact_density", decl_name: "fact_density_hollow_alias_gate"),
+  grain: CompileLensSubtree,
+  gate: fact_density_hollow_alias_compile_gate
 }
 
-data required_lens_grain_note: String = "Two required-roster grains, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). always_required_lenses runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling — each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). always_required_root_lenses runs ONCE at the tree root — the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). Witness accumulation on the subtree fold uses prepend-then-reverse, not append-in-step. Root-required lenses fire on every validate_then_compile call regardless of caller-supplied lenses, exactly like the subtree roster."
+data unit_modeling_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.unit_modeling", decl_name: "unit_modeling_gate"),
+  grain: CompileLensSubtree,
+  gate: unit_modeling_compile_gate
+}
 
-data accumulator_copy_lens: CompileLens = CompileLens { gate: accumulator_copy_root_gate }
+data lifecycle_carrier_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.lifecycle_carrier", decl_name: "lifecycle_carrier_gate"),
+  grain: CompileLensSubtree,
+  gate: lifecycle_carrier_compile_gate
+}
 
-data determinism_lens: CompileLens = CompileLens { gate: determinism_root_gate }
+data accumulator_copy_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.complexity_accumulator_copy.compile_gate", decl_name: "accumulator_copy_compile_gate"),
+  grain: CompileLensRoot,
+  gate: accumulator_copy_root_gate
+}
 
-data machine_shape_lens: CompileLens = CompileLens { gate: machine_shape_root_gate }
-data undecidable_verdict_collapse_lens: CompileLens = CompileLens { gate: undecidable_verdict_collapse_root_gate }
+data determinism_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.determinism", decl_name: "determinism_compile_gate"),
+  grain: CompileLensRoot,
+  gate: determinism_root_gate
+}
 
-data mandatory_tag_lens: CompileLens = CompileLens { gate: mandatory_tag_root_gate }
+data machine_shape_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.machine_shape", decl_name: "machine_shape_compile_gate"),
+  grain: CompileLensRoot,
+  gate: machine_shape_root_gate
+}
 
-// always_required_root_lenses is TREE-GRAIN only: every enrolled gate is a pure fold over the
-// InferredTree being compiled (accumulator_copy, determinism, machine_shape, mandatory_tag read
-// tree.root and nothing else). lens_module_gate was DE-ENROLLED here (census follow-on to run
-// 29892063728 receipts): its compile_gate wrapper discarded the tree argument and ran the nullary
-// corpus scan lens_module_gate_blocking_holds - a live walk of src/v2/lens on every compile, making
-// every compile-importing entry reach a live-read carrier and putting 31 SubstrateInputsOnly
-// witness stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement is NOT
-// reduced: the invariant executes per-PR via its honestly-stamped consumer
+data mandatory_tag_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.mandatory_tag", decl_name: "mandatory_tag_compile_gate"),
+  grain: CompileLensRoot,
+  gate: mandatory_tag_root_gate
+}
+
+data undecidable_verdict_collapse_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.undecidable_verdict_collapse", decl_name: "undecidable_verdict_collapse_compile_gate"),
+  grain: CompileLensRoot,
+  gate: undecidable_verdict_collapse_root_gate
+}
+
+data required_lens_grain_note: String = "Two registered grains, one roster, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). A CompileLensSubtree registration runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling, lifecycle_carrier -- each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). A CompileLensRoot registration runs ONCE at the tree root -- the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). The grain is a FIELD on the registration and required_lenses_at_grain derives each execution's list from the one roster, so this cost argument is carried by the row rather than by which of two lists a lens was written into. Witness accumulation on the subtree fold CONCATENATES the child's accumulated list into the accumulator at every step and reverses once at the end, which copies one operand per step and is the accumulator-copy shape this very door's own lens exists to refuse (DESIGN 7 self-application, measured and named rather than asserted away). It is stated here because this string is a COMPARED VALUE and a false cost claim in it would be green by equality on both sides. The repair is not an argument order: list_append costs its LEFT operand and the carrier's rc_list_concat copies its RIGHT one, and neither the accumulator nor a child's subtree accumulation is reliably the shorter, so a fold over a tree stays superlinear whichever way it is written. The defect, its capability trigger and the experiment already falsified against it are carried by gunbc.recurring_failure_mode enforcement_exhibits_the_shape_it_refuses. Required registrations at both grains fire on every validate_then_compile call regardless of caller-supplied lenses, and a caller-supplied lens now runs at ITS OWN declared grain rather than at root whatever it declared."
+
+// THE SINGLE REGISTRATION ROSTER. Every lens the compile door is obliged to run is a row here, at
+// the grain it is legitimate at; the two execution sites derive their lists from this one roster
+// through required_lenses_at_grain. Adding a lens is one row, and the row is what the coverage
+// join, the roster digest and (downstream) the obligation census all key on.
+//
+// WHAT IS NOT ELIGIBLE FOR A ROW, carried forward verbatim in force from the two-list form this
+// roster replaced, because the prohibition is about the DOOR and not about which list held it.
+// lens_module_gate was DE-ENROLLED from the root grain (census follow-on to run 29892063728
+// receipts): its compile_gate wrapper discarded the tree argument and ran the nullary corpus scan
+// lens_module_gate_blocking_holds - a live walk of src/v2/lens on every compile, making every
+// compile-importing entry reach a live-read carrier and putting 31 SubstrateInputsOnly witness
+// stamps in the lying_substrate_inputs_only_stamp_census red class. Enforcement was NOT reduced: the
+// invariant executes per-PR via its honestly-stamped consumer
 // v2.test.claim.enforcement.lens_module_gate_witness (live_tree_disposition: ReadsLiveTree, never
-// predict-skips), which reds the floor when registry completeness breaks. A corpus-grain invariant
-// enrolls on the corpus cadence with a ReadsLiveTree stamp, never in the per-tree door -
-// re-enrolling a nullary gate here re-opens the census class.
-
-fn always_required_root_lenses() -> List<CompileLens> {
+// predict-skips), which reds the floor when registry completeness breaks.
+// SO THE ELIGIBILITY RULE, stated because "adding a lens is one row" would otherwise read as an
+// invitation to the exact regression: a row here must be a PURE FOLD OVER THE TREE BEING COMPILED
+// at its declared grain. A nullary gate, a corpus scan, or any gate that reads the live tree rather
+// than its InferredTree argument is not eligible at either grain - a corpus-grain invariant enrolls
+// on the corpus cadence with a ReadsLiveTree stamp, never in the per-tree door, and re-registering
+// one here re-opens the census class.
+fn required_compile_lens_roster() -> List<CompileLens> {
   [
+    fact_density_lens,
+    unit_modeling_lens,
+    lifecycle_carrier_lens,
     accumulator_copy_lens,
     determinism_lens,
     machine_shape_lens,
     mandatory_tag_lens,
     undecidable_verdict_collapse_lens
   ]
+}
+
+fn lenses_at_grain(lenses: List<CompileLens>, grain: CompileLensGrain) -> List<CompileLens> {
+  list_reverse(xs: fold_list(
+    xs: lenses,
+    empty: Empty,
+    cons: fn(acc, lens) {
+      if compile_lens_grain_eq(a: lens.grain, b: grain) { Cons { head: lens, tail: acc } } else { acc }
+    }
+  ))
+}
+
+fn required_lenses_at_grain(grain: CompileLensGrain) -> List<CompileLens> {
+  lenses_at_grain(lenses: required_compile_lens_roster(), grain: grain)
+}
+
+// THE ROSTER DIGEST IS OVER IDENTITY AND GRAIN, IN ROSTER ORDER, and the order is part of it: two
+// consumers re-deriving from this one entry point see one order, so a receipt carrying a digest is
+// a claim about WHICH IDENTITIES were obliged, not merely how many. It deliberately does not cover
+// the gate function -- and the honest reading is narrower than "the gate is named by the identity
+// it is registered under", which is what this sentence used to say: nothing verifies that pairing
+// (see the registration annotation above), so a digest is a claim about the registered names and
+// their grains, and is unchanged by a gate swap underneath them.
+fn required_lens_roster_digest_text(lenses: List<CompileLens>) -> String {
+  fold_list(
+    xs: lenses,
+    empty: "",
+    cons: fn(acc, lens) {
+      concat(
+        concat(concat(acc, declaration_ref_display_key(ref: lens.identity)), "@"),
+        concat(compile_lens_grain_name(grain: lens.grain), "\n")
+      )
+    }
+  )
+}
+
+fn required_lens_roster_digest_of(lenses: List<CompileLens>) -> String {
+  serialize_content_hash(
+    hash: content_hash_of_value(value: required_lens_roster_digest_text(lenses: lenses) as NonEmptyStr)
+  )
+}
+
+fn required_lens_roster_digest() -> String {
+  required_lens_roster_digest_of(lenses: required_compile_lens_roster())
+}
+
+// THE BIDIRECTIONAL JOIN. Registration and observation are two sides of one fact, and every way
+// they can disagree is an arm -- none of them a skip, none of them a widen (DESIGN section 5). A
+// registration nobody observed is the silent hole this whole change exists to close; an observation
+// naming no registration is a lens running through the door off the roster; a grain disagreement
+// means the gate ran somewhere its own cost argument does not hold; a root lens observed twice means
+// the root roster was run more than once per tree. Subtree-grain registrations are observed ONCE PER
+// NODE by construction, so their obligation is at-least-one, and only the root grain can state
+// exactly-one -- stating exactly-one for both would refuse every tree with more than one node.
+type RequiredLensCoverageRow {
+  lens: DeclarationRef
+  grain: CompileLensGrain
+  observations: Int
+}
+
+type RequiredLensJoinCause
+  = RequiredLensRosterEmpty
+  | RegistrationDuplicated { lens: DeclarationRef }
+  | RegistrationUnobserved { lens: DeclarationRef }
+  | ObservationUnregistered { lens: DeclarationRef }
+  | ObservedAtWrongGrain { lens: DeclarationRef }
+  | RootLensObservedMoreThanOnce { lens: DeclarationRef }
+
+type RequiredLensCoverage
+  = RequiredLensCoverageClosed {
+      roster_digest: String
+      rows: List<RequiredLensCoverageRow>
+    }
+  | RequiredLensCoverageRefused { cause: RequiredLensJoinCause }
+
+fn required_lens_join_cause_reason(cause: RequiredLensJoinCause) -> Symbol {
+  match cause {
+    RequiredLensRosterEmpty => ^required_lens_roster_empty
+    RegistrationDuplicated { lens: _ } => ^required_lens_registration_duplicated
+    RegistrationUnobserved { lens: _ } => ^required_lens_registration_unobserved
+    ObservationUnregistered { lens: _ } => ^required_lens_observation_unregistered
+    ObservedAtWrongGrain { lens: _ } => ^required_lens_observed_at_wrong_grain
+    RootLensObservedMoreThanOnce { lens: _ } => ^required_lens_root_observed_more_than_once
+  }
+}
+
+type RequiredLensTally {
+  grain: CompileLensGrain
+  observations: Int
+  mixed_grain: Bool
+}
+
+// Joins are keyed through map_lookup on the display key, never through map_keys: a key-order read
+// is exactly what the determinism lens registered here refuses, and the join must be linear in the
+// observation count rather than quadratic over the roster (DESIGN section 6, bare minimum cost).
+fn required_lens_tally_observations(witnesses: List<LensGateWitness>) -> Map<String, RequiredLensTally> {
+  fold_list(
+    xs: witnesses,
+    empty: empty_map(),
+    cons: fn(acc, w) {
+      match map_lookup(acc, declaration_ref_display_key(ref: w.lens)) {
+        Absent =>
+          map_insert(acc, declaration_ref_display_key(ref: w.lens),
+            RequiredLensTally { grain: w.grain, observations: 1, mixed_grain: false })
+        Present { value: t } =>
+          map_insert(acc, declaration_ref_display_key(ref: w.lens),
+            RequiredLensTally {
+              grain: t.grain,
+              observations: t.observations + 1,
+              mixed_grain: t.mixed_grain || !compile_lens_grain_eq(a: t.grain, b: w.grain)
+            })
+      }
+    }
+  )
+}
+
+fn required_lens_registration_keys(lenses: List<CompileLens>) -> Map<String, CompileLensGrain> {
+  fold_list(
+    xs: lenses,
+    empty: empty_map(),
+    cons: fn(acc, lens) { map_insert(acc, declaration_ref_display_key(ref: lens.identity), lens.grain) }
+  )
+}
+
+fn required_lens_first_duplicate(lenses: List<CompileLens>) -> Optional<DeclarationRef> {
+  let scan = fold_list(
+    xs: lenses,
+    empty: RequiredLensDuplicateScan { seen: empty_map(), duplicate: Absent },
+    cons: fn(acc, lens) {
+      match map_lookup(acc.seen, declaration_ref_display_key(ref: lens.identity)) {
+        Absent =>
+          RequiredLensDuplicateScan {
+            seen: map_insert(acc.seen, declaration_ref_display_key(ref: lens.identity), true),
+            duplicate: acc.duplicate
+          }
+        Present { value: _ } =>
+          RequiredLensDuplicateScan {
+            seen: acc.seen,
+            duplicate: match acc.duplicate {
+              Absent => Present { value: lens.identity }
+              Present { value: d } => Present { value: d }
+            }
+          }
+      }
+    }
+  )
+  scan.duplicate
+}
+
+type RequiredLensDuplicateScan {
+  seen: Map<String, Bool>
+  duplicate: Optional<DeclarationRef>
+}
+
+type RequiredLensRowScan {
+  rows_reversed: List<RequiredLensCoverageRow>
+  cause: Optional<RequiredLensJoinCause>
+}
+
+fn required_lens_row_scan_refuse(
+  acc: RequiredLensRowScan,
+  cause: RequiredLensJoinCause
+) -> RequiredLensRowScan {
+  match acc.cause {
+    Absent => RequiredLensRowScan { rows_reversed: acc.rows_reversed, cause: Present { value: cause } }
+    Present { value: _ } => acc
+  }
+}
+
+fn required_lens_row_for_registration(
+  acc: RequiredLensRowScan,
+  lens: CompileLens,
+  tallies: Map<String, RequiredLensTally>
+) -> RequiredLensRowScan {
+  match map_lookup(tallies, declaration_ref_display_key(ref: lens.identity)) {
+    Absent => required_lens_row_scan_refuse(acc: acc, cause: RegistrationUnobserved { lens: lens.identity })
+    Present { value: t } =>
+      if t.mixed_grain || !compile_lens_grain_eq(a: t.grain, b: lens.grain) {
+        required_lens_row_scan_refuse(acc: acc, cause: ObservedAtWrongGrain { lens: lens.identity })
+      } else {
+        match lens.grain {
+          CompileLensRoot =>
+            if t.observations == 1 {
+              RequiredLensRowScan {
+                rows_reversed: Cons {
+                  head: RequiredLensCoverageRow { lens: lens.identity, grain: lens.grain, observations: t.observations },
+                  tail: acc.rows_reversed
+                },
+                cause: acc.cause
+              }
+            } else {
+              required_lens_row_scan_refuse(acc: acc, cause: RootLensObservedMoreThanOnce { lens: lens.identity })
+            }
+          CompileLensSubtree =>
+            RequiredLensRowScan {
+              rows_reversed: Cons {
+                head: RequiredLensCoverageRow { lens: lens.identity, grain: lens.grain, observations: t.observations },
+                tail: acc.rows_reversed
+              },
+              cause: acc.cause
+            }
+        }
+      }
+  }
+}
+
+fn required_lens_unregistered_observation(
+  witnesses: List<LensGateWitness>,
+  registrations: Map<String, CompileLensGrain>
+) -> Optional<DeclarationRef> {
+  fold_list(
+    xs: witnesses,
+    empty: optional_absent(),
+    cons: fn(acc, w) {
+      match acc {
+        Present { value: d } => Present { value: d }
+        Absent =>
+          match map_lookup(registrations, declaration_ref_display_key(ref: w.lens)) {
+            Present { value: _ } => optional_absent()
+            Absent => Present { value: w.lens }
+          }
+      }
+    }
+  )
+}
+
+fn join_required_lens_coverage(
+  lenses: List<CompileLens>,
+  witnesses: List<LensGateWitness>
+) -> RequiredLensCoverage {
+  match lenses {
+    Empty => RequiredLensCoverageRefused { cause: RequiredLensRosterEmpty }
+    Cons { head: _, tail: _ } =>
+      match required_lens_first_duplicate(lenses: lenses) {
+        Present { value: d } => RequiredLensCoverageRefused { cause: RegistrationDuplicated { lens: d } }
+        Absent =>
+          match required_lens_unregistered_observation(
+            witnesses: witnesses,
+            registrations: required_lens_registration_keys(lenses: lenses)
+          ) {
+            Present { value: u } => RequiredLensCoverageRefused { cause: ObservationUnregistered { lens: u } }
+            Absent =>
+              let tallies = required_lens_tally_observations(witnesses: witnesses)
+              let scan = fold_list(
+                xs: lenses,
+                empty: RequiredLensRowScan { rows_reversed: Empty, cause: optional_absent() },
+                cons: fn(acc, lens) {
+                  required_lens_row_for_registration(acc: acc, lens: lens, tallies: tallies)
+                }
+              )
+              match scan.cause {
+                Present { value: cause } => RequiredLensCoverageRefused { cause: cause }
+                Absent =>
+                  RequiredLensCoverageClosed {
+                    roster_digest: required_lens_roster_digest_of(lenses: lenses),
+                    rows: list_reverse(xs: scan.rows_reversed)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn required_lens_coverage_not_closed_diagnostic(cause: RequiredLensJoinCause) -> Diagnostic {
+  Diagnostic {
+    reason: required_lens_join_cause_reason(cause: cause),
+    at: invariant_port_locus(port: ^required_lens_coverage, invariant: ^required_lens_coverage_closed),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 fn accumulator_copy_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -273,9 +717,13 @@ fn apply_compile_lens(
 
 fn prepend_lens_gate_witness(
   witnesses: List<LensGateWitness>,
+  lens: CompileLens,
   witness: Witness<Node>
 ) -> List<LensGateWitness> {
-  Cons { head: LensGateWitness { witness: witness }, tail: witnesses }
+  Cons {
+    head: LensGateWitness { lens: lens.identity, grain: lens.grain, witness: witness },
+    tail: witnesses
+  }
 }
 
 fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
@@ -302,6 +750,7 @@ fn run_required_lens_gates(
                   outcome_accepted(
                     value: prepend_lens_gate_witness(
                       witnesses: witnesses,
+                      lens: lens,
                       witness: w
                     )
                   )
@@ -398,14 +847,51 @@ fn compile(
 
 fn validated_from_compile_output(
   output: CompileOutput,
-  lens_witnesses: List<LensGateWitness>
+  lens_witnesses: List<LensGateWitness>,
+  coverage: RequiredLensCoverage
 ) -> Validated<CompileOutput> {
   Validated {
     value: output,
-    lens_witnesses: lens_witnesses
+    lens_witnesses: lens_witnesses,
+    required_lens_coverage: coverage
   }
 }
 
+// THE DOOR RUNS EACH LENS AT ITS REGISTERED GRAIN, INCLUDING CALLER-SUPPLIED ONES. Caller lenses
+// used to be appended to the root roster whatever grain they belonged to, which made the grain a
+// comment rather than a fact; they are partitioned by their own declared grain now, exactly like
+// registrations. The required roster still fires on every call regardless of caller lenses.
+// THE COVERAGE JOIN RUNS AT THIS DOOR, AND WHAT IT CATCHES HERE IS NARROWER THAN THE JOIN ITSELF.
+// It is a gate rather than a report -- a refusal by name fails the compile -- but this annotation
+// used to say that "an obligation that silently stopped executing stops the line", and that is
+// FALSE at this door (review 64196). Both sides of the join are derived from
+// `required_compile_lens_roster()` inside one call: `run_required_lens_gates` folds the roster and
+// stamps each witness with the `identity` and `grain` of the very row it is folding, so the
+// observation list is a structural image of the roster rather than an independent reading of it.
+// `required_lens_observations` then drops any witness whose identity is not a registration before
+// the join is even asked. So `RegistrationUnobserved`, `ObservedAtWrongGrain`,
+// `RootLensObservedMoreThanOnce` and `ObservationUnregistered` have NO authorable RED on this path.
+// What can fire here is `RegistrationDuplicated` -- two roster rows sharing an identity -- and
+// `RequiredLensRosterEmpty`. An obligation that stops executing does so by LEAVING THE ROSTER, and
+// a join whose both sides come from the roster cannot see that by construction.
+//
+// The arms are not decoration, because they are discriminated where their REDs are authorable: a
+// fixture may hand the join an observation set this door cannot produce, and
+// `v2.test.lens_application.required_lens_coverage_join` does exactly that for every arm. DESIGN
+// section 4b is explicit that a state unrepresentable in the accepted corpus may still be
+// representable as source handed to the compiler by a fixture, and that declining the evidence
+// there would be specification-without-execution. The honest statement is therefore about grain:
+// fixture-grain the join discriminates six ways; door-grain it catches a duplicated or empty roster.
+//
+// THE CLASS IS ROSTERED: `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`,
+// whose discriminator is the one sentence that finds this without reading any witness -- the
+// comparison's two operands have a common producer. Both of this file's instances are its specimens.
+//
+// TRIGGER for the door-grain claim to become the one this annotation used to make: an INDEPENDENT
+// observation channel -- a receipt carried out of the runner that executed the gates, rather than a
+// list re-derived from the roster it is compared against. Until an observation can disagree with a
+// registration at this door, no wording here may claim it would be caught (DESIGN sections 4b(1),
+// 4b(2), 5).
 fn validate_then_compile(
   source: CoreNode,
   lenses: List<CompileLens>,
@@ -415,37 +901,73 @@ fn validate_then_compile(
     o: infer(tree: source),
     f: fn(inferred) {
       bind_outcome(
-        o: run_required_lens_gates_on_subtree(inferred: inferred, lenses: always_required_lenses()),
-        f: fn(required_lens_witnesses) {
+        o: run_required_lens_gates_on_subtree(
+          inferred: inferred,
+          lenses: list_append(
+            left: required_lenses_at_grain(grain: CompileLensSubtree),
+            right: lenses_at_grain(lenses: lenses, grain: CompileLensSubtree)
+          )
+        ),
+        f: fn(subtree_witnesses) {
           bind_outcome(
             o: run_required_lens_gates(
               inferred: inferred,
-              lenses: list_append(left: always_required_root_lenses(), right: lenses)
-            ),
-            f: fn(caller_lens_witnesses) {
-              bind_outcome(
-                o: compile_inferred(
-                  inferred: inferred,
-                  mode: mode
-                ),
-                f: fn(compile_out) {
-                  outcome_accepted(
-                    value: validated_from_compile_output(
-                      output: compile_out,
-                      lens_witnesses: list_append(
-                        left: required_lens_witnesses,
-                        right: caller_lens_witnesses
-                      )
-                    )
-                  )
-                }
+              lenses: list_append(
+                left: required_lenses_at_grain(grain: CompileLensRoot),
+                right: lenses_at_grain(lenses: lenses, grain: CompileLensRoot)
               )
+            ),
+            f: fn(root_witnesses) {
+              let all_witnesses = list_append(left: subtree_witnesses, right: root_witnesses)
+              match join_required_lens_coverage(
+                lenses: required_compile_lens_roster(),
+                witnesses: required_lens_observations(
+                  witnesses: all_witnesses,
+                  lenses: required_compile_lens_roster()
+                )
+              ) {
+                RequiredLensCoverageRefused { cause: cause } =>
+                  outcome_rejected(d: required_lens_coverage_not_closed_diagnostic(cause: cause))
+                RequiredLensCoverageClosed { roster_digest: digest, rows: rows } =>
+                  bind_outcome(
+                    o: compile_inferred(inferred: inferred, mode: mode),
+                    f: fn(compile_out) {
+                      outcome_accepted(
+                        value: validated_from_compile_output(
+                          output: compile_out,
+                          lens_witnesses: all_witnesses,
+                          coverage: RequiredLensCoverageClosed { roster_digest: digest, rows: rows }
+                        )
+                      )
+                    }
+                  )
+              }
             }
           )
         }
       )
     }
   )
+}
+
+// The join is asked about the REQUIRED roster, so caller-supplied observations are selected out
+// before it runs rather than being excused inside it: an unregistered observation must stay a
+// refusal for the roster it is asked about.
+fn required_lens_observations(
+  witnesses: List<LensGateWitness>,
+  lenses: List<CompileLens>
+) -> List<LensGateWitness> {
+  let registrations = required_lens_registration_keys(lenses: lenses)
+  list_reverse(xs: fold_list(
+    xs: witnesses,
+    empty: Empty,
+    cons: fn(acc, w) {
+      match map_lookup(registrations, declaration_ref_display_key(ref: w.lens)) {
+        Present { value: _ } => Cons { head: w, tail: acc }
+        Absent => acc
+      }
+    }
+  ))
 }
 
 fn compile_ingest_with_admission(
@@ -638,7 +1160,7 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
-// THE SOURCE-ROOT EVAL DRIVER — the terminal route the required-v2-native CI lane executes.
+// THE SOURCE-ROOT EVAL DRIVER — the terminal route `claim_executor --v2-native-route` executes.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
 // THE TERMINAL SUBJECT IS A TEST VERDICT, NOT A TRANSLATION. DirectIngestDriver answers "the
@@ -684,35 +1206,6 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // COMPILE door's corpus invariants; the floor's seed-interpreter route does not run them per
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
-
-type NativeTestStage
-  = NativeTestStageContext
-  | NativeTestStagePrepare
-  | NativeTestStageEntry
-  | NativeTestStageEval
-
-type NativeTestVerdict
-  = NativeTestPassed
-  | NativeTestReturnedFalse
-  | NativeTestReturnedOther
-  | NativeTestRefused { stage: NativeTestStage, reason: Symbol }
-
-type NativeTestObservation {
-  module: QualifiedName
-  declaration: Symbol
-  verdict: NativeTestVerdict
-}
-
-// ONE SOURCE'S FRONT-END REFUSAL, AT THE TWO GRAINS THE CLASSIFICATION NEEDS. The rejection's
-// diagnostic list prepends non-fatal pending advisories (rejected_with_pending), so the head
-// reason and the fatal (last) reason are different observations of one refusal — the door
-// ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
-// classifier asks both questions of every row.
-type NativeTestFileRefusal {
-  path: Symbol
-  head_reason: Symbol
-  fatal_reason: Symbol
-}
 
 type NativeTestContext {
   roots: FreeMonoid<NormalizedTree>
@@ -787,7 +1280,7 @@ fn native_test_context_fold_step(
 // One language model for the whole fold: dag_language_model() rebuilds the grammar, lex rules
 // and canonical-symbol set on every call, and calling it inside the cons closure paid that
 // once PER FILE — measured at ~0.3s/file of the context fold's wall time (2026-09-09,
-// required-v2-native lane work), a pure recompute with no per-file dependency.
+// v2-native route work), a pure recompute with no per-file dependency.
 fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
   let lm = dag_language_model()
   match prepare_grammar(grammar: lm.grammar) {
@@ -1007,5 +1500,1058 @@ fn native_test_eval_one(
               )
           }
       }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE LANE'S OWN ADJUDICATION — DERIVED UNIVERSE, OBSERVED POPULATION, JUDGED RECEIPT.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHAT MOVED HERE, AND WHAT THE ROUTE THEREFORE CLAIMS. The claim is NATIVE UNIVERSE DERIVATION,
+// NATIVE EVALUATION, NATIVE RECEIPT CONSTRUCTION AND NATIVE ADMISSION over a SEED-PREPARED COMPILER
+// ARTIFACT — not an interpreter-free process end to end, which would be false while the v1 process
+// emits the compiler this fold runs inside (operator design review 2026-09-11). What moved is every
+// SEMANTIC decision; what remains in v1 is the preparation of the artifact, named rather than
+// counted as absent, and owned by the native ancestry acquisition lane. Until this section existed the lane was
+// interpreter-bracketed on both ends: the seed folded the floor's discovery producer over every
+// source through the v1 interpreter to derive the universe (~4 minutes interpreted), and then
+// evaluated native_route_admission through the interpreter to judge the receipt — so the lane
+// that exists to prove a pristine v2 process could not run without the v1 interpreter at all.
+// Both brackets are folds this module can reach natively, so they are declared here and
+// COMPILED; the seed's remaining job is emit + cargo, and every semantic decision the lane makes
+// is executed by the binary the route is about (operator ruling 2026-09-10). The route is invoked
+// by an operator rather than by a required job since #11003 deleted that job; what it proves about
+// the route is unchanged by where it is invoked from.
+//
+// THE JOIN IS NOT MADE TAUTOLOGICAL BY THE MOVE. The driver's earlier contract note — a binary
+// that discovered its own population would make the host-side join tautological — was about a
+// join between two PROCESSES. The join admission actually performs is between the DISCOVERY
+// authority's answer (what the corpus declares a test, read textually per source) and the
+// EXECUTION route's answer (what reached a verdict through the whole front end): two independent
+// folds over two different readings of the same bytes. A universe member with no observation row
+// is still an omission and a row with no member is still foreign; what the move removes is the
+// process boundary between them, which was never what made the join discriminating.
+
+// The lane's own refusal carrier. A refusal reaching here is a LANE-level defect (the corpus
+// refused discovery outright), so it stops the line rather than shrinking the universe; the
+// producer's own reason text is interned as the second diagnostic so the refusal that the
+// process prints names what discovery actually said, not merely that it said something.
+fn native_lane_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^compile_stage_locus_port, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn native_lane_refused<T>(reason: Symbol, detail: String) -> Outcome<T> {
+  Rejected {
+    diagnostics: NonEmptyDiagnostics {
+      head: native_lane_diagnostic(reason: reason),
+      tail: [native_lane_diagnostic(reason: symbol_intern_lexeme(lexeme: detail))]
+    }
+  }
+}
+
+// THE MODULE→PATH RELATION IS READ FROM THE HEADER TEXT, NOT FROM THE PARSE, and that is the
+// point rather than an approximation: a source whose front end refused carries no normalized root
+// and no qualified name, so a parse-derived relation would silently drop exactly the files whose
+// test identities must surface as Context-stage refusals — the population would shrink instead of
+// refusing. The seed answered this same question at this same grain (cli_run's module index) and
+// is deleted with the interpreted derivation; this is that fact's `.dag` home. One consumer, per
+// the facts-before-abstraction discipline: promote it when a second inhabits it.
+fn native_lane_declared_module_name(content: String) -> Optional<String> {
+  match list_find_first(
+    xs: split(s: content, delimiter: "\n"),
+    predicate: fn(line) { starts_with(s: trim(line), prefix: "module ") }
+  ) {
+    Absent => optional_absent()
+    Present { value: line } =>
+      optional_present(
+        value: trim(substring(s: trim(line), start: 7, end: string_length(s: trim(line))))
+      )
+  }
+}
+
+// ONE SOURCE, READ ONCE, IN BOTH DIRECTIONS. The discovery producer's per-file authority and the
+// module header are answered in the SAME pass, so the universe never needs a path → module join
+// afterwards: the row and the module that owns it are minted together. The seed paid that join as
+// a hash lookup per row; a fold-based lookup here would be quadratic over the whole inventory,
+// which the standing bare-minimum-cost ruling prices as a defect at any realized n.
+// THE IMPORT EDGES ARE READ FROM THE SAME TEXT, FOR THE SAME REASON. The route must know which
+// sources the universe's modules transitively need BEFORE it pays a front end on any of them, so
+// the edge cannot come from a parse without paying the cost the closure exists to avoid. This is
+// the module-header scan's sibling and carries its shape: one line, one edge, no interpretation
+// beyond the qualified name. It is deliberately CONSERVATIVE about nothing — a line that begins
+// with `import ` names exactly one module, and a file that spells a dependency any other way is a
+// closure miss that surfaces as a located resolve refusal inside the route rather than as a silent
+// narrowing, because the module it needed was never ingested and the resolver says so by name.
+// THE DISSOLUTION CONDITION IS A ROW, NOT THIS PARAGRAPH (review 64571):
+// `gunbc.rung_drop.native_lane_second_textual_production_reading`. It carries the previous and
+// temporary rungs, the bounded population (both scans and their one consumer), and the restoration
+// trigger with what the capability must be SUFFICIENT FOR. A trigger written here would be
+// readable by people and by nothing else, so nothing could enumerate this debt or notice it
+// discharge; DESIGN section 4c puts a dissolution condition in a typed carrier for that reason.
+// AN IMPORT LINE THAT NAMES NOTHING IS A REFUSAL, NOT A DROPPED LINE (review 64474). The fold
+// below skips a line whose `import ` prefix is followed by no token, and a skipped import is a
+// NARROWED CLOSURE: the module it should have named is never walked, so its declarations are never
+// ingested and the universe silently describes less of the corpus than the source asked for. That
+// is the failure arm DESIGN section 5 forbids -- it widens or narrows rather than refusing -- and
+// it is the worse direction of the two, because a narrowed ingest ends in a GREEN run over a
+// smaller population rather than in a visible over-scan.
+//
+// IT IS CARRIED ON THE ROW RATHER THAN RAISED HERE, so the cause can name the FILE. This scan sees
+// one content blob and has no path; the refusal a reader needs says which file and which line, and
+// native_lane_source_facts is where both are in scope. Consumer: native_lane_universe, which
+// refuses on the first row carrying one, before any closure walk begins.
+//
+// THE BARE `import` NEEDS ITS OWN ARM, and finding that is what makes this more than a rewrite of
+// the skipped branch. A line of `import` followed only by spaces TRIMS TO `import` with no trailing
+// space, so `starts_with(prefix: "import ")` is FALSE for it: the scan below never classified it as
+// an import line at all, and neither did the first version of this predicate. It was therefore not
+// merely dropped without a diagnostic -- it was never seen, which is the same narrowed closure
+// reached by a shorter path. Both spellings refuse here.
+fn native_lane_first_malformed_import(content: String) -> Optional<String> {
+  list_find_first(
+    xs: split(s: content, delimiter: "\n"),
+    predicate: fn(line) {
+      let trimmed = trim(line)
+      if trimmed == "import" {
+        true
+      } else {
+        starts_with(s: trimmed, prefix: "import ")
+          && floor_discovery_first_token_before_space(
+               seg: trim(substring(s: trimmed, start: 7, end: string_length(s: trimmed)))
+             ) == ""
+      }
+    }
+  )
+}
+
+fn native_lane_facts_malformed_import_lexeme(facts: NativeLaneSourceFacts) -> String {
+  match facts.malformed_import {
+    Absent => "(none)"
+    Present { value: line } => trim(line)
+  }
+}
+
+fn native_lane_malformed_import_row(facts: List<NativeLaneSourceFacts>) -> Optional<NativeLaneSourceFacts> {
+  list_find_first(
+    xs: facts,
+    predicate: fn(f) {
+      match f.malformed_import {
+        Absent => false
+        Present { value: _ } => true
+      }
+    }
+  )
+}
+
+fn native_lane_declared_imports(content: String) -> List<String> {
+  fold(
+    split(s: content, delimiter: "\n"),
+    init: [],
+    f: fn(acc, line) {
+      let trimmed = trim(line)
+      if starts_with(s: trimmed, prefix: "import ") {
+        let rest = trim(substring(s: trimmed, start: 7, end: string_length(s: trimmed)))
+        let name = floor_discovery_first_token_before_space(seg: rest)
+        if name == "" { acc } else { list_snoc_item(xs: acc, item: name) }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+type NativeLaneSourceFacts {
+  module: Optional<String>
+  path: Symbol
+  imports: List<String>
+  discovery: FloorDiscoveryWalkState
+  malformed_import: Optional<String>
+}
+
+fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFacts> {
+  fold_list(
+    xs: ingest,
+    empty: [],
+    cons: fn(acc, read) {
+      list_snoc_item(xs: acc, item: NativeLaneSourceFacts {
+        module: native_lane_declared_module_name(content: read.source.carried),
+        path: read.compilation_unit,
+        imports: native_lane_declared_imports(content: read.source.carried),
+        malformed_import: native_lane_first_malformed_import(content: read.source.carried),
+        discovery: discover_floor_rows_for_source(
+          repo_path: symbol_lexeme(sym: read.compilation_unit),
+          content: read.source.carried
+        )
+      })
+    }
+  )
+}
+
+// ONE UNIVERSE MEMBER'S MODULE: the identities discovery enrolled for it, and the path they were
+// read from. Declarations stay grouped by module because prepare (resolve + infer) is paid once
+// per module and every declaration of a module shares its outcome.
+type NativeLaneUniverseModule {
+  module: String
+  path: Symbol
+  declarations: List<String>
+}
+
+type NativeLaneUniverse {
+  modules: List<NativeLaneUniverseModule>
+  identities: List<NativeRouteTestIdentity>
+  module_sources: List<NativeRouteModuleSource>
+}
+
+fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
+  match facts.module {
+    Absent => []
+    Present { value: declared } =>
+      if native_route_universe_member(module_qn: declared) {
+        let declarations = fold_list(
+          xs: facts.discovery.rows,
+          empty: [],
+          cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
+        )
+        if length(xs: declarations) == 0 {
+          []
+        } else {
+          [NativeLaneUniverseModule {
+            module: declared,
+            path: facts.path,
+            declarations: declarations
+          }]
+        }
+      } else {
+        []
+      }
+  }
+}
+
+// THE DERIVATION IS THE FLOOR'S OWN PRODUCER, FINALIZED THE FLOOR'S OWN WAY. The per-source
+// states are handed to floor_discovery_finalize_source_outcomes untouched — so a walk failure, a
+// disposition refusal or a sidecar violation ANYWHERE in the inventory refuses the derivation
+// exactly as it refuses the required floor's — and only then are the universe-prefixed modules
+// kept. Filtering first and finalizing the remainder would have made the lane blind to a sidecar
+// violation outside `v2.test.*`, which is a corpus refusal, not a lane exclusion.
+// A SOURCE THAT ENROLS ROWS AND DECLARES NO MODULE IS A REFUSAL, NOT A DROP. Discovery reads the
+// path and the bytes, so it can enrol test identities for a file whose own header names no module
+// — and such an identity cannot be routed, because the driver resolves by module. The seed refused
+// this state by name (UniverseEntryOutsideSubject) when its module index did not hold a row's
+// entry; keeping the refusal is what stops the derivation from quietly shrinking the universe.
+fn native_lane_unowned_row_path(facts: List<NativeLaneSourceFacts>) -> Optional<Symbol> {
+  match list_find_first(
+    xs: facts,
+    predicate: fn(f) {
+      match f.module {
+        Absent => length(xs: f.discovery.rows) > 0
+        Present { value: _ } => false
+      }
+    }
+  ) {
+    Absent => optional_absent()
+    Present { value: f } => optional_present(value: f.path)
+  }
+}
+
+fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse> {
+  let facts = native_lane_source_facts(ingest: ingest)
+  match native_lane_malformed_import_row(facts: facts) {
+    Present { value: f } =>
+      native_lane_refused(
+        reason: ^native_lane_import_line_names_no_module,
+        detail: concat(
+          "import line names no module at ",
+          symbol_lexeme(sym: f.path),
+          ": ",
+          native_lane_facts_malformed_import_lexeme(facts: f)
+        )
+      )
+    Absent =>
+      match native_lane_unowned_row_path(facts: facts) {
+        Present { value: unowned } =>
+          native_lane_refused(
+            reason: ^native_lane_universe_entry_outside_subject,
+            detail: symbol_lexeme(sym: unowned)
+          )
+        Absent =>
+          native_lane_universe_after_ownership(facts: facts)
+      }
+  }
+}
+
+// THE OWNERSHIP ARM IS ITS OWN DECLARATION RATHER THAN A NESTED BLOCK, because the refusal above
+// it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
+// the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
+// the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
+fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> Outcome<NativeLaneUniverse> {
+  match floor_discovery_finalize_source_outcomes(
+    outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.discovery) })
+  ) {
+    FloorDiscoveryRefused { reason: reason } =>
+      native_lane_refused(reason: ^native_lane_universe_derivation_refused, detail: reason)
+    FloorDiscoveryAccepted { rows: _ } => {
+      let modules = fold_list(
+        xs: facts,
+        empty: [],
+        cons: fn(acc, f) {
+          fold_list(
+            xs: native_lane_universe_module_for_source(facts: f),
+            empty: acc,
+            cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }
+          )
+        }
+      )
+      outcome_accepted(value: NativeLaneUniverse {
+        modules: modules,
+        identities: fold_list(
+          xs: modules,
+          empty: [],
+          cons: fn(acc, m) {
+            fold_list(
+              xs: m.declarations,
+              empty: acc,
+              cons: fn(inner, d) {
+                list_snoc_item(xs: inner, item: NativeRouteTestIdentity { module: m.module, declaration: d })
+              }
+            )
+          }
+        ),
+        module_sources: fold_list(
+          xs: modules,
+          empty: [],
+          cons: fn(acc, m) {
+            list_snoc_item(xs: acc, item: NativeRouteModuleSource { module: m.module, path: m.path })
+          }
+        )
+      })
+    }
+  }
+}
+
+// ── the closure the route actually ingests ─────────────────────────────────────────────────
+//
+// THE ROUTE INGESTS THE UNIVERSE'S IMPORT CLOSURE, NEVER THE CORPUS (operator ruling 2026-09-11,
+// on a measurement: the emitted binary given a TWO-row universe ran 64 minutes single-threaded and
+// folded 2909 file refusals, because it tokenized, parsed and normalized all 5433 corpus sources
+// before evaluating anything — a fixed cost independent of the population it was asked about).
+// DESIGN section 2: minimize the demand graph before materializing its answers. A file that no
+// universe module transitively imports is not read into the front end, is not folded, and its
+// refusal is NOT a row in this receipt.
+//
+// THAT IS A NARROWING OF THE SUBJECT, AND IT IS STATED RATHER THAN SLID IN. The corpus-wide
+// front-end histogram is a different subject with a different consumer, and it keeps its producer:
+// the census mode, which ingests everything and reports every per-file refusal. The adjudication
+// receipt's file_refusals now mean "refusals among the sources this population needed", which is
+// exactly what the Context-stage classification joins against — a refusal outside the closure
+// could never have explained a member's verdict, so carrying it here was never evidence.
+// Membership over module names. `contains` takes the equality it uses rather than assuming one, so
+// the name comparison is supplied here once instead of at each of the three call sites.
+// THE MEMBERSHIP SETS ARE BUILT ONCE AND KEYED (review 64753). The annotation on
+// native_lane_file_refusal_for_path promised that this lookup, the closure walk and the ingest
+// join "all retarget in one motion" when the keyed delegate landed. It landed -- v2.std.collection
+// map_insert delegates to map_insert_primitive_delegate -- and only the walk moved, leaving the
+// join answering membership by list scan with no standing drop for the residual. DESIGN section 6
+// fixes a proven cost shape regardless of the realized n, and section 4b(2) forbids the
+// can-climb-now stall without a named trigger. The join was the expensive one: per ingested read it
+// scanned the facts list and then the closure list, so a corpus of F facts and C closure members
+// cost O(reads x (F + C)) where it now costs O(reads) against two sets built once.
+fn native_lane_module_set(modules: List<String>) -> Map<String, Bool> {
+  fold_list(
+    xs: modules,
+    empty: empty_map(),
+    cons: fn(acc, m) { map_insert(acc, m, true) }
+  )
+}
+
+fn native_lane_module_in_set(set: Map<String, Bool>, name: String) -> Bool {
+  match map_lookup(set, name) {
+    Absent => false
+    Present { value: present } => present
+  }
+}
+
+// PATH -> DECLARED MODULE, KEYED. Absent here means EITHER no facts row for the path OR a row that
+// declares no module. Both already led every consumer to the same arm -- the read is not a closure
+// member -- so collapsing them into one absent answer changes no verdict; the arm that needs to
+// TELL them apart is the refusal message below, which reads the facts row directly.
+fn native_lane_module_by_path(facts: List<NativeLaneSourceFacts>) -> Map<Symbol, String> {
+  fold_list(
+    xs: facts,
+    empty: empty_map(),
+    cons: fn(acc, f) {
+      match f.module {
+        Absent => acc
+        Present { value: declared } => map_insert(acc, f.path, declared)
+      }
+    }
+  )
+}
+
+
+// THE WALK'S BUDGET IS A REFUSAL, NEVER A TRUNCATION (review 63719, DESIGN section 5). The
+// reachable set decides what the front end is given, so a walk that stopped early and answered
+// with what it had seen would hand the route a narrowed ingest whose missing modules surface only
+// as unexplained resolve refusals downstream — the absorbing arm in its narrowing form. Exhaustion
+// therefore refuses the whole universe derivation, and the refusal carries what a reader needs to
+// decide whether the budget or the graph is wrong: the budget, the frontier still unexpanded, and
+// the first module on it. The budget is rounds of breadth-first expansion, so it bounds import
+// DEPTH, not closure size; a closure finishing on exactly its last round is accepted, because the
+// empty-frontier arm is asked before the budget arm. The value is a POLICY budget, not a
+// measurement of today's corpus: an acyclic import graph of N modules is at most N rounds deep, so
+// any budget is a statement of how deep a chain the route agrees to pay for before asking whether
+// the graph is wrong, and a real chain that deep is itself the finding. Its RED and its boundary
+// are enrolled in v2.test.v2_native_route.
+data native_lane_closure_round_budget: Int = 512
+
+fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> String {
+  let first = match frontier {
+    Empty => ""
+    Cons { head: h, tail: _ } => h
+  }
+  concat(
+    "import-closure walk exhausted its budget of ",
+    integer_int_to_decimal_string(value: budget),
+    " rounds with ",
+    integer_int_to_decimal_string(value: length(xs: frontier)),
+    " module(s) still unexpanded, first: ",
+    first
+  )
+}
+
+// ONE PASS OVER THE FACTS PER ROUND, NOT ONE PER FRONTIER MEMBER (review 64181). This fold used
+// to run `fold_list(xs: facts, ...)` INSIDE the per-frontier fold, so a round cost
+// |frontier| x |facts| and rescanned every source fact for every module still to expand. The
+// facts are now walked once per round and each fact contributes its imports if its own module
+// is on this round's frontier, which is the same answer for strictly less work.
+// 
+// THE FRONTIER MEMBERSHIP IS KEYED. The walk carries seen_set as a Map and consults
+// native_lane_facts_index rather than rescanning the facts list, so a round costs one lookup per
+// frontier member instead of a scan of every fact. v2.std.collection map_insert and map_lookup
+// delegate to the host primitives, and the sibling consumers below -- the ingest join, the
+// outside-closure check and the per-path refusal lookup -- read sets built once from the same
+// primitives.
+//
+// THE ORDER THIS PRODUCES IS FRONTIER ORDER, NOT FACT ORDER, and every consumer reads the result
+// as a set; the receipt carries the closure size rather than a position, so no consumer can
+// depend on the difference.
+type NativeLaneClosureStep {
+  unseen: List<String>
+  seen_set: Map<String, Bool>
+}
+
+// THE FACTS ARE INDEXED ONCE, BY MODULE, AND THE WALK LOOKS UP ONLY WHAT THE FRONTIER NAMES.
+// Consumer: native_lane_closure_modules, which builds this before entering the recursion so the
+// cost is paid once for the whole walk rather than once per round.
+//
+// A MODULE DECLARED TWICE APPENDS RATHER THAN OVERWRITES. The fold this replaces visited every
+// fact whose module the frontier named, so two facts declaring one module contributed BOTH import
+// lists; a plain map_insert would silently keep the last and shrink the closure. Duplicate module
+// headers are a corpus defect, but the repair of a cost shape may not also change which modules are
+// reachable -- that would be a behaviour change wearing a performance change's clothes.
+fn native_lane_facts_index(facts: List<NativeLaneSourceFacts>) -> Map<String, List<String>> {
+  fold_list(
+    xs: facts,
+    empty: empty_map(),
+    cons: fn(acc, f) {
+      match f.module {
+        Absent => acc
+        Present { value: declared } =>
+          match map_lookup(acc, declared) {
+            Absent => map_insert(acc, declared, f.imports)
+            Present { value: prior } => map_insert(acc, declared, list_append(prior, f.imports))
+          }
+      }
+    }
+  )
+}
+
+// THE FRONTIER WALK, KEYED (gunbc#11121 landed the primitive that makes this writable).
+// It was O(rounds x facts x frontier): every round folded the WHOLE fact list and tested frontier
+// membership by list scan, and the unseen set was computed by scanning `seen` per candidate. Both
+// scans are gone: the index answers "what does this module import" by key, and `seen_set` answers
+// "have we already taken this" by key.
+//
+// `seen` IS CARRIED IN BOTH FORMS ON PURPOSE. The ordered list is the ANSWER -- callers receive the
+// closure in discovery order -- and the map is the MEMBERSHIP TEST. v2.std.collection exposes
+// insert and lookup and no key enumeration, so a map alone could not produce the returned list, and
+// a list alone is the scan this repair removes. Carrying both is the honest shape rather than a
+// conversion that does not exist.
+//
+// THE REFUSAL ARMS ARE UNCHANGED: fuel exhaustion still refuses the whole derivation by identity
+// with the budget and the frontier, because a truncated reachable set decides what is ingested.
+//
+// DISCOVERY ORDER IS FRONTIER ORDER, NOT FACT ORDER -- a deliberate divergence, stated here so the
+// next reader does not rediscover it as a bug. The walk this replaces iterated the FACT list each
+// round and took the imports of frontier-named facts, so new modules appeared in the order their
+// declaring fact appeared; this one iterates the FRONTIER and looks each member up. Same set,
+// different sequence. Preserving fact order would require a per-round pass over all modules to
+// re-derive it, which is the repeated scan this repair exists to remove.
+//
+// IT IS UNOBSERVABLE BECAUSE EVERY CONSUMER READS A SET, checked rather than assumed:
+// native_lane_closure_ingest filters the ingest by membership (the ingest supplies its own order),
+// both halves of native_lane_ingest_matches_closure are membership tests, and the emitted receipt
+// carries `closure.len()` -- a count, never the sequence. IF A CONSUMER THAT READS THE SEQUENCE
+// EVER APPEARS, the change that adds it owns this order fact and must carry it; it cannot be
+// inherited silently from here.
+fn native_lane_module_reachable(
+  index: Map<String, List<String>>,
+  frontier: List<String>,
+  seen: List<String>,
+  seen_set: Map<String, Bool>,
+  fuel: Int,
+  budget: Int
+) -> Outcome<List<String>> {
+  if is_empty(xs: frontier) {
+    outcome_accepted(value: seen)
+  } else if fuel <= 0 {
+    native_lane_refused(
+      reason: ^native_lane_closure_budget_exhausted,
+      detail: native_lane_closure_exhausted_detail(budget: budget, frontier: frontier)
+    )
+  } else {
+    let next = fold_list(
+      xs: frontier,
+      empty: [],
+      cons: fn(acc, member) {
+        match map_lookup(index, member) {
+          Absent => acc
+          Present { value: imports } =>
+            fold_list(
+              xs: imports,
+              empty: acc,
+              cons: fn(grown, imported) { list_snoc_item(xs: grown, item: imported) }
+            )
+        }
+      }
+    )
+    let step = fold_list(
+      xs: next,
+      empty: NativeLaneClosureStep { unseen: [], seen_set: seen_set },
+      cons: fn(acc, candidate) {
+        match map_lookup(acc.seen_set, candidate) {
+          Present { value: _ } => acc
+          Absent =>
+            NativeLaneClosureStep {
+              unseen: list_snoc_item(xs: acc.unseen, item: candidate),
+              seen_set: map_insert(acc.seen_set, candidate, true)
+            }
+        }
+      }
+    )
+    native_lane_module_reachable(
+      index: index,
+      frontier: step.unseen,
+      seen: fold_list(
+        xs: step.unseen,
+        empty: seen,
+        cons: fn(acc, m) { list_snoc_item(xs: acc, item: m) }
+      ),
+      seen_set: step.seen_set,
+      fuel: fuel - 1,
+      budget: budget
+    )
+  }
+}
+
+fn native_lane_closure_seed_modules(universe: NativeLaneUniverse) -> List<String> {
+  list_snoc_item(
+    xs: fold_list(
+      xs: universe.modules,
+      empty: [],
+      cons: fn(acc, m) { list_snoc_item(xs: acc, item: m.module) }
+    ),
+    item: native_route_live_control_module
+  )
+}
+
+fn native_lane_closure_modules(
+  facts: List<NativeLaneSourceFacts>,
+  universe: NativeLaneUniverse,
+  budget: Int
+) -> Outcome<List<String>> {
+  let seeds = native_lane_closure_seed_modules(universe: universe)
+  native_lane_module_reachable(
+    index: native_lane_facts_index(facts: facts),
+    frontier: seeds,
+    seen: seeds,
+    seen_set: fold_list(xs: seeds, empty: empty_map(), cons: fn(acc, m) { map_insert(acc, m, true) }),
+    fuel: budget,
+    budget: budget
+  )
+}
+
+// The ingest restricted to that closure, in the order the reads arrived. A source whose header
+// declares no module is not in any closure by construction: nothing can import it.
+// THE DECLARED MODULE IS CARRIED, NOT RE-DERIVED (review 64181, DESIGN section 2: "carry, rewire,
+// or share the first value"). `native_lane_source_facts` already split every file once to mint
+// NativeLaneSourceFacts.module; re-running `native_lane_declared_module_name` over the whole file
+// contents at each later join was the same work paid again, under a section comment that claims
+// ONE SOURCE, READ ONCE. The facts are keyed by the path the read carries, so the join reads the
+// value instead of recomputing it. Absence is `Optional`, not a `""` sentinel: a source whose
+// header declares no module is in no closure by construction, and that is an answer rather than an
+// empty string.
+// A SOURCE WITH NO MODULE HEADER MATCHES NO NAME, and these two say so once instead of at each
+// site. Making NativeLaneSourceFacts.module an Optional turned every read of it into a match, and
+// the same two-line match was about to appear at several call sites. Consumers, as of the keyed
+// walk repair: native_lane_ingest_matches_closure (both halves of the closure-member join and its
+// refusal detail). THE FRONTIER WALK NO LONGER READS IT -- native_lane_module_reachable answers
+// membership by key against its own index, so the one caller this helper had there is gone. Said
+// here rather than left implied, because a citation that survives the call it names is the stale
+// name DESIGN section 3 makes decidable and this file has already carried one.
+//
+// THE ABSENT ARM IS NOT A DEFAULT. `false` here is the answer to "does this source declare the
+// name we are looking for", and a source that declares no module cannot; it is not a stand-in for
+// a name we failed to read. The lexeme form is used only inside a refusal message, where the
+// absent case names itself rather than rendering as an empty gap in the sentence.
+fn native_lane_facts_module_in_set(set: Map<String, Bool>, facts: NativeLaneSourceFacts) -> Bool {
+  match facts.module {
+    Absent => false
+    Present { value: declared } => native_lane_module_in_set(set: set, name: declared)
+  }
+}
+
+fn native_lane_facts_module_lexeme(facts: NativeLaneSourceFacts) -> String {
+  match facts.module {
+    Absent => "(no module header)"
+    Present { value: declared } => declared
+  }
+}
+
+
+fn native_lane_closure_ingest(
+  ingest: SourceRootIngest,
+  facts: List<NativeLaneSourceFacts>,
+  closure: List<String>
+) -> SourceRootIngest {
+  let by_path = native_lane_module_by_path(facts: facts)
+  let closure_set = native_lane_module_set(modules: closure)
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      match map_lookup(by_path, read.compilation_unit) {
+        Absent => acc
+        Present { value: declared } =>
+          if native_lane_module_in_set(set: closure_set, name: declared) {
+            list_snoc_item(xs: acc, item: read)
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+// THE INGEST RECEIPT IS THE ACCEPTANCE SURFACE FOR THE CLOSURE, and it exists because a faster
+// clock is not evidence (operator ruling 2026-09-11): a hidden whole-corpus prepass survives a
+// timer improvement, and only a POPULATION with a discriminating RED catches it.
+//
+// TWO POPULATIONS, NAMED SEPARATELY BECAUSE THEY COST DIFFERENT THINGS. `scanned` is what the route
+// OPENED for textual discovery — the corpus, because discovery is a floor authority whose subject
+// is the corpus and a `test`-marked declaration outside a sidecar must still be found. `ingested`
+// is what it TOKENIZED, PARSED AND FOLDED, and the acceptance is an identity join on that one: it
+// equals the transitive import closure of the universe's modules plus the controls' module,
+// exactly. The RED is a module OUTSIDE that closure, malformed or expensive, whose edits change
+// neither a verdict nor `ingested` — and which never appears in a refusal row, because it is never
+// tokenized.
+//
+// TWO OBLIGATIONS THIS SHAPE OWES, recorded so they are not lost to the fact that it currently
+// works. FIRST: the universe is one of the artifact forms the provider spine will key by corpus
+// content, so `native_lane_universe` is written as its PRODUCER and not as an inline step the route
+// must always pay — when that spine lands, the scan becomes a miss-path cost and a hit reads
+// nothing. SECOND: the textual reads here are a REALIZATION of the discovery authority, never a
+// second authority, so they owe a witness joining this route's universe against the discovery
+// producer's own population at identity grain on the same tree. That witness is the wall and it is
+// NOT yet built; until it is, the same-universe property is diligence rather than a check.
+type NativeLaneIngestReceipt {
+  closure_modules: List<String>
+  ingested_paths: List<String>
+  scanned_paths: List<String>
+}
+
+fn native_lane_ingest_receipt(
+  facts: List<NativeLaneSourceFacts>,
+  closure: List<String>,
+  ingest: SourceRootIngest
+) -> NativeLaneIngestReceipt {
+  NativeLaneIngestReceipt {
+    closure_modules: closure,
+    ingested_paths: fold_list(
+      xs: ingest,
+      empty: [],
+      cons: fn(acc, read) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: read.compilation_unit)) }
+    ),
+    scanned_paths: fold_list(
+      xs: facts,
+      empty: [],
+      cons: fn(acc, f) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: f.path)) }
+    )
+  }
+}
+
+// THE JOIN THE ACCEPTANCE ASKS FOR, ASKED BY THE ROUTE ITSELF rather than by a reader comparing two
+// logs: every ingested source's declared module is in the closure, and every closure module that
+// any source declares was ingested. A source whose header declares no module cannot be in a closure
+// and cannot be reached by an import, so its presence in the ingest would be exactly the hidden
+// prepass this check exists to refuse.
+// THE JOIN REFUSES BY IDENTITY, NOT BY COUNT (review 64181, DESIGN section 5: "every path succeeds
+// fully or fails with a typed, located diagnostic"). This answered `Bool`, so the three all-or
+// -nothing `&&` accumulators discarded WHICH module and WHICH path broke the join, and the only
+// thing the consumer could print was scanned=/ingested=/closure_modules= counts -- a reader given
+// "2154 != 2155" has to re-derive the offender by hand. The module already owns the right carrier
+// (`native_lane_refused` with a located detail), so the first offending identity is named instead.
+//
+// The two directions are separate refusals because they are separate defects: an INGESTED source
+// outside the closure is the hidden prepass this receipt exists to catch, and a CLOSURE module
+// that never arrived is a narrowed ingest whose absence would otherwise surface downstream as an
+// unexplained resolve refusal.
+fn native_lane_ingest_matches_closure(
+  facts: List<NativeLaneSourceFacts>,
+  receipt: NativeLaneIngestReceipt,
+  ingest: SourceRootIngest
+) -> Outcome<Bool> {
+  let by_path = native_lane_module_by_path(facts: facts)
+  let closure_set = native_lane_module_set(modules: receipt.closure_modules)
+  let ingested_outside = list_find_first(
+    xs: ingest,
+    predicate: fn(read) {
+      match map_lookup(by_path, read.compilation_unit) {
+        Absent => true
+        Present { value: declared } => !native_lane_module_in_set(set: closure_set, name: declared)
+      }
+    }
+  )
+  match ingested_outside {
+    Present { value: read } =>
+      native_lane_refused(
+        reason: ^native_lane_ingest_outside_closure,
+        detail: concat(
+          "ingested source is not a closure member: path ",
+          symbol_lexeme(sym: read.compilation_unit),
+          ", declared module ",
+          match map_lookup(by_path, read.compilation_unit) {
+            Absent => "(none -- the header declares no module, so nothing can import it)"
+            Present { value: m } => m
+          }
+        )
+      )
+    Absent => {
+      let ingested_set = fold_list(
+        xs: ingest,
+        empty: empty_map(),
+        cons: fn(acc, read) {
+          match map_lookup(by_path, read.compilation_unit) {
+            Absent => acc
+            Present { value: m } => map_insert(acc, m, true)
+          }
+        }
+      )
+      let closure_member_absent = list_find_first(
+        xs: facts,
+        predicate: fn(f) {
+          native_lane_facts_module_in_set(set: closure_set, facts: f)
+            && !native_lane_facts_module_in_set(set: ingested_set, facts: f)
+        }
+      )
+      match closure_member_absent {
+        Present { value: f } =>
+          native_lane_refused(
+            reason: ^native_lane_closure_member_not_ingested,
+            detail: concat(
+              "closure module was never ingested: ",
+              native_lane_facts_module_lexeme(facts: f),
+              " declared at ",
+              symbol_lexeme(sym: f.path)
+            )
+          )
+        Absent => outcome_accepted(value: true)
+      }
+    }
+  }
+}
+
+// ── the observed population ────────────────────────────────────────────────────────────────
+//
+// THE PREPARE-REFUSAL FAN-OUT AND THE CONTEXT RECLASSIFICATION ARE ONE FOLD, HERE. Both used to
+// live outside the route: the fan-out in the emitted main's rendered Rust, the reclassification
+// in the seed's harness. They are the same per-module decision — what verdict every declaration
+// of a module gets when the module never reached evaluation — and splitting them across two
+// hosts is what let the seed's join query the relation off-key and silently never reclassify.
+// A module whose own file the context fold refused gets Context-stage rows carrying THAT FILE'S
+// fatal reason; a module whose file loaded but failed resolve/infer gets Prepare-stage rows
+// carrying the resolver's own fatal reason. Every declaration gets exactly one row either way,
+// so the population has no silent remainder to explain.
+
+// THE REFUSALS ARE KEYED BY PATH, BUILT ONCE PER RUN (review 64753). The join was O(modules x
+// refusals): a first-match scan per module over every file refusal the context carries. The index
+// is built once by the caller that owns the loop -- the rendered driver, which is the only thing
+// that knows a loop is about to happen -- and each module answers with one map_lookup.
+//
+// THE ABSENT ANSWER IS A REAL ANSWER. A path with no refusal row is a path this context did not
+// refuse, which is exactly what the resolution arm below needs to know; there is no third state in
+// which the index fails to say, so the total Optional is the whole result.
+fn native_lane_file_refusal_index(
+  refusals: FreeMonoid<NativeTestFileRefusal>
+) -> Map<Symbol, NativeTestFileRefusal> {
+  fold_list(
+    xs: refusals,
+    empty: empty_map(),
+    cons: fn(acc, fr) { map_insert(acc, fr.path, fr) }
+  )
+}
+
+fn native_lane_file_refusal_for_path(
+  index: Map<Symbol, NativeTestFileRefusal>,
+  path: Symbol
+) -> Optional<NativeTestFileRefusal> {
+  map_lookup(index, path)
+}
+
+fn native_lane_member_row(module: String, declaration: String, verdict: NativeTestVerdict) -> NativeRouteMemberRow {
+  NativeRouteMemberRow {
+    identity: NativeRouteTestIdentity { module: module, declaration: declaration },
+    verdict: verdict
+  }
+}
+
+// WHAT THE POPULATION↔UNIVERSE JOIN STILL DISCRIMINATES, STATED RATHER THAN ASSUMED. Every
+// universe member gets exactly one row, so admission's omission and foreign-row clauses cannot fire
+// from in-process drift the way they could when a second process echoed a universe file back. That
+// is a rung statement, not a hole: the fact those clauses protected — a DISCOVERED identity the
+// execution route cannot reach — is not lost, it MOVES, and it moves to a better-located carrier.
+// The route refuses such an identity at the Entry stage
+// (native_test_entry_declaration_not_found / native_test_entry_module_scope_unresolved), the
+// exclusion taxonomy classifies that refusal, and an unclassified one still blocks admission by
+// name. The clauses stay enrolled because the receipt is a data shape a future producer can still
+// violate; the discriminating evidence for the class now lives on the exclusion clauses.
+
+// THE PER-MODULE DECISION IS SPLIT AT ITS TWO COST GRAINS, and the split is load-bearing rather
+// than cosmetic. Preparation (resolve + infer) is paid ONCE per module; evaluation is paid per
+// declaration. A caller that must PRICE them separately — the rendered main, which owns the clock
+// the substrate does not have — needs to enter each one itself, so the decision returns either the
+// prepared module or the rows already decided without it, and evaluation is a second call per
+// identity. Composing them here instead would hand the host one opaque call and force it to label
+// the whole thing with one phase name, which is the measurement defect this shape exists to avoid.
+type NativeLaneModulePreparation
+  = NativeLaneModulePrepared { prepared: NativeTestPreparedModule }
+  | NativeLaneModuleRowsDecided { rows: List<NativeRouteMemberRow> }
+
+fn native_lane_module_refusal_rows(
+  entry: NativeLaneUniverseModule,
+  verdict: NativeTestVerdict
+) -> List<NativeRouteMemberRow> {
+  fold_list(
+    xs: entry.declarations,
+    empty: [],
+    cons: fn(acc, d) {
+      list_snoc_item(xs: acc, item: native_lane_member_row(
+        module: entry.module,
+        declaration: d,
+        verdict: verdict
+      ))
+    }
+  )
+}
+
+// THE TWO HALVES OF PREPARATION ARE ENTERED SEPARATELY, for the reason the type above already
+// gives: the host owns the clock the substrate does not have, so a grain it must PRICE is a grain
+// it must ENTER. Composing resolve and infer into one call handed the host one opaque span and
+// forced it to label both halves with one phase name -- the measurement defect the prepare/eval
+// split exists to avoid, committed one level down. std.compiler_entry's driver contract declares
+// one [native-prepare-split] line per module carrying resolve_nanos and infer_nanos, and a single
+// composed call cannot produce it. The rows are unchanged: the same fold over the same
+// declarations, shaped by native_lane_module_refusal_rows, at the same two stages, in the same
+// order -- Context for a file refusal, Prepare for either half's rejection.
+// THE TWO REFUSAL CAUSES BEFORE INFER ARE SEPARATE VARIANTS, not one. A file this context refused
+// and a module the resolver rejected produce rows at DIFFERENT stages (Context vs Prepare) and cost
+// different work -- the first never enters the resolver at all -- so collapsing them would make the
+// split line label a context refusal as a resolve refusal, which is a fabricated attribution of
+// someone else's cost. The rows each arm produces are unchanged by the split.
+type NativeLaneModuleResolution
+  = NativeLaneModuleResolved { resolved: ResolvedTree }
+  | NativeLaneModuleContextRowsDecided { rows: List<NativeRouteMemberRow> }
+  | NativeLaneModuleResolveRowsDecided { rows: List<NativeRouteMemberRow> }
+
+fn native_lane_module_resolution(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  entry: NativeLaneUniverseModule
+) -> NativeLaneModuleResolution {
+  match native_lane_file_refusal_for_path(index: refusal_index, path: entry.path) {
+    Present { value: fr } =>
+      NativeLaneModuleContextRowsDecided {
+        rows: native_lane_module_refusal_rows(
+          entry: entry,
+          verdict: NativeTestRefused { stage: NativeTestStageContext, reason: fr.fatal_reason }
+        )
+      }
+    Absent =>
+      match native_test_resolve_module(
+        context: context,
+        module: qualified_name_from_dotted_string(dotted: entry.module)
+      ) {
+        Rejected { diagnostics: d } =>
+          NativeLaneModuleResolveRowsDecided {
+            rows: native_lane_module_refusal_rows(
+              entry: entry,
+              verdict: NativeTestRefused {
+                stage: NativeTestStagePrepare,
+                reason: native_test_fatal_reason(d: d)
+              }
+            )
+          }
+        Accepted { value: resolved, diagnostics: _ } =>
+          NativeLaneModuleResolved { resolved: resolved }
+      }
+  }
+}
+
+fn native_lane_module_inference(
+  entry: NativeLaneUniverseModule,
+  resolved: ResolvedTree
+) -> NativeLaneModulePreparation {
+  match native_test_infer_resolved(
+    module: qualified_name_from_dotted_string(dotted: entry.module),
+    resolved: resolved
+  ) {
+    Rejected { diagnostics: d } =>
+      NativeLaneModuleRowsDecided {
+        rows: native_lane_module_refusal_rows(
+          entry: entry,
+          verdict: NativeTestRefused {
+            stage: NativeTestStagePrepare,
+            reason: native_test_fatal_reason(d: d)
+          }
+        )
+      }
+    Accepted { value: prepared, diagnostics: _ } =>
+      NativeLaneModulePrepared { prepared: prepared }
+  }
+}
+
+// ONE IDENTITY, EVALUATED. The per-declaration grain the profile lane prices: this call and nothing
+// else is what identity_evaluation measures.
+fn native_lane_identity_row(
+  prepared: NativeTestPreparedModule,
+  module: String,
+  declaration: String
+) -> NativeRouteMemberRow {
+  let observation = native_test_eval_one(
+    prepared: prepared,
+    declaration: symbol_intern_lexeme(lexeme: declaration)
+  )
+  native_lane_member_row(
+    module: module,
+    declaration: declaration,
+    verdict: observation.verdict
+  )
+}
+
+// THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
+// universe prefix, so discovery enrols nothing for them and the authority's own declaration is
+// what names them; a verdict is Absent exactly when the route could not produce one, which is the
+// state the false/true clauses refuse. BOTH are answered from ONE prepare: they share a module,
+// and resolve + infer over the whole context is the per-module cost this fold exists to pay once.
+type NativeLaneControls {
+  false_control: Optional<NativeTestVerdict>
+  true_control: Optional<NativeTestVerdict>
+}
+
+// THE CONTROL MODULE'S OWN FAILURE IS CARRIED, NOT COLLAPSED (review 64181). This discarded
+// the resolver's diagnostics and answered Absent/Absent, which admission does refuse -- so it
+// was never fail-open -- but it made a DEFECT IN THE CONTROL MODULE indistinguishable from any
+// other missing verdict, which is the one distinction these two controls exist to draw. The
+// refusal is carried as the verdict it is, at the stage it happened, with the reason every
+// sibling arm preserves. Both clauses already map NativeTestRefused to false
+// (gunbc.witness_v2_native_route native_route_false_control_holds / _true_control_holds), so
+// this reports the same verdict with the cause attached rather than changing what is admitted.
+fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
+  match native_test_prepare_module(
+    context: context,
+    module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
+  ) {
+    Rejected { diagnostics: d } =>
+      {
+        let refused = NativeTestRefused {
+          stage: NativeTestStagePrepare,
+          reason: native_test_fatal_reason(d: d)
+        }
+        NativeLaneControls {
+          false_control: optional_present(value: refused),
+          true_control: optional_present(value: refused)
+        }
+      }
+    Accepted { value: prepared, diagnostics: _ } =>
+      {
+        let false_observation = native_test_eval_one(
+          prepared: prepared,
+          declaration: symbol_intern_lexeme(lexeme: native_route_live_control_false_declaration)
+        )
+        let true_observation = native_test_eval_one(
+          prepared: prepared,
+          declaration: symbol_intern_lexeme(lexeme: native_route_live_control_true_declaration)
+        )
+        NativeLaneControls {
+          false_control: optional_present(value: false_observation.verdict),
+          true_control: optional_present(value: true_observation.verdict)
+        }
+      }
+  }
+}
+
+// ── the receipt, minted and judged inside the route ────────────────────────────────────────
+//
+// THE HOST FACTS ARE THE ONLY THING THE ROUTE CANNOT OBSERVE OF ITSELF: which seed PREPARED the
+// compiler artifact, what the closure's and the executable's content identities are, HOW the old
+// route's fallback was closed, what the malformed specimen's own run observed, and how the
+// compiler artifact was BUILT (the spawn's argv, flags, bound compiler, rustc identity, status
+// and warning count -- NativeRouteEmittedBuild, observed by the host at the cargo spawn this
+// process is the product of, so by construction not observable from inside it). They are
+// received as data and recorded verbatim; every other field of the receipt is this process's own
+// observation, and the admission that judges it is the authority's, evaluated here.
+//
+// THE OLD-ROUTE CONTROL ARRIVES AS THE AUTHORITY'S OWN COPRODUCT rather than as a path plus an
+// assumption about what the host did with it. The harness withdrew an executable, or found none at
+// the path for the whole window; both are observations and the authority names both, so the host
+// cannot report one while the other held (operator design review 2026-09-11, C5: the harness must
+// not REQUIRE the old route to exist so that it can move it).
+type NativeLaneHostFacts {
+  tested_tree: String
+  preparation_seed_identity: String
+  emitted_closure_identity: String
+  executable_path: String
+  executable_identity: String
+  old_route_control: NativeRouteOldRouteControl
+  malformed_control: NativeRouteMalformedControl
+  emitted_build: NativeRouteEmittedBuild
+}
+
+fn native_lane_receipt(
+  context: NativeTestContext,
+  universe: NativeLaneUniverse,
+  population: List<NativeRouteMemberRow>,
+  controls: NativeLaneControls,
+  facts: NativeLaneHostFacts
+) -> NativeRouteReceipt {
+  NativeRouteReceipt {
+    job: required_v2_native_job_name,
+    tested_tree: facts.tested_tree,
+    preparation_seed_identity: facts.preparation_seed_identity,
+    emitted_closure_identity: facts.emitted_closure_identity,
+    executable_path: facts.executable_path,
+    executable_identity: facts.executable_identity,
+    universe: universe.identities,
+    module_source_index: universe.module_sources,
+    population: population,
+    file_refusals: context.file_refusals,
+    false_control: controls.false_control,
+    true_control: controls.true_control,
+    malformed_control: facts.malformed_control,
+    old_route_control: facts.old_route_control,
+    emitted_build: facts.emitted_build
   }
 }

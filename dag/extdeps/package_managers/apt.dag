@@ -1,6 +1,7 @@
 module extdeps.apt
 
-import std.types { NonEmptyStr, FilePath, String, Bool, List }
+import std.types { NonEmptyStr, FilePath, Bool, List, Unit }
+import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

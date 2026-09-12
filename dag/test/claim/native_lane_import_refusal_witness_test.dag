@@ -1,0 +1,108 @@
+module test.claim.native_lane_import_refusal
+
+import v2.compiler.compile { native_lane_universe }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE IMPORT REFUSAL, EXERCISED THROUGH THE DERIVATION IT PROTECTS (review 64474 item 5, control
+// requirements of 2026-09-12). An `import ` prefix followed by no token used to be SKIPPED by the
+// import scan. A skipped import is a NARROWED CLOSURE: the module the line meant to name is never
+// walked, its declarations never reach the universe, and the run ends GREEN over a smaller
+// population than the source asked for. DESIGN section 5 forbids exactly that arm -- a failure must
+// refuse, never widen or narrow -- and narrowing is the worse direction, because it terminates in a
+// pass rather than in a visible over-scan.
+//
+// THE SUBJECT IS native_lane_universe, NOT THE LINE PREDICATE, and that is the whole point of this
+// file. An earlier draft asserted on the detector alone. That would have proved the malformed line
+// is RECOGNIZED while proving nothing about whether recognition REACHES the verdict -- and a test
+// that stops short of the decision it names is the defect this PR already repaired once, when a
+// terminal-marker test turned out to be intercepted by an unrelated earlier refusal and had
+// silently stopped exercising its own subject. So these rows drive the derivation end to end and
+// assert on the Outcome it returns.
+//
+// THE TWO INGESTS DIFFER IN ONE LINE. Same module header, same declaration, same path: only the
+// import line changes. Anything else differing would leave the refusal attributable to the other
+// difference.
+
+data malformed_import_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module v2.test.native_lane_import_subject\nimport \nfn subject() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^native_lane_import_malformed_artifact,
+    file_path: "src/v2/test/native_lane_import_subject.dag"
+  },
+  compilation_unit: ^native_lane_import_malformed_cu,
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+data well_formed_import_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module v2.test.native_lane_import_subject\nimport v2.std.optional { Present }\nfn subject() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^native_lane_import_wellformed_artifact,
+    file_path: "src/v2/test/native_lane_import_subject.dag"
+  },
+  compilation_unit: ^native_lane_import_wellformed_cu,
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+// The bare spelling: `import` with only spaces after it TRIMS TO `import`, with no trailing space,
+// so a predicate keyed on the prefix `import ` is false for it. The original scan never classified
+// this line as an import at all -- the same narrowed closure by a shorter path -- and the first
+// version of this witness disagreed with the first version of the predicate, which is how it was
+// found. Removing this row restores the blind spot silently.
+data bare_import_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module v2.test.native_lane_import_subject\nimport    \nfn subject() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^native_lane_import_bare_artifact,
+    file_path: "src/v2/test/native_lane_import_subject.dag"
+  },
+  compilation_unit: ^native_lane_import_bare_cu,
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+data malformed_import_ingest: SourceRootIngest = [malformed_import_read]
+data well_formed_import_ingest: SourceRootIngest = [well_formed_import_read]
+data bare_import_ingest: SourceRootIngest = [bare_import_read]
+
+// RED: the derivation refuses rather than returning a universe over a silently narrowed closure.
+test fn a_malformed_import_refuses_the_universe_derivation() -> Bool {
+  match native_lane_universe(ingest: malformed_import_ingest) {
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_import_line_names_no_module
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED, second spelling: the form the prefix test cannot see.
+test fn a_bare_import_refuses_the_universe_derivation() -> Bool {
+  match native_lane_universe(ingest: bare_import_ingest) {
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_import_line_names_no_module
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: an ordinary import is admitted, so the refusal above discriminates on the
+// malformed line rather than on anything these fixtures share. Without this row the two RED tests
+// are satisfied by a derivation that refuses everything.
+test fn a_well_formed_import_is_admitted_by_the_derivation() -> Bool {
+  match native_lane_universe(ingest: well_formed_import_ingest) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

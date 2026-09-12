@@ -102,6 +102,62 @@ type GenerationIdentity {
   materialized_artifact: GeneratedArtifactIdentity
 }
 
+// THE PRE-MATERIALIZATION PROJECTION: the five CAUSAL axes, without the artifact.
+//
+// A consumer that must key a compiler build BEFORE the artifact exists -- a materialization request
+// for the native compiler (std.materialization_provider NativeCompilerArtifactRequest) is the first
+// one -- needs exactly the axes that CAUSE the build, and cannot have the sixth: materialized_artifact
+// is EARNED from observed bytes and joined back afterwards, so admitting it into a pre-build lookup
+// key would let a caller author the very fact the build is supposed to produce.
+//
+// It lives HERE because this module is the sole authority for what a generation's identity IS
+// (DESIGN section 3). A consumer that re-listed the axes would fork that fact, and the fork is not
+// hypothetical: a key over only {source closure, toolchain, target} leaves a changed PRODUCER
+// COMPILER or BUILD CONFIGURATION invisible, so two different generations read as one computation
+// and the differing artifact reads as a same-key content conflict rather than a changed input.
+// Adding a seventh causal axis therefore changes this projection and every key derived from it,
+// which is the property a second list cannot offer.
+//
+// NO COMPOSITE IS STORED, exactly as the head of this module requires: the digest is a projection
+// derived on demand, folded in the declared axis order under a tag of its own so it cannot collide
+// with any other fold over the same five digests.
+type PreMaterializationIdentity {
+  producer_compiler: Hash
+  source_closure: Hash
+  target_model: Hash
+  toolchain: Hash
+  build_configuration: Hash
+}
+
+fn pre_materialization_identity(identity: GenerationIdentity) -> PreMaterializationIdentity {
+  PreMaterializationIdentity {
+    producer_compiler: identity.producer_compiler,
+    source_closure: identity.source_closure,
+    target_model: identity.target_model,
+    toolchain: identity.toolchain,
+    build_configuration: identity.build_configuration
+  }
+}
+
+fn pre_materialization_digest(pre: PreMaterializationIdentity) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: combine_hash(
+        a: combine_hash(
+          a: combine_hash(
+            a: symbol_identity_digest(sym: ^generation_pre_materialization_identity),
+            b: pre.producer_compiler
+          ),
+          b: pre.source_closure
+        ),
+        b: pre.target_model
+      ),
+      b: pre.toolchain
+    ),
+    b: pre.build_configuration
+  )
+}
+
 // Three generations, three distinct TYPES. A candidate cannot be constructed without
 // naming the seed that produced it, and a successor cannot be constructed without
 // naming the candidate that produced it, so "seed-generated candidate" and

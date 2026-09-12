@@ -5,6 +5,7 @@ use self::ClockBasis::*;
 use self::ClockDomain::*;
 use self::FiniteByteSizeBuild::*;
 use self::InstantOrder::*;
+use self::MeasureSubtraction::*;
 use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
@@ -299,6 +300,39 @@ pub fn measure_add<Q, S>(
         count: (a.count.clone() + b.count.clone()),
         _phantom: std::marker::PhantomData,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MeasureSubtraction<Q, S> {
+    MeasureDifference { value: Rc<Measure<Q, S, i64>> },
+    MeasureSubtrahendExceedsMinuend,
+}
+impl<Q: Clone, S: Clone> MeasureSubtraction<Q, S> {
+    pub fn value(&self) -> Rc<Measure<Q, S, i64>> {
+        match self {
+            MeasureSubtraction::MeasureDifference { value: __val, .. } => __val.clone(),
+            MeasureSubtraction::MeasureSubtrahendExceedsMinuend => {
+                panic!("no value on unit variant")
+            }
+        }
+    }
+}
+
+pub fn measure_sub<Q, S>(
+    a: Rc<Measure<Q, S, i64>>,
+    b: Rc<Measure<Q, S, i64>>,
+) -> Rc<MeasureSubtraction<Q, S>> {
+    if (a.count.clone() < b.count.clone()) {
+        Rc::new(MeasureSubtraction::MeasureSubtrahendExceedsMinuend)
+    } else {
+        Rc::new(MeasureSubtraction::MeasureDifference {
+            value: Rc::new(Measure {
+                count: (a.count.clone() - b.count.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+        })
+    }
 }
 
 pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
@@ -756,6 +790,32 @@ pub fn ampere(count: Nat) -> Ampere {
 
 pub fn ampere_count(a: Ampere) -> Nat {
     measure_count(a.clone())
+}
+
+pub type Gram = Rc<Measure<Mass, Milli, i64>>;
+
+pub fn gram(count: Nat) -> Gram {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn gram_count(g: Gram) -> Nat {
+    measure_count(g.clone())
+}
+
+pub type Coulomb = Rc<Measure<ElectricCharge, One, i64>>;
+
+pub fn coulomb(count: Nat) -> Coulomb {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn coulomb_count(q: Coulomb) -> Nat {
+    measure_count(q.clone())
 }
 
 pub fn nanometer(count: Nat) -> Nanometer {

@@ -18,29 +18,49 @@ import gunbc.witness_v2_native_route {
   native_route_disposition,
   NativeRouteCensus, native_route_census,
   NativeRouteMalformedControl, MalformedSpecimenRefused, MalformedSpecimenAccepted,
-  NativeRouteOldRouteControl, OldRouteWithdrawn, OldRouteFalsifierArmed, OldRouteAbsentByConstruction, OldRouteControlAbsent,
+  NativeRouteOldRouteControl, OldRouteWithdrawn, OldRouteNotPresentAtWindow, OldRouteFalsifierArmed, OldRouteAbsentByConstruction, OldRouteControlAbsent,
   NativeRouteReceipt,
   NativeRouteEmittedBuild,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   required_v2_native_job_name,
   native_route_admission, native_route_admitted, native_route_admission_refused_with,
-  native_route_admission_summary
+  native_route_admission_summary,
+  native_route_live_control_module,
+  NativeRouteCauseTally,
+  native_route_file_refusal_tally
 }
 import v2.compiler.self_host.emitter_producer_provenance {
   cssl_harness_realized_closure,
   realized_closure_for_v2_direct_rust_door_emit_run
 }
-import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import v2.compiler.compile {
+  NativeLaneSourceFacts,
+  NativeLaneUniverse,
+  NativeLaneUniverseModule,
+  native_lane_closure_modules,
+  native_lane_closure_round_budget,
+  native_lane_module_set,
+  native_lane_module_in_set,
+  native_lane_declared_module_name,
+  native_lane_unowned_row_path
+}
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_source_authority {
+  FloorDiscoveryWalkState
+}
+import v2.std.live_tree { SubstrateInputsOnly }
+import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
   NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.collection { List }
-import v2.std.algebra { length }
+import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
@@ -1267,4 +1287,246 @@ test fn old_route_absent_by_construction_with_the_seed_closure_is_refused() -> B
     admission: native_route_admission(receipt: receipt),
     cause_name: "old_route_control_never_installed"
   )
+}
+
+// THE DERIVED UNIVERSE'S TWO PRE-JOIN FACTS, JUDGED HERE BECAUSE THE ROUTE NOW OWNS THEM. Both
+// used to be the seed's: the module a source declares (its Rust module index) and the refusal a
+// discovery row with no owning module gets (UniverseEntryOutsideSubject). They moved into
+// v2.compiler.compile with the derivation, so their discriminating reds move with them.
+
+test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
+  match native_lane_declared_module_name(
+    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport v2.std.logic { Bool }\nmodule not.the.header\n"
+  ) {
+    Present { value: declared } => declared == "v2.test.subject"
+    Absent => false
+  }
+}
+
+// ABSENCE IS AN ARM, NOT A VALUE (review 64499). This pair compared the result against a bare
+// String while native_lane_declared_module_name returns Optional<String>, so `Absent == ""` could
+// never hold and this witness had an UNAUTHORABLE GREEN -- the state DESIGN section 4b names at
+// the top rung, where a check that cannot pass carries no information and is worse than absent
+// because it is counted as coverage. The sentinel it asserted was abolished by this same PR, two
+// declarations away from the annotation saying absence is Optional and not an empty string.
+test fn a_source_with_no_module_header_declares_no_module() -> Bool {
+  match native_lane_declared_module_name(content: "// only prose\ntest fn t() -> Bool { true }\n") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The headerless source that enrols a row is the one the derivation names; a headerless source
+// that enrols nothing is not a defect and must not be named.
+test fn a_discovery_row_whose_source_declares_no_module_refuses_the_derivation() -> Bool {
+  let enrolled = FloorDiscoveryWalkState {
+    rows: [FloorDiscoveryRow {
+      label: "t",
+      entry: "src/v2/test/headerless_test.dag",
+      function: "t",
+      reads_live_tree: SubstrateInputsOnly
+    }],
+    walk_failures: 0,
+    walk_failure_path: Absent,
+    sidecar_violations: [],
+    disposition_refusal: Absent
+  }
+  let empty = FloorDiscoveryWalkState {
+    rows: [],
+    walk_failures: 0,
+    walk_failure_path: Absent,
+    sidecar_violations: [],
+    disposition_refusal: Absent
+  }
+  match native_lane_unowned_row_path(facts: [
+    NativeLaneSourceFacts {
+      module: Absent,
+      path: ^src_v2_test_quiet_dag,
+      imports: [],
+      discovery: empty,
+      malformed_import: Absent
+    },
+    NativeLaneSourceFacts {
+      module: Absent,
+      path: ^headerless_test_path,
+      imports: [],
+      discovery: enrolled,
+      malformed_import: Absent
+    }
+  ]) {
+    Present { value: unowned } => unowned == ^headerless_test_path
+    Absent => false
+  }
+}
+
+// The green receipt with one control swapped: the old-route arm is the only field under test in
+// the two rows below, so every other field stays the admitted one rather than being re-authored.
+fn green_receipt_with_old_route_control(control: NativeRouteOldRouteControl) -> NativeRouteReceipt {
+  NativeRouteReceipt {
+    job: green_receipt().job,
+    tested_tree: green_receipt().tested_tree,
+    preparation_seed_identity: green_receipt().preparation_seed_identity,
+    emitted_closure_identity: green_receipt().emitted_closure_identity,
+    executable_path: green_receipt().executable_path,
+    executable_identity: green_receipt().executable_identity,
+    universe: green_receipt().universe,
+    module_source_index: green_receipt().module_source_index,
+    population: green_receipt().population,
+    file_refusals: green_receipt().file_refusals,
+    false_control: green_receipt().false_control,
+    true_control: green_receipt().true_control,
+    emitted_build: green_receipt().emitted_build,
+    malformed_control: green_receipt().malformed_control,
+    old_route_control: control
+  }
+}
+
+// A ROUTE THAT WAS NOT THERE IS A CLOSED FALLBACK, AND AN UNNAMED PATH IS STILL NOT AN OBSERVATION.
+// The harness no longer requires the old route to exist so that it can move it, so the receipt can
+// carry OldRouteNotPresentAtWindow; admission must hold it exactly as it holds a withdrawal, and
+// must still refuse the arm whose path names nothing, which is the same empty-identity refusal the
+// withdrawn arm gets.
+test fn an_old_route_absent_for_the_window_closes_the_fallback() -> Bool {
+  let receipt = green_receipt_with_old_route_control(
+    control: OldRouteNotPresentAtWindow { expected_executable: "target/release/gunbc" }
+  )
+  native_route_admitted(admission: native_route_admission(receipt: receipt))
+}
+
+test fn an_absent_old_route_naming_nothing_is_refused() -> Bool {
+  let receipt = green_receipt_with_old_route_control(
+    control: OldRouteNotPresentAtWindow { expected_executable: "" }
+  )
+  native_route_admission_refused_with(
+    admission: native_route_admission(receipt: receipt),
+    cause_name: "old_route_control_never_installed"
+  )
+}
+
+// ── the closure's discriminating RED ───────────────────────────────────────────────────────
+//
+// A MODULE OUTSIDE THE CLOSURE CHANGES NOTHING, AND THAT IS THE ACCEPTANCE (operator ruling
+// 2026-09-11: prove closure-scoping by POPULATION, not by a faster clock, because a hidden
+// whole-corpus prepass survives a timer improvement). The rows below drive the route's own closure
+// computation with a fact set carrying a module NO universe module imports, and assert it is
+// neither in the closure nor in what the route would ingest. The same shape is what makes a
+// malformed outsider harmless: never in the ingest means never tokenized, so it cannot mint a
+// refusal row or move a verdict.
+
+// The closure probes all name a module, so the row carries Present; the headerless case is the
+// unowned witness above, which is the one that exercises Absent.
+fn closure_fact(module: String, path: Symbol, imports: List<String>) -> NativeLaneSourceFacts {
+  NativeLaneSourceFacts {
+    module: optional_present(value: module),
+    path: path,
+    imports: imports,
+    discovery: FloorDiscoveryWalkState {
+      rows: [],
+      walk_failures: 0,
+      walk_failure_path: Absent,
+      sidecar_violations: [],
+      disposition_refusal: Absent
+    },
+    malformed_import: Absent
+  }
+}
+
+fn closure_probe_universe() -> NativeLaneUniverse {
+  NativeLaneUniverse {
+    modules: [NativeLaneUniverseModule {
+      module: "v2.test.subject",
+      path: ^src_v2_test_subject_test_dag,
+      declarations: ["a_claim"]
+    }],
+    identities: [NativeRouteTestIdentity { module: "v2.test.subject", declaration: "a_claim" }],
+    module_sources: [NativeRouteModuleSource { module: "v2.test.subject", path: ^src_v2_test_subject_test_dag }]
+  }
+}
+
+fn closure_probe_facts() -> List<NativeLaneSourceFacts> {
+  [
+    closure_fact(module: "v2.test.subject", path: ^src_v2_test_subject_test_dag, imports: ["v2.std.logic"]),
+    closure_fact(module: "v2.std.logic", path: ^src_v2_std_logic_dag, imports: []),
+    closure_fact(module: "v2.native_lane_fixture.control", path: ^src_v2_native_lane_fixture_control_dag, imports: []),
+    closure_fact(module: "v2.unrelated.outsider", path: ^src_v2_unrelated_outsider_dag, imports: ["v2.std.logic"])
+  ]
+}
+
+fn native_lane_closure_budget_probe(budget: Int) -> Outcome<List<String>> {
+  native_lane_closure_modules(facts: closure_probe_facts(), universe: closure_probe_universe(), budget: budget)
+}
+
+test fn the_closure_holds_what_the_universe_needs() -> Bool {
+  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } => {
+      let members = native_lane_module_set(modules: closure)
+      native_lane_module_in_set(set: members, name: "v2.test.subject")
+        && native_lane_module_in_set(set: members, name: "v2.std.logic")
+        && native_lane_module_in_set(set: members, name: native_route_live_control_module)
+    }
+  }
+}
+
+test fn a_module_no_universe_member_imports_is_outside_the_closure() -> Bool {
+  match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } =>
+      !native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.unrelated.outsider")
+  }
+}
+
+// THE BUDGET'S DISCRIMINATING PAIR (review 63719). The probe's closure is two rounds deep: the
+// seeds expand to `v2.std.logic` in round one, and round two finds nothing new. A budget of one
+// round leaves `v2.std.logic` on the frontier, and the walk must REFUSE the derivation by its typed
+// reason rather than answer with the seeds it had seen — that truncated answer would still hold
+// `v2.test.subject`, so a walk that absorbed the exhaustion passes every membership row above and
+// fails only this one. A budget of exactly two rounds is the boundary: the frontier is empty when
+// the fuel runs out, and the closure is accepted.
+test fn an_exhausted_closure_budget_refuses_the_derivation() -> Bool {
+  match native_lane_closure_budget_probe(budget: 1) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_closure_budget_exhausted
+  }
+}
+
+test fn a_closure_finishing_on_its_last_round_is_accepted() -> Bool {
+  match native_lane_closure_budget_probe(budget: 2) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: closure, diagnostics: _ } =>
+      native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.std.logic")
+  }
+}
+
+// ── the file refusals' composition ─────────────────────────────────────────────────────────
+//
+// THE TALLY COUNTS AT FATAL GRAIN, ONCE. `resolve_reason_unbound_symbol` is owned at BOTH grains in
+// the cause table, so a tally that walked every row would count its refusal twice and the rows
+// would sum past the receipt's population; the sum row below is what discriminates that. The two
+// per-cause rows discriminate a tally that counted rows instead of refusals, or matched on the
+// head reason.
+fn native_route_tally_probe() -> List<NativeRouteCauseTally> {
+  native_route_file_refusal_tally(receipt: receipt_over(
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: [
+      file_refusal_row(path: ^tally_a, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_b, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_c, head: ^resolve_reason_unbound_symbol, fatal: ^resolve_reason_unbound_symbol)
+    ]
+  ))
+}
+
+fn native_route_tally_count_for(rows: List<NativeRouteCauseTally>, cause: Symbol) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, row) {
+    if row.cause == cause { acc + row.file_refusals } else { acc }
+  })
+}
+
+test fn the_refusal_tally_counts_each_refusal_once_at_fatal_grain() -> Bool {
+  let rows = native_route_tally_probe()
+  (native_route_tally_count_for(rows: rows, cause: ^parse_g0_tokens_remain) == 2)
+  && (native_route_tally_count_for(rows: rows, cause: ^resolve_reason_unbound_symbol) == 1)
+  && (fold_list(xs: rows, empty: 0, cons: fn(acc, row) { acc + row.file_refusals }) == 3)
 }
