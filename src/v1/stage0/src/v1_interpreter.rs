@@ -12092,6 +12092,66 @@ fn namespace_structural_observation_admissions_value(
     )
 }
 
+fn reference_derived_candidate_disposition_value(
+    disposition: &crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition as D;
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("ReferenceDerivedCandidateDisposition"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match disposition {
+        D::CandidateSurvived { provider_module } => variant(
+            "CandidateSurvived",
+            vec![(
+                ctx.sym("provider_module"),
+                str_value(provider_module.clone()),
+            )],
+        ),
+        D::CandidateOwnModule => variant("CandidateOwnModule", vec![]),
+        D::CandidateVariantDelegatedToParent { parent_enum } => variant(
+            "CandidateVariantDelegatedToParent",
+            vec![(ctx.sym("parent_enum"), str_value(parent_enum.clone()))],
+        ),
+        D::CandidateVariantParentUnresolved => variant("CandidateVariantParentUnresolved", vec![]),
+        D::CandidateRegistryAbsent => variant("CandidateRegistryAbsent", vec![]),
+        D::CandidateLeafAmbiguous => variant("CandidateLeafAmbiguous", vec![]),
+        D::CandidateExportProofFailed { provider_module } => variant(
+            "CandidateExportProofFailed",
+            vec![(
+                ctx.sym("provider_module"),
+                str_value(provider_module.clone()),
+            )],
+        ),
+    }
+}
+
+fn reference_derived_candidate_rows_value(
+    rows: &im::Vector<Rc<crate::v1_compiler_emit_rust::ReferenceDerivedCandidateRow>>,
+    ctx: &InterpContext,
+) -> Value {
+    list_value(
+        rows.iter()
+            .map(|row| Value::Record {
+                type_name: ctx.sym("ReferenceDerivedCandidateRow"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("module_name"), str_value(row.module_name.clone())),
+                    (ctx.sym("name"), str_value(row.name.clone())),
+                    (
+                        ctx.sym("disposition"),
+                        reference_derived_candidate_disposition_value(
+                            row.disposition.as_ref(),
+                            ctx,
+                        ),
+                    ),
+                ])),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
 fn compile_diagnostic_census_value(
     census: crate::cli_run::CompileDiagnosticCensus,
     ctx: &InterpContext,
@@ -18640,6 +18700,12 @@ macro_rules! v1_builtin_arms {
                     &admissions,
                     $ctx,
                 )))
+            },
+
+            arm "free_call.emit_rust_reference_derived_rows_bridge" { "emit_rust_reference_derived_rows_bridge" } => {
+                let graph = Rc::new($ctx.resolved_graph());
+                let rows = crate::v1_compiler_emit_rust::emit_rust_reference_derived_rows(graph);
+                Ok(Some(reference_derived_candidate_rows_value(rows.as_ref(), $ctx)))
             },
 
             arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
