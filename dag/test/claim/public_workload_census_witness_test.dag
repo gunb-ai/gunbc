@@ -1,6 +1,6 @@
 module test.claim.public_workload_census_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { X86_64 }
