@@ -50,21 +50,6 @@ type DeclaringIdentitySpelling
       cause: UnresolvableCause
     }
 
-// Coverage of the file-ingest producer. Empty observed sites on a file that
-// authorially contains a mention is RED, not Clear. User type-position names and
-// value mentions outside calls can be ObservedOnNormalizedTree; kernel type-position
-// names wait on InvisibleUntilTypePositionMentionSurvives (not call lowering);
-// callees/arguments wait on InvisibleUntilCallExpressionRetained; the usable XL-3
-// class -- a qualified cross-module mention -- waits on
-// InvisibleUntilQualifiedCrossModuleMentionSurvives. A bare same-module value
-// mention can be ObservedOnNormalizedTree and still contribute nothing to
-// requalification, because it does not cross a module boundary.
-type DeclaringIdentityCensusCoverage
-  = ObservedOnNormalizedTree
-  | InvisibleUntilTypePositionMentionSurvives
-  | InvisibleUntilCallExpressionRetained
-  | InvisibleUntilQualifiedCrossModuleMentionSurvives
-
 fn spelling_symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }

@@ -2,15 +2,10 @@ module v2.test.claim.declaring_identity_spelling.verdict_fold
 
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.declaring_identity_spelling {
-  DeclaringIdentityCensusCoverage,
   DeclaringIdentitySpelling,
   IdentityUnbound,
   IdentityAmbiguous,
   IdentityOwnerless,
-  InvisibleUntilCallExpressionRetained,
-  InvisibleUntilTypePositionMentionSurvives,
-  InvisibleUntilQualifiedCrossModuleMentionSurvives,
-  ObservedOnNormalizedTree,
   ResolvedAuthoredNotOnCanonicalPath,
   ResolvedSpelling,
   SpelledCanonically,
@@ -28,9 +23,8 @@ import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // HAND-BUILT INPUTS FOR THE VERDICT FOLD ONLY. These QualifiedName values are not
-// collector output and are not production evidence. File fixtures under
-// src/v2/test/fixture/declaring_identity_spelling/ are the subjects of the held
-// ingest path; they must not be substituted here to green an empty collector.
+// collector output and are not production evidence. Production ingest subjects
+// live under v2.test.claim.declaring_identity_spelling.production_ingest.
 
 data fold_fixture_module: String = "v2.test.fixture.declaring_identity_spelling.shorter"
 
@@ -132,48 +126,5 @@ test fn unbound_is_unresolvable_and_not_requalification_work_holds() -> Bool {
         IdentityOwnerless => false
       }
     ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: _ } => false
-  }
-}
-
-data held_type_position_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilTypePositionMentionSurvives
-
-data held_call_erasure_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilCallExpressionRetained
-
-data held_cross_module_coverage: DeclaringIdentityCensusCoverage = InvisibleUntilQualifiedCrossModuleMentionSurvives
-
-data shorter_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/shorter.dag"
-
-data canonical_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/canonical.dag"
-
-data unresolvable_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/unresolvable.dag"
-
-data call_only_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/call_only.dag"
-
-data value_outside_call_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag"
-
-data matched_type_vs_value_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/matched_type_vs_value.dag"
-
-data cross_provider_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_provider.dag"
-
-data cross_consumer_fixture_path: String = "src/v2/test/fixture/declaring_identity_spelling/cross_consumer.dag"
-
-test fn coverage_frontiers_are_not_observed_tree_holds() -> Bool {
-  match held_type_position_coverage {
-    InvisibleUntilTypePositionMentionSurvives =>
-      match held_call_erasure_coverage {
-        InvisibleUntilCallExpressionRetained =>
-          match held_cross_module_coverage {
-            InvisibleUntilQualifiedCrossModuleMentionSurvives => true
-            ObservedOnNormalizedTree => false
-            InvisibleUntilTypePositionMentionSurvives => false
-            InvisibleUntilCallExpressionRetained => false
-          }
-        ObservedOnNormalizedTree => false
-        InvisibleUntilTypePositionMentionSurvives => false
-        InvisibleUntilQualifiedCrossModuleMentionSurvives => false
-      }
-    ObservedOnNormalizedTree => false
-    InvisibleUntilCallExpressionRetained => false
-    InvisibleUntilQualifiedCrossModuleMentionSurvives => false
   }
 }
