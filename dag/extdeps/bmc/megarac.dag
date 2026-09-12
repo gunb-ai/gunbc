@@ -107,7 +107,7 @@ data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/settings/media/remote/start-media",
-  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes 13410/13460. Recovered from the firmware's own UI bundle (source.min.js), not from documentation. Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status nonzero, session_index bound)",
+  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes 13410/13460. Recovered from the firmware's own UI bundle (source.min.js), not from documentation. Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status started or connecting via megarac_redirection_status_of_wire, session_index bound)",
 }
 
 data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
@@ -232,6 +232,26 @@ fn megarac_redirection_status_of_wire(
     RedirectionStatusKnown { firmware: firmware, status: status }
   } else {
     RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
+  }
+}
+
+// A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped, the named denials,
+// vendor-rendered stopped, and an uncatalogued firmware cannot confirm attachment: nonzero is not
+// a success code, and a firmware this decoder does not catalog cannot inherit 0.32's numbers.
+fn megarac_redirection_presents_media(lookup: MegaRacRedirectionStatusLookup) -> Bool {
+  match lookup {
+    RedirectionStatusFirmwareUncatalogued { firmware: _, wire: _ } => false
+    RedirectionStatusKnown { firmware: _, status: status } =>
+      match status {
+        RedirectionStartedConnectionAccepted => true
+        RedirectionConnecting => true
+        RedirectionStopped => false
+        RedirectionConnectionDenied => false
+        RedirectionLoginFailed => false
+        RedirectionMaxSessionReached => false
+        RedirectionPermissionDenied => false
+        RedirectionVendorRenderedStopped { wire: _ } => false
+      }
   }
 }
 

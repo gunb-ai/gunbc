@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name }
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import gunbc.machine_intake_megarac_media_attach {
   MegaRacAttachOutcome,
   MegaRacAttachResult,
@@ -122,6 +123,7 @@ func mtcollins1_attach_absent_image_control(password_raw: String, attempt: Strin
       password: password_raw as NonEmptyStr,
       cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
       image_name: "gunbc-absent-control-image.iso",
+      firmware: megarac_firmware_0_32,
     )
   )
 }
@@ -141,6 +143,7 @@ func mtcollins1_attach_diskless_image(password_raw: String, attempt: String) -> 
     password: password_raw as NonEmptyStr,
     cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
     image_name: mtcollins1_diskless_image_name,
+    firmware: megarac_firmware_0_32,
   )
   return mtcollins1_render_attach_result(result: result)
 }
