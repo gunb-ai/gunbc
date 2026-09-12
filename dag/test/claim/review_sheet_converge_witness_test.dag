@@ -1032,11 +1032,15 @@ fn w_pending_share() -> HumanIntervention {
 }
 
 fn w_discharged_share() -> HumanIntervention {
+  let pending = spreadsheet_share_intervention(
+    spreadsheet_id: "sheet-abc" as NonEmptyStr,
+    writer: w_fixture_writer(),
+  )
   HumanIntervention {
-    identity: concat("buyer-review-spreadsheet-share-", "sheet-abc") as HumanInterventionIdentity,
-    frequency: DeviceOnce,
-    subject: "sheet-abc" as NonEmptyStr,
-    instruction: "fixture",
+    identity: pending.identity,
+    frequency: pending.frequency,
+    subject: pending.subject,
+    instruction: pending.instruction,
     completion_evidence: DischargedAt {
       evidence: DeclarationRef {
         module_path: "test.claim.review_sheet_converge_witness",
@@ -1314,6 +1318,7 @@ test fn identified_spreadsheet_share_uses_that_id_not_a_placeholder() -> Bool {
     writer: w_fixture_writer(),
   )
   string_contains(s: share.identity as String, pattern: "sheet-abc")
+    && string_contains(s: share.identity as String, pattern: "writer@fixture.iam.gserviceaccount.com")
     && !string_contains(s: share.identity as String, pattern: "unidentified")
 }
 
@@ -1474,6 +1479,91 @@ test fn judgement_failures_are_unreadable_not_blank() -> Bool {
         }
     JudgementBlank => false
     JudgementEntered { value: _ } => false
+  }
+}
+
+test fn judgement_for_duplicate_listing_rows_is_unreadable() -> Bool {
+  match judgement_for_listing(
+    observed: w_observed(
+      headers: w_headers(),
+      rows: [
+        ["L1", "alpha", w_standing_observed(), "buy"],
+        ["L1", "alpha", w_standing_observed(), "reject"],
+      ],
+    ),
+    identity_column: "listing_id" as NonEmptyStr,
+    judgement_column: "judgement" as NonEmptyStr,
+    listing_id: "L1" as NonEmptyStr,
+  ) {
+    JudgementUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "duplicate sheet listing L1")
+    JudgementEntered { value: _ } => false
+    JudgementBlank => false
+  }
+}
+
+test fn discharged_share_for_another_spreadsheet_does_not_admit() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified {
+      spreadsheet_id: "sheet-other" as NonEmptyStr,
+      owner: "operator" as NonEmptyStr,
+    },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "share intervention is not for spreadsheet")
+        && string_contains(s: r as String, pattern: "sheet-other")
+        && string_contains(s: r as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+test fn discharged_share_for_another_writer_does_not_admit() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  let other = spreadsheet_share_intervention(
+    spreadsheet_id: id,
+    writer: "other@fixture.iam.gserviceaccount.com",
+  )
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: HumanIntervention {
+      identity: other.identity,
+      frequency: other.frequency,
+      subject: other.subject,
+      instruction: other.instruction,
+      completion_evidence: DischargedAt {
+        evidence: DeclarationRef {
+          module_path: "test.claim.review_sheet_converge_witness",
+          decl_name: "discharged_share_for_another_writer_does_not_admit",
+          field: WholeDeclaration,
+        }
+      },
+    },
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "share intervention is not for spreadsheet")
+        && string_contains(s: r as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
   }
 }
 

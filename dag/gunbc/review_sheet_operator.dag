@@ -1,6 +1,6 @@
 module gunbc.review_sheet_operator
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, Bool }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -128,7 +128,15 @@ fn spreadsheet_create_intervention() -> HumanIntervention {
 
 fn spreadsheet_share_intervention(spreadsheet_id: NonEmptyStr, writer: ServiceAccountEmail) -> HumanIntervention {
   HumanIntervention {
-    identity: concat("buyer-review-spreadsheet-share-", spreadsheet_id as String) as HumanInterventionIdentity,
+    identity: join(
+      [
+        "buyer-review-spreadsheet-share-",
+        spreadsheet_id as String,
+        "-",
+        writer as String,
+      ],
+      "",
+    ) as HumanInterventionIdentity,
     frequency: DeviceOnce,
     subject: spreadsheet_id,
     instruction: join(
@@ -178,8 +186,37 @@ fn review_sheet_estate_unresolved_calling_home() -> ReviewSheetOperatorAdmission
   }
 }
 
+fn admit_identified_spreadsheet_share(
+  spreadsheet_id: NonEmptyStr,
+  writer: ServiceAccountEmail,
+  share: HumanIntervention,
+) -> ReviewSheetOperatorAdmission {
+  let expected = spreadsheet_share_intervention(spreadsheet_id: spreadsheet_id, writer: writer)
+  if (share.identity as String) == (expected.identity as String) {
+    match share.completion_evidence {
+      DischargedAt { evidence: _ } =>
+        ReviewSheetOperatorAdmitted { spreadsheet_id: spreadsheet_id }
+      NoDischargeSiteModeled =>
+        ReviewSheetAwaitingHuman { intervention: expected }
+    }
+  } else {
+    ReviewSheetOperatorRefused {
+      reason: join(
+        [
+          "share intervention is not for spreadsheet ",
+          spreadsheet_id as String,
+          " writer ",
+          writer as String,
+        ],
+        "",
+      ) as NonEmptyStr
+    }
+  }
+}
+
 fn admit_review_sheet_after_enablement_ready(
   spreadsheet: BuyerReviewSpreadsheet,
+  writer: ServiceAccountEmail,
   share: HumanIntervention,
   sharing_policy: WorkspaceDomainSharingPolicy,
   tenancy: ReviewSheetAccountTenancy,
@@ -194,12 +231,11 @@ fn admit_review_sheet_after_enablement_ready(
             reason: "Google account tenancy unread" as NonEmptyStr
           }
         ReviewSheetPlainGoogleAccount =>
-          match share.completion_evidence {
-            DischargedAt { evidence: _ } =>
-              ReviewSheetOperatorAdmitted { spreadsheet_id: id }
-            NoDischargeSiteModeled =>
-              ReviewSheetAwaitingHuman { intervention: share }
-          }
+          admit_identified_spreadsheet_share(
+            spreadsheet_id: id,
+            writer: writer,
+            share: share,
+          )
         ReviewSheetWorkspaceDomain =>
           match sharing_policy {
             DomainSharingPolicyUnobserved =>
@@ -217,12 +253,11 @@ fn admit_review_sheet_after_enablement_ready(
                 ) as NonEmptyStr
               }
             DomainSharingAllowsServiceAccountShare =>
-              match share.completion_evidence {
-                DischargedAt { evidence: _ } =>
-                  ReviewSheetOperatorAdmitted { spreadsheet_id: id }
-                NoDischargeSiteModeled =>
-                  ReviewSheetAwaitingHuman { intervention: share }
-              }
+              admit_identified_spreadsheet_share(
+                spreadsheet_id: id,
+                writer: writer,
+                share: share,
+              )
           }
       }
   }
@@ -254,6 +289,7 @@ fn admit_review_sheet_operator(
     Noop =>
       admit_review_sheet_after_enablement_ready(
         spreadsheet: spreadsheet,
+        writer: writer,
         share: share,
         sharing_policy: sharing_policy,
         tenancy: tenancy,
