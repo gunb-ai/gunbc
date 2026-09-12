@@ -1725,20 +1725,41 @@ pub struct TransitionAdmission {
 /// roster's next touch -- which this change is. The roster is empty again, which this file already
 /// records as its resting state.
 ///
-/// AND IT DID NOT MERELY LINGER, WHICH IS THE PART WORTH LEAVING BEHIND. A spent row matches no
-/// delta, so the wave phase reports it as an UnmatchedAdmission refusal in `stale_admissions` --
-/// correctly, since a row provable against neither side is not evidence of anything -- and that
-/// REFUSES the required floor for every pull request whose base already carries the merge. Between
-/// 06:35 and this deletion it blocked at least four unrelated lanes, each of which diagnosed it
-/// independently. Measured rather than inferred: PRs based on 0c93af0d0 reported the stale row,
-/// while a PR on an older base reported none.
+/// THE DELETION IS THIS ROSTER'S DOCUMENTED DISSOLUTION, NOT UNRELATED CLEANUP RIDING A DIFF, and
+/// the file says so above: "the phase refused every unrelated change, so the shrink is the fix, not
+/// housekeeping", and "each transition adds its rows here and removes them when its subject lands".
+/// This row's subject landed. So this is the same motion as the two shrinks already recorded here,
+/// taken by the trigger the row was authored with rather than by a reinterpretation of it.
 ///
-/// THE SHAPE TO FIX WHEN THIS ROSTER IS NEXT DESIGNED, rather than when it is next touched: a row
-/// whose retirement is a SENTENCE naming a merge does not retire when that merge happens. The
+/// TWO FRAMES FOR ONE ROW, NAMED TOGETHER SO A LATER READER CAN JOIN THE RECORD TO THE REFUSAL. The
+/// dissolution records call such a row CONSUMED -- its admitted relocation is already satisfied at
+/// the base. The floor called this one STALE, which is a different counter with a different
+/// consequence: consumed is a typed receipt, stale is an UnmatchedAdmission REFUSAL, and stale
+/// refuses whether or not anyone touched the roster. That is why #11162 refused on a file byte-
+/// identical to main's, and why "consumed" alone would not explain the red that forced this edit.
+///
+/// AND IT DID NOT MERELY LINGER. Because `stale_admissions` is computed PER RUN and a pull_request
+/// build adjudicates the merge commit, a row whose subject has landed can never be matched by a PR
+/// that touches no namespace -- so it refuses EVERY unrelated change until someone's deletion
+/// lands. Between 06:35 and this deletion it blocked at least four unrelated lanes, each of which
+/// diagnosed it independently and three of which authored the same removal. Measured rather than
+/// inferred: PRs based on 0c93af0d0 reported the stale row, while a PR on an older base reported
+/// none.
+///
+/// SHRINKING TOO EARLY CANNOT FAIL OPEN, which is the argument for doing it promptly rather than
+/// waiting for the row's owner: this file already rules that "empty does not mean permissive" --
+/// with no rows, a run with no delta passes and a run with a real delta refuses it as UNADJUDICATED.
+/// The worst case of an eager deletion is a loud refusal naming the delta, closed by authoring a
+/// row; it is never a silent admission.
+///
+/// THE SHAPE TO FIX WHEN THIS ROSTER IS NEXT DESIGNED, rather than when it is next touched, and this
+/// is at least the fourth occurrence of it: 53 rows once outlived their subject and refused every
+/// unrelated PR, a later state had 314 reporting stale, #9689 measured six, and tonight it was one.
+/// A row whose retirement is a SENTENCE naming a merge does not retire when that merge happens. The
 /// trigger is readable by people and by nothing else, so the row outlives its own condition and the
 /// cost lands on whoever opens the next pull request. Deriving the retirement from the merge -- the
 /// same positive proof `admission_consumed_at_base` already performs for the consumed arm -- would
-/// make the deletion structural instead of a debt passed between lanes.
+/// make the deletion structural instead of a debt paid by whichever lane refuses next.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
