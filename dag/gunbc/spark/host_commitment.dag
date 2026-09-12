@@ -361,12 +361,31 @@ fn spark_host_standing(host: HostIdentity) -> SparkHostStanding? {
 // `spark_commitment_tail_wire` recursed down the tail and joined the head's rendering to the ENTIRE
 // rendered remainder at every step, so each level copied the whole suffix again -- quadratic in the
 // number of causes. DESIGN section 6 rules that a proven cost-shape defect is always fixed regardless
-// of the realized n, and it is right to insist here even though a host carries at most four causes
-// today: n is not a time-stable fact (a fifth commitment source is one row away), and pricing a
-// per-site exception costs more than the fix. `FreeMonoid` inhabits the collection profile, so `map`
-// and `join` are already its operations -- no local rendering fold is authored, which is the same
-// move as reading the causes from the standing rather than restating them (found by codex review
-// 64236).
+// of the realized n, and it is right to insist even where a host carries few causes: n is not a
+// time-stable fact, and pricing a per-site exception is itself redundant work.
+//
+// THE OPERATIONS ARE INHABITED, AND THE SYMBOLS THAT SAY SO ARE NAMED HERE RATHER THAN DESCRIBED.
+// `std.algebra` `algebra_carriers` carries an `AlgebraCarrier` row whose name is "FreeMonoid" with
+// profile `FreeMonoidCollectionProfile`, and `std.algebra` `free_monoid_collection_templates`
+// declares `map` and `join` among that profile's operations. So no local rendering fold is authored:
+// the causes are mapped once and joined once through operations the carrier already has.
+//
+// THAT SENTENCE USED TO SAY "FreeMonoid inhabits the collection profile", AND THE REWRITE IS THE
+// LESSON. A reviewer checking the claim grepped for the phrase "collection profile" -- taken from
+// this annotation, because prose was all it had to grep -- found only this annotation, and reported
+// that the method surface resolves nowhere in the tree (review 64412). The claim was true and my
+// citation made it unverifiable, which to an honest audit is indistinguishable from false. That is
+// DESIGN section 3's cite-the-symbol rule biting from the direction it is usually not felt: the cost
+// of a bad citation is not only that it rots, it is that it makes a correct claim fail a real check.
+//
+// AND THE ANNOTATION IS NOT THE EVIDENCE, which section 4c settles: no Accepted program can read one.
+// The executing evidence is
+// `test.claim.spark.spark_host_commitment_witness` `a_multi_cause_host_renders_every_cause_with_its_separator`,
+// which renders a host committed by a cell role AND a claimed serving group AND a held reservation at
+// once and asserts all three causes and the separator survive. It exists because the finding above
+// was right about a real gap even while wrong about the mechanism: every other test here exercises a
+// SINGLE cause, and a passing single-element render is consistent with the separator logic being
+// entirely broken.
 fn spark_commitment_causes_text(c: FreeSemigroup<SparkHostCommitment>) -> String {
   let every_cause = Cons { head: c.head, tail: c.tail }
   every_cause.map(x => spark_host_commitment_wire(c: x) as String).join("; ")
