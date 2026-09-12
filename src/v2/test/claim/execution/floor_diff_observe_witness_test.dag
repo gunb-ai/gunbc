@@ -1,7 +1,10 @@
 module v2.test.execution.floor_diff_observe_witness
 
 import std.logic { Bool }
+import std.types { List, String }
+import std.materialization_ladder { string_list_contains }
 import gunbc.ci_spec { DiffMergeBase }
+import v2.std.collection { empty_map, map_insert }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
@@ -9,10 +12,16 @@ import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
   NameStatusDiffOk,
   NameStatusDiffFail,
+  FloorBaseTestDeclCensus,
+  BaseTestDeclCensus,
+  BaseTestDeclCensusRefused,
+  FloorShowObservation,
   floor_run_git_diff_unified,
   floor_run_git_diff_name_status,
   floor_observe_git_diff_unified_for_ci,
-  floor_observe_git_diff_name_status_for_ci
+  floor_observe_git_diff_name_status_for_ci,
+  floor_base_test_decl_census_from_listing,
+  floor_base_test_decl_names_for_path
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -43,6 +52,87 @@ test fn witness_invalid_base_name_status_fails_closed() -> Bool {
   match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     NameStatusDiffFail { reason: _ } => true
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
+  }
+}
+
+data base_census_present_path: String = "src/v2/test/claim/execution/floor_diff_observe_witness_test.dag"
+data base_census_absent_path: String = "__gunbc_absent_declaration_census__.dag"
+data base_census_known_test_fn: String = "witness_present_path_yields_declared_test_fn_names"
+data base_census_unknown_test_fn: String = "witness_this_name_is_not_declared_in_this_file"
+data base_census_present_path_content: String = "test fn witness_present_path_yields_declared_test_fn_names() -> Bool {"
+
+// The three census controls exercise `floor_base_test_decl_census_from_listing`, the same
+// fold production uses after git returns. They do not call `ListTreePathsAtRevision` or
+// `Show` — those operations declare no hermetic `mock_response`, and a changed witness
+// that stops there never reaches a verdict. Production (`floor_run_base_test_decl_census`)
+// remains the git caller.
+
+test fn witness_invalid_base_declaration_census_fails_closed() -> Bool {
+  match floor_base_test_decl_census_from_listing(
+    base: "__gunbc_invalid_diff_base__",
+    paths: [base_census_present_path],
+    listing_success: false,
+    listing_stderr: "fatal: invalid object",
+    paths_nul: "",
+    shows: empty_map()
+  ) {
+    BaseTestDeclCensusRefused { reason: _ } => true
+    BaseTestDeclCensus { rows: _ } => false
+  }
+}
+
+test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
+  let census = floor_base_test_decl_census_from_listing(
+    base: "HEAD",
+    paths: [base_census_absent_path],
+    listing_success: true,
+    listing_stderr: "",
+    paths_nul: "",
+    shows: empty_map()
+  )
+  match census {
+    BaseTestDeclCensusRefused { reason: _ } => false
+    BaseTestDeclCensus { rows: _ } =>
+      count(floor_base_test_decl_names_for_path(
+        census: census,
+        path: base_census_absent_path
+      )) == 0
+  }
+}
+
+test fn witness_present_path_yields_declared_test_fn_names() -> Bool {
+  let census = floor_base_test_decl_census_from_listing(
+    base: "HEAD",
+    paths: [base_census_present_path],
+    listing_success: true,
+    listing_stderr: "",
+    paths_nul: base_census_present_path,
+    shows: map_insert(
+      m: empty_map(),
+      key: base_census_present_path,
+      value: FloorShowObservation {
+        success: true,
+        content: base_census_present_path_content,
+        stderr: ""
+      }
+    )
+  )
+  match census {
+    BaseTestDeclCensusRefused { reason: _ } => false
+    BaseTestDeclCensus { rows: _ } =>
+      string_list_contains(
+        xs: floor_base_test_decl_names_for_path(
+          census: census,
+          path: base_census_present_path
+        ),
+        wanted: base_census_known_test_fn
+      ) && !string_list_contains(
+        xs: floor_base_test_decl_names_for_path(
+          census: census,
+          path: base_census_present_path
+        ),
+        wanted: base_census_unknown_test_fn
+      )
   }
 }
 
