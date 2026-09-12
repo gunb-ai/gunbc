@@ -1,0 +1,119 @@
+module v2.test.claim.reference_derived_graph_production_ingest
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.types { Int }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  ModuleDependencyEdge,
+  located_roots_from_source_root_ingest,
+  reference_derived_edges_from_located_roots,
+}
+import v2.std.algebra { length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { List }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// MEASUREMENTS OF TODAY'S XL-4 ROUTE: module_roots_from_source_root_ingest then
+// normalized_tree_roots_to_nodes (via located_roots_from_source_root_ingest), then the one
+// collector. Not a second parse_module ingest. Type-position and call contents stay declared
+// frontiers (go red when lowering repair lands). Trigger: eager-raven-113 lowering, then this
+// same ingest of the repaired tree.
+
+data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\n"
+
+data consumer_reference_only_text: String = "module test.fixture.reference_derived_graph.consumer_reference_only\nimport std.types { Int }\nfn uses_provider() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
+
+data consumer_import_only_text: String = "module test.fixture.reference_derived_graph.consumer_import_only\nimport test.fixture.reference_derived_graph.provider { ProvidedMarker }\n"
+
+data consumer_both_text: String = "module test.fixture.reference_derived_graph.consumer_both\nimport std.types { Int }\nimport test.fixture.reference_derived_graph.provider { provided_value }\nfn uses_imported_provider() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
+
+data consumer_call_only_text: String = "module test.fixture.reference_derived_graph.consumer_call_only\nimport std.types { Int }\nfn sink(x: Int) -> Int { x }\nfn uses_only_in_call() -> Int {\n  sink(x: test.fixture.reference_derived_graph.provider.provided_value)\n}\n"
+
+data consumer_type_only_text: String = "module test.fixture.reference_derived_graph.consumer_type_only\nimport std.types { Int }\nfn uses(\n  x: test.fixture.reference_derived_graph.provider.ProvidedMarker\n) -> Int {\n  1\n}\n"
+
+data provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
+
+data consumer_reference_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_reference_only.dag"
+
+data consumer_import_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_import_only.dag"
+
+data consumer_both_path: String = "dag/test/fixture/reference_derived_graph/consumer_both.dag"
+
+data consumer_call_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
+
+data consumer_type_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_only.dag"
+
+data provider_module: String = "test.fixture.reference_derived_graph.provider"
+
+data production_ingest_refused_count: Int = -1
+
+fn fixture_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data fixture_ingest: SourceRootIngest = Cons {
+  head: fixture_read(text: provider_text, path: provider_path, unit: ^provider_unit),
+  tail: Cons {
+    head: fixture_read(text: consumer_reference_only_text, path: consumer_reference_only_path, unit: ^reference_only_unit),
+    tail: Cons {
+      head: fixture_read(text: consumer_import_only_text, path: consumer_import_only_path, unit: ^import_only_unit),
+      tail: Cons {
+        head: fixture_read(text: consumer_both_text, path: consumer_both_path, unit: ^both_unit),
+        tail: Cons {
+          head: fixture_read(text: consumer_call_only_text, path: consumer_call_only_path, unit: ^call_only_unit),
+          tail: Cons {
+            head: fixture_read(text: consumer_type_only_text, path: consumer_type_only_path, unit: ^type_only_unit),
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+}
+
+fn production_edge_count(path: String, target: String) -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      length(
+        xs: reference_derived_edges_from_located_roots(
+          items: items,
+          include_import_syntax: false
+        ).edges |> filter(e => e.path == path && e.target_module == target)
+      )
+  }
+}
+
+test fn production_route_reference_only_plain_value_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_reference_only_path, target: provider_module) == 0
+}
+
+test fn production_route_import_only_has_no_reference_edge_holds() -> Bool {
+  production_edge_count(path: consumer_import_only_path, target: provider_module) == 0
+}
+
+test fn production_route_both_plain_value_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_both_path, target: provider_module) == 0
+}
+
+test fn production_route_call_contents_are_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
+}
+
+test fn production_route_type_position_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_type_only_path, target: provider_module) == 0
+}

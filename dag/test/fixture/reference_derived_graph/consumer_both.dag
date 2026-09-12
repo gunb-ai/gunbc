@@ -1,9 +1,8 @@
 module test.fixture.reference_derived_graph.consumer_both
 
-import test.fixture.reference_derived_graph.provider { ProvidedMarker }
+import std.types { Int }
+import test.fixture.reference_derived_graph.provider { provided_value }
 
-fn uses_imported_provider(
-  x: test.fixture.reference_derived_graph.provider.ProvidedMarker
-) -> test.fixture.reference_derived_graph.provider.ProvidedMarker {
-  x
+fn uses_imported_provider() -> Int {
+  test.fixture.reference_derived_graph.provider.provided_value
 }
