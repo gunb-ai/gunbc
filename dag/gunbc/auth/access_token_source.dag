@@ -280,18 +280,40 @@ fn no_access_token_source_cause() -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
+// THE DECISION IS PURE AND THE READS ARE NOT, SPLIT FOR THE REASON STATED ABOVE
+// workload_identity_token_resolution: an arm nothing can exercise without arranging an environment
+// is an arm nobody can trust. This function is the whole selection; the func below it is two
+// environment reads and a delegation.
+fn selected_access_token_source(
+  workload_present: Bool,
+  supplied: SuppliedTokenResolution?,
+) -> AccessTokenSourceSelection {
+  if workload_present {
+    AccessTokenSourceSelected { source: WorkloadIdentityToken }
+  } else {
+    match supplied {
+      Absent => AccessTokenSourceUnavailable { cause: no_access_token_source_cause() }
+      Present { value: resolution } =>
+        match resolution {
+          SuppliedTokenUnavailable { cause: c } => AccessTokenSourceUnavailable { cause: c }
+          SuppliedTokenReady { token: t } =>
+            AccessTokenSourceSelected { source: OperatorSuppliedToken { token: t } }
+        }
+    }
+  }
+}
+
 func select_access_token_source() -> AccessTokenSourceSelection {
   match shell.Env.Get(name: workload_identity_token_env).value {
-    Present { value: _ } => AccessTokenSourceSelected { source: WorkloadIdentityToken }
+    Present { value: _ } => selected_access_token_source(workload_present: true, supplied: none)
     Absent =>
       match shell.Env.Get(name: secret_access_token_path_env).value {
-        Absent => AccessTokenSourceUnavailable { cause: no_access_token_source_cause() }
+        Absent => selected_access_token_source(workload_present: false, supplied: none)
         Present { value: _ } =>
-          match read_supplied_access_token() {
-            SuppliedTokenUnavailable { cause: c } => AccessTokenSourceUnavailable { cause: c }
-            SuppliedTokenReady { token: t } =>
-              AccessTokenSourceSelected { source: OperatorSuppliedToken { token: t } }
-          }
+          selected_access_token_source(
+            workload_present: false,
+            supplied: Present { value: read_supplied_access_token() },
+          )
       }
   }
 }
