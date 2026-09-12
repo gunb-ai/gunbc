@@ -8,8 +8,10 @@ import tools.cause_assertion_census {
   CauseSourceObserved, CauseSourceExcluded, CauseSourceLexicalRefused, cause_source_observation_from_content,
   cause_caret_occurrences, cause_import_members, cause_declarations_by_name, cause_join_declaration,
   cause_row_evidence, cause_row_record_use, cause_census_join, cause_all_joined_rows, cause_standing_rows,
-  CauseCorpusAcquisition, cause_complete_report
+  CauseCorpusAcquisition, cause_complete_report, cause_corpus_acquire, CauseSourceIndexRefused
 }
+import v2.workflow.floor_discovery_producer { FloorDiscoverySource }
+import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.compilers.lexing { Token }
 import v2.std.decl_index { DataDeclTypeFact }
 import v2.std.collection { empty_map, map_insert }
@@ -173,4 +175,22 @@ test fn cause_census_unknown_token_cannot_report_no_causes() -> Bool {
     CauseSourceLexicalRefused { path: path } => path == "broken.dag"
     _ => false
   }
+}
+
+test fn cause_census_acquisition_requires_the_source_index_join() -> Bool {
+  let source = FloorDiscoverySource {
+    module_path: "fixture", repo_path: "fixture.dag",
+    content: "module fixture\nimport std.types { String }\nfn value() -> Symbol { ^fixture_cause }\n"
+  }
+  let observed = cause_corpus_acquire(subjects: [source], modules: [
+    ModuleDeclarationFact { module: "fixture", path: "fixture.dag" }
+  ])
+  let refused = cause_corpus_acquire(subjects: [source], modules: [])
+  count(observed.sources) == 1 && count(observed.refusals) == 0
+    && count(sorted_map_keys(observed.identifier_counts)) > 0
+    && count(refused.sources) == 0 && count(refused.refusals) == 1
+    && match refused.refusals[0] {
+      CauseSourceIndexRefused { path: path, module_path: owner } => path == "fixture.dag" && owner == "fixture"
+      _ => false
+    }
 }
