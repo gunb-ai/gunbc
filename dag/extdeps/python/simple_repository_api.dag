@@ -183,3 +183,23 @@ fn replace_seq(s: String, find: String, replace: String) -> String {
 fn locator_names_file(locator: NonEmptyStr, filename: NonEmptyStr) -> Bool {
   locator_filename(locator: locator) == (filename as String)
 }
+
+// ── READING AN INDEX DOCUMENT IS ONE OPERATION, AND IT IS THE ONE CONSUMERS CALL ───────────────
+//
+// THE PIECES ABOVE WERE CORRECT AND UNREACHABLE. Extraction, resolution and the filename comparison all
+// landed with executed fixtures, while the acquisition path went on calling its own absolute-URL splitter
+// -- so every fixture here was green against a function the product did not use. A helper population with
+// no composed entry point invites exactly that: each consumer re-assembles the steps, and one that
+// assembles them wrong is indistinguishable from one that never migrated.
+//
+// SO THE SPEC'S READING OPERATION IS NAMED ONCE: strip comments, take the anchor hrefs, resolve each
+// against the response URL. An href that cannot be resolved -- empty, or root-relative against an index
+// whose origin cannot be read -- is DROPPED rather than guessed at, because a locator this module cannot
+// construct correctly must not be offered to a matcher that would treat it as an offer.
+fn index_file_locators(index: NonEmptyStr, document: String) -> List<NonEmptyStr> {
+  flat_map(extract_file_link_hrefs(document: document), h =>
+    match resolve_against_index(index: index, href: h) {
+      Present { value: loc } => [loc]
+      Absent => []
+    })
+}

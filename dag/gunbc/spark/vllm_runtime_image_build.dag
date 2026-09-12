@@ -83,6 +83,10 @@ import gunbc.auth.materialized_secret {
   with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused,
 }
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login, spark_managed_principal_home }
+import gunbc.spark.flashinfer_wheel_fetch {
+  WheelPopulation, WheelsReady, WheelsIncomplete, WheelPopulationAt, AcquiredWheel,
+  WheelMaterialization, wheel_materialization_line, materialize_wheels_on,
+}
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
   SnapshotAcquisitionExecutor, HostCli,
@@ -458,12 +462,17 @@ type DerivedLayerInputs
   = DerivedInputsReady { wheels: List<NonEmptyStr> }
   | DerivedInputsIncomplete { missing: List<NonEmptyStr>, acquired: List<NonEmptyStr> }
 
-fn derived_layer_inputs(required: List<FlashInferWheel>, acquired: List<NonEmptyStr>) -> DerivedLayerInputs {
-  let missing = filter(required, w => !any(acquired, a => (a as String) == (w.filename as String)))
+// THE JOIN IS ON IDENTITY AND THE RESULT CARRIES THE PATH. An earlier revision took `acquired` as a list
+// of bare strings and compared them against required FILENAMES, while the acquisition fold returns
+// INSTALL PATHS -- so the comparison was between `/home/.../wheels/x.whl` and `x.whl` and matched nothing.
+// A complete acquisition reported every wheel missing, and the diagnostic named the correct filenames,
+// which is what would have made it slow to find.
+fn derived_layer_inputs(required: List<FlashInferWheel>, acquired: List<AcquiredWheel>) -> DerivedLayerInputs {
+  let missing = filter(required, w => !any(acquired, a => (a.filename as String) == (w.filename as String)))
   if count(missing) == 0 {
     DerivedInputsReady { wheels: map(required, w => w.filename) }
   } else {
-    DerivedInputsIncomplete { missing: map(missing, w => w.filename), acquired: acquired }
+    DerivedInputsIncomplete { missing: map(missing, w => w.filename), acquired: map(acquired, a => a.filename) }
   }
 }
 
@@ -531,16 +540,42 @@ fn image_population_standing(outcomes: List<ImageDistributionOutcome>, image_id:
 // AND AN EMPTY ROSTER IS NOT AVAILABILITY. A fold over no hosts finds no failures, which would report a
 // deployment ready on a population nobody named -- the vacuous-truth shape this corpus has paid for
 // before. The roster is the deployment's participant list, so an empty one is a caller defect.
-fn image_available_for_arm(outcomes: List<ImageDistributionOutcome>, image_id: NonEmptyStr, expected_members: Nat) -> Bool {
-  if expected_members == 0 { false }
+//
+// THE ROSTER IS A HOST POPULATION AND NOT A COUNT, which is the correction that matters here. An earlier
+// revision took `expected_members: Nat` and compared it against `count(outcomes)`, so four ready outcomes
+// satisfied a four-host arm REGARDLESS OF WHICH HOSTS THEY WERE ABOUT: four probes of one host, or of
+// three required hosts and a bystander, both answer true. A count is not a membership test, and the state
+// it admits is exactly the one the annotation above says is expensive -- an engine that starts and fails
+// when the host nobody actually checked creates its container.
+//
+// SO EVERY REQUIRED IDENTITY MUST BE MATCHED BY EXACTLY ONE READY OUTCOME CARRYING THE EXPECTED IMAGE. A
+// required host with no outcome is missing; a required host with two is ambiguous rather than doubly
+// ready, because two outcomes about one host can disagree and nothing here would choose between them; and
+// an outcome about a host nobody required is not evidence for any host that was.
+fn outcome_ready_for_image(o: ImageDistributionOutcome, image_id: NonEmptyStr) -> Bool {
+  match o {
+    ImagePresentOnHost { host: _, local_image_id: id } => (id as String) == (image_id as String)
+    ImageLoadedOnHost { host: _, local_image_id: id, archive_sha256: _ } => (id as String) == (image_id as String)
+    ImageTransferRefused { host: _, step: _, cause: _ } => false
+    ImageIdentityMismatch { host: _, expected: _, observed: _ } => false
+  }
+}
+
+fn distribution_outcome_host(o: ImageDistributionOutcome) -> HostIdentity {
+  match o {
+    ImagePresentOnHost { host: h, local_image_id: _ } => h
+    ImageLoadedOnHost { host: h, local_image_id: _, archive_sha256: _ } => h
+    ImageTransferRefused { host: h, step: _, cause: _ } => h
+    ImageIdentityMismatch { host: h, expected: _, observed: _ } => h
+  }
+}
+
+fn image_available_for_arm(outcomes: List<ImageDistributionOutcome>, image_id: NonEmptyStr, required: List<HostIdentity>) -> Bool {
+  if count(required) == 0 { false }
   else {
-    if count(outcomes) != expected_members { false }
-    else {
-      match image_population_standing(outcomes: outcomes, image_id: image_id) {
-        ImageAvailableEverywhere { hosts: _, image_id: _ } => true
-        ImageMissingOnMembers { not_ready: _, ready_count: _ } => false
-      }
-    }
+    all(required, r =>
+      count(filter(outcomes, o =>
+        host_identity_eq(a: distribution_outcome_host(o: o), b: r) && outcome_ready_for_image(o: o, image_id: image_id))) == 1)
   }
 }
 
@@ -1351,9 +1386,16 @@ func export_image_archive(ctx: SparkMaterializeContext, reference: NonEmptyStr, 
 // A HOST THAT ALREADY HOLDS THE RIGHT BYTES IS NOT RE-SENT. The check is the image id, not the tag:
 // a tag that matches proves nothing, and this is the resume property -- an interrupted distribution
 // should finish the hosts that are missing rather than repeat the ones that are done.
-func distribute_image_to(ctx: SparkMaterializeContext, host: HostIdentity, reference: NonEmptyStr, expected_image_id: NonEmptyStr) -> ImageDistributionOutcome
+// THE HOST IN THE RESULT IS THE HOST THAT WAS READ, and it is taken from the context rather than supplied
+// beside it. An earlier signature took both a context and a `host: HostIdentity` and labelled the outcome
+// with the second while every read went through the first, so a caller could probe one machine and
+// receive an outcome naming another -- and every consumer downstream, including the population join
+// above, would treat that label as the fact. The context is the thing that executed; nothing else can
+// honestly name where the answer came from.
+func distribute_image_to(ctx: SparkMaterializeContext, reference: NonEmptyStr, expected_image_id: NonEmptyStr) -> ImageDistributionOutcome
   uses net: Network
 {
+  let host = ctx.host
   match read_image_identity(ctx: ctx, reference: reference) {
     ImageIdentityObserved { reference: _, local_image_id: observed } =>
       if (observed as String) == (expected_image_id as String) {
@@ -1792,4 +1834,119 @@ func spark_build_host_reachability_wet() -> ProcessExit
         }
       }
   }
+}
+
+// ── ACQUIRING THE WHEELS ONTO THE BUILD HOST, AS AN ENTRY THAT ACTUALLY RUNS ──────────────────
+//
+// THE FOLD AND ITS REMOTE BINDING BOTH EXISTED AND NOTHING CALLED EITHER. `materialize_wheel_population`
+// compiled, its handlers compiled, its fixtures were green, and no entry point anywhere in this corpus
+// reached them -- the dangling declaration DESIGN section 3c names, in the form that is hardest to see,
+// because every piece is individually correct and only the absence of a caller is wrong.
+//
+// THE PARENT DIRECTORY IS THE RETENTION DIRECTORY AND NOT A SCRATCH PATH, because the whole point of
+// keeping the wheels is that a nightly index withdraws builds: bytes that land under the build root
+// outlive the build and let a rebuild proceed when the channel has moved on.
+//
+// AND THE HOST IS ADMITTED AS A BUILD HOST RATHER THAN TAKEN AS GIVEN. These bytes exist to be installed
+// by a build, so the machine they land on is the machine that will build -- putting them anywhere else
+// produces a verified path that the build cannot open.
+data spark_wheel_fetch_attempt_raw: String = "spark-flashinfer-wheel-fetch"
+data spark_wheel_fetch_receipt_path: String = "target/spark-flashinfer-wheel-receipt.txt"
+
+func spark_fetch_wheels_wet(host_raw: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  match admit_spark_build_host(raw: host_raw) {
+    SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+    SparkBuildHostAdmitted { host: host } => spark_fetch_wheels_on(host: host, now: now)
+  }
+}
+
+func spark_fetch_wheels_on(host: HostIdentity, now: NonEmptyStr?) -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_identity(raw: spark_wheel_fetch_attempt_raw) {
+    Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+    Present { value: attempt } =>
+      match probe_agent_credential_verification(attempt: attempt) {
+        FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: expected, observed_line: observed }))
+        FleetSshCredentialDerivationRefused { cause: cause } =>
+          exit_failure(reason: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }))
+        FleetSshCredentialVerified { binding: binding } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+            Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
+            Present { value: context } =>
+              match fleet_openssh_trust_policy_of(outcome: materialization) {
+                Absent => exit_failure(reason: "the trust policy could not be sealed for the privileged leg")
+                Present { value: trust } =>
+                  match observe_executor_reach() {
+                    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["executor reach: ", c], ""))
+                    ExecutorReachKnown { short_hostname: _, path: path } =>
+                      match read_bootstrap_credential() {
+                        BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
+                        BootstrapCredentialReady { secret: administrator } =>
+                          match with_materialized_ssh_key_file(
+                            identity_file_name: "gunbc-wheel-fetch-admin-password" as NonEmptyStr,
+                            secret_bytes: administrator as Secret,
+                            use: fn(file) {
+                              materialize_wheels_on(
+                                ctx: SparkMaterializeContext {
+                                  host: host,
+                                  trust: trust,
+                                  path: path,
+                                  admin_credential: administrator as Secret,
+                                  admin_credential_file: file,
+                                  executor: HostCli,
+                                },
+                                ws: flashinfer_0_7_0_dev20260910_wheels,
+                                parent: wheel_retention_directory(),
+                              )
+                            },
+                          ) {
+                            MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
+                            MaterializedSshKeyFileBracketCompleted { value: at } => {
+                              let body = join([
+                                join(["flashinfer wheels probed_at=", probed_at_word(reading: now) as String, " host=", at.host as String, "\n"], ""),
+                                known_hosts_materialization_receipt(outcome: materialization),
+                                wheel_population_receipt(at: at),
+                              ], "")
+                              let w = Filesystem.Write(path: spark_wheel_fetch_receipt_path, content: body)
+                              if !w.success {
+                                exit_failure(reason: "the wheel acquisition receipt could not be written")
+                              } else {
+                                match at.population {
+                                  WheelsReady { paths: _ } => ExitSuccess
+                                  WheelsIncomplete { failures: _, ready: _ } => exit_failure(reason: wheel_population_receipt(at: at))
+                                }
+                              }
+                            }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+// THE RECEIPT NAMES THE HOST ON EVERY LINE, because a wheel path is only a fact beside the machine it is
+// on, and a receipt read later by a person or by a build context assembler must not have to remember
+// which host the run was about.
+fn wheel_population_receipt(at: WheelPopulationAt) -> String {
+  match at.population {
+    WheelsReady { wheels: ws } => join(map(ws, w => acquired_wheel_line(at: at, w: w)), "")
+    WheelsIncomplete { failures: fs, ready: ws } =>
+      join([
+        join(map(ws, w => acquired_wheel_line(at: at, w: w)), ""),
+        join(map(fs, f => join(["wheel MISSING host=", at.host as String, " ", wheel_materialization_line(m: f)], "")), ""),
+      ], "")
+  }
+}
+
+fn acquired_wheel_line(at: WheelPopulationAt, w: AcquiredWheel) -> String {
+  join(["wheel ready host=", at.host as String, " name=", w.filename as String, " path=", w.install_path as String, "\n"], "")
 }

@@ -23,6 +23,14 @@ import gunbc.artifact_acquisition {
   acquire_artifact,
 }
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
+import extdeps.python.simple_repository_api { index_file_locators }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.sha256sum { sha256sum_digest_command }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run,
+}
 
 // ── FETCHING THE WHEELS, AS A BINDING AND NOT AS A SECOND ALGORITHM ───────────────────────────
 //
@@ -144,18 +152,21 @@ func read_index_hrefs(index: NonEmptyStr) -> List<NonEmptyStr>?
   if fetched.success == false {
     none
   } else {
-    Present { value: extract_href_urls(document: fetched.body) }
+    Present { value: index_file_locators(index: index, document: fetched.body) }
   }
 }
 
-// THE HREF READER IS DELIBERATELY DUMB AND WHOLE-TOKEN. It takes every absolute URL in the document and
-// lets resolve_wheel_from_hrefs decide which one matches, rather than trying to parse HTML: the
-// filename match is the discriminating step and it is exact, so a looser extraction cannot widen what
-// gets selected -- it can only offer more candidates to a matcher that rejects all but one.
-fn extract_href_urls(document: String) -> List<NonEmptyStr> {
-  fold(split(s: document, separator: "\""), init: [], f: (acc, piece) =>
-    if starts_with(s: piece, prefix: "https://") { concat(acc, [piece as NonEmptyStr]) } else { acc })
-}
+// THE LINKS ARE READ BY THE SPEC'S AUTHORITY AND NOT BY A SPLITTER HERE. This module previously carried
+// its own extractor that took every absolute URL in the document; extdeps.python.simple_repository_api
+// owns what a project page offers, including the relative links that extractor could not see and the
+// commented-out entries it could not exclude.
+//
+// THE RESOLUTION BASE IS THE REQUESTED URL AND NOT THE RESPONSE URL, which is a real gap rather than a
+// simplification: the spec resolves relative links against the URL the response came from, and a
+// redirected index would resolve them against the wrong directory here. It holds today because the
+// nightly index is fetched directly, and it is stated so that a redirect shows up as a known limitation
+// rather than as a mysteriously wrong locator.
+// NEXT-RUNG TRIGGER: a final-URL field on the HTTP get operation, at which point this call passes it.
 
 func resolve_wheel(w: FlashInferWheel) -> WheelResolution
   uses net: Network
@@ -209,11 +220,11 @@ fn wheel_requirement_subject(w: FlashInferWheel, parent: NonEmptyStr, sources: L
 // THE DESTINATION IS ASKED FIRST AND WITH NO SOURCES DECLARED, so a verified local copy is reused
 // without any network operation at all -- not merely without a download, but without the index read whose
 // failure would otherwise abort the whole thing.
-func materialize_wheel(w: FlashInferWheel, parent: NonEmptyStr) -> WheelMaterialization
+func materialize_wheel(w: FlashInferWheel, parent: NonEmptyStr, handler: AcquisitionHandler) -> WheelMaterialization
   uses net: Network
 {
   let requirement = wheel_requirement_subject(w: w, parent: parent, sources: [])
-  match observe_wheel(subject: requirement) {
+  match handler.observe(requirement) {
     AcquisitionVerified => WheelMaterialized { filename: w.filename, install_path: requirement.install_path }
     AcquisitionDigestMismatch =>
       WheelAcquisitionFailed { filename: w.filename, outcome: AcquisitionRefused { cause: InstalledCopyFailsItsKey {
@@ -231,7 +242,7 @@ func materialize_wheel(w: FlashInferWheel, parent: NonEmptyStr) -> WheelMaterial
             identity: join(["index:", flashinfer_nightly_index_for(package: w.package) as String], "") as NonEmptyStr,
             locator: SourceUrl { url: loc },
           }])
-          match acquire_artifact(subject: subject, handler: wheel_acquisition_handler) {
+          match acquire_artifact(subject: subject, handler: handler) {
             AcquisitionFetched { identity: _, install_path: p, source: _ } => WheelMaterialized { filename: f, install_path: p }
             AcquisitionAlreadyPresent { identity: _, install_path: p } => WheelMaterialized { filename: f, install_path: p }
             AcquisitionRefused { cause: c } => WheelAcquisitionFailed { filename: f, outcome: AcquisitionRefused { cause: c } }
@@ -245,9 +256,9 @@ func materialize_wheel(w: FlashInferWheel, parent: NonEmptyStr) -> WheelMaterial
   }
 }
 
-fn wheel_materialized_path(m: WheelMaterialization) -> NonEmptyStr? {
+fn wheel_materialized_path(m: WheelMaterialization) -> AcquiredWheel? {
   match m {
-    WheelMaterialized { filename: _, install_path: p } => Present { value: p }
+    WheelMaterialized { filename: f, install_path: p } => Present { value: AcquiredWheel { filename: f, install_path: p } }
     WheelResolutionFailed { filename: _, resolution: _ } => none
     WheelAcquisitionFailed { filename: _, outcome: _ } => none
   }
@@ -280,18 +291,221 @@ fn wheel_resolution_text(r: WheelResolution) -> String {
 // missing jit-cache means the image quietly keeps whatever the base carried -- which is the released
 // build the layer exists to replace. So the fold reports the population, and a caller cannot read a
 // count and guess.
-type WheelPopulation
-  = WheelsReady { paths: List<NonEmptyStr> }
-  | WheelsIncomplete { failures: List<WheelMaterialization>, ready: List<NonEmptyStr> }
+// AND A PATH ALONE DOES NOT SAY WHICH WHEEL IT IS. An earlier revision answered with a bare path list,
+// so the consumer that had to assemble a build context was left to recover each wheel's identity by
+// reading its filename back out of its path -- a string operation standing in for a join the fold
+// already had the facts to make. The neighbouring defect it produced is on the record: the layer's
+// readiness check compared REQUIRED FILENAMES against ACQUIRED PATHS and found nothing matching, so a
+// complete population reported as incomplete.
+//
+// SO AN ACQUIRED WHEEL CARRIES BOTH, and the identity is the one the requirement was written with rather
+// than one parsed back out of the destination.
+type AcquiredWheel sole_constructor {
+  filename: NonEmptyStr
+  install_path: NonEmptyStr
+}
 
-func materialize_wheel_population(ws: List<FlashInferWheel>, parent: NonEmptyStr) -> WheelPopulation
+type WheelPopulation
+  = WheelsReady { wheels: List<AcquiredWheel> }
+  | WheelsIncomplete { failures: List<WheelMaterialization>, ready: List<AcquiredWheel> }
+
+func materialize_wheel_population(ws: List<FlashInferWheel>, parent: NonEmptyStr, handler: AcquisitionHandler) -> WheelPopulation
   uses net: Network
 {
-  let results = map(ws, w => materialize_wheel(w: w, parent: parent))
+  let results = map(ws, w => materialize_wheel(w: w, parent: parent, handler: handler))
   let failures = filter(results, m => match wheel_materialized_path(m: m) { Present { value: _ } => false, Absent => true })
   let ready = flat_map(results, m => match wheel_materialized_path(m: m) {
     Present { value: p } => [p]
     Absent => []
   })
-  if count(failures) == 0 { WheelsReady { paths: ready } } else { WheelsIncomplete { failures: failures, ready: ready } }
+  if count(failures) == 0 { WheelsReady { wheels: ready } } else { WheelsIncomplete { failures: failures, ready: ready } }
+}
+
+// ── THE SAME FOLD, EXECUTED WHERE THE WHEELS ARE ACTUALLY NEEDED ──────────────────────────────
+//
+// THE HANDLER ABOVE IS LOCAL AND THAT IS A FACT ABOUT THE HANDLER, NOT ABOUT WHEELS. It tests a file,
+// digests it and downloads to it through THIS process's shell and THIS process's network, so it
+// materializes wheels wherever the entry point happens to run. The build host is a different machine,
+// and a fold bound to a local shell handed a remote-looking path would write the bytes here and report
+// a path that names nothing there -- the shape DESIGN section 5 calls a fabricated plausible output,
+// reached without anybody writing a wrong line.
+//
+// SO THE LOCUS IS A BINDING AND NOT A PARAMETER OF THE WALK. gunbc.spark.model_snapshot_materialize
+// already binds this exact fold to a remote host over the privileged leg; this is that binding for a
+// file with a published digest instead of a checkpoint directory. Three slots, each one remote
+// execution, and no step of the walk respelled.
+//
+// RESOLUTION STAYS WHERE THE ENTRY RUNS AND THE DOWNLOAD DOES NOT, which is a split rather than an
+// inconsistency. Reading the index is a public GET whose answer is a URL, and the digest decides
+// whether the bytes behind it are the right ones -- so where that read happens cannot affect what is
+// installed. The BYTES have to land on the machine that will build with them, and that is the leg that
+// moves.
+// WHY THE PRIVILEGED LEG AND NOT THE KEY-AUTHENTICATED ONE, which is the question a reader should ask
+// because nothing here needs root. The unprivileged route -- gunbc.typed_argv_exec
+// typed_argv_exec_over_fleet_ssh, which the source legs use -- admits only PORTABLE REMOTE WORDS, and its
+// allowlist is alphanumerics plus . _ - / @ : = and nothing else. A resolved wheel locator carries a
+// `#sha256=` fragment, and a wheel filename may carry `+` for a local version segment, so the download
+// argv is not expressible on that route AT ALL: it would refuse the leg rather than run it.
+//
+// THE CONSEQUENCE IS OWNERSHIP AND IT IS STATED RATHER THAN DISCOVERED LATER: every file this binding
+// creates on the build host is owned by root, because sudo is what carries the leg. Anything that later
+// writes BESIDE these wheels -- a generated Dockerfile in the same build context, for instance -- either
+// takes the same privileged leg or needs its own directory, because the modelled remote file writer
+// (gunbc.typed_remote_file_write converge_typed_remote_file) runs as the SESSION principal. That is a
+// real constraint on the layer build rather than a detail of this one.
+fn remote_wheel_observe(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> AcquisitionObservation {
+  match spark_remote_run(ctx: ctx, argv: ["test", "-f", subject.install_path as String]) {
+    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteRan { exit_code: present, stdout: _, stderr: _ } =>
+      if present != 0 { AcquisitionAbsent } else { remote_wheel_digest_observation(ctx: ctx, subject: subject) }
+  }
+}
+
+// AN UNREADABLE DIGEST IS NOT A WRONG ONE. sha256sum exits non-zero for a missing binary, an unreadable
+// file and a bad argument alike, and answering DigestMismatch there asserts the bytes are wrong -- which
+// sends an operator to discard and re-fetch a file nothing examined. The neighbouring snapshot binding
+// was corrected in exactly this direction and for exactly this reason.
+fn remote_wheel_digest_observation(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> AcquisitionObservation {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: sha256sum_digest_command(path: subject.install_path as String))) {
+    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        AcquisitionProbeFailed { reason: join(["the digest instrument did not run, so nothing was learned about the installed bytes: ", err], "") as NonEmptyStr }
+      } else {
+        match digest_word_of(line: out) {
+          Absent => AcquisitionProbeFailed { reason: join(["the digest instrument printed no readable digest: ", out], "") as NonEmptyStr }
+          Present { value: actual } =>
+            if (actual as String) == (wheel_key_digest(key: subject.key) as String) { AcquisitionVerified } else { AcquisitionDigestMismatch }
+        }
+      }
+  }
+}
+
+// coreutils prints `<digest>  <path>`, so the reading is the first whitespace-delimited field. An empty
+// first field is no digest rather than the empty digest, which is why this returns an option instead of
+// a string that could be compared against the expectation and quietly differ.
+fn digest_word_of(line: String) -> NonEmptyStr? {
+  match get(xs: split(s: trim(s: line), separator: " "), index: 0) {
+    Absent => none
+    Present { value: w } => if trim(s: w) == "" { none } else { Present { value: trim(s: w) as NonEmptyStr } }
+  }
+}
+
+fn remote_wheel_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String]) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
+  }
+}
+
+// THE STAGING RULE IS THE SAME ONE AND IT IS THE REASON THIS IS A BINDING RATHER THAN A SCRIPT: download
+// to a side path, verify there, publish only then. A curl straight onto the install path would leave a
+// truncated transfer sitting at the name the next run observes as present, and the digest that would
+// have caught it is checked before the move rather than after.
+fn remote_wheel_attempt(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
+  match origin.locator {
+    SourceArgv { argv: _ } =>
+      AttemptRejected { detail: "a wheel source was built with a command-line locator; this transport downloads a resolved URL" as NonEmptyStr }
+    SourceUrl { url: u } => remote_wheel_download(ctx: ctx, subject: subject, origin: origin, url: u)
+  }
+}
+
+fn remote_wheel_download(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr) -> AcquisitionAttempt {
+  let part = remote_staging_path(subject: subject)
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: curl_download_command(url: url as String, destination: part as String))) {
+    RemoteUnreachable { cause: _ } => AttemptUnreachable
+    RemoteRan { exit_code: code, stdout: _, stderr: _ } =>
+      if code != 0 { AttemptUnreachable } else { remote_wheel_verify_then_publish(ctx: ctx, subject: subject, origin: origin, part: part) }
+  }
+}
+
+fn remote_wheel_verify_then_publish(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource, part: NonEmptyStr) -> AcquisitionAttempt {
+  match spark_remote_run(ctx: ctx, argv: argv_words(command: sha256sum_digest_command(path: part as String))) {
+    RemoteUnreachable { cause: c } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+        identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr } } }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+          identity: subject.identity, source: origin.identity,
+          reason: join(["the digest instrument did not run on the staged download: ", err], "") as NonEmptyStr } } }
+      } else {
+        match digest_word_of(line: out) {
+          Absent =>
+            AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
+              identity: subject.identity, source: origin.identity,
+              reason: join(["the digest instrument printed no readable digest for the staged download: ", out], "") as NonEmptyStr } } }
+          Present { value: actual } =>
+            if (actual as String) == (wheel_key_digest(key: subject.key) as String) {
+              remote_wheel_publish(ctx: ctx, subject: subject, origin: origin, part: part)
+            } else {
+              remote_wheel_discard(ctx: ctx, part: part)
+            }
+        }
+      }
+  }
+}
+
+// A FAILED KEY DISCARDS THE BYTES RATHER THAN LEAVING THEM STAGED, because a `.part` that survives is a
+// file the next run's staging step will overwrite silently -- and one an operator will find and wonder
+// about. The attempt is reported as a key failure so the fold can try the next source.
+fn remote_wheel_discard(ctx: SparkMaterializeContext, part: NonEmptyStr) -> AcquisitionAttempt {
+  match spark_remote_run(ctx: ctx, argv: ["rm", "-f", part as String]) {
+    RemoteUnreachable { cause: _ } => AttemptFailedKey
+    RemoteRan { exit_code: _, stdout: _, stderr: _ } => AttemptFailedKey
+  }
+}
+
+fn remote_wheel_publish(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource, part: NonEmptyStr) -> AcquisitionAttempt {
+  match spark_remote_run(ctx: ctx, argv: ["mv", part as String, subject.install_path as String]) {
+    RemoteUnreachable { cause: _ } =>
+      AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed {
+        identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
+      if e == 0 {
+        AttemptTerminal { outcome: AcquisitionFetched {
+          identity: subject.identity, install_path: subject.install_path, source: origin.identity } }
+      } else {
+        AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed {
+          identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
+      }
+  }
+}
+
+fn remote_staging_path(subject: AcquisitionSubject) -> NonEmptyStr {
+  match subject.staging_path {
+    Present { value: p } => p
+    Absent => join([subject.install_path as String, ".part"], "") as NonEmptyStr
+  }
+}
+
+fn remote_wheel_handler(ctx: SparkMaterializeContext) -> AcquisitionHandler {
+  AcquisitionHandler {
+    observe: fn(subject) { remote_wheel_observe(ctx: ctx, subject: subject) },
+    ensure_parent: fn(subject) { remote_wheel_ensure_parent(ctx: ctx, subject: subject) },
+    attempt: fn(subject, origin) { remote_wheel_attempt(ctx: ctx, subject: subject, origin: origin) },
+  }
+}
+
+// ── A PATH WITHOUT ITS HOST IS NOT AN ANSWER ──────────────────────────────────────────────────
+//
+// THE POPULATION RESULT CARRIES PATHS, AND A PATH IS ONLY MEANINGFUL BESIDE THE MACHINE IT IS ON. The
+// same string names a file on the build host, a different file on a serving host, and nothing at all
+// here. A later consumer that receives the list alone cannot recover which, and the failure that follows
+// is the quiet one: a build context assembled from paths that do not exist where the build runs.
+//
+// SO THE LOCUS IS PART OF THE RESULT AND IS TAKEN FROM THE CONTEXT THAT EXECUTED, never supplied
+// alongside it by a caller who could name a different host than the one the bytes landed on.
+type WheelPopulationAt sole_constructor {
+  host: HostIdentity
+  population: WheelPopulation
+}
+
+func materialize_wheels_on(ctx: SparkMaterializeContext, ws: List<FlashInferWheel>, parent: NonEmptyStr) -> WheelPopulationAt
+  uses net: Network
+{
+  WheelPopulationAt {
+    host: ctx.host,
+    population: materialize_wheel_population(ws: ws, parent: parent, handler: remote_wheel_handler(ctx: ctx)),
+  }
 }
