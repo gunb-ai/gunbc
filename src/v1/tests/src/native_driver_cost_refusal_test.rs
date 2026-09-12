@@ -35,6 +35,10 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             context: nanosecond(40),
             prepare: nanosecond(40),
             eval: nanosecond(0),
+            universe_derivation: nanosecond(0),
+            receipt_admission: nanosecond(0),
+            row_serialization: nanosecond(0),
+            module_release: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -59,6 +63,10 @@ fn reconciled_parent_passes() {
             context: nanosecond(3380085706753),
             prepare: nanosecond(59277814291),
             eval: nanosecond(3531894),
+            universe_derivation: nanosecond(0),
+            receipt_admission: nanosecond(0),
+            row_serialization: nanosecond(0),
+            module_release: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -145,5 +153,55 @@ fn a_child_that_has_not_exited_is_pending_not_unobserved() {
             NativeDriverCostRowStanding::NativeDriverCostRowsPending
         ),
         "Command::output never returns until exit; empty mid-run is pending, not unobserved"
+    );
+}
+
+#[test]
+fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
+    // prepare and eval are exclusive rows of ONE partition, so a preparation interval that
+    // contained its module's evaluation intervals would count that work twice and inflate the
+    // exclusive sum against the parent. The 6 assertions above read markers and exit shapes and
+    // cannot see the endpoint move: the emitted text is identical either way except for WHERE the
+    // close sits, which is exactly what this asserts. Moving the close back across the evaluation
+    // loop -- the regression this file is being extended for -- reds here and nowhere else.
+    let main_rs = driver_main();
+    let close = main_rs
+        .match_indices("module_prepare_nanos = span_nanos(prepare_started);")
+        .map(|(i, _)| i)
+        .collect::<Vec<usize>>();
+    assert!(
+        !close.is_empty(),
+        "the preparation span must be closed by an explicit span_nanos read; emitted:\n{main_rs}"
+    );
+    let eval_start = main_rs
+        .find("let evaluate_started = Instant::now();")
+        .unwrap_or_else(|| {
+            panic!("the emitted driver must open an evaluation span; emitted:\n{main_rs}")
+        });
+    let last_close = close.iter().copied().max().unwrap();
+    assert!(
+        last_close < eval_start,
+        "every preparation close must precede the first declaration evaluation, or prepare contains \
+         eval and the two exclusive rows double-count: last close at {last_close}, evaluation opens \
+         at {eval_start}; emitted:\n{main_rs}"
+    );
+    // The accepted arm is the only one that evaluates, so its close is the one that can drift:
+    // assert it sits between inference returning and the evaluation loop rather than after it.
+    let infer_close = main_rs
+        .find("module_infer_nanos = span_nanos(infer_started);")
+        .unwrap_or_else(|| {
+            panic!("the emitted driver must close an inference span; emitted:\n{main_rs}")
+        });
+    let accepted_close = close
+        .iter()
+        .copied()
+        .find(|i| *i > infer_close)
+        .unwrap_or_else(|| {
+            panic!("the accepted arm must close preparation after inference; emitted:\n{main_rs}")
+        });
+    assert!(
+        accepted_close < eval_start,
+        "the accepted arm closes preparation at {accepted_close}, after evaluation opens at \
+         {eval_start}: the prepared module's evaluation is inside its preparation span"
     );
 }
