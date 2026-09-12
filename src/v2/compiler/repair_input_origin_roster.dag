@@ -1,0 +1,223 @@
+module v2.compiler.repair_input_origin_roster
+
+import std.algebra { Empty, FreeMonoid }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.repair_input_origin {
+  RepairInputDeclarationProvenance,
+  RepairInputDeclared,
+  RepairInputIdentityAbsent,
+  RepairInputIdentityAmbiguous,
+  RenderedTargetVocabularyCarrier,
+  RepairInputOriginCandidate,
+  RepairInputTargetWithoutDeclarationIdentity,
+  SourceCarrierCandidate,
+  SourceDeclarationCarrier,
+  SourceDeclarationCarrierIdentity
+}
+import v2.std.algebra { fold_list, is_empty, length, list_snoc_item, skip }
+import v2.std.node { Node }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_to_dotted_string
+}
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.compiler.reference_site_collector { collect_reference_sites }
+import v2.compiler.resolution_provenance {
+  ProvenanceAmbiguous,
+  ProvenanceOwnerless,
+  ProvenanceResolved,
+  ProvenanceUnbound,
+  ReferenceSite,
+  ResolutionProvenance,
+  answer_site,
+  module_roster_from_roots,
+  resolve_reference_sites
+}
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+
+// NAMESPACE-XL STAGE XL-0: THE REPAIR-INPUT ORIGIN DENOMINATOR, ON THE v2 ROUTE.
+//
+// gunbc.namespace_cut_stage StageXL0Denominator asks for source-declaration carriers plus rendered
+// target-vocabulary carriers, separately typed, over one base, BEFORE eligibility or repair
+// disposition. This module fills the source-declaration half from the resolver's own answers. It
+// contains no filter: every mention v2.compiler.reference_site_collector finds becomes a row, and
+// the four ways the resolver can answer become four provenance arms rather than an admitted set
+// and a dropped one. A denominator that filtered would be measuring its filter.
+//
+// WHY THIS IS NOT THE SIX v1 CHANNELS PORTED. std.repair_input_origin's first half tags six
+// candidate-bearing inputs of v1.compiler.emit_rust's Rust use-line planner. The v2 route emits no
+// Rust use lines and has no such planner, so those six channels have no analogue here and
+// reproducing them would mint a dying emitter's artifact on a route that never had the surface.
+// What survives the route change is the QUESTION -- what does an import-to-containment repair take
+// as input -- and on v2 that is a resolver fact rather than an emitter one.
+//
+// THE RENDERED HALF IS NOT PRODUCED HERE AND THAT IS NOT AN OMISSION. A rendered
+// target-vocabulary carrier names a token minted by a target's rendered vocabulary; on the v2
+// route no stage renders a target vocabulary that mints names, so a producer for it would have no
+// input. The arm stays declared on the shared base -- it is the v1 emitter's, for that route's
+// lifetime -- and this module answers for the half it can establish rather than fabricating the
+// half it cannot.
+
+// THE DECLARATION THE MENTION RESOLVED TO, KEPT AT ITS OWN GRAIN.
+//
+// `decl_name` is the WHOLE remainder of the target after its owning module, not the target's last
+// segment. A variant lives at module.Type.Variant, so reducing it to `Variant` would make two
+// variants of two types in one module one identity -- a name used as a key at the wrong grain,
+// which is a different defect from a name used for display. The owner is the LONGEST rostered
+// module prefix, so the remainder is exactly the declaration path inside that module.
+fn carrier_declaration_ref(owner: QualifiedName, target: QualifiedName) -> DeclarationRef {
+  decl_ref(
+    module_path: qualified_name_to_dotted_string(qn: owner),
+    decl_name: qualified_name_to_dotted_string(
+      qn: skip(xs: target, n: length(xs: owner))
+    )
+  )
+}
+
+// THE FOUR RESOLVER ANSWERS BECOME FOUR PROVENANCE STATES, AND THE ONE COLLAPSE IS STATED.
+// ProvenanceResolved with an EMPTY remainder means the mention named the owning module itself, so
+// there is no declaration to cite; that is the same fact for a repair as ProvenanceOwnerless --
+// the target resolves and names no declaration -- so the two share one arm, deliberately, rather
+// than an arm carrying an empty decl_name that no reader could distinguish from a lost one.
+fn carrier_provenance(answer: ResolutionProvenance) -> RepairInputDeclarationProvenance {
+  match answer {
+    ProvenanceResolved { site: _, target: target, owner: owner } =>
+      if length(xs: target) > length(xs: owner) {
+        RepairInputDeclared {
+          declaring: carrier_declaration_ref(owner: owner, target: target)
+        }
+      } else {
+        RepairInputTargetWithoutDeclarationIdentity {
+          target_spelling: qualified_name_to_dotted_string(qn: target)
+        }
+      }
+    ProvenanceOwnerless { site: _, target: target } =>
+      RepairInputTargetWithoutDeclarationIdentity {
+        target_spelling: qualified_name_to_dotted_string(qn: target)
+      }
+    ProvenanceAmbiguous { site: _ } => RepairInputIdentityAmbiguous
+    ProvenanceUnbound { site: _ } => RepairInputIdentityAbsent
+  }
+}
+
+fn carrier_from_answer(answer: ResolutionProvenance, site: ReferenceSite) -> RepairInputOriginCandidate {
+  SourceDeclarationCarrier {
+    identity: SourceDeclarationCarrierIdentity {
+      reference_position: qualified_name_to_dotted_string(qn: site.position),
+      authored_spelling: qualified_name_to_dotted_string(qn: site.spelling),
+      provenance: carrier_provenance(answer: answer)
+    }
+  }
+}
+
+// ONE ROW PER MENTION, NEVER COLLAPSED. Two mentions of one name at two positions are two repair
+// inputs, so the roster does not unique. v2.compiler.resolution_provenance makes the same
+// distinction in the other direction -- its `answers` never collapse and only `dependencies` do --
+// and this fold consumes the uncollapsed half for exactly that reason.
+fn repair_input_origin_roster_from_sites(
+  index: SymbolIndex,
+  module_roster: FreeMonoid<QualifiedName>,
+  sites: FreeMonoid<ReferenceSite>
+) -> FreeMonoid<RepairInputOriginCandidate> {
+  fold_list(
+    xs: resolve_reference_sites(index: index, roster: module_roster, sites: sites),
+    empty: Empty,
+    cons: fn(acc, answer) {
+      list_snoc_item(
+        xs: acc,
+        item: carrier_from_answer(answer: answer, site: answer_site(answer: answer))
+      )
+    }
+  )
+}
+
+// THE WHOLE DENOMINATOR OVER ONE BASE'S MODULE ROOTS: index, roster and sites all derived from the
+// same roots, so no consumer can pair a roster with an index built from a different tree.
+fn repair_input_origin_roster_over_roots(
+  roots: FreeMonoid<Node>
+) -> FreeMonoid<RepairInputOriginCandidate> {
+  repair_input_origin_roster_from_sites(
+    index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots),
+    module_roster: module_roster_from_roots(roots: roots),
+    sites: collect_reference_sites(roots: roots)
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DIGEST ENTRY POINT gunbc.namespace_cut_stage ActivationReceiptKind DenominatorRosterDigest
+// CONSUMES. The receipt's digest is taken over THESE LINES and over nothing else, so the rendering
+// is the digest's definition rather than a debug view of it: one line per mention, carrying the
+// position, the authored spelling and the provenance arm, in the order the containment walk
+// produced them. Order is part of the digest and is therefore not sorted here -- the walk is
+// deterministic over a fixed tree, and re-sorting would hide a change in where a mention sits.
+//
+// NO RECEIPT ROW LANDS FROM THIS MODULE. An activation receipt is this rendering digested against
+// ONE base the manager pins at ACT-0, and gunbc.namespace_cut_stage is explicit that a delivery
+// receipt carries no base because it makes no claim about one. This is the producer; pinning is
+// ACT-0's act.
+fn provenance_digest_token(provenance: RepairInputDeclarationProvenance) -> String {
+  match provenance {
+    RepairInputDeclared { declaring: declaring } =>
+      concat(
+        "declared ",
+        declaring.module_path as String,
+        " ",
+        declaring.decl_name as String
+      )
+    RepairInputTargetWithoutDeclarationIdentity { target_spelling: target_spelling } =>
+      concat("no-declaration-identity ", target_spelling)
+    RepairInputIdentityAmbiguous => "ambiguous"
+    RepairInputIdentityAbsent => "unbound"
+  }
+}
+
+// THE TWO v1-ROUTE ARMS CANNOT OCCUR IN A ROSTER THIS MODULE PRODUCES. They are matched by NAME
+// rather than swept by a wildcard so that a fourth arm added to the shared base refuses to compile
+// here instead of silently rendering as one of these -- and each renders to a line that is loud
+// rather than absent, because a digest that skipped a row would report a smaller denominator with
+// no evidence that anything was dropped.
+fn carrier_digest_line(candidate: RepairInputOriginCandidate) -> String {
+  match candidate {
+    SourceDeclarationCarrier { identity: identity } =>
+      concat(
+        identity.reference_position,
+        concat(
+          " ",
+          concat(
+            identity.authored_spelling,
+            concat(" ", provenance_digest_token(provenance: identity.provenance))
+          )
+        )
+      )
+    SourceCarrierCandidate { identity: _ } => "v1-source-carrier-candidate-not-produced-on-this-route"
+    RenderedTargetVocabularyCarrier { identity: _ } => "v1-rendered-target-vocabulary-carrier-not-produced-on-this-route"
+  }
+}
+
+fn repair_input_origin_roster_digest_lines(
+  roster: FreeMonoid<RepairInputOriginCandidate>
+) -> FreeMonoid<String> {
+  fold_list(
+    xs: roster,
+    empty: Empty,
+    cons: fn(acc, candidate) {
+      list_snoc_item(xs: acc, item: carrier_digest_line(candidate: candidate))
+    }
+  )
+}
+
+fn repair_input_origin_denominator_digest_lines(
+  roots: FreeMonoid<Node>
+) -> FreeMonoid<String> {
+  repair_input_origin_roster_digest_lines(
+    roster: repair_input_origin_roster_over_roots(roots: roots)
+  )
+}
+
+fn repair_input_origin_roster_is_empty(
+  roster: FreeMonoid<RepairInputOriginCandidate>
+) -> Bool {
+  is_empty(xs: roster)
+}

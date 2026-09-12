@@ -41,6 +41,7 @@ import gunbc.namespace_cut_stage {
   required_activation_receipt_kinds,
   StageDeliveryReceipt,
   StageDeliveryEvidenceKind,
+  DenominatorRosterInstrumentDelivered,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
   stage_delivery_evidence_label,
@@ -76,7 +77,6 @@ import gunbc.compiler_frontend_program_status {
   MissingInstrument,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
-  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   all_missing_instruments,
   conditionally_awaited_instruments,
@@ -501,16 +501,37 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
 
 // F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR AND NOTHING ELSE ANSWERS IT.
 //
-// The arm this replaced read the subject roster's unobservable host probes, so making every host
-// probe observable would have flipped XL-0 to CLEAR while no repair-input origin roster had been
-// produced. That is the falsifier stated as a rule: XL-0's standing may not be a function of probe
-// observability at all. Asserting NOT-DERIVABLE with this exact cause holds it, because a rewiring
-// back onto any observable population would have to abandon the cause to change the standing.
-test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bool {
-  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
-    && any(stages_awaiting(i: RepairInputOriginRosterProducer),
-         l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-    && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
+// THE WALL LANDED AND THIS PROBE DID NOT RETIRE (DESIGN section 4b(4)): an expecting-red probe
+// that greens when its subject arrives flips to a permanent regression control, and the control is
+// the SAME contract stated on the arm that now stands. The arm this originally replaced read the
+// subject roster's unobservable host probes, so making every host probe observable would have
+// flipped XL-0 while no repair-input origin roster had been produced; the arm after that was
+// NotDerivable on a missing producer. Both were falsified by one rule -- XL-0's standing may not
+// be a function of probe observability -- and the rule survives the producer arriving.
+//
+// So this asserts XL-0 now derives from ITS OWN DELIVERY RECEIPT and from nothing else: the
+// standing is whatever stage_delivery_kind_outstanding answers for
+// DenominatorRosterInstrumentDelivered over the held roster, and it is asserted against that fold
+// rather than against a literal standing, so deleting the receipt row reds this witness while
+// rewiring the arm back onto any observable population abandons the fold and reds it too.
+test fn xl0_derives_from_its_own_delivery_receipt_and_not_from_probe_observability() -> Bool {
+  let outstanding = stage_delivery_kind_outstanding(
+    kind: DenominatorRosterInstrumentDelivered,
+    held: held_stage_delivery_receipts
+  )
+  let tracks_the_receipt =
+    if count(outstanding) == 0 {
+      standing_is(want: ClassClear, s: stage_status(s: StageXL0Denominator))
+    } else {
+      standing_is(want: ClassOutstanding, s: stage_status(s: StageXL0Denominator))
+    }
+  // The instrument is retired, so no instrument report may still name XL-0 as awaiting one --
+  // a stage that both derives and appears on the missing-instrument join is two answers.
+  let no_instrument_still_awaited = count(
+    all_missing_instruments |> filter(i =>
+      any(stages_awaiting(i: i), l => l == namespace_cut_stage_label(s: StageXL0Denominator)))
+  ) == 0
+  tracks_the_receipt && no_instrument_still_awaited
 }
 
 // F2 -- XL-1 IS THE CAPABILITY, THE BASELINE MILESTONE IS THE BASE-SPECIFIC FACT, AND THEY ARE NOT

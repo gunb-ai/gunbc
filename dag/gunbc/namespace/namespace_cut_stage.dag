@@ -139,11 +139,13 @@ fn namespace_cut_stage_is(a: NamespaceCutStage, b: NamespaceCutStage) -> Bool {
 // distinction, expressed as a missing field rather than as a rule about when to trust a field.
 // ---------------------------------------------------------------------------------------------
 type StageDeliveryEvidenceKind
-  = RehearsalInstrumentDelivered
+  = DenominatorRosterInstrumentDelivered
+  | RehearsalInstrumentDelivered
   | ReferenceGraphInstrumentDelivered
 
 fn stage_delivery_evidence_label(k: StageDeliveryEvidenceKind) -> String {
   match k {
+    DenominatorRosterInstrumentDelivered => "XL-0 repair-input origin roster instrument delivered and discriminated once"
     RehearsalInstrumentDelivered => "XL-2 rehearsal instrument delivered and discriminated once"
     ReferenceGraphInstrumentDelivered => "XL-4 reference-graph instrument delivered and discriminated once"
   }
@@ -159,13 +161,33 @@ type StageDeliveryReceipt {
 }
 
 data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
+  DenominatorRosterInstrumentDelivered,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
 ]
 
-// Empty by construction today: neither instrument exists. A row lands here when the stage that
-// owes it delivers it.
-data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
+// XL-0 DELIVERED (2026-09-12). The row names the producer a reader re-runs and the witness that
+// showed the producer can report the wrong answer -- DESIGN section 6, name the instrument rather
+// than transcribing its output -- and it carries NO BASE, because a delivery receipt makes no
+// claim about one. The ACT-0 activation receipt over a pinned base is a different object and is
+// still outstanding below.
+//
+// XL-0 IS DELIVERED ON THE v2 ROUTE AND THE SIX v1 CHANNELS ARE NOT PORTED. The denominator
+// std.repair_input_origin's first half tags is six collectors inside v1.compiler.emit_rust's Rust
+// use-line planner; the v2 route emits no use lines and has no such planner, so those channels
+// have no analogue and reproducing them would have minted a dying emitter's artifact on a route
+// that never carried the surface. What survives the route change is the QUESTION -- what an
+// import-to-containment repair takes as input -- and on v2 it is answered by the resolver:
+// v2.compiler.reference_site_collector enumerates every mention at its containment position and
+// v2.compiler.repair_input_origin_roster folds the resolver's four answers into
+// std.repair_input_origin's DeclarationRef-carrying source-declaration carrier.
+data held_stage_delivery_receipts: List<StageDeliveryReceipt> = [
+  StageDeliveryReceipt {
+    kind: DenominatorRosterInstrumentDelivered,
+    producer: "v2.compiler.repair_input_origin_roster repair_input_origin_roster_over_roots, over the mentions v2.compiler.reference_site_collector collect_reference_sites enumerates" as NonEmptyStr,
+    discriminated_by: "v2.test.claim.namespace_xl0.repair_input_origin_denominator -- four discriminating arms: a declared name or module header reported as a mention, a dotted mention counted per segment, a mention stamped with its module instead of its containment position, and an unanswerable mention dropped instead of carried as a row" as NonEmptyStr,
+  },
+]
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
   required_stage_delivery_evidence_kinds

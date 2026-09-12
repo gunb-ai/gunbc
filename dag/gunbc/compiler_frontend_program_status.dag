@@ -64,6 +64,7 @@ import gunbc.namespace_cut_stage {
   namespace_cut_stage_label,
   stage_prerequisites,
   act0_release_milestones,
+  DenominatorRosterInstrumentDelivered,
   StageDeliveryEvidenceKind,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
@@ -165,7 +166,6 @@ type MissingInstrument
   = PhaseCargoExecutionFact
   | PersistedLegacyBaselineObservation
   | DeclaringIdentitySpellingCensus
-  | RepairInputOriginRosterProducer
   | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
@@ -176,7 +176,6 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
     PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
     DeclaringIdentitySpellingCensus => "a census of occurrences not spelled at their declaring identity (XL-3's population)"
-    RepairInputOriginRosterProducer => "a repair-input origin roster producer: source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition (XL-0's population)"
     ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
@@ -251,7 +250,6 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
     PhaseCargoExecutionFact => NotBuilt
     PersistedLegacyBaselineObservation => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
-    RepairInputOriginRosterProducer => NotBuilt
     ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
@@ -696,7 +694,6 @@ data all_missing_instruments: List<MissingInstrument> = [
   PhaseCargoExecutionFact,
   PersistedLegacyBaselineObservation,
   DeclaringIdentitySpellingCensus,
-  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
@@ -879,11 +876,19 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
           outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
         )
       )
+    // XL-0 DERIVES NOW, AND IT DERIVES FROM THE STAGE'S OWN DELIVERABLE. The arm that used to
+    // stand here was NotDerivable on a missing producer; before that it read
+    // gunbc.namespace_cut_subject_roster's probes, which answered a different question entirely.
+    // It now reads the same delivery-receipt channel XL-2 and XL-4 read, which is the channel that
+    // means "the instrument exists and has been discriminated once" -- so a repair to probe
+    // observability still cannot move it, and only delivering the producer can.
     StageXL0Denominator =>
-      NotDerivable {
-        why: "XL-0 is the REPAIR-INPUT ORIGIN DENOMINATOR -- source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition. XL-0A splits and tags the six producer channels before their compatibility projection, but it deliberately does not claim the source declaration continuity or subject-bound roster that XL-0B-D owe. The arm that used to stand here read gunbc.namespace_cut_subject_roster's unobservable host probes instead, which answered a different question entirely: the subject roster is the cut's ROOT-AUTHORITY denominator, one row per family, and probe observability is a property of the instrument rather than a measure of the denominator's completeness. Deriving XL-0 from it let a join repair read as the denominator being produced. Derivable once the repair-input origin roster producer is complete." as NonEmptyStr,
-        cause: needs(i: RepairInputOriginRosterProducer)
-      }
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "XL-0: the repair-input origin roster instrument delivered and discriminated once" as NonEmptyStr,
+          outstanding: stage_delivery_kind_outstanding(kind: DenominatorRosterInstrumentDelivered, held: held_stage_delivery_receipts)
+        )
+      )
     StageXL1BaselineCapture =>
       standing_from_evidence(
         e: observe_outstanding(
