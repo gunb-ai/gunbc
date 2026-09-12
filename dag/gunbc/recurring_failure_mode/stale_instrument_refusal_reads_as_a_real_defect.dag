@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.stale_instrument_refusal_reads_as_a_real_defect
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data stale_instrument_refusal_reads_as_a_real_defect: RecurringFailureMode = RecurringFailureMode {
+  identity: "stale_instrument_refusal_reads_as_a_real_defect" as NonEmptyStr,
+
+  receipts: [
+    "**a stale instrument's refusal reads as a real defect** (a prebuilt tool is run against a corpus that has moved past it, and emits a confident, located, typed diagnostic naming a defect that does not exist. The refusal is indistinguishable by inspection from a true one, so it gets INVESTIGATED -- and the investigation lands on innocent code, most expensively on whatever the diagnostic names.)",
+
+    "INVALID STATE: a host and a corpus that disagree about a contract between them, with nothing that detects the disagreement, so the host executes source whose meaning it no longer implements and reports the resulting behaviour as a property of the source.",
+
+    "WHY IT SURVIVES: the diagnostic is well-formed, located, and of a kind the system genuinely produces. Nothing about it says 'your tool is old'. The reader's whole training is to trust a typed refusal -- which is correct for every refusal except this one.",
+
+    "SPECIMEN (#11121, 2026-09-12). v2.std.collection moved map_insert/map_lookup onto host-realized primitive seams, changing BOTH sides in one commit: the .dag placeholder bodies and the Rust that realizes them (v1_interpreter.rs, v1_interpreter_dispatch_generated.rs, std_primitive_projection.rs) alongside dag/std/primitive_projection.dag. A gunbc binary built 2026-09-11 -- one day stale -- runs post-#11121 sources with a pre-#11121 realization set, so it EXECUTES a placeholder it was supposed to intercept and reports: 'call depth exceeded 100000 at fn map_lookup_primitive_delegate -- unbounded recursion (a bare-name resolution cycle, or a genuinely divergent chain)'.",
+
+    "THE DISTINGUISHING FACT, and it is what makes this row usable: THE SELF-CALL IS BY DESIGN. dag/std/primitive_projection.dag marks the seam HostRealizedSeam, so a placeholder whose body calls itself is the CORRECT authored form -- it is never meant to run. The source therefore looks exactly like the bug the diagnostic names. No fact in the tree discriminates; the discriminator is the BINARY's build date against the seam's landing date, which is not visible from either the source or the refusal.",
+
+    "HARM, with its receipt. map_lookup and map_insert are std collection primitives, so most .dag evaluation paths reach them: the false refusal is not a corner case but the common case for any stale host. On 2026-09-12 this author ran one targeted witness after a merge, received the above, and was approximately one message from reporting 'main has unbounded recursion in v2.std.collection' -- during a fleet-wide landing freeze protecting #10940's critical path, where a false alarm against main would have been acted on. It was caught only by reading the seam's own projection row before reporting. The near-miss is the harm receipt: the cost is not a wrong answer to a question, it is a correct-looking answer that redirects a whole lane onto innocent code.",
+
+    "RUNG: found BELOW the ladder. This is not a silent wrong answer but its twin -- a LOUD wrong answer, a fabricated plausible diagnostic (DESIGN section 5). The run fails closed in form and fails open in fact: it refuses, names a cause, locates it, and the cause is false. Nothing anywhere detects or bounds it today, so it is not even mitigated.",
+
+    "CEILING 3, structurally guaranteed, and NOT 4. The mismatch cannot be made unwritable: a host binary is an artifact outside the tree and an old one can always exist, so no canonical model forbids the state. But it is DECIDABLE -- a corpus declares the seams it expects a host to realize, a host embeds the set it realizes, and the comparison is total -- so it is reachable that no accepted RUN contains the state: a host whose realization set does not satisfy the corpus refuses at startup instead of executing placeholders.",
+
+    "NEXT-RUNG TRIGGER, named as a CAPABILITY and not as an artifact: the capability of a host-realized seam to carry the host contract it requires, and of the runtime to refuse a host that does not satisfy it, for EVERY seam rather than for the two this specimen names. Rebuilding the binary is not this trigger -- it resolves one instance and leaves the class untouched, because the next seam to land re-creates it for every binary older than that landing.",
+
+    "REVIEW TELL: a diagnostic naming unbounded recursion, a missing primitive, or an impossible construction, in code that reads as deliberate and that nobody recently changed. Before investigating the code, establish the instrument's build date against the landing date of whatever the diagnostic names -- and prefer a fresh instrument to a clever explanation. The same question applies to any prebuilt checker, emitter or linter, not only to gunbc.",
+  ],
+
+  evidence: [],
+}
