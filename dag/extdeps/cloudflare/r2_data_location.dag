@@ -1,6 +1,6 @@
 module extdeps.cloudflare.r2_data_location
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -86,7 +86,7 @@ type CloudflarePublishedReading {
 data r2_data_location_reading: CloudflarePublishedReading = CloudflarePublishedReading {
   authority: extdeps_external_authority_anchor,
   read_on: "2026-09-12",
-  statement: "When you create a new bucket, the data location is set to Automatic by default. Currently, this option chooses a bucket location in the closest available region to the create bucket request based on the location of the caller. Location Hints are optional parameters you can provide during bucket creation to indicate the primary geographical location you expect data will be accessed from. Location Hints are a best effort and not a guarantee, and they should only be used as a way to optimize performance. Available hints: wnam Western North America, enam Eastern North America, weur Western Europe, eeur Eastern Europe, apac Asia-Pacific, oc Oceania. Jurisdictional Restrictions guarantee objects in a bucket are stored within a specific jurisdiction. Use Jurisdictional Restrictions when you need to ensure data is stored and processed within a jurisdiction to meet data residency requirements. Available jurisdictions: eu European Union, fedramp FedRAMP, us United States. Once an R2 bucket is created, the jurisdiction cannot be changed. Page last updated Aug 19, 2026.",
+  statement: "When you create a new bucket, the data location is set to Automatic by default. Currently, this option chooses a bucket location in the closest available region to the create bucket request based on the location of the caller. Location Hints are optional parameters you can provide during bucket creation to indicate the primary geographical location you expect data will be accessed from. Location Hints are a best effort and not a guarantee, and they should only be used as a way to optimize performance. Available hints: wnam Western North America, enam Eastern North America, weur Western Europe, eeur Eastern Europe, apac Asia-Pacific, oc Oceania. Jurisdictional Restrictions guarantee objects in a bucket are stored within a specific jurisdiction. Use Jurisdictional Restrictions when you need to ensure data is stored and processed within a jurisdiction to meet data residency requirements. Available jurisdictions: eu European Union, fedramp FedRAMP, us United States. The following services do not interact with R2 resources with assigned jurisdictions: Logpush. Once an R2 bucket is created, the jurisdiction cannot be changed. Page last updated Aug 19, 2026.",
 }
 
 data r2_how_r2_works_reading: CloudflarePublishedReading = CloudflarePublishedReading {
@@ -136,87 +136,13 @@ data cloudflare_inc: CloudflareLegalEntity = CloudflareLegalEntity {
   reading: r2_data_location_reading,
 }
 
-// LOCATION HINTS ARE A CLOSED COPRODUCT OF CHOICES, NOT A ROSTER OF PLACES THE BYTES ARE.
-// Upstream names them hints, says they are a best effort and not a guarantee, and uses them to
-// optimize performance. The tag set lives here because extdeps.cloudflare.r2 does not declare it;
-// the wire spelling is produced from the coproduct rather than stored as a second stringly name.
-type R2LocationHint
-  = R2HintWnam
-  | R2HintEnam
-  | R2HintWeur
-  | R2HintEeur
-  | R2HintApac
-  | R2HintOc
-
-fn r2_location_hint_wire(hint: R2LocationHint) -> String {
-  match hint {
-    R2HintWnam => "wnam"
-    R2HintEnam => "enam"
-    R2HintWeur => "weur"
-    R2HintEeur => "eeur"
-    R2HintApac => "apac"
-    R2HintOc => "oc"
-  }
-}
-
-fn r2_location_hint_is_residency_guarantee(hint: R2LocationHint) -> Bool {
-  match hint {
-    R2HintWnam => false
-    R2HintEnam => false
-    R2HintWeur => false
-    R2HintEeur => false
-    R2HintApac => false
-    R2HintOc => false
-  }
-}
-
-type R2LocationHintRow {
-  hint: R2LocationHint
-  description: NonEmptyStr
-  reading: CloudflarePublishedReading
-}
-
-data r2_hint_wnam: R2LocationHintRow = R2LocationHintRow {
-  hint: R2HintWnam,
-  description: "Western North America",
-  reading: r2_data_location_reading,
-}
-
-data r2_hint_enam: R2LocationHintRow = R2LocationHintRow {
-  hint: R2HintEnam,
-  description: "Eastern North America",
-  reading: r2_data_location_reading,
-}
-
-data r2_hint_weur: R2LocationHintRow = R2LocationHintRow {
-  hint: R2HintWeur,
-  description: "Western Europe",
-  reading: r2_data_location_reading,
-}
-
-data r2_hint_eeur: R2LocationHintRow = R2LocationHintRow {
-  hint: R2HintEeur,
-  description: "Eastern Europe",
-  reading: r2_data_location_reading,
-}
-
-data r2_hint_apac: R2LocationHintRow = R2LocationHintRow {
-  hint: R2HintApac,
-  description: "Asia-Pacific",
-  reading: r2_data_location_reading,
-}
-
-data r2_hint_oc: R2LocationHintRow = R2LocationHintRow {
-  hint: R2HintOc,
-  description: "Oceania",
-  reading: r2_data_location_reading,
-}
-
 // JURISDICTIONAL RESTRICTIONS CITE extdeps.cloudflare.r2 R2Jurisdiction, WHICH IS THE CONSUMED
 // AUTHORITY FOR THE FOUR WIRE VALUES. Re-spelling them as NonEmptyStr here would be a second name
 // for one concept (DESIGN section 3). Default is in that coproduct and is NOT a restriction;
 // the guarantee is derived by matching the existing type, so a fifth arm fails to compile rather
-// than silently inheriting a string.
+// than silently inheriting a string. Location hints stay in r2_data_location_reading rather than
+// as a coproduct: no production path consults a hint identity, and a constantly-false residency
+// predicate over one would be a permanently-green decoration (DESIGN sections 3c and 4b).
 fn r2_jurisdiction_is_residency_guarantee(jurisdiction: R2Jurisdiction) -> Bool {
   match jurisdiction {
     R2JurisdictionDefault => false
