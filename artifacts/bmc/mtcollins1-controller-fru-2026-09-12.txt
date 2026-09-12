@@ -1,5 +1,5 @@
 GUNBC-FRU-READ mtcollins1 2026-09-12T03:15:25Z
-argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin fru print 0
+argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> fru print 0
  Chassis Type          : Rack Mount Chassis
  Chassis Part Number   : 1A624RA00-600-G
  Chassis Serial        : NULL

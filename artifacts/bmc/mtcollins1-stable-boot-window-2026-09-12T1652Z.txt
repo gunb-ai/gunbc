@@ -1,5 +1,5 @@
 GUNBC-UPTIME-OBSERVATION mtcollins1 host_utc=2026-09-12T16:52:56Z
-argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted-at-capture:published-default> sel time get
+argv: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> sel time get
 09/12/2026 12:52:56 PM UTC
 argv: ... chassis power status
 Chassis Power is on

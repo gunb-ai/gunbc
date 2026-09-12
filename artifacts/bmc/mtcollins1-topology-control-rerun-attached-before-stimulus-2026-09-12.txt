@@ -10,7 +10,7 @@ stimulus_at_utc=22:00:49Z argv=chassis power cycle
 Chassis Power Control: Cycle
 stimulus_rc=0
 --- CONSOLE (collector attached before stimulus; held across boundary) ---
-Script started on 2026-09-12 22:00:41+00:00 [COMMAND="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin sol activate" <not executed on terminal>]
+Script started on 2026-09-12 22:00:41+00:00 [COMMAND="ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> sol activate" <not executed on terminal>]
 [SOL Session operational.  Use ~? for help]^M
 ^@NOTICE:  DRAM FW version 210525^M
 CP: 0ff00900^M

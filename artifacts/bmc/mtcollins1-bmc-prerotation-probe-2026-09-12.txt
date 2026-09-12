@@ -1,6 +1,6 @@
 GUNBC-BMC-PREROTATION-PROBE mtcollins1 host_utc=2026-09-12T17:46:13Z
 subject: BMC 192.168.1.228, credential under test = AMI MegaRAC published factory default (admin/admin)
---- argv: ipmitool -I lanplus -H <bmc> -U admin -P <published-factory-default> mc info
+--- argv: ipmitool -I lanplus -H <bmc> -U admin -P <redacted:published-factory-default> mc info
 Device ID                 : 32
 Device Revision           : 1
 Firmware Revision         : 0.32

@@ -1,4 +1,4 @@
-Script started on 2026-09-12 20:26:09+00:00 [COMMAND="ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin sol activate" <not executed on terminal>]
+Script started on 2026-09-12 20:26:09+00:00 [COMMAND="ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> sol activate" <not executed on terminal>]
 [SOL Session operational.  Use ~? for help]
 NOTICE:  DRAM FW version 210525
 CP: 0ff00900
