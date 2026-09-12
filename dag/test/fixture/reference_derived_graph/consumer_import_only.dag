@@ -1,3 +1,3 @@
 module test.fixture.reference_derived_graph.consumer_import_only
 
-import test.fixture.reference_derived_graph.provider { provided_value }
+import test.fixture.reference_derived_graph.provider { ProvidedMarker }

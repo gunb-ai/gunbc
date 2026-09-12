@@ -221,6 +221,11 @@ type ReferenceDerivedPool {
   roster: FreeMonoid<QualifiedName>
 }
 
+type LocatedModuleRoot {
+  path: String
+  root: Node
+}
+
 fn reference_derived_path_excluded(path: String, exclude_substrings: List<String>) -> Bool {
   any(xs: exclude_substrings, predicate: fn(sub) { string_contains(s: path, sub: sub) })
 }
@@ -357,6 +362,83 @@ fn load_reference_derived_pool(
   )
 }
 
+fn sites_for_reference_edge_fold(
+  root: Node,
+  include_import_syntax: Bool
+) -> FreeMonoid<ReferenceSite> {
+  let sites = collect_module_reference_sites(root: root)
+  if include_import_syntax {
+    sites
+  } else {
+    reference_sites_excluding_import_syntax(sites: sites)
+  }
+}
+
+fn emit_reference_edges_for_located_root(
+  item: LocatedModuleRoot,
+  pool: ReferenceDerivedPool,
+  include_import_syntax: Bool
+) -> List<ModuleDependencyEdge> {
+  match qualified_name_from_module_node(root: item.root) {
+    Rejected { diagnostics: _ } => no_reference_derived_edges
+    Accepted { value: module_qn, diagnostics: _ } =>
+      edges_from_provenance_owners(
+        rel_path: item.path,
+        provenance: module_dependencies_from_sites(
+          index: pool.index,
+          roster: pool.roster,
+          module_qn: module_qn,
+          sites: sites_for_reference_edge_fold(
+            root: item.root,
+            include_import_syntax: include_import_syntax
+          )
+        )
+      )
+  }
+}
+
+fn reference_derived_pool_from_located_roots(
+  items: List<LocatedModuleRoot>
+) -> ReferenceDerivedPool {
+  fold_list(
+    xs: items,
+    empty: empty_reference_derived_pool(),
+    cons: fn(pool, item) {
+      let roster = match qualified_name_from_module_node(root: item.root) {
+        Rejected { diagnostics: _ } => pool.roster
+        Accepted { value: module_qn, diagnostics: _ } =>
+          list_snoc_item(xs: pool.roster, item: module_qn)
+      }
+      ReferenceDerivedPool {
+        index: symbol_index_fill_module_root(index: pool.index, root: item.root),
+        trees: map_insert(m: pool.trees, key: item.path, value: item.root),
+        roster: roster
+      }
+    }
+  )
+}
+
+fn reference_derived_edges_from_located_roots(
+  items: List<LocatedModuleRoot>,
+  include_import_syntax: Bool
+) -> List<ModuleDependencyEdge> {
+  let pool = reference_derived_pool_from_located_roots(items: items)
+  fold_list(
+    xs: items,
+    empty: no_reference_derived_edges,
+    cons: fn(acc, item) {
+      list_append(
+        left: acc,
+        right: emit_reference_edges_for_located_root(
+          item: item,
+          pool: pool,
+          include_import_syntax: include_import_syntax
+        )
+      )
+    }
+  )
+}
+
 fn emit_reference_edges_for_importer(
   fact: ModuleDeclarationFact,
   pool: ReferenceDerivedPool
@@ -364,23 +446,13 @@ fn emit_reference_edges_for_importer(
   match map_lookup_where_rejected_unreachable(m: pool.trees, key: fact.path) {
     Absent => outcome_accepted(value: no_reference_derived_edges)
     Present { value: root } =>
-      match qualified_name_from_module_node(root: root) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: module_qn, diagnostics: _ } =>
-          outcome_accepted(
-            value: edges_from_provenance_owners(
-              rel_path: fact.path,
-              provenance: module_dependencies_from_sites(
-                index: pool.index,
-                roster: pool.roster,
-                module_qn: module_qn,
-                sites: reference_sites_excluding_import_syntax(
-                  sites: collect_module_reference_sites(root: root)
-                )
-              )
-            )
-          )
-      }
+      outcome_accepted(
+        value: emit_reference_edges_for_located_root(
+          item: LocatedModuleRoot { path: fact.path, root: root },
+          pool: pool,
+          include_import_syntax: false
+        )
+      )
   }
 }
 

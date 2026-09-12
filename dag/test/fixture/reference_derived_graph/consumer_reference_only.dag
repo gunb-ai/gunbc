@@ -1,7 +1,7 @@
 module test.fixture.reference_derived_graph.consumer_reference_only
 
 fn uses_provider(
-  x: test.fixture.reference_derived_graph.provider.provided_value
-) -> Int {
-  test.fixture.reference_derived_graph.provider.provided_value()
+  x: test.fixture.reference_derived_graph.provider.ProvidedMarker
+) -> test.fixture.reference_derived_graph.provider.ProvidedMarker {
+  x
 }

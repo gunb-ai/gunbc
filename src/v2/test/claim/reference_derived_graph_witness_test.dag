@@ -1,0 +1,211 @@
+module v2.test.claim.reference_derived_graph_witness
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.types { Int }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  ModuleDependencyEdge,
+  reference_derived_edges_from_located_roots,
+}
+import v2.std.algebra { fold_list, fold_list_node, length }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rd_provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
+
+data rd_reference_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_reference_only.dag"
+
+data rd_import_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_import_only.dag"
+
+data rd_both_path: String = "dag/test/fixture/reference_derived_graph/consumer_both.dag"
+
+data rd_provider_module: String = "test.fixture.reference_derived_graph.provider"
+
+data rd_provider_qn: QualifiedName = qualified_name_from_dotted_string(
+  dotted: "test.fixture.reference_derived_graph.provider"
+)
+
+data rd_reference_only_qn: QualifiedName = qualified_name_from_dotted_string(
+  dotted: "test.fixture.reference_derived_graph.consumer_reference_only"
+)
+
+data rd_import_only_qn: QualifiedName = qualified_name_from_dotted_string(
+  dotted: "test.fixture.reference_derived_graph.consumer_import_only"
+)
+
+data rd_both_qn: QualifiedName = qualified_name_from_dotted_string(
+  dotted: "test.fixture.reference_derived_graph.consumer_both"
+)
+
+data rd_provided_marker_qn: QualifiedName = qualified_name_from_dotted_string(
+  dotted: "test.fixture.reference_derived_graph.provider.ProvidedMarker"
+)
+
+fn rd_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  )
+}
+
+fn rd_module_root(qn_spine: Node, body: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        dag_named_edge(
+          name: ^dag_surface_module_header,
+          target: dag_grammar_atom(id: ^dag_surface_module_header)
+        ),
+        dag_named_edge(
+          name: ^dag_surface_module_header_qualified_name,
+          target: qn_spine
+        )
+      ],
+      body
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn rd_declaration(decl_sym: Symbol) -> Edge {
+  Edge {
+    label: Named { name: decl_sym },
+    target: Node {
+      kind: TypeNode { connective: Atom { identity: decl_sym } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+fn rd_qualified_mention() -> Edge {
+  Edge {
+    label: Positional,
+    target: rd_qn_spine(segments: rd_provided_marker_qn)
+  }
+}
+
+fn rd_import_syntax_mention() -> Edge {
+  Edge {
+    label: Named { name: ^dag_surface_import_decl },
+    target: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge {
+          label: Positional,
+          target: Node {
+            kind: TypeNode { connective: Atom { identity: ^ProvidedMarker } },
+            children: [],
+            occurrence_id: OccurrenceSynthetic
+          }
+        }
+      ],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+data rd_provider_root: Node = rd_module_root(
+  qn_spine: rd_qn_spine(segments: rd_provider_qn),
+  body: [rd_declaration(decl_sym: ^ProvidedMarker)]
+)
+
+data rd_reference_only_root: Node = rd_module_root(
+  qn_spine: rd_qn_spine(segments: rd_reference_only_qn),
+  body: [rd_qualified_mention()]
+)
+
+data rd_import_only_root: Node = rd_module_root(
+  qn_spine: rd_qn_spine(segments: rd_import_only_qn),
+  body: [rd_import_syntax_mention()]
+)
+
+data rd_both_root: Node = rd_module_root(
+  qn_spine: rd_qn_spine(segments: rd_both_qn),
+  body: [rd_import_syntax_mention(), rd_qualified_mention()]
+)
+
+data rd_located_roots: List<LocatedModuleRoot> = [
+  LocatedModuleRoot { path: rd_provider_path, root: rd_provider_root },
+  LocatedModuleRoot { path: rd_reference_only_path, root: rd_reference_only_root },
+  LocatedModuleRoot { path: rd_import_only_path, root: rd_import_only_root },
+  LocatedModuleRoot { path: rd_both_path, root: rd_both_root },
+]
+
+fn rd_edge_count(
+  edges: List<ModuleDependencyEdge>,
+  path: String,
+  target_module: String
+) -> Int {
+  length(
+    xs: edges |> filter(e => e.path == path && e.target_module == target_module)
+  )
+}
+
+fn rd_production_edges() -> List<ModuleDependencyEdge> {
+  reference_derived_edges_from_located_roots(
+    items: rd_located_roots,
+    include_import_syntax: false
+  )
+}
+
+fn rd_mutant_re_admitting_import_decl_edges() -> List<ModuleDependencyEdge> {
+  reference_derived_edges_from_located_roots(
+    items: rd_located_roots,
+    include_import_syntax: true
+  )
+}
+
+test fn reference_only_module_has_edge_and_unused_import_does_not() -> Bool {
+  let edges = rd_production_edges()
+  rd_edge_count(
+    edges: edges,
+    path: rd_reference_only_path,
+    target_module: rd_provider_module
+  ) == 1
+    && rd_edge_count(
+      edges: edges,
+      path: rd_import_only_path,
+      target_module: rd_provider_module
+    ) == 0
+}
+
+test fn both_gives_exactly_one_reference_derived_edge() -> Bool {
+  rd_edge_count(
+    edges: rd_production_edges(),
+    path: rd_both_path,
+    target_module: rd_provider_module
+  ) == 1
+}
+
+test fn mutant_re_admitting_import_decl_makes_import_only_property_red() -> Bool {
+  rd_edge_count(
+    edges: rd_mutant_re_admitting_import_decl_edges(),
+    path: rd_import_only_path,
+    target_module: rd_provider_module
+  ) != 0
+}

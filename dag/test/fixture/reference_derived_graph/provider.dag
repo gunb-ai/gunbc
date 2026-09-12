@@ -1,5 +1,3 @@
 module test.fixture.reference_derived_graph.provider
 
-import std.types { Int }
-
-fn provided_value() -> Int { 1 }
+type ProvidedMarker
