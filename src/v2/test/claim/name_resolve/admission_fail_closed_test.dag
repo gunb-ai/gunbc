@@ -421,3 +421,50 @@ test fn shared_context_malformed_root_refusal_preserves_every_diagnostic_for_eac
     fc_shared_validation_refusal_preserved(roots: roots)
   })
 }
+
+test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_location() -> Bool {
+  fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
+    let context = resolution_context(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: roots
+    )
+    let accepted = fold_list(
+      xs: [^fc_import_a_seg, ^fc_import_b_seg],
+      empty: true,
+      cons: fn(ok, subject) {
+        ok && match resolve_with_admission_context_policy(
+          context: context,
+          admission: Admission {
+            subject: ResolutionSubject { name: fc_qn(seg: subject) },
+            imports: Empty
+          },
+          index: source_root_index_empty(),
+          active_roots: Empty,
+          policy: ImportScoped
+        ) {
+          Accepted { value: _, diagnostics: d } => diagnostics_eq(a: d, b: None)
+          Rejected { diagnostics: _ } => false
+        }
+      }
+    )
+    let missing = fc_qn(seg: ^fc_missing_seg)
+    accepted && match subject_module_root_for_name(roots: roots, name: missing) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: expected } =>
+        match resolve_with_admission_context_policy(
+          context: context,
+          admission: Admission {
+            subject: ResolutionSubject { name: missing },
+            imports: Empty
+          },
+          index: source_root_index_empty(),
+          active_roots: Empty,
+          policy: ImportScoped
+        ) {
+          Accepted { value: _, diagnostics: _ } => false
+          Rejected { diagnostics: actual } =>
+            non_empty_diagnostics_eq(a: expected, b: actual)
+        }
+    }
+  })
+}
