@@ -10,11 +10,12 @@ import std.types { String, List, Bool }
 //
 // THREE SOURCES, ALL DECLARED, NONE A FILENAME EXCEPTION.
 //
-// 1. The dependency closure the regen already builds, read in reverse. The seed's closure
-//    authority is cli_run extend_sources_to_both_closure_fixpoint over whole_pool_closure_edge_index
-//    (dotted references, which include every `import` line, plus bare references), and the
-//    affected modules are every module from which an edited module is reachable along those
-//    edges. Measured 2026-08-30 (tree 677988a2, srv1 and BuildBuddy): a data row added to
+// 1. The dependency graph requested by required_regen_host regen_module_edges through
+//    cli_run whole_pool_closure_edge_index, read in reverse. This explicit whole-pool demand
+//    supplies dotted references (including every `import` line) plus bare references. Entry
+//    traversal through cli_run extend_sources_to_both_closure_fixpoint instead requests
+//    reached source rows through build_both_closure_edge_index. The affected modules are every
+//    module from which an edited module is reachable along the regen graph's edges. Measured 2026-08-30 (tree 677988a2, srv1 and BuildBuddy): a data row added to
 //    std.content_hash drifted exactly {std_content_hash.rs} against 72 predicted by the import
 //    lines alone -- contained, over-approximate.
 //
