@@ -1,0 +1,101 @@
+module v2.test.claim.complexity.accumulator_copy_compile_gate_diag
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
+import v2.std.diagnostic {
+  Accepted,
+  NonEmptyDiagnostics,
+  Rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE THREE-WAY DISCRIMINATOR FOR THE ACCUMULATOR-COPY GATE, HOMED WHERE IT EXECUTES PER PR.
+//
+// When gate_red_quadratic_rejects went red on main, its single Bool could not say WHICH of three
+// states held: an upstream stage refusing the snippet, a rejection carrying some OTHER reason, or
+// the gate ACCEPTING. Separating them is what located the defect in the lens's port reading rather
+// than in the ingest chain -- the analyzer read a named argument's LABEL as a value identifier, so
+// the bare-name arm was unreachable for every named-argument call in the corpus and a copied
+// accumulator classified as undecidable residue.
+//
+// WHY THIS FILE IS NOT BESIDE THE WITNESS IT DISCRIMINATES. The gate's own red/green controls live
+// in src/v2/test/claim/long/, which discovery excludes at dir grain, so a witness authored there
+// executes nowhere. Three GREEN discriminators cannot be admitted there either: the only exact
+// cadence available for an offline home is QuarantineProbeExpectRed, which is a declaration that a
+// witness is RED and cannot be written truthfully about a green one, and the path-policy roster is
+// frozen against growth by the cli_run collect_frozen_path_deferral_additions monotonicity gate. So
+// the compliant move is the one gunbc.witness_deferral_freeze names: do not author there. These
+// three are self-contained over a snippet and the root-grain gate, which is why they fit the per-PR
+// fast-lane budget while the long-home controls do not.
+data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
+
+type DiagProbe
+  = DiagStageRejected { stage: String }
+  | DiagNormalized { root: Node }
+
+fn normalized_of(source: String) -> DiagProbe {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^compile_gate_diag_witness_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => DiagStageRejected { stage: "tokenize" }
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => DiagStageRejected { stage: "parse" }
+        Accepted { value: parse_tree, diagnostics: _ } =>
+          match normalize(parse_tree: parse_tree) {
+            Rejected { diagnostics: _ } => DiagStageRejected { stage: "normalize" }
+            Accepted { value: normalized, diagnostics: _ } =>
+              DiagNormalized { root: normalized.root }
+          }
+      }
+  }
+}
+
+fn non_empty_contains_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  if d.head.reason == reason {
+    true
+  } else {
+    fold(d.tail, init: false, f: fn(acc, diag) {
+      acc || (diag.reason == reason)
+    })
+  }
+}
+
+test fn diag_quadratic_ingest_reaches_the_gate() -> Bool {
+  match normalized_of(source: quad_snippet) {
+    DiagStageRejected { stage: _ } => false
+    DiagNormalized { root: _ } => true
+  }
+}
+
+test fn diag_quadratic_gate_does_not_accept() -> Bool {
+  match normalized_of(source: quad_snippet) {
+    DiagStageRejected { stage: _ } => false
+    DiagNormalized { root: root } =>
+      match accumulator_copy_compile_gate(node: root) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+test fn diag_quadratic_rejection_is_not_some_other_reason() -> Bool {
+  match normalized_of(source: quad_snippet) {
+    DiagStageRejected { stage: _ } => false
+    DiagNormalized { root: root } =>
+      match accumulator_copy_compile_gate(node: root) {
+        Rejected { diagnostics: d } =>
+          non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
+            && !non_empty_contains_reason(d: d, reason: ^copied_port_computed_argument)
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}

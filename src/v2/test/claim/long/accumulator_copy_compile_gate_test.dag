@@ -90,44 +90,6 @@ test fn gate_red_quadratic_rejects() -> Bool {
   }
 }
 
-// THE THREE-WAY DISCRIMINATOR, ENROLLED RATHER THAN RUN ONCE BY HAND. When
-// gate_red_quadratic_rejects went red these three separated the states its single Bool cannot:
-// an upstream stage refusing the snippet, a rejection carrying some OTHER reason, and the gate
-// ACCEPTING. Only the third was true, which is what located the defect in the lens's port reading
-// rather than in the ingest chain or the refusal arms. They stay enrolled because the red they
-// discriminate is not retired by the repair - each one independently reddens on a different
-// regression, and a gate red with no discriminator costs the next reader the same afternoon.
-test fn diag_quadratic_ingest_reaches_the_gate() -> Bool {
-  match normalized_of(source: quad_snippet) {
-    ProbeStageRejected { stage: _ } => false
-    ProbeNormalized { root: _ } => true
-  }
-}
-
-test fn diag_quadratic_gate_does_not_accept() -> Bool {
-  match normalized_of(source: quad_snippet) {
-    ProbeStageRejected { stage: _ } => false
-    ProbeNormalized { root: root } =>
-      match accumulator_copy_compile_gate(node: root) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
-      }
-  }
-}
-
-test fn diag_quadratic_rejection_is_not_some_other_reason() -> Bool {
-  match normalized_of(source: quad_snippet) {
-    ProbeStageRejected { stage: _ } => false
-    ProbeNormalized { root: root } =>
-      match accumulator_copy_compile_gate(node: root) {
-        Rejected { diagnostics: d } =>
-          non_empty_contains_reason(d: d, reason: ^accumulator_copy_poly2_suspect)
-            && !non_empty_contains_reason(d: d, reason: ^copied_port_computed_argument)
-        Accepted { value: _, diagnostics: _ } => false
-      }
-  }
-}
-
 test fn gate_green_identity_accepts_clean() -> Bool {
   match normalized_of(source: identity_snippet) {
     ProbeStageRejected { stage: _ } => false

@@ -476,19 +476,19 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
       module_path: "v2.test.long.accumulator_copy_compile_gate"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+      entry: "src/v2/test/claim/complexity/accumulator_copy_compile_gate_diag_test.dag",
       function: "diag_quadratic_ingest_reaches_the_gate",
-      module_path: "v2.test.long.accumulator_copy_compile_gate"
+      module_path: "v2.test.claim.complexity.accumulator_copy_compile_gate_diag"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+      entry: "src/v2/test/claim/complexity/accumulator_copy_compile_gate_diag_test.dag",
       function: "diag_quadratic_gate_does_not_accept",
-      module_path: "v2.test.long.accumulator_copy_compile_gate"
+      module_path: "v2.test.claim.complexity.accumulator_copy_compile_gate_diag"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
+      entry: "src/v2/test/claim/complexity/accumulator_copy_compile_gate_diag_test.dag",
       function: "diag_quadratic_rejection_is_not_some_other_reason",
-      module_path: "v2.test.long.accumulator_copy_compile_gate"
+      module_path: "v2.test.claim.complexity.accumulator_copy_compile_gate_diag"
     ),
     witness_subject(
       entry: "src/v2/test/claim/long/accumulator_copy_fold_analysis_test.dag",
