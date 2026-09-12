@@ -28,13 +28,12 @@ import gunbc.serving.admitted_model {
 }
 import gunbc.spark.vllm_observed {
   VllmModelsRouteReadbackStanding, vllm_models_route_standing, vllm_models_route_standing_wire,
+  vllm_models_advertised_ids,
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
 import extdeps.languages.json.parse {
-  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, parse_json_document,
-  json_object_unique_member, json_document_gap_text,
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
 }
 
 
@@ -117,25 +116,13 @@ fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
 // to quote the name back -- which is exactly the shape of the not_found_error this backend returns.
 // Four states, and the middle two are the ones a weaker check would fuse: reachable-but-wrong-model
 // is a different remedy from unreachable, and both are different from a malformed answer.
-fn harness_model_ids(doc: JsonValue) -> List<String> {
-  match json_object_unique_member(v: doc, key: "data") {
-    JsonMemberFound { value: d } =>
-      match d {
-        JsonArray { elements: els } =>
-          els |> flat_map(e => match json_object_unique_member(v: e, key: "id") {
-            JsonMemberFound { value: idv } =>
-              match idv {
-                JsonString { value: s } => [s]
-                _ => []
-              }
-            _ => []
-          })
-        _ => []
-      }
-    _ => []
-  }
-}
-
+// THE ID WALK IS NOT THIS MODULE'S, AND KEEPING A COPY OF IT HERE WAS A SECOND SOURCE FOR ONE FACT.
+// gunbc.spark.vllm_observed owns what a vLLM /v1/models entry is -- it decodes the same document
+// into the readback this standing carries -- and this function walked the data array and the id
+// member again to build the admitted-model input. Two walkers can disagree about what counts as an
+// advertised id, and the one here silently dropped every entry it could not read (review 64265). It
+// now consumes the one producer, which drops unreadable entries from the ADVERTISED list while
+// counting them on the readback, so the two answers come from one reading.
 // THE ADMITTED SET DECIDES, AND THE ROUTE'S OWN LIST IS WHAT IT DECIDES OVER. Every advertised id is
 // offered to gunbc.serving.admitted_model in the order the route reported them; the first one this
 // harness can express a turn for wins, and if none can, the whole advertised list travels on the
@@ -151,7 +138,7 @@ fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStan
       JsonDocumentUnreadable { gap: g } =>
         HarnessBackendUnreadable { cause: json_document_gap_text(gap: g) }
       JsonDocumentParsed { value: doc } => {
-        match serving_admit_advertised(advertised: harness_model_ids(doc: doc)) {
+        match serving_admit_advertised(advertised: vllm_models_advertised_ids(doc: doc)) {
           ServingModelAdmitted { id: i, unit: u } =>
             HarnessBackendServing {
               model: i,

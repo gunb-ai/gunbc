@@ -565,38 +565,62 @@ fn vllm_models_data_standing(doc: JsonValue) -> VllmModelsDataStanding {
   }
 }
 
-// THE READING IS TAKEN ONCE PER ENTRY AND BOTH ANSWERS ARE DERIVED FROM IT. A fold accumulating
-// matched with concat would read each id once too, but it would copy the accumulator on every
-// append -- the copied-accumulator cost shape DESIGN 6 says to fix regardless of the realized n, and
-// this list is small today only because one route advertises one model. Mapping the reading across
-// the entries first and deriving both answers from THAT list keeps one lookup per entry, one
-// authority for what an entry's id is, and two linear passes over a value already computed.
-type VllmModelsEntryReading {
-  entry: JsonValue
-  id: VllmModelsEntryIdReading
-}
-
-fn vllm_models_entry_id_is(reading: VllmModelsEntryIdReading, served_model_id: NonEmptyStr) -> Bool {
-  match reading {
-    EntryIdRead { id: v } => v == (served_model_id as String)
-    EntryIdUnreadable => false
-  }
-}
-
-fn vllm_models_entry_id_was_unreadable(reading: VllmModelsEntryIdReading) -> Bool {
-  match reading {
-    EntryIdRead { id: _ } => false
-    EntryIdUnreadable => true
-  }
+// ONE FOLD, ONE MATCH PER ENTRY, AND NO COPIED ACCUMULATOR. The two predicates that stood here fed
+// two filters over one list, which is two elimination surfaces beside `match` for one coproduct and
+// two independent readings of one value (reviews 64237, 64265). They are gone.
+//
+// WHAT KEPT THEM ALIVE THROUGH ONE REVISION WAS A COST, AND IT IS SOLVED RATHER THAN TRADED AWAY. A
+// fold accumulating every matched entry appends to a list on each hit, which is the copied
+// accumulator DESIGN 6 says to fix regardless of the realized n. It is unnecessary here: a match
+// count above one REFUSES, so nothing downstream needs the second matching entry. The fold carries
+// the count and a zero-or-one first match, so it appends at most once over the whole traversal and
+// still tells 0, 1 and many apart -- which is the only distinction vllm_models_route_standing makes.
+type VllmModelsEntrySelection {
+  first_match: List<JsonValue>
+  matched: Int
+  unexaminable: Int
 }
 
 fn vllm_models_entry_selection(entries: List<JsonValue>, served_model_id: NonEmptyStr) -> VllmModelsEntrySelection {
-  let readings = map(entries, e => VllmModelsEntryReading { entry: e, id: vllm_models_entry_id(entry: e) })
-  VllmModelsEntrySelection {
-    matched: map(
-      filter(readings, r => vllm_models_entry_id_is(reading: r.id, served_model_id: served_model_id)),
-      r => r.entry),
-    unexaminable: count(filter(readings, r => vllm_models_entry_id_was_unreadable(reading: r.id))),
+  fold(
+    entries,
+    init: VllmModelsEntrySelection { first_match: [], matched: 0, unexaminable: 0 },
+    f: (acc, e) =>
+      match vllm_models_entry_id(entry: e) {
+        EntryIdUnreadable =>
+          VllmModelsEntrySelection {
+            first_match: acc.first_match,
+            matched: acc.matched,
+            unexaminable: acc.unexaminable + 1,
+          }
+        EntryIdRead { id: v } =>
+          if v == (served_model_id as String) {
+            VllmModelsEntrySelection {
+              first_match: if count(acc.first_match) == 0 { [e] } else { acc.first_match },
+              matched: acc.matched + 1,
+              unexaminable: acc.unexaminable,
+            }
+          } else {
+            acc
+          }
+      },
+  )
+}
+
+// THE ADVERTISED IDS COME FROM THE SAME READING, so this module is the one authority for what a
+// vLLM entry's id is. gunbc.harness.harness_backend walked the data array and the id member itself
+// to build its admitted-model input, which is a second source that can drift from this one on what
+// counts as an advertised id -- and the annotation above claimed the harness passed the document in
+// rather than growing a second idea of an entry (review 64265). It does now.
+fn vllm_models_advertised_ids(doc: JsonValue) -> List<String> {
+  match vllm_models_data_standing(doc: doc) {
+    ModelsDataUnreadable { cause: _ } => []
+    ModelsDataEntries { entries: els } =>
+      flat_map(els, e =>
+        match vllm_models_entry_id(entry: e) {
+          EntryIdRead { id: v } => [v]
+          EntryIdUnreadable => []
+        })
   }
 }
 
@@ -686,15 +710,15 @@ fn vllm_models_route_standing(doc: JsonValue, served_model_id: NonEmptyStr) -> V
     ModelsDataUnreadable { cause: c } => ModelsRouteDocumentUnreadable { cause: c }
     ModelsDataEntries { entries: els } => {
       let selection = vllm_models_entry_selection(entries: els, served_model_id: served_model_id)
-      if count(selection.matched) == 1 {
+      if selection.matched == 1 {
         fold(
-          selection.matched,
+          selection.first_match,
           init: ModelsRouteEntryAbsent { served_model_id: served_model_id, unexaminable_entries: selection.unexaminable },
           f: (acc, e) => vllm_models_route_standing_from_entry(entry: e, served_model_id: served_model_id))
-      } else if count(selection.matched) == 0 {
+      } else if selection.matched == 0 {
         ModelsRouteEntryAbsent { served_model_id: served_model_id, unexaminable_entries: selection.unexaminable }
       } else {
-        ModelsRouteEntryDuplicated { served_model_id: served_model_id, count: count(selection.matched) }
+        ModelsRouteEntryDuplicated { served_model_id: served_model_id, count: selection.matched }
       }
     }
   }

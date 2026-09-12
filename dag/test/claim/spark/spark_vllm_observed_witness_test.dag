@@ -38,7 +38,7 @@ import gunbc.spark.vllm_observed {
   VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteEntryAbsent,
   ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, ModelsRouteEntryDuplicated,
   ModelsRouteDocumentUnreadable,
-  vllm_models_route_standing,
+  vllm_models_route_standing, vllm_models_advertised_ids,
 }
 import extdeps.vllm.server {
   VllmRoute,
@@ -522,4 +522,25 @@ test fn a_duplicated_root_member_refuses_naming_the_count() -> Bool {
       (f as String) == "root" && string_contains(s: c as String, pattern: "2 root members")
     _ => false
   }
+}
+
+// RED -- THE ADVERTISED-ID LIST AND THE READBACK COME FROM ONE READING. gunbc.harness.harness_backend
+// consumes vllm_models_advertised_ids to decide which model it is admitted to ask for, and this
+// module's selection decides the readback; before review 64265 those were two walkers over the same
+// document and could disagree about what counts as an advertised id. This row holds them to one
+// answer on a document carrying one readable entry and one unreadable one: the id list has exactly
+// the readable id, and the readback counts the other as unexaminable rather than forgetting it.
+test fn the_advertised_ids_and_the_readback_agree_on_one_reading() -> Bool {
+  let doc = w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8\},\{\"id\":7\}]\}")
+  let ids = vllm_models_advertised_ids(doc: doc)
+  count(ids) == 1
+    && fold(ids, init: false, f: (acc, i) => acc || i == "m")
+    && match vllm_models_route_standing(doc: doc, served_model_id: "m" as NonEmptyStr) {
+         ModelsRouteRead { readback: r } => (r.configured_model_path as String) == "/w"
+         _ => false
+       }
+    && match vllm_models_route_standing(doc: doc, served_model_id: "gone" as NonEmptyStr) {
+         ModelsRouteEntryAbsent { served_model_id: _, unexaminable_entries: u } => u == 1
+         _ => false
+       }
 }
