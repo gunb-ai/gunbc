@@ -45,33 +45,21 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // `floor_cost_claim_qualification_unavailable` describes, and it is the state this gate closes for
 // NEWLY ENROLLED identities only.
 
-// THE GATED POPULATION, AND THE PART OF IT THIS GATE DOES NOT REACH (DESIGN section 4b(2)).
+// THE GATED POPULATION.
 //
-// WHAT IS GATED: a test declaration in a path whose DECLARATION SET IS ESTABLISHED FRESH AT NEW --
-// a wholly added file or a rename destination. Every member provably did not exist before, which is
-// what makes a merge-blocking conjunct safe: the gate cannot refuse a change for a witness it did
-// not author. It is also joined to what the run actually PLANNED, so an identity the runner itself
-// withheld is deferred rather than refused here.
-//
-// THE RESIDUAL, STATED HERE BECAUSE THIS IS WHERE THE SEED'S `enrolled_test_fns` SENDS ITS READER:
-// A BRAND-NEW `test fn` ADDED TO AN EXISTING FILE IS NEWLY ENROLLED AND IS NOT GATED. It is
-// indistinguishable, from the diff alone, from a modified sibling: both appear as a touched
-// declaration in a modified path, and the line ranges report which lines the diff reached rather
-// than which names are new.
-//
-// THE CLASS IS `can climb now but unbuilt`, NOT `cannot climb further`, and the distinction is the
-// whole point of naming it. NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY RATHER THAN AN ARTIFACT: a
-// modeled base-revision declaration observation in `v2.workflow.floor_diff_observe`, SUFFICIENT FOR
-// answering "was this identity declared at the merge base" per touched path, and refusing rather
-// than widening when the base cannot be read. With that capability the enrolled set becomes
-// `declared now` minus `declared at base` and this residual closes; without it, no arrangement of
-// the diff attribution can separate the two states, which is why the gap is declared rather than
-// papered over with a heuristic on declaration order or line position.
-//
-// WHAT THE RESIDUAL COSTS, MEASURED RATHER THAN ASSERTED: on the specimen the gate is built for --
-// gunbc#10882 and gunbc#10946 -- the shipped population reaches 9 of the 11 identities that refused
-// main, because both PRs introduced their expensive witnesses in wholly new files. The two it
-// misses are new declarations in modified files.
+// WHAT IS GATED: every newly enrolled test declaration — `declared now` minus `declared at the
+// resolved diff base`. The census (`floor_run_base_test_decl_census`) is path-keyed and
+// rename-blind: it answers names at a given path at the base, and a rename destination is
+// absent there. Enrolment JOINS that census to git's `rename from` so the subtracted names
+// are the SOURCE path's. A wholly added file has no source and no base names, so every
+// current name is new; a brand-new `test fn` in an existing file is present at the same path
+// and missing from the name set; a file that was only moved subtracts its source names and
+// enrols nothing it already declared. A modified sibling whose name WAS at the lookup path
+// is not enrolled, which is what keeps the conjunct from refusing a PR for a witness it did
+// not author. The census REFUSES rather than answering empty when the base cannot be listed
+// or a listed path cannot be shown, so ignorance cannot enrol (or exempt) anyone. It is also
+// joined to what the run actually PLANNED, so an identity the runner itself withheld is
+// deferred rather than refused here.
 
 // THE MARGIN'S INDEPENDENT REFERENT, WHICH IS WHAT SEPARATES IT FROM TWO REPUDIATED CEILINGS.
 //
