@@ -43,6 +43,7 @@ import v2.compiler.self_host.promotion_admission {
 import v2.compiler.compile {
   CompileLens,
   CompileLensRoot,
+  CompileLensSubtree,
   RequiredLensCoverageClosed,
   RequiredLensCoverageRefused,
   RequiredLensCoverageRow,
@@ -283,6 +284,42 @@ fn pa_contract_material() -> List<CompileLens> {
 // values this file chose, which is the defect the check exists to catch.
 fn pa_contract_axis() -> Hash {
   content_hash_of_value(value: required_lens_roster_digest_of(lenses: pa_contract_material()) as NonEmptyStr)
+}
+
+// A SUBTREE-GRAIN REGISTRATION, AND AN IDENTITY THAT COMMITS TO IT. The grain witness cannot simply
+// perturb the material of the existing candidate: changing the material changes its derived digest,
+// so the BINDING would refuse first and the grain check would never be reached. So this contract has
+// its own identity whose axis is the digest of THIS material, which leaves the binding satisfied and
+// the grain the only thing left to disagree about.
+fn pa_lens_beta_subtree() -> CompileLens {
+  CompileLens {
+    identity: decl_ref(
+      module_path: "test.claim.self_host_promotion_admission_witness",
+      decl_name: "pa_lens_beta"
+    ),
+    grain: CompileLensSubtree,
+    gate: fn(tree) { outcome_accepted(value: Holds { value: pa_lens_probe_node }) }
+  }
+}
+
+fn pa_subtree_material() -> List<CompileLens> {
+  [pa_lens_alpha(), pa_lens_beta_subtree()]
+}
+
+fn pa_subtree_contract_axis() -> Hash {
+  content_hash_of_value(value: required_lens_roster_digest_of(lenses: pa_subtree_material()) as NonEmptyStr)
+}
+
+fn pa_candidate_identity_subtree() -> GenerationIdentity {
+  GenerationIdentity {
+    producer_compiler: pa_candidate_identity().producer_compiler,
+    source_closure: pa_candidate_identity().source_closure,
+    target_model: pa_candidate_identity().target_model,
+    toolchain: pa_candidate_identity().toolchain,
+    build_configuration: pa_candidate_identity().build_configuration,
+    required_lens_contract: pa_subtree_contract_axis(),
+    materialized_artifact: pa_candidate_identity().materialized_artifact
+  }
 }
 
 fn pa_coverage_row(lens: CompileLens) -> RequiredLensCoverageRow {
@@ -1314,6 +1351,56 @@ test fn unbuilt_run_refuses_through_the_seam() -> Bool {
 // short. The second is the case a reader of the coverage alone cannot see, which is exactly why the
 // required set is carried beside the observation rather than re-read from the live roster.
 
+// A WHOLE CANDIDATE BUILT ON A GIVEN IDENTITY, so the grain witnesses can move the contract axis
+// without every OTHER receipt refusing as stale first. Each candidate-side receipt names the same
+// identity, which is what leaves the coverage the only thing under test.
+fn pa_with_coverage_for(
+  candidate_identity: GenerationIdentity,
+  candidate_cov: GenerationLensCoverage,
+  successor_cov: GenerationLensCoverage
+) -> SelfHostCandidate {
+  let cand = CandidateGeneration { identity: candidate_identity, produced_by_seed: pa_seed() }
+  SelfHostCandidate {
+    candidate: cand,
+    successor: SuccessorGeneration {
+      identity: pa_successor_identity(),
+      produced_by_candidate: cand
+    },
+    candidate_build: pa_build(
+      subject: candidate_identity,
+      outcome: ObservationPresent { value: BuildGreen }
+    ),
+    successor_build: pa_build(
+      subject: pa_successor_identity(),
+      outcome: ObservationPresent { value: BuildGreen }
+    ),
+    candidate_equivalence: pa_equivalence(
+      subject: candidate_identity,
+      cases: pa_corpus_cases,
+      outcome: ObservationPresent { value: BehaviorAgrees }
+    ),
+    successor_equivalence: pa_equivalence(
+      subject: pa_successor_identity(),
+      cases: pa_corpus_cases,
+      outcome: ObservationPresent { value: BehaviorAgrees }
+    ),
+    discriminating_fault: pa_fault(
+      subject: candidate_identity,
+      outcome: ObservationPresent { value: FaultCaught }
+    ),
+    candidate_provenance: pa_provenance(
+      subject: candidate_identity,
+      producer: pa_seed_identity()
+    ),
+    successor_provenance: pa_provenance(
+      subject: pa_successor_identity(),
+      producer: candidate_identity
+    ),
+    candidate_lens_coverage: candidate_cov,
+    successor_lens_coverage: successor_cov
+  }
+}
+
 fn pa_with_coverage(
   candidate_cov: GenerationLensCoverage,
   successor_cov: GenerationLensCoverage
@@ -1614,4 +1701,67 @@ test fn swapping_the_two_coverages_is_refused() -> Bool {
     )),
     cause: ^refusal_stale_receipt_subject
   )
+}
+
+// ---- GRAIN IS PART OF THE OBLIGATION ----
+//
+// The contract requires beta at SUBTREE grain; the coverage observes beta once at ROOT. Every
+// identity the contract names has a row, the binding holds because the material is the one the
+// identity commits to, and the ONLY thing wrong is the shape of the execution. A lens registered at
+// subtree grain runs per node, so a single root observation is not that lens having run -- it is a
+// different execution wearing the same name. Before the grain check this promoted.
+fn pa_coverage_root_rows_for_subtree_contract() -> GenerationLensCoverage {
+  pa_coverage_for(
+    subject: pa_candidate_identity_subtree(),
+    material: pa_subtree_material(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: required_lens_roster_digest_of(lenses: pa_subtree_material()),
+      rows: [
+        pa_coverage_row(lens: pa_lens_alpha()),
+        pa_coverage_row(lens: pa_lens_beta())
+      ]
+    }
+  )
+}
+
+test fn coverage_at_the_wrong_grain_refuses_and_names_the_grain() -> Bool {
+  let o = admit_promotion(
+    c: pa_with_coverage_for(
+      candidate_identity: pa_candidate_identity_subtree(),
+      candidate_cov: pa_coverage_root_rows_for_subtree_contract(),
+      successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
+    )
+  )
+  promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_covered_at_wrong_grain)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_contract_material_unbound)
+}
+
+// THE BOUNDARY: the same contract with the beta row observed at the grain it was registered at
+// promotes, so the refusal above is about the grain and not about this fixture's shape.
+fn pa_coverage_matching_grain_for_subtree_contract() -> GenerationLensCoverage {
+  pa_coverage_for(
+    subject: pa_candidate_identity_subtree(),
+    material: pa_subtree_material(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: required_lens_roster_digest_of(lenses: pa_subtree_material()),
+      rows: [
+        pa_coverage_row(lens: pa_lens_alpha()),
+        pa_coverage_row(lens: pa_lens_beta_subtree())
+      ]
+    }
+  )
+}
+
+test fn coverage_at_the_registered_grain_promotes() -> Bool {
+  match admit_promotion(
+    c: pa_with_coverage_for(
+      candidate_identity: pa_candidate_identity_subtree(),
+      candidate_cov: pa_coverage_matching_grain_for_subtree_contract(),
+      successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
+    )
+  ) {
+    Promoted { successor: _, cases_compared: _ } => true
+    PromotionRefused { causes: _ } => false
+  }
 }

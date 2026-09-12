@@ -12,6 +12,8 @@ import v2.compiler.self_host.generation {
 }
 import v2.compiler.compile {
   CompileLens,
+  CompileLensGrain,
+  compile_lens_grain_eq,
   RequiredLensCoverage,
   RequiredLensCoverageClosed,
   RequiredLensCoverageRefused,
@@ -23,9 +25,10 @@ import std.decl_ref { DeclarationRef, declaration_ref_display_key, declaration_r
 import std.content_hash { content_hash_of_value }
 import std.types { NonEmptyStr }
 import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
 import v2.std.node { Hash, Symbol }
 import v2.std.text { String }
 
@@ -231,6 +234,7 @@ type PromotionRefusalCause
   | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
   | RequiredLensCoverageNotClosed { receipt: Symbol, cause: Symbol }
   | RequiredLensObligationNotCovered { receipt: Symbol, lens: String }
+  | RequiredLensObligationCoveredAtWrongGrain { receipt: Symbol, lens: String }
   | RequiredLensContractMaterialUnbound { receipt: Symbol, derived: String }
 
 type PromotionOutcome
@@ -466,39 +470,60 @@ fn concat_causes(
 // is not lost, AND one uncovered-obligation cause per required identity, so the population survives
 // the refusal. An admission that reported only the first would tell a reader the join failed while
 // leaving them to guess what it failed to cover.
+// THE OBSERVATIONS ARE INDEXED ONCE, and the obligations are folded against the index. The earlier
+// shape scanned every observed row for every required registration, which is the quadratic fold
+// DESIGN section 6 says is always fixed regardless of the realized n -- and the compile-side join
+// already had the answer: `required_lens_registration_keys` builds exactly this Map in one pass.
+// Reproducing its shape here rather than inventing one keeps the two joins recognisably the same
+// operation.
+fn coverage_observation_index(
+  rows: List<RequiredLensCoverageRow>
+) -> Map<String, CompileLensGrain> {
+  fold_list(
+    xs: rows,
+    empty: empty_map(),
+    cons: fn(acc, row) { map_insert(acc, declaration_ref_display_key(ref: row.lens), row.grain) }
+  )
+}
+
+// GRAIN IS PART OF THE OBLIGATION, NOT DECORATION, and the earlier revision compared identity alone.
+// A lens registered at SUBTREE grain runs per node; the same identity observed once at ROOT is a
+// different execution, so coverage closed over root registrations would have satisfied a contract
+// requiring subtree ones. That is the `ObservedAtWrongGrain` distinction the compile-side join
+// already draws, and dropping it here meant admitting a generation on evidence of the wrong shape.
+// Covered-at-the-wrong-grain is its own cause rather than folded into not-covered, because the two
+// have different remedies: one lens never ran, the other ran the wrong way.
 fn lens_coverage_uncovered_causes(
   receipt: Symbol,
   required: List<CompileLens>,
   rows: List<RequiredLensCoverageRow>
 ) -> List<PromotionRefusalCause> {
+  let observed = coverage_observation_index(rows: rows)
   fold_list(
     xs: required,
     empty: freemonoid_empty(),
     cons: fn(acc, reg) {
-      let id = reg.identity
-      if fold_list(
-        xs: rows,
-        empty: false,
-        cons: fn(seen, row) { seen || declaration_ref_eq(a: row.lens, b: id) }
-      ) {
-        acc
-      } else {
-        list_snoc_item(
-          xs: acc,
-          item: RequiredLensObligationNotCovered {
-            receipt: receipt,
-            lens: declaration_ref_display_key(ref: id)
+      let key = declaration_ref_display_key(ref: reg.identity)
+      match map_lookup(observed, key) {
+        Absent =>
+          list_snoc_item(
+            xs: acc,
+            item: RequiredLensObligationNotCovered { receipt: receipt, lens: key }
+          )
+        Present { value: observed_grain } =>
+          if compile_lens_grain_eq(a: observed_grain, b: reg.grain) {
+            acc
+          } else {
+            list_snoc_item(
+              xs: acc,
+              item: RequiredLensObligationCoveredAtWrongGrain { receipt: receipt, lens: key }
+            )
           }
-        )
       }
     }
   )
 }
 
-// ONE DIGEST AUTHORITY, LIFTED RATHER THAN REIMPLEMENTED. The axis is a Hash and the roster digest
-// authority returns its serialized text, so this lifts that text with the SAME content_hash_of_value
-// the authority itself uses. Writing a second hash over the registrations here would be a competing
-// identity for one fact, which is the fork the axis exists to prevent.
 fn contract_axis_of_material(lenses: List<CompileLens>) -> Hash {
   content_hash_of_value(value: required_lens_roster_digest_of(lenses: lenses) as NonEmptyStr)
 }
@@ -708,6 +733,8 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_required_lens_coverage_not_closed
     RequiredLensObligationNotCovered { receipt: _, lens: _ } =>
       ^refusal_required_lens_obligation_not_covered
+    RequiredLensObligationCoveredAtWrongGrain { receipt: _, lens: _ } =>
+      ^refusal_required_lens_obligation_covered_at_wrong_grain
     RequiredLensContractMaterialUnbound { receipt: _, derived: _ } =>
       ^refusal_required_lens_contract_material_unbound
   }
