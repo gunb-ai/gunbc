@@ -291,26 +291,19 @@ data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = megarac_recorde
 
 data megarac_live_sol_activate_reset_survival: MegaRacResetSurvival = DiesOnReset
 
-// WHAT THIS SERVED UI CANNOT DO. Absences are first-class, keyed to the 0.32 catalog. They are
-// not omissions and not unit telemetry. MegaRacWebEventLogOemDescriptionUnknown is the controller
-// renderer answering unknown; Ampere OEM SEL producer layout is extdeps.ampere.oem_sel.
+// WHAT THIS SERVED UI CANNOT DO, as PATH ABSENCE in the 0.32 catalog. They are not omissions
+// and not unit telemetry. Per-DIMM AEP inventory and api/fru ARE in the catalog
+// (api/aep_inventory/aep_dimm_info, api/fru); a controller answering nothing through those paths
+// is a unit observation, not a served-surface absence. MegaRacWebEventLogOemDescriptionUnknown
+// was the same fork: the renderer answering unknown is not a missing path. Ampere OEM SEL
+// producer layout is extdeps.ampere.oem_sel.
 type MegaRacServedUiAbsence
   = RedfishServiceAbsentFromServedUi
   | BiosUefiSettingsSurfaceAbsent
-  | PerDimmFruAndTelemetryAbsentFromServedUi
-  | MegaRacWebEventLogOemDescriptionUnknown
 
 data megarac_served_ui_absences_at_0_32: List<MegaRacServedUiAbsence> = [
   RedfishServiceAbsentFromServedUi,
   BiosUefiSettingsSurfaceAbsent,
-  PerDimmFruAndTelemetryAbsentFromServedUi,
-  MegaRacWebEventLogOemDescriptionUnknown,
-]
-
-data megarac_bios_adjacent_paths_at_0_32: List<NonEmptyStr> = [
-  "/api/maintenance/firmware/upgrade" as NonEmptyStr,
-  "/api/maintenance/hpm/getbiosversions" as NonEmptyStr,
-  "/api/maintenance/ValidBootfwSignImage" as NonEmptyStr,
 ]
 
 type MegaRacServedUiFactLookup

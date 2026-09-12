@@ -1,19 +1,15 @@
 module test.claim.megarac_operation_surface_witness
 
-import std.types { Bool, NonEmptyStr }
-import v2.std.algebra { any }
+import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.megarac {
-  BiosUefiSettingsSurfaceAbsent,
   ChassisPowerOnEventsEnable,
   ChasisPowerOnEventsEnable,
   DiesOnReset,
   MegaRacIpmiSelPayloadPreserved,
   MegaRacWebEventLogOemEmptySelData,
-  MegaRacWebEventLogOemDescriptionUnknown,
-  PerDimmFruAndTelemetryAbsentFromServedUi,
   RedirectionConnecting,
   RedirectionStartedConnectionAccepted,
   RedirectionStatusFirmwareUncatalogued,
@@ -22,11 +18,9 @@ import extdeps.bmc.megarac {
   RedirectionWireUncatalogued,
   RedfishServiceAbsentFromServedUi,
   ServedUiFactFirmwareUncatalogued,
-  ServedUiFactKnown,
   FramebufferRecorder,
   SolStreamRecorder,
   SurvivesHostAndControllerReset,
-  megarac_bios_adjacent_paths_at_0_32,
   megarac_firmware_0_32,
   megarac_framebuffer_recorder_reset_survival,
   megarac_ipmi_sel_layout,
@@ -133,26 +127,6 @@ test fn recorders_survive_reset_and_live_sol_does_not() -> Bool {
     && megarac_recorder_trigger_power_on_field(subject: SolStreamRecorder) == ChasisPowerOnEventsEnable
     && megarac_trigger_power_on_field_wire(name: megarac_video_trigger_power_on_field)
       != megarac_trigger_power_on_field_wire(name: megarac_sol_trigger_power_on_field)
-}
-
-test fn served_ui_absences_are_first_class_at_0_32() -> Bool {
-  match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: RedfishServiceAbsentFromServedUi) {
-    ServedUiFactKnown { firmware: _, holds: true } =>
-      match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: BiosUefiSettingsSurfaceAbsent) {
-        ServedUiFactKnown { firmware: _, holds: true } =>
-          match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: PerDimmFruAndTelemetryAbsentFromServedUi) {
-            ServedUiFactKnown { firmware: _, holds: true } =>
-              match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: MegaRacWebEventLogOemDescriptionUnknown) {
-                ServedUiFactKnown { firmware: _, holds: true } =>
-                  megarac_bios_adjacent_paths_at_0_32 |> any(x => x == "/api/maintenance/hpm/getbiosversions" as NonEmptyStr)
-                _ => false
-              }
-            _ => false
-          }
-        _ => false
-      }
-    _ => false
-  }
 }
 
 test fn other_firmware_does_not_inherit_0_32_absences() -> Bool {
