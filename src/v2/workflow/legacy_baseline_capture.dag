@@ -7,6 +7,7 @@ import extdeps.git.object_store { GitObjectId, git_object_id_eq }
 import v2.workflow.legacy_repair_observation {
   CompleteLegacyRepairObservation,
   LegacyRepairObservation,
+  LegacyRepairObservationSubject,
   RepairSite,
   RepairSiteRoster,
   RepairRosterProven,
@@ -203,6 +204,28 @@ fn first_subject_disagreement(
   }
 }
 
+// THE REPAIR HALF MUST JOIN THE SAME TREE SUBJECT THE BINDING HALF JOINED. prove_repair_roster
+// and admit_complete_repair_observation compare the observation to itself (the roster is proven
+// against repair_observation.subject, then admission compares that subject to the proven one), so
+// LegacyBaselineRepairSubjectDiverged is unreachable from those calls alone. The three digests
+// the tree receipt already carries -- semantic source, source set, compiler artifact -- are the
+// facts that say WHICH BASE was observed. A repair observation whose digests disagree is from
+// another tree or another compiler and must not mint as taken over this materialization.
+fn first_repair_base_disagreement(
+  tree: LegacyBindingObservationSubject,
+  repair: LegacyRepairObservationSubject
+) -> String? {
+  if !(tree.semantic_source_digest == repair.semantic_source_digest) {
+    Present { value: "semantic_source_digest" }
+  } else if !(tree.source_set_digest == repair.source_set_digest) {
+    Present { value: "source_set_digest" }
+  } else if !(tree.compiler_artifact_digest == repair.compiler_artifact_digest) {
+    Present { value: "compiler_artifact_digest" }
+  } else {
+    none
+  }
+}
+
 // THE CAPTURE MINTS THE OBSERVATION ITSELF -- it takes the raw observation and the transport and
 // calls the admission, rather than accepting an already-admitted carrier. That is condition 6, and
 // the signature is the whole of it: a capture that ACCEPTED a CompleteLegacyObservation could only
@@ -241,24 +264,28 @@ fn capture_legacy_baseline<O, R>(
         match admit_complete_observation(observation: observation, transport: transport) {
           ObservationRefused { completeness: c } => LegacyBaselineObservationIncomplete { completeness: c }
           ObservationAdmitted { admitted: binding } =>
-            match prove_repair_roster(subject: repair_observation.subject, roster: repair_roster) {
-              RepairRosterRepeatedSite { sites: s } => LegacyBaselineRepairRosterMalformed { sites: s }
-              RepairRosterMismatch { subject_digest: sd, roster_digest: rd } =>
-                LegacyBaselineRepairRosterMismatch { subject_digest: sd, roster_digest: rd }
-              RepairRosterProven { proven: proven } =>
-                match admit_complete_repair_observation(observation: repair_observation, proven: proven) {
-                  RepairObservationSubjectDiverged { field: f } =>
-                    LegacyBaselineRepairSubjectDiverged { field: f }
-                  RepairObservationRefused { completeness: c } =>
-                    LegacyBaselineRepairIncomplete { completeness: c }
-                  RepairObservationAdmitted { admitted: repair } =>
-                    LegacyBaselineCaptured {
-                      capture: LegacyBaselineCapture {
-                        base_commit: materialization.requested,
-                        base_tree: materialization.observed_tree,
-                        observation: binding,
-                        repair_observation: repair
-                      }
+            match first_repair_base_disagreement(tree: tree_subject.subject, repair: repair_observation.subject) {
+              Present { value: f } => LegacyBaselineRepairSubjectDiverged { field: f }
+              Absent =>
+                match prove_repair_roster(subject: repair_observation.subject, roster: repair_roster) {
+                  RepairRosterRepeatedSite { sites: s } => LegacyBaselineRepairRosterMalformed { sites: s }
+                  RepairRosterMismatch { subject_digest: sd, roster_digest: rd } =>
+                    LegacyBaselineRepairRosterMismatch { subject_digest: sd, roster_digest: rd }
+                  RepairRosterProven { proven: proven } =>
+                    match admit_complete_repair_observation(observation: repair_observation, proven: proven) {
+                      RepairObservationSubjectDiverged { field: f } =>
+                        LegacyBaselineRepairSubjectDiverged { field: f }
+                      RepairObservationRefused { completeness: c } =>
+                        LegacyBaselineRepairIncomplete { completeness: c }
+                      RepairObservationAdmitted { admitted: repair } =>
+                        LegacyBaselineCaptured {
+                          capture: LegacyBaselineCapture {
+                            base_commit: materialization.requested,
+                            base_tree: materialization.observed_tree,
+                            observation: binding,
+                            repair_observation: repair
+                          }
+                        }
                     }
                 }
             }
