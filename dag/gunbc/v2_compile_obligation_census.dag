@@ -877,15 +877,15 @@ data realization_cost_fidelity_obligation: V2CompileObligation = V2CompileObliga
   identity: "realization_preserves_modeled_cost_shape" as NonEmptyStr,
   kind: RealizationCostFidelity,
   home: NoHomeExists {
-    nearest: decl_ref(module_path: "std.algebra", decl_name: "CostShape"),
-    why_it_is_not_the_home: "CostShape declares what an operation's cost shape IS on the algebra template; nothing declares that a realization must preserve it, and no consumer compares an authority's declared shape to the shape of the code emitted for it. The nearest authority models one side of a comparison that has no second side" as NonEmptyStr
+    nearest: decl_ref(module_path: "std.realization_cost_fidelity", decl_name: "cost_fidelity_of"),
+    why_it_is_not_the_home: "cost_fidelity_of is the JOIN and it is now authored: given a modeled CostBound and a realized CostBound it decides preservation, divergence, and the two kinds of ignorance. What it is not is the OBSERVER. Nothing in the corpus reads a cost bound off an emitted realization, so the join has no realized operand to be given, and a comparison authority nobody can feed is not the home of an obligation about what realizations do. The home is wherever a target realization is SELECTED, which is where both operands exist at once" as NonEmptyStr
   },
   claimed_rung: OutsideTheLadder,
   discriminating_red: "a declaration whose authority declares one cost shape and whose emitted realization has another — v2.std.algebra list_append, O(n) declared and O(n^2) emitted, is the measured specimen — which some consumer must refuse" as NonEmptyStr,
   positive_control: "a declaration whose emitted realization matches its declared shape, which must be accepted; and the second specimen, list_snoc_item, whose realization is FASTER than its authority, must also be reported rather than silently passed, or the check is a one-sided ratchet rather than a fidelity comparison" as NonEmptyStr,
   witnesses: [],
   ceiling: StructurallyGuaranteed,
-  next_trigger: climbs_when(capability: "a declaration is authored that joins an authority's declared CostShape to the cost shape of the realization emitted for it, at which point this row gets a home and stops being a modeling obligation"),
+  next_trigger: climbs_when(capability: "the emitted realization of a declaration is read back as a CostBound by an executing route, so that std.realization_cost_fidelity cost_fidelity_of can be given both operands at the point a target realization is selected, and a consumer there refuses on the divergent arms. The join landed without that observer; authoring it is what moves this row from a modeling obligation to a home"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the escape IS the seed's own intercept table — v1.05_emit_rust emit_typed_call builtins — which substitutes a host realization for the modeled one at emission time. That substitution is where both divergences are introduced, and it is the one place no lens reads" as NonEmptyStr
   },

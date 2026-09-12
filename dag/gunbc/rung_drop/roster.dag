@@ -64,6 +64,7 @@ import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_ver
 import gunbc.rung_drop.publication_subject_unobserved_privacy_placeholder { publication_subject_unobserved_privacy_placeholder }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
 import gunbc.rung_drop.roadmap_sizing_authored_to_derived { roadmap_sizing_authored_to_derived }
+import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -111,6 +112,7 @@ data rung_drop_roster: List<RungDrop> = [
   publication_subject_unobserved_privacy_placeholder,
   v1_consumer_census_live_population_off_the_merge_path(),
   roadmap_sizing_authored_to_derived,
+  long_module_changed_witness_cpu_observed_only,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The
