@@ -20,6 +20,33 @@ import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
 // absorbing fallback wearing a diagnostic. No composite digest is stored anywhere in
 // this module: a composite is always a projection derived on demand, so an identity
 // that disagrees with its own axes is unrepresentable rather than lens-caught.
+// THE REQUIRED VALIDATION CONTRACT IS A PRE-EXECUTION INPUT OF THE GENERATION, and the claim is
+// deliberately narrow. It is NOT that a different roster makes a different accepted program:
+// changing the roster need not change a byte of output or any behaviour. What it changes is the
+// REQUIREMENTS UNDER WHICH the generation is produced and admitted, and those are an input the way
+// the toolchain and the build configuration are -- fixed before the compile runs, not reported
+// afterwards.
+//
+// THE AXIS DOES NOT ASSERT THE REQUIREMENTS WERE MET. A GenerationIdentity can exist before
+// acceptance; this axis says which contract the generation was produced UNDER, and nothing about
+// whether the compile satisfied it. That remains the coverage observation's job, and the two stay
+// separate facts: the contract required for this compile, and the roster this compile actually ran.
+// Deriving one from the other is the defect this axis exists to prevent rather than to commit --
+// measured on gunbc#11174 at 0a4e23645c, where a promotion whose required set and observations were
+// shortened TOGETHER, and one whose coverage was entirely empty, both promoted, because every value
+// the checker compared arrived from the same submitter.
+//
+// WHY AN AXIS AND NOT A FIELD BESIDE THE IDENTITY. Every promotion receipt is joined against the
+// expected GenerationIdentity through `generation_identity_mismatched_axes`, so a contract carried
+// HERE cannot be changed without the receipts about the affected generation refusing on
+// StaleReceiptSubject naming this axis. A record field sitting next to the identity would be
+// changeable in silence, because nothing that already joins on identity would read it.
+//
+// WHAT THIS AXIS DOES NOT ESTABLISH, stated so it is not cited for more than it carries. Where the
+// contract is identified by the roster-digest authority, that digest covers registered identities
+// and grains in roster order; it does NOT establish that a registered name corresponds to the gate
+// function registered under it. `v2.compiler.compile` records that residual at mitigation grain with
+// its own trigger, and this axis neither closes nor weakens it.
 type GenerationAxis
   = ProducerCompilerAxis
   | SourceClosureAxis
@@ -27,6 +54,7 @@ type GenerationAxis
   | ToolchainAxis
   | BuildConfigurationAxis
   | MaterializedArtifactAxis
+  | RequiredLensContractAxis
 
 // The artifact axis is first-class in the identity rather than a downstream field,
 // because a generation whose artifact was never built is a DIFFERENT state from one
@@ -92,6 +120,7 @@ type GenerationIdentity {
   target_model: Hash
   toolchain: Hash
   build_configuration: Hash
+  required_lens_contract: Hash
   materialized_artifact: GeneratedArtifactIdentity
 }
 
@@ -114,12 +143,17 @@ type GenerationIdentity {
 // NO COMPOSITE IS STORED, exactly as the head of this module requires: the digest is a projection
 // derived on demand, folded in the declared axis order under a tag of its own so it cannot collide
 // with any other fold over the same five digests.
+// THE PRE-MATERIALIZATION PROJECTION CARRIES THE CONTRACT TOO, and omitting it would be the
+// sharper defect rather than a smaller one: this projection is the materialization KEY, so a
+// generation comparison that distinguished two contracts while the key called them the same input
+// would let one contract's artifact serve a request made under another.
 type PreMaterializationIdentity {
   producer_compiler: Hash
   source_closure: Hash
   target_model: Hash
   toolchain: Hash
   build_configuration: Hash
+  required_lens_contract: Hash
 }
 
 fn pre_materialization_identity(identity: GenerationIdentity) -> PreMaterializationIdentity {
@@ -128,7 +162,8 @@ fn pre_materialization_identity(identity: GenerationIdentity) -> PreMaterializat
     source_closure: identity.source_closure,
     target_model: identity.target_model,
     toolchain: identity.toolchain,
-    build_configuration: identity.build_configuration
+    build_configuration: identity.build_configuration,
+    required_lens_contract: identity.required_lens_contract
   }
 }
 
@@ -147,7 +182,7 @@ fn pre_materialization_digest(pre: PreMaterializationIdentity) -> Hash {
       ),
       b: pre.toolchain
     ),
-    b: pre.build_configuration
+    b: combine_hash(a: pre.build_configuration, b: pre.required_lens_contract)
   )
 }
 
@@ -340,6 +375,7 @@ fn generation_axis_agrees(
     TargetModelAxis => left.target_model == right.target_model
     ToolchainAxis => left.toolchain == right.toolchain
     BuildConfigurationAxis => left.build_configuration == right.build_configuration
+    RequiredLensContractAxis => left.required_lens_contract == right.required_lens_contract
     MaterializedArtifactAxis =>
       artifact_identity_agrees(
         left: left.materialized_artifact,
@@ -354,6 +390,7 @@ data generation_axes: List<GenerationAxis> = [
   TargetModelAxis,
   ToolchainAxis,
   BuildConfigurationAxis,
+  RequiredLensContractAxis,
   MaterializedArtifactAxis
 ]
 
@@ -386,6 +423,7 @@ fn generation_axis_symbol(axis: GenerationAxis) -> Symbol {
     TargetModelAxis => ^generation_axis_target_model
     ToolchainAxis => ^generation_axis_toolchain
     BuildConfigurationAxis => ^generation_axis_build_configuration
+    RequiredLensContractAxis => ^generation_axis_required_lens_contract
     MaterializedArtifactAxis => ^generation_axis_materialized_artifact
   }
 }
