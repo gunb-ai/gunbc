@@ -27,7 +27,6 @@ import gunbc.spark.host_commitment {
   SparkHostStanding,
   SparkHostUncommitted,
   SparkHostCommitted,
-  SparkHostAdmission,
   SparkHostAdmitted,
   SparkHostRefused,
   admit_uncommitted_host,

@@ -17,7 +17,7 @@ import gunbc.spark.cell_role {
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
-import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims, spark_serving_arm_claimed_hosts }
+import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 
 // WHAT EACH DGX SPARK UNIT IS CURRENTLY SPOKEN FOR BY, AS A SET OF IDENTITIES WITH THEIR CAUSES.

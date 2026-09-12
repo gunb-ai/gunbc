@@ -53,7 +53,7 @@ import gunbc.spark.serving_runtime_capability_probe {
   runtime_kernel_capability_label,
 }
 import gunbc.spark.vllm_runtime_image_build { v41_gb10_recipe }
-import gunbc.spark.host_commitment { SparkHostAdmission, SparkHostAdmitted, SparkHostRefused, admit_uncommitted_host }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_uncommitted_host }
 
 // ASKING THE BUILT IMAGE WHAT IT CONTAINS, INSIDE IT, ON THE ACCELERATOR IT WILL RUN ON.
 //

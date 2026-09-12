@@ -54,10 +54,13 @@ data glm_canary_host_claim: ServingArmHostClaim = ServingArmHostClaim {
 
 // THE ROSTER. A serving arm placed on a host appears here; the fleet census reads this list and never
 // an individual row, so a second arm is one row and no edit anywhere else.
+//
+// THERE IS NO `spark_serving_arm_claimed_hosts()` BESIDE IT, and the absence is deliberate. One was
+// written -- a `map` from this roster to bare host identities -- imported by the census, and never
+// called, because the census consumes the CLAIMS: it needs the arm each host is committed to in order
+// to say why, and a list of identities throws exactly that away. A projection with no call site is
+// DESIGN section 3c's red state, and the honest fix for one is deletion rather than a consumer
+// invented to justify it (found by claude review 64213).
 data spark_serving_arm_host_claims: List<ServingArmHostClaim> = [
   glm_canary_host_claim,
 ]
-
-fn spark_serving_arm_claimed_hosts() -> List<HostIdentity> {
-  map(spark_serving_arm_host_claims, c => c.host)
-}
