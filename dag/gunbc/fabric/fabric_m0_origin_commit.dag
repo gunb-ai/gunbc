@@ -1,0 +1,173 @@
+module gunbc.fabric_m0_origin_commit
+
+import std.types { NonEmptyStr, FilePath }
+import std.resources { Network }
+import std.content_hash { Sha256Digest, ContentHash, Sha256Hash }
+import std.scoped_authorization { AttemptIdentity }
+import std.durable_compare_and_set {
+  CasCommitted,
+  CasPreconditionFailed,
+  CasStoreRefused,
+  CasSlotVersion,
+  CasReadablePresent,
+  ExpectSlotAbsent,
+  CasUnreadableReadRefused,
+  cas_generation_first,
+}
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.fabric_m0_origin_readback {
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+  origin_reading_digest,
+}
+import gunbc.cloudflare.r2_origin_object {
+  OriginPutOutcome,
+  OriginObjectStored,
+  OriginObjectAlreadyPresent,
+  OriginPutRefused,
+  OriginPutOutcomeUnknown,
+  put_origin_object,
+  fetch_origin_object,
+}
+import gunbc.fabric_m0_completion { OriginReadback, ReadbackAbsent, ReadbackUnknown, origin_readback_of_fetch }
+import gunbc.fabric_m0_commit {
+  CommitNamespace,
+  CommitTransportOutcome,
+  StoreAnswered,
+  StoreDidNotAnswer,
+  ManifestReadbackObservation,
+  commit_slot_key,
+  manifest_read_of_origin_fetch,
+}
+
+// THE COMMIT BOUNDARY BOUND TO THE DURABLE ORIGIN. gunbc.fabric_m0_commit declares what a store
+// answer and an independent readback MEAN; this module is the realization that OBTAINS them from
+// the R2 origin -- one PUT of the manifest at the slot derived from the attempt, and one self-
+// staging fetch of the same slot -- and seals the pair so a caller cannot combine a transport
+// about one slot with a readback of another. It sits peripheral to the interface on purpose
+// (DESIGN 3: the dispatch that selects a realization is itself realization): fabric_m0_commit does
+// not import the vendor module, this module does.
+//
+// WHY THE TRANSPORT IS DERIVED FROM THE PUT AND THE FETCH TOGETHER, and this is the one modeling
+// decision here. CommitTransportOutcome speaks the CAS vocabulary: a precondition failure carries
+// the OCCUPANT it lost to. An R2 create-if-absent PUT answers 412 with no body, so the occupant is
+// not in the PUT's answer at all -- it is in the fetch that follows. Three of the four PUT arms
+// translate on their own; the 412 arm is honest only once the fetch has been taken, so the fold
+// takes both. That is also why the lost-acknowledgement retry publishes rather than parks: the
+// slot key is derived from the attempt and the PUT is If-None-Match: *, so the occupant of
+// attempt A's slot is most often A's own earlier write, and the readback digest one layer up is
+// what decides whether it is.
+//
+// THE GENERATION IS A DEDUCTION, NOT AN OBSERVATION, and it is stated as one. Under create-if-
+// absent exactly one version can ever exist at a slot, so both a stored object and a found
+// occupant are at cas_generation_first. If the write discipline ever admits overwrite, this
+// sentence is the first thing that becomes false, and the fold below is where it breaks.
+//
+// A 412 WHOSE FETCH FOUND NOTHING OR COULD NOT BE TAKEN IS UNKNOWN, NOT ABSENT AND NOT PRESENT:
+// the store said occupied and the read said otherwise, so nobody observed the occupant. That is
+// rendered as StoreDidNotAnswer with the contradiction as its cause -- the arm whose meaning is
+// exactly "no store verdict was obtained about this slot" -- and the completion authority turns
+// it into reconciliation rather than a decision.
+fn transport_of_origin_put(slot: NonEmptyStr, manifest_digest: Sha256Digest, put: OriginPutOutcome, fetch: OriginFetchOutcome) -> CommitTransportOutcome {
+  match put {
+    OriginObjectStored { key: _ } =>
+      StoreAnswered {
+        slot: slot,
+        outcome: CasCommitted { committed: first_version(digest: manifest_digest) },
+      }
+    OriginPutRefused { key: _, cause: c } =>
+      StoreAnswered { slot: slot, outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: c } } }
+    OriginPutOutcomeUnknown { key: _, cause: c } => StoreDidNotAnswer { slot: slot, cause: c }
+    OriginObjectAlreadyPresent { key: _ } =>
+      match fetch {
+        OriginObjectStaged { key: _, reading: r } =>
+          StoreAnswered {
+            slot: slot,
+            outcome: CasPreconditionFailed {
+              expected: ExpectSlotAbsent,
+              observed: CasReadablePresent { version: first_version(digest: origin_reading_digest(reading: r)) },
+            },
+          }
+        OriginObjectAbsent { key: _ } =>
+          StoreDidNotAnswer { slot: slot, cause: "origin answered 412 (occupied) at the slot and the fetch found nothing there; the occupant was not observed" }
+        OriginFetchUnavailable { key: _, cause: c } =>
+          StoreDidNotAnswer { slot: slot, cause: "origin answered 412 (occupied) at the slot and the fetch could not be taken: " + c }
+      }
+  }
+}
+
+fn first_version(digest: Sha256Digest) -> CasSlotVersion<Sha256Digest> {
+  CasSlotVersion { generation: cas_generation_first(), content: Sha256Hash(digest), value: digest }
+}
+
+// THE PAIR THE COMPLETION AUTHORITY CONSUMES, SEALED. Both halves are about the one slot this
+// module derived, and only commit_manifest_to_origin can produce the value, so a transport about
+// slot A cannot be handed in beside a readback of slot B.
+type OriginCommitObservation sole_constructor {
+  slot: NonEmptyStr
+  transport: CommitTransportOutcome
+  observed: ManifestReadbackObservation
+}
+
+// ONE PUT, ONE FETCH, ONE SLOT. The manifest file is the caller's (what was owed is a claim the
+// commit makes); the digest the readback carries is the fetch's own, taken over the bytes the
+// origin returned into a directory the fetch minted. The recorded digest is compared with that
+// reading one layer up, never here.
+//
+// CONSUMERS (DESIGN 3c): tools.fabric_m0_origin_object_probe canary_ending, the identified canary
+// whose process conclusion follows the JobEnding built over this observation. The pure fold above
+// is exercised by test.claim.fabric_m0_origin_commit_witness across every PUT x fetch arm.
+func commit_manifest_to_origin(
+  namespace: CommitNamespace,
+  attempt: AttemptIdentity,
+  manifest_path: FilePath,
+  manifest_digest: Sha256Digest,
+  token_source: AccessTokenSource,
+) -> OriginCommitObservation uses net: Network {
+  let slot = commit_slot_key(namespace: namespace, attempt: attempt)
+  let put = put_origin_object(local_path: manifest_path, key: slot, token_source: token_source)
+  let fetch = fetch_origin_object(key: slot, token_source: token_source)
+  OriginCommitObservation {
+    slot: slot,
+    transport: transport_of_origin_put(slot: slot, manifest_digest: manifest_digest, put: put, fetch: fetch),
+    observed: manifest_read_of_origin_fetch(fetch: fetch),
+  }
+}
+
+// A REQUIRED OBJECT'S READBACK, DERIVED FROM ITS PUT AND ITS FETCH TOGETHER, for the same reason
+// the manifest transport is. A fetch that staged bytes confirms whatever the PUT said, and an
+// unreachable fetch is unknown whatever the PUT said -- those arms are origin_readback_of_fetch's.
+// The arm that needs the PUT is ABSENCE: a 404 after a PUT whose outcome is UNKNOWN (a 5xx, a
+// dropped connection) is not evidence the object is missing -- the write may have landed after
+// the read -- and rendering it ReadbackAbsent would fail a job whose output is committed. Only a
+// PUT the store REFUSED makes the 404 a decided absence; a 404 after the store said stored or
+// present is a contradiction nobody has resolved, and stays unknown with the contradiction named.
+fn object_readback_of_origin_put(put: OriginPutOutcome, fetch: OriginFetchOutcome) -> OriginReadback {
+  match fetch {
+    OriginObjectAbsent { key: k } =>
+      match put {
+        OriginPutRefused { key: _, cause: _ } => ReadbackAbsent
+        OriginPutOutcomeUnknown { key: _, cause: c } =>
+          ReadbackUnknown { cause: "the PUT at " + k + " reached no verdict (" + c + ") and the fetch found nothing; the object may land after the read" }
+        OriginObjectStored { key: _ } =>
+          ReadbackUnknown { cause: "origin said stored at " + k + " and the fetch found nothing there" }
+        OriginObjectAlreadyPresent { key: _ } =>
+          ReadbackUnknown { cause: "origin said present at " + k + " and the fetch found nothing there" }
+      }
+    other => origin_readback_of_fetch(fetch: fetch)
+  }
+}
+
+// ONE PUT, ONE FETCH, ONE KEY, for a required object. The readback the completion authority
+// joins under the caller's obligation is derived here from both answers and never assembled by
+// the caller from one of them.
+//
+// CONSUMERS (DESIGN 3c): tools.fabric_m0_origin_object_probe canary_ending; the fold above is
+// exercised by test.claim.fabric_m0_origin_commit_witness.
+func commit_object_to_origin(local_path: FilePath, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginReadback uses net: Network {
+  let put = put_origin_object(local_path: local_path, key: key, token_source: token_source)
+  let fetch = fetch_origin_object(key: key, token_source: token_source)
+  object_readback_of_origin_put(put: put, fetch: fetch)
+}
