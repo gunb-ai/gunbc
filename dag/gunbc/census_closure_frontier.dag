@@ -20,7 +20,6 @@ import extdeps.docker.endpoint { endpoint_string_type_frontier_rows }
 import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows }
 import extdeps.github.workflow_runs {
   conclusion_authority_consolidation_frontier_rows,
-  workflow_job_run_observed_runner_frontier_rows,
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
 import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
@@ -60,7 +59,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     endpoint_string_type_frontier_rows,
     merge_state_graphql_transport_frontier_rows,
     conclusion_authority_consolidation_frontier_rows,
-    workflow_job_run_observed_runner_frontier_rows,
     ci_workflow_scan_producer_frontier_rows,
     ipv6_text_codec_staged_frontier_rows,
     cpu_description_string_leaf_frontier_rows,
