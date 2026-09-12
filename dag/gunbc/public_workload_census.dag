@@ -144,11 +144,17 @@ fn declared_architecture_standing(
           DeclaredArm { via: spec }
         } else {
           match standings.first() {
-            NotArmConfirmed { label, architecture, snapshot } =>
-              DeclaredNotArm { via: spec, architecture: architecture }
-            ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
-            ArmUndetermined { label, cause } =>
-              DeclaredArchitectureUnresolved { via: spec, cause: cause }
+            Present { value: standing } => match standing {
+              NotArmConfirmed { label, architecture, snapshot } =>
+                DeclaredNotArm { via: spec, architecture: architecture }
+              ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
+              ArmUndetermined { label, cause } =>
+                DeclaredArchitectureUnresolved { via: spec, cause: cause }
+            }
+            Absent => DeclaredArchitectureUnresolved {
+              via: spec,
+              cause: "declared alternatives were nonempty by count but first() was absent",
+            }
           }
         }
       }
@@ -174,13 +180,16 @@ fn provider_readings_share_one_catalog_provider(readings: List<ProviderReading>)
     false
   } else {
     match readings.first() {
-      ProviderUnresolved { label, cause } => false
-      ProviderFromCatalog { provider: first_provider, label, snapshot } =>
-        all(readings, r => match r {
-          ProviderFromCatalog { provider, label, snapshot } =>
-            declaration_ref_eq(a: provider, b: first_provider)
-          ProviderUnresolved { label, cause } => false
-        })
+      Present { value: first_reading } => match first_reading {
+        ProviderUnresolved { label, cause } => false
+        ProviderFromCatalog { provider: first_provider, label, snapshot } =>
+          all(readings, r => match r {
+            ProviderFromCatalog { provider, label, snapshot } =>
+              declaration_ref_eq(a: provider, b: first_provider)
+            ProviderUnresolved { label, cause } => false
+          })
+      }
+      Absent => false
     }
   }
 }
@@ -212,10 +221,16 @@ fn declared_provider_standing(
           }
         } else if provider_readings_share_one_catalog_provider(readings: readings) {
           match readings.first() {
-            ProviderFromCatalog { provider, label, snapshot } =>
-              DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
-            ProviderUnresolved { label, cause } =>
-              DeclaredProviderUnresolved { via: spec, cause: cause }
+            Present { value: first_reading } => match first_reading {
+              ProviderFromCatalog { provider, label, snapshot } =>
+                DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+              ProviderUnresolved { label, cause } =>
+                DeclaredProviderUnresolved { via: spec, cause: cause }
+            }
+            Absent => DeclaredProviderUnresolved {
+              via: spec,
+              cause: "declared alternatives were nonempty by count but first() was absent",
+            }
           }
         } else {
           DeclaredProviderUnresolved {
