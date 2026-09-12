@@ -1,6 +1,6 @@
 module gunbc.runner_slot_retirement
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, String, NonEmptyStr }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 
 // RETIRING A SLOT IS A DRAIN, NOT A STOP, AND THE DIFFERENCE IS A JOB.
@@ -93,5 +93,173 @@ fn surplus_observation_after_retirement(
   SurplusSlotsObserved {
     retired: standings |> filter(s => retirement_is_complete(s: s)) |> map(s => retirement_unit(s: s)),
     still_present: standings |> filter(s => !retirement_is_complete(s: s)) |> map(s => retirement_unit(s: s)),
+  }
+}
+
+
+// ── ONE RETIREMENT CONTRACT, TWO AUTHORIZED METHODS ───────────────────────────────────────────
+//
+// THREE PROPOSITIONS THAT WERE COLLAPSED INTO ONE, separated here because only the middle one is a
+// measurement:
+//
+//   1. "these workloads may be interrupted"  -- PERMISSION, an operator decision scoped to named
+//      workloads. It is not a measurement and cannot manufacture one.
+//   2. "these workloads are no longer running and will not return" -- MEASUREMENT, established by
+//      the retirement process and its independent readback. No permission produces it.
+//   3. "the new population and limits may be applied" -- the cap decision, which consumes BOTH.
+//
+// An earlier revision of this module required that admitted work always finish, which conflated (1)
+// with (2): it treated a service commitment as a universal law and made graceful drain a
+// prerequisite for a transition where the retiring workloads are disposable internal CI jobs.
+// Relaxing (1) for this environment does not relax (2).
+type InterruptionAuthorization sole_constructor {
+  scope: List<NonEmptyStr>
+  operator_reason: NonEmptyStr
+}
+
+// THE SCOPE IS A LIST OF UNITS, NOT A HOST OR AN ENVIRONMENT LABEL. Permission to interrupt srv4's
+// surplus CI slots is not permission to interrupt its sessions, its deployment service, or anything
+// else it runs -- and it is emphatically not inferable from the word "development". A method that
+// read an environment tag would grant itself scope the operator never named.
+fn interruption_authorization_covers(auth: InterruptionAuthorization, unit: String) -> Bool {
+  any(auth.scope, u => (u as String) == unit)
+}
+
+// PERMISSION IS MINTED HERE AND NOWHERE ELSE, WHICH IS WHY THE TYPE IS `sole_constructor`.
+//
+// A witness attempting to construct an `InterruptionAuthorization` is refused by the compiler --
+// measured, not intended: `sole_constructor type 'InterruptionAuthorization' cannot be constructed
+// outside its defining module`. That is the property worth having. Permission to destroy running
+// work must not be forgeable by whatever code happens to want it, including a test that would
+// rather not be blocked.
+//
+// THE SCOPE IS THE EXACT UNITS, ENUMERATED. srv4's committed width becomes 12, so slots 13..21 are
+// the surplus population and they are named one by one rather than expressed as a range or a glob.
+// A range would silently acquire new members if the width moved again; an enumeration cannot.
+//
+// WHAT THE OPERATOR DECIDED, and the boundary of it: the surplus INTERNAL CI slots on srv4 carry
+// disposable dev/test jobs and may be interrupted for this transition. That is not permission to
+// interrupt srv4's sessions, its deployment service, or anything else it runs, and it is not
+// inferable from srv4 being a development machine -- which is precisely why the decision is a
+// declared row with a scope rather than an environment test in the writer.
+data srv4_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: [
+    "actions-runner@srv4-13.service" as NonEmptyStr,
+    "actions-runner@srv4-14.service" as NonEmptyStr,
+    "actions-runner@srv4-15.service" as NonEmptyStr,
+    "actions-runner@srv4-16.service" as NonEmptyStr,
+    "actions-runner@srv4-17.service" as NonEmptyStr,
+    "actions-runner@srv4-18.service" as NonEmptyStr,
+    "actions-runner@srv4-19.service" as NonEmptyStr,
+    "actions-runner@srv4-20.service" as NonEmptyStr,
+    "actions-runner@srv4-21.service" as NonEmptyStr,
+  ],
+  operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+}
+
+type RetirementMethod
+  = GracefulRetirement
+  | AuthorizedDisruptiveRetirement { authorization: InterruptionAuthorization }
+
+// THE GRACEFUL METHOD IS MODELLED AND ITS EXECUTION IS EXPLICITLY UNAVAILABLE. It is the right
+// method where a workload's service commitment requires completion, and it is not implemented here.
+// Selecting it must therefore RETURN UNAVAILABLE -- never a successful no-op, and never a fabricated
+// `RetirementComplete`, which is the shape that would let an unimplemented path report success.
+type RetirementMethodAvailability
+  = MethodAvailable { method: RetirementMethod }
+  | MethodUnavailable { method_label: String, cause: String }
+
+fn retirement_method_availability(
+  method: RetirementMethod,
+  unit: String,
+) -> RetirementMethodAvailability {
+  match method {
+    GracefulRetirement =>
+      MethodUnavailable {
+        method_label: "GracefulRetirement",
+        cause: "graceful retirement -- inhibit admission, let already-admitted work finish, then observe -- is modelled but NOT IMPLEMENTED; selecting it refuses rather than returning a no-op that would read as a completed drain",
+      }
+    AuthorizedDisruptiveRetirement { authorization: auth } =>
+      if interruption_authorization_covers(auth: auth, unit: unit) {
+        MethodAvailable { method: AuthorizedDisruptiveRetirement { authorization: auth } }
+      } else {
+        MethodUnavailable {
+          method_label: "AuthorizedDisruptiveRetirement",
+          cause: join(["the interruption authorization does not name this unit, so interrupting it is not permitted: ", unit], ""),
+        }
+      }
+  }
+}
+
+// THE OUTCOME CARRIES THE METHOD AND THE INTERRUPTION, so a receipt can never present an
+// interrupted job as a finished one. `work_interrupted` is a fact about what happened to the
+// workload; `standing` is a fact about whether the slot is retired. They are independent: a slot can
+// be fully retired WITH work interrupted, and that is the expected outcome of this transition.
+type RetirementOutcome {
+  unit: String
+  method_label: String
+  work_interrupted: Bool
+  standing: RunnerRetirementStanding
+}
+
+// AN UNAVAILABLE METHOD PRODUCES NO STANDING AT ALL. It cannot borrow the observation's answer,
+// because the observation describes a host state the unavailable method never brought about.
+type RetirementAttempt
+  = RetirementAttempted { outcome: RetirementOutcome }
+  | RetirementMethodRefused { unit: String, method_label: String, cause: String }
+
+fn attempt_retirement(
+  method: RetirementMethod,
+  observation: RunnerRetirementObservation,
+  work_interrupted: Bool,
+) -> RetirementAttempt {
+  match retirement_method_availability(method: method, unit: o_unit(o: observation)) {
+    MethodUnavailable { method_label: l, cause: c } =>
+      RetirementMethodRefused { unit: o_unit(o: observation), method_label: l, cause: c }
+    MethodAvailable { method: m } =>
+      RetirementAttempted {
+        outcome: RetirementOutcome {
+          unit: o_unit(o: observation),
+          method_label: retirement_method_label(method: m),
+          work_interrupted: work_interrupted,
+          standing: runner_retirement_standing(o: observation),
+        },
+      }
+  }
+}
+
+fn o_unit(o: RunnerRetirementObservation) -> String {
+  o.unit
+}
+
+fn retirement_method_label(method: RetirementMethod) -> String {
+  match method {
+    GracefulRetirement => "GracefulRetirement"
+    AuthorizedDisruptiveRetirement { authorization: _ } => "AuthorizedDisruptiveRetirement"
+  }
+}
+
+// THE CAP DECISION CONSUMES COMPLETION AND IS BLIND TO THE METHOD, which is the whole point of one
+// contract. There is deliberately no environment test here: a writer that asked "is this dev?" would
+// be deciding permission at the moment of enforcement, where the operator's scoped authorization
+// already decided it. A refused attempt contributes NO completion, so it keeps the raise blocked.
+fn attempt_completes_retirement(a: RetirementAttempt) -> Bool {
+  match a {
+    RetirementMethodRefused { unit: _, method_label: _, cause: _ } => false
+    RetirementAttempted { outcome: out } => retirement_is_complete(s: out.standing)
+  }
+}
+
+fn attempt_unit(a: RetirementAttempt) -> String {
+  match a {
+    RetirementMethodRefused { unit: u, method_label: _, cause: _ } => u
+    RetirementAttempted { outcome: out } => out.unit
+  }
+}
+
+fn surplus_observation_after_attempts(attempts: List<RetirementAttempt>) -> SurplusSlotObservation {
+  SurplusSlotsObserved {
+    retired: attempts |> filter(a => attempt_completes_retirement(a: a)) |> map(a => attempt_unit(a: a) as NonEmptyStr),
+    still_present: attempts |> filter(a => !attempt_completes_retirement(a: a)) |> map(a => attempt_unit(a: a) as NonEmptyStr),
   }
 }
