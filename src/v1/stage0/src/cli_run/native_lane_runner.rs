@@ -553,7 +553,31 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
 /// authority's summary, so the stdout is parsed first and a marker-carrying refusal is reported
 /// with the cause the authority gave. A non-zero exit with no marker is a lane refusal carrying
 /// the process's own stderr — never a truncated green.
-fn run_native_binary(binary: &Path, args: &[String]) -> Result<NativeRunOutput, String> {
+// `rows_out` PERSISTS THE CHILD'S STDOUT BESIDE THE RECEIPT (eager-raven-113 ruling, 2026-09-12).
+// The driver prints one population row per identity, each carrying a TYPED verdict -- for a refused
+// module, NativeTestRefused { stage, reason }. This host parsed that stream for counts and then
+// DROPPED it, so the only surviving artifact was the `[native-prepare]` stderr line, which collapses
+// the same fact to `outcome=accepted|refused` through a matches!. A typed refusal computed and then
+// flattened to a Bool at the reporting boundary is the DESIGN section 5 shape, and the cost was
+// measured rather than argued: after a 113-minute full-N run at 36e6ad91 the question "why did 575
+// of 713 modules refuse" was unanswerable from anything on disk, and answering it would have meant
+// running the whole route again.
+//
+// WRITTEN BEFORE THE PARSE, DELIBERATELY. A run that ends in a refusal is exactly the run whose rows
+// someone needs, and the 36e6ad91 run refused at the cost partition before printing its terminal
+// marker -- had the write been gated on a successful parse, the rows would have been discarded on
+// the one occasion they mattered most.
+//
+// THE TEE IS ITS OWN CONTROL. A persisted receipt that disagrees with the verdict path is worse
+// than none, because it will be read as authoritative: the row count recovered FROM THE FILE is
+// compared against the count the terminal marker declares, and a mismatch REFUSES rather than
+// reporting the smaller number. That also means this cannot silently become a second, divergent
+// source of truth -- it agrees with the parse or it stops the line.
+fn run_native_binary(
+    binary: &Path,
+    args: &[String],
+    rows_out: Option<&Path>,
+) -> Result<NativeRunOutput, String> {
     let output = Command::new(binary).args(args).output().map_err(|e| {
         format!(
             "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
@@ -580,8 +604,56 @@ fn run_native_binary(binary: &Path, args: &[String]) -> Result<NativeRunOutput, 
     for line in String::from_utf8_lossy(&output.stderr).lines() {
         eprintln!("{line}");
     }
+    if let Some(path) = rows_out {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "V2-NATIVE REFUSAL cause=NativeRunRowsUnwritable — creating {}: {e}",
+                    parent.display()
+                )
+            })?;
+        }
+        std::fs::write(path, &stdout).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunRowsUnwritable — writing {}: {e}",
+                path.display()
+            )
+        })?;
+        eprintln!(
+            "v2-native-route: driver rows persisted to {} ({} bytes)",
+            path.display(),
+            stdout.len()
+        );
+    }
     match parse_native_run_output(&stdout) {
-        Ok(parsed) => Ok(parsed),
+        Ok(parsed) => {
+            if let Some(path) = rows_out {
+                let persisted = std::fs::read_to_string(path).map_err(|e| {
+                    format!(
+                        "V2-NATIVE REFUSAL cause=NativeRunRowsUnreadable — reading back {}: {e}",
+                        path.display()
+                    )
+                })?;
+                let in_file = persisted
+                    .lines()
+                    .filter(|line| {
+                        serde_json::from_str::<serde_json::Value>(line)
+                            .ok()
+                            .is_some_and(|v| {
+                                v.get("identity").is_some() && v.get("verdict").is_some()
+                            })
+                    })
+                    .count() as u64;
+                if in_file != parsed.terminal.rows {
+                    return Err(format!(
+                        "V2-NATIVE REFUSAL cause=NativeRunRowsDisagree — {} carries {in_file} population row(s) but the terminal marker declares {}; a persisted receipt that disagrees with the verdict path is not a receipt",
+                        path.display(),
+                        parsed.terminal.rows
+                    ));
+                }
+            }
+            Ok(parsed)
+        }
         Err(parse_cause) => Err(format!(
             "V2-NATIVE REFUSAL cause=NativeRunFailed status={:?} — {} — {parse_cause}\n{}",
             output.status.code(),
@@ -724,9 +796,13 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // whole-corpus context fold — the lane's dominant cost — to produce it. Tokenization is
     // per-file and deterministic, so the observed refusal is identical under the restricted root.
     let control_root = materialize_malformed_specimen(&workspace)?;
+    // No rows file for the census control: that mode reports per-file refusals and prints no
+    // population rows, so a file there would be an empty artifact inviting the reading that the
+    // census found nothing to say.
     let control_output = run_native_binary(
         &preparation.binary_path,
         &["census".to_string(), control_root],
+        None,
     )?;
     if control_output.terminal.mode != "census" {
         drop(withdrawal);
@@ -767,7 +843,11 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
     let mut args = vec!["adjudicate".to_string(), facts_file.display().to_string()];
     args.extend(source_roots.iter().cloned());
-    let run = run_native_binary(&preparation.binary_path, &args);
+    let rows_file = workspace
+        .join("target")
+        .join("v2-native-lane")
+        .join("driver-rows.jsonl");
+    let run = run_native_binary(&preparation.binary_path, &args, Some(&rows_file));
     // The window closes here, so this is where the not-present arm is re-read. Taken BEFORE the
     // guard drops, because dropping it restores the withdrawn file and would make the path
     // occupied again for the other arm.

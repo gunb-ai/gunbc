@@ -1560,23 +1560,17 @@ fn native_lane_refused<T>(reason: Symbol, detail: String) -> Outcome<T> {
 // refusing. The seed answered this same question at this same grain (cli_run's module index) and
 // is deleted with the interpreted derivation; this is that fact's `.dag` home. One consumer, per
 // the facts-before-abstraction discipline: promote it when a second inhabits it.
-fn native_lane_declared_module_name(content: String) -> String {
-  fold(
-    split(s: content, delimiter: "\n"),
-    init: "",
-    f: fn(acc, line) {
-      if acc != "" {
-        acc
-      } else {
-        let trimmed = trim(line)
-        if starts_with(s: trimmed, prefix: "module ") {
-          trim(substring(s: trimmed, start: 7, end: string_length(s: trimmed)))
-        } else {
-          ""
-        }
-      }
-    }
-  )
+fn native_lane_declared_module_name(content: String) -> Optional<String> {
+  match list_find_first(
+    xs: split(s: content, delimiter: "\n"),
+    predicate: fn(line) { starts_with(s: trim(line), prefix: "module ") }
+  ) {
+    Absent => optional_absent()
+    Present { value: line } =>
+      optional_present(
+        value: trim(substring(s: trim(line), start: 7, end: string_length(s: trim(line))))
+      )
+  }
 }
 
 // ONE SOURCE, READ ONCE, IN BOTH DIRECTIONS. The discovery producer's per-file authority and the
@@ -1594,6 +1588,61 @@ fn native_lane_declared_module_name(content: String) -> String {
 // narrowing, because the module it needed was never ingested and the resolver says so by name.
 // NEXT-RUNG TRIGGER: the closure is computed from the front end's own import edges after a cheap
 // parse of the seed set, at which point this scan deletes rather than being kept beside it.
+// AN IMPORT LINE THAT NAMES NOTHING IS A REFUSAL, NOT A DROPPED LINE (review 64474). The fold
+// below skips a line whose `import ` prefix is followed by no token, and a skipped import is a
+// NARROWED CLOSURE: the module it should have named is never walked, so its declarations are never
+// ingested and the universe silently describes less of the corpus than the source asked for. That
+// is the failure arm DESIGN section 5 forbids -- it widens or narrows rather than refusing -- and
+// it is the worse direction of the two, because a narrowed ingest ends in a GREEN run over a
+// smaller population rather than in a visible over-scan.
+//
+// IT IS CARRIED ON THE ROW RATHER THAN RAISED HERE, so the cause can name the FILE. This scan sees
+// one content blob and has no path; the refusal a reader needs says which file and which line, and
+// native_lane_source_facts is where both are in scope. Consumer: native_lane_universe, which
+// refuses on the first row carrying one, before any closure walk begins.
+//
+// THE BARE `import` NEEDS ITS OWN ARM, and finding that is what makes this more than a rewrite of
+// the skipped branch. A line of `import` followed only by spaces TRIMS TO `import` with no trailing
+// space, so `starts_with(prefix: "import ")` is FALSE for it: the scan below never classified it as
+// an import line at all, and neither did the first version of this predicate. It was therefore not
+// merely dropped without a diagnostic -- it was never seen, which is the same narrowed closure
+// reached by a shorter path. Both spellings refuse here.
+fn native_lane_first_malformed_import(content: String) -> Optional<String> {
+  list_find_first(
+    xs: split(s: content, delimiter: "\n"),
+    predicate: fn(line) {
+      let trimmed = trim(line)
+      if trimmed == "import" {
+        true
+      } else {
+        starts_with(s: trimmed, prefix: "import ")
+          && floor_discovery_first_token_before_space(
+               seg: trim(substring(s: trimmed, start: 7, end: string_length(s: trimmed)))
+             ) == ""
+      }
+    }
+  )
+}
+
+fn native_lane_facts_malformed_import_lexeme(facts: NativeLaneSourceFacts) -> String {
+  match facts.malformed_import {
+    Absent => "(none)"
+    Present { value: line } => trim(line)
+  }
+}
+
+fn native_lane_malformed_import_row(facts: List<NativeLaneSourceFacts>) -> Optional<NativeLaneSourceFacts> {
+  list_find_first(
+    xs: facts,
+    predicate: fn(f) {
+      match f.malformed_import {
+        Absent => false
+        Present { value: _ } => true
+      }
+    }
+  )
+}
+
 fn native_lane_declared_imports(content: String) -> List<String> {
   fold(
     split(s: content, delimiter: "\n"),
@@ -1612,10 +1661,11 @@ fn native_lane_declared_imports(content: String) -> List<String> {
 }
 
 type NativeLaneSourceFacts {
-  module: String
+  module: Optional<String>
   path: Symbol
   imports: List<String>
   discovery: FloorDiscoveryWalkState
+  malformed_import: Optional<String>
 }
 
 fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFacts> {
@@ -1627,6 +1677,7 @@ fn native_lane_source_facts(ingest: SourceRootIngest) -> List<NativeLaneSourceFa
         module: native_lane_declared_module_name(content: read.source.carried),
         path: read.compilation_unit,
         imports: native_lane_declared_imports(content: read.source.carried),
+        malformed_import: native_lane_first_malformed_import(content: read.source.carried),
         discovery: discover_floor_rows_for_source(
           repo_path: symbol_lexeme(sym: read.compilation_unit),
           content: read.source.carried
@@ -1652,23 +1703,27 @@ type NativeLaneUniverse {
 }
 
 fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<NativeLaneUniverseModule> {
-  if native_route_universe_member(module_qn: facts.module) {
-    let declarations = fold_list(
-      xs: facts.discovery.rows,
-      empty: [],
-      cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
-    )
-    if length(xs: declarations) == 0 {
-      []
-    } else {
-      [NativeLaneUniverseModule {
-        module: facts.module,
-        path: facts.path,
-        declarations: declarations
-      }]
-    }
-  } else {
-    []
+  match facts.module {
+    Absent => []
+    Present { value: declared } =>
+      if native_route_universe_member(module_qn: declared) {
+        let declarations = fold_list(
+          xs: facts.discovery.rows,
+          empty: [],
+          cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.function) }
+        )
+        if length(xs: declarations) == 0 {
+          []
+        } else {
+          [NativeLaneUniverseModule {
+            module: declared,
+            path: facts.path,
+            declarations: declarations
+          }]
+        }
+      } else {
+        []
+      }
   }
 }
 
@@ -1683,31 +1738,52 @@ fn native_lane_universe_module_for_source(facts: NativeLaneSourceFacts) -> List<
 // — and such an identity cannot be routed, because the driver resolves by module. The seed refused
 // this state by name (UniverseEntryOutsideSubject) when its module index did not hold a row's
 // entry; keeping the refusal is what stops the derivation from quietly shrinking the universe.
-fn native_lane_unowned_row_path(facts: List<NativeLaneSourceFacts>) -> String {
-  fold_list(
+fn native_lane_unowned_row_path(facts: List<NativeLaneSourceFacts>) -> Optional<Symbol> {
+  match list_find_first(
     xs: facts,
-    empty: "",
-    cons: fn(acc, f) {
-      if acc != "" {
-        acc
-      } else if (f.module == "") && (length(xs: f.discovery.rows) > 0) {
-        symbol_lexeme(sym: f.path)
-      } else {
-        ""
+    predicate: fn(f) {
+      match f.module {
+        Absent => length(xs: f.discovery.rows) > 0
+        Present { value: _ } => false
       }
     }
-  )
+  ) {
+    Absent => optional_absent()
+    Present { value: f } => optional_present(value: f.path)
+  }
 }
 
 fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse> {
   let facts = native_lane_source_facts(ingest: ingest)
-  let unowned = native_lane_unowned_row_path(facts: facts)
-  if unowned != "" {
-    return native_lane_refused(
-      reason: ^native_lane_universe_entry_outside_subject,
-      detail: unowned
-    )
+  match native_lane_malformed_import_row(facts: facts) {
+    Present { value: f } =>
+      native_lane_refused(
+        reason: ^native_lane_import_line_names_no_module,
+        detail: concat(
+          "import line names no module at ",
+          symbol_lexeme(sym: f.path),
+          ": ",
+          native_lane_facts_malformed_import_lexeme(facts: f)
+        )
+      )
+    Absent =>
+      match native_lane_unowned_row_path(facts: facts) {
+        Present { value: unowned } =>
+          native_lane_refused(
+            reason: ^native_lane_universe_entry_outside_subject,
+            detail: symbol_lexeme(sym: unowned)
+          )
+        Absent =>
+          native_lane_universe_after_ownership(facts: facts)
+      }
   }
+}
+
+// THE OWNERSHIP ARM IS ITS OWN DECLARATION RATHER THAN A NESTED BLOCK, because the refusal above
+// it is an expression: `.dag` has no early `return` to fall through, so the accepted path has to be
+// the other arm of the same match. Splitting it keeps that arm one call wide instead of indenting
+// the entire derivation inside a match arm. Consumer: native_lane_universe, the only caller.
+fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> Outcome<NativeLaneUniverse> {
   match floor_discovery_finalize_source_outcomes(
     outcomes: fold_list(xs: facts, empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.discovery) })
   ) {
@@ -1838,7 +1914,7 @@ fn native_lane_module_reachable(
       xs: facts,
       empty: [],
       cons: fn(acc, f) {
-        if native_lane_module_named(xs: frontier, name: f.module) {
+        if native_lane_facts_module_named(xs: frontier, facts: f) {
           fold_list(
             xs: f.imports,
             empty: acc,
@@ -1906,11 +1982,34 @@ fn native_lane_closure_modules(
 // value instead of recomputing it. Absence is `Optional`, not a `""` sentinel: a source whose
 // header declares no module is in no closure by construction, and that is an answer rather than an
 // empty string.
+// A SOURCE WITH NO MODULE HEADER MATCHES NO NAME, and these two say so once instead of at each
+// site. Making NativeLaneSourceFacts.module an Optional turned every read of it into a match, and
+// the same two-line match was about to appear at four call sites -- the frontier walk, both halves
+// of the closure-member join, and the refusal detail. Consumers: native_lane_closure_grow (the
+// frontier test), native_lane_ingest_matches_closure (the join and its detail).
+//
+// THE ABSENT ARM IS NOT A DEFAULT. `false` here is the answer to "does this source declare the
+// name we are looking for", and a source that declares no module cannot; it is not a stand-in for
+// a name we failed to read. The lexeme form is used only inside a refusal message, where the
+// absent case names itself rather than rendering as an empty gap in the sentence.
+fn native_lane_facts_module_named(xs: List<String>, facts: NativeLaneSourceFacts) -> Bool {
+  match facts.module {
+    Absent => false
+    Present { value: declared } => native_lane_module_named(xs: xs, name: declared)
+  }
+}
+
+fn native_lane_facts_module_lexeme(facts: NativeLaneSourceFacts) -> String {
+  match facts.module {
+    Absent => "(no module header)"
+    Present { value: declared } => declared
+  }
+}
+
 fn native_lane_module_for_path(facts: List<NativeLaneSourceFacts>, path: Symbol) -> Optional<String> {
   match list_find_first(xs: facts, predicate: fn(f) { f.path == path }) {
     Absent => optional_absent()
-    Present { value: f } =>
-      if f.module == "" { optional_absent() } else { optional_present(value: f.module) }
+    Present { value: f } => f.module
   }
 }
 
@@ -2041,8 +2140,8 @@ fn native_lane_ingest_matches_closure(
       let closure_member_absent = list_find_first(
         xs: facts,
         predicate: fn(f) {
-          native_lane_module_named(xs: receipt.closure_modules, name: f.module)
-            && !native_lane_module_named(xs: ingested_modules, name: f.module)
+          native_lane_facts_module_named(xs: receipt.closure_modules, facts: f)
+            && !native_lane_facts_module_named(xs: ingested_modules, facts: f)
         }
       )
       match closure_member_absent {
@@ -2051,7 +2150,7 @@ fn native_lane_ingest_matches_closure(
             reason: ^native_lane_closure_member_not_ingested,
             detail: concat(
               "closure module was never ingested: ",
-              f.module,
+              native_lane_facts_module_lexeme(facts: f),
               " declared at ",
               symbol_lexeme(sym: f.path)
             )
