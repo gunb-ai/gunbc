@@ -1,0 +1,31 @@
+module gunbc.source_root_eval_driver_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE ROW EXISTS BECAUSE AN ANNOTATION IS NOT A DECLARATION (review 64181, DESIGN section 4c: "an
+// annotation is never evidence that a machine claim holds, because no Accepted program can read
+// one"). The retention of the SourceRootEvalDriver's rendered main was argued thoroughly in a `//`
+// block on emit_source_root_eval_driver_main_rs, and that block asserted that "the only place its
+// retention can be stated is on this function" — which was false when it was written: about twenty
+// modules already carry a SeedGrowthJustification, and this driver had none. Section 7 wants a
+// declared row with a reason and a migration trigger, COUNTABLE and prioritizable; prose on the
+// function is readable by people and by nothing else.
+data source_root_eval_driver_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1.compiler.emit_rust",
+      decl_name: "emit_source_root_eval_driver_main_rs",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "One hand-authored declaration renders the SourceRootEvalDriver's main.rs as target-language text: roughly 500 lines of Rust spelled as string literals inside a .dag concat, not emitter logic over Nodes. It is a single declaration by the citable count and one program by the real one, and the gap between those two numbers is the point of this row. WHAT IS IRREDUCIBLY HOST here: argv, the source-root walk and byte reads, the monotonic and wall clocks, the /proc memory reading, stdout and stderr, and the process exit status. Nothing in .dag can perform those, and the driver exists to own exactly that boundary (std.compiler_entry SourceRootEvalDriver). WHAT IS EXPRESSIBLE IN .dag AND STILL RETAINED, each waiting on a named capability rather than on effort: the host-facts TSV decode (read_host_facts, host_fact, host_fact_int), which needs the ingest direction of the one grammar to produce NativeLaneHostFacts from bytes; the [native-cost-partition] JSON rendering, whose ROW SET and reconcile verdict are already a .dag authority this main calls (std.compiler_entry NativeDriverExclusiveRows, native_driver_cost_account) so that only the rendering is retained; and the two-mode orchestration (run_census, run_adjudication: phase order, refusal arms, terminal marker), which needs a .dag driver that can receive host effects as values. THE NET SEED MOTION OF THE CHANGE THAT ADDS THIS IS FAVOURABLE AND IS NOT AN EXCUSE: src/v1/stage0/src/cli_run/native_lane_runner.rs loses about 859 lines as the universe derivation, the fan-out and the admission move into the emitted compiler, and both v1-interpreter brackets are deleted at the root rather than retained as a fallback. A shrinking neighbour does not discharge this declaration; it only means the lane is moving the right way while this piece has not moved yet.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete this rendered main when a .dag driver function can receive the host operations above AS VALUES — argv, the walked and read source roots, the two clocks, the /proc reading, the two output sinks and the exit status — so that the rendered main becomes one call into that fold and the phase order, the refusal arms and the terminal marker are decided in .dag. That is the capability, and it retires the whole row. WHAT DOES NOT RETIRE IT, named because each is the tempting smaller artifact: migrating the TSV decode alone, which leaves the orchestration hand-authored; rendering the cost row from .dag alone, which is already half-done since the row set and the verdict are a .dag authority and only the JSON rendering is retained; and shrinking the template by moving Rust text into a second emitter helper, which relocates the hand-authored program without reducing it.",
+
+  current_boundary: "v1.compiler.emit_rust emit_source_root_eval_driver_main_rs -> the rendered main.rs of the emitted closure crate -> claim_executor --v2-native-route (v1_compiler.cli_run.native_lane_runner run_required_v2_native), which spawns that binary in census and adjudicate modes"
+}
