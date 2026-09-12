@@ -442,27 +442,37 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             if value.get("_terminal").and_then(|t| t.as_str()) != Some("complete") {
                 return Err(format!("terminal marker is not complete: {line}"));
             }
+            // EVERY MARKER FIELD IS REQUIRED, NONE IS DEFAULTED. These were `unwrap_or` defaults,
+            // and each one fabricated a different lie: a missing `rows`/`universe`/`file_refusals`
+            // printed as `0` in the route's own summary line, so a marker that lost its counts
+            // reported a run that measured nothing; a missing `admitted` defaulted to `false` and
+            // a missing `summary` to the empty string, so the refusal downstream read
+            // `cause=AdmissionRefused — ` with no cause at all. The binary's own outbound rule a
+            // few lines below is the opposite — it refuses a missing or duplicated host-fact key
+            // rather than defaulting one — and the inbound side now matches it (review 64181).
+            let need_u64 = |key: &str| -> Result<u64, String> {
+                value
+                    .get(key)
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| format!("terminal marker carries no {key}: {line}"))
+            };
+            let need_str = |key: &str| -> Result<String, String> {
+                value
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("terminal marker carries no {key}: {line}"))
+            };
             terminal = Some(NativeTerminalMarker {
-                mode: value
-                    .get("mode")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                rows: value.get("rows").and_then(|r| r.as_u64()).unwrap_or(0),
-                universe: value.get("universe").and_then(|r| r.as_u64()).unwrap_or(0),
-                file_refusals: value
-                    .get("file_refusals")
-                    .and_then(|r| r.as_u64())
-                    .unwrap_or(0),
+                mode: need_str("mode")?,
+                rows: need_u64("rows")?,
+                universe: need_u64("universe")?,
+                file_refusals: need_u64("file_refusals")?,
                 admitted: value
                     .get("admitted")
                     .and_then(|a| a.as_bool())
-                    .unwrap_or(false),
-                summary: value
-                    .get("summary")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
+                    .ok_or_else(|| format!("terminal marker carries no admitted: {line}"))?,
+                summary: need_str("summary")?,
             });
             continue;
         }
@@ -479,7 +489,25 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 path: path.to_string(),
                 fatal_reason: fatal_reason.to_string(),
             });
+            continue;
         }
+        // THE BASE CONTRACT, RESTORED (review 64181). This loop had no final arm, so any line that
+        // was neither the terminal marker nor a file refusal fell off the end silently — an
+        // undeclared drop of the rule the base states in as many words: the binary's stdout is a
+        // receipt surface, and an unrecognized line on it is a harness defect, not noise.
+        //
+        // A POPULATION ROW IS RECOGNIZED, NOT DECODED. The adjudication moved into the emitted
+        // binary, so the host no longer needs each verdict — it counts them through the marker.
+        // But the rows are still on this surface, so they are recognized by the shape the
+        // authority gives them (NativeRouteMemberRow: an `identity` and a `verdict`) rather than
+        // waved past by a catch-all, which would re-open exactly the hole this arm closes.
+        if value.get("identity").is_some() && value.get("verdict").is_some() {
+            continue;
+        }
+        return Err(format!(
+            "unrecognized line on the native run's stdout — it is a receipt surface, so this is a \
+             harness defect rather than noise: {line}"
+        ));
     }
     let terminal =
         terminal.ok_or_else(|| "the native run printed no terminal marker".to_string())?;

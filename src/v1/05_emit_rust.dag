@@ -16806,17 +16806,27 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 //
 // THE PREPARE-REFUSAL FAN-OUT AND THE CONTEXT RECLASSIFICATION are no longer rendered here or
 // performed by the host: both are the same per-module decision and live in the `.dag` fold this
-// main calls (v2.compiler.compile native_lane_module_rows), so the row count still equals the
+// main calls (v2.compiler.compile native_lane_module_preparation), so the row count still equals the
 // universe size and every refusal stays located per test identity.
 //
 // THE FILESYSTEM READ IS THE HOST BOUNDARY THE DRIVER OWNS (std.compiler_entry): the rendered
 // main walks the declared source roots, reads the bytes, and mints one DagSourceReadWitness per
 // path -- the .dag pipeline itself never touches IO.
 //
-// THIS MAIN IS SEED, AND ITS FRONTIER IS DECLARED HERE, PART BY PART (DESIGN section 7; review
-// 63791). Every line of it is hand-authored Rust spelled as string literals, which no Rust census
-// counts and no `.dag` lens reads, so the only place its retention can be stated is on this
-// function. It divides into two parts, and only the first is irreducible.
+// THIS MAIN IS SEED, AND ITS RETENTION IS DECLARED AS A ROW, NOT HERE (DESIGN section 7; reviews
+// 63791 and 64181). The declaration lives at `gunbc.source_root_eval_driver_seed_growth`
+// `source_root_eval_driver_seed_growth_justification`, with the reason, the owning dissolution
+// lane and the capability that retires it. An earlier version of this block asserted that "the
+// only place its retention can be stated is on this function", which was simply wrong: about
+// twenty modules already carry a SeedGrowthJustification and this driver had none, so the claim
+// both misdescribed the corpus and excused the missing row. Section 4c is the reason it matters —
+// no `Accepted` program can read a `//` block, so prose here is readable by people and countable
+// by nothing.
+//
+// WHAT FOLLOWS IS THE PART-BY-PART MAP the row does not carry: which named function is which kind
+// of retention, so a reader editing this template knows what they are touching. The row carries
+// the reason and the trigger; this carries the geography. It divides into two parts, and only the
+// first is irreducible.
 //
 // HOST BOUNDARY, retained by cause and not by schedule: argv (`main`, the mode dispatch's input),
 // the source-root walk and byte reads (`collect_dag_paths`, the read into DagSourceReadWitness),
@@ -17064,15 +17074,27 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    i64::try_from(n).unwrap_or(i64::MAX)", "\n",
       "\}", "\n",
       "", "\n",
+      "// A CLOCK THAT CANNOT ANSWER REFUSES (review 64181). This reading feeds all six exclusive", "\n",
+      "// phase spans, so a clamped 0 does not degrade one field -- it reports a phase as having taken", "\n",
+      "// no time, and the reconcile law then sees a partition that balances for the wrong reason.", "\n",
       "fn now_nanos() -> u128 \{", "\n",
-      "    std::time::SystemTime::now()", "\n",
-      "        .duration_since(std::time::UNIX_EPOCH)", "\n",
-      "        .map(|d| d.as_nanos())", "\n",
-      "        .unwrap_or(0)", "\n",
+      "    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) \{", "\n",
+      "        Ok(d) => d.as_nanos(),", "\n",
+      "        Err(cause) => \{", "\n",
+      "            eprintln!(\"REFUSED: the system clock is before the unix epoch, so no phase span is measurable: \{cause\}\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
       "\}", "\n",
       "", "\n",
-      "fn proc_status_kib(key: &str) -> u64 \{", "\n",
-      "    let text = std::fs::read_to_string(\"/proc/self/status\").unwrap_or_default();", "\n",
+      "// AN UNREADABLE /proc IS ABSENT, NOT ZERO (review 64181). A zero here was printed as", "\n",
+      "// peak_rss_bytes / rss_bytes and read as a measurement: a run on a host without /proc, or with", "\n",
+      "// the key renamed, reported a process using no memory. Absence is carried as None and rendered", "\n",
+      "// as JSON null, so the receipt says it does not know instead of inventing a figure. This is", "\n",
+      "// telemetry on no receipt field, so it is the one place an Absent is carried rather than", "\n",
+      "// refused: the run is still a valid observation of everything else.", "\n",
+      "fn proc_status_kib(key: &str) -> Option<u64> \{", "\n",
+      "    let text = std::fs::read_to_string(\"/proc/self/status\").ok()?;", "\n",
       "    for line in text.lines() \{", "\n",
       "        if let Some(rest) = line.strip_prefix(key) \{", "\n",
       "            return rest", "\n",
@@ -17080,16 +17102,18 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                .trim()", "\n",
       "                .split_whitespace()", "\n",
       "                .next()", "\n",
-      "                .and_then(|n| n.parse::<u64>().ok())", "\n",
-      "                .unwrap_or(0);", "\n",
+      "                .and_then(|n| n.parse::<u64>().ok());", "\n",
       "        \}", "\n",
       "    \}", "\n",
-      "    0", "\n",
+      "    None", "\n",
       "\}", "\n",
       "", "\n",
       "fn run_adjudication(facts_path: &str, source_roots: &[String]) \{", "\n",
       "    let driver_start = Instant::now();", "\n",
-      "    let head = std::env::var(\"GITHUB_SHA\").unwrap_or_else(|_| \"local\".to_string());", "\n",
+      "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this", "\n",
+      "    // as the tree the measurement describes; the literal \"local\" is a plausible identity that", "\n",
+      "    // no reader can distinguish from a tree actually named local.", "\n",
+      "    let head: Option<String> = std::env::var(\"GITHUB_SHA\").ok();", "\n",
       "    let facts = read_host_facts(facts_path);", "\n",
       "", "\n",
       "    // the load row: reading the declared roots off disk. Its own exclusive row rather than a", "\n",
@@ -17125,20 +17149,27 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            std::process::exit(1);", "\n",
       "        \}", "\n",
       "    \};", "\n",
-      "    let closure_ingest = native_lane_closure_ingest(ingest.clone(), closure.clone());", "\n",
+      "    let closure_ingest = native_lane_closure_ingest(ingest.clone(), source_facts.clone(), closure.clone());", "\n",
       "    let closure_reads = closure_ingest.len();", "\n",
       "    // The ingest receipt's identity join, asked by the route: every ingested source declares a", "\n",
       "    // closure module and every closure module some source declares was ingested. A miss is the", "\n",
       "    // hidden prepass (or a hidden narrowing) this receipt exists to refuse.", "\n",
       "    let ingest_receipt = native_lane_ingest_receipt(source_facts.clone(), closure.clone(), closure_ingest.clone());", "\n",
-      "    if !native_lane_ingest_matches_closure(source_facts.clone(), ingest_receipt.clone(), closure_ingest.clone()) \{", "\n",
-      "        eprintln!(", "\n",
-      "            \"INGEST-CLOSURE-REFUSED: scanned={} ingested={} closure_modules={}\",", "\n",
-      "            ingest_receipt.scanned_paths.len(),", "\n",
-      "            ingest_receipt.ingested_paths.len(),", "\n",
-      "            ingest_receipt.closure_modules.len(),", "\n",
-      "        );", "\n",
-      "        std::process::exit(1);", "\n",
+      "    // The join answers a typed refusal naming the offending identity, so the counts below are", "\n",
+      "    // context for it rather than the whole diagnostic: a reader gets the module and the path,", "\n",
+      "    // not a pair of totals to re-derive the offender from.", "\n",
+      "    match &*native_lane_ingest_matches_closure(source_facts.clone(), ingest_receipt.clone(), closure_ingest.clone()) \{", "\n",
+      "        Outcome::Accepted \{ .. \} => \{\}", "\n",
+      "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
+      "            eprintln!(", "\n",
+      "                \"INGEST-CLOSURE-REFUSED: {:#?} (scanned={} ingested={} closure_modules={})\",", "\n",
+      "                diagnostics,", "\n",
+      "                ingest_receipt.scanned_paths.len(),", "\n",
+      "                ingest_receipt.ingested_paths.len(),", "\n",
+      "                ingest_receipt.closure_modules.len(),", "\n",
+      "            );", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
       "    \}", "\n",
       "    let universe_nanos = now_nanos().saturating_sub(universe_started);", "\n",
       "", "\n",
@@ -17239,7 +17270,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;", "\n",
       "    let accounting = native_driver_cost_account(", "\n",
       "        nanosecond(native_cost_i64(parent_span_nanos)),", "\n",
-      "        exclusive,", "\n",
+      "        exclusive.clone(),", "\n",
       "        native_driver_cost_remainder_tolerance_nanos(),", "\n",
       "    );", "\n",
       "    // The remainder is the residual the accounting itself returns, never parent minus sum: on", "\n",
@@ -17256,6 +17287,13 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let identities = universe.identities.len() as u64;", "\n",
       "    let eval_mean = if eval_samples.is_empty() \{ 0 \} else \{ evaluate_total_nanos / eval_samples.len() as u128 \};", "\n",
       "    let prepare_mean = if prepare_samples.is_empty() \{ 0 \} else \{ prepare_total_nanos / prepare_samples.len() as u128 \};", "\n",
+      "    // THE ROWS ARE PROJECTED FROM THE VALUE, NOT RE-LISTED (review 64181). The six field names", "\n",
+      "    // were written once to build NativeDriverExclusiveRows and again to render it, which is the", "\n",
+      "    // second spelling this file warns about for prose, applied to the emitted object: a driver", "\n",
+      "    // gaining a phase would have updated the struct and left the receipt short. Serializing the", "\n",
+      "    // value carries the row set from the type, so the JSON cannot disagree with the fold. The", "\n",
+      "    // rows therefore render as std.measure Nanosecond objects rather than bare integers -- the", "\n",
+      "    // unit travels with the number, which is the point of the type.", "\n",
       "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!(\{", "\n",
       "        \"basis\": \"native_driver_wall\",", "\n",
       "        \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\",", "\n",
@@ -17265,14 +17303,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \"verdict\": verdict,", "\n",
       "        \"tolerance_nanos\": tolerance_nanos,", "\n",
       "        \"parent_span_nanos\": parent_span_nanos,", "\n",
-      "        \"exclusive\": \{", "\n",
-      "            \"load\": load_nanos,", "\n",
-      "            \"universe_derivation\": universe_nanos,", "\n",
-      "            \"context\": context_nanos,", "\n",
-      "            \"prepare\": prepare_total_nanos,", "\n",
-      "            \"eval\": evaluate_total_nanos,", "\n",
-      "            \"receipt_admission\": admission_nanos,", "\n",
-      "        \},", "\n",
+      "        \"exclusive\": exclusive,", "\n",
       "        \"sum_exclusive_nanos\": exclusive_sum,", "\n",
       "        \"remainder_nanos\": remainder_nanos,", "\n",
       "        \"corpus_reads\": corpus_reads,", "\n",
@@ -17293,8 +17324,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2),", "\n",
       "        \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20),", "\n",
       "        \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0),", "\n",
-      "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\") * 1024,", "\n",
-      "        \"rss_bytes\": proc_status_kib(\"VmRSS\") * 1024,", "\n",
+      "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),", "\n",
+      "        \"rss_bytes\": proc_status_kib(\"VmRSS\").map(|kib| kib * 1024),", "\n",
       "    \}));", "\n",
       "", "\n",
       "    for refusal in receipt.file_refusals.iter() \{", "\n",

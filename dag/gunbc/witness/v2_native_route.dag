@@ -14,6 +14,7 @@ import v2.compiler.native_test_vocabulary {
 import v2.workflow.compile_door_cause_ownership {
   CauseLane, DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup, known_frontier_causes
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
@@ -470,6 +471,12 @@ type NativeRouteMalformedControl
 // with the producer that establishes it. DISSOLVE-ON: that lane lands and every consumer of this
 // arm can assert the stronger fact instead, at which point this arm deletes rather than being
 // relabelled.
+// THE DISSOLVE-ON ABOVE IS A ROW, NOT ONLY PROSE (review 64181, DESIGN section 4c). The sibling
+// module this PR adds states its dissolution as a DissolutionCondition that a fold can read;
+// stating this one only in a `//` block would leave the condition invisible to every Accepted
+// program, which is the same defect one file over.
+data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — the native ancestry acquisition lane lands a producer that establishes OldRouteAbsentByConstruction (no v1 emitter or interpreter reachable at all, the closure admitted by native ancestry). At that point every consumer of this arm asserts the stronger fact and this arm DELETES rather than being relabelled: the two say different things, and keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
   | OldRouteNotPresentAtWindow { expected_executable: String }

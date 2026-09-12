@@ -2,7 +2,6 @@ module v2.compiler.compile
 
 import std.compiler_entry { CompilerEntryDriver, SourceRootEvalDriver }
 import gunbc.witness_v2_native_route {
-  NativeRouteAdmission,
   NativeRouteEmittedBuild,
   NativeRouteMalformedControl,
   NativeRouteMemberRow,
@@ -10,9 +9,6 @@ import gunbc.witness_v2_native_route {
   NativeRouteReceipt,
   NativeRouteTestIdentity,
   NativeRouteOldRouteControl,
-  native_route_admission,
-  native_route_admission_summary,
-  native_route_admitted,
   native_route_live_control_false_declaration,
   native_route_live_control_module,
   native_route_live_control_true_declaration,
@@ -1339,25 +1335,34 @@ fn native_lane_module_reachable(
       detail: native_lane_closure_exhausted_detail(budget: budget, frontier: frontier)
     )
   } else {
+    // ONE PASS OVER THE FACTS PER ROUND, NOT ONE PER FRONTIER MEMBER (review 64181). This fold used
+    // to run `fold_list(xs: facts, ...)` INSIDE the per-frontier fold, so a round cost
+    // |frontier| x |facts| and rescanned every source fact for every module still to expand. The
+    // facts are now walked once per round and each fact contributes its imports if its own module
+    // is on this round's frontier, which is the same answer for strictly less work.
+    //
+    // IT IS STILL NOT THE KEYED JOIN, and this comment does not get to imply otherwise: the
+    // frontier membership test below is a list scan, so the round remains O(facts x frontier) and
+    // the walk O(rounds x facts x frontier). Removing that factor needs keyed lookup, which v2
+    // does not have — `v2.std.collection` `map_insert` builds a CLOSURE CHAIN whose lookup walks
+    // every prior insert, so a set built from it answers membership in O(n) exactly like
+    // `contains`. The capability is declared and unrealized: `v2.std.collection`
+    // `map_insert_host_binding` binds `std.primitives` `map_insert_contract` and nothing delegates
+    // to it. THAT is the trigger — primitive-backed `map_insert`/`map_lookup` delegates — and until
+    // it lands this fold is the honest shape rather than a keyed set in name.
     let next = fold_list(
-      xs: frontier,
+      xs: facts,
       empty: [],
-      cons: fn(acc, needed) {
-        fold_list(
-          xs: facts,
-          empty: acc,
-          cons: fn(inner, f) {
-            if f.module == needed {
-              fold_list(
-                xs: f.imports,
-                empty: inner,
-                cons: fn(grown, imported) { list_snoc_item(xs: grown, item: imported) }
-              )
-            } else {
-              inner
-            }
-          }
-        )
+      cons: fn(acc, f) {
+        if native_lane_module_named(xs: frontier, name: f.module) {
+          fold_list(
+            xs: f.imports,
+            empty: acc,
+            cons: fn(grown, imported) { list_snoc_item(xs: grown, item: imported) }
+          )
+        } else {
+          acc
+        }
       }
     )
     let unseen = fold_list(
@@ -1409,19 +1414,39 @@ fn native_lane_closure_modules(
 
 // The ingest restricted to that closure, in the order the reads arrived. A source whose header
 // declares no module is not in any closure by construction: nothing can import it.
+// THE DECLARED MODULE IS CARRIED, NOT RE-DERIVED (review 64181, DESIGN section 2: "carry, rewire,
+// or share the first value"). `native_lane_source_facts` already split every file once to mint
+// NativeLaneSourceFacts.module; re-running `native_lane_declared_module_name` over the whole file
+// contents at each later join was the same work paid again, under a section comment that claims
+// ONE SOURCE, READ ONCE. The facts are keyed by the path the read carries, so the join reads the
+// value instead of recomputing it. Absence is `Optional`, not a `""` sentinel: a source whose
+// header declares no module is in no closure by construction, and that is an answer rather than an
+// empty string.
+fn native_lane_module_for_path(facts: List<NativeLaneSourceFacts>, path: Symbol) -> Optional<String> {
+  match list_find_first(xs: facts, predicate: fn(f) { f.path == path }) {
+    Absent => optional_absent()
+    Present { value: f } =>
+      if f.module == "" { optional_absent() } else { optional_present(value: f.module) }
+  }
+}
+
 fn native_lane_closure_ingest(
   ingest: SourceRootIngest,
+  facts: List<NativeLaneSourceFacts>,
   closure: List<String>
 ) -> SourceRootIngest {
   fold_list(
     xs: ingest,
     empty: Empty,
     cons: fn(acc, read) {
-      let declared = native_lane_declared_module_name(content: read.source.carried)
-      if (declared != "") && native_lane_module_named(xs: closure, name: declared) {
-        list_snoc_item(xs: acc, item: read)
-      } else {
-        acc
+      match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+        Absent => acc
+        Present { value: declared } =>
+          if native_lane_module_named(xs: closure, name: declared) {
+            list_snoc_item(xs: acc, item: read)
+          } else {
+            acc
+          }
       }
     }
   )
@@ -1479,38 +1504,78 @@ fn native_lane_ingest_receipt(
 // any source declares was ingested. A source whose header declares no module cannot be in a closure
 // and cannot be reached by an import, so its presence in the ingest would be exactly the hidden
 // prepass this check exists to refuse.
+// THE JOIN REFUSES BY IDENTITY, NOT BY COUNT (review 64181, DESIGN section 5: "every path succeeds
+// fully or fails with a typed, located diagnostic"). This answered `Bool`, so the three all-or
+// -nothing `&&` accumulators discarded WHICH module and WHICH path broke the join, and the only
+// thing the consumer could print was scanned=/ingested=/closure_modules= counts -- a reader given
+// "2154 != 2155" has to re-derive the offender by hand. The module already owns the right carrier
+// (`native_lane_refused` with a located detail), so the first offending identity is named instead.
+//
+// The two directions are separate refusals because they are separate defects: an INGESTED source
+// outside the closure is the hidden prepass this receipt exists to catch, and a CLOSURE module
+// that never arrived is a narrowed ingest whose absence would otherwise surface downstream as an
+// unexplained resolve refusal.
 fn native_lane_ingest_matches_closure(
   facts: List<NativeLaneSourceFacts>,
   receipt: NativeLaneIngestReceipt,
   ingest: SourceRootIngest
-) -> Bool {
-  let every_ingested_in_closure = fold_list(
+) -> Outcome<Bool> {
+  let ingested_outside = list_find_first(
     xs: ingest,
-    empty: true,
-    cons: fn(acc, read) {
-      let declared = native_lane_declared_module_name(content: read.source.carried)
-      acc && (declared != "") && native_lane_module_named(xs: receipt.closure_modules, name: declared)
-    }
-  )
-  let ingested_modules = fold_list(
-    xs: ingest,
-    empty: [],
-    cons: fn(acc, read) {
-      list_snoc_item(xs: acc, item: native_lane_declared_module_name(content: read.source.carried))
-    }
-  )
-  let every_declared_closure_module_ingested = fold_list(
-    xs: facts,
-    empty: true,
-    cons: fn(acc, f) {
-      if native_lane_module_named(xs: receipt.closure_modules, name: f.module) {
-        acc && native_lane_module_named(xs: ingested_modules, name: f.module)
-      } else {
-        acc
+    predicate: fn(read) {
+      match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+        Absent => true
+        Present { value: declared } => !native_lane_module_named(xs: receipt.closure_modules, name: declared)
       }
     }
   )
-  every_ingested_in_closure && every_declared_closure_module_ingested
+  match ingested_outside {
+    Present { value: read } =>
+      native_lane_refused(
+        reason: ^native_lane_ingest_outside_closure,
+        detail: concat(
+          "ingested source is not a closure member: path ",
+          symbol_lexeme(sym: read.compilation_unit),
+          ", declared module ",
+          match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+            Absent => "(none -- the header declares no module, so nothing can import it)"
+            Present { value: m } => m
+          }
+        )
+      )
+    Absent => {
+      let ingested_modules = fold_list(
+        xs: ingest,
+        empty: [],
+        cons: fn(acc, read) {
+          match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+            Absent => acc
+            Present { value: m } => list_snoc_item(xs: acc, item: m)
+          }
+        }
+      )
+      let closure_member_absent = list_find_first(
+        xs: facts,
+        predicate: fn(f) {
+          native_lane_module_named(xs: receipt.closure_modules, name: f.module)
+            && !native_lane_module_named(xs: ingested_modules, name: f.module)
+        }
+      )
+      match closure_member_absent {
+        Present { value: f } =>
+          native_lane_refused(
+            reason: ^native_lane_closure_member_not_ingested,
+            detail: concat(
+              "closure module was never ingested: ",
+              f.module,
+              " declared at ",
+              symbol_lexeme(sym: f.path)
+            )
+          )
+        Absent => outcome_accepted(value: true)
+      }
+    }
+  }
 }
 
 // ── the observed population ────────────────────────────────────────────────────────────────
@@ -1533,10 +1598,16 @@ fn native_lane_ingest_matches_closure(
 //
 // WHAT THIS IS STILL NOT, stated so it is not read as finished: a first-match scan is O(refusals)
 // per module and the caller runs it once per universe module, so the join remains O(modules x
-// refusals) with the early exit only improving the constant. The structural fix is a path-keyed
-// index over context.file_refusals built ONCE per run and probed per module -- the same keyed-set
-// realization the closure walk and the ingest join need for their `contains` over List<String>.
-// It lands with that realization rather than as a third helper here.
+// refusals) with the early exit only improving the constant.
+//
+// THE TRIGGER IS A MISSING CAPABILITY, NOT A DEFERRED CHORE, and naming it as one was the defect
+// review 64181 caught. A path-keyed index cannot be built in v2 today: `v2.std.collection`
+// `map_insert` returns a Map whose `lookup` closes over the previous map, so an n-insert set
+// answers membership by walking n frames -- asymptotically the `contains` this would replace.
+// `empty_map` is the only wired delegate in that module. The capability is already MODELLED and
+// unrealized: `v2.std.collection` `map_insert_host_binding` binds `std.primitives`
+// `map_insert_contract`, and nothing delegates to it. When that delegate lands, this lookup and
+// the closure walk and the ingest join all retarget in one motion.
 fn native_lane_file_refusal_for_path(refusals: FreeMonoid<NativeTestFileRefusal>, path: Symbol) -> Optional<NativeTestFileRefusal> {
   list_find_first(xs: refusals, predicate: fn(fr) { fr.path == path })
 }
@@ -1650,8 +1721,25 @@ fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
     context: context,
     module: qualified_name_from_dotted_string(dotted: native_route_live_control_module)
   ) {
-    Rejected { diagnostics: _ } =>
-      NativeLaneControls { false_control: optional_absent(), true_control: optional_absent() }
+    // THE CONTROL MODULE'S OWN FAILURE IS CARRIED, NOT COLLAPSED (review 64181). This discarded
+    // the resolver's diagnostics and answered Absent/Absent, which admission does refuse -- so it
+    // was never fail-open -- but it made a DEFECT IN THE CONTROL MODULE indistinguishable from any
+    // other missing verdict, which is the one distinction these two controls exist to draw. The
+    // refusal is carried as the verdict it is, at the stage it happened, with the reason every
+    // sibling arm preserves. Both clauses already map NativeTestRefused to false
+    // (gunbc.witness_v2_native_route native_route_false_control_holds / _true_control_holds), so
+    // this reports the same verdict with the cause attached rather than changing what is admitted.
+    Rejected { diagnostics: d } =>
+      {
+        let refused = NativeTestRefused {
+          stage: NativeTestStagePrepare,
+          reason: native_test_fatal_reason(d: d)
+        }
+        NativeLaneControls {
+          false_control: optional_present(value: refused),
+          true_control: optional_present(value: refused)
+        }
+      }
     Accepted { value: prepared, diagnostics: _ } =>
       {
         let false_observation = native_test_eval_one(

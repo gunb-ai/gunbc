@@ -1,10 +1,8 @@
 module v2.workflow.compile_door_cause_ownership
 
-import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.optional { Optional }
 import v2.std.algebra { list_find_first }
 import std.types { String }
 
