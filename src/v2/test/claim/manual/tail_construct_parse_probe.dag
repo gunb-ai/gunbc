@@ -169,7 +169,7 @@ fn tcp_corpus_sample_established_count() -> Int {
     tcp_established_at(path: "src/v2/lens/application_serializer.dag") +
     tcp_established_at(path: "src/v2/lens/complexity.dag") +
     tcp_established_at(path: "src/v2/lens/complexity_accumulator_copy.dag") +
-    tcp_established_at(path: "src/v2/lens/complexity_accumulator_copy_test.dag") +
+    tcp_established_at(path: "src/v2/test/complexity_accumulator_copy_test.dag") +
     tcp_established_at(path: "dag/std/abi.dag") +
     tcp_established_at(path: "dag/std/access.dag") +
     tcp_established_at(path: "dag/std/affine_space.dag") +

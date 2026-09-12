@@ -1,6 +1,7 @@
 module extdeps.apt
 
-import std.types { NonEmptyStr, FilePath, String, Bool, List }
+import std.types { NonEmptyStr, FilePath, Bool, List, Unit }
+import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -14,6 +15,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data apt_bin_dir: FilePath = "/usr/bin"
 data apt_local_bin_dir: FilePath = "/usr/local/bin"
+
+// Debian/Ubuntu apt packages in this corpus install their binaries under apt_bin_dir. The
+// path is derived from that directory plus the binary name, the same FHS location
+// apt_get_binary_path already names for apt-get.
+fn apt_installed_bin_path(binary: NonEmptyStr) -> FilePath {
+  concat(apt_bin_dir as String, concat("/", binary as String)) as FilePath
+}
 
 data package_coreutils: NonEmptyStr = "coreutils"     
 data package_grep: NonEmptyStr = "grep"               

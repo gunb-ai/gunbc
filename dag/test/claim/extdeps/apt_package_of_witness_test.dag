@@ -1,0 +1,56 @@
+module test.claim.apt_package_of_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import std.types { Bool, String }
+import extdeps.tools { apt_package_of }
+import extdeps.tools.sshpass { sshpass_cli_tool }
+import extdeps.tools.websocat { websocat_cli_tool }
+import extdeps.tools.mosquitto_pub { mosquitto_pub_cli_tool }
+import extdeps.apt { package_sshpass, apt_installed_bin_path, apt_bin_dir }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PAIR IS THE POINT, and it is a pair of REAL rows rather than fixtures. apt_package_of is a
+// fold that answers Present for a tool carrying SourceApt and Absent for one that does not, so a
+// witness asserting only the Present side would pass against a function that returned the first
+// source unconditionally, and one asserting only Absent would pass against a function that always
+// returned none. Both live tools are enrolled here because the corpus already contains both shapes
+// and a fixture would prove less: sshpass is the subject of this lane, websocat is installed from a
+// GitHub release and has no apt source at all.
+// Hermetic controls for extdeps.tools apt_package_of: an apt-sourced tool resolves to its declared
+// package, a release-sourced tool resolves to Absent rather than a fabricated package, and the
+// resolved package is the declaration rather than the binary name.
+test fn apt_package_of_resolves_the_declared_package() -> Bool {
+  match apt_package_of(tool: sshpass_cli_tool) {
+    Present { value: p } => (p as String) == (package_sshpass as String)
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING HALF. websocat_cli_tool is installed from a GitHub release, so "no apt
+// package" is the CORRECT answer and not a failure to resolve one. This is the row that would go
+// red if apt_package_of ever grew a default -- the §5 fabricated-plausible-output arm, which here
+// would most naturally be `apt install <tool.name>` and would look right for most tools.
+test fn a_tool_with_no_apt_source_resolves_to_absent() -> Bool {
+  match apt_package_of(tool: websocat_cli_tool) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE PACKAGE IS NOT THE BINARY NAME, witnessed against a live row where the two genuinely differ:
+// mosquitto_pub is the executable, mosquitto-clients is the package that provides it. A default of
+// "apt install <binary>" passes both rows above and fails this one, which is why it is enrolled
+// separately rather than folded into the first assertion.
+test fn the_resolved_package_is_not_the_binary_name() -> Bool {
+  match apt_package_of(tool: mosquitto_pub_cli_tool) {
+    Present { value: p } => (p as String) != (mosquitto_pub_cli_tool.name as String)
+    Absent => false
+  }
+}
+
+test fn apt_installed_bin_path_is_apt_bin_dir_plus_the_binary_name() -> Bool {
+  (apt_installed_bin_path(binary: sshpass_cli_tool.name) as String)
+    == concat(apt_bin_dir as String, concat("/", sshpass_cli_tool.name as String))
+}

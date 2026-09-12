@@ -1,6 +1,7 @@
 module gunbc.spark.runtime_architecture_registry_reading
 
 import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 
 // WHICH ARCHITECTURES AN IMAGE ANSWERS FOR IS SOMETHING WE READ, NOT SOMETHING ITS PUBLISHER SAYS.
 //
@@ -54,18 +55,51 @@ fn registry_reading_contains(r: ArchitectureRegistryReading, architecture: NonEm
     if acc { true } else { a as String == architecture as String })
 }
 
-// THE READING FOR ONE IMAGE, OR NOTHING. `none` is not "this image registers nothing": it is "no
-// reading of this digest exists here", and a consumer that folded those together would turn an
+// ONE OBSERVATION, TWO COVERAGES. A get_supported_archs() dump and a single asked architecture are
+// the same fact with different coverage. registry_reading_contains remains dump-only: a miss on
+// a dump is a measured negative.
+type ArchitectureObservation
+  = RegistryDump { reading: ArchitectureRegistryReading }
+  | ArchitectureAsked {
+      image_reference: NonEmptyStr
+      host: NonEmptyStr
+      observed_at: NonEmptyStr
+      instrument: NonEmptyStr
+      architecture: NonEmptyStr
+      present: Bool
+    }
+
+fn architecture_observation_image_reference(o: ArchitectureObservation) -> NonEmptyStr {
+  match o {
+    RegistryDump { reading: r } => r.image_reference
+    ArchitectureAsked {
+      image_reference: r,
+      host: _,
+      observed_at: _,
+      instrument: _,
+      architecture: _,
+      present: _,
+    } => r
+  }
+}
+
+fn architecture_observation_applies_to(o: ArchitectureObservation, desired_reference: NonEmptyStr) -> Bool {
+  (architecture_observation_image_reference(o: o) as String) == (desired_reference as String)
+}
+
+// THE OBSERVATION FOR ONE IMAGE, OR NOTHING. `none` is not "this image registers nothing": it is "no
+// observation of this digest exists here", and a consumer that folded those together would turn an
 // unasked question into a measured negative.
-fn registry_reading_for(readings: List<ArchitectureRegistryReading>, image_reference: NonEmptyStr) -> ArchitectureRegistryReading? {
-  fold(readings, init: none, f: (acc, r) =>
-    if reading_applies_to(r: r, desired_reference: image_reference) { Present { value: r } } else { acc })
+fn architecture_observation_for(observations: List<ArchitectureObservation>, image_reference: NonEmptyStr) -> ArchitectureObservation? {
+  fold(observations, init: none, f: (acc, o) =>
+    if architecture_observation_applies_to(o: o, desired_reference: image_reference) { Present { value: o } } else { acc })
 }
 
 data vllm_registry_instrument: NonEmptyStr = "python3 -c: vllm.model_executor.models.registry.ModelRegistry.get_supported_archs(), executed by `docker run --gpus all` against the pinned digest" as NonEmptyStr
 data sglang_registry_instrument: NonEmptyStr = "python3 -c: sglang.srt.models.registry.ModelRegistry keys, executed by `docker run --gpus all` against the pinned digest" as NonEmptyStr
 
 data spark_a3ee_host: NonEmptyStr = "spark-a3ee (NVIDIA GB10, torch.cuda.get_device_capability(0) = (12, 1))" as NonEmptyStr
+data srv9_gb10_host: NonEmptyStr = "srv9 (NVIDIA GB10, torch.cuda.get_device_capability(0) = (12, 1))" as NonEmptyStr
 
 
 // THE PRODUCTION SPARK RUNTIME'S REGISTRY, 361 entries. It carries thirteen GLM architectures and
@@ -1887,12 +1921,34 @@ data gunbc_vllm_dsv41_gb10_registry_reading: ArchitectureRegistryReading = Archi
   ],
 }
 
-// THE ROSTER EVERY CONSUMER READS, so a reading that exists cannot be missed by a consumer that
-// happened to import only some of them.
-data spark_architecture_registry_readings: List<ArchitectureRegistryReading> = [
-  sparkrun_vllm_ds4_gb10_registry_reading,
-  gitcommit90_glm_53_one_spark_registry_reading,
-  timothystewart6_vllm_gb10_registry_reading,
-  xomoxcc_dgx_spark_sglang_registry_reading,
-  gunbc_vllm_dsv41_gb10_registry_reading,
+// THE PUBLISHED ROUTE-A IMAGE, probed on srv9 by fleet-converge 34643985099
+// (gunbc.spark.v41_runtime_image_probe v41_published_image_probe_ci_wet). The observation is keyed on
+// the pull pin that was inside the container, frozen here the same way every dump freezes its
+// digest: a later edit of v41_published_arm64_digest must fail the join, not inherit this answer.
+// Inspect's config id is a different hash and stays a named readback, not this field.
+data v41_published_arm64_observed_config_id: NonEmptyStr = "sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040" as NonEmptyStr
+
+data v41_published_arm64_architecture_asked: ArchitectureObservation = ArchitectureAsked {
+  image_reference: "vllm/vllm-openai@sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr,
+  host: srv9_gb10_host,
+  observed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
+  instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM. Same config id re-read by fleet-converge 34646650317 (inspect JSON, no --format)." as NonEmptyStr,
+  architecture: deepseek_v4_1_flash_architecture_class,
+  present: true,
+}
+
+data spark_architecture_observations: List<ArchitectureObservation> = [
+  RegistryDump { reading: sparkrun_vllm_ds4_gb10_registry_reading },
+  RegistryDump { reading: gitcommit90_glm_53_one_spark_registry_reading },
+  RegistryDump { reading: timothystewart6_vllm_gb10_registry_reading },
+  RegistryDump { reading: xomoxcc_dgx_spark_sglang_registry_reading },
+  RegistryDump { reading: gunbc_vllm_dsv41_gb10_registry_reading },
+  v41_published_arm64_architecture_asked,
 ]
+
+fn architecture_observation_exists(image_reference: NonEmptyStr) -> Bool {
+  match architecture_observation_for(observations: spark_architecture_observations, image_reference: image_reference) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}

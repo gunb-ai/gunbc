@@ -1,0 +1,202 @@
+module extdeps.memory.micron
+
+import std.measure { ByteSize, byte_size, bit_width }
+import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, MonolithicDie, DualDiePackage }
+import extdeps.vendor.micron { micron }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import extdeps.uri { Uri, Https }
+
+// THE ANCHOR IS MICRON'S OWN PART CATALOG, NOT AN ENCYCLOPAEDIA. micron.com serves one
+// catalogue record per Micron part number from its product database ("data-source":
+// "DATABASE" in the record itself), and that record carries the module's full JEDEC DDR4 SPD
+// image plus a details table (density, industry speed, CAS latency, component configuration,
+// die count, package, status). The page renders client-side; the record it renders is the
+// same origin's _jcr_content.products.json/getproductinfo/-/-/-/en_US/-/<part> resource under
+// the part-detail path, fetched 2026-09-12 with HTTP 200 and no credentials. An SPD image
+// published by the manufacturer is the manufacturer's statement of the module's organization
+// at byte grain, which is stronger evidence than a marketing table and is what every row in
+// this module is read from.
+data micron_part_catalog_mta36ads2g72pz_2g1a1: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.micron.com/products/obsolete/obsolete-vlp-rdimm/part-catalog/part-detail/mta36ads2g72pz-2g1a1"
+  }
+}
+
+data micron_part_catalog_mta36asf2g72pz_2g1a2: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.micron.com/products/obsolete/obsolete-rdimm/part-catalog/part-detail/mta36asf2g72pz-2g1a2"
+  }
+}
+
+// Micron "DDR4 Module Part Numbering System", Rev. 05-Dec-2018, © 2016 Micron Technology,
+// Inc., the sheet Micron publishes at micron.com/numbering. Micron's asset host answered
+// "Request Rejected" to this session (2026-09-12), so the locator is a distributor-hosted copy
+// of Micron's PDF, sha256 7d52c2ad719c2aec1ff3298a0c785e82395e503810a07dcf2591abae2da5c6a2;
+// re-cite the Micron locator when it is reachable. It is the authority for what the letters
+// of a Micron module part number DENOTE, which no catalogue record states.
+data micron_ddr4_module_part_numbering_rev_2018_12_05: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "siewert-kau.info/micron/wp-content/uploads/2020/05/Nomenklatur_Micron.pdf"
+  }
+}
+
+// Micron "288-Pin DDR4 RDIMM Core Product Description", CCM005-341111752-10541,
+// ddr4_rdimm_core.pdf Rev. B 12/2021. Same hosting situation as the numbering sheet: Micron's
+// own copy sits behind the rejecting asset host, so this is DigiKey's copy of Micron's PDF,
+// sha256 ea054b3d5774bffe78814bb670601b3fc919b59706ea84e3b1d2d2e849628abc. It is the family
+// specification the per-part addendum supplements, and it carries the two facts a part record
+// cannot: the module outlines (Figure 1 RDIMM 31.25 ± 0.15 mm; Figure 2 VLP RDIMM 18.75 ± 0.15
+// mm, both 133.35 mm long) and the DDP-versus-3DS pin semantics quoted at DramDieStacking.
+data micron_ddr4_rdimm_core_rev_b_2021_12: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "media.digikey.com/pdf/Data%20Sheets/Micron%20Technology%20Inc%20PDFs/DDR4_SDRAM_RDIMM_Core_RevB_Dec2021.pdf"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = micron_part_catalog_mta36ads2g72pz_2g1a1
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.memory.micron",
+      decl_name: "mta36ads2g72pz_2g1a1_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: micron_part_catalog_mta36ads2g72pz_2g1a1,
+  further_citations: [micron_ddr4_module_part_numbering_rev_2018_12_05, micron_ddr4_rdimm_core_rev_b_2021_12]
+}
+
+data stick_capacity_bytes_16g: ByteSize = byte_size(17179869184)
+
+// MTA36ADS2G72PZ-2G1A1, DECODED FIELD BY FIELD AGAINST THE NUMBERING SHEET, then checked
+// against the SPD image Micron publishes for it. Numbering sheet, Rev. 05-Dec-2018:
+//   MT     Micron Technology
+//   A      Product Family: DDR4 SDRAM
+//   36     Number of Die
+//   A      Voltage: 1.2V
+//   DS     Module Options: "VLP Dual-Die w/Temp Sensor"
+//   2G72   Module Configuration, depth x width: 2 Gig x 72 (G = Gigabits)
+//   P      Module Type: 288-pin RDIMM
+//   Z      Package Code: commercial temp, halogen-free, single-/dual-/quad-/octal-rank DIMM
+//   -2G1   Module Speed: DDR4-2133, PC4-2133, SPD CL-nRCD-nRP 15-15-15, component mark -093E
+//   A      Die Revision
+//   1      Printed Circuit Board Revision
+// So the family letters answer the brief's second question outright: the sibling
+// MTA36ASF2G72PZ differs ONLY in the module-options field, SF = "FBGA w/Temp Sensor" -- a
+// full-height module built from single-die FBGA packages -- where DS is a very-low-profile
+// module built from dual-die packages. D is the height, S is the package; the operator's
+// reading of the label "2DRx4" as "two ranks, dual-die, x4" is what Micron's own code says.
+//
+// THE SPD IMAGE AGREES AT EVERY BYTE THE ROW READS (JESD21-C Annex L byte layout; process
+// code JG, one of twelve the record lists, which differ only in register-vendor bytes 133-135
+// and the bytes-128..253 CRC and NOT in any organization byte):
+//   byte 2  = 0x0C  DDR4 SDRAM
+//   byte 3  = 0x01  module type RDIMM
+//   byte 4  = 0x84  4 Gb per die, 4 bank groups x 4 banks
+//   byte 5  = 0x21  16 row address bits, 10 column bits
+//   byte 6  = 0x91  NON-MONOLITHIC, 2 dies, MULTI LOAD STACK -- the dual-die package
+//   byte 12 = 0x08  2 package ranks, x4 device width, symmetrical
+//   byte 13 = 0x0B  64-bit primary bus + 8-bit ECC extension
+//   byte 18 = 0x08 with byte 125 = 0xC2 (-62 ps)  tCKmin 938 ps = DDR4-2133
+//   byte 24 = 0x6C  tAAmin 13.5 ns -> CL 15 at 2133
+//   byte 128 = 0x04  module nominal height <= 19 mm (the VLP outline; the ASF sibling reads
+//                    0x11, <= 32 mm, the full-height outline)
+//   byte 130 = 0x08  raw card reference design byte differs from the sibling's 0x01
+//   bytes 329-349     "36ADS2G72PZ-2G1A1"; bytes 320-321 = 0x80 0x2C, JEP106 Micron
+// The catalogue details table says the same in words: Density 16GB, Industry Speed PC4-2133,
+// 2133 MT/s, CAS Latency CL = 15, Bus Width x72, ECC True, Component Config "2Gb x4" (that is
+// the 8 Gb DUAL-DIE PACKAGE: 2 Gig x 4 = 8 Gbit per package, two 4 Gb dies), Number of
+// Components 36 (dies, matching the part-number field), Package FBGA, Part Status Obsolete.
+//
+// WHAT THE ROW CARRIES AND WHAT IT DOES NOT. rank_count is the module's package-rank
+// organization, 2, exactly as for a monolithic 2Rx4 -- byte 12 counts CS-selected ranks and a
+// DDP's second die is CS1-selected. dram_module_required_die_density divides 16 GiB by (16
+// data dies x 2 ranks) and lands on 4 Gbit, which byte 4 states independently, so three row
+// figures corroborate a fourth the way the Samsung row's do. The 18.75 mm outline is a
+// FORM-FACTOR fact the catalogue row type has no field for; it is stated here and in the
+// numbering decode, and becomes a typed carrier when a chassis DIMM-clearance consumer exists
+// to read it (DESIGN 3c: no dangling height row).
+//
+// The eBay listing that sold these modules described them as "2Rx4"; the physical label reads
+// "2DRx4". The listing is not a source for any field of this row.
+//
+// INDEPENDENTLY MEASURED, NOT AUTHORED FROM HERE: the Mt. Collins unit-1 host firmware prints
+// this part as "RDIMM[2c:80] 16GB 2133 ECC 2R x4 RCD[b3:80] 36ADS2G72PZ-2G1A1" and, when a
+// socket also held monolithic modules, "CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91]" -- so the
+// module's own SPD reads byte 6 = 0x91 on the board, agreeing with the image Micron publishes.
+// That reading is a receipt in the observing layer (hw-first-host, 2026-09-12) and is quoted
+// here only as the corroboration; the row cites Micron.
+data mta36ads2g72pz_2g1a1_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "MTA36ADS2G72PZ-2G1A1",
+  manufacturer: micron,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_capacity_bytes_16g,
+  data_rate_mts: 2133,
+  ecc: true,
+  buffering: Registered,
+  die_stacking: DualDiePackage,
+  chip_width: bit_width(4),
+
+  rank_count: 2,
+}
+
+data mta36ads2g72pz_2g1a1_catalog_citation: FactCitation = FactCitation {
+  fact: decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36ads2g72pz_2g1a1_catalog"),
+  authority: micron_part_catalog_mta36ads2g72pz_2g1a1,
+}
+
+// The numbering sheet attests the part-number decode above (DS = VLP dual-die, -2G1 = 2133
+// CL15), which the catalogue record confirms but does not explain. Two citations for one row
+// because they ground different fields of it, not because either is weak.
+data mta36ads2g72pz_2g1a1_numbering_citation: FactCitation = FactCitation {
+  fact: decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36ads2g72pz_2g1a1_catalog"),
+  authority: micron_ddr4_module_part_numbering_rev_2018_12_05,
+}
+
+// MTA36ASF2G72PZ-2G1A2: THE CONTROL, AND THE ONLY AXES ON WHICH IT DIFFERS ARE THE POINT.
+// Same numbering decode except SF = "FBGA w/Temp Sensor", same 36 dies, same 2G72, same P, Z,
+// -2G1; die revision A, PCB revision 2. Micron's SPD for it (process code KI; catalogue path
+// obsolete-rdimm) reads byte 4 = 0x84, byte 5 = 0x21, byte 12 = 0x08, byte 13 = 0x0B, byte
+// 18 = 0x08 / byte 125 = 0xC2, byte 24 = 0x6C -- identical to the ADS part at every
+// organization and timing byte -- and differs at byte 6 = 0x00 (MONOLITHIC), byte 128 = 0x11
+// (<= 32 mm), byte 130 = 0x01 (raw card), byte 131 = 0x09 versus 0x05. Details table:
+// Component Config "1Gb x4" (a 4 Gb monolithic package), Number of Components 36.
+//
+// So Micron's own data says the two quartets the operator ran share vendor, generation,
+// capacity, data rate, CAS latency, ECC, buffering, device width, rank count AND die density.
+// What differs is the package construction (dual-die multi-load stack versus monolithic), the
+// PCB outline (18.75 mm versus 31.25 mm) and, with it, the raw-card reference design. That is
+// the whole of what these two rows can say; which of those three the Mt. Collins training
+// outcome tracks is an observation for the observing layer and is not authored here.
+//
+// THE SUFFIX IS MICRON'S, AND THE LABEL AGREES. -2G1A2 is the MTA36ASF2G72PZ-2G1 SKU Micron's
+// catalogue serves a record for. The Mt. Collins unit-1 host firmware reads the trained
+// quartet's SPD part-number field as 36ASF2G72PZ-2G1A2II (hw-first-host SOL capture,
+// 2026-09-12): the same die/PCB revision pair, followed by II, which is one of the eight
+// process codes Micron's record lists for this SKU (KI/KJ/KK/KG/II/IG/IJ/IK). A process code
+// selects register-vendor bytes and nothing organizational, so the row's part_number stays at
+// the catalogue grain and the process code is a per-module observation.
+data mta36asf2g72pz_2g1a2_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "MTA36ASF2G72PZ-2G1A2",
+  manufacturer: micron,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_capacity_bytes_16g,
+  data_rate_mts: 2133,
+  ecc: true,
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(4),
+
+  rank_count: 2,
+}
+
+data mta36asf2g72pz_2g1a2_catalog_citation: FactCitation = FactCitation {
+  fact: decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36asf2g72pz_2g1a2_catalog"),
+  authority: micron_part_catalog_mta36asf2g72pz_2g1a2,
+}
