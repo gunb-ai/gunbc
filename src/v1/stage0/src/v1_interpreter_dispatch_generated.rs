@@ -95,6 +95,7 @@ pub enum EvalBuiltinArm {
     FreeCallDocGraphAdmittedRootCount,
     FreeCallDocGraphDanglingLinkCount,
     FreeCallDocGraphDocCount,
+    FreeCallFloorDiscoverySourceInventory,
     FreeCallParsedImportStatements,
     FreeCallNamespaceStructuralObservationAdmissions,
     FreeCallCompileDagRustEmitCheck,
@@ -233,6 +234,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "doc_graph_admitted_root_count" => Some(EvalBuiltinArm::FreeCallDocGraphAdmittedRootCount),
         "doc_graph_dangling_link_count" => Some(EvalBuiltinArm::FreeCallDocGraphDanglingLinkCount),
         "doc_graph_doc_count" => Some(EvalBuiltinArm::FreeCallDocGraphDocCount),
+        "floor_discovery_source_inventory" => Some(EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory),
         "parsed_import_statements" => Some(EvalBuiltinArm::FreeCallParsedImportStatements),
         "namespace_structural_observation_admissions" => Some(EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions),
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
@@ -369,6 +371,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.doc_graph_admitted_root_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphAdmittedRootCount };
     ("free_call.doc_graph_dangling_link_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDanglingLinkCount };
     ("free_call.doc_graph_doc_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDocCount };
+    ("free_call.floor_discovery_source_inventory") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFloorDiscoverySourceInventory };
     ("free_call.parsed_import_statements") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallParsedImportStatements };
     ("free_call.namespace_structural_observation_admissions") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNamespaceStructuralObservationAdmissions };
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };

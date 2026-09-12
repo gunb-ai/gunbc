@@ -11944,10 +11944,57 @@ fn subject_module_value(
     }
 }
 
-/// Encode one source's parsed import statements: the parser's delimited spans, or the typed
-/// refusal. A source that did not parse and a source with no imports are different values here
-/// because they are different facts, and a caller that stripped nothing from the first would
-/// report a clean rewrite of a file it never read.
+/// Project the acquired seed tokens into the canonical lexical carrier. Shape identity is
+/// unchanged. Raw lexemes come from the acquired scalar coordinates, never cooked token text.
+fn acquired_source_tokens_value(
+    tokens: &RrbVector<Rc<crate::v1_std_core::Token>>,
+    source_index: &crate::v1_std_core::NewlineIndex,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let mut projected = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        let span = &token.span;
+        if span.start < 0
+            || span.end < span.start
+            || span.end as usize > source_index.char_codes.len()
+        {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "acquired token span outside source: {} [{}..{}]",
+                    span.file, span.start, span.end
+                ),
+            });
+        }
+        let mut lexeme = String::new();
+        for offset in span.start as usize..span.end as usize {
+            let scalar = source_index.char_codes[offset];
+            let ch = u32::try_from(scalar)
+                .ok()
+                .and_then(char::from_u32)
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "acquired source contains an invalid scalar at {}:{}",
+                        span.file, offset
+                    ),
+                })?;
+            lexeme.push(ch);
+        }
+        projected.push(Value::Record {
+            type_name: ctx.sym("Token"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("class"), str_value(format!("{:?}", token.shape))),
+                (ctx.sym("lexeme"), str_value(lexeme)),
+                (ctx.sym("file"), str_value(span.file.clone())),
+                (ctx.sym("start"), Value::Int(span.start)),
+                (ctx.sym("end"), Value::Int(span.end)),
+            ])),
+        });
+    }
+    Ok(list_value(projected))
+}
+
+/// Encode the parser's import extents or its typed refusal without conflating a refused parse
+/// with a successful parse that found no imports.
 fn parsed_import_statements_value(
     outcome: &crate::std_import::ParsedImportStatements,
     ctx: &InterpContext,
@@ -18524,14 +18571,49 @@ macro_rules! v1_builtin_arms {
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
+            arm "free_call.floor_discovery_source_inventory" { "floor_discovery_source_inventory" } => {
+                let roots = expect_str_list($positional.first().copied(), $name)?;
+                let outcome = match crate::cli_run::floor_discovery_source_inventory(&roots) {
+                    Ok(sources) => Value::Variant {
+                        type_name: $ctx.sym("FloorDiscoverySourceInventory"),
+                        variant_name: $ctx.sym("FloorDiscoverySourcesObserved"),
+                        fields: Rc::new(sorted_fields(vec![(
+                            $ctx.sym("sources"),
+                            list_value(sources.into_iter().map(|source| Value::Record {
+                                type_name: $ctx.sym("FloorDiscoverySource"),
+                                fields: Rc::new(sorted_fields(vec![
+                                    ($ctx.sym("module_path"), str_value(source.module_path)),
+                                    ($ctx.sym("repo_path"), str_value(source.source.path.clone())),
+                                    ($ctx.sym("content"), str_value(source.source.content.clone())),
+                                ])),
+                            }).collect::<Vec<_>>()),
+                        )])),
+                    },
+                    Err(reason) => Value::Variant {
+                        type_name: $ctx.sym("FloorDiscoverySourceInventory"),
+                        variant_name: $ctx.sym("FloorDiscoverySourcesRefused"),
+                        fields: Rc::new(sorted_fields(vec![($ctx.sym("reason"), str_value(reason))])),
+                    },
+                };
+                Ok(Some(outcome))
+            },
+
             arm "free_call.parsed_import_statements" { "parsed_import_statements" } => {
                 let file = expect_str($positional.first().copied(), $name)?;
                 let source = expect_str($positional.get(1).copied(), $name)?;
+                let tokens = crate::cli_run::pool_acquire::tokens_for(&file, &source);
+                let source_index = crate::cli_run::pool_acquire::newline_index_for(&file, &source);
                 let observed =
                     crate::v1_gunbc_parsed_import_statements::parsed_import_statements(
-                        file, source,
+                        file, tokens, source_index.clone(),
                     );
-                Ok(Some(parsed_import_statements_value(&observed, $ctx)))
+                Ok(Some(Value::Record {
+                    type_name: $ctx.sym("ParsedImportObservation"),
+                    fields: Rc::new(sorted_fields(vec![
+                        ($ctx.sym("tokens"), acquired_source_tokens_value(&observed.tokens, &source_index, $ctx)?),
+                        ($ctx.sym("imports"), parsed_import_statements_value(&observed.imports, $ctx)),
+                    ])),
+                }))
             },
 
             arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {

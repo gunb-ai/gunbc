@@ -1481,6 +1481,20 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: list_of_type_variable("module_dependency_edge_elem".to_string()),
     }));
+                __m.insert("floor_discovery_source_inventory".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "pool_roots".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    })]),
+        returns: type_variable_node("floor_discovery_source_inventory_result".to_string()),
+    }));
                 __m.insert("module_declaration_facts".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "pool_roots".to_string(),

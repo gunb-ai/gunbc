@@ -39172,6 +39172,26 @@ pub struct PreparedSourceView {
     pub source: Rc<v1_compiler_compile::SourceFile>,
 }
 
+fn floor_source_inventory(index: &ModuleSourceIndex) -> Vec<PreparedSourceView> {
+    index
+        .iter()
+        .map(|(module_path, source)| PreparedSourceView {
+            module_path: module_path.clone(),
+            source: source.clone(),
+        })
+        .collect()
+}
+
+/// The same source ingress that feeds required-floor discovery, before closure selection.
+pub fn floor_discovery_source_inventory(
+    source_roots: &[String],
+) -> Result<Vec<PreparedSourceView>, String> {
+    if source_roots.is_empty() {
+        return Err("floor source ingress requires declared source roots".to_string());
+    }
+    try_build_module_index(source_roots).map(|index| floor_source_inventory(&index))
+}
+
 thread_local! {
     static FLOOR_PREPARED_AUTHORITY: std::cell::RefCell<Option<FloorPreparedAuthority>> =
         std::cell::RefCell::new(None);
@@ -39364,13 +39384,7 @@ pub fn assemble_prepared_subject_closure(
     closure: Option<(&MultiEntryIndex, &[String])>,
 ) -> Result<PreparedSubject, String> {
     let full_index = build_module_index(source_roots);
-    let full_inventory: Vec<PreparedSourceView> = full_index
-        .iter()
-        .map(|(module_path, source)| PreparedSourceView {
-            module_path: module_path.clone(),
-            source: source.clone(),
-        })
-        .collect();
+    let full_inventory = floor_source_inventory(&full_index);
     let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
         None => full_index,

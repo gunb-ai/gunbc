@@ -1,0 +1,622 @@
+module tools.cause_assertion_census
+
+import std.types { Bool, Int, List, String }
+import std.import { ParsedImportStatement, ImportStatementsParsed, ImportStatementParseRefused, ImportStatementParseCause, SourceHasNoModuleDeclaration, import_statement_parse_cause_label }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import gunbc.parsed_import_statement_production { parsed_import_observation_live }
+import v2.std.compilers.lexing { Token }
+import v2.workflow.floor_discovery_producer { FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Present, Absent }
+import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
+// This observes syntax, never whether a control discriminates. NO_ASSERTION is a candidate
+// coverage gap; ASSERTED_UNESTABLISHED is a mention, not coverage. ESTABLISHED requires an
+// existing v2.std.test_claim_falsification.FalsificationReceipt joined by cause identity.
+// There is no such executing join here. The next evidence producer belongs at that symbol.
+// The cause-type frontier is owned by
+// gunbc.recurring_failure_mode.a_cause_asserted_by_symbol_literal_cannot_go_red.
+//
+// Acquisition carries the parser's existing tokens and import extents. Token classes remain
+// the seed TokenShape identities; no grammar-class renaming or second tokenization occurs here.
+type CauseSourceObservation
+  = CauseSourceObserved { tokens: List<Token>, imports: List<ParsedImportStatement> }
+  | CauseSourceReadRefused { path: String, detail: String }
+  | CauseSourceImportParseRefused { path: String, cause: ImportStatementParseCause }
+  | CauseSourceExcluded { path: String, cause: ImportStatementParseCause }
+  | CauseSourceIndexRefused { path: String, module_path: String }
+  | CauseSourceLexicalRefused { path: String }
+
+fn cause_source_observation(path: String) -> CauseSourceObservation {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: detail } => CauseSourceReadRefused { path: path, detail: detail }
+    FilesystemReadSucceeded { content: source } => cause_source_observation_from_content(path: path, source: source)
+  }
+}
+
+fn cause_source_observation_from_content(path: String, source: String) -> CauseSourceObservation {
+  let observation = parsed_import_observation_live(file: path, source: source)
+  if any(observation.tokens, token => token.class == ^ShUnknown) {
+    CauseSourceLexicalRefused { path: path }
+  } else { match observation.imports {
+    ImportStatementParseRefused { cause: cause } =>
+      if cause == SourceHasNoModuleDeclaration {
+        CauseSourceExcluded { path: path, cause: cause }
+      } else { CauseSourceImportParseRefused { path: path, cause: cause } }
+    ImportStatementsParsed { statements: imports } =>
+      CauseSourceObserved { tokens: observation.tokens, imports: imports }
+  } }
+}
+
+fn cause_source_observation_report(path: String, observation: CauseSourceObservation) -> String {
+  match observation {
+    CauseSourceReadRefused { path: p, detail: d } => join(["READ_REFUSED", p, d], "\t")
+    CauseSourceImportParseRefused { path: p, cause: c } => join(["IMPORT_PARSE_REFUSED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
+    CauseSourceExcluded { path: p, cause: c } => join(["EXCLUDED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
+    CauseSourceIndexRefused { path: p, module_path: m } => join(["INDEX_REFUSED", p, m], "\t")
+    CauseSourceLexicalRefused { path: p } => join(["LEXICAL_REFUSED", p], "\t")
+    CauseSourceObserved { tokens: ts, imports: imports } =>
+      join([
+        join(["OBSERVED", path, to_string(count(ts)), to_string(count(imports))], "\t"),
+        join(map(cause_caret_occurrences(tokens: ts), c => join(["CARET", c.spelling, to_string(c.cause_argument)], "\t")), "\n"),
+        join(map(cause_module_import_members(tokens: ts, imports: imports), m => join(["IMPORT", m.module, m.member], "\t")), "\n")
+      ], "\n")
+  }
+}
+
+fn probe(path: String, report: String) -> ProcessExit {
+  let observation = cause_source_observation(path: path)
+  let written = Filesystem.Write(path: report, content: cause_source_observation_report(path: path, observation: observation))
+  if !written.success {
+    exit_failure(reason: written.error)
+  } else {
+    match observation {
+      CauseSourceObserved { tokens: _, imports: _ } => ExitSuccess
+      CauseSourceReadRefused { path: _, detail: _ } => exit_failure(reason: "source read refused; see probe report")
+      CauseSourceImportParseRefused { path: _, cause: _ } => exit_failure(reason: "import parse refused; see probe report")
+      CauseSourceExcluded { path: _, cause: _ } => exit_failure(reason: "source excluded; see probe report")
+      CauseSourceIndexRefused { path: _, module_path: _ } => exit_failure(reason: "source index refused; see probe report")
+      CauseSourceLexicalRefused { path: _ } => exit_failure(reason: "source lexing refused; see probe report")
+    }
+  }
+}
+
+type CauseCaretOccurrence {
+  spelling: String
+  start: Int
+  cause_argument: Bool
+}
+
+type CauseCaretWindow {
+  before_previous: String
+  previous: String
+  caret: Bool
+  cause_argument: Bool
+  occurrences: List<CauseCaretOccurrence>
+}
+
+// Only semantic tokens enter this fold: quoted source fixtures and annotations cannot mint
+// occurrences. Every caret mention is retained; the cause/reason argument coordinate supplies
+// the production-side population independently of witness mentions.
+fn cause_caret_occurrences(tokens: List<Token>) -> List<CauseCaretOccurrence> {
+  let result = fold(tokens, init: CauseCaretWindow {
+    before_previous: "", previous: "", caret: false, cause_argument: false, occurrences: []
+  }, f: (state, token) => {
+    if token.class == ^ShNewline || token.class == ^ShEof { state } else { CauseCaretWindow {
+    before_previous: state.previous,
+    previous: token.lexeme,
+    caret: token.class == ^ShCaret,
+    cause_argument: token.class == ^ShCaret
+      && state.previous == ":"
+      && (state.before_previous == "cause" || state.before_previous == "reason"),
+    occurrences: if state.caret && token.class == ^ShIdent {
+      list_snoc_item(xs: state.occurrences, item: CauseCaretOccurrence {
+        spelling: token.lexeme, start: token.start, cause_argument: state.cause_argument
+      })
+    } else { state.occurrences }
+    } }
+  })
+  result.occurrences
+}
+
+type CauseImportMember {
+  module: String
+  member: String
+}
+
+type CauseImportMembersProgress {
+  inside: Bool
+  dotted: Bool
+  pending: String
+  members: List<CauseImportMember>
+}
+
+fn cause_import_member_flush(state: CauseImportMembersProgress, module: String) -> CauseImportMembersProgress {
+  CauseImportMembersProgress {
+    inside: state.inside, dotted: false, pending: "",
+    members: if state.pending == "" { state.members } else {
+      list_snoc_item(xs: state.members, item: CauseImportMember { module: module, member: state.pending })
+    }
+  }
+}
+
+// The parser owns statement boundaries and validates member syntax. This projection retains
+// complete dotted member spellings, so importing child.cause cannot count as importing cause.
+// A bare module import contributes no import-by-name receipt.
+fn cause_import_members(tokens: List<Token>, statement: ParsedImportStatement) -> List<CauseImportMember> {
+  let result = fold(tokens, init: CauseImportMembersProgress {
+    inside: false, dotted: false, pending: "", members: []
+  }, f: (state, token) => {
+    if token.start < statement.span.start || token.end > statement.span.end {
+      state
+    } else if token.class == ^ShLBrace {
+      CauseImportMembersProgress { inside: true, dotted: false, pending: "", members: state.members }
+    } else if token.class == ^ShRBrace {
+      let flushed = cause_import_member_flush(state: state, module: statement.imported_module)
+      CauseImportMembersProgress { inside: false, dotted: false, pending: "", members: flushed.members }
+    } else if !state.inside {
+      state
+    } else if token.class == ^ShDot {
+      CauseImportMembersProgress { inside: true, dotted: true, pending: state.pending, members: state.members }
+    } else if token.class == ^ShIdent {
+      if state.dotted {
+        CauseImportMembersProgress {
+          inside: true, dotted: false, pending: join([state.pending, token.lexeme], "."), members: state.members
+        }
+      } else {
+        let flushed = cause_import_member_flush(state: state, module: statement.imported_module)
+        CauseImportMembersProgress { inside: true, dotted: false, pending: token.lexeme, members: flushed.members }
+      }
+    } else if token.class == ^ShComma {
+      cause_import_member_flush(state: state, module: statement.imported_module)
+    } else { state }
+  })
+  result.members
+}
+
+type CauseAssertionStanding
+  = NO_ASSERTION
+  | ASSERTED_UNESTABLISHED
+  | ESTABLISHED
+  | UNCONSUMED
+
+type CauseIdentityJoin
+  = CauseDeclarationJoined { declaration: DataDeclTypeFact }
+  | CauseDeclarationMissing { path: String, spelling: String }
+  | CauseDeclarationAmbiguous { path: String, spelling: String, candidates: List<DataDeclTypeFact> }
+
+type CauseModuleSyntax {
+  module: String
+  path: String
+  witness: Bool
+  carets: List<CauseCaretOccurrence>
+  import_modules: Map<String, Bool>
+  import_members: Map<String, Bool>
+}
+
+fn cause_declaration_key(declaration: DataDeclTypeFact) -> String {
+  join([declaration.module_path, declaration.decl_name], ".")
+}
+
+fn cause_declarations_by_name(declarations: List<DataDeclTypeFact>) -> Map<String, List<DataDeclTypeFact>> {
+  fold(declarations, init: empty_map(), f: (index, declaration) => {
+    let prior = match map_lookup(m: index, key: declaration.decl_name) {
+      Present { value: rows } => rows
+      Absent => []
+    }
+    map_insert(m: index, key: declaration.decl_name, value: list_snoc_item(xs: prior, item: declaration))
+  })
+}
+
+// This is an identity join, not a claim about the compiler's resolution. An unimported spelling
+// can nominate a sole declaration for repair; a collision is never resolved by choosing the
+// first row. Local and explicit-import evidence narrow the candidates before the uniqueness fold.
+fn cause_join_declaration(
+  source: CauseModuleSyntax,
+  spelling: String,
+  declarations: Map<String, List<DataDeclTypeFact>>
+) -> CauseIdentityJoin {
+  let candidates = match map_lookup(m: declarations, key: spelling) {
+    Present { value: rows } => rows
+    Absent => []
+  }
+  let scoped = filter(candidates, d => d.module_path == source.module
+    || cause_name_is_known(names: source.import_modules, spelling: d.module_path)
+    || cause_name_is_known(names: source.import_members, spelling: cause_declaration_key(declaration: d)))
+  let selected = if count(scoped) == 0 { candidates } else { scoped }
+  match selected {
+    Empty => CauseDeclarationMissing { path: source.path, spelling: spelling }
+    Cons { head: only, tail: Empty } => CauseDeclarationJoined { declaration: only }
+    Cons { head: _, tail: _ } => CauseDeclarationAmbiguous {
+      path: source.path, spelling: spelling, candidates: selected
+    }
+  }
+}
+
+type CauseRowEvidence {
+  declaration: DataDeclTypeFact
+  production_use: Bool
+  assertion_files: Map<String, Bool>
+  missing_import_files: Map<String, Bool>
+}
+
+fn cause_row_evidence(declaration: DataDeclTypeFact) -> CauseRowEvidence {
+  CauseRowEvidence {
+    declaration: declaration,
+    production_use: false,
+    assertion_files: empty_map(), missing_import_files: empty_map()
+  }
+}
+
+fn cause_row_record_use(row: CauseRowEvidence, source: CauseModuleSyntax) -> CauseRowEvidence {
+  let imported = cause_name_is_known(names: source.import_members, spelling: cause_declaration_key(declaration: row.declaration))
+  CauseRowEvidence {
+    declaration: row.declaration,
+    production_use: row.production_use || !source.witness,
+    assertion_files: if source.witness {
+      map_insert(m: row.assertion_files, key: source.path, value: true)
+    } else { row.assertion_files },
+    missing_import_files: if source.witness && !imported {
+      map_insert(m: row.missing_import_files, key: source.path, value: true)
+    } else { row.missing_import_files }
+  }
+}
+
+type CauseImportTokenPartition {
+  prefix: List<Token>
+  remaining: List<Token>
+}
+
+fn cause_partition_import_tokens(tokens: List<Token>, end: Int, prefix: List<Token>) -> CauseImportTokenPartition {
+  match tokens {
+    Empty => CauseImportTokenPartition { prefix: prefix, remaining: [] }
+    Cons { head: token, tail: rest } =>
+      if token.start >= end {
+        CauseImportTokenPartition { prefix: prefix, remaining: tokens }
+      } else {
+        cause_partition_import_tokens(tokens: rest, end: end, prefix: list_snoc_item(xs: prefix, item: token))
+      }
+  }
+}
+
+type CauseModuleImportProjection {
+  remaining: List<Token>
+  members: List<CauseImportMember>
+}
+
+// Consume the sorted parser extents and token stream together. Scanning the complete module once
+// per import would make a module with many imports quadratic in its own size.
+fn cause_module_import_members(tokens: List<Token>, imports: List<ParsedImportStatement>) -> List<CauseImportMember> {
+  let projected = fold(imports, init: CauseModuleImportProjection { remaining: tokens, members: [] }, f: (state, statement) => {
+    let partition = cause_partition_import_tokens(tokens: state.remaining, end: statement.span.end, prefix: [])
+    let members = cause_import_members(tokens: partition.prefix, statement: statement)
+    CauseModuleImportProjection {
+      remaining: partition.remaining,
+      members: fold(members, init: state.members, f: (acc, member) => list_snoc_item(xs: acc, item: member))
+    }
+  })
+  projected.members
+}
+
+fn cause_witness_module(path: String) -> Bool {
+  string_contains(s: path, pattern: "/test/")
+    || string_contains(s: path, pattern: "/tests/")
+    || ends_with(s: path, suffix: "_test.dag")
+    || ends_with(s: path, suffix: "_witness.dag")
+}
+
+fn cause_identifier_counts(tokens: List<Token>, counts: Map<String, Int>) -> Map<String, Int> {
+  fold(tokens, init: counts, f: (acc, token) => {
+    if token.class == ^ShIdent {
+      let prior = match map_lookup(m: acc, key: token.lexeme) {
+        Present { value: n } => n
+        Absent => 0
+      }
+      map_insert(m: acc, key: token.lexeme, value: prior + 1)
+    } else { acc }
+  })
+}
+
+type CauseCorpusAcquisition {
+  sources: List<CauseModuleSyntax>
+  excluded: List<CauseSourceObservation>
+  refusals: List<CauseSourceObservation>
+  identifier_counts: Map<String, Int>
+}
+
+fn cause_acquisition_refused(acc: CauseCorpusAcquisition, observation: CauseSourceObservation) -> CauseCorpusAcquisition {
+  CauseCorpusAcquisition {
+    sources: acc.sources, excluded: acc.excluded,
+    refusals: list_snoc_item(xs: acc.refusals, item: observation), identifier_counts: acc.identifier_counts
+  }
+}
+
+fn cause_corpus_acquire(subjects: List<FloorDiscoverySource>, modules: List<ModuleDeclarationFact>) -> CauseCorpusAcquisition {
+  let indexed = fold(modules, init: empty_map(), f: (acc, subject) =>
+    map_insert(m: acc, key: join([subject.path, subject.module], "\t"), value: true))
+  fold(subjects, init: CauseCorpusAcquisition { sources: [], excluded: [], refusals: [], identifier_counts: empty_map() }, f: (acc, subject) => {
+    let observation = cause_source_observation_from_content(path: subject.repo_path, source: subject.content)
+    match observation {
+      CauseSourceObserved { tokens: tokens, imports: imports } => {
+        if !cause_name_is_known(names: indexed, spelling: join([subject.repo_path, subject.module_path], "\t")) {
+          cause_acquisition_refused(acc: acc, observation: CauseSourceIndexRefused { path: subject.repo_path, module_path: subject.module_path })
+        } else { CauseCorpusAcquisition {
+          sources: list_snoc_item(xs: acc.sources, item: CauseModuleSyntax {
+            module: subject.module_path, path: subject.repo_path, witness: cause_witness_module(path: subject.repo_path),
+            carets: cause_caret_occurrences(tokens: tokens),
+            import_modules: fold(imports, init: empty_map(), f: (index, statement) =>
+              map_insert(m: index, key: statement.imported_module, value: true)),
+            import_members: fold(cause_module_import_members(tokens: tokens, imports: imports), init: empty_map(), f: (index, member) =>
+              map_insert(m: index, key: join([member.module, member.member], "."), value: true))
+          }),
+          excluded: acc.excluded, refusals: acc.refusals,
+          identifier_counts: cause_identifier_counts(tokens: tokens, counts: acc.identifier_counts)
+        } }
+      }
+      CauseSourceExcluded { path: _, cause: _ } => CauseCorpusAcquisition {
+        sources: acc.sources, excluded: list_snoc_item(xs: acc.excluded, item: observation),
+        refusals: acc.refusals, identifier_counts: acc.identifier_counts
+      }
+      CauseSourceReadRefused { path: _, detail: _ } => cause_acquisition_refused(acc: acc, observation: observation)
+      CauseSourceImportParseRefused { path: _, cause: _ } => cause_acquisition_refused(acc: acc, observation: observation)
+      CauseSourceIndexRefused { path: _, module_path: _ } => cause_acquisition_refused(acc: acc, observation: observation)
+      CauseSourceLexicalRefused { path: _ } => cause_acquisition_refused(acc: acc, observation: observation)
+    }
+  })
+}
+
+type CauseCensusJoin {
+  rows: Map<String, CauseRowEvidence>
+  cause_names: Map<String, Bool>
+  refusals: List<CauseIdentityJoin>
+}
+
+fn cause_census_record(
+  state: CauseCensusJoin,
+  source: CauseModuleSyntax,
+  spelling: String,
+  declarations: Map<String, List<DataDeclTypeFact>>
+) -> CauseCensusJoin {
+  let resolved = cause_join_declaration(source: source, spelling: spelling, declarations: declarations)
+  match resolved {
+    CauseDeclarationMissing { path: _, spelling: _ } => CauseCensusJoin {
+      rows: state.rows, cause_names: map_insert(m: state.cause_names, key: spelling, value: true),
+      refusals: list_snoc_item(xs: state.refusals, item: resolved)
+    }
+    CauseDeclarationAmbiguous { path: _, spelling: _, candidates: _ } => CauseCensusJoin {
+      rows: state.rows, cause_names: map_insert(m: state.cause_names, key: spelling, value: true),
+      refusals: list_snoc_item(xs: state.refusals, item: resolved)
+    }
+    CauseDeclarationJoined { declaration: declaration } => {
+      let key = cause_declaration_key(declaration: declaration)
+      let prior = match map_lookup(m: state.rows, key: key) {
+        Present { value: row } => row
+        Absent => cause_row_evidence(declaration: declaration)
+      }
+      CauseCensusJoin {
+        rows: map_insert(m: state.rows, key: key, value: cause_row_record_use(row: prior, source: source)),
+        cause_names: map_insert(m: state.cause_names, key: spelling, value: true),
+        refusals: state.refusals
+      }
+    }
+  }
+}
+
+fn cause_name_is_known(names: Map<String, Bool>, spelling: String) -> Bool {
+  match map_lookup(m: names, key: spelling) {
+    Present { value: present } => present
+    Absent => false
+  }
+}
+
+fn cause_census_join(sources: List<CauseModuleSyntax>, declarations: List<DataDeclTypeFact>) -> CauseCensusJoin {
+  let index = cause_declarations_by_name(declarations: declarations)
+  let production = fold(sources, init: CauseCensusJoin {
+    rows: empty_map(), cause_names: empty_map(), refusals: []
+  }, f: (state, source) => {
+    if source.witness { state } else {
+      fold(source.carets, init: state, f: (acc, caret) => {
+        if caret.cause_argument {
+          cause_census_record(state: acc, source: source, spelling: caret.spelling, declarations: index)
+        } else { acc }
+      })
+    }
+  })
+  let witnessed = fold(sources, init: production, f: (state, source) => {
+    if !source.witness { state } else {
+      fold(source.carets, init: state, f: (acc, caret) => {
+        if caret.cause_argument || cause_name_is_known(names: production.cause_names, spelling: caret.spelling) {
+          cause_census_record(state: acc, source: source, spelling: caret.spelling, declarations: index)
+        } else { acc }
+      })
+    }
+  })
+  fold(sources, init: witnessed, f: (state, source) => {
+    if !source.witness { state } else {
+      fold(sorted_map_keys(source.import_members), init: state, f: (acc, key) => {
+        match map_lookup(m: acc.rows, key: key) {
+          Absent => acc
+          Present { value: row } => CauseCensusJoin {
+            rows: map_insert(m: acc.rows, key: key, value: cause_row_record_use(row: row, source: source)),
+            cause_names: acc.cause_names, refusals: acc.refusals
+          }
+        }
+      })
+    }
+  })
+}
+
+fn cause_standing_label(standing: CauseAssertionStanding) -> String {
+  match standing {
+    NO_ASSERTION => "NO_ASSERTION"
+    ASSERTED_UNESTABLISHED => "ASSERTED_UNESTABLISHED"
+    ESTABLISHED => "ESTABLISHED"
+    UNCONSUMED => "UNCONSUMED"
+  }
+}
+
+fn cause_row_standing(row: CauseRowEvidence) -> CauseAssertionStanding {
+  if count(sorted_map_keys(row.assertion_files)) == 0 { NO_ASSERTION } else { ASSERTED_UNESTABLISHED }
+}
+
+fn cause_row_report(row: CauseRowEvidence) -> String {
+  join([
+    cause_declaration_key(declaration: row.declaration),
+    row.declaration.rel_path,
+    to_string(row.production_use),
+    if row.production_use { cause_standing_label(standing: cause_row_standing(row: row)) } else { "" },
+    join(sorted_map_keys(row.missing_import_files), ","),
+    join(sorted_map_keys(row.assertion_files), ",")
+  ], "\t")
+}
+
+fn cause_identity_refusal_report(refusal: CauseIdentityJoin) -> String {
+  match refusal {
+    CauseDeclarationMissing { path: path, spelling: spelling } => join(["DECLARATION_MISSING", path, spelling], "\t")
+    CauseDeclarationAmbiguous { path: path, spelling: spelling, candidates: candidates } => join([
+      "DECLARATION_AMBIGUOUS", path, spelling,
+      join(map(candidates, d => cause_declaration_key(declaration: d)), ",")
+    ], "\t")
+    CauseDeclarationJoined { declaration: declaration } => join(["JOINED", cause_declaration_key(declaration: declaration)], "\t")
+  }
+}
+
+fn cause_source_refusal_report(refusal: CauseSourceObservation) -> String {
+  match refusal {
+    CauseSourceReadRefused { path: p, detail: d } => join(["READ_REFUSED", p, d], "\t")
+    CauseSourceImportParseRefused { path: p, cause: c } => join(["IMPORT_PARSE_REFUSED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
+    CauseSourceExcluded { path: p, cause: c } => join(["EXCLUDED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
+    CauseSourceIndexRefused { path: p, module_path: m } => join(["INDEX_REFUSED", p, m], "\t")
+    CauseSourceLexicalRefused { path: p } => join(["LEXICAL_REFUSED", p], "\t")
+    CauseSourceObserved { tokens: _, imports: _ } => "OBSERVED"
+  }
+}
+
+fn cause_acquisition_disposition_report(acquisition: CauseCorpusAcquisition) -> String {
+  join([
+    "source ingress: v2.workflow.floor_discovery_producer.floor_discovery_source_inventory, before closure selection and witness policy",
+    join(["sources_observed", to_string(count(acquisition.sources))], "\t"),
+    join(["sources_excluded", to_string(count(acquisition.excluded))], "\t"),
+    join(["sources_refused", to_string(count(acquisition.refusals))], "\t"),
+    join(map(acquisition.excluded, r => cause_source_refusal_report(refusal: r)), "\n"),
+    join(map(acquisition.refusals, r => cause_source_refusal_report(refusal: r)), "\n")
+  ], "\n")
+}
+
+fn cause_unconsumed_string_rows(
+  declarations: List<DataDeclTypeFact>,
+  identifier_counts: Map<String, Int>,
+  joined: Map<String, CauseRowEvidence>
+) -> List<DataDeclTypeFact> {
+  let declared_names = fold(declarations, init: empty_map(), f: (acc, declaration) => {
+    let prior = match map_lookup(m: acc, key: declaration.decl_name) {
+      Present { value: n } => n
+      Absent => 0
+    }
+    map_insert(m: acc, key: declaration.decl_name, value: prior + 1)
+  })
+  filter(declarations, d => {
+    let occurrences = match map_lookup(m: identifier_counts, key: d.decl_name) {
+      Present { value: n } => n
+      Absent => 0
+    }
+    let declaration_occurrences = match map_lookup(m: declared_names, key: d.decl_name) {
+      Present { value: n } => n
+      Absent => 0
+    }
+    let is_cause = match map_lookup(m: joined, key: cause_declaration_key(declaration: d)) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    d.type_name == "String" && occurrences == declaration_occurrences && !is_cause
+  })
+}
+
+fn cause_joined_rows(joined: CauseCensusJoin) -> List<CauseRowEvidence> {
+  let unresolved = fold(joined.refusals, init: empty_map(), f: (acc, refusal) => {
+    match refusal {
+      CauseDeclarationAmbiguous { path: _, spelling: _, candidates: candidates } =>
+        fold(candidates, init: acc, f: (keys, candidate) =>
+          map_insert(m: keys, key: cause_declaration_key(declaration: candidate), value: true))
+      CauseDeclarationMissing { path: _, spelling: _ } => acc
+      CauseDeclarationJoined { declaration: _ } => acc
+    }
+  })
+  fold(sorted_map_keys(joined.rows), init: [], f: (acc, key) => {
+    if cause_name_is_known(names: unresolved, spelling: key) { acc } else {
+      match map_lookup(m: joined.rows, key: key) {
+        Present { value: row } => list_snoc_item(xs: acc, item: row)
+        Absent => acc
+      }
+    }
+  })
+}
+
+fn cause_missing_import_file_list(rows: List<CauseRowEvidence>) -> List<String> {
+  let files = fold(rows, init: empty_map(), f: (acc, row) =>
+    fold(sorted_map_keys(row.missing_import_files), init: acc, f: (index, path) => map_insert(m: index, key: path, value: true)))
+  sorted_map_keys(files)
+}
+
+fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List<DataDeclTypeFact>) -> String {
+  let joined = cause_census_join(sources: acquisition.sources, declarations: declarations)
+  let rows = cause_joined_rows(joined: joined)
+  let production_rows = filter(rows, r => r.production_use)
+  let missing_files = cause_missing_import_file_list(rows: rows)
+  let unconsumed = cause_unconsumed_string_rows(declarations: declarations, identifier_counts: acquisition.identifier_counts, joined: joined.rows)
+  join([
+    "roots\tdag,src/v2",
+    cause_acquisition_disposition_report(acquisition: acquisition),
+    "method\ttools.cause_assertion_census.census",
+    "evidence boundary: NO_ASSERTION is a candidate gap; ASSERTED_UNESTABLISHED records syntax, not discriminating coverage; ESTABLISHED requires a cause-identity join to v2.std.test_claim_falsification.FalsificationReceipt",
+    "identity boundary: ambiguous candidate rows are withheld from assertion-standing columns and named in the typed refusal section",
+    join(["missing_import_file_count", to_string(count(missing_files))], "\t"),
+    join(["missing_import_files", join(missing_files, ",")], "\t"),
+    join(["NO_ASSERTION", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == NO_ASSERTION)))], "\t"),
+    join(["ASSERTED_UNESTABLISHED", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == ASSERTED_UNESTABLISHED)))], "\t"),
+    join(["ESTABLISHED", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == ESTABLISHED))), "no executing cause-identity falsification receipt join"], "\t"),
+    join(["UNCONSUMED", to_string(count(unconsumed))], "\t"),
+    "UNCONSUMED boundary: unmarked String data whose spelling has no identifier-token occurrences beyond its data-declaration names; this is a syntactic observation, not a claim about reflective consumption or intended causes",
+    "population boundary: assertion standing is reported only for declarations joined from direct production cause/reason arguments; witness-only declarations retain their import-gap observation with an empty standing column",
+    "declaration\tdeclaration_file\tproduction_cause_use\tassertion_standing\tmissing_import_files\tmention_or_import_files",
+    join(map(rows, r => cause_row_report(row: r)), "\n"),
+    join(map(unconsumed, d => join([cause_declaration_key(declaration: d), d.rel_path, "false", "UNCONSUMED", "", ""], "\t")), "\n"),
+    join(["identity_refusal_count", to_string(count(joined.refusals))], "\t"),
+    join(map(joined.refusals, r => cause_identity_refusal_report(refusal: r)), "\n")
+  ], "\n")
+}
+
+// On-demand only. Whole-corpus acquisition must not enter ordinary witness discovery.
+// gunbc run --source-root dag --source-root src/v2 \
+//   --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=/tmp/causes.tsv
+fn census(report: String) -> ProcessExit {
+  let roots = ["dag", "src/v2"]
+  match floor_discovery_source_inventory(pool_roots: roots) {
+    FloorDiscoverySourcesRefused { reason: reason } => exit_failure(reason: reason)
+    FloorDiscoverySourcesObserved { sources: subjects } => {
+      if count(subjects) == 0 {
+        exit_failure(reason: "cause census refused: source ingress returned no subjects")
+      } else {
+        let acquisition = cause_corpus_acquire(subjects: subjects, modules: module_declaration_facts_live(pool_roots: roots))
+        let complete = count(acquisition.refusals) == 0
+        let content = if complete {
+          cause_complete_report(acquisition: acquisition, declarations: data_decl_type_facts(pool_roots: roots))
+        } else {
+          join(["ACQUISITION_REFUSED: no negative coverage conclusions are available",
+            cause_acquisition_disposition_report(acquisition: acquisition)], "\n")
+        }
+        let written = Filesystem.Write(path: report, content: content)
+        if !written.success {
+          exit_failure(reason: written.error)
+        } else if !complete {
+          exit_failure(reason: "cause census acquisition refused; see the report for each source refusal")
+        } else { ExitSuccess }
+      }
+    }
+  }
+}
