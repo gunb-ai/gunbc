@@ -163,5 +163,28 @@ same row is the merge collision the one-class-per-file layout exists to avoid.
 ## Consequence for the fleet purchase
 
 Every DIMM in a socket must match on SPD byte 6. Purchase one uniform part number, or segregate
-package types by socket. Capacity, rank, width and speed being identical is NOT sufficient —
-they were identical across the failing mixes.
+package types by socket.
+
+**A CLAIM THAT STOOD HERE IS WITHDRAWN, and it was the one most repeated to the operator.** The
+text read "capacity, rank, width and speed being identical is NOT sufficient — they were identical
+across the failing mixes." **They were not.** The capture that produced this refusal holds two
+populations that differ on speed AND rank: the Micron rows read `16GB 2133 ECC 2R x4` and the SK
+hynix rows read `16GB 2666 ECC 1R x4`. Only capacity and device width actually match.
+
+The error was conflating two different comparisons. The two MICRON SIBLINGS
+(`MTA36ADS2G72PZ-2G1A1` and `MTA36ASF2G72PZ-2G1A2`) genuinely are identical on every part-number
+field except module options, and that is the clean discriminator for the package axis. The
+CONFIGURATION THE FIRMWARE ACTUALLY REJECTED was Micron-against-SK-hynix, where speed and rank
+differ as well. Extending the sibling comparison onto the captured mixture is the join defect this
+document already retracts twice elsewhere, committed a third time in its own conclusion.
+
+WHAT THE EVIDENCE STILL CARRIES, undiminished: the firmware named **byte 6** and no other field. It
+did not cite the speed difference or the rank difference that were also present, which is what
+keeps the package axis the operative one. But the rule may not be advertised as "everything else
+matched", because in the observed rejection it did not.
+
+The honest purchasing justification needs no overstatement: a directly observed, firmware-rejected
+package-byte mixture exists on this platform, so procurement must avoid that configuration, while
+qualification and applicability stay separate obligations. "One uniform part number per socket"
+remains a sound CONSERVATIVE purchasing rule — and it must not be presented as a universal firmware
+law, nor as evidence that any particular uniform population trains.
