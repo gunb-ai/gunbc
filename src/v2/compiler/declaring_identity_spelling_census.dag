@@ -46,16 +46,11 @@ import v2.std.logic { Bool }
 // carried through. Completeness is reference_site_collection_is_total, never inferred
 // from a short row list.
 //
-// WHAT THIS ROUTE CANNOT SEE is measured, not speculated:
-// v2.test.claim.declaring_identity_spelling.production_ingest matched_type_vs_value
-// (same module, no call): value_only and user type_only reach; imported Bool in a
-// parameter does not. Callee and call-argument absence is a separate class
-// (InvisibleUntilCallExpressionRetained; eager-raven-113 / gunbc#11207). Kernel
-// type-position absence is InvisibleUntilTypePositionMentionSurvives and is NOT
-// that call-lowering event -- naming #11207 as its trigger would retire the wait
-// while kernel types stayed dead. Empty rows on those classes is today's loss.
-// A parse-tree walker is not a workaround. The restoration capability for type
-// positions lands with fierce-lark / eager-raven, not in this census.
+// WHAT THIS ROUTE CANNOT SEE is measured, not speculated.
+// The usable XL-3 class is a QUALIFIED CROSS-MODULE mention. It is absent with no
+// call (InvisibleUntilQualifiedCrossModuleMentionSurvives). Body-lowering (#11207)
+// restores call arguments and callees only. Empty rows on the usable class is today's
+// loss, not Clear. A parse-tree walker is not a workaround.
 
 type DeclaringIdentitySpellingCensus {
   rows: FreeMonoid<DeclaringIdentitySpelling>
