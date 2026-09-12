@@ -1,0 +1,288 @@
+module test.claim.supplier.hetzner_route_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  ProviderPathUnread, DownstreamProviderPopulation, DownstreamProvidersUnread,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  ProviderUseAdmitted, ProviderUseDenied, ProviderUseRefusal,
+  ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
+  PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
+  RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  DispositionStanding, DispositionCleared,
+}
+import product.supplier.hetzner {
+  hetzner_helsinki_route, hetzner_nuremberg_route,
+  hetzner_helsinki_route_facts, hetzner_nuremberg_route_facts,
+  hetzner_helsinki_downstream, hetzner_route_admission,
+}
+
+// WHAT THESE ROWS ARE FOR. product.supplier.hetzner answers the nine-path closure for two rented
+// routes and BOTH refuse, so the whole module is a claim about refusals -- and a compliance gate
+// whose refusal nobody executes is a decoration that will later be cited as coverage (DESIGN
+// section 4b). These rows drive the two production facts rows through admit_provider_use and
+// require the exact obligation each refusal hands back, then build the discriminating pair that
+// separates "this route refuses" from "this producer refuses everything".
+//
+// THE ROSTER AND THE POSTURE ARE OURS AND THEY LIVE HERE, WHICH IS THE POINT RATHER THAN A
+// CONVENIENCE. product.supplier.hetzner declares neither, because nobody has stated that we are
+// willing to place work on this vendor. The counterfactual is exactly what makes the reds
+// discriminating: the roster below SANCTIONS both routes under a CURRENT posture with every
+// disposition cleared, so route classification, customer scope, data class, agreement and posture
+// staleness are all satisfied -- and the routes still refuse, on their data paths and their
+// downstream population alone.
+
+data hetzner_witness_customer_profile: NonEmptyStr = "hetzner-witness-customer-profile"
+data hetzner_witness_data_handling_profile: NonEmptyStr = "hetzner-witness-data-handling-profile"
+data hetzner_witness_agreement: NonEmptyStr = "hetzner-witness-agreement"
+data hetzner_witness_posture_authority: NonEmptyStr = "hetzner-witness-posture-authority"
+data hetzner_witness_decision_receipt: NonEmptyStr = "hetzner-witness-decision-receipt"
+data hetzner_witness_prohibited_use_cleared: NonEmptyStr = "hetzner-witness-prohibited-use-cleared"
+data hetzner_witness_sanctions_cleared: NonEmptyStr = "hetzner-witness-sanctions-cleared"
+data hetzner_witness_export_cleared: NonEmptyStr = "hetzner-witness-export-cleared"
+
+// THE STAND-IN FOR A PATH SOMEBODY READ, USED ONLY TO BUILD THE DISCRIMINATOR BELOW. It cites this
+// witness's own declarations and never the vendor's, so no reader can mistake it for a finding
+// about Hetzner: what it establishes is that the REFUSAL is caused by the unread arm and by nothing
+// else, which is a fact about the gate rather than about the supplier.
+data hetzner_witness_resolved_operator: NonEmptyStr = "hetzner-witness-resolved-operator"
+data hetzner_witness_resolved_jurisdiction: NonEmptyStr = "hetzner-witness-resolved-jurisdiction"
+data hetzner_witness_resolved_evidence: NonEmptyStr = "hetzner-witness-resolved-evidence"
+
+fn t_resolved() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_resolved_operator"),
+    jurisdiction: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_resolved_jurisdiction"),
+    evidence: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_resolved_evidence"),
+  }
+}
+
+fn t_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_posture_authority"),
+    revision: as_content_hash_structural(structural: content_hash_atom(value: "hetzner-witness-posture-r1" as NonEmptyStr)),
+  }
+}
+
+fn t_customer_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_customer_profile")
+}
+
+fn t_data_handling_profile() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_data_handling_profile")
+}
+
+fn t_agreement() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_agreement")
+}
+
+fn t_sanction(route: ProviderRoute) -> RouteScopeSanction {
+  RouteScopeSanction {
+    route: route,
+    posture: t_posture(),
+    customer_profile: t_customer_profile(),
+    data_handling_profile: t_data_handling_profile(),
+    requires_agreement: t_agreement(),
+  }
+}
+
+fn t_roster() -> List<RouteScopeSanction> {
+  [t_sanction(route: hetzner_helsinki_route()), t_sanction(route: hetzner_nuremberg_route())]
+}
+
+fn t_scope() -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "hetzner-witness-demand-1" as DemandKey },
+    work: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "hetzner-witness-work-1" as WorkKey },
+    customer_profile: t_customer_profile(),
+    data_handling_profile: t_data_handling_profile(),
+    agreement: t_agreement(),
+    prohibited_use_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_prohibited_use_cleared"),
+    },
+    sanctions_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_sanctions_cleared"),
+    },
+    export_disposition: DispositionCleared {
+      evidence: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_export_cleared"),
+    },
+  }
+}
+
+fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "hetzner-witness-offer-1" as OfferKey }
+}
+
+fn t_decide(facts: ProviderRouteFacts) -> ProviderUseAdmission<NonEmptyStr> {
+  hetzner_route_admission(
+    facts: facts,
+    roster: t_roster(),
+    active: t_posture(),
+    scope: t_scope(),
+    offer: t_offer(),
+    decision_receipt: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_decision_receipt"),
+  )
+}
+
+// The refusal surface is read once, exhaustively, exactly as test.claim.fabric.provider_admission_witness
+// reads it: a new refusal arm forces this match to be extended rather than falling into a catch-all
+// that would let an unasserted cause pass as any other.
+fn t_refusal_tag(c: ProviderUseRefusal) -> String {
+  match c {
+    ProviderRouteUnclassified { route } => "route-unclassified",
+    ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
+    DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
+    PostureRevisionStale { evaluated, active } => "posture-stale",
+    CustomerScopeUnsupported { cause } => "customer-unsupported",
+    DataHandlingUnsupported { cause } => "data-handling-unsupported",
+    RequiredAgreementAuthorityAbsent { accepted } => "agreement-absent",
+    ProhibitedUseNotCleared { obligation } => "prohibited-use-not-cleared",
+    SanctionsNotCleared { obligation } => "sanctions-not-cleared",
+    ExportNotCleared { obligation } => "export-not-cleared",
+  }
+}
+
+fn t_refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation } => [obligation],
+    DownstreamProviderUnassessed { obligation } => [obligation],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [cause],
+    DataHandlingUnsupported { cause } => [cause],
+    RequiredAgreementAuthorityAbsent { accepted } => accepted,
+    ProhibitedUseNotCleared { obligation } => [obligation],
+    SanctionsNotCleared { obligation } => [obligation],
+    ExportNotCleared { obligation } => [obligation],
+  }
+}
+
+// ASSERTING THE TAG ALONE WOULD NOT BE THE TEST. A facts-incomplete refusal that named the WRONG
+// path's obligation would send a reader to the wrong document, so each red below requires the
+// obligation its own arm named and nothing else.
+fn t_denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: DeclarationRef) -> Bool {
+  match a {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } =>
+      t_refusal_tag(c: cause) == tag
+        && count(filter(t_refusal_located(c: cause), r => declaration_ref_eq(a: r, b: located))) == 1,
+  }
+}
+
+// RED -- THE HELSINKI ROUTE REFUSES ON ITS DURABLE STORAGE, AND THE OBLIGATION IT HANDS BACK IS THE
+// SNAPSHOT READING. This is the item's whole thesis executed: the vendor labels the region Helsinki,
+// its own snapshot rule places a snapshot of that server in a randomly allocated OTHER location of
+// the eu-central zone -- both of which upstream lists as German -- and so a route that would have
+// been admitted on the strength of its region label is refused on a path that answers for itself.
+test fn the_helsinki_route_refuses_on_durable_storage() -> Bool {
+  t_denied_with(
+    a: t_decide(facts: hetzner_helsinki_route_facts()),
+    tag: "facts-incomplete",
+    located: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_durable_storage_obligation"),
+  )
+}
+
+// RED -- THE NUREMBERG ROUTE REFUSES BEFORE ITS PATHS ARE EVEN REACHED, because its downstream
+// population is unread and admit_provider_use orders the downstream assessment ahead of the path
+// closure. The Helsinki route's population is ENUMERATED from the same table, so this red also
+// establishes that the two arms are being told apart rather than both reading as unassessed.
+test fn the_nuremberg_route_refuses_as_downstream_unassessed() -> Bool {
+  t_denied_with(
+    a: t_decide(facts: hetzner_nuremberg_route_facts()),
+    tag: "downstream-unassessed",
+    located: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_downstream_obligation"),
+  )
+}
+
+// ── THE DISCRIMINATOR ─────────────────────────────────────────────────────────────────────────
+//
+// THE PAIR DIFFERS IN EXACTLY ONE FIELD. Both members take the Helsinki route, the Helsinki
+// enumerated downstream population and eight resolved paths; one leaves support_access unread with
+// the production obligation and the other resolves it. If the refusal came from anywhere but that
+// field the admitting member could not exist, and if the producer refused everything the admitting
+// member would fail -- so the two rows together say what neither says alone.
+fn t_helsinki_paths_with_support(support: ProviderPathStanding) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: t_resolved(),
+    durable_storage: t_resolved(),
+    backups: t_resolved(),
+    logs: t_resolved(),
+    telemetry: t_resolved(),
+    control_plane: t_resolved(),
+    support_access: support,
+    administrative_access: t_resolved(),
+    spill: t_resolved(),
+  }
+}
+
+fn t_helsinki_facts_with_support(support: ProviderPathStanding) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: hetzner_helsinki_route(),
+    contract_terms: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_terms_and_conditions_reading"),
+    data_paths: t_helsinki_paths_with_support(support: support),
+    downstream: hetzner_helsinki_downstream(),
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "hetzner-witness-discriminator" as NonEmptyStr)),
+  }
+}
+
+test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool {
+  t_denied_with(
+    a: t_decide(facts: t_helsinki_facts_with_support(support: ProviderPathUnread {
+      obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),
+    })),
+    tag: "facts-incomplete",
+    located: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),
+  )
+}
+
+// POSITIVE CONTROL. The same route, the same roster, the same posture and the same scope, with that
+// one path resolved, ADMITS -- and the permit names the route it was admitted for and the facts
+// revision it read, so this row cannot be satisfied by a permit about something else.
+test fn the_same_route_admits_once_that_path_is_resolved() -> Bool {
+  match t_decide(facts: t_helsinki_facts_with_support(support: t_resolved())) {
+    ProviderUseDenied { decision, cause } => false,
+    ProviderUseAdmitted { permit } =>
+      declaration_ref_eq(
+        a: permit.route.region,
+        b: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_location_helsinki"),
+      )
+        && declaration_ref_eq(
+          a: permit.evidence.customer_profile,
+          b: t_customer_profile(),
+        ),
+  }
+}
+
+// RED -- AN ENUMERATED POPULATION IS NOT A RESOLVED ONE BY DEFAULT. The same discriminator with the
+// Helsinki population replaced by an unread one refuses as downstream-unassessed even though all
+// nine paths are resolved, which is what keeps the two questions separate: a route can know exactly
+// where its own material sits and still not know whose hands it passes through.
+data hetzner_witness_downstream_obligation: NonEmptyStr = "hetzner-witness-downstream-obligation"
+
+fn t_helsinki_facts_downstream_unread() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: hetzner_helsinki_route(),
+    contract_terms: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_terms_and_conditions_reading"),
+    data_paths: t_helsinki_paths_with_support(support: t_resolved()),
+    downstream: DownstreamProvidersUnread {
+      obligation: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_downstream_obligation"),
+    },
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "hetzner-witness-downstream-unread" as NonEmptyStr)),
+  }
+}
+
+test fn a_resolved_closure_with_an_unread_downstream_still_refuses() -> Bool {
+  t_denied_with(
+    a: t_decide(facts: t_helsinki_facts_downstream_unread()),
+    tag: "downstream-unassessed",
+    located: decl_ref(module_path: "test.claim.supplier.hetzner_route_witness", decl_name: "hetzner_witness_downstream_obligation"),
+  )
+}

@@ -1,0 +1,304 @@
+module product.supplier.hetzner
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathUnread,
+  DownstreamProviderPopulation, DownstreamProvidersEnumerated, DownstreamProvidersUnread,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission, admit_provider_use,
+}
+
+// THE FIRST RENTED ROUTE THIS REPOSITORY ANSWERS THE NINE-PATH CLOSURE FOR, AND BOTH ROWS REFUSE.
+//
+// Until now the only ProviderRouteFacts in the tree were a fixture, a live probe and
+// gunbc.spark.first_party_serving -- and that last one is the case where there is no vendor at all:
+// our own hardware, at our own site, with eight paths located by one operator assertion. A rented
+// route is the case the closure was actually built for, because it is the one where the paths can
+// disagree with each other, and this module is the first place that disagreement is recorded rather
+// than assumed away.
+//
+// WHAT IT IS NOT. It is not a supplier binding: it produces no SupplierOffer, and it restates no
+// price, shape or catalog row -- extdeps.cloud.hetzner owns those and product.supplier.ubicloud is
+// the template for binding them when a Hetzner offer is wanted. What it produces is the answer to
+// "where does material on this route go", which is a different question from "what does it cost"
+// and is asked first, because product.fabric.provider_admission runs before any price is compared.
+//
+// BOTH ROUTES REFUSE TODAY, AND THAT IS THE DELIVERABLE RATHER THAN A GAP IN IT. The vendor
+// publishes enough to LOCATE execution, backups and (for one region) support; it publishes nothing
+// this reader could find about where its log system, its telemetry, its control plane, its
+// administrators or any spill of customer material sit, and its own snapshot rule places durable
+// storage in a location the route cannot name. Every one of those is ProviderPathUnread with an
+// obligation, so admit_provider_use refuses and the refusal names the exact document that would
+// discharge it. Reaching for ProviderPathLocated to make these rows look finished is the failure the
+// whole closure exists to prevent: an unexamined path reading as a clean one.
+//
+// AUTHORITY DIRECTION. Every fact about the vendor below is CITED into extdeps.cloud.hetzner, where
+// the readings, the entities, the location rows and the approved-subcontractor table live with their
+// URIs and read dates. What is declared HERE is only ours: the obligations that say what we still
+// have to read, and the join that hands the vendor's facts to our admission gate.
+
+// ── THE ROUTE COMPONENTS ──────────────────────────────────────────────────────────────────────
+//
+// The provider is the legal entity, not the brand. Hetzner Online GmbH is the party the Terms and
+// Conditions contract with and the party Appendix 3 names as the one its subcontractors process on
+// behalf of, so it is the party a permit is about; "Hetzner" is a name several companies in that
+// document share. The service is the cloud-server product the module's external authority anchor
+// cites, and the region is the location row rather than a label, so the wire code, the country and
+// the network zone travel with it.
+
+fn hetzner_provider_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_online_gmbh")
+}
+
+fn hetzner_cloud_service_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "extdeps_external_authority_anchor")
+}
+
+fn hetzner_helsinki_region_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_location_helsinki")
+}
+
+fn hetzner_nuremberg_region_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_location_nuremberg")
+}
+
+fn hetzner_helsinki_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: hetzner_provider_ref(),
+    service: hetzner_cloud_service_ref(),
+    region: hetzner_helsinki_region_ref(),
+  }
+}
+
+fn hetzner_nuremberg_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: hetzner_provider_ref(),
+    service: hetzner_cloud_service_ref(),
+    region: hetzner_nuremberg_region_ref(),
+  }
+}
+
+// ── THE OBLIGATIONS, ONE PER UNREAD PATH ──────────────────────────────────────────────────────
+//
+// AN OBLIGATION IS A ROW, NOT A SENTENCE AT THE CALL SITE, for the reason product.supplier.ubicloud
+// gives for its region obligation: the thing a refusal hands back must be one named declaration an
+// auditor can follow, and a string repeated per caller drifts between them. Each says what was read,
+// what was not found in it, and what reading would resolve the path -- so the refusal names a
+// document to go and get rather than merely reporting that something is missing.
+//
+// THE SHARED ONES ARE SHARED BECAUSE THE GAP IS ONE GAP. The log system, the telemetry, the control
+// plane, the administrative access and the spill questions are not answered for ANY location by the
+// documents read, so one row each is the honest grain; a per-region copy would present one unread
+// document as two independent findings.
+
+data hetzner_log_system_location_obligation: NonEmptyStr = "Where the Hetzner Cloud log system stores and processes its records is UNREAD. extdeps.cloud.hetzner hetzner_technical_organizational_measures_reading establishes that a log system saves logins and administrative changes within the customer account and that records are kept under a company deletion plan, and it names no country, no location and no operating entity for that system; no other document read on 2026-09-12 answers it either. RESOLVED BY a Hetzner document that states which location or which legal entity operates the log store for a given server location -- at which point this path takes the located arm with that entity as operator. It is NOT resolved by the location of the server, because a log record is written by the platform and not by the customer's instance."
+
+data hetzner_telemetry_location_obligation: NonEmptyStr = "Whether Hetzner Cloud collects telemetry about a customer server, what it carries, and where it goes, is UNREAD. Nothing in the documents read on 2026-09-12 -- the locations page, the backup and snapshot FAQ, Appendix 3 of the Data Protection Agreement, the technical and organizational measures page, the data-protection overview or the Terms and Conditions -- describes a telemetry or usage-reporting path for a cloud server. THE ABSENT ARM IS DELIBERATELY NOT TAKEN: nobody has stated that no such collection exists, and a silence read as a denial is the exact collapse product.fabric.provider_route keeps the two arms apart to prevent. RESOLVED BY a Hetzner statement about platform telemetry for cloud servers, in either direction: an explicit none makes this path Absent with that document as its evidence, and a described collection makes it Located at whoever receives it."
+
+data hetzner_control_plane_location_obligation: NonEmptyStr = "Where the Hetzner Cloud control plane -- the Console and the Cloud API that create, start, rescue and image a server -- runs, and under whose jurisdiction, is UNREAD. The control plane reaches customer material without appearing in the customer-visible topology, which is why product.fabric.provider_route carries it as a path of its own; the documents read on 2026-09-12 place the SERVERS in Falkenstein, Nuremberg and Helsinki and say nothing about where the service that administers them runs. RESOLVED BY a Hetzner document naming the location or the operating entity of the Console and Cloud API for a given server location."
+
+data hetzner_administrative_access_obligation: NonEmptyStr = "From which jurisdiction administrative access to a Hetzner Cloud server is exercised is UNREAD, although WHO exercises it is read. extdeps.cloud.hetzner hetzner_technical_organizational_measures_reading states that only authorized Hetzner employees have administrative access, within the scope of the agreed service, via multi-level authentication and cryptographic protection -- that is the operator, and it is the one component of three this path can fill. It names no country for those employees and mentions Finland and Helsinki nowhere. THE SUPPORT STATEMENT DOES NOT ANSWER IT: the locations page's sentence about a team of technicians in Germany is about CUSTOMER SUPPORT, and reading it as an answer about administrative access would join two documents at a seam neither of them draws. RESOLVED BY a Hetzner statement of where administrative access to a given server location is exercised from."
+
+data hetzner_spill_location_obligation: NonEmptyStr = "Where customer material may SPILL on a Hetzner Cloud route -- swap, crash dumps, hypervisor or host scratch, storage reclaimed without erasure, diagnostic captures -- is UNREAD. The technical and organizational measures page read on 2026-09-12 describes hardware destruction at Falkenstein and access control, and describes no spill surface for a running cloud server; no other document read answers it. RESOLVED BY a Hetzner statement about host-side scratch, swap or dump handling for cloud servers, which as with telemetry may resolve this path in either direction."
+
+data hetzner_helsinki_durable_storage_obligation: NonEmptyStr = "THE JURISDICTION OF DURABLE STORAGE ON THE HELSINKI ROUTE IS NOT DETERMINED BY THE ROUTE, and this is a read fact rather than an unread one -- the reading is in extdeps.cloud.hetzner hetzner_backup_snapshot_reading and it is what refuses. Upstream states that a Snapshot is automatically in a DIFFERENT location than the cloud server it was created from, that the location is allocated randomly and cannot be changed, and that it has to be in the same network zone. hel1 sits in network zone eu-central, whose other locations upstream lists as fsn1 (DE Falkenstein) and nbg1 (DE Nuremberg), so a snapshot taken of a Helsinki server is placed in GERMANY and never in Finland, and which of the two is not decidable in advance. The server's own disk is in Finland. Durable storage on this route therefore spans two jurisdictions, ProviderPathLocated carries exactly one, and writing Finland into that slot would be the vendor-region-label claim this closure exists to refuse. RESOLVED BY either a Hetzner mechanism that pins snapshot placement to a chosen location, or a route whose use scope excludes snapshots and whose durable storage is then the server volume alone -- which is a different route's facts, not an edit to these."
+
+data hetzner_nuremberg_durable_storage_obligation: NonEmptyStr = "THE JURISDICTION OF DURABLE STORAGE ON THE NUREMBERG ROUTE IS NOT DETERMINED BY THE ROUTE, on the same reading as the Helsinki row and with the direction reversed. extdeps.cloud.hetzner hetzner_backup_snapshot_reading states that a Snapshot is automatically in a different location than the server, allocated randomly, unchangeable, and within the same network zone. nbg1 sits in eu-central beside fsn1 (DE Falkenstein) and hel1 (FI Helsinki), so a snapshot of a Nuremberg server lands in Falkenstein or in HELSINKI -- a German route whose durable storage may sit in Finland. Only the EU-wide statement in Appendix 3 of the Data Protection Agreement bounds it, and the European Union is not a jurisdiction: it is several, which is why product.fabric.provider_route refuses a regional kernel in that slot. RESOLVED BY the same two readings the Helsinki obligation names."
+
+data hetzner_helsinki_support_access_obligation: NonEmptyStr = "SUPPORT ACCESS TO A HELSINKI SERVER IS DOCUMENTED TWICE, BY TWO PARTIES IN TWO COUNTRIES, AND THE PATH CARRIES ONE. extdeps.cloud.hetzner hetzner_locations_reading states that Hetzner's own team of technicians in Germany provides customer support for the Hetzner Cloud servers in Europe, the USA, and Singapore. extdeps.cloud.hetzner hetzner_subcontractor_appendix_reading lists, against SERVER LOCATION Finland, the approved subcontractor Hetzner Finland Oy of Huurrekuja 10, 04360 Tuusula, whose type of service is building rental and TECHNICAL SUPPORT. Both are current readings of 2026-09-12 and they do not contradict each other -- German customer support and Finnish technical support are different services -- so support access on this route reaches Hetzner Online GmbH in Germany AND Hetzner Finland Oy in Finland. ProviderPathLocated carries one operator and one jurisdiction, so naming either alone would delete a documented party from the route's answer. RESOLVED BY a Hetzner statement partitioning which support functions touch a customer server at the Finland location, or by a ProviderPathStanding able to carry a multi-party path. The Nuremberg route has no such second party in the table and its support path is located."
+
+data hetzner_nuremberg_downstream_obligation: NonEmptyStr = "WHETHER THE NUREMBERG ROUTE HAS DOWNSTREAM PROVIDERS IS UNREAD, AND THE EMPTY TABLE ROW IS PRECISELY WHY. extdeps.cloud.hetzner hetzner_subcontractor_appendix_reading is Appendix 3 of the Data Protection Agreement, version 1.0 of August 08, 2024, whose table is keyed by SERVER LOCATION and lists approved subcontractors for Finland, the USA and Singapore. No row names a German server location. THAT ABSENCE IS NOT AN EVIDENCED NONE: the document says which companies are approved, and it nowhere says that a location without a row has no subcontractor -- and its own closing note, that technical and customer support services for ALL server locations are provided within the EU, leaves open whether the Finland-row party's technical support reaches a German-location server. Taking NoDownstreamProviders here would convert a silence into a finding, which is the fail-open this arm exists to refuse. RESOLVED BY a Hetzner statement that the approved-subcontractor table is exhaustive per location, or by a later version of Appendix 3 carrying a German row -- either reading answers it, in opposite directions."
+
+// ── THE PATHS ─────────────────────────────────────────────────────────────────────────────────
+//
+// EACH PATH ANSWERS FOR ITSELF AND THE LOCATED ONES DO NOT SHARE AN EVIDENCE ROW BY DEFAULT. Execution
+// is located by the sentence that says Hetzner owns and operates the park; backups are located by a
+// DIFFERENT sentence, in a different document, which is the one that actually says where a backup
+// goes. Passing the locations page off as evidence for the backup path would be the cheap move the
+// closure is built to catch -- one document standing in for nine answers.
+//
+// EVERY CITATION BELOW IS WRITTEN OUT WITH BOTH ARGUMENTS AS LITERALS, AND THE REPETITION IS THE
+// PRICE OF BEING CHECKABLE. Routing these through one helper that takes the declaration name as a
+// PARAMETER is the shorter spelling and it is the one test.claim.fabric.provider_use_fixture records
+// as a fix that hid twenty-four findings rather than repairing them: the corpus citation gate ingests
+// a citation only when both arguments are string literals, so a parameterised decl_ref leaves the
+// gate's universe entirely. A wall that goes green by making its subject unobservable is worse than
+// the red it replaced.
+
+fn hetzner_helsinki_execution_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_online_gmbh"),
+    jurisdiction: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_location_helsinki"),
+    evidence: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+  }
+}
+
+fn hetzner_nuremberg_execution_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_online_gmbh"),
+    jurisdiction: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_location_nuremberg"),
+    evidence: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+  }
+}
+
+fn hetzner_helsinki_backups_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_online_gmbh"),
+    jurisdiction: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_location_helsinki"),
+    evidence: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_backup_snapshot_reading"),
+  }
+}
+
+fn hetzner_nuremberg_backups_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_online_gmbh"),
+    jurisdiction: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_location_nuremberg"),
+    evidence: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_backup_snapshot_reading"),
+  }
+}
+
+// THE JURISDICTION OF THE NUREMBERG SUPPORT PATH CITES THE SUPPORT ORGANISATION, NOT THE SERVER
+// LOCATION, even though both say Germany. They say it for different reasons and only one of them is
+// about support, so citing the location row would make the answer look like it followed from where
+// the server sits -- which is the inference this whole module refuses to make.
+fn hetzner_nuremberg_support_path() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_online_gmbh"),
+    jurisdiction: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_customer_support_organisation"),
+    evidence: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_locations_reading"),
+  }
+}
+
+fn hetzner_helsinki_data_paths() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: hetzner_helsinki_execution_path(),
+    durable_storage: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_durable_storage_obligation") },
+    backups: hetzner_helsinki_backups_path(),
+    logs: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_log_system_location_obligation") },
+    telemetry: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation") },
+    control_plane: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation") },
+    support_access: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation") },
+    administrative_access: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_administrative_access_obligation") },
+    spill: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_spill_location_obligation") },
+  }
+}
+
+fn hetzner_nuremberg_data_paths() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: hetzner_nuremberg_execution_path(),
+    durable_storage: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_durable_storage_obligation") },
+    backups: hetzner_nuremberg_backups_path(),
+    logs: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_log_system_location_obligation") },
+    telemetry: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_telemetry_location_obligation") },
+    control_plane: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_control_plane_location_obligation") },
+    support_access: hetzner_nuremberg_support_path(),
+    administrative_access: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_administrative_access_obligation") },
+    spill: ProviderPathUnread { obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_spill_location_obligation") },
+  }
+}
+
+// ── THE DOWNSTREAM POPULATION ─────────────────────────────────────────────────────────────────
+//
+// The Helsinki route's population is ENUMERATED because upstream enumerates it for that server
+// location: one approved subcontractor, Hetzner Finland Oy, with the table itself as the coverage
+// evidence. The Nuremberg route's is UNREAD, and the two arms sitting side by side over one document
+// is the point -- the same table answers one route and declines to answer the other, and a model that
+// reported both as "no downstream providers" would have erased the difference.
+
+fn hetzner_helsinki_downstream() -> DownstreamProviderPopulation {
+  DownstreamProvidersEnumerated {
+    first: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_finland"),
+    further: [],
+    coverage: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_appendix_reading"),
+  }
+}
+
+fn hetzner_nuremberg_downstream() -> DownstreamProviderPopulation {
+  DownstreamProvidersUnread {
+    obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_nuremberg_downstream_obligation"),
+  }
+}
+
+// ── THE FACTS ROWS ────────────────────────────────────────────────────────────────────────────
+//
+// contract_terms CITES THE TERMS AND CONDITIONS READING, which is the document that actually says
+// what governs the relationship: German law, exclusive place of jurisdiction Gunzenhausen, version
+// 2.0.0 of 27 October 2021. That is worth recording beside nine paths that are mostly unread, because
+// it is the one thing about this vendor that IS settled, and it settles it for both regions.
+//
+// observed_at IS AT DATE GRAIN AND THE MIDNIGHT IS A CONVENTION, not a moment anybody measured --
+// the same convention gunbc.spark.first_party_serving states for the same reason: these facts are a
+// day's reading of published documents, and a time of day would invite a reader to treat them as a
+// sample.
+
+fn hetzner_helsinki_route_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: hetzner_helsinki_route(),
+    contract_terms: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_terms_and_conditions_reading"),
+    data_paths: hetzner_helsinki_data_paths(),
+    downstream: hetzner_helsinki_downstream(),
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "product.supplier.hetzner.helsinki-route-facts.2026-09-12" as NonEmptyStr)),
+  }
+}
+
+fn hetzner_nuremberg_route_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: hetzner_nuremberg_route(),
+    contract_terms: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_terms_and_conditions_reading"),
+    data_paths: hetzner_nuremberg_data_paths(),
+    downstream: hetzner_nuremberg_downstream(),
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: as_content_hash_structural(structural: content_hash_atom(value: "product.supplier.hetzner.nuremberg-route-facts.2026-09-12" as NonEmptyStr)),
+  }
+}
+
+fn hetzner_route_facts_population() -> List<ProviderRouteFacts> {
+  [hetzner_helsinki_route_facts(), hetzner_nuremberg_route_facts()]
+}
+
+// ── THE ADMISSION, AND WHY THE ROSTER AND THE POSTURE ARE PARAMETERS ──────────────────────────
+//
+// THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION, AND THAT IS A DELIBERATE
+// DIVERGENCE FROM gunbc.spark.first_party_serving RATHER THAN AN OMISSION. That module carries its
+// own roster because an operator made an attributable assertion -- it is just serving us for now --
+// and a roster row is exactly that kind of statement: it says we are willing to place a named scope
+// on a named route under a named posture. Nobody has made such a statement about this vendor. Writing
+// one here to make the module look complete would be the fabricated authority the whole gate exists
+// to close, and it would be worse than a fabricated fact because it would be OURS.
+//
+// So the producer takes the roster and the active posture from its caller and supplies only what this
+// module owns: the vendor's route facts. A caller that brings a roster sanctioning these routes still
+// gets a refusal, because the facts refuse on their own -- which is the property worth having, and
+// the one test.claim.supplier.hetzner_route_witness_test drives.
+//
+// DECLARED FRONTIER (DESIGN section 3c). The production consumer is a Hetzner supplier binding --
+// the product.supplier.ubicloud shape, producing SupplierOffers on these routes -- joined to a
+// posture producer. Neither exists in this tree: no posture pipeline mints a CompliancePostureRevision
+// for a rented vendor today, which product.fabric.provider_admission already records as the reason its
+// posture authority is an open DeclarationRef. TRIGGER: a posture producer that mints a revision for a
+// third-party route, SUFFICIENT FOR a roster row on these routes to be authored by the party that owns
+// our compliance posture rather than by a test. Until then the executing consumer is the witness, and
+// it exercises the refusing and the admitting arms both.
+fn hetzner_route_admission<P>(
+  facts: ProviderRouteFacts,
+  roster: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  offer: FabricIdentity<P, OfferKey>,
+  decision_receipt: DeclarationRef,
+) -> ProviderUseAdmission<P> {
+  admit_provider_use(
+    roster: roster,
+    facts: facts,
+    active: active,
+    scope: scope,
+    offer: offer,
+    decision_receipt: decision_receipt,
+  )
+}
