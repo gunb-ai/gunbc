@@ -6,11 +6,11 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
-import v2.compiler.self_host.emitter_producer_provenance { RealizedEmitterClosure }
-import v2.compiler.self_host.ancestry {
-  NativeGenerationAdmitted,
-  NativeGenerationRefused,
-  native_producer_closure_admission
+import v2.compiler.self_host.emitter_producer_provenance {
+  ProducerMintAdmitted,
+  ProducerMintRefused,
+  RealizedEmitterClosure,
+  v2_emitter_closure_admission
 }
 import v2.compiler.compile {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
@@ -784,9 +784,9 @@ fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
     OldRouteAbsentByConstruction { admitted_native_producer_closure: c } =>
-      match native_producer_closure_admission(closure: c) {
-        NativeGenerationAdmitted => true
-        NativeGenerationRefused { cause: _ } => false
+      match v2_emitter_closure_admission(closure: c) {
+        ProducerMintAdmitted => true
+        ProducerMintRefused { cause: _ } => false
       }
     OldRouteControlAbsent => false
   }

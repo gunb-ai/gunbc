@@ -1,11 +1,18 @@
 module extdeps.docker.cli
 
-import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  json_string_value_or_empty,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -202,12 +209,81 @@ fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
 // exits zero when the reference names no image. So absence is an empty answer rather than a failure,
 // which is what lets a caller keep "no such image" apart from "the query did not run".
 //
-// IT IS NOT `docker image inspect --format {{.Id}}`, AND THE REASON IS A MEASURED REFUSAL. That
-// spelling was written first and refused at the transport: a Go template carries braces and a dot,
-// and braces are outside the portable-word allowlist gunbc.typed_argv_exec enforces, so the argv
-// never reached the host. The listing form asks the same question in words the wire admits.
+// THIS COMMAND MATCHES REPOSITORY[:TAG] ONLY. A digest-pinned pull is invisible here — measured
+// empty by fleet-converge 34642398773 with `--filter=reference=` as well. The digest-pinned
+// identity readback is docker_image_inspect_command, a different symbol with a different
+// absence contract (inspect exits non-zero when the object is missing).
 fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
+}
+
+// DIGEST-PINNED IDENTITY. `docker image inspect <ref>` names repo@sha256:... and prints a JSON
+// array of image objects. The local config id is the unique `Id` member of the single element,
+// read by docker_image_inspect_id_from_stdout (extdeps.languages.json.parse). No --format: a Go
+// template's braces sit outside typed_argv_exec's portable-word allowlist, and
+// `--filter=reference=` was measured empty on srv9 after a successful pull (fleet-converge
+// 34642398773). inspect without a template stays inside that allowlist. fleet-converge
+// 34646650317 on srv9 parsed Id sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040
+// from that JSON and the probe advanced past image-digest.
+//
+// ABSENCE IS A NON-ZERO EXIT. Docker prints `Error: No such image: <ref>` and exits 1. That is
+// docker_image_inspect_names_no_such_image, a typed refusal, not empty stdout. Callers that need
+// empty-means-absent stay on docker_image_digest_command.
+fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "inspect", image as String])
+}
+
+fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "No such image")
+}
+
+type DockerImageInspectIdRead
+  = DockerImageInspectId { id: NonEmptyStr }
+  | DockerImageInspectIdUnreadable { cause: String }
+
+fn docker_inspect_json_first_of_one(v: JsonValue) -> JsonValue? {
+  match v {
+    JsonArray { elements: es } =>
+      if count(es) != 1 {
+        none
+      } else {
+        fold(es, init: none, f: (acc, x) => match acc {
+          Present { value: _ } => acc
+          Absent => Present { value: x }
+        })
+      }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerImageInspectIdUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerImageInspectIdUnreadable { cause: "docker image inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Id") {
+            JsonMemberAbsent => DockerImageInspectIdUnreadable { cause: "docker image inspect JSON names no Id" }
+            JsonMemberNotAnObject => DockerImageInspectIdUnreadable { cause: "docker image inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerImageInspectIdUnreadable { cause: join(["docker image inspect JSON names Id ", to_string(n), " times"], "") }
+            JsonMemberFound { value: idv } => {
+              let id = json_string_value_or_empty(v: idv)
+              if id == "" {
+                DockerImageInspectIdUnreadable { cause: "docker image inspect JSON Id is not a nonempty string" }
+              } else {
+                DockerImageInspectId { id: id as NonEmptyStr }
+              }
+            }
+          }
+      }
+  }
 }
 
 // THE SHORT MOUNT SPELLING, AND THE ONE REASON IT EXISTS BESIDE docker_mount_flag. `--mount` takes

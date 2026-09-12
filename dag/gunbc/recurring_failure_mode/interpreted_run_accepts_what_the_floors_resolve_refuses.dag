@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.interpreted_run_accepts_what_the_floors_resolve_refuses
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data interpreted_run_accepts_what_the_floors_resolve_refuses: RecurringFailureMode = RecurringFailureMode {
+  identity: "interpreted_run_accepts_what_the_floors_resolve_refuses" as NonEmptyStr,
+
+  receipts: [
+    "**the same tree resolves under the entry runner and is REFUSED by the required floor, so a local green is SILENT about the floor rather than evidence for it** (the witness executed, the arms discriminated, the report says PASS -- and the floor refuses the identical source with a blocking resolve diagnostic. Nothing about the receipt is false; what is false is the sentence the author writes next.",
+
+    "INVALID STATE: two acceptance answers for one source, where the one that is cheap to obtain is the one that does not gate. The author's evidence and the merge's evidence are then different propositions wearing the same word, green.",
+
+    "HARM: evidence cited for a rung it never established. This is DESIGN section 5's specification-without-execution trap in its most convincing disguise -- not a typecheck-and-grep standing in for a consumer, but a REAL execution receipt from a REAL consumer, standing in for a different consumer's verdict.",
+
+    "THE MECHANISM IS NOT YET MEASURED, AND THIS ROW'S FIRST REVISION CLAIMED ONE THAT THE CODE CONTRADICTS. That revision said the entry runner resolves under a permissive gate while the floor resolves under a strict one, so an advisory typecheck diagnostic was invisible locally and blocking on the required lane. Three facts refute it, each checked in the tree rather than argued: `claim_batch` resolves through `v1_compiler.cli_run.entry_resolve` `resolve_entry_with_index`, which passes `ResolveTypecheckGate::Strict` -- the same gate the floor's closure-strict-resolve phase uses; `v1.compiler.core` `is_interpreter_blocking_diagnostic` and `is_discovery_corpus_blocking_diagnostic` are identical in every arm, so the gate selects between two spellings of one predicate and cannot produce a disagreement at all; and the specimen's diagnostic, `VariantNotFound`, is dispositioned `GateBlocking`, so it would refuse under either predicate. A ledger row that misdirects the climb is worse than silence, and the withdrawal is kept here rather than deleted because the wrong story is the one a later reader is most likely to reconstruct from the same two arms.",
+
+    "SPECIMEN, gunbc#11026, 2026-09-11, both observations first-hand. `dag/std` distinguishes `List` from `FreeMonoid`: `[]` with `concat([x], acc)` builds the first, `Empty` with `Cons` the second, and a new module mixed them. `claim_batch --entry` over that tree resolved the entry -- reported 168 modules, 6554 resolved items -- and ran eight witnesses to PASS, including the discriminating ones. The required floor refused the SAME tree at `modules_resolved=110` with `dag/std/algebra.dag:367: variant 'Empty' not found in type 'List'`. Both readings are receipts; what is missing is the fact that explains the difference.",
+
+    "WHAT WOULD ISOLATE IT, stated so the next occurrence produces the answer instead of another anecdote: the two runs differ in the POPULATION they resolve (an entry closure versus the floor's module set) and in nothing else that has been checked, so the discriminating experiment is to resolve the same entry under both populations and compare the diagnostic sets. If the entry closure alone refuses, the difference is in the runner; if it accepts while the larger set refuses, the difference is in how a declaration is typed when more modules are present, which is a different and more interesting class. Until that is run, no mechanism belongs in this row.",
+
+    "DISTINGUISHING FACTS, available before any push and independent of the cause: a change lands in a layer whose idioms the author inferred from a NEIGHBOURING layer, the local run is green first try, and no floor result exists yet. The boundary against neighbours: this is NOT [[accepted_source_emits_uncompilable_target]], where the refusing party is a TARGET compiler outside this repository and the emission is the subject; both answers here are our own, about the same source, at the same stage. It is NOT [[realization_arms_diverge_on_whether_the_program_refuses]] either -- that class is two realizations of an ALREADY ACCEPTED program disagreeing at evaluation time, where here the disagreement is about acceptance itself and never reaches evaluation on the refusing side.",
+
+    "RUNG FOUND AT: 1 -- the divergence is loud when the floor finally runs, and containment is a rerun. CEILING: NOT DERIVABLE YET, and saying so is the honest answer rather than a placeholder: the attainable rung depends on whether the two runs differ by runner or by population, and that is exactly what is unmeasured. NEXT TRIGGER: the isolation above -- one entry resolved under both populations, diagnostics compared -- after which this row either gains a mechanism and a ceiling, or dissolves into whichever class the measurement names. Until then, one operational rule stands on the observation alone and needs no mechanism: a local PASS is reportable as what it is -- the entry runner accepted and the witnesses discriminated -- and is not reportable as the floor's verdict.)",
+  ],
+
+  evidence: [],
+}

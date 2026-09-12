@@ -1,6 +1,8 @@
 module v2.compiler.self_host.ancestry
 
 import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol }
 import v2.std.optional { Absent, Optional, Present }
@@ -9,20 +11,18 @@ import v2.compiler.self_host.emitter_producer_provenance {
   EmitterProducer,
   RealizedEmitterClosure,
   V1SeedEmitter,
-  V2EmitterInterpreted,
   V2EmitterNative,
-  emitter_producer_eq,
-  realized_closure_contains_module,
-  seed_emit_rust_reachable,
-  v2_emit_interpreted_qualified_module
+  ProducerMintAdmitted,
+  ProducerMintRefused,
+  emitter_producer_mint_admission,
+  seed_emit_rust_reachable
 }
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
   ArtifactNotMaterialized,
   GeneratedArtifactIdentity,
   GenerationIdentity,
-  ObservedArtifactDigest,
-  generation_identity_agrees
+  ObservedArtifactDigest
 }
 
 // THE SEED IS NEVER THE ORDINARY MISS PATH (operator design-review ruling 2026-09-11, C1).
@@ -61,6 +61,7 @@ type NativeAncestry
   | SucceedsNative {
       parent_generation: Int
       parent_artifact: ObservedArtifactDigest
+      produced_by_execution_of: ObservedArtifactDigest
     }
 
 // A read-back is the artifact REPORTING ITS OWN IDENTITY after being built, which is what
@@ -116,14 +117,51 @@ type NativeGeneration {
 fn native_generation_producer(g: NativeGeneration) -> EmitterProducer {
   match g.ancestry {
     GenesisFromSeed { seed_binary: _ } => V1SeedEmitter
-    SucceedsNative { parent_generation: p, parent_artifact: _ } =>
+    SucceedsNative {
+      parent_generation: p,
+      parent_artifact: _,
+      produced_by_execution_of: _
+    } =>
       V2EmitterNative { generation: p }
   }
 }
 
 data genesis_generation_number: Int = 0
 
+// A MODULE-PATH CLOSURE CANNOT ESTABLISH NATIVENESS, AND AN EARLIER REVISION PRETENDED IT
+// COULD. The native compiler IS those modules compiled, so the interpreted route and the native
+// route name THE SAME MODULES: v2.compiler.self_host.candidate_generation mints
+// V2EmitterInterpreted against realized_closure_for_v2_direct_rust_door_emit_run, and this
+// module's own "native" fixture was byte-identical to it (review 63985). Every closure clause is
+// therefore a NEGATIVE filter — it can say the seed did not participate, and it can never say
+// the prior native generation did. A positive control built on closure membership alone is
+// satisfiable by editing a declaration while the realization lies, which is precisely the tell
+// DESIGN section 5 gives for validation standing where construction was available.
+//
+// So nativeness is bound to EXECUTED BYTES instead. produced_by_execution_of names the artifact
+// that ran to produce this generation, and the mint requires it to be the very artifact the
+// ancestry names as its parent. The interpreted route cannot honestly supply that: it has no
+// ancestor binary, and any digest it offers is one the successor's own parent_artifact field
+// must equal. The check is on two fields of one value, so it fires inside the mint rather than
+// waiting for a join the mint cannot perform.
+data ancestry_producer_execution_is_not_the_named_ancestor: String = "native generation mint refused: the artifact that executed to produce this generation is not the artifact its ancestry names as the parent — a closure naming native modules is not evidence that native bytes ran, because the interpreted route names the same modules"
+
 data ancestry_genesis_not_generation_zero: String = "native generation mint refused: GenesisFromSeed is the migration step onto generation 0 and carries no other generation number"
+
+// GENERATION 0 IS GENESIS-ONLY, AND ARITHMETIC ALONE DOES NOT ENFORCE IT. The successor clause
+// checks generation == parent + 1, which a NEGATIVE parent satisfies at generation 0:
+// SucceedsNative { parent_generation: -1 } mints generation 0 without ever passing genesis
+// admission, so the one number the migration boundary is defined by becomes reachable from the
+// recurring arm (review 64112). The remaining clauses do not catch it -- they ask about
+// closures, build paths, read-backs and executed bytes, none of which are about WHERE IN THE
+// CHAIN this generation sits.
+//
+// Refusing a negative parent closes it at the source rather than at the successor's own number:
+// with parent >= 0 the successor is always >= 1 by construction, so generation 0 has exactly one
+// constructor. Stated as its own cause because "the parent generation is not a generation" and
+// "the numbering does not follow the parent" are different defects with different remedies, and
+// collapsing them would report a fabricated chain position as an ordinary off-by-one.
+data ancestry_successor_parent_generation_negative: String = "native generation mint refused: SucceedsNative names a negative parent generation, which is not a position in the chain — and at parent -1 the successor would number itself 0, the one generation reachable only through the genesis migration"
 
 data ancestry_successor_not_parent_plus_one: String = "native generation mint refused: SucceedsNative(parent) must mint generation parent + 1; ancestry and generation number disagree"
 
@@ -133,12 +171,14 @@ data ancestry_read_back_unperformed: String = "native generation mint refused: R
 
 data ancestry_read_back_diverged: String = "native generation mint refused: the artifact reported an identity that is not the digest observed of the bytes that were built"
 
-data ancestry_parent_artifact_not_the_producer: String = "native generation mint refused: SucceedsNative names a parent artifact, and the producer_compiler axis must be derived from that artifact rather than from an unrelated compiler"
-
-data ancestry_successor_closure_reaches_seed: String = "native generation mint refused: a SucceedsNative generation's realized closure reaches v1.compiler.emit_rust, so the seed emitter produced bytes on the recurring path"
-
-data ancestry_successor_closure_reaches_interpreter: String = "native generation mint refused: a SucceedsNative generation's realized closure reaches v2.compiler.emit, so the interpreted emitter — not the prior native generation — produced bytes on the recurring path"
-
+// RESTORED. These two rows were deleted by the clause move in 714b77f3 — an edit that sliced
+// between two anchors and took everything between them, including these — and their absence was
+// invisible for two pushes because every control asserting them stayed GREEN. That is the real
+// lesson and it is recorded here rather than in a commit message: `^name` mints a Symbol from
+// arbitrary text, so `cause: ^x` compares SPELLINGS, not declarations. A control asserting a
+// refusal cause therefore cannot tell a declared row from a typo or from a row someone deleted,
+// and the strongest-looking evidence in this module — a refusal matched by name — was the
+// weakest against exactly the failure that occurred. Caught by review 64013, not by the suite.
 data ancestry_build_path_unresolved: String = "native generation mint refused: BuildPathUnresolved leaves an input the six generation axes do not name, so the artifact axis cannot falsify anything"
 
 data ancestry_successor_build_path_pinned: String = "native generation mint refused: BuildPathPinned is admissible only for the one-time genesis; a recurring generation's artifact is acquired as an ancestor and must not depend on the directory it was built in"
@@ -173,42 +213,44 @@ fn read_back_agrees(
   }
 }
 
-// The whole native-producer closure wall in one place: the recurring step may reach
-// NEITHER the seed emitter NOR the interpreted emitter. Those are two distinct causes
-// rather than one "not native" verdict, because they have different remedies — a seed
-// reach means the migration never happened, an interpreter reach means the wrong v2 route
-// was composed — and collapsing them is the state-space conflation DESIGN section 5 names.
+// BUILD PATH IS ADMITTED ASYMMETRICALLY, and the asymmetry is the whole content of this fold.
+// A one-time genesis runs on one host and nothing cross-host consumes its artifact, so pinning
+// the directory is honest there. A RECURRING generation's artifact is acquired as an ancestor
+// by a later generation, so an unremapped build path leaves an input the six generation axes do
+// not name — the artifact axis stops being able to falsify anything precisely where it is load
+// bearing. Unresolved is admitted for neither.
 //
-// This is also the predicate the route-level OldRouteAbsentByConstruction control consumes:
-// "no v1 emitter or interpreter reachable" is decided here, once, over the closure carrier
-// that already exists, rather than re-derived beside the route receipt.
-fn native_producer_closure_admission(
-  closure: RealizedEmitterClosure
-) -> NativeGenerationMintAdmission {
-  if seed_emit_rust_reachable(closure: closure) {
-    NativeGenerationRefused { cause: ^ancestry_successor_closure_reaches_seed }
-  } else if realized_closure_contains_module(
-    closure: closure,
-    module: v2_emit_interpreted_qualified_module
-  ) {
-    NativeGenerationRefused { cause: ^ancestry_successor_closure_reaches_interpreter }
-  } else {
-    NativeGenerationAdmitted
-  }
-}
-
+// This annotation previously described the native-producer CLOSURE wall, which decides nothing
+// about build paths and has since moved to
+// v2.compiler.self_host.emitter_producer_provenance v2_emitter_closure_admission. An annotation
+// left attached to a fold it no longer describes is worse than none, because it is read as
+// documentation of the code beneath it (review 64013).
+// IT TAKES THE ANCESTRY, NOT A Bool, and that is this module's own rule applied to itself. An
+// earlier revision's signature was (treatment, genesis: Bool), which re-expressed the
+// NativeAncestry discriminant as a flag — the shape the opening note rejects for used_seed, for
+// the same reason: a Boolean carries the fact while leaving BOTH arms writable on either value,
+// so build_path_admission(treatment: pinned, genesis: true) against a SucceedsNative generation
+// was an admissible call that silently granted the genesis-only pinned allowance. Both call
+// sites happened to pass the right value, which makes it a latent hole rather than a live bug,
+// and caller discipline is exactly what DESIGN section 5 says not to rely on when construction
+// is available. Taking the ancestry means the discriminant is read from the value that carries
+// it, one frame down from the match that already established it (review 64113).
 fn build_path_admission(
   treatment: BuildPathTreatment,
-  genesis: Bool
+  ancestry: NativeAncestry
 ) -> NativeGenerationMintAdmission {
   match treatment {
     BuildPathRemapped { remap_prefix_from: _, remap_prefix_to: _ } =>
       NativeGenerationAdmitted
     BuildPathPinned { directory: _ } =>
-      if genesis {
-        NativeGenerationAdmitted
-      } else {
-        NativeGenerationRefused { cause: ^ancestry_successor_build_path_pinned }
+      match ancestry {
+        GenesisFromSeed { seed_binary: _ } => NativeGenerationAdmitted
+        SucceedsNative {
+          parent_generation: _,
+          parent_artifact: _,
+          produced_by_execution_of: _
+        } =>
+          NativeGenerationRefused { cause: ^ancestry_successor_build_path_pinned }
       }
     BuildPathUnresolved =>
       NativeGenerationRefused { cause: ^ancestry_build_path_unresolved }
@@ -229,7 +271,10 @@ fn native_generation_mint_admission(
       } else if !seed_emit_rust_reachable(closure: g.realized_closure) {
         NativeGenerationRefused { cause: ^ancestry_genesis_closure_omits_seed }
       } else {
-        match build_path_admission(treatment: g.build_path_treatment, genesis: true) {
+        match build_path_admission(
+          treatment: g.build_path_treatment,
+          ancestry: g.ancestry
+        ) {
           NativeGenerationRefused { cause: c } => NativeGenerationRefused { cause: c }
           NativeGenerationAdmitted =>
             read_back_agrees(
@@ -238,16 +283,31 @@ fn native_generation_mint_admission(
             )
         }
       }
-    SucceedsNative { parent_generation: p, parent_artifact: _ } =>
-      if g.generation != p + 1 {
+    SucceedsNative {
+      parent_generation: p,
+      parent_artifact: parent,
+      produced_by_execution_of: ran
+    } =>
+      if p < genesis_generation_number {
+        NativeGenerationRefused {
+          cause: ^ancestry_successor_parent_generation_negative
+        }
+      } else if g.generation != p + 1 {
         NativeGenerationRefused { cause: ^ancestry_successor_not_parent_plus_one }
+      } else if !content_hash_eq_sha512(left: ran.observed, right: parent.observed) {
+        NativeGenerationRefused {
+          cause: ^ancestry_producer_execution_is_not_the_named_ancestor
+        }
       } else {
-        match native_producer_closure_admission(closure: g.realized_closure) {
-          NativeGenerationRefused { cause: c } => NativeGenerationRefused { cause: c }
-          NativeGenerationAdmitted =>
+        match emitter_producer_mint_admission(
+          producer: native_generation_producer(g: g),
+          closure: g.realized_closure
+        ) {
+          ProducerMintRefused { cause: c } => NativeGenerationRefused { cause: c }
+          ProducerMintAdmitted =>
             match build_path_admission(
               treatment: g.build_path_treatment,
-              genesis: false
+              ancestry: g.ancestry
             ) {
               NativeGenerationRefused { cause: c } => NativeGenerationRefused { cause: c }
               NativeGenerationAdmitted =>
@@ -258,13 +318,6 @@ fn native_generation_mint_admission(
             }
         }
       }
-  }
-}
-
-fn native_generation_admitted(g: NativeGeneration) -> Bool {
-  match native_generation_mint_admission(g: g) {
-    NativeGenerationAdmitted => true
-    NativeGenerationRefused { cause: _ } => false
   }
 }
 
@@ -294,7 +347,11 @@ fn admit_genesis(
       GenesisRefused { cause: ^genesis_already_executed }
     GenesisNotExecuted =>
       match candidate.ancestry {
-        SucceedsNative { parent_generation: _, parent_artifact: _ } =>
+        SucceedsNative {
+          parent_generation: _,
+          parent_artifact: _,
+          produced_by_execution_of: _
+        } =>
           GenesisRefused { cause: ^genesis_candidate_is_not_a_genesis }
         GenesisFromSeed { seed_binary: _ } =>
           match native_generation_mint_admission(g: candidate) {
@@ -321,14 +378,29 @@ fn admit_genesis(
 // are deleted together, native_generation_producer loses its V1SeedEmitter arm, and
 // NativeAncestry becomes a one-constructor relation — at which point "the seed produced this
 // compiler" is unwritable rather than refused.
-data genesis_migration_deletion_trigger: String = "delete GenesisFromSeed and its standing/admission machinery when native_generation_mint_admission returns NativeGenerationAdmitted for a SucceedsNative generation of the production compile entry over the head source closure, executed rather than fixtured"
+data genesis_migration_deletion_trigger: DissolutionCondition = unbound_dissolution(
+  description: "delete GenesisFromSeed, GenesisStanding and admit_genesis when native_generation_mint_admission returns NativeGenerationAdmitted for a SucceedsNative generation of the production compile entry over the head source closure, EXECUTED rather than fixtured. Unbound deliberately: the condition is one execution verifying by read-back, which no declaration appearing or retiring can stand for — binding it to a decl ref would be a checkable trigger impersonating a decision, and would report fired on the day the decl was written." as NonEmptyStr
+)
 
-// ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. This is the surface the emitted-compiler
-// route consumes in place of re-running the seed: it asks for generation N, and the answer
-// is either that generation or a refusal naming N. There is no arm carrying an alternative
-// producer, so a caller cannot pattern-match its way back to the seed, and there is no
-// Optional that a caller could treat as "absent, so do the other thing" — the refusal
-// states WHICH generation was expected and WHY the candidate did not qualify.
+// ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. The recurring miss path now evaluates this
+// fold (native_lane_runner acquire_native_compiler). Genesis remains the one-time seed emit,
+// operator-invoked, and is not this fold's miss arm. See native_route_acquisition_frontier.
+//
+// The shape: it asks for generation N, and the answer is either that generation or a refusal
+// naming N. There is no arm carrying an alternative producer, so a caller cannot
+// pattern-match its way back to the seed, and there is no Optional that a caller could treat
+// as "absent, so do the other thing" — the refusal states WHICH generation was expected and
+// WHY the candidate did not qualify.
+// THE DECLARED FRONTIER for acquire_native_ancestor. The production consumer has landed: the
+// v2-native harness asks this fold for the generation it expects; NativeAncestorAcquired
+// supplies the ancestor artifact that is spawned, and NativeAncestorMissing /
+// NativeAncestorUnverified become the harness's typed refusal. No arm of that fold reaches an
+// emitter. Residual seed reach is genesis (compile_entry_emission under --v2-native-genesis),
+// which is genesis_migration_deletion_trigger's subject, not a miss-path fallback.
+data native_route_acquisition_frontier: DissolutionCondition = unbound_dissolution(
+  description: "declared frontier for acquire_native_ancestor: the v2-native recurring acquisition now evaluates this fold instead of compile_entry_emission. Residual v1 reach is the one-time genesis path. The frontier stays unbound until GenesisFromSeed is deleted (genesis_migration_deletion_trigger), because that is when no v1 emitter remains reachable from any host acquisition. Unbound deliberately: the remaining condition is a constructor going away, which is neither a declaration appearing nor one retiring in this row." as NonEmptyStr
+)
+
 type NativeAncestorAcquisition
   = NativeAncestorAcquired { ancestor: NativeGeneration }
   | NativeAncestorMissing { expected_generation: Int }
@@ -361,64 +433,70 @@ fn acquire_native_ancestor(
   }
 }
 
-fn native_ancestor_acquired(acquisition: NativeAncestorAcquisition) -> Bool {
-  match acquisition {
-    NativeAncestorAcquired { ancestor: _ } => true
-    NativeAncestorMissing { expected_generation: _ } => false
-    NativeAncestorUnverified { expected_generation: _, cause: _ } => false
-  }
-}
+
+data successor_ancestor_join_frontier: DissolutionCondition = unbound_dissolution(
+  description: "declared frontier for successor_names_its_ancestor: its production consumer is the genesis-and-succession wiring in the v2-native route harness, which holds both the acquired ancestor and the successor being minted; the frontier closes when that wiring joins the two by artifact identity through this fold instead of trusting the generation number. Unbound deliberately: the condition is a call appearing in a host realization, which is neither a declaration appearing nor one retiring." as NonEmptyStr
+)
+
+// A TYPED VERDICT, NOT A Bool, and this module has no standing to argue otherwise. Its own
+// opening note rejects a used_seed Bool on the ground that a Boolean carries the fact while
+// leaving both routes writable on either value; a Bool here has the same defect one layer in.
+// The caller that refuses a mint because succession does not join needs to say WHICH of four
+// different things went wrong — the candidate is a genesis and has no parent at all, the
+// generation numbers disagree, the ancestor was never built, or the successor names bytes the
+// ancestor did not produce — and those have four different remedies. Collapsing them to false
+// is the state-space conflation DESIGN section 5 names, and it would put this fold's caller in
+// the position of re-deriving the cause it just discarded.
+type SuccessionJoin
+  = SuccessionJoined
+  | SuccessionRefused { cause: Symbol }
+
+data ancestry_succession_candidate_is_genesis: String = "succession refused: the candidate's ancestry is GenesisFromSeed, which names no parent generation — a genesis does not succeed anything, and asking whether it joins an ancestor is a category error rather than a failed join"
+
+data ancestry_succession_parent_generation_mismatch: String = "succession refused: the successor names a parent generation number that is not the offered ancestor's own"
+
+data ancestry_succession_ancestor_artifact_not_materialized: String = "succession refused: the offered ancestor's artifact axis is ArtifactNotMaterialized, so there are no bytes for the successor to have been produced by"
+
+data ancestry_succession_parent_artifact_mismatch: String = "succession refused: the successor names a parent artifact digest that is not the offered ancestor's observed artifact, so 'produced by generation N' names bytes generation N did not produce"
 
 // The successor's parent artifact must be the ancestor's OWN observed artifact, so a
 // successor cannot name a generation number it never consumed. This is the identity join
 // that makes "produced by generation N" falsifiable rather than declarative.
+//
+// IT LIVES HERE AND NOT IN THE MINT, and that placement is forced rather than stylistic.
+// native_generation_mint_admission sees ONE generation, so it can read parent_artifact but
+// has nothing to join it against; a mint clause asserting the parent artifact is the real
+// parent's would be a refusal that cannot fire — a wall clause in appearance with the named
+// state still writable, which DESIGN section 5 calls specification-without-execution. An
+// earlier revision carried exactly that as an unread refusal cause and it is deleted. The
+// join is decidable only where both generations are in hand, which is this fold.
 fn successor_names_its_ancestor(
   successor: NativeGeneration,
   ancestor: NativeGeneration
-) -> Bool {
+) -> SuccessionJoin {
   match successor.ancestry {
-    GenesisFromSeed { seed_binary: _ } => false
-    SucceedsNative { parent_generation: p, parent_artifact: a } =>
-      (p == ancestor.generation)
-        && match ancestor.identity.materialized_artifact {
-          ArtifactNotMaterialized => false
+    GenesisFromSeed { seed_binary: _ } =>
+      SuccessionRefused { cause: ^ancestry_succession_candidate_is_genesis }
+    SucceedsNative {
+      parent_generation: p,
+      parent_artifact: a,
+      produced_by_execution_of: _
+    } =>
+      if p != ancestor.generation {
+        SuccessionRefused { cause: ^ancestry_succession_parent_generation_mismatch }
+      } else {
+        match ancestor.identity.materialized_artifact {
+          ArtifactNotMaterialized =>
+            SuccessionRefused {
+              cause: ^ancestry_succession_ancestor_artifact_not_materialized
+            }
           ArtifactMaterialized { digest: observed } =>
-            content_hash_eq_sha512(left: a.observed, right: observed.observed)
+            if content_hash_eq_sha512(left: a.observed, right: observed.observed) {
+              SuccessionJoined
+            } else {
+              SuccessionRefused { cause: ^ancestry_succession_parent_artifact_mismatch }
+            }
         }
-  }
-}
-
-// A generation's identity moving on ANY of the six axes is a DIFFERENT generation, so a
-// successor minted against a stale ancestor is mechanically detectable rather than a
-// silent reuse. generation_identity_agrees is consumed here rather than restated; this
-// module owns the ancestry relation and never a second identity algebra.
-fn ancestor_identity_still_current(
-  ancestor: NativeGeneration,
-  observed_now: GenerationIdentity
-) -> Bool {
-  generation_identity_agrees(left: ancestor.identity, right: observed_now)
-}
-
-// Structural statement of the C1 ruling, as a fold over the producer projection rather than
-// as prose: on the recurring path the producer is always a native generation, and it is
-// never the seed and never the interpreter. This is executed by the controls; its value is
-// that it reads the SAME projection production reads, so it cannot green over a shape the
-// production path does not have.
-fn recurring_producer_is_native_only(g: NativeGeneration) -> Bool {
-  match g.ancestry {
-    GenesisFromSeed { seed_binary: _ } => true
-    SucceedsNative { parent_generation: p, parent_artifact: _ } =>
-      emitter_producer_eq(
-        left: native_generation_producer(g: g),
-        right: V2EmitterNative { generation: p }
-      )
-        && !emitter_producer_eq(
-          left: native_generation_producer(g: g),
-          right: V1SeedEmitter
-        )
-        && !emitter_producer_eq(
-          left: native_generation_producer(g: g),
-          right: V2EmitterInterpreted
-        )
+      }
   }
 }

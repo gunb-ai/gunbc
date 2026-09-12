@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.host_ordered_collection_reaches_an_emitted_artifact
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data host_ordered_collection_reaches_an_emitted_artifact: RecurringFailureMode = RecurringFailureMode {
+  identity: "host_ordered_collection_reaches_an_emitted_artifact" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a collection whose iteration order is a HOST fact -- a hash map's keys, a hash set's members -- is iterated straight into an EMITTED ARTIFACT. The emitted bytes then carry a permutation nothing in the program chose, so the artifact's IDENTITY moves while its MEANING does not. Nothing is wrong with any single run's output: every run is a correct rendering of the same graph. What is destroyed is the artifact's usability as an oracle, and that loss is silent at the site that caused it.",
+
+    "RECEIPT, 2026-09-11, in v1.compile emit_dag_artifact and serialize_typed_module, found by session bright-bear-236 on gunbc#11072. Two identical invocations of one binary over one unchanged tree emitted dag-artifact.json with IDENTICAL LENGTH and 2,408 differing comma-separated fields: every $ref node id agreed, and the whole difference was the ORDER of item_registry_keys, fed from map_keys of a host-ordered map at both sites. The finder was measuring typecheck memory and tried to use artifact equality as an equivalence oracle for their own change; the diff reported a difference whether or not their change caused one, and they nearly reported a regression against their own work before running the binary twice against itself.",
+
+    "RECEIPT, EARLIER AND THE SAME CLASS, gunbc#10941: re-export lines emitted in unordered-set order, repaired by sorting at the key. Two instances in two emitters is what makes this a class rather than a site.",
+
+    "WHAT IT COSTS, AND THE COST IS NOT THE BYTES. Every byte-equality oracle downstream of an unstable artifact -- a regen fixed point, a drift observer, an emitted-closure identity claim, a behavioural receipt comparing two emissions -- loses the ability to distinguish CHANGED from REORDERED. Such an oracle then fails in whichever direction its defaults point: one that compares reports perpetual change and is eventually ignored or widened; one that does not compare reports nothing at all. In the 2026-09-11 receipt it was the second: NO gate compared dag-artifact.json, so nothing was reading green by accident -- the artifact simply had no reader, and the first consumer to reach for it as an oracle is the one who paid.",
+
+    "RECOGNITION RULE: at every site whose result reaches an EMITTED BYTE, ask what the ORDER of each collection it iterates is a fact ABOUT. If the answer is the host's hashing rather than the program's declaration, the artifact's identity is unstable whether or not anyone has noticed. The mechanical tell in this substrate is a key-list constructor whose PrimitiveTraversalOrderFact is HostUnspecifiedOrder -- map_keys, map_values -- on a path into a rendered string. THE REPAIR IS AT THE KEY AND NEVER AT THE TEXT: ordering by a stable key (sorted_map_keys, CanonicalOrder) makes the emitted order a fact about the data, while sorting the emitted output afterwards is a second authority over the same bytes that the next emitted field will not inherit.",
+
+    "THE CHEAP CONTROL THAT SETTLES IT, stated because the finder's own note is the most transferable part: run the producer TWICE against itself BEFORE trusting any artifact comparison. It costs one extra run and answers whether the oracle is valid at all. An equality control needs its positive control beside it -- one perturbed input that MUST change the bytes -- because equality alone is satisfied by a producer blind to its input.",
+
+    "CEILING AND NEXT-RUNG TRIGGER. Found at MITIGATABLE: the instability was observable only by running the emitter twice and nothing did. Raised to MECHANICALLY PREVENTABLE for this artifact by the dag-artifact-identity rider on the required regen-fixed-point phase, which emits a committed fixture twice and compares bytes, with a one-declaration-larger specimen as the positive control. It is NOT structural: nothing stops the next emitted field from reading map_keys, and the control's subject is one artifact rather than the emitted population. CEILING is STRUCTURALLY GUARANTEED, and the trigger names the CAPABILITY rather than an artifact: a compile-time decision that refuses a HostUnspecifiedOrder traversal on any path reaching an emitted byte -- the order fact is already declared per primitive in std.primitive_identity, so what is missing is the reachability judgment that consumes it, not the classification.",
+  ],
+
+  evidence: [],
+}

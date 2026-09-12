@@ -21,21 +21,24 @@ import v2.compiler.self_host.ancestry {
   ReadBackReported,
   ReadBackUnperformed,
   SucceedsNative,
+  SuccessionJoined,
+  SuccessionRefused,
   acquire_native_ancestor,
   admit_genesis,
-  ancestor_identity_still_current,
-  native_generation_admitted,
+  native_generation_mint_admission,
   native_generation_producer,
-  native_producer_closure_admission,
   successor_names_its_ancestor
 }
 import v2.compiler.self_host.emitter_producer_provenance {
+  ProducerMintAdmitted,
+  ProducerMintRefused,
   RealizedEmitterClosure,
   V1SeedEmitter,
   V2EmitterInterpreted,
   V2EmitterNative,
   cssl_harness_realized_closure,
-  realized_closure_for_v2_direct_rust_door_emit_run
+  realized_closure_for_v2_direct_rust_door_emit_run,
+  v2_emitter_closure_admission
 }
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
@@ -141,7 +144,8 @@ fn na_good_successor() -> Optional<NativeGeneration> {
           generation: 1,
           ancestry: SucceedsNative {
             parent_generation: 0,
-            parent_artifact: observed_artifact_digest(observed: parent)
+            parent_artifact: observed_artifact_digest(observed: parent),
+            produced_by_execution_of: observed_artifact_digest(observed: parent)
           },
           artifact_hex: na_other_hex,
           read_back: na_read_back(hex: na_other_hex),
@@ -188,8 +192,17 @@ test fn native_successor_verifies_by_read_back() -> Bool {
       match na_good_successor() {
         Absent => false
         Present { value: successor } =>
-          native_generation_admitted(g: successor)
-            && successor_names_its_ancestor(successor: successor, ancestor: ancestor)
+          match native_generation_mint_admission(g: successor) {
+            NativeGenerationRefused { cause: _ } => false
+            NativeGenerationAdmitted =>
+              match successor_names_its_ancestor(
+                successor: successor,
+                ancestor: ancestor
+              ) {
+                SuccessionJoined => true
+                SuccessionRefused { cause: _ } => false
+              }
+          }
       }
   }
 }
@@ -224,9 +237,6 @@ test fn identity_axes_changed_is_a_new_identity() -> Bool {
       !generation_identity_agrees(
         left: ancestor.identity,
         right: na_moved_producer(identity: ancestor.identity)
-      ) && !ancestor_identity_still_current(
-        ancestor: ancestor,
-        observed_now: na_moved_producer(identity: ancestor.identity)
       )
   }
 }
@@ -260,14 +270,14 @@ test fn remapping_is_part_of_build_configuration_identity() -> Bool {
 }
 
 test fn admitted_native_closure_is_old_route_absent_by_construction() -> Bool {
-  match native_producer_closure_admission(
+  match v2_emitter_closure_admission(
     closure: realized_closure_for_v2_direct_rust_door_emit_run()
   ) {
-    NativeGenerationAdmitted =>
-      match native_producer_closure_admission(closure: cssl_harness_realized_closure) {
-        NativeGenerationRefused { cause: _ } => true
-        NativeGenerationAdmitted => false
+    ProducerMintAdmitted =>
+      match v2_emitter_closure_admission(closure: cssl_harness_realized_closure) {
+        ProducerMintRefused { cause: _ } => true
+        ProducerMintAdmitted => false
       }
-    NativeGenerationRefused { cause: _ } => false
+    ProducerMintRefused { cause: _ } => false
   }
 }

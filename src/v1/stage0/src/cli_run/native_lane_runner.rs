@@ -14,7 +14,7 @@
 //! THE OLD-ROUTE CONTROL IS ABSENT BY CONSTRUCTION. The receipt carries
 //! `OldRouteAbsentByConstruction` over the producer-closure roster **stored with the ancestor**
 //! (written at genesis, read at acquire — not a nullary constant evaluated at receipt mint).
-//! A roster that reaches the seed or the interpreted emitter makes `native_producer_closure_admission`
+//! A roster that reaches the seed or the seed interpreter makes `v2_emitter_closure_admission`
 //! refuse, so the arm's RED is authorable by handing the store a seed-reachable list. The harness
 //! does not require a v1 `gunbc` binary to exist so it can rename it. Genesis (`run_native_genesis`)
 //! is the one-time V1SeedEmitter path and is operator-invoked separately. Until V2EmitterNative(N) →
@@ -672,18 +672,28 @@ fn native_generation_from_store(
         return Err("seed digest hex refused".to_string());
     }
     let seed_binary = record_field(ctx, fields, "value")?.clone();
+    let ancestry = if generation == 0 {
+        Value::Variant {
+            type_name: ctx.sym("NativeAncestry"),
+            variant_name: ctx.sym("GenesisFromSeed"),
+            fields: Rc::new(vec![(ctx.sym("seed_binary"), seed_binary)]),
+        }
+    } else {
+        Value::Variant {
+            type_name: ctx.sym("NativeAncestry"),
+            variant_name: ctx.sym("SucceedsNative"),
+            fields: Rc::new(vec![
+                (ctx.sym("parent_generation"), Value::Int(generation - 1)),
+                (ctx.sym("parent_artifact"), observed.clone()),
+                (ctx.sym("produced_by_execution_of"), observed.clone()),
+            ]),
+        }
+    };
     Ok(Value::Record {
         type_name: ctx.sym("NativeGeneration"),
         fields: Rc::new(vec![
             (ctx.sym("generation"), Value::Int(generation)),
-            (
-                ctx.sym("ancestry"),
-                Value::Variant {
-                    type_name: ctx.sym("NativeAncestry"),
-                    variant_name: ctx.sym("GenesisFromSeed"),
-                    fields: Rc::new(vec![(ctx.sym("seed_binary"), seed_binary)]),
-                },
-            ),
+            (ctx.sym("ancestry"), ancestry),
             (ctx.sym("identity"), identity),
             (
                 ctx.sym("emitted_source"),
