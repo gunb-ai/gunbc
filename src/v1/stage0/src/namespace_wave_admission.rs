@@ -1715,60 +1715,17 @@ pub struct TransitionAdmission {
 /// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
 /// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
-/// gunbc#11137 sha256sum names Filesystem instead of reaching it (2026-09-12). The row below is a
-/// DIFFERENT delta that this change produces, not that one restored: empty is the resting state
-/// and one change authoring a row back into it is the ordinary motion.
-///
-/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
-/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
-/// module into the candidate set for every name it declares, so filesystem_io's copy of
-/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
-/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
-///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
-/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
-/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. NO RESOLUTION CHANGES.
-/// `extdeps.tools.sha256sum` authors its own `extdeps_external_authority_anchor`, and a module's
-/// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
-/// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
-/// either way. What narrowed is the SET, from three modules to two, which is the qualification's
-/// whole purpose: the resolution stopped depending on a module the author never named. That no
-/// consumer changed behaviour is the required floor's verdict on this head, re-derived by
-/// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
-/// and read off its own `required-floor:` verdict line -- named rather than transcribed, because a
-/// copied count rots without anyone touching either end (DESIGN §6).
-///
-/// WHY THE `String` REQUALIFICATION IN THE SAME CHANGE NEEDS NO ROW, which is a fair question to
-/// ask of a diff that moves ten import lines onto `std.string_type`. It is not this adjudication's
-/// assertion; it is the wave phase's own measurement. That phase compares the binding table on both
-/// sides, and on this head it reported exactly ONE `TargetChanged binding` delta -- the row below --
-/// and none for `String`. The ten `String` sites appear instead as
-/// `ExplicitlyEvaluatedZeroDelta membership <module> -> std.string_type ... reached by a name this
-/// module authors`: explicitly evaluated, zero delta. The reason is that `std.types` declares no
-/// `String` at all, so `import std.types { String }` bound nothing and the read fell through to the
-/// shared slot, where scope precedence already answered `std.string_type`. Naming that module
-/// changes the read's AUTHORIZATION -- from an accident of precedence to something the author
-/// wrote -- without changing which declaration answers it. A delta row adjudicates a changed
-/// binding; there is no changed binding here to adjudicate.
-///
-/// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
-/// stops being producible, and CONSUMED comes due on the roster's next touch.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-    // The rationale, the safety adjudication and the trigger are in the doc comment on this
-    // const rather than repeated here. In one line: the bare `import
-    // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-    // spelling's candidate set without changing what it resolves to.
-    subject: AdmissionSubject::Binding {
-        module: "extdeps.tools.sha256sum",
-        in_declaration: "extdeps_external_authority_anchor",
-        spelling: "extdeps_external_authority_anchor",
-        target: "extdeps.tools.sha256sum",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11142). The `gunbc#11137 extdeps.tools.sha256sum
+/// names Filesystem instead of reaching it` row is deleted and its description with it. #11137
+/// merged, so the base carries the named import, the delta stopped being producible, and the row
+/// matched no delta on any branch that carried it -- the required floor refused
+/// namespace-wave-admission on gunbc#11082, gunbc#11121, gunbc#11154 and this branch for exactly
+/// that reason, which is the cost of a permission standing over nothing. Its TRIGGER, recorded at
+/// the time as "this row goes when #11137 merges", is what fired; this change is the roster
+/// toucher the rule charges, so the debt is paid here rather than inherited by the next unrelated
+/// lane. The roster returns to the EMPTY enumeration that is its resting state: empty is not
+/// permissive, and a run with any delta no row names still refuses it as UNADJUDICATED.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
