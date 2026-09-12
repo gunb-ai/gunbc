@@ -1,6 +1,11 @@
 module extdeps.instrument.fs_box_v4
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  Micrometer, Millivolt, Celsius, Minute,
+  micrometer, millivolt, celsius, minute,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
@@ -21,16 +26,34 @@ import extdeps.uri { Uri, Https }
 //
 // WHAT THIS MODULE DOES NOT CLAIM. The data sheet does not mention QSFP56, SFP56, breakout legs,
 // per-leg programming, disconnection, write recoverability, EEPROM bytes, or NVIDIA (ETH)
-// coding. Those absences are the point of reading it. Mechanical, connector, battery and warranty
-// figures are carried as the sheet printed them (not converted into a unit that would round
-// 28.7 mm or 3.7 V). The V3 line on the ordering table is a row of THIS document, not a V3
-// product module.
+// coding. Those absences are the point of reading it. Length, voltage, temperature and endurance
+// use std.measure carriers already on main: 28.7 mm is 28700 micrometres, 3.7 V is 3700 millivolts,
+// 9 h / 3.5 h are 540 / 210 minutes. Mass and milliampere-hour have no named Measure on
+// std.measure (Quantity Mass and ElectricCharge exist; Gram and AmpereHour do not), so 0.2 kg and
+// 3200 mAh are a gram count and a milliampere-hour count rather than invented unit types. The V3
+// line on the ordering table is a row of THIS document, not a V3 product module.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "resource.fs.com/mall/doc/20230224114704wojcth.pdf"
   }
+}
+
+type FsBoxV4Size {
+  height: Micrometer
+  width: Micrometer
+  depth: Micrometer
+}
+
+type FsBoxV4Supply {
+  battery: Millivolt
+  usb: Millivolt
+}
+
+type FsBoxV4Temperature {
+  minimum: Celsius
+  maximum: Celsius
 }
 
 type FsBoxOrderingLine {
@@ -48,14 +71,15 @@ type FsBoxV4DataSheet {
   data_connector: NonEmptyStr
   bluetooth_protocol: NonEmptyStr
   charging_connector: NonEmptyStr
-  power_source: NonEmptyStr
-  battery_capacity: NonEmptyStr
-  battery_endurance_low_power_sfp: NonEmptyStr
-  battery_endurance_high_power_qsfp_dd: NonEmptyStr
+  power: FsBoxV4Supply
+  battery_capacity_milliampere_hours: Nat
+  battery_endurance_low_power_sfp: Minute
+  battery_endurance_high_power_qsfp_dd: Minute
+  battery_endurance_condition: NonEmptyStr
   case_material: NonEmptyStr
-  dimensions: NonEmptyStr
-  weight: NonEmptyStr
-  operating_temperature: NonEmptyStr
+  size: FsBoxV4Size
+  mass_grams: Nat
+  operating_temperature: FsBoxV4Temperature
   ordering: List<FsBoxOrderingLine>
   warranty: NonEmptyStr
   standing: CitedFigureStanding
@@ -89,14 +113,25 @@ data fs_box_v4_data_sheet: FsBoxV4DataSheet = FsBoxV4DataSheet {
   data_connector: "Bluetooth or USB Type-C" as NonEmptyStr,
   bluetooth_protocol: "Bluetooth Specification V4.2 BLE" as NonEmptyStr,
   charging_connector: "USB Type-C" as NonEmptyStr,
-  power_source: "3.7V battery powered or 5V USB powered" as NonEmptyStr,
-  battery_capacity: "3200mAh" as NonEmptyStr,
-  battery_endurance_low_power_sfp: "9 hours without interrupting configuration" as NonEmptyStr,
-  battery_endurance_high_power_qsfp_dd: "at least 3.5 hours without interrupting configuration" as NonEmptyStr,
+  power: FsBoxV4Supply {
+    battery: millivolt(count: 3700),
+    usb: millivolt(count: 5000),
+  },
+  battery_capacity_milliampere_hours: 3200,
+  battery_endurance_low_power_sfp: minute(count: 540),
+  battery_endurance_high_power_qsfp_dd: minute(count: 210),
+  battery_endurance_condition: "without interrupting configuration" as NonEmptyStr,
   case_material: "Rubber, Polycarbonate" as NonEmptyStr,
-  dimensions: "1.13 x 2.89 x 6.30 inches (28.7 x 73.5 x 160 mm)" as NonEmptyStr,
-  weight: "0.2Kg" as NonEmptyStr,
-  operating_temperature: "14F to 122F (-10C to 50C)" as NonEmptyStr,
+  size: FsBoxV4Size {
+    height: micrometer(count: 28700),
+    width: micrometer(count: 73500),
+    depth: micrometer(count: 160000),
+  },
+  mass_grams: 200,
+  operating_temperature: FsBoxV4Temperature {
+    minimum: celsius(count: -10),
+    maximum: celsius(count: 50),
+  },
   ordering: [
     FsBoxOrderingLine {
       part_number: "FS BOX V4" as NonEmptyStr,

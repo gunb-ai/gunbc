@@ -1,6 +1,8 @@
 module test.claim.fs_box_published_claims_witness
 
-import std.types { Bool, NonEmptyStr }
+import std.measure {
+  millivolt_count, micrometer_count, minute_count, celsius_count,
+}
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import extdeps.transceiver.sff_8636 { transceiver_identifier_from_byte }
 import extdeps.instrument.fs_box_v4 {
@@ -71,12 +73,22 @@ test fn data_sheet_two_v4_colors_and_a_v3_ordering_line() -> Bool {
 }
 
 test fn data_sheet_battery_interrupt_is_endurance_not_write_recovery() -> Bool {
-  string_contains(
-    s: fs_box_v4_data_sheet.battery_endurance_low_power_sfp as String,
-    pattern: "without interrupting configuration",
-  )
-    && string_contains(s: fs_box_v4_data_sheet.battery_capacity as String, pattern: "3200mAh")
+  (fs_box_v4_data_sheet.battery_endurance_condition as String) == "without interrupting configuration"
+    && minute_count(m: fs_box_v4_data_sheet.battery_endurance_low_power_sfp) == 540
+    && minute_count(m: fs_box_v4_data_sheet.battery_endurance_high_power_qsfp_dd) == 210
+    && fs_box_v4_data_sheet.battery_capacity_milliampere_hours == 3200
     && string_contains(s: fs_box_v4_data_sheet.warranty as String, pattern: "5-year limited warranty")
+}
+
+test fn data_sheet_quantities_use_measure_carriers() -> Bool {
+  millivolt_count(v: fs_box_v4_data_sheet.power.battery) == 3700
+    && millivolt_count(v: fs_box_v4_data_sheet.power.usb) == 5000
+    && micrometer_count(m: fs_box_v4_data_sheet.size.height) == 28700
+    && micrometer_count(m: fs_box_v4_data_sheet.size.width) == 73500
+    && micrometer_count(m: fs_box_v4_data_sheet.size.depth) == 160000
+    && fs_box_v4_data_sheet.mass_grams == 200
+    && celsius_count(c: fs_box_v4_data_sheet.operating_temperature.minimum) == -10
+    && celsius_count(c: fs_box_v4_data_sheet.operating_temperature.maximum) == 50
 }
 
 test fn data_sheet_names_bluetooth_4_2_and_usb_c() -> Bool {
