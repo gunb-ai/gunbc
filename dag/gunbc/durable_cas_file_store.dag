@@ -2,7 +2,7 @@ module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The first production realization of std.durable_compare_and_set: one keyed
@@ -169,6 +169,44 @@ fn cas_admit_verified_digest(attempt: CasAttempt<NonEmptyStr>) -> CasAttemptAdmi
   }
 }
 
+// A CALLER THAT DERIVED THE DIGEST FROM THE PAYLOAD CANNOT DISAGREE WITH ITSELF.
+//
+// `admit_cas_attempt` must ask, because it accepts a digest the caller SUPPLIED, and the whole point
+// of that check is that a supplied digest can be a forgery -- the generic mint's discriminating red.
+// But a caller that computes `content_hash_of_value` over the very value it is proposing has no
+// second opinion to disagree with: the comparison is `f(x)` against `f(x)`. Both digest arms are
+// unreachable for it, and `gunbc.scm.repository_slot` was carrying a public
+// `RepositoryPublicationDigestDisagreed` to match them -- the carry_mint class again, honest about
+// this module's domain and dishonest about the caller's. Found by external review.
+//
+// SO THE DIGEST IS DERIVED HERE RATHER THAN ACCEPTED, and the outcome narrows to the one refusal that
+// IS reachable: a key that does not address a slot. That is not a weaker admission -- it is the same
+// admission asked of a caller who has nothing to forge WITH, because it never held a digest to pass.
+type DerivedPayloadAdmission
+  = DerivedPayloadAdmitted { verified: VerifiedCasAttempt }
+  | DerivedPayloadKeyNotSlotAddressable { key: NonEmptyStr }
+
+fn admit_cas_attempt_for_derived_payload(
+  key: NonEmptyStr,
+  expected: CasExpectation,
+  proposed: NonEmptyStr,
+) -> DerivedPayloadAdmission {
+  if !cas_key_is_slot_addressable(key: key) {
+    DerivedPayloadKeyNotSlotAddressable { key: key }
+  } else {
+    DerivedPayloadAdmitted {
+      verified: VerifiedCasAttempt {
+        attempt: cas_attempt(
+          key: key,
+          expected: expected,
+          proposed: proposed,
+          proposed_content: content_hash_of_value(value: proposed),
+        )
+      }
+    }
+  }
+}
+
 // The path a slot's generation occupies. The generation is IN the path, which
 // is what lets an exclusive create serve as the conditional write: two
 // generations of one slot are two different files, so the OS decides the race.
@@ -226,15 +264,33 @@ fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
   cas_probe_from(root: root, key: key, generation: cas_generation_first(), previous: "unread" as NonEmptyStr)
 }
 
-fn cas_probe_as_readable(probe: CasSlotProbe) -> CasReadableSlot<NonEmptyStr> {
-  match probe {
-    ProbedAbsent => CasReadableAbsent
-    ProbedHead { generation: h, value: v } =>
-      CasReadablePresent {
-        version: CasSlotVersion { generation: h, content: content_hash_of_value(value: v), value: v }
-      }
-    ProbedBeyondBound { bound: _ } => CasReadableAbsent
+// THE PROJECTION TAKES A HEAD, NOT A PROBE, AND THE DELETED ARM IS THE REPAIR.
+//
+// An earlier revision was `cas_probe_as_readable(probe: CasSlotProbe)`, total over the probe, mapping
+// `ProbedBeyondBound` to `CasReadableAbsent`. Every call site happened to be inside a `ProbedHead`
+// arm, so the bound arm was dead at all of them -- and `.dag` has no module privacy, so what the
+// corpus actually carried was an importable function that turns EXPLICIT INABILITY TO OBSERVE into
+// ESTABLISHED ABSENCE. That is the absorbing fallback DESIGN section 5 names, and the defence written
+// beside it -- that answering absent is correct "for reporting what beat a lost race" -- was
+// falsified by this module's own bound counterexample two screens down, where a writer really did
+// publish and the probe still could not see it.
+//
+// Narrowing the parameter to the head deletes the arm rather than fixing its answer, so there is no
+// projection left for a future caller to reach with a bound-exhausted probe.
+fn cas_head_as_readable(generation: CasGeneration, value: NonEmptyStr) -> CasReadableSlot<NonEmptyStr> {
+  CasReadablePresent {
+    version: CasSlotVersion {
+      generation: generation,
+      content: content_hash_of_value(value: value),
+      value: value,
+    }
   }
+}
+
+// ONE AUTHORITY FOR WHAT BOUND EXHAUSTION IS. Three sites spelled it independently, twice as a
+// malformed head, and a fourth spelling would have arrived with the next caller.
+fn cas_slot_observation_bound_exceeded(bound: Int) -> CasUnreadableSlot {
+  CasUnreadableObservationBoundExceeded { bound: bound }
 }
 
 // THE STORE'S OBSERVATION, FOR CALLERS THAT MUST DECIDE BEFORE THEY WRITE.
@@ -246,47 +302,243 @@ fn cas_probe_as_readable(probe: CasSlotProbe) -> CasReadableSlot<NonEmptyStr> {
 // building an observation to feed such a decision would make the caller the
 // author of the fact it is supposed to be reading.
 //
-// THE BOUND ARM IS WHY THIS IS NOT cas_probe_as_readable. That projection
-// answers CasReadableAbsent for a slot that exceeded the probe bound, which is
-// correct for its own use -- reporting what beat a lost race -- and wrong here:
-// a decision caller would read "the slot holds nothing" from a store that could
-// not tell it anything, and choose the remedy for an empty cell when the actual
-// remedy is to repair the slot. That is the state-space conflation this corpus
-// keeps finding, so the bound arm becomes unreadable-with-a-cause and only the
-// two genuinely readable arms delegate.
+// THE BOUND ARM IS UNREADABLE-WITH-A-CAUSE, and it is now the ONLY reading of
+// it anywhere: the projection that used to answer CasReadableAbsent for it has
+// been narrowed out of existence. A caller must not read "the slot holds
+// nothing" from a store that could not tell it anything and then choose the
+// remedy for an empty cell.
 fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
   let probe = cas_observe_slot(root: root, key: key)
   match probe {
     ProbedBeyondBound { bound: b } =>
-      CasObservedUnreadable {
-        cause: CasUnreadableMalformed {
-          detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
-        }
-      }
-    ProbedAbsent => CasObservedReadable { readable: cas_probe_as_readable(probe: probe) }
-    ProbedHead { generation: _, value: _ } =>
-      CasObservedReadable { readable: cas_probe_as_readable(probe: probe) }
+      CasObservedUnreadable { cause: cas_slot_observation_bound_exceeded(bound: b) }
+    ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    ProbedHead { generation: h, value: v } =>
+      CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
 }
+
+// ACCESS MODE AND CONDITIONAL PUBLICATION ARE TWO FACTS, AND THIS STORE HELD THEM AS ONE.
+//
+// Every generation was published with `Filesystem.WriteOwnerOnly`, so one operation decided both
+// "publish this generation exclusively" and "these bytes are readable only by their owner". A caller
+// could not select the second without inheriting the first, which is the interface/realization/policy
+// fusion DESIGN section 3 names: confidentiality is a POLICY fact about a particular store's contents,
+// and it was being decided by the store's write verb.
+//
+// SO THE BINDING IS A PARAMETER, AND IT IS REQUIRED RATHER THAN DEFAULTED. A default would have let
+// the SCM slot inherit owner-only silently, exactly the way it inherited it before, and the point of
+// separating the facts is that the choice becomes visible at each call site.
+//
+// THE TWO BINDINGS ARE NOT EQUALLY SAFE, AND SAYING SO IS THE WHOLE VALUE OF NAMING THEM.
+//
+//   DefaultAccessCreateOnly   Filesystem.WriteCreateNew. Its realization stages the bytes in a
+//                             sibling file created O_EXCL, writes them all, synchronizes that inode,
+//                             and only then hard-links it into the generation's name -- and a
+//                             hard_link FAILS IF THE TARGET EXISTS, so exclusion is preserved. The
+//                             generation name therefore never exists holding a partial document: the
+//                             file is complete or it is absent.
+//
+//   OwnerOnlyCreateOnly       Filesystem.WriteOwnerOnly. Its realization opens the GENERATION NAME
+//                             ITSELF with create_new + mode 0600 and writes into it directly. O_EXCL
+//                             still decides who acquires the name, so the winner-selection property is
+//                             intact -- but an interrupted or failed write_all leaves that name
+//                             holding a READABLE PREFIX. The probe below then reads it successfully,
+//                             promotes it to head, and computes a content hash from the prefix, so
+//                             the truncation is internally consistent and nothing refuses. A reader
+//                             sees neither the complete old document nor the complete new one.
+//
+// A DECLARED CURRENT LIMITATION ON THE OWNER-ONLY BINDING -- NOT A RUNG DROP, AND THE FIRST WRITING
+// CALLED IT ONE.
+//
+// It was filed as a DESIGN section 4b(3) declared drop whose `previous rung` was `n/a`. Those cannot
+// both be true: a drop is a REGRESSION RECORD, so it presupposes a guarantee that was held and is
+// being given up, and a class with no previous rung has nothing to regress from. This hazard was
+// never absent -- every generation was published this way from the module's first commit, undeclared.
+// So what is owed is a limitation with a restoration trigger, which is what this is. Caught by
+// external review of the drop row itself.
+//
+// THE POPULATION IS ONE CALLER, AND IT IS NAMED. `gunbc.srv3.srv3_boot_once_cd` publishes authorization
+// claim state under `/var/lib/gunbc/authorization-claims`, and that root is a bare path constant: no
+// modeled directory ownership or mode authority stands beside it. Mode 0600 on the generation file is
+// therefore the ONLY confidentiality that state has, including for free-form abort-cause text, so
+// flipping it to the atomic binding would trade a durable-state hazard for a real privacy regression.
+// Both other consumers moved to `DefaultAccessCreateOnly`: the fabric reservations because
+// `gunbc.fabric.fabric_allocation_store_substrate` already models both the store and its namespace as
+// root-owned 0700 -- an unauthorized principal cannot traverse the directory, so file-level 0600 adds
+// no reader exclusion there while retaining the hazard -- and the live probe because an instrument is
+// not a final consumer that can justify keeping an unsafe arm alive in the production domain.
+//
+// RESTORATION TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: a modeled directory ownership and
+// mode authority for the authorization-claim root, of the kind `AllocationStoreSubstrateSpec` already
+// carries for fabric -- SUFFICIENT FOR that root to enforce confidentiality by traversal, at which
+// point srv3 binds `DefaultAccessCreateOnly`, `OwnerOnlyCreateOnly` has no consumer, and this
+// coproduct collapses to the single admitted publication operation. It is retired by that and by
+// nothing else; in particular it is NOT retired by a failure-atomic mode-carrying write, which would
+// be a different and larger capability than this population needs.
+type CasGenerationPublication
+  = DefaultAccessCreateOnly
+  | OwnerOnlyCreateOnly
 
 // The exclusive create. Reached only once the observation has already satisfied
 // the expectation, so this decides WHO WINS among eligible writers and nothing
 // else. Losing here is a lost race, not a bad precondition -- another writer
 // took the same target between our observation and our write -- so the slot is
 // re-observed to report what actually beat us rather than guessing.
-fn cas_commit_at(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>, target: CasGeneration) -> CasOutcome<NonEmptyStr> {
-  let write = Filesystem.WriteOwnerOnly(
-    path: cas_file_slot_path(root: root, key: attempt.key, generation: target),
-    content: attempt.proposed as String,
+// THE PUBLICATION CARRIES ITS FAILURE DETAIL, AND THE FIRST WRITING THREW IT AWAY.
+//
+// It answered a bare `Bool`, so every unsuccessful write -- whoever caused it -- arrived at one arm.
+// The detail is not transcribed as a diagnosis; it is carried because the arm below needs SOMETHING
+// to say when the failure turns out not to be a lost race, and the host's own words are the only
+// honest thing available. Nothing parses it.
+type CasGenerationPublished
+  = CasGenerationWritten
+  | CasGenerationWriteRefused { detail: String }
+
+// THE ACTUATOR TAKES AN ADMITTED PUBLICATION, NOT A PATH AND SOME BYTES.
+//
+// `cas_generation_published(publication, path, content)` and
+// `cas_commit_at(root, publication, attempt, target)` were both importable, and `.dag` has no module
+// privacy, so the sequence `file_compare_and_set` is supposed to OWN -- verify the attempt, observe
+// the slot, admit the expectation against the real head, derive the target FROM that observation,
+// then publish -- was a convention among its own callers rather than a property of the actuator. A
+// direct caller could supply `ExpectSlotGeneration { 999 }` against an empty store, choose target
+// generation 1, and be answered `CasCommitted`; or write arbitrary content to an arbitrary path,
+// bypassing key admission including the path-escape check. That the one live caller composes them
+// correctly does not constrain their domains. Found by external review.
+//
+// `AdmittedCasPublication` is `sole_constructor`, so it can be built only inside this module, and the
+// only two places that build it are the branches of `file_compare_and_set` reached AFTER the attempt
+// was verified, the slot observed, and the expectation matched against the real head -- each carrying
+// the target DERIVED from that observation. Both the actuator and the raw write now take it, so the
+// path is derived from the admitted key rather than accepted, and the bytes are the verified
+// attempt's rather than an argument.
+type AdmittedCasPublication sole_constructor {
+  root: NonEmptyStr
+  publication: CasGenerationPublication
+  attempt: CasAttempt<NonEmptyStr>
+  target: CasGeneration
+}
+
+fn cas_generation_published(admitted: AdmittedCasPublication) -> CasGenerationPublished {
+  let path = cas_file_slot_path(
+    root: admitted.root,
+    key: admitted.attempt.key,
+    generation: admitted.target,
   )
-  if write.success {
-    CasCommitted {
-      committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
+  let content = admitted.attempt.proposed as String
+  match admitted.publication {
+    DefaultAccessCreateOnly => {
+      let write = Filesystem.WriteCreateNew(path: path, content: content)
+      if write.success { CasGenerationWritten } else { CasGenerationWriteRefused { detail: write.error } }
     }
-  } else {
-    CasPreconditionFailed {
-      expected: attempt.expected,
-      observed: cas_probe_as_readable(probe: cas_observe_slot(root: root, key: attempt.key)),
+    OwnerOnlyCreateOnly => {
+      let write = Filesystem.WriteOwnerOnly(path: path, content: content)
+      if write.success { CasGenerationWritten } else { CasGenerationWriteRefused { detail: write.error } }
+    }
+  }
+}
+
+fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
+  let root = admitted.root
+  let attempt = admitted.attempt
+  let target = admitted.target
+  match cas_generation_published(admitted: admitted) {
+    CasGenerationWritten =>
+      CasCommitted {
+        committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
+      }
+    CasGenerationWriteRefused { detail: detail } =>
+      cas_failed_publication(root: root, attempt: attempt, target: target, detail: detail)
+  }
+}
+
+// A FAILED WRITE IS NOT EVIDENCE THAT SOMEBODY ELSE WON, AND THIS FUNCTION IS THE REPAIR OF A LINE
+// THAT SAID IT WAS.
+//
+// The earlier body answered `CasPreconditionFailed` for EVERY unsuccessful write, with the observed
+// slot re-read afterwards. When the failure was a genuine lost race that is exactly right: the target
+// generation exists because another writer took it, and the re-observation names what beat us. When
+// the failure was the HOST -- no space, no permission, a staging budget exhausted -- the target does
+// not exist, the re-observation returns the same generation we expected, and the store reported:
+//
+//   CasPreconditionFailed { expected: generation 7, observed: generation 7 }
+//
+// A precondition failure whose precondition plainly held. That is a fabricated cause, and it is the
+// worse kind: it routes an operator to look for a competing writer that does not exist, while the
+// actual fault -- a store that cannot accept writes -- goes unreported and uncounted. The wet
+// two-writer control cannot catch it, because in that run both writes are valid and one genuinely
+// loses; nothing there presents a host refusal.
+//
+// SO THE RE-OBSERVATION DECIDES, AND IT ASKS THE ONE QUESTION THAT DISCRIMINATES: DID THE TARGET
+// GENERATION APPEAR? If the head has reached the target, some other writer published it and this is a
+// lost race. If it has not, nothing took our slot and the store simply refused us. The host's text is
+// carried into the refusal and never parsed -- classifying by matching on an error string is the
+// anemic leaf this module already refuses one screen up.
+//
+// AND THE REFUSAL NOW HAS ITS OWN CONSTRUCTOR. An earlier revision routed it through
+// `CasUnreadableMalformed`, on the ground that the caller's remedy -- investigate the store -- is the
+// same either way. That reasoning was wrong and is worth keeping visible: identical remedies do not
+// make two facts one fact, and the fact is what a caller reads back, logs and counts. A write failure
+// wearing a read failure's constructor reports "the head I read is garbage" for an event in which
+// nothing was read and the head is fine. `std.durable_compare_and_set.CasStoreFailure` now carries the
+// distinction, so this says what happened.
+fn cas_failed_publication(
+  root: NonEmptyStr,
+  attempt: CasAttempt<NonEmptyStr>,
+  target: CasGeneration,
+  detail: String,
+) -> CasOutcome<NonEmptyStr> {
+  let probe = cas_observe_slot(root: root, key: attempt.key)
+  match probe {
+    ProbedHead { generation: h, value: v } =>
+      if cas_generation_count(g: h) >= cas_generation_count(g: target) {
+        CasPreconditionFailed {
+          expected: attempt.expected,
+          observed: cas_head_as_readable(generation: h, value: v),
+        }
+      } else {
+        cas_publication_refused(detail: detail)
+      }
+    ProbedAbsent => cas_publication_refused(detail: detail)
+    ProbedBeyondBound { bound: b } => cas_publication_beyond_bound(bound: b)
+  }
+}
+
+// THE BOUND ARM CANNOT SAY THE STORE REFUSED TO PUBLISH, AND A FIRST CUT SAID IT ANYWAY.
+//
+// It routed `ProbedBeyondBound` to the publication refusal along with the other two, on the reasoning
+// that the write had failed and the target had not appeared. The second half does not follow. Consider
+// a slot whose head is 4095 and two writers targeting 4096:
+//
+//   the other writer wins 4096; this writer's create fails
+//   the re-observation reads 4096 successfully and probes 4097
+//   4097 exceeds the bound, so the probe answers ProbedBeyondBound
+//
+// Another writer DID publish. Reporting a publication refusal there invents the wrong cause -- the
+// same fabrication the lost-race repair one screen up exists to remove, reappearing in the arm that
+// repair did not consider. Found by external review.
+//
+// SO THIS ANSWERS WHAT IS ACTUALLY KNOWN: the slot could not be observed. It is a slot-observation
+// refusal, not a publication refusal and not a precondition failure, because the probe no longer holds
+// a readable head to report as the winner. The ordinary two-writer control runs far below the bound
+// and cannot discriminate this arm, so it has its own control.
+//
+// AND THE CAUSE IS BOUND EXHAUSTION, NOT A MALFORMED HEAD, which the first version of this repair got
+// wrong in the other direction: it stopped claiming the publication failed and then said the slot's
+// contents were garbage. A slot holding 4096 contiguous, perfectly well formed generations is not
+// malformed, and telling an operator it is sends them to repair bytes that are fine. Found by external
+// review, on this function's own repair.
+fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
+  CasStoreRefused {
+    cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: bound) }
+  }
+}
+
+fn cas_publication_refused(detail: String) -> CasOutcome<NonEmptyStr> {
+  CasStoreRefused {
+    cause: CasGenerationPublicationRefused {
+      detail: concat("generation publication refused by the store: ", detail) as NonEmptyStr
     }
   }
 }
@@ -298,31 +550,44 @@ fn cas_commit_at(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>, target: Ca
 // EXPECTATION. That is the whole correction: an expectation is a claim about the
 // store, and deriving the write target from the claim rather than from the store
 // is what let an attempt expecting generation 7 commit against an empty slot.
-fn file_compare_and_set(root: NonEmptyStr, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+fn file_compare_and_set(
+  root: NonEmptyStr,
+  publication: CasGenerationPublication,
+  verified: VerifiedCasAttempt,
+) -> CasOutcome<NonEmptyStr> {
   let attempt = verified.attempt
   let probe = cas_observe_slot(root: root, key: attempt.key)
   match probe {
     ProbedBeyondBound { bound: b } =>
       CasStoreRefused {
-        cause: CasUnreadableMalformed {
-          detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
-        }
+        cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: b) }
       }
     ProbedAbsent =>
       match attempt.expected {
-        ExpectSlotAbsent => cas_commit_at(root: root, attempt: attempt, target: cas_generation_first())
+        ExpectSlotAbsent =>
+          cas_commit_at(
+            admitted: AdmittedCasPublication {
+              root: root, publication: publication, attempt: attempt,
+              target: cas_generation_first(),
+            }
+          )
         ExpectSlotGeneration { generation: _ } =>
           CasPreconditionFailed { expected: attempt.expected, observed: CasReadableAbsent }
       }
     ProbedHead { generation: h, value: v } =>
       match attempt.expected {
         ExpectSlotAbsent =>
-          CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
+          CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
         ExpectSlotGeneration { generation: g } =>
           if cas_generation_count(g: g) == cas_generation_count(g: h) {
-            cas_commit_at(root: root, attempt: attempt, target: cas_generation_next(g: h))
+            cas_commit_at(
+              admitted: AdmittedCasPublication {
+                root: root, publication: publication, attempt: attempt,
+                target: cas_generation_next(g: h),
+              }
+            )
           } else {
-            CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
+            CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
           }
       }
   }

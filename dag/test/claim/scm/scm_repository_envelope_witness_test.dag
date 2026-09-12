@@ -223,14 +223,13 @@ fn scm_env_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
 }
 
 fn scm_env_minted_or(repo: RepositoryEnvelope, root: CorpusManifestTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
-  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent, integration: NoSquashIntegration) {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
     RepositoryCommitMintRootIsSemanticNode { root: _ } => repo
-    RepositoryCommitMintIntegrationSourceMissing { source: _ } => repo
   }
 }
 
@@ -342,7 +341,6 @@ test fn scm_env_the_mint_records_the_supplied_parent_and_leaves_the_selection() 
       root: d.identity,
       message: "d",
       parent: Present { value: scm_env_ref(ordinal: 1) },
-      integration: NoSquashIntegration,
     ) {
       RepositoryCommitMinted { repository: minted, reference: reference } =>
         match commit_at_reference(commits: selected_a.commits, reference: reference) {
@@ -1500,7 +1498,6 @@ test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Boo
     root: first.identity,
     message: "child",
     parent: Present { value: scm_env_ref(ordinal: 7) },
-    integration: NoSquashIntegration,
   ) {
     RepositoryCommitMintParentMissing { parent: p } => p == scm_env_ref(ordinal: 7)
     RepositoryCommitMinted { repository: _, reference: _ } => false
@@ -1508,7 +1505,6 @@ test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Boo
     RepositoryCommitMintRootMissing { root: _ } => false
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
     RepositoryCommitMintRootIsSemanticNode { root: _ } => false
-    RepositoryCommitMintIntegrationSourceMissing { source: _ } => false
   }
 }
 
@@ -1586,7 +1582,6 @@ test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Boo
     root: second_root,
     message: "after deletion",
     parent: Present { value: scm_env_ref(ordinal: 0) },
-    integration: NoSquashIntegration,
   ) {
     RepositoryCommitMinted { repository: _, reference: r } => r == scm_env_ref(ordinal: 2)
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
@@ -1594,7 +1589,6 @@ test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Boo
     RepositoryCommitMintRootMissing { root: _ } => false
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
     RepositoryCommitMintRootIsSemanticNode { root: _ } => false
-    RepositoryCommitMintIntegrationSourceMissing { source: _ } => false
   }
 }
 
@@ -1639,12 +1633,10 @@ test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> 
         root: CorpusManifestTarget { locator: file.locator },
         message: "root is a file",
         parent: none,
-        integration: NoSquashIntegration,
       ) {
         RepositoryCommitMintRootIsAuthoredSource { root: r } =>
           object_id_eq(left: r, right: file.locator)
         RepositoryCommitMintRootIsSemanticNode { root: _ } => false
-        RepositoryCommitMintIntegrationSourceMissing { source: _ } => false
         RepositoryCommitMinted { repository: _, reference: _ } => false
         RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
         RepositoryCommitMintParentMissing { parent: _ } => false
@@ -1665,7 +1657,6 @@ test fn env_a_commit_root_that_is_a_semantic_node_refuses() -> Bool {
     root: CorpusManifestTarget { locator: node_target_locator(target: put.identity) },
     message: "root is a program",
     parent: none,
-    integration: NoSquashIntegration,
   ) {
     RepositoryCommitMintRootIsSemanticNode { root: r } =>
       object_id_eq(left: r, right: node_target_locator(target: put.identity))
@@ -1674,7 +1665,6 @@ test fn env_a_commit_root_that_is_a_semantic_node_refuses() -> Bool {
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
-    RepositoryCommitMintIntegrationSourceMissing { source: _ } => false
   }
 }
 
@@ -1687,12 +1677,10 @@ test fn env_a_commit_root_that_is_a_corpus_manifest_mints() -> Bool {
     root: snapshot.identity,
     message: "root is a snapshot",
     parent: none,
-    integration: NoSquashIntegration,
   ) {
     RepositoryCommitMinted { repository: _, reference: _ } => true
     RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
     RepositoryCommitMintRootIsSemanticNode { root: _ } => false
-    RepositoryCommitMintIntegrationSourceMissing { source: _ } => false
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false

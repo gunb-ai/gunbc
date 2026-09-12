@@ -48,6 +48,10 @@ import gunbc.scm.object_store {
   CorpusManifestIsSemanticNode,
   find_corpus_manifest_record,
   authored_source_target_locator,
+  CorpusEntrySourceRefusal, CorpusEntrySourceMissing,
+  CorpusEntrySourceIsSemanticNode, CorpusEntrySourceIsCorpusManifest,
+  CorpusEntrySourceResolution, CorpusEntrySourceResolved, CorpusEntrySourceUnresolved,
+  resolve_manifest_entry_source,
 }
 
 // A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
@@ -253,56 +257,47 @@ type RecoveredSourceFile {
   content: AuthoredSourceContent
 }
 
-// THE PER-ENTRY REFUSALS NAME THE PATH, because "some source is missing" is not actionable and the
-// path is the only thing the operator can act on. All three non-success arms of the authored-source
-// lookup are preserved: a locator that is EMPTY and a locator OCCUPIED BY THE WRONG KIND are
-// different repairs, and folding them together would report an occupied locator as absent.
-type CorpusRecoveryRefusal
-  = CorpusEntrySourceMissing { path: NonEmptyStr, source: ObjectId }
-  | CorpusEntrySourceIsSemanticNode { path: NonEmptyStr, source: ObjectId }
-  | CorpusEntrySourceIsCorpusManifest { path: NonEmptyStr, source: ObjectId }
-
+// THE PER-ENTRY REFUSALS MOVED TO `object_store` AND ARE CONSUMED HERE.
+//
+// They were declared in this module because checkout was the only operation that asked whether a
+// manifest's sources resolve. Review found that COMMIT must ask the same question before it may
+// publish, so the question has two callers and therefore exactly one home -- `object_store`, which
+// owns the entry, the store and the authored-source lookup it needs. Declaring a second located-cause
+// family here would be the meaning fork DESIGN 3 forbids: one question with two answers that can
+// drift apart. What stays here is what is genuinely checkout's -- recovering CONTENT per path.
 type CorpusRecovery
   = CorpusRecovered { files: List<RecoveredSourceFile> }
-  | CorpusRecoveryRefused { cause: CorpusRecoveryRefusal }
+  | CorpusRecoveryRefused { cause: CorpusEntrySourceRefusal }
 
 type CorpusRecoveryAcc {
   files: List<RecoveredSourceFile>
-  refusal: CorpusRecoveryRefusal?
+  refusal: CorpusEntrySourceRefusal?
 }
 
 fn recover_entry_step(store: ObjectStore, acc: CorpusRecoveryAcc, entry: CorpusManifestEntry) -> CorpusRecoveryAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match find_authored_source_record(
-        store: store,
-        identity: authored_source_target_locator(target: entry.source)
-      ) {
-        AuthoredSourceFound(record) =>
+      match resolve_manifest_entry_source(store: store, entry: entry) {
+        CorpusEntrySourceResolved(record) =>
           CorpusRecoveryAcc {
-            files: concat(acc.files, [RecoveredSourceFile { path: entry.path, content: record.content }]),
+            files: concat([RecoveredSourceFile { path: entry.path, content: record.content }], acc.files),
             refusal: acc.refusal,
           }
-        AuthoredSourceAbsent { identity: id } =>
-          CorpusRecoveryAcc {
-            files: acc.files,
-            refusal: Present { value: CorpusEntrySourceMissing { path: entry.path, source: id } },
-          }
-        AuthoredSourceIsSemanticNode { identity: id } =>
-          CorpusRecoveryAcc {
-            files: acc.files,
-            refusal: Present { value: CorpusEntrySourceIsSemanticNode { path: entry.path, source: id } },
-          }
-        AuthoredSourceIsCorpusManifest { identity: id } =>
-          CorpusRecoveryAcc {
-            files: acc.files,
-            refusal: Present { value: CorpusEntrySourceIsCorpusManifest { path: entry.path, source: id } },
-          }
+        CorpusEntrySourceUnresolved { cause: c } =>
+          CorpusRecoveryAcc { files: acc.files, refusal: Present { value: c } }
       }
   }
 }
 
+// THE ACCUMULATOR PREPENDS AND `recover_corpus` REVERSES ONCE -- the same cost discipline, and the
+// same load-bearing reverse, as `checkout_edge_step` above. The first writing appended with
+// `concat(acc.files, [file])`, which recopies the growing prefix on every entry and makes recovering a
+// corpus quadratic in its number of paths. DESIGN section 6 fixes a proven cost shape regardless of the
+// realized n, because "n is small here" stops being true the moment a real corpus is checked out.
+// The reverse restores manifest order, which is the order the caller writes the files back in.
+// Found by external review.
+//
 // RECOVERABILITY IS A SEPARATE QUESTION FROM SNAPSHOT DESIGNATION, and this function is where the
 // second one is answered. The mint decides only that a commit names a manifest of the required kind;
 // whether that manifest's sources are present is this observation, performed against a particular
@@ -316,7 +311,7 @@ fn recover_corpus(store: ObjectStore, entries: List<CorpusManifestEntry>) -> Cor
     CorpusRecoveryAcc { files: files, refusal: refusal } =>
       match refusal {
         Present { value: cause } => CorpusRecoveryRefused { cause: cause }
-        Absent => CorpusRecovered { files: files }
+        Absent => CorpusRecovered { files: reverse(files) }
       }
   }
 }
@@ -336,7 +331,7 @@ type RepositoryCheckout
   | CheckoutSnapshotMissingFromStore { reference: RepositoryCommitRef, root: ObjectId }
   | CheckoutSnapshotIsAuthoredSource { reference: RepositoryCommitRef, root: ObjectId }
   | CheckoutSnapshotIsSemanticNode { reference: RepositoryCommitRef, root: ObjectId }
-  | CheckoutCorpusUnrecoverable { reference: RepositoryCommitRef, cause: CorpusRecoveryRefusal }
+  | CheckoutCorpusUnrecoverable { reference: RepositoryCommitRef, cause: CorpusEntrySourceRefusal }
   | CheckoutWouldDiscardStagedWork {
       reference: RepositoryCommitRef,
       candidate: CorpusManifestObjectRef,

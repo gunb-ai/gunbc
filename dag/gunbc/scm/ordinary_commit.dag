@@ -1,0 +1,129 @@
+module gunbc.scm.ordinary_commit
+
+// MINTING A COMMIT THAT CONSUMED NOTHING, AS A CONSTRUCTION RATHER THAN AS AN ARGUMENT.
+//
+// WHY THIS EXISTS AT ALL, AND IT IS NOT A CONVENIENCE WRAPPER. This module was built when
+// `mint_commit_from_stored_manifest` still took a `CommitIntegration` and therefore had to carry
+// `BrandedRootIntegrationSourceMissing`: an arm honest for a MERGE, whose source can genuinely be
+// absent, and unreachable for an ordinary commit passing `NoSquashIntegration` -- so every consumer
+// downstream was made to match a state this operation cannot produce.
+//
+// THAT PREMISE IS NOW HISTORY, AND THE CONCLUSION OUTLIVED IT. The generic mint no longer accepts an
+// integration at all, so the arm is gone at the source rather than merely unreachable from here. What
+// still justifies this module is the narrower fact it always really rested on: an ordinary commit
+// answers FEWER questions than the generic route asks, so it deserves an outcome shaped to the
+// questions it actually has. Stated in the past tense because the arm it was written against no
+// longer exists, and a note written in the present about a removed parameter is the stale authority
+// statement this stack keeps finding.
+//
+// THE FIRST ATTEMPT KEPT THE ARM AND SAID SO IN A COMMENT. That is the `carry_mint` error this stack
+// has already paid for once: preserving the callee's causes is honest about the CALLEE's domain and
+// dishonest about the OPERATION's, and an annotation admitting a state is impossible while the type
+// still carries it is a signature that lies with a footnote. Re-reporting it as a parent-missing
+// would have been worse -- a fabricated cause, which is the sin one level down from this one.
+//
+// SO THE QUESTION IS REMOVED RATHER THAN ANSWERED. This function takes no integration parameter,
+// supplies `NoSquashIntegration` itself, and narrows the result to the three outcomes an ordinary
+// commit can actually reach. DESIGN section 4b: construction over proof, proof over validation --
+// the state is not refused here, it is unwritable through this route.
+//
+// IT IS NOT A SECOND MINT, AND WHAT IT SHARES WITH THE SQUASH ROUTE IS NARROWER THAN THIS NOTE ONCE
+// CLAIMED. It said the parent admission and the row construction were "the same two functions the
+// squash route uses". The row construction still is: `mint_repository_commit_admitted` has one
+// authority and both routes reach it. The PARENT ADMISSION is no longer shared -- squash does not call
+// `admit_commit_parent` at all, because its parent arrives already resolved inside the sealed merge
+// subject, which is the whole point of that seal. So the allocator discipline and the row's shape have
+// exactly one authority each; the parent-preexistence rule has one authority with one caller, and
+// admitting a parent from a bare reference is precisely the membership-only step the merge route was
+// rebuilt to stop performing. What differs is WHICH QUESTIONS EACH ROUTE ASKS, which is the thing that
+// should differ.
+
+import std.types { String, Int }
+import gunbc.scm.ancestry { RepositoryCommitRef, CommitAncestry }
+
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryManifestRoot,
+  MintedCommit,
+  OrdinaryCommitSubjectAdmission, OrdinaryCommitSubjectAdmitted,
+  OrdinaryCommitSubjectAllocatorInvalid, OrdinaryCommitSubjectParentMissing,
+  AncestralSubjectAdmission, AncestralSubjectAdmitted,
+  AncestralSubjectAllocatorInvalid,
+  AdmittedCommitBasis,
+  admit_ordinary_commit_subject, admit_commit_subject_from_basis,
+  mint_repository_commit_admitted,
+}
+
+type OrdinaryCommitMint
+  = OrdinaryCommitMinted(MintedCommit)
+  | OrdinaryCommitAllocatorInvalid { next_ordinal: Int }
+  | OrdinaryCommitParentMissing { parent: RepositoryCommitRef }
+
+// THE INTEGRATION QUESTION IS NOT ASKED HERE, WHICH IS DIFFERENT FROM BEING ANSWERED HERE.
+//
+// This route runs the two admissions an ordinary commit actually has -- the allocator and the parent
+// -- and then reaches `mint_repository_commit_admitted`, whose outcome is the single-constructor
+// `MintedCommit`. There is no integration arm to match, so there is nothing to translate and no
+// opportunity to fabricate a cause. The first draft of this module DID translate it, into a
+// parent-missing, behind a comment explaining that it could not fire; that comment was the tell.
+//
+// THE ADMISSION RULES ARE NOT DUPLICATED, BUT THE SQUASH ROUTE NO LONGER SHARES THIS ONE. An earlier
+// revision of this note said `admit_commit_parent` was the same function squash merge calls. That
+// stopped being true when squash moved to the merge-store/basis route: its parent is not admitted from
+// a loose reference at all, it arrives already resolved inside the sealed merge subject, so there is no
+// parent admission left on that side to share. The two routes now share the ROW CONSTRUCTOR and the
+// allocator, not the parent question -- and that is the honest statement of what is common, because
+// admitting a parent from a bare reference is precisely the membership-only step the merge route was
+// rebuilt to stop performing.
+//
+// AND THE SUBJECT IS THE SEALED PAIR, so this helper cannot be handed a repository and a root that came
+// from different stores. It takes no repository argument at all: there is only one repository here, the
+// one the root was resolved or stored against.
+//
+// THE INTEGRATION ARM IS GONE FOR THE THIRD AND FINAL TIME, and the first two attempts are worth
+// recording because they were the same reflex. Attempt one kept the generic arm and explained in a
+// comment that it could not fire. Attempt two translated it into a parent-missing. Both are the
+// fabricated cause this stack keeps paying for -- a match closed with an answer nobody could have
+// observed. The question is now absent from the ADMISSION, not merely from this fold:
+// `admit_ordinary_commit_subject` never asks it, so there is no arm here to handle.
+fn mint_ordinary_commit(
+  subject: RepositoryManifestRoot,
+  message: String,
+  parent: RepositoryCommitRef?,
+) -> OrdinaryCommitMint {
+  match admit_ordinary_commit_subject(subject: subject, parent: parent) {
+    OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: n } =>
+      OrdinaryCommitAllocatorInvalid { next_ordinal: n }
+    OrdinaryCommitSubjectParentMissing { parent: p } => OrdinaryCommitParentMissing { parent: p }
+    OrdinaryCommitSubjectAdmitted(admitted) =>
+      OrdinaryCommitMinted(mint_repository_commit_admitted(admitted: admitted, message: message))
+  }
+}
+
+// THE NARROW MINT. Two arms rather than three, because its caller hands it an ancestry that was
+// ADMITTED where the parent was found rather than a reference this function would have to look up.
+//
+// IT TAKES ONE `AdmittedCommitBasis` AND NOTHING BESIDE IT, AND THE FIRST TWO VERSIONS DID NOT.
+//
+// The first took a bare `CommitAncestry`, which states a relation and evidences nothing, so this
+// public mint accepted `DescendsFrom { parent: <absent> }` and answered with a commit whose ancestry
+// dangles -- strictly worse than the parent-missing arm its introduction deleted. The second sealed
+// the ancestry but still took the SUBJECT as a separate argument, so evidence admitted against one
+// repository could be paired with a subject from another and dangle in that one instead. The subject
+// now travels inside the evidence, so this signature has nothing left to mis-pair. Both found by
+// external review.
+type AncestralCommitMint
+  = AncestralCommitMinted(MintedCommit)
+  | AncestralCommitAllocatorInvalid { next_ordinal: Int }
+
+fn mint_ancestral_commit(
+  basis: AdmittedCommitBasis,
+  message: String,
+) -> AncestralCommitMint {
+  match admit_commit_subject_from_basis(basis: basis) {
+    AncestralSubjectAllocatorInvalid { next_ordinal: n } =>
+      AncestralCommitAllocatorInvalid { next_ordinal: n }
+    AncestralSubjectAdmitted(admitted) =>
+      AncestralCommitMinted(mint_repository_commit_admitted(admitted: admitted, message: message))
+  }
+}

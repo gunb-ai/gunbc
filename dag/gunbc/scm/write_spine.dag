@@ -1,0 +1,352 @@
+module gunbc.scm.write_spine
+
+// THE TWO AUTHORING VERBS -- STAGE ONE SOURCE AT ONE PATH, AND FREEZE WHAT IS STAGED.
+//
+// WHAT THIS MODULE IS NOT ALLOWED TO DO, and it is the whole reason it is separate from an ingress.
+// Neither verb here performs a host effect. `add` reads a file and `commit` does not, and the second
+// half of that sentence is a correctness property rather than an efficiency one: a commit that
+// re-read the worktree would freeze the bytes present at the instant of the COMMIT, not the bytes the
+// author staged and then inspected. Every intervening edit would be swept in silently and the author
+// would be told their reviewed snapshot was committed. That is the fabricated-plausible-output
+// failure DESIGN section 5 forbids, and the only structural defence against it is that the commit
+// verb has no filesystem operation to reach for -- so the read lives in the ingress and the freeze
+// lives here, and the staged manifest is the only channel between them.
+//
+// STAGING IS A SNAPSHOT EDIT, NOT A PATCH. `gunbc.scm.staging.effective_candidate` already carries
+// the whole of that reasoning and the data-loss defect that produced it: an absent stage inherits the
+// checked-out commit's full corpus rather than answering with the empty one. This module consumes
+// that decision and does not re-derive it, so an `add` of one path can never delete the paths nobody
+// touched.
+
+import std.types { String, NonEmptyStr, Int, List }
+import gunbc.scm.object_store {
+  ObjectId,
+  AuthoredSourceObjectRef, authored_source_target_of,
+  CorpusManifestObjectRef, CorpusManifestRecord, CorpusManifestTarget,
+  SourceStoreOutcome, SourceStored, SourceLocatorCollision, store_authored_source,
+  PathUniqueManifestEntries, manifest_entries_with_path_replaced, manifest_entries_of_single,
+  UniqueManifestStoreOutcome, UniqueManifestStored, UniqueManifestLocatorCollision,
+  store_path_unique_manifest,
+  CorpusEntrySourceRefusal,
+  CorpusSourceCompleteness, CorpusSourcesComplete, CorpusSourceIncomplete,
+  observe_corpus_source_completeness,
+}
+import gunbc.scm.ancestry { CommitAncestry }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope, RepositoryCommitRef,
+  RepositoryManifestRoot, AdmittedCommitBasis,
+  RepositoryManifestRootResolved, RepositoryManifestRootMissing,
+  RepositoryManifestRootIsAuthoredSource, RepositoryManifestRootIsSemanticNode,
+  repository_root_by_resolving,
+}
+import gunbc.scm.ordinary_commit {
+  AncestralCommitMint, AncestralCommitMinted, AncestralCommitAllocatorInvalid,
+  mint_ancestral_commit,
+}
+import gunbc.scm.staging {
+  StagingRefusal, EffectiveCandidate,
+  CandidateFromStage, CandidateInheritedFromBase, CandidateEmptyCorpus, CandidateRefused,
+  effective_candidate,
+  StageStanding, StageMatchesBase, StageDiffersFromBase, StageWithNoBase,
+  NoCandidateAndNoBase, StageStandingRefused,
+  StageManifestMissingFromStore, StageManifestIsAuthoredSource, StageManifestIsSemanticNode,
+  FreezableChange,
+  stage_standing,
+}
+
+// THE STAGING OUTCOME. Each refusal names a different owner and a different repair, which is why the
+// two collision arms are not folded together: a source-locator collision says the object table
+// already holds a DIFFERENT file under this file's identity, and a manifest-locator collision says
+// the same about the snapshot.
+//
+// THERE IS NO DUPLICATE-PATH ARM. An earlier revision carried one and argued for keeping it on the
+// ground that `store_corpus_manifest` owns that decision. That reasoning is what the carry_mint class
+// looks like from the inside: this verb cannot produce a duplicate, so carrying the generic authority's
+// arm described the CALLEE's domain in this operation's signature. The route now ends at
+// `store_path_unique_manifest`, whose outcome has no such arm -- see `stage_source_at_path`.
+type StageIngress
+  = Staged {
+      repository: RepositoryEnvelope,
+      manifest: CorpusManifestObjectRef,
+      source: AuthoredSourceObjectRef
+    }
+  | StageCandidateRefused { cause: StagingRefusal }
+  | StageSourceLocatorCollision { identity: ObjectId }
+  | StageManifestLocatorCollision { identity: ObjectId }
+
+// THE CANDIDATE AS A RECORD, OR THE REFUSAL THAT MEANS THERE IS NONE. The empty-corpus arm is its own
+// answer and NOT an empty record, which is the distinction staging spent a data-loss incident
+// establishing: no history is an empty corpus, an unreadable base is not.
+// THE BASE AND THE REPOSITORY TRAVEL SEALED, for the same reason the commit subject does one module
+// over. An earlier revision had `stage_into(repository, base: CorpusManifestRecord?, ...)`, whose two
+// arguments are exactly the relation-breaking pair: a record obtained from store A passed beside
+// repository B produces a manifest in B whose inherited entries reference sources only A holds. Every
+// caller obtained both from one repository, and `.dag` has no module privacy, so nothing but care held
+// them together -- the raw-helper bypass this cut already repaired twice elsewhere. Found by external
+// review.
+//
+// `StagingBase` is sole-constructed by `candidate_record` below, which derives the base FROM the
+// repository it is handed. There is no route by which the halves can be sourced separately.
+type StagingBase sole_constructor {
+  repository: RepositoryEnvelope
+  base: CorpusManifestRecord?
+}
+
+type CandidateRecord
+  = CandidateRecordIs(StagingBase)
+  | CandidateRecordRefused { cause: StagingRefusal }
+
+// THE EMPTY CORPUS IS A SEALED BASE OF `none`, NOT A THIRD ARM. It is still distinct from a refusal --
+// which is the distinction staging spent a data-loss incident establishing -- but it is not distinct
+// from "a base this repository does not have", because that is what it is.
+fn candidate_record(repository: RepositoryEnvelope) -> CandidateRecord {
+  match effective_candidate(repository: repository) {
+    CandidateRefused { cause: c } => CandidateRecordRefused { cause: c }
+    CandidateEmptyCorpus =>
+      CandidateRecordIs(StagingBase { repository: repository, base: none })
+    CandidateFromStage { candidate: c } =>
+      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: c.record } })
+    CandidateInheritedFromBase { candidate: c } =>
+      CandidateRecordIs(StagingBase { repository: repository, base: Present { value: c.record } })
+  }
+}
+
+// `add`, WITH THE BYTES ALREADY IN HAND.
+//
+// The text is a parameter rather than a path this function reads, so the identity of what gets staged
+// is fixed by the caller's observation and cannot drift between the observation and the store. The
+// ingress that performs the observation is `gunbc.scm.write_spine_ingress`; it is separate because
+// this fold must remain runnable where no filesystem exists.
+//
+// THERE IS NO DUPLICATE-PATH ARM, AND THAT IS A CONSTRUCTION RESULT RATHER THAN AN OMISSION. An earlier
+// revision carried one, because `store_corpus_manifest` accepts an arbitrary list and must ask. This
+// route cannot produce a duplicate -- it derives its entries from a `CorpusManifestRecord`, whose
+// sole constructor already admitted them as path-unique, by removing one path and appending exactly
+// one entry -- and it now says so in the only way that counts: it hands
+// `store_path_unique_manifest` a `PathUniqueManifestEntries`, whose outcome has no duplicate arm to
+// match. The first version instead kept the arm and explained in a comment that it was unreachable,
+// which is a signature that lies with a footnote. Found by external review.
+fn stage_source_at_path(
+  repository: RepositoryEnvelope,
+  path: NonEmptyStr,
+  text: String,
+) -> StageIngress {
+  match candidate_record(repository: repository) {
+    CandidateRecordRefused { cause: c } => StageCandidateRefused { cause: c }
+    CandidateRecordIs(subject) => stage_into(subject: subject, path: path, text: text)
+  }
+}
+
+fn stage_into(
+  subject: StagingBase,
+  path: NonEmptyStr,
+  text: String,
+) -> StageIngress {
+  let repository = subject.repository
+  let base = subject.base
+  match store_authored_source(store: repository.store, text: text) {
+    SourceLocatorCollision { identity: id, existing: _, incoming: _ } =>
+      StageSourceLocatorCollision { identity: id }
+    SourceStored { store: with_source, source: source } => {
+      let target = authored_source_target_of(reference: source)
+      let unique = match base {
+        Absent => manifest_entries_of_single(path: path, source: target)
+        Present { value: record } =>
+          manifest_entries_with_path_replaced(base: record, path: path, source: target)
+      }
+      match store_path_unique_manifest(store: with_source, unique: unique) {
+        UniqueManifestLocatorCollision { identity: id, existing: _, incoming: _ } =>
+          StageManifestLocatorCollision { identity: id }
+        UniqueManifestStored { store: with_manifest, manifest: manifest } =>
+          Staged {
+            repository: RepositoryEnvelope {
+              store: with_manifest,
+              commits: repository.commits,
+              commit_allocator: repository.commit_allocator,
+              checked_out: repository.checked_out,
+              staged: Present { value: manifest },
+            },
+            manifest: manifest,
+            source: source,
+          }
+      }
+    }
+  }
+}
+
+// `commit`.
+//
+// THE ROOT IS THE MANIFEST THE CANDIDATE ALREADY NAMES, AND IT IS RE-RESOLVED ANYWAY.
+//
+// An earlier revision of this paragraph said the verb "never re-resolves", which contradicted the code
+// directly beneath it once the seal landed: `freeze_root` goes through `repository_root_by_resolving`.
+// The construction is right and the sentence was stale, so the sentence is replaced. `stage_standing`
+// hands back a reference the store really produced -- but a REFERENCE is not a proof of membership in
+// THIS repository's store, which is exactly the gap `RepositoryManifestRoot` exists to close, so the
+// resolution is what mints the sealed pair rather than a redundant check of something already known.
+//
+// IT ASKS `stage_standing`, NOT `effective_candidate`, AND THE FIRST WRITING ASKED THE WRONG ONE.
+// `effective_candidate` answers WHAT the snapshot is; `stage_standing` answers whether that snapshot
+// DIFFERS FROM THE ONE ALREADY COMMITTED. Committing needs the second, and asking the first admitted a
+// commit that changes nothing:
+//
+//   commit C           -> checked_out = C, staged = Absent
+//   commit again       -> the candidate is INHERITED FROM C, so its root IS C's root
+//                      -> a second commit mints, with the same root and a new identity
+//
+// An empty change reported as a change, and the history grows a row that froze nothing. This
+// module's own annotation two paragraphs down named that exact defect as the reason the stage must be
+// consumed -- and then let it in through the inheritance door instead. The same arm also covers the
+// case an author reaches deliberately: staging bytes that reproduce the committed manifest is a
+// no-op, and it must be reported as one rather than minted.
+//
+// COMMITTING WITH NOTHING TO FREEZE IS A REFUSAL, NOT A NO-OP AND NOT AN EMPTY COMMIT. A repository
+// with no checkout and no stage has no snapshot to freeze; answering with the empty corpus would
+// commit a deletion of everything the author never asked for, which is the same widening the staging
+// module refuses one level down.
+//
+// AND THERE IS NO PARENT-MISSING ARM EITHER, FOR THE SAME REASON ONE LEVEL ALONG. `stage_standing`
+// reaches its two freezable arms only through `base_snapshot`, which finds the checked-out commit in
+// this repository's commits before it can report a base at all -- so by the time there is something to
+// freeze, the parent has been FOUND, and `StageWithNoBase` is the arm where there is no parent to
+// find. Both arms now carry the `AdmittedCommitBasis` that establishes it, and this verb mints through
+// `mint_ancestral_commit`, whose admission does not ask. An earlier revision carried the generic
+// mint's parent-missing arm here and could not have produced it; that is the same `carry_mint` shape
+// as the integration arm below, found by external review one layer later than the last time.
+//
+// AND THERE IS NO INTEGRATION-SOURCE ARM, BECAUSE THE CONSTRUCTION THIS VERB INVOKES HAS NO
+// INTEGRATION SOURCE. An earlier revision carried one and admitted in its own comment that it could
+// not arise -- the `carry_mint` error this stack has already paid for once: honest about the callee's
+// domain and dishonest about this operation's. The repair is not to re-report it or to translate it,
+// but to invoke a construction from which the question is ABSENT: `mint_ordinary_commit` takes no
+// integration argument, so there is no source that could be missing.
+//
+// SOURCE COMPLETENESS IS THE COMMIT'S OUTCOME, NOT THE STAGE'S REFUSAL. `StagingRefusal` answers one
+// relational question -- can this candidate be compared against its base -- and status and checkout
+// read that same vocabulary. Whether every entry's bytes are still recoverable is a question only
+// PUBLICATION asks, so it is an arm of THIS type rather than a widening of that one. An earlier
+// revision carried it as `StagingRefusal StageSourceUnrecoverable`, which is how it came to fire on
+// the read paths at all. Found by external review.
+type StagedCommit
+  = StagedCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | StagedCommitCandidateRefused { cause: StagingRefusal }
+  | StagedCommitNothingToFreeze
+  | StagedCommitAllocatorInvalid { next_ordinal: Int }
+  | StagedCommitSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
+
+// THE COMMITTABLE STAGE -- THE CARRIER THAT SAYS THIS ROOT IS *THIS WORKSPACE'S PENDING CHANGE*.
+//
+// `MintedCommit` proves the returned reference belongs to the returned repository. It does NOT prove
+// that the commit froze this workspace's staged candidate, and it does not authorize clearing
+// `staged`. An earlier revision exported `freeze_root(repository, root, message)` and
+// `advance_to_commit(minted)` as separate public entry points, and `.dag` has no module privacy, so
+// the pair was an authorable bypass of `stage_standing`:
+//
+//   R is checked out at C, has staged candidate S, and its store also holds manifest M
+//   resolve M against R -> mint an ordinary child of C rooted at M -> advance_to_commit(that mint)
+//   => the selection moves to the M commit and S is SILENTLY DISCARDED
+//
+// and the same route, handed C's own root on a clean repository, mints the no-change commit that
+// `commit_staged` exists to refuse. Found by external review; the seal it replaces was correct about
+// the relation it named and simply did not name this one.
+//
+// `CommittableStage` is sole-constructed by `commit_staged` at exactly the two `stage_standing` arms
+// that mean there is a change to freeze. Everything downstream consumes it, and the selection-plus-
+// stage-consumption step is not reachable except through it.
+// IT CARRIES THE BASIS AND NOT A ROOT BESIDE IT. The basis already names the subject it is evidence
+// about, so a second `root` field here would be a second answer to a question the basis has answered
+// -- and the pair could disagree, which is exactly the mis-pairing the basis was introduced to make
+// unwritable.
+type CommittableStage sole_constructor {
+  basis: AdmittedCommitBasis
+}
+
+fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
+  match stage_standing(repository: repository) {
+    StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
+    NoCandidateAndNoBase => StagedCommitNothingToFreeze
+    StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
+    StageWithNoBase { candidate: _, change: change } =>
+      commit_admitted_stage(change: change, message: message)
+    StageDiffersFromBase { candidate: _, committed: _, change: change } =>
+      commit_admitted_stage(change: change, message: message)
+  }
+}
+
+// PUBLICATION OBSERVES ITS SOURCES; READING THEM DOES NOT.
+//
+// Every entry a commit freezes must name an authored source this store can actually produce. A commit
+// is a PUBLICATION: the manifest it freezes becomes a permanent parent that later commits inherit and
+// that checkout is expected to materialize, so an entry whose source is absent -- or is a semantic node
+// or another manifest wearing a source's locator -- publishes a snapshot that can never be restored.
+// Refusing at READ time would be worse than useless (see the note in `gunbc.scm.staging`); refusing here
+// stops the line at the one operation that makes the defect permanent, and it names the offending path.
+//
+// THE SUBJECT IS ONE VALUE, WHICH IS THE WHOLE POINT. An earlier revision took
+// `(repository, entries, basis)` as three peers, and `.dag` has no module privacy, so this function was
+// a public bypass of its own wall: hand it a real basis beside an EMPTY or unrelated entry population
+// and completeness passes vacuously, after which `freeze_committable` mints the very candidate the
+// observation was there to refuse. Same defect class as the merge-side peer seam this cut had already
+// closed, reintroduced one path over. Found by external review.
+//
+// `FreezableChange` is sole-constructed in `gunbc.scm.staging` at the point that resolved the manifest
+// and read its entries, so the entries observed here ARE the entries the basis will freeze -- not a
+// population a caller chose. The repository is derived from the basis rather than supplied beside it,
+// for the same reason: a second way to name the store is a second thing that can disagree.
+//
+// WHAT CARRYING THE ENTRIES SAVES, STATED NARROWLY. `stage_standing` already resolved the candidate
+// MANIFEST to get its identity, so its entry list arrives on the carrier and this function does not
+// re-read it -- that is the one lookup avoided. It is NOT free overall: the completeness observation
+// still performs an object-store lookup PER ENTRY, so a commit pays the corpus's path count. An earlier
+// writing claimed "no second store walk", which overstated a saved manifest read as a saved corpus
+// walk; external review corrected it. The per-entry cost is inherent to the question -- there is no way
+// to know a source resolves without asking the store -- and it is paid at publication, which is where
+// it buys something.
+fn commit_admitted_stage(change: FreezableChange, message: String) -> StagedCommit {
+  match observe_corpus_source_completeness(
+    store: change.basis.subject.repository.store,
+    entries: change.entries,
+  ) {
+    CorpusSourceIncomplete { cause: c } => StagedCommitSourceUnrecoverable { cause: c }
+    CorpusSourcesComplete =>
+      freeze_committable(
+        committable: CommittableStage { basis: change.basis },
+        message: message,
+      )
+  }
+}
+
+// THE ROOT ARRIVES ALREADY RESOLVED, AND THE SECOND RESOLUTION IS GONE.
+//
+// An earlier revision re-resolved the candidate locator here and answered all three wrong-kind arms,
+// directly beneath an annotation saying they could not fire from this route. Both halves of that were
+// wrong to keep: the arms had no producer here, and the resolution was a second O(n) store lookup per
+// commit buying nothing. `stage_standing` now resolves ONCE, where those refusals do have a producer,
+// and hands back a sealed `RepositoryManifestRoot`; `CommittableStage` carries it. So this function
+// neither re-asks nor re-reports, and it no longer needs the repository as a separate field -- the
+// sealed root carries the repository the manifest was found in. Found by external review.
+//
+// THE MINT, THE SELECTION AND THE STAGE CONSUMPTION REMAIN ONE FUNCTION. Splitting the advance out
+// gave the corpus a public function that clears `staged` for ANY minted commit; there is no carrier
+// weaker than "this mint came from this workspace's committable stage" that makes that clearing
+// honest. Neither half is optional: leaving the checkout behind would make the next `add` inherit from
+// the OLD snapshot, and leaving the stage in place would make the next commit freeze the same manifest
+// again under a new identity.
+fn freeze_committable(committable: CommittableStage, message: String) -> StagedCommit {
+  match mint_ancestral_commit(basis: committable.basis, message: message) {
+    AncestralCommitAllocatorInvalid { next_ordinal: n } =>
+      StagedCommitAllocatorInvalid { next_ordinal: n }
+    AncestralCommitMinted(minted) =>
+      StagedCommitMinted {
+        repository: RepositoryEnvelope {
+          store: minted.repository.store,
+          commits: minted.repository.commits,
+          commit_allocator: minted.repository.commit_allocator,
+          checked_out: Present { value: minted.reference },
+          staged: none,
+        },
+        reference: minted.reference,
+      }
+  }
+}
+

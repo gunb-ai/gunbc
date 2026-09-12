@@ -134,6 +134,12 @@ fn occupied_at_seven_after_winner() -> CasSlotObservation<NonEmptyStr> {
 // The empty-observation-narrow control. A slot the store could not read must
 // NOT be reported as a lost race and must NOT be treated as absent — either
 // would let a writer create a row on top of one it merely failed to read.
+//
+// IT ENUMERATES EVERY CAUSE ARM, AND THE FOURTH ROW LANDED WITH THE FOURTH ARM.
+// A claim that names three of four causes is narrower than the carrier it is
+// about, and the gap is invisible: it keeps passing while the arm it does not
+// name is exactly the one a new realization reaches first. The bound-exhaustion
+// cause is that arm.
 test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
   let malformed = cas_decide(
     attempt: proposal(expected: ExpectSlotAbsent),
@@ -147,9 +153,14 @@ test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
     attempt: proposal(expected: ExpectSlotAbsent),
     observed: CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: "store unreachable" as NonEmptyStr } },
   )
+  let beyond = cas_decide(
+    attempt: proposal(expected: ExpectSlotAbsent),
+    observed: CasObservedUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: 4096 } },
+  )
   is_store_refusal(outcome: malformed)
     && is_store_refusal(outcome: missing)
     && is_store_refusal(outcome: refused)
+    && is_store_refusal(outcome: beyond)
 }
 
 fn is_store_refusal(outcome: CasOutcome<NonEmptyStr>) -> Bool {

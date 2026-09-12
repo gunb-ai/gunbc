@@ -6,6 +6,7 @@ import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import extdeps.currency.currency { CurrencyCode }
 import std.durable_compare_and_set {
   CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
   CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable, ExpectSlotGeneration,
   cas_attempt, cas_generation_count,
@@ -21,6 +22,7 @@ import product.fabric.provider_admission {
 import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_cas_file_store {
+  DefaultAccessCreateOnly,
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
   CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
   admit_cas_attempt, file_compare_and_set, observe_cas_slot_state,
@@ -169,7 +171,7 @@ type CellReservation
   | BudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
   | ReservationLost { slot_key: NonEmptyStr }
   | PermitNamesAnotherUseForCell { standing: PermitStanding<NonEmptyStr> }
-  | StoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | StoreUnavailable { slot_key: NonEmptyStr, cause: CasStoreFailure }
   | AttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
 
 // The reservation half, reached only once selection has named an offer.
@@ -203,7 +205,7 @@ fn reserve_selected_cell(
     )
   ) {
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, verified: v) {
+      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
         CasCommitted { committed: c } =>
           CellReserved {
             offer: offer_id,
@@ -621,7 +623,7 @@ type CellHoldEnd
   | HoldEndBudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
   | HoldEndSlotNotHeld { slot_key: NonEmptyStr, detail: NonEmptyStr }
   | HoldEndLost { slot_key: NonEmptyStr }
-  | HoldEndStoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | HoldEndStoreUnavailable { slot_key: NonEmptyStr, cause: CasStoreFailure }
   | HoldEndAttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
 
 // THE PARTIAL RELEASE HAS NO CONSTRUCTOR EITHER, AND IT LEAKS THE OPPOSITE WAY.
@@ -650,7 +652,8 @@ fn end_cell_hold(
   reason: NonEmptyStr,
 ) -> CellHoldEnd {
   match observed {
-    CasObservedUnreadable { cause: c } => HoldEndStoreUnavailable { slot_key: slot_key, cause: c }
+    CasObservedUnreadable { cause: c } =>
+      HoldEndStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
     CasObservedReadable { readable: r } =>
       match r {
         CasReadableAbsent =>
@@ -747,7 +750,7 @@ fn free_cell_slot(
     )
   ) {
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, verified: v) {
+      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
         CasCommitted { committed: c } =>
           CellHoldEnded {
             slot_key: slot_key,

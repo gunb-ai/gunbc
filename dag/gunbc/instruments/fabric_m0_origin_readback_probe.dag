@@ -17,7 +17,7 @@ import product.fabric.work {
   OutputObligationsResolution,
   Work, work_for,
 }
-import std.durable_compare_and_set { CasStoreRefused, CasUnreadableReadRefused }
+import std.durable_compare_and_set { CasStoreRefused, CasSlotObservationRefused, CasUnreadableReadRefused }
 import gunbc.fabric_m0_completion {
   ObligationSubject,
   ComputationSucceeded,
@@ -161,7 +161,7 @@ fn our_slot() -> NonEmptyStr {
 }
 
 fn store_refused() -> CommitTransportOutcome {
-  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } }
+  StoreAnswered { slot: our_slot(), outcome: CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "read refused" } } } }
 }
 
 fn the_object() -> OutputObligation {

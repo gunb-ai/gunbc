@@ -19,7 +19,7 @@ module gunbc.scm.repository_envelope
 // one. The subject-parameterized identity from std.minted_identity stays stable across list insertion,
 // deletion and reorder without deriving meaning from content or position.
 
-import std.types { Bool, Int, List, Map, String }
+import std.types { Bool, Int, List, Map, String, NonEmptyStr }
 import std.minted_identity {
   MintedId,
   MintedIdAllocator,
@@ -47,6 +47,7 @@ import gunbc.scm.integration {
   CommitIntegration,
   NoSquashIntegration,
   SquashIntegrated,
+  chain_contains,
 }
 import gunbc.scm.ancestry {
   CommitAncestry,
@@ -57,6 +58,10 @@ import gunbc.scm.ancestry {
   repository_commit_ref_eq,
   AncestryStep,
   RepositoryHistory,
+  AncestryTraced,
+  AncestryStartNotInHistory,
+  AncestryWalk,
+  ancestry_walk,
 }
 
 import gunbc.scm.target_reference {
@@ -86,6 +91,14 @@ import gunbc.scm.json_member {
   read_member_value,
   read_string_member,
 }
+import gunbc.scm.manifest_merge {
+  MergedManifestEntries,
+  ManifestMergeOutcome,
+  ManifestMerged,
+  ManifestConflicted,
+  ManifestPathConflict,
+  merge_manifests,
+}
 import gunbc.scm.object_store {
   NodeRecordAbsent,
   NodeRecordFound,
@@ -98,6 +111,13 @@ import gunbc.scm.object_store {
   scm_object_ref_locator,
   empty_store,
   find_node_record,
+  CorpusManifestEntry,
+  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  store_corpus_manifest,
+  PathUniqueManifestEntries, path_unique_entry_list, store_path_unique_manifest,
+  UniqueManifestStored, UniqueManifestLocatorCollision,
+  CorpusEntrySourceRefusal, CorpusSourcesComplete, CorpusSourceIncomplete,
+  observe_corpus_source_completeness,
 }
 import gunbc.scm.commit_closure {
   ClosureCensus,
@@ -316,10 +336,12 @@ type RepositoryCommit sole_constructor {
 // a root without sharing an identity or making checkout ambiguous.
 // THE STAGE IS A LOCATOR, NOT A STAGING AREA, and that is what makes an `add` verb a re-pointing.
 //
-// THE VERB ITSELF IS NOT IN THIS TREE YET, and the sentences below are about the shape this member
-// admits rather than about a landed caller: `add` and `commit` must PUBLISH, and a safe conditional
-// publication cannot be spelled while extdeps.filesystem declares no rename. They land with that
-// capability. What is landed is the member, its codec, and gunbc.scm.staging's observation of it.
+// THE VERBS ARE IN THIS TREE NOW, and this paragraph used to say they were not. It said `add` and
+// `commit` could not land until extdeps.filesystem declared a rename, because a safe conditional
+// publication could not be spelled without one. That was true when written and is false here: the
+// write spine publishes through generation-file compare-and-set, which gives exact-generation
+// publication with independent readback and needs no rename. What is landed is the member, its codec,
+// gunbc.scm.staging's observation of it, and the verbs themselves.
 //
 // What an author accumulates before committing is a set of path -> authored-source bindings. That is
 // EXACTLY what a CorpusManifestObject is, and it is exactly what a commit root is, so a separate
@@ -334,10 +356,17 @@ type RepositoryCommit sole_constructor {
 // nothing and can lose nothing in translation.
 //
 // AND MAKES "IS THERE ANYTHING TO COMMIT" DERIVED RATHER THAN STORED. It is the comparison of this
-// locator with the checked-out commit's root, so committing does not have to CLEAR the stage: after a
-// commit this member and that root would be the same manifest, and the comparison reports clean by
-// construction. No reset step is required, so there is none to forget, and no third state where a
-// stale flag and the actual objects disagree.
+// locator with the checked-out commit's root, so the question is never a flag that can disagree with
+// the objects.
+//
+// THE CONCLUSION DRAWN FROM THAT WAS WRONG AND THE LANDED VERB DOES CLEAR THE STAGE. This paragraph
+// argued that committing need not reset the selection, because afterwards this member and the new
+// commit's root would be the same manifest and the comparison would report clean by construction.
+// The comparison does read clean -- but leaving the selection standing keeps an explicit OVERRIDE in
+// place, and `Absent` versus `Present` is exactly the distinction the last paragraph of this note
+// calls a data-loss defect rather than a nicety. `freeze_committable` therefore sets `staged: none`
+// together with the checkout advance, in one function, so the next `add` inherits from the commit
+// just written rather than from a selection the author has already spent.
 //
 // ONE SELECTION PER DOCUMENT, WHICH IS ONE WORKSPACE, AND THAT SCOPE IS STATED RATHER THAN HIDDEN.
 // A candidate selection is a fact about one working context's pending intent, not about the
@@ -505,7 +534,6 @@ type RepositoryCommitMint
   | RepositoryCommitMintRootIsAuthoredSource { root: ObjectId }
   | RepositoryCommitMintRootIsSemanticNode { root: ObjectId }
   | RepositoryCommitMintParentMissing { parent: RepositoryCommitRef }
-  | RepositoryCommitMintIntegrationSourceMissing { source: RepositoryCommitRef }
 
 // PURE CONSTRUCTION WALL FOR INTERNAL HISTORIES. The allocator is carried by the repository and
 // advanced atomically with the new row; it is never reconstructed as max+1, because deleting the
@@ -546,27 +574,21 @@ type RepositoryCommitMint
 // and a found manifest establishes nothing about its entries' targets. PUBLICATION ADMISSION --
 // may THIS operation publish given the observed availability? -- belongs to the publishing verb.
 // Answering the second or third here would make a mint refuse for a fact that is not about minting.
-// THE INTEGRATION ANCHOR IS CHECKED FOR PREEXISTENCE IN THE INPUT REPOSITORY, on exactly the ground
-// that already forces the parent check one line down: OUTPUT MEMBERSHIP IS NOT EVIDENCE OF INPUT
-// MEMBERSHIP. A squash can only have consumed a source that existed when it ran, so without this the
-// mint could produce a result and its supposed consumed source in one motion -- a self-consistent
-// repository whose provenance describes an event that could not have happened, and whose consumed
-// join would then refuse or admit on a record nothing ever integrated.
-// It answers with the UNRESOLVABLE ANCHOR rather than a Bool, because the refusal has to name which
-// reference could not be found and a Bool would force the caller to rediscover it.
-fn integration_anchor_resolves(
-  repository: RepositoryEnvelope,
-  integration: CommitIntegration,
-) -> RepositoryCommitRef? {
-  match integration {
-    NoSquashIntegration => none
-    SquashIntegrated { source: s } =>
-      match commit_at_reference(commits: repository.commits, reference: s) {
-        Present { value: _ } => none
-        Absent => Present { value: s }
-      }
-  }
-}
+// `integration_anchor_resolves` STOOD HERE AND IS DELETED, HAVING OUTLIVED ITS QUESTION.
+//
+// It checked that a `SquashIntegrated` anchor pre-existed in the INPUT repository, on the ground that
+// output membership is not evidence of input membership -- a real argument while the generic mint
+// still accepted a raw `CommitIntegration` from any caller. That parameter is gone: `SquashIntegrated`
+// is now reachable only through `store_and_admit_merge_basis`, whose subject requires a derived base
+// and a conflict-free merge of the anchors' own manifests, and whose anchors were resolved from this
+// repository's history. The anchor cannot fail to pre-exist, so the check has no subject rather than
+// no callers.
+//
+// IT WAS LEFT STANDING AS A PUBLIC HELPER WITH NO CALL SITE, which DESIGN 3c names outright: a
+// declaration nothing consumes is redundant work that costs authoring, review and maintenance and
+// displaces nothing -- and worse here, a public membership check beside a sealed route invites a
+// future caller to re-admit an integration on membership alone, which is the exact hole the seal was
+// built to close. Found by external review.
 
 // A ROOT THE STORE ITSELF JUST BRANDED HAS NOTHING LEFT TO RESOLVE, so this route cannot refuse for
 // root resolution and its outcome type does not carry the arms.
@@ -603,44 +625,115 @@ type BrandedRootMint
   = BrandedRootMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
   | BrandedRootAllocatorInvalid { next_ordinal: Int }
   | BrandedRootParentMissing { parent: RepositoryCommitRef }
-  | BrandedRootIntegrationSourceMissing { source: RepositoryCommitRef }
+
+// A BRAND PROVES KIND IN SOME STORE, NOT IN WHICH STORE, AND THAT IS THE GAP THIS CARRIER CLOSES.
+//
+// `CorpusManifestObjectRef` says "the store that produced me held a corpus manifest at this locator".
+// It does not say WHICH store, so a mint taking a repository and a root as two independent parameters
+// accepts a root branded by a different store entirely -- and the commit that results names a manifest
+// its own repository does not hold. Everything downstream is well-formed: it encodes, it mints, and it
+// refuses only later at checkout, in the wrong place and naming the wrong owner.
+//
+// THE LIVE CALLERS ALL PAIRED CORRECTLY, WHICH IS EXACTLY WHY THIS IS WORTH SEALING RATHER THAN
+// CHECKING. The hazard was latent, so no test would have found it; `squash_merge` shows the shape most
+// clearly, having had to hand-build a fresh envelope around the advanced store and then pass the
+// reference beside it, with nothing but the author's care holding the two together.
+//
+// SO THE PAIR IS THE VALUE. `sole_constructor` means the only ways to obtain one are the two routes
+// below, and both derive the root and the repository from ONE motion: resolving a locator against that
+// repository's store, or storing entries into it. There is no argument through which the halves can be
+// sourced separately.
+type RepositoryManifestRoot sole_constructor {
+  repository: RepositoryEnvelope
+  root: CorpusManifestObjectRef
+}
+
+// RESOLVING KEEPS ALL THREE WRONG-KIND POPULATIONS APART, for the reason this stack has paid for
+// before: a locator OCCUPIED by a file or a node is not an EMPTY locator, and reporting one as the
+// other sends an author to restore an object that is already there.
+type RepositoryManifestRootResolution
+  = RepositoryManifestRootResolved(RepositoryManifestRoot)
+  | RepositoryManifestRootMissing { root: ObjectId }
+  | RepositoryManifestRootIsAuthoredSource { root: ObjectId }
+  | RepositoryManifestRootIsSemanticNode { root: ObjectId }
+
+fn repository_root_by_resolving(
+  repository: RepositoryEnvelope,
+  root: CorpusManifestTarget,
+) -> RepositoryManifestRootResolution {
+  match find_corpus_manifest_record(
+    store: repository.store,
+    identity: corpus_manifest_target_locator(target: root)
+  ) {
+    CorpusManifestAbsent { identity: r } => RepositoryManifestRootMissing { root: r }
+    CorpusManifestIsAuthoredSource { identity: r } =>
+      RepositoryManifestRootIsAuthoredSource { root: r }
+    CorpusManifestIsSemanticNode { identity: r } =>
+      RepositoryManifestRootIsSemanticNode { root: r }
+    CorpusManifestFound(record) =>
+      RepositoryManifestRootResolved(
+        RepositoryManifestRoot { repository: repository, root: record.identity }
+      )
+  }
+}
+
+// STORING ADVANCES THE STORE AND BRANDS THE ROOT IN ONE MOTION, which is what a caller that just
+// built a manifest needs. Before this existed, `squash_merge` stored into `repository.store`, then
+// hand-assembled a new envelope around the advanced store, then passed the reference beside it -- three
+// steps in which the pairing was the author's responsibility. Now the advanced repository and the root
+// leave together and cannot be separated.
+//
+// THE RAW-LIST ROUTE THAT USED TO STAND HERE IS DELETED RATHER THAN KEPT BESIDE THIS ONE. Once the
+// merge fold produced `PathUniqueManifestEntries` directly, its last consumer was gone, and a public
+// store route taking a bare list is exactly the forge this stack has removed twice: nothing about the
+// parameter establishes that the entries are path-unique, so keeping it would leave a second authority
+// for storing a manifest whose only distinguishing feature is that it can be lied to.
+// THE PATH-UNIQUE STORE ROUTE HAS TWO ARMS BECAUSE ITS ARGUMENT CANNOT CARRY A DUPLICATE.
+//
+// A producer that built its entries through the invariant-preserving constructions on
+// `PathUniqueManifestEntries` has already settled the duplicate question, so asking it again here
+// would be validation where construction was available, and its answer would be an arm no caller on
+// this route could reach. It is not a second authority: the insertion, the identity and the
+// canonicalization are `store_path_unique_manifest`'s, shared with the checking route. What differs is
+// the one thing that should -- whether the duplicate question is asked at all. Ruled by external
+// review, alongside the merge fold that produces the carrier.
+type RepositoryManifestRootUniqueStore
+  = RepositoryManifestRootUniqueStored(RepositoryManifestRoot)
+  | RepositoryManifestRootUniqueLocatorCollision { identity: ObjectId }
+
+fn repository_root_by_storing_unique(
+  repository: RepositoryEnvelope,
+  unique: PathUniqueManifestEntries,
+) -> RepositoryManifestRootUniqueStore {
+  match store_path_unique_manifest(store: repository.store, unique: unique) {
+    UniqueManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
+      RepositoryManifestRootUniqueLocatorCollision { identity: i }
+    UniqueManifestStored { store: stored, manifest: reference } =>
+      RepositoryManifestRootUniqueStored(
+        RepositoryManifestRoot {
+          repository: RepositoryEnvelope {
+            store: stored,
+            commits: repository.commits,
+            commit_allocator: repository.commit_allocator,
+            checked_out: repository.checked_out,
+            staged: repository.staged,
+          },
+          root: reference,
+        }
+      )
+  }
+}
 
 fn mint_commit_from_stored_manifest(
-  repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
+  subject: RepositoryManifestRoot,
   message: String,
   parent: RepositoryCommitRef?,
-  integration: CommitIntegration,
 ) -> BrandedRootMint {
-  if repository.commit_allocator.next_ordinal < 0 {
-    BrandedRootAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else {
-    match integration_anchor_resolves(repository: repository, integration: integration) {
-      Present { value: missing } => BrandedRootIntegrationSourceMissing { source: missing }
-      Absent =>
-        match parent {
-          Present { value: parent_ref } =>
-            match commit_at_reference(commits: repository.commits, reference: parent_ref) {
-              Absent => BrandedRootParentMissing { parent: parent_ref }
-              Present { value: _ } =>
-                mint_repository_commit_admitted(
-                  repository: repository,
-                  root: root,
-                  message: message,
-                  ancestry: DescendsFrom { parent: parent_ref },
-                  integration: integration,
-                )
-            }
-          Absent =>
-            mint_repository_commit_admitted(
-              repository: repository,
-              root: root,
-              message: message,
-              ancestry: RootCommit,
-              integration: integration,
-            )
-        }
-    }
+  match admit_commit_subject(subject: subject, parent: parent) {
+    CommitSubjectAllocatorInvalid { next_ordinal: n } => BrandedRootAllocatorInvalid { next_ordinal: n }
+    CommitSubjectParentMissing { parent: p } => BrandedRootParentMissing { parent: p }
+    CommitSubjectAdmitted(admitted) =>
+      widen_minted_commit(minted: mint_repository_commit_admitted(admitted: admitted, message: message))
   }
 }
 
@@ -652,31 +745,26 @@ fn mint_repository_commit(
   root: CorpusManifestTarget,
   message: String,
   parent: RepositoryCommitRef?,
-  integration: CommitIntegration,
 ) -> RepositoryCommitMint {
-  if repository.commit_allocator.next_ordinal < 0 {
-    RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else {
-    match find_corpus_manifest_record(
-      store: repository.store,
-      identity: corpus_manifest_target_locator(target: root)
-    ) {
-      CorpusManifestAbsent { identity: r } => RepositoryCommitMintRootMissing { root: r }
-      CorpusManifestIsAuthoredSource { identity: r } =>
-        RepositoryCommitMintRootIsAuthoredSource { root: r }
-      CorpusManifestIsSemanticNode { identity: r } =>
-        RepositoryCommitMintRootIsSemanticNode { root: r }
-      CorpusManifestFound(record) =>
-        widen_branded_root_mint(
-          mint: mint_commit_from_stored_manifest(
-            repository: repository,
-            root: record.identity,
-            message: message,
-            parent: parent,
-            integration: integration,
+  match admit_commit_allocator(repository: repository) {
+    CommitAllocatorInvalid { next_ordinal: n } =>
+      RepositoryCommitMintAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      match repository_root_by_resolving(repository: repository, root: root) {
+        RepositoryManifestRootMissing { root: r } => RepositoryCommitMintRootMissing { root: r }
+        RepositoryManifestRootIsAuthoredSource { root: r } =>
+          RepositoryCommitMintRootIsAuthoredSource { root: r }
+        RepositoryManifestRootIsSemanticNode { root: r } =>
+          RepositoryCommitMintRootIsSemanticNode { root: r }
+        RepositoryManifestRootResolved(subject) =>
+          widen_branded_root_mint(
+            mint: mint_commit_from_stored_manifest(
+              subject: subject,
+              message: message,
+              parent: parent,
+            )
           )
-        )
-    }
+      }
   }
 }
 
@@ -687,22 +775,531 @@ fn widen_branded_root_mint(mint: BrandedRootMint) -> RepositoryCommitMint {
     BrandedRootAllocatorInvalid { next_ordinal: n } =>
       RepositoryCommitMintAllocatorInvalid { next_ordinal: n }
     BrandedRootParentMissing { parent: p } => RepositoryCommitMintParentMissing { parent: p }
-    BrandedRootIntegrationSourceMissing { source: s } =>
-      RepositoryCommitMintIntegrationSourceMissing { source: s }
   }
 }
 
 
-fn mint_repository_commit_admitted(
+// THE ROW CONSTRUCTION HAS ONE OUTCOME, AND ITS TYPE NOW SAYS SO.
+//
+// This function performs no admission: every question -- is the allocator sound, does the parent
+// exist, does the integration anchor resolve -- has already been answered by the time it is reached,
+// which is what `_admitted` meant. It nevertheless returned `BrandedRootMint`, a four-arm coproduct
+// of which it could only ever produce one. That is harmless where the caller checked everything, and
+// actively harmful for a caller whose route makes one of the OTHER arms impossible: it had no way to
+// narrow, so it either matched a state it could not reach or invented a cause to close the match.
+// `gunbc.scm.ordinary_commit` hit exactly that and its first draft translated the unreachable
+// integration arm into a parent-missing -- a fabricated cause, the `carry_mint` error again.
+//
+// So the construction answers `MintedCommit`, and each admission route widens it to whatever
+// coproduct ITS questions make reachable. The admission rules are not duplicated: they stay in the
+// routes, and this is the single place a commit row is built.
+type MintedCommit sole_constructor {
+  repository: RepositoryEnvelope
+  reference: RepositoryCommitRef
+}
+
+// THE PARENT ADMISSION, HELD ONCE. It was written so the ordinary and squash routes would ask it the
+// same way rather than each writing their own lookup; squash no longer asks it at all, because its
+// parent arrives already resolved inside `ResolvedMergeAnchors`. It is held once for the ordinary
+// routes that remain, and the squash route reaching a parent WITHOUT this question is the point of
+// the merge seal, not a gap in it.
+type CommitParentAdmission
+  = CommitParentAdmitted { ancestry: CommitAncestry }
+  | CommitParentAbsent { parent: RepositoryCommitRef }
+
+fn admit_commit_parent(
   repository: RepositoryEnvelope,
-  root: CorpusManifestObjectRef,
+  parent: RepositoryCommitRef?,
+) -> CommitParentAdmission {
+  match parent {
+    Absent => CommitParentAdmitted { ancestry: RootCommit }
+    Present { value: parent_ref } =>
+      match commit_at_reference(commits: repository.commits, reference: parent_ref) {
+        Absent => CommitParentAbsent { parent: parent_ref }
+        Present { value: _ } => CommitParentAdmitted { ancestry: DescendsFrom { parent: parent_ref } }
+      }
+  }
+}
+
+// THE ADMITTED SUBJECT, SEALED, BECAUSE THE OUTPUT BRAND WAS NEVER THE PROBLEM.
+//
+// `mint_repository_commit_admitted` answers a `sole_constructor MintedCommit`, which says the value
+// came from here -- and says nothing about whether the admissions ran. The function is public, `.dag`
+// has no module privacy, and it appends the commit row WITHOUT checking the allocator, the parent, or
+// the integration anchor, because by contract those were already checked. So it was a forge factory:
+// a caller could hand it any repository, any root, and a `DescendsFrom` naming a commit that does not
+// exist, and receive a well-formed repository back. Sealing the OUTPUT cannot close that; the input
+// relation is what needed carrying. Found by external review.
+//
+// SO THE ADMISSIONS MINT THE SUBJECT. `AdmittedCommitSubject` can only be built inside this module,
+// and this function takes nothing else, so it cannot be reached with an unadmitted one.
+//
+// THE TWO ROUTES ARE NO LONGER VARIANTS OF ONE ADMISSION. That sentence stood here while squash still
+// passed through `admit_commit_subject`, differing only in which questions it asked. It does not any
+// more: an ordinary commit is admitted from a subject and a bare parent reference, while a squash is
+// admitted from a sealed `AdmittedMergeSubject` whose anchors and merged manifests were established
+// together. They share the ROW CONSTRUCTION and the allocator rule below, and they no longer share an
+// admission -- which is the whole reason the integration parameter could be removed from this one.
+// THE ALLOCATOR RULE, HELD ONCE. `next_ordinal < 0` was spelled independently in three executable
+// places -- the generic route before root resolution, and both subject admissions -- directly beneath
+// a rationale claiming the admission rules have one authority each. Three copies of a rule is three
+// rules, and the seal that stops a bypass does nothing about drift between them. Found by external
+// review.
+type CommitAllocatorAdmission
+  = CommitAllocatorAdmitted
+  | CommitAllocatorInvalid { next_ordinal: Int }
+
+fn admit_commit_allocator(repository: RepositoryEnvelope) -> CommitAllocatorAdmission {
+  if repository.commit_allocator.next_ordinal < 0 {
+    CommitAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  } else {
+    CommitAllocatorAdmitted
+  }
+}
+
+type AdmittedCommitSubject sole_constructor {
+  subject: RepositoryManifestRoot
+  ancestry: CommitAncestry
+  integration: CommitIntegration
+}
+
+type CommitSubjectAdmission
+  = CommitSubjectAdmitted(AdmittedCommitSubject)
+  | CommitSubjectAllocatorInvalid { next_ordinal: Int }
+  | CommitSubjectParentMissing { parent: RepositoryCommitRef }
+
+// THE GENERIC PRODUCTION MINT IS ORDINARY-ONLY, BECAUSE MEMBERSHIP OF A SOURCE IS NOT AUTHORITY TO
+// RECORD THAT IT WAS CONSUMED.
+//
+// This route used to take a raw `CommitIntegration` and admit it on the strength of the named source
+// merely EXISTING. That made it a second, wide-open production root for `SquashIntegrated` -- the
+// receipt `consumed_join` afterwards TRUSTS in order to refuse an honest merge -- sitting beside the
+// merge route this stack had just spent two rounds sealing. Closing one door while an unlocked one
+// stood next to it is not a wall. Found by external review.
+//
+// The parameter is REMOVED rather than validated: this function supplies `NoSquashIntegration` itself,
+// so the integrated arm is unwritable through this route instead of refused by it (DESIGN 4b:
+// construction over validation). `CommitSubjectIntegrationSourceMissing` goes with it -- there is no
+// source to look for, so the question has no subject rather than an unknown answer, and the
+// `integration_anchor_resolves` call it guarded is gone.
+//
+// THE MEASUREMENT THAT MADE THIS SAFE TO DO: every production call site already passed
+// `NoSquashIntegration`. The only callers that passed `SquashIntegrated` were two FIXTURES fabricating
+// integrated history, and they now have to perform a real merge to obtain one -- which is the stronger
+// evidence anyway. An integration-bearing commit is reachable through exactly one route in this
+// module: `store_and_admit_merge_basis`, whose subject requires a derived base and a conflict-free
+// manifest merge.
+fn admit_commit_subject(
+  subject: RepositoryManifestRoot,
+  parent: RepositoryCommitRef?,
+) -> CommitSubjectAdmission {
+  let repository = subject.repository
+  match admit_commit_allocator(repository: repository) {
+    CommitAllocatorInvalid { next_ordinal: n } => CommitSubjectAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      match admit_commit_parent(repository: repository, parent: parent) {
+        CommitParentAbsent { parent: p } => CommitSubjectParentMissing { parent: p }
+        CommitParentAdmitted { ancestry: ancestry } =>
+          CommitSubjectAdmitted(
+            AdmittedCommitSubject {
+              subject: subject,
+              ancestry: ancestry,
+              integration: NoSquashIntegration,
+            }
+          )
+      }
+  }
+}
+
+// THE ORDINARY ROUTE DOES NOT ASK THE INTEGRATION QUESTION, so its admission does not carry the
+// answer -- and it no longer asks it because there is no integration to ask ABOUT. An earlier form of
+// this note explained that `integration_anchor_resolves` returned `Absent` for `NoSquashIntegration`
+// by construction, so skipping the call cost nothing. That reading described a route that still TOOK
+// an integration; this one supplies `NoSquashIntegration` itself and the helper is deleted. The arm is
+// ABSENT from this outcome rather than unreachable within it, which remains the difference between a
+// caller that cannot ask and a caller that must match and invent.
+// A BASIS THIS REPOSITORY ADMITTED -- SUBJECT, ANCESTRY AND INTEGRATION AS ONE FACT.
+//
+// The first version took an ordinary public `CommitAncestry` and checked only the allocator.
+// `CommitAncestry` STATES A RELATION; it is not evidence that any repository admitted one, so a caller
+// could construct `DescendsFrom { parent: <a reference this repository does not hold> }` and be handed
+// a `MintedCommit` whose ancestry DANGLES.
+//
+// Sealing the ancestry alone did not close it, and the second external review said why: an
+// `AdmittedCommitAncestry` proved admission in SOME repository, while the subject arrived as a
+// SEPARATE argument carrying its own. An ancestry admitted against repository A could therefore be
+// paired with a subject from repository B and mint a dangling parent in B -- the same defect one level
+// up, because the evidence was still not bound to the thing it was evidence ABOUT. The integration had
+// the identical hole: `CommitIntegration` arrived raw, its source never established anywhere.
+//
+// A COMPARISON WOULD HAVE BEEN VALIDATION WHERE CONSTRUCTION WAS AVAILABLE (DESIGN 5). Checking that
+// the ancestry's repository equals the subject's is a check that can be satisfied while the realization
+// still lies. So the three facts became ONE sealed value instead: the subject travels INSIDE the
+// evidence, and every mint below derives the ancestry and the integration from `subject.repository`
+// rather than accepting them. There are no two arguments left to mis-pair.
+type AdmittedCommitBasis sole_constructor {
+  subject: RepositoryManifestRoot
+  ancestry: CommitAncestry
+  integration: CommitIntegration
+}
+
+type BasisAdmission
+  = BasisAdmitted(AdmittedCommitBasis)
+  | BasisParentAbsent { parent: RepositoryCommitRef }
+
+// A ROOT COMMIT HAS NO PARENT AND NO SOURCE, so this mint cannot refuse: both questions have no
+// subject rather than an unknown answer.
+fn admit_root_basis(subject: RepositoryManifestRoot) -> AdmittedCommitBasis {
+  AdmittedCommitBasis {
+    subject: subject,
+    ancestry: RootCommit,
+    integration: NoSquashIntegration,
+  }
+}
+
+fn admit_descendant_basis(
+  subject: RepositoryManifestRoot,
+  parent: RepositoryCommitRef,
+) -> BasisAdmission {
+  match admit_base_in(subject: subject, reference: parent) {
+    BaseAbsentInRepository { reference: r } => BasisParentAbsent { parent: r }
+    BaseAdmitted { basis: b, committed: _ } => BasisAdmitted(b)
+  }
+}
+
+// A COMMIT THIS REPOSITORY WAS OBSERVED TO HOLD, CARRYING THE ROW THAT OBSERVATION FOUND.
+//
+// `admit_merge_basis` USED TO STAND HERE AND IT WAS A PRODUCTION ROOT FOR A CONSUMPTION RECEIPT.
+// Given any two references a repository happened to hold, it minted a basis carrying
+// `SquashIntegrated { source }` -- the exact row `consumed_join` reads to refuse a LATER merge. `.dag`
+// has no module privacy, so any caller could reach it and SPEND a branch without either merge
+// authority having admitted the merge. Mere membership of a parent and a source is not authority to
+// write that receipt; the empty commit was never the damage, the receipt is. Found by external review,
+// in a function this stack added one round earlier while closing a different hole.
+//
+// So membership is now a VALUE rather than a check a mint repeats. `admit_commit_presence` is the only
+// mint, it is this module's own lookup, and the row it found travels inside -- so a holder of a
+// presence needs no second lookup to read that commit's root, and no consumer can assemble one from a
+// reference it merely happens to have.
+type CommitPresence sole_constructor {
+  commit: RepositoryCommit
+}
+
+fn admit_commit_presence(
+  repository: RepositoryEnvelope,
+  reference: RepositoryCommitRef,
+) -> CommitPresence? {
+  match commit_at_reference(commits: repository.commits, reference: reference) {
+    Absent => none
+    Present { value: commit } => Present { value: CommitPresence { commit: commit } }
+  }
+}
+
+// THE MERGE SUBJECT IS SEALED HERE, AND THAT IS WHY THE MERGE-BASE AUTHORITY MOVED INTO THIS MODULE.
+//
+// The transition used to take `repository + presence + presence + entries` as PEERS. Each argument was
+// individually sealed and the combination was not, so presences established against one repository
+// could be paired with a different one, and -- worse -- any two commits that merely EXISTED, plus any
+// path-unique set a caller happened to hold, were sufficient to mint `SquashIntegrated`: the receipt
+// `consumed_join` later trusts to refuse an honest merge. The previous round moved that root out of
+// `admit_merge_basis`; review then found it had MOVED rather than closed, because the replacement
+// still accepted peers. Membership is not authority over an operation. Found by external review.
+//
+// Closing it required the anchors to be nameable HERE, and they were declared one layer up, so the
+// merge-base authority is co-homed into this module. That direction is forced: `RepositoryCommit`,
+// `MintedCommit` and `AdmittedCommitSubject` are all sole-constructed here, so the seal chain cannot
+// be moved up without dragging the entire mint stack with it, and a basis constructor living above
+// this module could not build the subject it exists to produce. Splitting was tried first and is what
+// surfaced that constraint (DESIGN 3, acyclicity). The merged entries arrive as `MergedManifestEntries`
+// -- constructible only by `merge_manifests` -- so the conflict-free decision is carried rather than
+// re-asserted, and `manifest_merge` imports only `object_store`, so naming it introduces no cycle.
+type AdmittedMergeSubject sole_constructor {
+  anchors: ResolvedMergeAnchors
+  merged: MergedManifestEntries
+}
+
+// THE SIDES ARE NAMED HERE BECAUSE THE READ THAT NEEDS THEM IS HERE.
+type MergeSideName
+  = MergeBaseCommit
+  | MergeSourceCommit
+  | MergeTargetCommit
+
+type MergeSubjectAdmission
+  = MergeSubjectAdmitted(AdmittedMergeSubject)
+  | MergeSubjectSideRootMissing { side: MergeSideName, root: ObjectId }
+  | MergeSubjectSideRootIsAuthoredSource { side: MergeSideName, root: ObjectId }
+  | MergeSubjectSideRootIsSemanticNode { side: MergeSideName, root: ObjectId }
+  | MergeSubjectConflicted { conflicts: List<ManifestPathConflict> }
+  | MergeSubjectSourceUnrecoverable { cause: CorpusEntrySourceRefusal }
+
+type MergeSideRead
+  = MergeSideReadRecord { record: CorpusManifestRecord }
+  | MergeSideReadRefused(MergeSubjectAdmission)
+
+fn read_anchor_manifest(
+  repository: RepositoryEnvelope,
+  side: MergeSideName,
+  presence: CommitPresence,
+) -> MergeSideRead {
+  match find_corpus_manifest_record(
+    store: repository.store,
+    identity: presence.commit.root.locator,
+  ) {
+    CorpusManifestFound(record) => MergeSideReadRecord { record: record }
+    CorpusManifestAbsent { identity: r } =>
+      MergeSideReadRefused(MergeSubjectSideRootMissing { side: side, root: r })
+    CorpusManifestIsAuthoredSource { identity: r } =>
+      MergeSideReadRefused(MergeSubjectSideRootIsAuthoredSource { side: side, root: r })
+    CorpusManifestIsSemanticNode { identity: r } =>
+      MergeSideReadRefused(MergeSubjectSideRootIsSemanticNode { side: side, root: r })
+  }
+}
+
+// THE SUBJECT IS BUILT FROM THE ANCHORS' OWN MANIFESTS, BECAUSE TWO INDEPENDENTLY SEALED VALUES ARE
+// NOT A SEALED RELATION.
+//
+// The previous revision took `admit_merge_subject(anchors, merged)` as PEERS. Both arguments were
+// sole-constructed, and that felt sufficient -- but `MergedManifestEntries` proves only "this is SOME
+// conflict-free merge result", never "this is the result FOR THESE ANCHORS". The authorable
+// counterexample is exact: hold valid anchors A, obtain a conflict-free `merged` from an unrelated
+// triple B, and pair them. The route below then stores B's corpus, parents it on A's target, and
+// writes `SquashIntegrated { source: A.source }` -- committing the wrong corpus AND spending A's
+// source, on a merge of A's manifests that never happened. Sealing each argument had made the
+// arguments honest and left the RELATION between them unwitnessed. Found by external review.
+//
+// So there is no seam to mis-pair any more. This function reads the three manifests from
+// `anchors.repository` at the anchors' own roots, runs `merge_manifests` on exactly those records, and
+// constructs the subject from THAT `ManifestMerged` arm and no other value. `merged` is never an
+// argument, so no caller can supply one (DESIGN 4b: construction over validation). The three read
+// refusals and the conflict travel out typed for the verb to carry one-to-one.
+// A MERGE COMMIT IS PUBLISHED THE SAME WAY AN ORDINARY ONE IS, SO IT PASSES THE SAME ADMISSION.
+//
+// `SquashMerged` means a locally publishable, checkoutable commit -- the same claim `commit_staged`
+// makes -- so inheriting the codec's deliberate permission for partial manifests would let the merge
+// write a snapshot whose bytes cannot be recovered, and write a `SquashIntegrated` receipt SPENDING
+// the source while doing it. The merge can reach that state without either side being at fault: a
+// partial base or target contributes an entry whose authored source this store never held, and the
+// path-grain merge decides that path without ever resolving it.
+//
+// The alternative was to state partial-merge semantics explicitly as a different contract. That would
+// be a second meaning for "merged", and DESIGN 3 requires a materially different contract to carry a
+// materially different name. It is one contract, so it gets one admission. Ruled by external review.
+//
+// THE COMPLETENESS OBSERVATION HAS NO SEPARATE FUNCTION, AND THAT IS THE WHOLE SEAM. An earlier
+// revision factored it out as `admit_merged_sources(anchors, merged)` -- which took back, one function
+// later, exactly the peer pair that removing it from `admit_merge_subject` had just sealed. `.dag` has
+// no module privacy, so that helper was a live entry point at which a caller could hold admitted
+// anchors A, obtain an unrelated conflict-free merge result B, and receive
+// `AdmittedMergeSubject { anchors: A, merged: B }` whenever B's sources happened to exist in A's store.
+// The route downstream would then commit B's corpus as a child of A's target and write
+// `SquashIntegrated { source: A.source }` -- committing the wrong corpus AND spending A's source
+// without ever merging A's manifests. Found by external review, which named this as reopening the seam
+// the previous round had closed.
+//
+// So the subject is constructed inside the `ManifestMerged` branch below, from the `e` that THIS
+// call's manifests produced, and there is no function anywhere that accepts the two as arguments.
+// The pairing is not validated; it is unwritable.
+
+fn admit_merge_subject(anchors: ResolvedMergeAnchors) -> MergeSubjectAdmission {
+  let repository = anchors.repository
+  match read_anchor_manifest(
+    repository: repository,
+    side: MergeBaseCommit,
+    presence: anchors.base,
+  ) {
+    MergeSideReadRefused(refusal) => refusal
+    MergeSideReadRecord { record: base_manifest } =>
+      match read_anchor_manifest(
+        repository: repository,
+        side: MergeSourceCommit,
+        presence: anchors.source,
+      ) {
+        MergeSideReadRefused(refusal) => refusal
+        MergeSideReadRecord { record: source_manifest } =>
+          match read_anchor_manifest(
+            repository: repository,
+            side: MergeTargetCommit,
+            presence: anchors.target,
+          ) {
+            MergeSideReadRefused(refusal) => refusal
+            MergeSideReadRecord { record: target_manifest } =>
+              match merge_manifests(
+                base: base_manifest,
+                source: source_manifest,
+                target: target_manifest,
+              ) {
+                ManifestConflicted { conflicts: c } => MergeSubjectConflicted { conflicts: c }
+                ManifestMerged { merged: e } =>
+                  match observe_corpus_source_completeness(
+                    store: repository.store,
+                    entries: path_unique_entry_list(unique: e.entries),
+                  ) {
+                    CorpusSourceIncomplete { cause: c } =>
+                      MergeSubjectSourceUnrecoverable { cause: c }
+                    CorpusSourcesComplete =>
+                      MergeSubjectAdmitted(
+                        AdmittedMergeSubject { anchors: anchors, merged: e },
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE STORE-AND-BASIS TRANSITION IS ONE OPERATION, AND IT IS CO-HOMED WITH THE STORE IT ADVANCES.
+//
+// The merge used to store its manifest and THEN ask, of the advanced repository, whether its parent
+// and source were present -- re-asking a question the pre-store walks had already settled, and
+// carrying two arms no caller on that route could reach. The advance is what makes those arms
+// unreachable: it changes `store` and copies the commit population UNCHANGED. That fact was true and
+// unstated, so the returned value had forgotten it and the caller had to re-derive it.
+//
+// It is stated here instead. The presences are established BEFORE the advance, they are carried
+// THROUGH it, and the basis is minted from the same ones that went in -- so there is no membership
+// refusal after the advance, and the caller never passes anchors beside an advanced repository. This
+// lives in the envelope rather than beside the merge because the envelope owns both
+// `repository_root_by_storing_unique` and the basis seal, and the merge modules import THIS one:
+// homing it there would invert the dependency (DESIGN 3, acyclicity). Ruled by external review.
+type MergeStoreOutcome
+  = MergeStoreAdvanced(AdmittedCommitBasis)
+  | MergeStoreLocatorCollision { identity: ObjectId }
+
+// THE STORED ROOT IS NAMED, NOT SHADOWED. This branch used to bind its `RepositoryManifestRoot` to
+// `subject`, which is already this function's parameter name at a DIFFERENT type -- while `parent` and
+// `source` were read from the outer `subject` a few lines above. It was correct only because those two
+// reads happen before the shadow begins, so reordering the lets would have silently changed which
+// subject the basis described, with both spellings typechecking. Nothing in the language objects to
+// shadowing; the objection is that a load-bearing distinction was resting on statement order.
+fn store_and_admit_merge_basis(subject: AdmittedMergeSubject) -> MergeStoreOutcome {
+  let repository = subject.anchors.repository
+  let parent = subject.anchors.target
+  let source = subject.anchors.source
+  match repository_root_by_storing_unique(repository: repository, unique: subject.merged.entries) {
+    RepositoryManifestRootUniqueLocatorCollision { identity: i } =>
+      MergeStoreLocatorCollision { identity: i }
+    RepositoryManifestRootUniqueStored(stored_root) =>
+      MergeStoreAdvanced(
+        AdmittedCommitBasis {
+          subject: stored_root,
+          ancestry: DescendsFrom { parent: parent.commit.reference },
+          integration: SquashIntegrated { source: source.commit.reference },
+        }
+      )
+  }
+}
+
+// ONE RESOLUTION ANSWERING BOTH QUESTIONS A BASE IS ASKED.
+//
+// A caller selecting a base wants two facts about the same commit: that the subject's repository
+// admits it as a parent, and what root it committed. They are established by ONE
+// `commit_at_reference`, so asking them as two calls walks the commit list twice and -- worse -- gives
+// the second call a parent-missing arm the first has already excluded. Naming the pair here keeps the
+// seal inside this module and leaves the caller with no unreachable cause to invent.
+type BaseAdmission
+  = BaseAdmitted { basis: AdmittedCommitBasis, committed: CorpusManifestObjectRef }
+  | BaseAbsentInRepository { reference: RepositoryCommitRef }
+
+fn admit_base_in(
+  subject: RepositoryManifestRoot,
+  reference: RepositoryCommitRef,
+) -> BaseAdmission {
+  match commit_at_reference(commits: subject.repository.commits, reference: reference) {
+    Absent => BaseAbsentInRepository { reference: reference }
+    Present { value: commit } =>
+      BaseAdmitted {
+        basis: AdmittedCommitBasis {
+          subject: subject,
+          ancestry: DescendsFrom { parent: reference },
+          integration: NoSquashIntegration,
+        },
+        committed: commit.root,
+      }
+  }
+}
+
+// THE BASIS-TAKING ADMISSION, FOR CALLERS WHOSE FACTS THIS MODULE ALREADY ESTABLISHED.
+//
+// `admit_ordinary_commit_subject` asks two questions and can refuse on either. A caller that reached
+// its subject through a route which ALREADY found the parent in that subject's repository -- the
+// staging standing does exactly that, via `admit_base_in` inside `base_snapshot` -- would then carry a
+// parent-missing arm it cannot reach, and would have to invent a cause or explain in a comment that
+// the arm is dead. That is the `carry_mint` shape this stack has now paid for four times: honest about
+// the callee's domain, dishonest about the operation's.
+//
+// So the parent and source questions are ABSENT from this route, having been answered where the basis
+// was minted. The allocator question is NOT absent, because it is a property of the repository rather
+// than of the parent, and nothing upstream has answered it.
+//
+// THE NAME DROPPED "Ordinary" BECAUSE THE ROUTE IS NO LONGER THE ORDINARY ONE ALONE. Squash merge
+// reaches this same admission, so a name promising an ordinary-commit subject described a narrower
+// population than the type actually serves -- a stale authority statement of the kind this stack keeps
+// finding. Found by external review.
+//
+// THIS TAKES THE BASIS AND NOTHING ELSE. An earlier revision took the subject, an admitted ancestry
+// and a raw integration as three arguments, which is what let a caller pair evidence from one
+// repository with a subject from another. Found by external review, twice: once for the ancestry being
+// unsealed, and again for the seal not naming what it was evidence about.
+type AncestralSubjectAdmission
+  = AncestralSubjectAdmitted(AdmittedCommitSubject)
+  | AncestralSubjectAllocatorInvalid { next_ordinal: Int }
+
+fn admit_commit_subject_from_basis(
+  basis: AdmittedCommitBasis,
+) -> AncestralSubjectAdmission {
+  match admit_commit_allocator(repository: basis.subject.repository) {
+    CommitAllocatorInvalid { next_ordinal: n } =>
+      AncestralSubjectAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      AncestralSubjectAdmitted(
+        AdmittedCommitSubject {
+          subject: basis.subject,
+          ancestry: basis.ancestry,
+          integration: basis.integration,
+        }
+      )
+  }
+}
+
+type OrdinaryCommitSubjectAdmission
+  = OrdinaryCommitSubjectAdmitted(AdmittedCommitSubject)
+  | OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: Int }
+  | OrdinaryCommitSubjectParentMissing { parent: RepositoryCommitRef }
+
+fn admit_ordinary_commit_subject(
+  subject: RepositoryManifestRoot,
+  parent: RepositoryCommitRef?,
+) -> OrdinaryCommitSubjectAdmission {
+  let repository = subject.repository
+  match admit_commit_allocator(repository: repository) {
+    CommitAllocatorInvalid { next_ordinal: n } =>
+      OrdinaryCommitSubjectAllocatorInvalid { next_ordinal: n }
+    CommitAllocatorAdmitted =>
+      match admit_commit_parent(repository: repository, parent: parent) {
+        CommitParentAbsent { parent: p } => OrdinaryCommitSubjectParentMissing { parent: p }
+        CommitParentAdmitted { ancestry: ancestry } =>
+          OrdinaryCommitSubjectAdmitted(
+            AdmittedCommitSubject {
+              subject: subject,
+              ancestry: ancestry,
+              integration: NoSquashIntegration,
+            }
+          )
+      }
+  }
+}
+
+fn mint_repository_commit_admitted(
+  admitted: AdmittedCommitSubject,
   message: String,
-  ancestry: CommitAncestry,
-  integration: CommitIntegration,
-) -> BrandedRootMint {
+) -> MintedCommit {
+  let repository = admitted.subject.repository
+  let root = admitted.subject.root
+  let ancestry = admitted.ancestry
+  let integration = admitted.integration
   let allocation = mint_id(alloc: repository.commit_allocator)
   let reference = RepositoryCommitRef { identity: allocation.id }
-  BrandedRootMinted {
+  MintedCommit {
     repository: RepositoryEnvelope {
       store: repository.store,
       commits: concat(repository.commits, [RepositoryCommit {
@@ -718,6 +1315,10 @@ fn mint_repository_commit_admitted(
     },
     reference: reference,
   }
+}
+
+fn widen_minted_commit(minted: MintedCommit) -> BrandedRootMint {
+  BrandedRootMinted { repository: minted.repository, reference: minted.reference }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2288,5 +2889,287 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
     RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: _ } => LoadDocumentMalformed
     RepositoryDecodedCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => LoadDocumentMalformed
     RepositoryUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
+  }
+}
+
+// THE FOUR REFUSALS ARE DISTINGUISHED BECAUSE THEY HAVE DIFFERENT REMEDIES AND DIFFERENT BLAME.
+// Collapsing them into one "no base" arm would be the absorbing fallback DESIGN section 5 names: a
+// failure arm must refuse, never widen, and a widened arm destroys the signal that would rank the
+// precise deficit for repair. An unwalkable history is damage to be investigated; an already-consumed
+// source is an unsupported OPERATION on an intact repository; disjoint histories are two repositories
+// that never shared anything. Those are three different conversations with the operator.
+//
+// THE CONSUMED ARM CARRIES ALL THREE SIDES OF THE JOIN, and that is not diagnostic garnish. Without
+// the recording commit the operator cannot tell WHICH earlier squash is responsible; without the
+// anchor they cannot tell WHICH source state was consumed; without the current source they cannot
+// tell whether they asked for a replay or a continuation. A reader given only "no base" would
+// reasonably conclude the histories are unrelated, which is the opposite of the truth -- they are
+// related by an integration that already happened.
+// A BASE THAT IS THE SOURCE MEANS THE SOURCE IS ALREADY IN THE TARGET'S HISTORY, AND IT IS ITS OWN
+// REFUSAL.
+//
+// THE FIRST SPELLING OF THIS ARM FORKED A WORD THIS SUBSYSTEM HAD ALREADY SPENT. It was
+// `MergeBaseSourceAlreadyIntegrated`, sitting directly beside `MergeBaseSourceAlreadyConsumed`, where
+// "integrated" already names ONE mechanism: the explicit `SquashIntegrated` receipt a squash writes.
+// This arm fires for an ordinary ancestor/descendant chain carrying no receipt at all, so the name
+// gave one word two mechanisms in adjacent arms of one type -- the meaning fork section 3 forbids,
+// and the more dangerous direction of it, because a reader who trusts the name looks for a receipt
+// that does not exist. The name now states the structural fact: the source is an ancestor of the
+// target. Found by external review, on this arm's first appearance.
+//
+// Two degenerate topologies reach it: merging a commit into ITSELF, where the nearest common ancestor
+// of one chain with itself is that commit; and squashing an ANCESTOR into its own descendant, where
+// the ancestor is already the base. Both used to derive a base and merge cleanly -- the source side
+// carries no changes against a base that IS the source, so the algebra returned the target's own
+// entries, and the verb minted a child whose root equals its parent's root.
+//
+// THAT IS WORSE THAN AN EMPTY COMMIT, and the receipt is why. The mint also writes a
+// `SquashIntegrated { source }`, which is exactly the row `consumed_join` reads to refuse a LATER
+// merge of that source. So merging a branch into itself, or re-merging an ancestor, silently spent
+// the source: the no-op is recorded as an integration, and the honest merge that follows is refused
+// by a receipt for work that never happened. The write path already refuses a commit that freezes
+// nothing (`gunbc.scm.write_spine`); the merge path did not, and nothing joined the two rules.
+//
+// Found by probing degenerate topology after external review asked whether the seals held there.
+// THE SUCCESSFUL OUTCOME CARRIES THE THREE RESOLVED ROWS, NOT THE BASE REFERENCE ALONE.
+//
+// A consumer of a derived base needs the same three commits this function has just proven present:
+// `squash_merge` read each side's manifest and, to do so, looked each reference up AGAIN in the very
+// commit list this module walked -- and carried a commit-missing arm for an answer its own success
+// had already excluded. That is the `carry_mint` shape, and the repair is not to translate the arm but
+// to make the question ABSENT downstream by handing back what was found.
+//
+// THE ROWS ARE FREE HERE AND NOWHERE ELSE. `commits` is in scope; the walks proved target and source
+// resolve; the base is in BOTH traced chains, so it is a member of this history by construction. A
+// consumer holding only references cannot re-establish any of that without asking again.
+//
+// THE ANCHORS CARRY PRESENCES RATHER THAN BARE ROWS, so membership is a value the envelope issued and
+// not a property a later caller must re-establish. That is what lets the store-and-basis transition
+// mint a consumption receipt without asking again whether these commits exist. Holding the envelope
+// rather than a bare commit list does NOT give this module store-based refusals: a presence reads the
+// commit population only.
+//
+// THIS MODULE DOES NOT RESOLVE MANIFESTS. Carrying resolved MANIFESTS
+// instead of rows was the alternative, and it would give a function that answers "what is the base"
+// a store dependency and refusal reasons about manifest integrity, which is a different question with
+// different blame. The rows carry `root`, so the consumer that DOES own the store resolves manifests
+// itself and keeps its own wrong-kind refusals, which are real and stay.
+// THE ANCHORS CARRY THE REPOSITORY THEY WERE RESOLVED AGAINST, so no consumer ever holds a repository
+// beside them. Three presences establish membership in SOME repository; the one they were looked up in
+// is the fact that makes them mean anything, and leaving it out is what forced every downstream seal to
+// take a repository as a peer -- reintroducing exactly the mis-pairing the presences were sealed to
+// prevent. It is set once, by the resolution that performed the lookups. DESIGN 5: the invalid pairing
+// has no constructor rather than a check.
+//
+// WHAT THIS DOES AND DOES NOT ESTABLISH, because the boundary is easy to overstate and I did.
+// I described this as "a foreign reference refuses rather than resolving". That is FALSE.
+// `RepositoryCommitRef` wraps a `MintedId`, which is an ORDINAL allocated per repository, so a
+// reference taken from another repository is not detectably foreign at all: ordinal N exists here too,
+// and it resolves -- to a different commit. Nothing refuses.
+//
+// What the carrier establishes is narrower and is the part that matters for the seal: all three
+// presences are looked up in ONE repository and are carried beside the repository they were looked up
+// in, so no downstream consumer can pair them with a different one. Cross-repository substitution INTO
+// the anchors is unconstructible. A caller naming the WRONG commits of the right repository is a
+// different failure, it is not detectable from an ordinal, and this type does not claim to catch it.
+//
+// THE ARITY IS A CENSUS RESULT, NOT THE INVARIANT -- stated because the next reader will otherwise
+// preserve the wrong property. That every function in `gunbc.scm.staging` takes one argument is an
+// observation about today's code, not the rule. A one-argument function can still accept a forgeable
+// plain product, and a multi-argument function may legitimately consume genuinely independent facts.
+// The load-bearing property is that every same-module route to a sealed constructor derives the
+// related fields FROM ONE OBSERVED AUTHORITY rather than from independently sourced peers. Ruled by
+// external review, which narrowed both of these claims after I made them too strong.
+type ResolvedMergeAnchors sole_constructor {
+  repository: RepositoryEnvelope
+  base: CommitPresence
+  source: CommitPresence
+  target: CommitPresence
+}
+
+type MergeBaseOutcome
+  = MergeBaseDerived { anchors: ResolvedMergeAnchors }
+  | MergeBaseSourceIsAncestorOfTarget {
+      target: RepositoryCommitRef,
+      source: RepositoryCommitRef,
+    }
+  | MergeBaseSourceAlreadyConsumed {
+      recorded_at: RepositoryCommitRef,
+      consumed: RepositoryCommitRef,
+      source: RepositoryCommitRef,
+    }
+  | MergeBaseHistoryUnwalkable { side: MergeBaseSide, walk: AncestryWalk }
+  | MergeBaseHistoriesDisjoint { target: RepositoryCommitRef, source: RepositoryCommitRef }
+
+// WHICH SIDE FAILED IS PART OF THE FACT, not a detail a renderer may add. "The target history is
+// broken" and "the source history is broken" send an operator to different repositories.
+type MergeBaseSide
+  = MergeBaseTargetSide
+  | MergeBaseSourceSide
+
+type ConsumedJoin
+  = ConsumedJoinFound { recorded_at: RepositoryCommitRef, consumed: RepositoryCommitRef }
+  | ConsumedJoinNone
+
+// THE JOIN IS DESCENT, NOT EQUALITY, and one predicate covers both replay and continuation because
+// they are the same question asked of different points in one lineage. `source_chain` is the current
+// source's ancestry INCLUDING the source itself -- ancestry_walk's chain is descendant-first and
+// starts at the walked commit -- so `chain_contains` answers "equals or descends from" in one read.
+//
+// An equality-only predicate would admit any descendant of a consumed source, which is exactly the
+// continued-branch form of the resurrection defect. A root-keyed predicate would admit a descendant
+// whose content changed AND refuse an independent history that coincided in content. Both wrong
+// implementations are refuted by executed controls rather than by this paragraph; see
+// gunbc.test.claim.scm.scm_merge_base_witness_test.
+fn consumed_join_step(
+  commits: List<RepositoryCommit>,
+  source_chain: List<RepositoryCommitRef>,
+  found: ConsumedJoin,
+  target_commit_ref: RepositoryCommitRef,
+) -> ConsumedJoin {
+  match found {
+    ConsumedJoinFound { recorded_at: _, consumed: _ } => found
+    ConsumedJoinNone =>
+      match commit_at_reference(commits: commits, reference: target_commit_ref) {
+        Absent => found
+        Present { value: c } =>
+          match c.integration {
+            NoSquashIntegration => found
+            SquashIntegrated { source: anchor } =>
+              if chain_contains(chain: source_chain, target: anchor) {
+                ConsumedJoinFound { recorded_at: target_commit_ref, consumed: anchor }
+              } else {
+                found
+              }
+          }
+      }
+  }
+}
+
+fn consumed_join(
+  commits: List<RepositoryCommit>,
+  target_chain: List<RepositoryCommitRef>,
+  source_chain: List<RepositoryCommitRef>,
+) -> ConsumedJoin {
+  fold(target_chain, init: ConsumedJoinNone, f: fn(found, t) {
+    consumed_join_step(
+      commits: commits,
+      source_chain: source_chain,
+      found: found,
+      target_commit_ref: t,
+    )
+  })
+}
+
+// THE FIRST COMMON REFERENCE WALKING THE TARGET CHAIN FROM ITS TIP. The chain is descendant-first, so
+// the first target ancestor that also appears in the source chain is the nearest common ancestor --
+// no ordering fact is invented, because "nearer" here means "fewer edges from the target tip", which
+// is the order the walk already produced.
+fn nearest_common_step(
+  source_chain: List<RepositoryCommitRef>,
+  found: RepositoryCommitRef?,
+  candidate: RepositoryCommitRef,
+) -> RepositoryCommitRef? {
+  match found {
+    Present { value: _ } => found
+    Absent =>
+      if chain_contains(chain: source_chain, target: candidate) {
+        Present { value: candidate }
+      } else {
+        none
+      }
+  }
+}
+
+fn nearest_common_ancestor(
+  target_chain: List<RepositoryCommitRef>,
+  source_chain: List<RepositoryCommitRef>,
+) -> RepositoryCommitRef? {
+  fold(target_chain, init: none, f: fn(found, t) {
+    nearest_common_step(source_chain: source_chain, found: found, candidate: t)
+  })
+}
+
+// THE ANCHOR CONSTRUCTION IS INLINE, BECAUSE A PUBLIC RESOLVER WAS A BYPASS AROUND THIS FUNCTION.
+//
+// `resolve_merge_anchors(repository, base, source, target)` USED TO STAND BESIDE THIS ONE, taking three
+// bare references and minting `MergeBaseDerived` once all three were merely PRESENT. `.dag` has no
+// module privacy, so it was reachable directly -- and a caller reaching it could nominate any present
+// commit as the "base", replay a source this target had already consumed, or pair tips whose histories
+// never meet, and still receive the success carrier. Every question that makes a base legitimate --
+// `consumed_join` and `nearest_common_ancestor` -- lives HERE and was skipped entirely.
+//
+// Sealing `ResolvedMergeAnchors` did not prevent that: the seal restricts WHICH MODULE may construct
+// the value, and the bypass was in the same module. A caller's intended sequencing is not a constraint
+// on a helper's public domain. Found by external review, one round after the seal was added -- the
+// third time in this stack that a wall has been placed where the door was not.
+//
+// So the presences are resolved in the ADMITTED BRANCH and nowhere else. There is no longer a function
+// that turns raw references into anchors, so the only route to `MergeBaseDerived` runs through the
+// consumed join and the common-ancestor search above it (DESIGN 4b: construction over validation).
+
+fn merge_base(
+  repository: RepositoryEnvelope,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+) -> MergeBaseOutcome {
+  let commits = repository.commits
+  let history = repository_history(commits: commits)
+  match ancestry_walk(start: target, history: history) {
+    AncestryTraced { chain: target_chain } =>
+      match ancestry_walk(start: source, history: history) {
+        AncestryTraced { chain: source_chain } =>
+          match consumed_join(
+            commits: commits,
+            target_chain: target_chain,
+            source_chain: source_chain,
+          ) {
+            ConsumedJoinFound { recorded_at: r, consumed: c } =>
+              MergeBaseSourceAlreadyConsumed { recorded_at: r, consumed: c, source: source }
+            ConsumedJoinNone =>
+              match nearest_common_ancestor(target_chain: target_chain, source_chain: source_chain) {
+                Present { value: base } =>
+                  if repository_commit_ref_eq(left: base, right: source) {
+                    MergeBaseSourceIsAncestorOfTarget { target: target, source: source }
+                  } else {
+                    match admit_commit_presence(repository: repository, reference: base) {
+                      Absent =>
+                        MergeBaseHistoryUnwalkable {
+                          side: MergeBaseTargetSide,
+                          walk: AncestryStartNotInHistory { start: base },
+                        }
+                      Present { value: base_at } =>
+                        match admit_commit_presence(repository: repository, reference: source) {
+                          Absent =>
+                            MergeBaseHistoryUnwalkable {
+                              side: MergeBaseSourceSide,
+                              walk: AncestryStartNotInHistory { start: source },
+                            }
+                          Present { value: source_at } =>
+                            match admit_commit_presence(repository: repository, reference: target) {
+                              Absent =>
+                                MergeBaseHistoryUnwalkable {
+                                  side: MergeBaseTargetSide,
+                                  walk: AncestryStartNotInHistory { start: target },
+                                }
+                              Present { value: target_at } =>
+                                MergeBaseDerived {
+                                  anchors: ResolvedMergeAnchors {
+                                    repository: repository,
+                                    base: base_at,
+                                    source: source_at,
+                                    target: target_at,
+                                  },
+                                }
+                            }
+                        }
+                    }
+                  }
+                Absent => MergeBaseHistoriesDisjoint { target: target, source: source }
+              }
+          }
+        other => MergeBaseHistoryUnwalkable { side: MergeBaseSourceSide, walk: other }
+      }
+    other => MergeBaseHistoryUnwalkable { side: MergeBaseTargetSide, walk: other }
   }
 }

@@ -16,14 +16,31 @@ module test.claim.scm_squash_merge_witness
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.scm.object_store { ObjectId, object_id_eq }
+import gunbc.scm.object_store {
+  ObjectId, object_id_eq,
+  ObjectStore, empty_store,
+  AuthoredSourceTarget, authored_source_target_of,
+  SourceStored, SourceLocatorCollision, store_authored_source,
+  CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,
+  CorpusManifestStored, CorpusManifestDuplicatePath, CorpusManifestLocatorCollision,
+  store_corpus_manifest,
+  CorpusEntrySourceRefusal,
+  CorpusEntrySourceMissing, CorpusEntrySourceIsSemanticNode, CorpusEntrySourceIsCorpusManifest,
+}
 import gunbc.scm.integration { NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
+import gunbc.scm.repository_envelope {
+  MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit, RepositoryEnvelope,
+  commit_at_reference,
+  RepositoryCommitMint, RepositoryCommitMinted, RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootMissing, RepositoryCommitMintRootIsAuthoredSource,
+  RepositoryCommitMintRootIsSemanticNode, RepositoryCommitMintParentMissing,
+  mint_repository_commit,
+}
 import gunbc.scm.staging { StagedEntries, StagedEntriesRefused, staged_entries }
-import gunbc.scm.merge_base {
+import gunbc.scm.repository_envelope {
   MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
-  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
+  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint, MergeBaseSourceIsAncestorOfTarget,
 }
 import gunbc.scm.manifest_merge { ManifestPathConflict, PathState, PathAbsent, PathPresent }
 import gunbc.scm.squash_merge {
@@ -34,13 +51,9 @@ import gunbc.scm.squash_merge {
   SquashMergeRootMissing,
   SquashMergeRootIsAuthoredSource,
   SquashMergeRootIsSemanticNode,
-  SquashMergeCommitMissing,
-  SquashMergeResultDuplicatePath,
   SquashMergeResultLocatorCollision,
+  SquashMergeSourceUnrecoverable,
   SquashMergeAllocatorInvalid,
-  SquashMergeMintParentMissing,
-  SquashMergeMintIntegrationSourceMissing,
-  MergeSideName, MergeBaseCommit, MergeSourceCommit, MergeTargetCommit,
   squash_merge,
 }
 import test.fixture.scm_repository_builder {
@@ -70,7 +83,6 @@ fn scene() -> Scene {
   let c0 = mb_commit(
     build: mb_stage(build: mb_start(), path: "a", text: "A0"),
     message: "base",
-    integration: NoSquashIntegration,
   )
   match mb_head(build: c0) {
     Absent => SceneUnavailable
@@ -78,7 +90,6 @@ fn scene() -> Scene {
       let t1 = mb_commit(
         build: mb_stage(build: c0, path: "t", text: "T0"),
         message: "target",
-        integration: NoSquashIntegration,
       )
       match mb_head(build: t1) {
         Absent => SceneUnavailable
@@ -86,7 +97,6 @@ fn scene() -> Scene {
           let s1 = mb_commit(
             build: mb_stage(build: mb_at(build: t1, target: base), path: "s", text: "S0"),
             message: "source",
-            integration: NoSquashIntegration,
           )
           match mb_head(build: s1) {
             Absent => SceneUnavailable
@@ -178,12 +188,9 @@ test fn scm_sm_a_merge_carries_both_sides_paths() -> Bool {
             SquashMergeRootMissing { side: _, root: _ } => false
             SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
             SquashMergeRootIsSemanticNode { side: _, root: _ } => false
-            SquashMergeCommitMissing { side: _, reference: _ } => false
-            SquashMergeResultDuplicatePath { path: _ } => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
-            SquashMergeMintParentMissing { parent: _ } => false
-            SquashMergeMintIntegrationSourceMissing { source: _ } => false
           }
       }
   }
@@ -227,12 +234,9 @@ test fn scm_sm_the_result_parents_the_target_and_records_the_source_consumed() -
             SquashMergeRootMissing { side: _, root: _ } => false
             SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
             SquashMergeRootIsSemanticNode { side: _, root: _ } => false
-            SquashMergeCommitMissing { side: _, reference: _ } => false
-            SquashMergeResultDuplicatePath { path: _ } => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
-            SquashMergeMintParentMissing { parent: _ } => false
-            SquashMergeMintIntegrationSourceMissing { source: _ } => false
           }
       }
   }
@@ -267,33 +271,28 @@ test fn scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_rece
                     MergeBaseSourceAlreadyConsumed { recorded_at: rec, consumed: cons, source: _ } =>
                       repository_commit_ref_eq(left: rec, right: at)
                         && repository_commit_ref_eq(left: cons, right: source)
-                    MergeBaseDerived { base: _ } => false
+                    MergeBaseDerived { anchors: _ } => false
                     MergeBaseHistoryUnwalkable { side: _, walk: _ } => false
                     MergeBaseHistoriesDisjoint { target: _, source: _ } => false
+                    MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => false
                   }
                 SquashMerged { repository: _, reference: _ } => false
                 SquashMergeConflicted { conflicts: _ } => false
                 SquashMergeRootMissing { side: _, root: _ } => false
                 SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
                 SquashMergeRootIsSemanticNode { side: _, root: _ } => false
-                SquashMergeCommitMissing { side: _, reference: _ } => false
-                SquashMergeResultDuplicatePath { path: _ } => false
-                SquashMergeResultLocatorCollision { identity: _ } => false
+                SquashMergeSourceUnrecoverable { cause: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
                 SquashMergeAllocatorInvalid => false
-                SquashMergeMintParentMissing { parent: _ } => false
-                SquashMergeMintIntegrationSourceMissing { source: _ } => false
               }
             SquashMergeConflicted { conflicts: _ } => false
             SquashMergeBaseRefused { refusal: _ } => false
             SquashMergeRootMissing { side: _, root: _ } => false
             SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
             SquashMergeRootIsSemanticNode { side: _, root: _ } => false
-            SquashMergeCommitMissing { side: _, reference: _ } => false
-            SquashMergeResultDuplicatePath { path: _ } => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
             SquashMergeResultLocatorCollision { identity: _ } => false
             SquashMergeAllocatorInvalid => false
-            SquashMergeMintParentMissing { parent: _ } => false
-            SquashMergeMintIntegrationSourceMissing { source: _ } => false
           }
       }
   }
@@ -308,7 +307,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
   let c0 = mb_commit(
     build: mb_stage(build: mb_start(), path: "a", text: "A0"),
     message: "base",
-    integration: NoSquashIntegration,
   )
   match mb_head(build: c0) {
     Absent => false
@@ -316,7 +314,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
       let t1 = mb_commit(
         build: mb_stage(build: c0, path: "a", text: "TARGET"),
         message: "target",
-        integration: NoSquashIntegration,
       )
       match mb_head(build: t1) {
         Absent => false
@@ -324,7 +321,6 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
           let s1 = mb_commit(
             build: mb_stage(build: mb_at(build: t1, target: base), path: "a", text: "SOURCE"),
             message: "source",
-            integration: NoSquashIntegration,
           )
           match mb_head(build: s1) {
             Absent => false
@@ -350,15 +346,220 @@ test fn scm_sm_a_conflicting_path_mints_no_commit() -> Bool {
                     SquashMergeRootMissing { side: _, root: _ } => false
                     SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
                     SquashMergeRootIsSemanticNode { side: _, root: _ } => false
-                    SquashMergeCommitMissing { side: _, reference: _ } => false
-                    SquashMergeResultDuplicatePath { path: _ } => false
-                    SquashMergeResultLocatorCollision { identity: _ } => false
+                    SquashMergeSourceUnrecoverable { cause: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
                     SquashMergeAllocatorInvalid => false
-                    SquashMergeMintParentMissing { parent: _ } => false
-                    SquashMergeMintIntegrationSourceMissing { source: _ } => false
                   }
               }
           }
+      }
+  }
+}
+
+// THE MERGE-SIDE COMPLETENESS CONTROL, AND WHY THE EXISTING BATTERY DID NOT COVER IT.
+//
+// `admit_merge_subject` refuses a conflict-free merge whose result retains an entry this store cannot
+// produce bytes for. Every claim above builds its sources through the repository builder, which always
+// stores the bytes it names -- so all four passed against a merge with NO completeness observation at
+// all. External review found this: acknowledging `SquashMergeSourceUnrecoverable` in an exhaustive
+// match is not evidence, because an arm no scene reaches is a decoration (DESIGN section 4b).
+//
+// The scene keeps the divergence shape of `scene()` above and changes exactly one fact: the path the
+// BASE contributes -- inherited unchanged by both sides, so it survives any correct merge -- names an
+// authored source that was written into a store which was then discarded. The merge is therefore
+// conflict-free and its result is unrecoverable, which is precisely the state that would otherwise
+// mint a commit and spend the source with a `SquashIntegrated` receipt.
+//
+//   C0   ghost = <absent>                       the base contributes the unrecoverable path
+//   T1   ghost = <absent>, t = T0   parent C0
+//   S1   ghost = <absent>, s = S0   parent C0
+//
+// `present: true` writes those same bytes into the store the repository actually keeps. Nothing else
+// differs, so the pair isolates source presence and nothing else.
+type SmPartial
+  = SmPartialReady {
+      repository: RepositoryEnvelope,
+      target: RepositoryCommitRef,
+      source: RepositoryCommitRef,
+    }
+  | SmPartialUnavailable
+
+fn sm_ghost_target() -> AuthoredSourceTarget? {
+  match store_authored_source(store: empty_store(), text: "module ghost") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => none
+    SourceStored { store: _, source: source } =>
+      Present { value: authored_source_target_of(reference: source) }
+  }
+}
+
+fn sm_seeded_store(present: Bool) -> ObjectStore {
+  if present {
+    match store_authored_source(store: empty_store(), text: "module ghost") {
+      SourceLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+      SourceStored { store: next, source: _ } => next
+    }
+  } else {
+    empty_store()
+  }
+}
+
+fn sm_partial_scene(present: Bool) -> SmPartial {
+  match sm_ghost_target() {
+    Absent => SmPartialUnavailable
+    Present { value: ghost } =>
+      match store_authored_source(store: sm_seeded_store(present: present), text: "module t") {
+        SourceLocatorCollision { identity: _, existing: _, incoming: _ } => SmPartialUnavailable
+        SourceStored { store: s1, source: t_src } =>
+          match store_authored_source(store: s1, text: "module s") {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => SmPartialUnavailable
+            SourceStored { store: s2, source: s_src } =>
+              sm_partial_manifests(
+                store: s2,
+                ghost: ghost,
+                t_src: authored_source_target_of(reference: t_src),
+                s_src: authored_source_target_of(reference: s_src),
+              )
+          }
+      }
+  }
+}
+
+fn sm_partial_manifests(
+  store: ObjectStore,
+  ghost: AuthoredSourceTarget,
+  t_src: AuthoredSourceTarget,
+  s_src: AuthoredSourceTarget,
+) -> SmPartial {
+  let ghost_entry = CorpusManifestEntry { path: "ghost.dag" as NonEmptyStr, source: ghost }
+  match store_corpus_manifest(store: store, entries: [ghost_entry]) {
+    CorpusManifestDuplicatePath { path: _ } => SmPartialUnavailable
+    CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => SmPartialUnavailable
+    CorpusManifestStored { store: m0s, manifest: m0 } =>
+      match store_corpus_manifest(
+        store: m0s,
+        entries: [ghost_entry, CorpusManifestEntry { path: "t.dag" as NonEmptyStr, source: t_src }],
+      ) {
+        CorpusManifestDuplicatePath { path: _ } => SmPartialUnavailable
+        CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } => SmPartialUnavailable
+        CorpusManifestStored { store: m1s, manifest: m1 } =>
+          match store_corpus_manifest(
+            store: m1s,
+            entries: [ghost_entry, CorpusManifestEntry { path: "s.dag" as NonEmptyStr, source: s_src }],
+          ) {
+            CorpusManifestDuplicatePath { path: _ } => SmPartialUnavailable
+            CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+              SmPartialUnavailable
+            CorpusManifestStored { store: m2s, manifest: m2 } =>
+              sm_partial_commits(
+                repository: RepositoryEnvelope {
+                  store: m2s,
+                  commits: [],
+                  commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+                  checked_out: none,
+                  staged: none,
+                },
+                m0: m0,
+                m1: m1,
+                m2: m2,
+              )
+          }
+      }
+  }
+}
+
+fn sm_partial_commits(
+  repository: RepositoryEnvelope,
+  m0: CorpusManifestObjectRef,
+  m1: CorpusManifestObjectRef,
+  m2: CorpusManifestObjectRef,
+) -> SmPartial {
+  match mint_repository_commit(
+    repository: repository,
+    root: CorpusManifestTarget { locator: m0.locator },
+    message: "base",
+    parent: none,
+  ) {
+    RepositoryCommitMinted { repository: r0, reference: c0 } =>
+      match mint_repository_commit(
+        repository: r0,
+        root: CorpusManifestTarget { locator: m1.locator },
+        message: "target",
+        parent: Present { value: c0 },
+      ) {
+        RepositoryCommitMinted { repository: r1, reference: t1 } =>
+          match mint_repository_commit(
+            repository: r1,
+            root: CorpusManifestTarget { locator: m2.locator },
+            message: "source",
+            parent: Present { value: c0 },
+          ) {
+            RepositoryCommitMinted { repository: r2, reference: s1 } =>
+              SmPartialReady { repository: r2, target: t1, source: s1 }
+            RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => SmPartialUnavailable
+            RepositoryCommitMintRootMissing { root: _ } => SmPartialUnavailable
+            RepositoryCommitMintRootIsAuthoredSource { root: _ } => SmPartialUnavailable
+            RepositoryCommitMintRootIsSemanticNode { root: _ } => SmPartialUnavailable
+            RepositoryCommitMintParentMissing { parent: _ } => SmPartialUnavailable
+          }
+        RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => SmPartialUnavailable
+        RepositoryCommitMintRootMissing { root: _ } => SmPartialUnavailable
+        RepositoryCommitMintRootIsAuthoredSource { root: _ } => SmPartialUnavailable
+        RepositoryCommitMintRootIsSemanticNode { root: _ } => SmPartialUnavailable
+        RepositoryCommitMintParentMissing { parent: _ } => SmPartialUnavailable
+      }
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => SmPartialUnavailable
+    RepositoryCommitMintRootMissing { root: _ } => SmPartialUnavailable
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => SmPartialUnavailable
+    RepositoryCommitMintRootIsSemanticNode { root: _ } => SmPartialUnavailable
+    RepositoryCommitMintParentMissing { parent: _ } => SmPartialUnavailable
+  }
+}
+
+fn sm_names_the_ghost(cause: CorpusEntrySourceRefusal) -> Bool {
+  match cause {
+    CorpusEntrySourceMissing { path: p, source: _ } => (p as String) == "ghost.dag"
+    CorpusEntrySourceIsSemanticNode { path: _, source: _ } => false
+    CorpusEntrySourceIsCorpusManifest { path: _, source: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED. Deleting the completeness observation from `admit_merge_subject` turns this
+// into a `SquashMerged`, which is the defect: a commit published over bytes that cannot be recovered,
+// with the source spent.
+test fn scm_sm_a_conflict_free_merge_over_an_absent_source_refuses_naming_the_path() -> Bool {
+  match sm_partial_scene(present: false) {
+    SmPartialUnavailable => false
+    SmPartialReady { repository: r, target: t, source: sc } =>
+      match squash_merge(repository: r, target: t, source: sc, message: "merge the unrecoverable") {
+        SquashMergeSourceUnrecoverable { cause: c } => sm_names_the_ghost(cause: c)
+        SquashMerged { repository: _, reference: _ } => false
+        SquashMergeConflicted { conflicts: _ } => false
+        SquashMergeBaseRefused { refusal: _ } => false
+        SquashMergeRootMissing { side: _, root: _ } => false
+        SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+        SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+        SquashMergeResultLocatorCollision { identity: _ } => false
+        SquashMergeAllocatorInvalid => false
+      }
+  }
+}
+
+// THE POSITIVE CONTROL. Identical scene, ghost bytes present. Without it, a merge that refused
+// everything would satisfy the claim above, and a merge that never merges is not a safer merge.
+test fn scm_sm_the_same_merge_succeeds_once_the_source_is_present() -> Bool {
+  match sm_partial_scene(present: true) {
+    SmPartialUnavailable => false
+    SmPartialReady { repository: r, target: t, source: sc } =>
+      match squash_merge(repository: r, target: t, source: sc, message: "merge the recoverable") {
+        SquashMerged { repository: _, reference: _ } => true
+        SquashMergeSourceUnrecoverable { cause: _ } => false
+        SquashMergeConflicted { conflicts: _ } => false
+        SquashMergeBaseRefused { refusal: _ } => false
+        SquashMergeRootMissing { side: _, root: _ } => false
+        SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+        SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+        SquashMergeResultLocatorCollision { identity: _ } => false
+        SquashMergeAllocatorInvalid => false
       }
   }
 }
@@ -368,4 +569,6 @@ test fn scm_squash_merge_witnesses_hold() -> Bool {
     && scm_sm_the_result_parents_the_target_and_records_the_source_consumed()
     && scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt()
     && scm_sm_a_conflicting_path_mints_no_commit()
+    && scm_sm_a_conflict_free_merge_over_an_absent_source_refuses_naming_the_path()
+    && scm_sm_the_same_merge_succeeds_once_the_source_is_present()
 }

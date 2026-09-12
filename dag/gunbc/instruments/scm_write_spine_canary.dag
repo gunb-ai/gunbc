@@ -1,0 +1,949 @@
+module gunbc.instruments.scm_write_spine_canary
+
+// THE WET INSTRUMENT FOR THE NATIVE WRITE SPINE. Each verb is its own process entry, and that is the
+// point rather than an inconvenience.
+//
+// WHY MULTI-INVOCATION IS THE ACCEPTANCE SHAPE. A single process that initialized, added, committed
+// and verified in one expression would prove that a chain of pure folds composes -- which the hermetic
+// witnesses already establish and which is not the question. The question is whether the repository
+// SURVIVES THE PROCESS: whether what one invocation published is what the next one reads back, decoded
+// from bytes on a disk rather than carried in memory. So every entry below re-reads the slot from
+// scratch, and nothing is passed between them except the store itself.
+//
+// WHAT THIS IS NOT ALLOWED TO BE. `gunbc.durable_cas_file_store`'s own witness states the rule this
+// instrument exists to satisfy: `file_compare_and_set` performs a host effect, so the hermetic floor
+// refuses it before it runs, and a witness authored there would be discovered, counted executed, and
+// assert nothing. Its evidence has to be a live run against a real directory recorded on the cut that
+// introduces its consumer. This is that cut, and this is that run.
+//
+// AND THE RACE HERE IS DETERMINISTIC, WHICH IS A FEATURE. Two writers against one generation is
+// `spine_race`: read the slot once, then publish twice from that one observation. The loser loses
+// because its expectation names a generation that has since been consumed -- not because it arrived
+// second -- so the property is decided by the store's rule rather than by scheduling, and a green run
+// is evidence rather than luck.
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasUnreadableObservationBoundExceeded }
+import gunbc.durable_cas_file_store { cas_max_generation_probe }
+import gunbc.scm.repository_slot {
+  RepositorySlot, LoadedRepositoryGeneration,
+  RepositoryPublication, RepositoryPublished,
+  RepositoryPublicationSuperseded, RepositoryPublicationStoreUnavailable,
+  RepositoryPublicationEncodeRefused, RepositoryPublicationKeyNotAddressable,
+  RepositorySlotRead, RepositorySlotAbsent, RepositorySlotHead,
+  RepositorySlotStoreUnreadable, RepositorySlotDocumentUnparseable, RepositorySlotDocumentRefused,
+  publish_new_repository, republish_repository, read_repository_slot,
+}
+import std.minted_identity { MintedId }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository }
+import gunbc.scm.write_spine {
+  StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitSourceUnrecoverable,
+  StagedCommitAllocatorInvalid,
+  StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
+  StageManifestLocatorCollision,
+  stage_source_at_path, commit_staged,
+}
+import gunbc.scm.write_spine_ingress {
+  WorkspaceAdd, WorkspaceAdded, WorkspaceSubjectNotAnEntry, WorkspacePathNotAddressable,
+  WorkspaceFileAbsent, WorkspaceFileIndeterminate, WorkspaceFileMoved, WorkspaceSubjectRefused,
+  add_workspace_file,
+}
+import gunbc.scm.checkout {
+  RepositoryCheckout, RepositoryCheckedOut, RecoveredSourceFile,
+  checkout_repository_at,
+}
+import gunbc.scm.object_store { AuthoredSourceContent, AuthoredSourceEmpty, AuthoredSourceText }
+import gunbc.scm.squash_merge {
+  SquashMergeOutcome, SquashMerged, SquashMergeConflicted, squash_merge,
+  SquashMergeBaseRefused,
+  SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode,
+  SquashMergeResultLocatorCollision,
+  SquashMergeAllocatorInvalid,
+}
+import gunbc.scm.repository_envelope {
+  MergeBaseOutcome, MergeBaseDerived, MergeBaseSourceAlreadyConsumed,
+  MergeBaseHistoryUnwalkable, MergeBaseHistoriesDisjoint,
+  MergeBaseSourceIsAncestorOfTarget,
+  MergeBaseSide, MergeBaseTargetSide, MergeBaseSourceSide,
+}
+import gunbc.scm.ancestry {
+  AncestryWalk, AncestryTraced, AncestryBrokenAt,
+  AncestryStartNotInHistory, AncestryRevisitsACommit,
+}
+
+// THE SLOT COMES FROM ARGV AS TWO STRINGS AND IS REFUSED WHEN EITHER IS EMPTY, once, here. `--arg`
+// values enter as String, so this is the only boundary at which an unchecked String becomes the
+// `NonEmptyStr` the store addresses with.
+type SlotAdmission
+  = SlotAdmitted(RepositorySlot)
+  | SlotRootEmpty
+  | SlotKeyEmpty
+
+fn admit_slot(root: String, key: String) -> SlotAdmission {
+  if root == "" {
+    SlotRootEmpty
+  } else if key == "" {
+    SlotKeyEmpty
+  } else {
+    SlotAdmitted(RepositorySlot { root: root as NonEmptyStr, key: key as NonEmptyStr })
+  }
+}
+
+fn slot_refusal(admission: SlotAdmission) -> String {
+  match admission {
+    SlotRootEmpty => "canary refused: --arg root is empty, so it addresses no store"
+    SlotKeyEmpty => "canary refused: --arg key is empty, so it addresses no slot"
+    SlotAdmitted(_) => "unreachable"
+  }
+}
+
+// EVERY OUTCOME IS RENDERED BY A TOTAL MATCH RATHER THAN A DEFAULT ARM. A canary whose failure text
+// said only "the operation did not succeed" would be green-or-mysterious, and a mysterious red is a
+// red nobody acts on.
+fn publication_exit(publication: RepositoryPublication) -> ProcessExit {
+  match publication {
+    RepositoryPublished { generation: g } => ExitSuccess
+    RepositoryPublicationSuperseded { expected: _, observed: _ } =>
+      exit_failure(reason: "publication refused: the slot moved under this writer")
+    RepositoryPublicationStoreUnavailable { cause: _ } =>
+      exit_failure(reason: "publication refused: the store could not be read or could not publish")
+    RepositoryPublicationEncodeRefused { cause: _ } =>
+      exit_failure(reason: "publication refused: the repository value did not encode")
+    RepositoryPublicationKeyNotAddressable { key: _ } =>
+      exit_failure(reason: "publication refused: the key does not address a slot")
+  }
+}
+
+fn slot_read_failure(read: RepositorySlotRead) -> String {
+  match read {
+    RepositorySlotAbsent => "the slot holds nothing -- run spine_init first"
+    RepositorySlotStoreUnreadable { cause: _ } => "the store could not be read"
+    RepositorySlotDocumentUnparseable { generation: _, gap: _ } =>
+      "the published document is not JSON -- a generation may be truncated"
+    RepositorySlotDocumentRefused { generation: _, cause: _ } =>
+      "the published document is JSON but not a repository"
+    RepositorySlotHead(_) => "unreachable"
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// init -- claim an unheld slot
+// ------------------------------------------------------------------------------------------------
+
+// AN EXPECTATION MODE, BECAUSE "EXITED NONZERO" IS NOT A CONTROL. A caller checking that a SECOND
+// init is refused cannot learn that from a nonzero exit: an unwritable root, an unaddressable key,
+// an encode refusal and a genuinely held slot all exit nonzero, so an earlier unrelated failure
+// would satisfy the very control meant to prove the slot was held. `ExpectSlotHeld` exits SUCCESS
+// only for `RepositoryPublicationSuperseded` -- the one arm that means "something is already
+// published here" -- and refuses every other outcome INCLUDING success, so publishing over a held
+// slot is a red rather than a pass.
+type InitExpectation
+  = ExpectPublished
+  | ExpectSlotHeld
+  | InitExpectationUnrecognized { given: String }
+
+fn init_expectation(expect: String) -> InitExpectation {
+  if expect == "" || expect == "published" {
+    ExpectPublished
+  } else if expect == "slot-held" {
+    ExpectSlotHeld
+  } else {
+    InitExpectationUnrecognized { given: expect }
+  }
+}
+
+fn init_publication_verdict(
+  publication: RepositoryPublication,
+  expectation: InitExpectation
+) -> ProcessExit {
+  match expectation {
+    InitExpectationUnrecognized { given: g } =>
+      exit_failure(reason: join(["init refused: --arg expect must be published or slot-held, got ", g], ""))
+    ExpectPublished => publication_exit(publication: publication)
+    ExpectSlotHeld =>
+      match publication {
+        RepositoryPublicationSuperseded { expected: _, observed: _ } => ExitSuccess
+        RepositoryPublished { generation: _ } =>
+          exit_failure(reason: "init expected a HELD slot but published into it")
+        other =>
+          exit_failure(
+            reason: "init expected a HELD slot but the publication refused for a different reason"
+          )
+      }
+  }
+}
+
+func spine_init(root: String, key: String, expect: String) -> ProcessExit {
+  match admit_slot(root: root, key: key) {
+    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+    SlotAdmitted(slot) =>
+      init_publication_verdict(
+        publication: publish_new_repository(slot: slot, repo: empty_repository()),
+        expectation: init_expectation(expect: expect),
+      )
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// add -- observe one real file and stage it, preserving every path nobody touched
+// ------------------------------------------------------------------------------------------------
+
+func spine_add(
+  root: String,
+  key: String,
+  directory: String,
+  name: String,
+  manifest_path: String,
+) -> ProcessExit {
+  match admit_slot(root: root, key: key) {
+    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+    SlotAdmitted(slot) =>
+      match read_repository_slot(slot: slot) {
+        RepositorySlotHead(loaded) =>
+          spine_add_loaded(
+            loaded: loaded,
+            directory: directory,
+            name: name,
+            manifest_path: manifest_path,
+          )
+        other => exit_failure(reason: slot_read_failure(read: other))
+      }
+  }
+}
+
+func spine_add_loaded(
+  loaded: LoadedRepositoryGeneration,
+  directory: String,
+  name: String,
+  manifest_path: String,
+) -> ProcessExit {
+  match add_workspace_file(
+    repository: loaded.envelope,
+    directory: directory,
+    name: name,
+    manifest_path: manifest_path,
+  ) {
+    WorkspaceSubjectNotAnEntry { name: n, cause: c } =>
+      exit_failure(reason: join(["add refused: ", n, " is not an entry name -- ", c], ""))
+    WorkspacePathNotAddressable { path: _ } =>
+      exit_failure(reason: "add refused: the manifest path is empty")
+    WorkspaceFileAbsent { path: p } =>
+      exit_failure(reason: join(["add refused: ", p, " is not there"], ""))
+    WorkspaceFileIndeterminate { cause: c } =>
+      exit_failure(reason: join(["add refused: the file could not be observed -- ", c], ""))
+    WorkspaceFileMoved { path: p, cause: c } =>
+      exit_failure(reason: join(["add refused: ", p, " moved while it was observed -- ", c], ""))
+    WorkspaceSubjectRefused { directory: d, name: n, cause: c } =>
+      exit_failure(reason: join(["add refused: ", d, "/", n, " -- ", c], ""))
+    WorkspaceAdded(ingress) => publish_staged(loaded: loaded, ingress: ingress)
+  }
+}
+
+func publish_staged(loaded: LoadedRepositoryGeneration, ingress: StageIngress) -> ProcessExit {
+  match ingress {
+    StageCandidateRefused { cause: _ } =>
+      exit_failure(reason: "add refused: the effective candidate could not be read")
+    StageSourceLocatorCollision { identity: _ } =>
+      exit_failure(reason: "add refused: a different object already holds this file's identity")
+    StageManifestLocatorCollision { identity: _ } =>
+      exit_failure(reason: "add refused: a different object already holds this manifest's identity")
+    Staged { repository: staged, manifest: _, source: _ } =>
+      publication_exit(publication: republish_repository(loaded: loaded, repo: staged))
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// commit -- freeze the staged manifest, without reading the worktree
+// ------------------------------------------------------------------------------------------------
+
+func spine_commit(root: String, key: String, message: String) -> ProcessExit {
+  match admit_slot(root: root, key: key) {
+    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+    SlotAdmitted(slot) =>
+      match read_repository_slot(slot: slot) {
+        RepositorySlotHead(loaded) => spine_commit_loaded(loaded: loaded, message: message)
+        other => exit_failure(reason: slot_read_failure(read: other))
+      }
+  }
+}
+
+func spine_commit_loaded(loaded: LoadedRepositoryGeneration, message: String) -> ProcessExit {
+  match commit_staged(repository: loaded.envelope, message: message) {
+    StagedCommitCandidateRefused { cause: _ } =>
+      exit_failure(reason: "commit refused: the effective candidate could not be read")
+    StagedCommitSourceUnrecoverable { cause: _ } =>
+      exit_failure(
+        reason: "commit refused: the staged corpus names an authored source this store cannot produce, so the commit would publish a snapshot that cannot be checked out"
+      )
+    StagedCommitNothingToFreeze =>
+      exit_failure(
+        reason: "commit refused: nothing to freeze -- the candidate is the snapshot already committed, or there is no snapshot at all"
+      )
+    StagedCommitAllocatorInvalid { next_ordinal: _ } =>
+      exit_failure(reason: "commit refused: the commit allocator is invalid")
+    StagedCommitMinted { repository: committed, reference: _ } =>
+      publication_exit(publication: republish_repository(loaded: loaded, repo: committed))
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// verify -- reopen the slot in a fresh process and check the bytes out of the head commit
+// ------------------------------------------------------------------------------------------------
+
+// THIS RECOVERS THE BYTES FROM THE OBJECT TABLE, NOT FROM THE WORKTREE. Comparing the committed
+// content against the file on disk would establish only that the file is still there; what has to be
+// established is that the bytes the commit FROZE round-tripped through the document. So the expected
+// text is supplied as an argument and the actual text comes out of `checkout_repository_at`.
+// THE SAME ARGUMENT AS init, AND THE DISTINCTION IS SHARPER HERE. A wrong-bytes control that only
+// requires a nonzero exit is also satisfied by "no commit is checked out", "the head could not be
+// checked out", and "the corpus has no entry at this path" -- three states in which NO BYTE
+// COMPARISON EVER HAPPENED. `ExpectDiffers` therefore exits success only where the path WAS found
+// and its bytes did not match, so the control proves a comparison occurred and came out negative
+// rather than proving something went wrong somewhere upstream.
+type VerifyExpectation
+  = ExpectMatches
+  | ExpectDiffers
+  | VerifyExpectationUnrecognized { given: String }
+
+fn verify_expectation(expect: String) -> VerifyExpectation {
+  if expect == "" || expect == "matches" {
+    ExpectMatches
+  } else if expect == "differs" {
+    ExpectDiffers
+  } else {
+    VerifyExpectationUnrecognized { given: expect }
+  }
+}
+
+func spine_verify(
+  root: String,
+  key: String,
+  manifest_path: String,
+  expected_text: String,
+  expect: String,
+) -> ProcessExit {
+  match admit_slot(root: root, key: key) {
+    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+    SlotAdmitted(slot) =>
+      match read_repository_slot(slot: slot) {
+        RepositorySlotHead(loaded) =>
+          verify_head_corpus(
+            envelope: loaded.envelope,
+            manifest_path: manifest_path,
+            expected_text: expected_text,
+            expectation: verify_expectation(expect: expect),
+          )
+        other => exit_failure(reason: slot_read_failure(read: other))
+      }
+  }
+}
+
+fn verify_head_corpus(
+  envelope: RepositoryEnvelope,
+  manifest_path: String,
+  expected_text: String,
+  expectation: VerifyExpectation,
+) -> ProcessExit {
+  match envelope.checked_out {
+    Absent => exit_failure(reason: "verify refused: no commit is checked out")
+    Present { value: reference } =>
+      match checkout_repository_at(repo: envelope, reference: reference) {
+        RepositoryCheckedOut { repository: _, corpus: corpus } =>
+          compare_recovered(
+            corpus: corpus,
+            manifest_path: manifest_path,
+            expected_text: expected_text,
+            expectation: expectation,
+          )
+        other => exit_failure(reason: "verify refused: the head commit could not be checked out")
+      }
+  }
+}
+
+// THE PATH MUST BE FOUND AND ITS BYTES MUST MATCH, AND THOSE ARE TWO DIFFERENT REDS. A single "did not
+// verify" would let a checkout that recovered NOTHING pass for one that recovered the wrong thing.
+fn compare_recovered(
+  corpus: List<RecoveredSourceFile>,
+  manifest_path: String,
+  expected_text: String,
+  expectation: VerifyExpectation,
+) -> ProcessExit {
+  match expectation {
+    VerifyExpectationUnrecognized { given: g } =>
+      exit_failure(reason: join(["verify refused: --arg expect must be matches or differs, got ", g], ""))
+    ExpectMatches =>
+      match recovered_text_at(corpus: corpus, manifest_path: manifest_path) {
+        Absent =>
+          exit_failure(reason: join(["verify failed: the head corpus has no entry at ", manifest_path], ""))
+        Present { value: actual } =>
+          if actual == expected_text {
+            ExitSuccess
+          } else {
+            exit_failure(
+              reason: join([
+                "verify failed: ", manifest_path, " recovered bytes that are not the ones committed",
+              ], "")
+            )
+          }
+      }
+    ExpectDiffers =>
+      match recovered_text_at(corpus: corpus, manifest_path: manifest_path) {
+        Absent =>
+          exit_failure(
+            reason: join([
+              "verify expected DIFFERING bytes but the head corpus has no entry at ", manifest_path,
+              " -- nothing was compared",
+            ], "")
+          )
+        Present { value: actual } =>
+          if actual == expected_text {
+            exit_failure(
+              reason: join([
+                "verify expected DIFFERING bytes but ", manifest_path, " matched exactly",
+              ], "")
+            )
+          } else {
+            ExitSuccess
+          }
+      }
+  }
+}
+
+// THE EMPTY FILE IS A REAL AUTHORED STATE, NOT AN ABSENCE. `AuthoredSourceContent` keeps them apart --
+// an empty file has its own object -- so the projection back to text answers "" for the empty arm
+// rather than treating it as nothing found. The two are distinguished one level up, by whether the
+// path is in the corpus at all.
+fn recovered_text(content: AuthoredSourceContent) -> String {
+  match content {
+    AuthoredSourceEmpty => ""
+    AuthoredSourceText(text) => text as String
+  }
+}
+
+fn recovered_text_at(corpus: List<RecoveredSourceFile>, manifest_path: String) -> String? {
+  fold(corpus, init: none, f: fn(found, file) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if file.path == manifest_path {
+          Present { value: recovered_text(content: file.content) }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+// A MERGE NOBODY IS STANDING ON IS NOT INTEGRATED, AND THIS RUN PROVED IT BY GOING RED.
+//
+// `squash_merge` is a pure transform: it mints the merge commit and leaves the selection where it was,
+// which is correct for a fold that performs no publication. The first version of this instrument
+// published that result and stopped -- so the selection was still the SOURCE branch, and the readback
+// that followed verified the source commit's corpus while reporting on the merge. It failed loudly
+// (`the head corpus has no entry at t.txt`) rather than passing, which is the only reason the mistake
+// is in this annotation instead of in a green run.
+//
+// SO THE SELECTION MOVES THROUGH `checkout_repository_at` AND NOT BY WRITING THE FIELD. Assigning
+// `checked_out` directly would skip the verb that decides whether moving the selection is ALLOWED --
+// the staged-work refusal in particular -- and this instrument must not reach a state the ordinary
+// checkout would have refused.
+func publish_merge_selected(
+  loaded: LoadedRepositoryGeneration,
+  merged: RepositoryEnvelope,
+  reference: RepositoryCommitRef,
+) -> ProcessExit {
+  match checkout_repository_at(repo: merged, reference: reference) {
+    RepositoryCheckedOut { repository: selected, corpus: _ } =>
+      publication_exit(publication: republish_repository(loaded: loaded, repo: selected))
+    other => exit_failure(reason: "squash failed: the merge commit could not be checked out")
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// checkout -- move the selection to an earlier commit, so a branch point exists to merge across
+// ------------------------------------------------------------------------------------------------
+
+// THIS IS WHAT MAKES THE MERGE HALVES REACHABLE AT ALL. `add` and `commit` alone build one line, and a
+// merge across a line is not a merge -- both sides would share every ancestor and any implementation
+// that took either side wholesale would look correct. Moving the selection back and committing again
+// is what produces the two lineages the merge verb is actually asked about.
+//
+// THE REFUSAL TO DISCARD STAGED WORK IS CARRIED, NOT SUPPRESSED. `checkout_repository_at` refuses when
+// the candidate differs from its base, and that refusal reaches the exit code here rather than being
+// resolved by dropping the candidate -- a canary that quietly discarded uncommitted work to reach its
+// next step would be exercising a verb nobody would ship.
+func spine_checkout(root: String, key: String, target: String) -> ProcessExit {
+  match commit_selection(text: target) {
+    CommitNotAnOrdinal { given: g } =>
+      exit_failure(reason: join(["checkout refused: --arg target is not a commit ordinal: ", g], ""))
+    CommitSelected(reference) =>
+      match admit_slot(root: root, key: key) {
+        SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+        SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+        SlotAdmitted(slot) =>
+          match read_repository_slot(slot: slot) {
+            RepositorySlotHead(loaded) => checkout_from(loaded: loaded, reference: reference)
+            other => exit_failure(reason: slot_read_failure(read: other))
+          }
+      }
+  }
+}
+
+func checkout_from(loaded: LoadedRepositoryGeneration, reference: RepositoryCommitRef) -> ProcessExit {
+  match checkout_repository_at(repo: loaded.envelope, reference: reference) {
+    RepositoryCheckedOut { repository: moved, corpus: _ } =>
+      publication_exit(publication: republish_repository(loaded: loaded, repo: moved))
+    other => exit_failure(reason: "checkout refused")
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// head -- what the reader says the current generation is, and whether it decoded
+// ------------------------------------------------------------------------------------------------
+
+// A CORRUPT HEAD MUST REFUSE AT THE GENERATION THAT IS CORRUPT, NOT FALL BACK TO THE LAST GOOD ONE.
+//
+// This is the fail-closed reader control, and getting its SHAPE right matters more than the run. The
+// tempting claim is "a truncated `.N+1` must not become the head" -- which is backwards. If bytes
+// exist at `.N+1` then `.N+1` IS the current generation, and answering `.N` would be the store hiding
+// a corruption by silently serving a stale document. That is the absorbing fallback, arriving through
+// the reader instead of the writer.
+//
+// So the correct behaviour, and what this entry executes: read the CURRENT generation, and refuse
+// there. `RepositorySlotDocumentUnparseable { generation: N+1 }` names both the fault and where it is,
+// which is what an operator needs to repair the right file.
+//
+// WHAT THIS IS NOT. Hand-placing bytes at `.N+1` authors an external corruption state; it does not
+// prove an interruption produced one, and this entry does not claim it. The producer-side property --
+// that a publication cannot leave a readable prefix at a generation name -- is held by construction
+// through `DefaultAccessCreateOnly`, and the specimen for the unsafe binding belongs with retiring its
+// last consumer. Two facts, two controls; neither stands as evidence for the other.
+// THE EXPECTED GENERATION IS COMPARED, NOT ACCEPTED. The first version of this entry matched
+// `RepositorySlotDocumentUnparseable { generation: _ }` and called that success -- which distinguishes
+// "served a clean older head" from "some unparseable generation", and does NOT establish the claim it
+// was reported as making, that refusal happened AT the corrupt generation. A mutation hard-coding any
+// other generation into the refusal stayed green. The generation is the SUBJECT of this claim, not
+// diagnostic decoration beside it, so the caller states which one it expects and this compares.
+// Found by external review.
+func spine_head(root: String, key: String, expect: String, at_generation: String) -> ProcessExit {
+  match admit_slot(root: root, key: key) {
+    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+    SlotAdmitted(slot) =>
+      head_verdict(
+        read: read_repository_slot(slot: slot),
+        expect: expect,
+        at_generation: at_generation,
+      )
+  }
+}
+
+fn head_verdict(read: RepositorySlotRead, expect: String, at_generation: String) -> ProcessExit {
+  if expect == "decoded" {
+    match read {
+      RepositorySlotHead(_) => ExitSuccess
+      other => exit_failure(reason: join(["head expected to decode, but ", slot_read_failure(read: other)], ""))
+    }
+  } else if expect == "unparseable" {
+    match parse_int(s: at_generation) {
+      Absent =>
+        exit_failure(reason: join(["--arg at_generation is not a number: ", at_generation], ""))
+      Present { value: expected } =>
+        match read {
+          RepositorySlotDocumentUnparseable { generation: g, gap: _ } =>
+            if cas_generation_count(g: g) == expected {
+              ExitSuccess
+            } else {
+              exit_failure(
+                reason: join([
+                  "the reader refused at generation ", cas_generation_count(g: g) as String,
+                  " but the corrupt generation is ", expected as String,
+                  " -- it refused about the wrong file",
+                ], "")
+              )
+            }
+          RepositorySlotHead(_) =>
+            exit_failure(
+              reason: "head decoded cleanly -- the reader served an older generation instead of refusing at the corrupt one"
+            )
+          other => exit_failure(reason: join(["head expected to be unparseable, but ", slot_read_failure(read: other)], ""))
+        }
+    }
+  } else if expect == "beyond-bound" {
+    match read {
+      RepositorySlotStoreUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: b } } =>
+        if b == cas_max_generation_probe { ExitSuccess } else {
+          exit_failure(
+            reason: join([
+              "the reader named probe bound ", b as String,
+              " but the store's declared bound is ", cas_max_generation_probe as String,
+            ], "")
+          )
+        }
+      RepositorySlotStoreUnreadable { cause: _ } =>
+        exit_failure(
+          reason: "the slot was unreadable for some OTHER reason -- bound exhaustion must not be reported as malformed content, a missing object, or a refused read"
+        )
+      other => exit_failure(reason: join(["head expected to exceed the probe bound, but ", slot_read_failure(read: other)], ""))
+    }
+  } else {
+    exit_failure(reason: join(["--arg expect must be decoded, unparseable or beyond-bound, not ", expect], ""))
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// race -- two writers against one generation
+// ------------------------------------------------------------------------------------------------
+
+// ONE OBSERVATION, TWO PUBLICATIONS, AND THE SECOND MUST BE REFUSED. Both proposals are derived from
+// the same `loaded`, so they carry the same expectation; the store consumed that generation on the
+// first call. A green here means the second writer was told it lost AND told what beat it -- a run in
+// which both publish is the defect this whole boundary exists to prevent, and it goes red.
+//
+// THE TWO PROPOSALS MUST DIFFER, or the run would be satisfied by a store that admits an idempotent
+// re-publication, which is a different property. They differ by their STAGED BYTES -- two authors who
+// read the same head and wrote different content at one path. An earlier revision said they differ by
+// commit message, which described the superseded setup that derived them by committing twice.
+func spine_race(root: String, key: String, manifest_path: String) -> ProcessExit {
+  if manifest_path == "" {
+    exit_failure(reason: "race refused: --arg manifest_path is empty")
+  } else {
+    match admit_slot(root: root, key: key) {
+      SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+      SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+      SlotAdmitted(slot) =>
+        match read_repository_slot(slot: slot) {
+          RepositorySlotHead(loaded) =>
+            race_from(loaded: loaded, manifest_path: manifest_path as NonEmptyStr)
+          other => exit_failure(reason: slot_read_failure(read: other))
+        }
+    }
+  }
+}
+
+// THE TWO WRITERS STAGE, THEY DO NOT COMMIT, AND THE FIRST VERSION OF THIS ENTRY GOT THAT WRONG IN A
+// WAY WORTH RECORDING.
+//
+// It derived both proposals by calling `commit_staged` twice on the loaded envelope. That worked only
+// because `commit_staged` would, at the time, mint a commit even when the candidate was identical to
+// the one already committed -- so the race proof was STANDING ON A DEFECT, and it went red the moment
+// the defect was repaired. The instrument was right to break: a control whose setup depends on a bug
+// is evidence about the bug.
+//
+// Staging is the correct derivation anyway, and closer to what the property is about. Two authors who
+// have each read the same head and each written different bytes at the same path is exactly the
+// situation the slot exists to arbitrate; that they differ is what makes the second publication a
+// genuine lost update rather than an idempotent re-write.
+func race_from(loaded: LoadedRepositoryGeneration, manifest_path: NonEmptyStr) -> ProcessExit {
+  match stage_source_at_path(
+    repository: loaded.envelope,
+    path: manifest_path,
+    text: "writer A wrote this",
+  ) {
+    Staged { repository: a, manifest: _, source: _ } =>
+      match stage_source_at_path(
+        repository: loaded.envelope,
+        path: manifest_path,
+        text: "writer B wrote something else",
+      ) {
+        Staged { repository: b, manifest: _, source: _ } =>
+          race_publications(
+            first: republish_repository(loaded: loaded, repo: a),
+            second: republish_repository(loaded: loaded, repo: b),
+          )
+        other => exit_failure(reason: "race refused: writer B could not stage")
+      }
+    other => exit_failure(reason: "race refused: writer A could not stage")
+  }
+}
+
+fn race_publications(
+  first: RepositoryPublication,
+  second: RepositoryPublication,
+) -> ProcessExit {
+  match first {
+    RepositoryPublished { generation: _ } =>
+      match second {
+        RepositoryPublicationSuperseded { expected: _, observed: _ } => ExitSuccess
+        RepositoryPublished { generation: _ } =>
+          exit_failure(
+            reason: "race failed: BOTH writers published against one generation -- the slot admitted a lost update"
+          )
+        other =>
+          exit_failure(
+            reason: "race failed: the second writer was refused for a reason other than being superseded"
+          )
+      }
+    other => exit_failure(reason: "race refused: the first writer did not publish")
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// squash_merge -- integrate one commit into another, natively
+// ------------------------------------------------------------------------------------------------
+
+// THE OUTCOME IS SUPPLIED AS AN EXPECTATION RATHER THAN REPORTED, so this one entry drives both halves
+// of the acceptance slice: an independent-edit merge must MERGE, and a genuine conflict must CONFLICT.
+// An instrument that merely printed what happened would be green on either, which is exactly the
+// change-detector shape a merge-blocking check may not have.
+// TWO OF THESE ARMS ARE INVERSE CONTROLS, AND THEY EXIST BECAUSE "THE CHILD EXITED NONZERO" IS NOT A
+// CONTROL. An acceptance driver proving that an independent-edit pair does NOT conflict used to do it
+// by invoking `--expect conflict` and requiring any nonzero exit. That is satisfied just as well by an
+// unreadable slot, a commit selection that does not resolve, or an unrecognised expectation -- none of
+// which observed the merge at all, so an earlier unrelated failure could satisfy the very step meant
+// to prove the merge came out clean.
+//
+// `MergedThoughConflictExpected` and `ConflictedThoughMergeExpected` exit SUCCESS only on the ONE
+// outcome that is the intended mismatch, and refuse every other arm including the refusal arms.
+// Neither PUBLISHES: they are asserting a negative, and a control that mutated the repository to
+// prove something did not happen would change the state the next step reads.
+type MergeExpectation
+  = ExpectMerge
+  | ExpectConflict
+  | MergedThoughConflictExpected
+  | ConflictedThoughMergeExpected
+  | ExpectationUnrecognized { given: String }
+
+fn merge_expectation(expect: String) -> MergeExpectation {
+  if expect == "merge" {
+    ExpectMerge
+  } else if expect == "conflict" {
+    ExpectConflict
+  } else if expect == "merged-though-conflict-expected" {
+    MergedThoughConflictExpected
+  } else if expect == "conflicted-though-merge-expected" {
+    ConflictedThoughMergeExpected
+  } else {
+    ExpectationUnrecognized { given: expect }
+  }
+}
+
+func spine_squash(
+  root: String,
+  key: String,
+  target: String,
+  source: String,
+  message: String,
+  expect: String,
+) -> ProcessExit {
+  match merge_expectation(expect: expect) {
+    ExpectationUnrecognized { given: g } =>
+      exit_failure(
+        reason: join([
+          "squash refused: --arg expect must be merge, conflict, merged-though-conflict-expected ",
+          "or conflicted-though-merge-expected, not ", g,
+        ], "")
+      )
+    other =>
+      spine_squash_expecting(
+        root: root,
+        key: key,
+        target: target,
+        source: source,
+        message: message,
+        expectation: other,
+      )
+  }
+}
+
+// A COMMIT IS NAMED BY THE ORDINAL `log` PRINTS, AND A NON-ORDINAL REFUSES RATHER THAN DEFAULTING TO
+// ZERO. Coercing an unparseable argument to a commit reference would silently point the merge at the
+// root commit, so the instrument would run a DIFFERENT merge than the one it was asked for and report
+// that one's result.
+type CommitSelection
+  = CommitSelected(RepositoryCommitRef)
+  | CommitNotAnOrdinal { given: String }
+
+fn commit_selection(text: String) -> CommitSelection {
+  match parse_int(s: text) {
+    Absent => CommitNotAnOrdinal { given: text }
+    Present { value: ordinal } =>
+      if ordinal < 0 {
+        CommitNotAnOrdinal { given: text }
+      } else {
+        CommitSelected(RepositoryCommitRef { identity: MintedId { ordinal: ordinal } })
+      }
+  }
+}
+
+func spine_squash_expecting(
+  root: String,
+  key: String,
+  target: String,
+  source: String,
+  message: String,
+  expectation: MergeExpectation,
+) -> ProcessExit {
+  match commit_selection(text: target) {
+    CommitNotAnOrdinal { given: g } =>
+      exit_failure(reason: join(["squash refused: --arg target is not a commit ordinal: ", g], ""))
+    CommitSelected(target_ref) =>
+      match commit_selection(text: source) {
+        CommitNotAnOrdinal { given: g } =>
+          exit_failure(reason: join(["squash refused: --arg source is not a commit ordinal: ", g], ""))
+        CommitSelected(source_ref) =>
+          spine_squash_admitted(
+            root: root,
+            key: key,
+            target: target_ref,
+            source: source_ref,
+            message: message,
+            expectation: expectation,
+          )
+      }
+  }
+}
+
+func spine_squash_admitted(
+  root: String,
+  key: String,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+  message: String,
+  expectation: MergeExpectation,
+) -> ProcessExit {
+  match admit_slot(root: root, key: key) {
+    SlotRootEmpty => exit_failure(reason: slot_refusal(admission: SlotRootEmpty))
+    SlotKeyEmpty => exit_failure(reason: slot_refusal(admission: SlotKeyEmpty))
+    SlotAdmitted(slot) =>
+      match read_repository_slot(slot: slot) {
+        RepositorySlotHead(loaded) =>
+          squash_from(
+            loaded: loaded,
+            target: target,
+            source: source,
+            message: message,
+            expectation: expectation,
+          )
+        other => exit_failure(reason: slot_read_failure(read: other))
+      }
+  }
+}
+
+func squash_from(
+  loaded: LoadedRepositoryGeneration,
+  target: RepositoryCommitRef,
+  source: RepositoryCommitRef,
+  message: String,
+  expectation: MergeExpectation,
+) -> ProcessExit {
+  let outcome = squash_merge(
+    repository: loaded.envelope,
+    target: target,
+    source: source,
+    message: message,
+  )
+  match expectation {
+    ExpectationUnrecognized { given: _ } => exit_failure(reason: "unreachable")
+    MergedThoughConflictExpected =>
+      match outcome {
+        SquashMerged { repository: _, reference: _ } => ExitSuccess
+        SquashMergeConflicted { conflicts: _ } =>
+          exit_failure(
+            reason: "control failed: these edits CONFLICTED, so they are not the independent pair this asserts"
+          )
+        other =>
+          exit_failure(
+            reason: join([
+              "control failed: expected a clean merge under a conflict expectation and the squash was refused with ",
+              squash_outcome_wire(outcome: other),
+            ], "")
+          )
+      }
+    ConflictedThoughMergeExpected =>
+      match outcome {
+        SquashMergeConflicted { conflicts: _ } => ExitSuccess
+        SquashMerged { repository: _, reference: _ } =>
+          exit_failure(
+            reason: "control failed: these edits MERGED, so they are not the conflicting pair this asserts"
+          )
+        other =>
+          exit_failure(
+            reason: join([
+              "control failed: expected a conflict under a merge expectation and the squash was refused with ",
+              squash_outcome_wire(outcome: other),
+            ], "")
+          )
+      }
+    ExpectConflict =>
+      match outcome {
+        SquashMergeConflicted { conflicts: _ } => ExitSuccess
+        SquashMerged { repository: _, reference: _ } =>
+          exit_failure(reason: "squash failed: a genuine conflict MERGED instead of conflicting")
+        other =>
+          exit_failure(
+            reason: join(["squash failed: expected a conflict and got ", squash_outcome_wire(outcome: other)], "")
+          )
+      }
+    ExpectMerge =>
+      match outcome {
+        SquashMerged { repository: merged, reference: reference } =>
+          publish_merge_selected(loaded: loaded, merged: merged, reference: reference)
+        SquashMergeConflicted { conflicts: _ } =>
+          exit_failure(reason: "squash failed: independent edits reported a conflict")
+        other =>
+          exit_failure(
+            reason: join(["squash failed: the merge was refused with ", squash_outcome_wire(outcome: other)], "")
+          )
+      }
+  }
+}
+
+// EVERY REFUSAL NAMES ITSELF. Both expectation arms above used to end at one sentence -- "the merge
+// was refused" -- for eleven structurally different outcomes, so an operator reading a red saw that
+// something declined and nothing about WHICH authority declined or what the remedy is. That is the
+// undifferentiated-failure shape this stack refuses in production code, sitting in the instrument
+// that is supposed to make production legible. Found while probing degenerate merge topology, where
+// the whole question was which refusal fires.
+fn squash_outcome_wire(outcome: SquashMergeOutcome) -> String {
+  match outcome {
+    SquashMerged { repository: _, reference: _ } => "merged"
+    SquashMergeBaseRefused { refusal: r } =>
+      join(["base-refused|", merge_base_refusal_wire(refusal: r)], "")
+    SquashMergeConflicted { conflicts: _ } => "conflicted"
+    SquashMergeRootMissing { side: _, root: _ } => "root-missing"
+    SquashMergeRootIsAuthoredSource { side: _, root: _ } => "root-is-authored-source"
+    SquashMergeRootIsSemanticNode { side: _, root: _ } => "root-is-semantic-node"
+    SquashMergeSourceUnrecoverable { cause: _ } => "source-unrecoverable"
+    SquashMergeResultLocatorCollision { identity: _ } => "result-locator-collision"
+    SquashMergeAllocatorInvalid => "allocator-invalid"
+  }
+}
+
+fn merge_base_refusal_wire(refusal: MergeBaseOutcome) -> String {
+  match refusal {
+    MergeBaseDerived { anchors: _ } => "derived"
+    MergeBaseSourceAlreadyConsumed { recorded_at: _, consumed: _, source: _ } =>
+      "source-already-consumed"
+    MergeBaseHistoryUnwalkable { side: side, walk: walk } =>
+      join([
+        "history-unwalkable|side=", merge_base_side_wire(side: side),
+        "|walk=", ancestry_walk_wire(walk: walk),
+      ], "")
+    MergeBaseHistoriesDisjoint { target: _, source: _ } => "histories-disjoint"
+    MergeBaseSourceIsAncestorOfTarget { target: _, source: _ } => "source-is-ancestor-of-target"
+  }
+}
+
+fn merge_base_side_wire(side: MergeBaseSide) -> String {
+  match side {
+    MergeBaseTargetSide => "target"
+    MergeBaseSourceSide => "source"
+  }
+}
+
+fn ancestry_walk_wire(walk: AncestryWalk) -> String {
+  match walk {
+    AncestryTraced { chain: c } => join(["traced|len=", length(c) as String], "")
+    AncestryBrokenAt { commit: _, missing_parent: _ } => "broken-at"
+    AncestryStartNotInHistory { start: _ } => "start-not-in-history"
+    AncestryRevisitsACommit { detected_from: _ } => "revisits-a-commit"
+  }
+}

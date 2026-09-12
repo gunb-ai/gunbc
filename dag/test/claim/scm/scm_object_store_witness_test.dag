@@ -40,6 +40,9 @@ import v2.std.node {
 }
 
 import gunbc.scm.object_store {
+  PathUniqueManifestEntries,
+  empty_path_unique_entries, path_unique_with_path_bound, path_unique_entry_list,
+  corpus_manifest_identity,
   StoreOutcome,
   Stored,
   LocatorCollision,
@@ -794,4 +797,130 @@ test fn ms_one_source_at_two_paths_is_admitted() -> Bool {
           }
       }
   }
+}
+
+
+// THE ORDER BINDINGS ARRIVE IN MAY NOT REACH THE MANIFEST IDENTITY.
+//
+// THIS IS A REGRESSION CONTROL, NOT A DISCRIMINATOR OF THE SORT, AND THE DIFFERENCE WAS MEASURED
+// RATHER THAN ASSUMED. Deleting the sort from `path_unique_entry_list` leaves this claim GREEN,
+// because the runtime's map iterates as a function of its KEY SET: the same paths bound in any order
+// already iterate identically. So it carries no information about canonical ordering, and citing it as
+// coverage for that would be the inert-check trap DESIGN section 4b names. `ms_the_projection_is_ascending_by_path`
+// below is the claim whose red IS authorable for that property, and it was confirmed red under exactly
+// that deletion.
+//
+// What this claim DOES hold is the property against a carrier that remembers arrival order at all --
+// the list form it replaced, where two authors binding the same paths in different orders produced
+// different locators for the SAME manifest, a content address that is not a function of the content.
+// It stays enrolled for that direction. Ruled by external review.
+test fn ms_binding_order_does_not_reach_the_manifest_identity() -> Bool {
+  match ms_source(text: "alpha\n") {
+    Absent => false
+    Present { value: alpha } =>
+      let a = "a.dag" as NonEmptyStr
+      let b = "b.dag" as NonEmptyStr
+      let c = "c.dag" as NonEmptyStr
+      let target = authored_source_target_of(reference: alpha)
+      let forward = path_unique_with_path_bound(
+        unique: path_unique_with_path_bound(
+          unique: path_unique_with_path_bound(unique: empty_path_unique_entries(), path: a, source: target),
+          path: b,
+          source: target,
+        ),
+        path: c,
+        source: target,
+      )
+      let backward = path_unique_with_path_bound(
+        unique: path_unique_with_path_bound(
+          unique: path_unique_with_path_bound(unique: empty_path_unique_entries(), path: c, source: target),
+          path: b,
+          source: target,
+        ),
+        path: a,
+        source: target,
+      )
+      let fe = path_unique_entry_list(unique: forward)
+      let be = path_unique_entry_list(unique: backward)
+      count(fe) == 3
+        && count(be) == 3
+        && object_id_eq(
+             left: corpus_manifest_identity(entries: fe),
+             right: corpus_manifest_identity(entries: be),
+           )
+  }
+}
+
+// REBINDING A PATH LEAVES EXACTLY ONE BINDING FOR IT, which the list form maintained by rescanning and
+// the map form has by construction. Its red is therefore not authorable against the CURRENT carrier --
+// a keyed write cannot produce two bindings for one key -- so this is the permanent regression control
+// DESIGN section 4b(4) describes rather than a live wall: it reds against a carrier that appends, which
+// is what this cut replaced, and it does not retire just because the wall now holds.
+test fn ms_rebinding_a_path_leaves_one_binding() -> Bool {
+  match ms_source(text: "alpha\n") {
+    Absent => false
+    Present { value: alpha } =>
+      match ms_source(text: "beta\n") {
+        Absent => false
+        Present { value: beta } =>
+          let p = "a.dag" as NonEmptyStr
+          let first = authored_source_target_of(reference: alpha)
+          let second = authored_source_target_of(reference: beta)
+          let rebound = path_unique_with_path_bound(
+            unique: path_unique_with_path_bound(
+              unique: empty_path_unique_entries(),
+              path: p,
+              source: first,
+            ),
+            path: p,
+            source: second,
+          )
+          let entries = path_unique_entry_list(unique: rebound)
+          count(entries) == 1
+            && fold(entries, init: false, f: fn(acc, e) {
+                 acc || object_id_eq(left: e.source.locator, right: second.locator)
+               })
+            && !fold(entries, init: false, f: fn(acc, e) {
+                 acc || object_id_eq(left: e.source.locator, right: first.locator)
+               })
+      }
+  }
+}
+
+
+// THE PROJECTION IS ASCENDING BY PATH, asserted directly rather than inferred from two identities
+// agreeing. Comparing two binding orders does NOT discriminate the sort: the runtime's map iterates as
+// a function of its KEY SET, so the same paths bound in any order already iterate identically, and
+// that claim passes with the sort deleted -- measured, not assumed. This one names the property the
+// ruling actually demanded: canonical order at the boundary, never hash order.
+test fn ms_the_projection_is_ascending_by_path() -> Bool {
+  match ms_source(text: "alpha\n") {
+    Absent => false
+    Present { value: alpha } =>
+      let target = authored_source_target_of(reference: alpha)
+      let bound = fold(
+        ["m.dag", "b.dag", "z.dag", "a.dag", "q.dag", "c.dag", "y.dag", "d.dag"],
+        init: empty_path_unique_entries(),
+        f: fn(acc, p) {
+          path_unique_with_path_bound(unique: acc, path: p as NonEmptyStr, source: target)
+        },
+      )
+      let entries = path_unique_entry_list(unique: bound)
+      count(entries) == 8
+        && fold(entries, init: AscendingScan { previous: none, ascending: true }, f: fn(acc, e) {
+             match acc.previous {
+               Absent => AscendingScan { previous: Present { value: e.path as String }, ascending: acc.ascending }
+               Present { value: prev } =>
+                 AscendingScan {
+                   previous: Present { value: e.path as String },
+                   ascending: acc.ascending && prev < (e.path as String),
+                 }
+             }
+           }).ascending
+  }
+}
+
+type AscendingScan {
+  previous: String?
+  ascending: Bool
 }

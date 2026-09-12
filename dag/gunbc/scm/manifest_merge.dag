@@ -25,7 +25,7 @@ module gunbc.scm.manifest_merge
 //   B=Present(X) S=Present(Y) T=Absent      -> no arm             -> CONFLICT  modify vs delete
 //
 // THE LAST TWO ARE THE ONES THIS MODULE EXISTS TO GET RIGHT, and they are the resurrection class of
-// gunbc.scm.merge_base one layer down -- at PATH grain rather than LINEAGE grain. Taking the deletion
+// gunbc.scm.repository_envelope one layer down -- at PATH grain rather than LINEAGE grain. Taking the deletion
 // silently discards an edit; taking the edit silently resurrects a file the other side deleted on
 // purpose. Neither is a conflict a user could see, and both produce a valid manifest. So the law must
 // refuse rather than pick a side, and it does so with no clause of its own: there is simply no
@@ -40,6 +40,8 @@ import gunbc.scm.object_store {
   AuthoredSourceTarget,
   CorpusManifestEntry,
   CorpusManifestRecord,
+  PathUniqueManifestEntries,
+  empty_path_unique_entries, path_unique_with_path_bound,
   object_id_eq,
 }
 
@@ -86,12 +88,38 @@ type ManifestPathConflict {
 // size of the job: a user fixes, re-runs, discovers another, and cannot tell after any single round
 // whether they are near the end. That is the absorbing shape in slow motion -- each round is
 // individually honest and the sequence is not.
+// THE SUCCESS ARM CARRIES THE SEALED PATH-UNIQUE CARRIER, NOT A RAW LIST, AND THE ACCUMULATOR BUILDS
+// IT DIRECTLY. A raw list crossing into `object_store` has only three possible meanings and all three
+// are wrong here: skip the duplicate check and recreate the forge a previous round removed; run it and
+// re-ask a question this fold already settled, preserving an arm no caller can reach; or deduplicate
+// silently, which invents merge policy the decision law never stated. A merge-specific uniqueness type
+// would instead give one invariant two names and two constructor families. So the merge produces the
+// SAME carrier `add` produces, through operations that preserve its invariant by construction, and
+// there is no assembly step after the fold. Ruled by external review.
+// THE CONFLICT-FREE RESULT IS SEALED, BECAUSE BEING PATH-UNIQUE IS NOT THE SAME FACT AS HAVING BEEN
+// MERGED WITHOUT CONFLICT.
+//
+// `PathUniqueManifestEntries` is the carrier `add` also produces, so a merge result that travelled as
+// one carried no evidence distinguishing it from any other path-unique set a caller happened to hold.
+// That mattered exactly once: the merge subject downstream took the entries as a peer argument, so an
+// arbitrary set could be paired with two real anchors and minted into a `SquashIntegrated` receipt
+// without `merge_manifests` ever having decided the paths. Membership of a carrier was standing in for
+// authority over an operation. Found by external review.
+//
+// So the conflict-free arm now yields a value only this fold can construct. The invariant is not
+// re-checked anywhere downstream -- it is unwritable to arrive without it. The inner carrier is
+// unchanged, so this mints no second uniqueness authority (DESIGN 3): it names WHICH path-unique set
+// this is, not a different kind of set.
+type MergedManifestEntries sole_constructor {
+  entries: PathUniqueManifestEntries
+}
+
 type ManifestMergeOutcome
-  = ManifestMerged { entries: List<CorpusManifestEntry> }
+  = ManifestMerged { merged: MergedManifestEntries }
   | ManifestConflicted { conflicts: List<ManifestPathConflict> }
 
 type MergeAcc {
-  entries: List<CorpusManifestEntry>
+  entries: PathUniqueManifestEntries
   conflicts: List<ManifestPathConflict>
 }
 
@@ -124,12 +152,17 @@ fn merge_path(
 // AN ADMITTED ABSENCE WRITES NO ENTRY, which is how a deletion is represented in a manifest: the path
 // is simply not in it. Writing an entry that means "deleted" would be a second representation of
 // absence beside the one the manifest already has.
+//
+// OMITTING IS SOUND HERE RATHER THAN MERELY CONVENIENT, and the reason is the grouping: the fold sorts
+// the three sides' entries by path and decides each path ONCE, so a path reaching this arm was never
+// bound and there is nothing to remove. A removal call would be a no-op whose only effect is to imply
+// this accumulator can hold a path it has already rejected.
 fn admit_state(acc: MergeAcc, path: NonEmptyStr, state: PathState) -> MergeAcc {
   match state {
     PathAbsent => acc
     PathPresent { source: s } =>
       MergeAcc {
-        entries: concat([CorpusManifestEntry { path: path, source: s }], acc.entries),
+        entries: path_unique_with_path_bound(unique: acc.entries, path: path, source: s),
         conflicts: acc.conflicts,
       }
   }
@@ -258,8 +291,14 @@ fn close_groups(acc: GroupAcc) -> MergeAcc {
 // a second authority for "did anything conflict", free to disagree with the list it describes.
 //
 // THE OPERANDS ARE STORE-CONSTRUCTED RECORDS, NOT RAW LISTS. `CorpusManifestRecord` is
-// sole_constructor and `store_corpus_manifest` refuses a duplicate path before an identity is
-// derived, so no caller can hand this function a manifest holding two entries for one path. A first
+// sole_constructor and is minted at exactly one place, `gunbc.scm.object_store`
+// `insert_canonical_manifest`, which cannot be reached without an `AdmittedManifestEntries` -- a
+// carrier with two constructors, one that ran the duplicate check and one whose argument is already
+// a `PathUniqueManifestEntries`. So no caller can hand this function a manifest holding two entries
+// for one path. An earlier revision of this sentence named `store_corpus_manifest` as the producer
+// that established it; that was true when written and became FALSE once the native `add` reached the
+// shared constructor through `store_path_unique_manifest`, so the conclusion still held while the
+// cited authority no longer covered the whole population. Found by external review. A first
 // derivation took `List<CorpusManifestEntry>` and carried an annotation asserting that uniqueness
 // held -- an assertion about a guarantee the SIGNATURE did not carry, which is validation-by-comment
 // standing where construction was available. Under raw lists, a source of [a -> X, a -> Y] merged
@@ -283,13 +322,16 @@ fn merge_manifests(
   let decided = close_groups(
     acc: fold(
       joined,
-      init: GroupAcc { open: none, decided: MergeAcc { entries: [], conflicts: [] } },
+      init: GroupAcc {
+        open: none,
+        decided: MergeAcc { entries: empty_path_unique_entries(), conflicts: [] },
+      },
       f: fn(acc, e) { group_step(acc: acc, entry: e) },
     )
   )
   if count(decided.conflicts) > 0 {
     ManifestConflicted { conflicts: reverse(decided.conflicts) }
   } else {
-    ManifestMerged { entries: reverse(decided.entries) }
+    ManifestMerged { merged: MergedManifestEntries { entries: decided.entries } }
   }
 }

@@ -16,6 +16,7 @@ import gunbc.scm.object_store {
   find_corpus_manifest_record,
   CorpusManifestFound, CorpusManifestAbsent,
   CorpusManifestIsSemanticNode, CorpusManifestIsAuthoredSource,
+  path_unique_entry_list,
 }
 import gunbc.scm.manifest_merge {
   PathState, PathAbsent, PathPresent, path_state_eq,
@@ -138,7 +139,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
          MergeUnavailable => false
          Merged(outcome) =>
            match outcome {
-            ManifestMerged { entries: e } => count(e) == 0
+            ManifestMerged { merged: e } => count(path_unique_entry_list(unique: e.entries)) == 0
             ManifestConflicted { conflicts: _ } => false
       }
        })
@@ -146,7 +147,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => count(e) == 0
+            ManifestMerged { merged: e } => count(path_unique_entry_list(unique: e.entries)) == 0
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -154,7 +155,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: y)
+            ManifestMerged { merged: e } => entries_hold(entries: path_unique_entry_list(unique: e.entries), path: "a", source: y)
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -162,7 +163,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: y)
+            ManifestMerged { merged: e } => entries_hold(entries: path_unique_entry_list(unique: e.entries), path: "a", source: y)
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -170,7 +171,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: e } => count(e) == 0
+            ManifestMerged { merged: e } => count(path_unique_entry_list(unique: e.entries)) == 0
             ManifestConflicted { conflicts: _ } => false
       }
           })
@@ -178,7 +179,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
             MergeUnavailable => false
             Merged(outcome) =>
               match outcome {
-            ManifestMerged { entries: _ } => false
+            ManifestMerged { merged: _ } => false
             ManifestConflicted { conflicts: c } => count(c) == 1
       }
           })
@@ -197,7 +198,7 @@ test fn scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absen
         MergeUnavailable => false
         Merged(outcome) =>
           match outcome {
-            ManifestMerged { entries: _ } => false
+            ManifestMerged { merged: _ } => false
             ManifestConflicted { conflicts: c } =>
               count(c) == 1
                 && fold(c, init: false, f: fn(found, k) {
@@ -223,7 +224,7 @@ test fn scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absen
         MergeUnavailable => false
         Merged(outcome) =>
           match outcome {
-            ManifestMerged { entries: _ } => false
+            ManifestMerged { merged: _ } => false
             ManifestConflicted { conflicts: c } =>
               count(c) == 1
                 && fold(c, init: false, f: fn(found, k) {
@@ -263,7 +264,7 @@ test fn scm_mm_every_conflicting_path_is_reported_not_the_first() -> Bool {
         MergeUnavailable => false
         Merged(outcome) =>
           match outcome {
-            ManifestMerged { entries: _ } => false
+            ManifestMerged { merged: _ } => false
             ManifestConflicted { conflicts: c } =>
               count(c) == 2
                 && fold(c, init: false, f: fn(f2, k) { f2 || (k.path as String) == "a" })
@@ -314,12 +315,12 @@ fn outcomes_agree(left: ManifestMergeOutcome, right: ManifestMergeOutcome) -> Bo
     ManifestConflicted { conflicts: lc } =>
       match right {
         ManifestConflicted { conflicts: rc } => conflict_paths(conflicts: lc) == conflict_paths(conflicts: rc)
-        ManifestMerged { entries: _ } => false
+        ManifestMerged { merged: _ } => false
       }
-    ManifestMerged { entries: le } =>
+    ManifestMerged { merged: le } =>
       match right {
         ManifestConflicted { conflicts: _ } => false
-        ManifestMerged { entries: re } => entry_keys(entries: le) == entry_keys(entries: re)
+        ManifestMerged { merged: re } => entry_keys(entries: path_unique_entry_list(unique: le.entries)) == entry_keys(entries: path_unique_entry_list(unique: re.entries))
       }
   }
 }
@@ -335,7 +336,7 @@ fn resolves_to(
     Merged(outcome) =>
       match outcome {
         ManifestConflicted { conflicts: _ } => false
-        ManifestMerged { entries: e } => entries_hold(entries: e, path: "a", source: expect)
+        ManifestMerged { merged: e } => entries_hold(entries: path_unique_entry_list(unique: e.entries), path: "a", source: expect)
       }
   }
 }
@@ -407,10 +408,10 @@ test fn scm_mm_a_path_only_one_side_has_is_still_decided() -> Bool {
         Merged(outcome) =>
           match outcome {
             ManifestConflicted { conflicts: _ } => false
-            ManifestMerged { entries: e } =>
-              count(e) == 2
-                && fold(e, init: false, f: fn(f2, k) { f2 || (k.path as String) == "new" })
-                && fold(e, init: false, f: fn(f2, k) { f2 || (k.path as String) == "kept" })
+            ManifestMerged { merged: e } =>
+              count(path_unique_entry_list(unique: e.entries)) == 2
+                && fold(path_unique_entry_list(unique: e.entries), init: false, f: fn(f2, k) { f2 || (k.path as String) == "new" })
+                && fold(path_unique_entry_list(unique: e.entries), init: false, f: fn(f2, k) { f2 || (k.path as String) == "kept" })
       }
       }
   }
