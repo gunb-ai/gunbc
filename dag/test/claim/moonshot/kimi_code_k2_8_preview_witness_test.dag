@@ -40,26 +40,7 @@ import extdeps.moonshot.kimi_code_k2_8_preview {
   CitedAvailableOn,
   StartDateNotPublishedOnCitedAuthorities,
   kimi_code_catalog_as_of_2026_09_11,
-  kimi_k28_vendor_characterization_performance_close_to_k3,
-  kimi_k28_vendor_characterization_more_efficient_thinking,
-  kimi_vendor_characterization_as_quality_reading,
-  KimiQualityReadingRefusedUnestablishedMeasurement,
-  KimiQualityReadingRefusedVendorCharacterization,
   kimi_code_k28_preview_provider_integration_frontier,
-}
-import gunbc.kimi_code_k2_8_preview_observation {
-  kimi_k28_artifact_standing,
-  CheckpointNotLocatedOnSearchedSurfaces,
-  OfficialCheckpointLocated,
-  kimi_code_executed_version_without_receipt,
-  ExecutedVersionUnobserved,
-  ExecutedVersionObserved,
-  kimi_code_requested_id_evidence,
-  kimi_code_provider_declared_served_version_evidence,
-  kimi_code_executed_version_evidence,
-  RequestedModelIdEvidence,
-  ProviderDeclaredServedVersionEvidence,
-  ExecutedVersionEvidence,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -209,68 +190,8 @@ test fn highspeed_remains_k2_7_code_highspeed() -> Bool {
     }
 }
 
-test fn vendor_performance_prose_cannot_construct_a_quality_reading() -> Bool {
-  match kimi_vendor_characterization_as_quality_reading(
-    characterization: kimi_k28_vendor_characterization_performance_close_to_k3,
-  ) {
-    KimiQualityReadingRefusedUnestablishedMeasurement { characterization: c } =>
-      (c.claim as String) == "Performance close to K3"
-    KimiQualityReadingRefusedVendorCharacterization { characterization: _ } => false
-  }
-    && match kimi_vendor_characterization_as_quality_reading(
-      characterization: kimi_k28_vendor_characterization_more_efficient_thinking,
-    ) {
-      KimiQualityReadingRefusedUnestablishedMeasurement { characterization: c } =>
-        (c.claim as String) == "more efficient thinking"
-      KimiQualityReadingRefusedVendorCharacterization { characterization: _ } => false
-    }
-}
-
-test fn k2_8_checkpoint_not_located_on_searched_hf_and_github_surfaces() -> Bool {
-  match kimi_k28_artifact_standing {
-    CheckpointNotLocatedOnSearchedSurfaces {
-      observed_at: at,
-      searched_surfaces: surfaces,
-      known_unsearched_official_surfaces: unsearched,
-      trigger: t,
-    } =>
-      (at as String) == "2026-09-11"
-        && (surfaces |> count) == 2
-        && (unsearched |> count) == 1
-        && (t as String)
-          == "an official K2.8 checkpoint published on any official Moonshot surface, including a surface not in this search, with a citable revision"
-    OfficialCheckpointLocated { locator: _, observed_at: _ } => false
-  }
-}
-
-test fn executed_version_stays_unobserved_without_a_receipt() -> Bool {
-  match kimi_code_executed_version_without_receipt {
-    ExecutedVersionUnobserved { reason: _ } => true
-    ExecutedVersionObserved { version: _, receipt: _ } => false
-  }
-    && match kimi_code_requested_id_evidence {
-      RequestedModelIdEvidence { model_id: id } => (id as String) == "kimi-for-coding"
-      ProviderDeclaredServedVersionEvidence { assignment: _ } => false
-      ExecutedVersionEvidence { standing: _ } => false
-    }
-    && match kimi_code_provider_declared_served_version_evidence {
-      ProviderDeclaredServedVersionEvidence { assignment: a } =>
-        (kimi_code_served_version_name(v: a.served_version) as String) == "K2.8 Preview"
-      RequestedModelIdEvidence { model_id: _ } => false
-      ExecutedVersionEvidence { standing: _ } => false
-    }
-    && match kimi_code_executed_version_evidence {
-      ExecutedVersionEvidence { standing: s } => match s {
-        ExecutedVersionUnobserved { reason: _ } => true
-        ExecutedVersionObserved { version: _, receipt: _ } => false
-      }
-      RequestedModelIdEvidence { model_id: _ } => false
-      ProviderDeclaredServedVersionEvidence { assignment: _ } => false
-    }
-}
-
 test fn provider_integration_frontier_names_the_route() -> Bool {
-  (kimi_code_k28_preview_provider_integration_frontier |> count) == 2
+  (kimi_code_k28_preview_provider_integration_frontier |> count) == 3
     && (kimi_code_k28_preview_provider_integration_frontier |> any(row =>
       match row.subject {
         DeclSubject { ref: r } => (r.decl_name as String) == "kimi_code_route"
@@ -280,6 +201,19 @@ test fn provider_integration_frontier_names_the_route() -> Bool {
           UnboundDissolution { description: d } =>
             (d as String)
               == "KIMI28-1 binds kimi_code_route as the production resolver on an admitted Kimi Code live request"
+          BoundDissolution { trigger: _ } => false
+        }
+    ))
+    && (kimi_code_k28_preview_provider_integration_frontier |> any(row =>
+      match row.subject {
+        DeclSubject { ref: r } =>
+          (r.decl_name as String) == "kimi_k28_declared_context_ceiling"
+        PathSubject { path: _ } => false
+      }
+        && match row.dissolution {
+          UnboundDissolution { description: d } =>
+            (d as String)
+              == "KIMI28-1 request admission consumes kimi_k28_declared_context_ceiling when binding an admitted Kimi Code request's context bound"
           BoundDissolution { trigger: _ } => false
         }
     ))

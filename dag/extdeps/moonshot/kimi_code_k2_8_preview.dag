@@ -302,51 +302,6 @@ fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingContr
 
 data kimi_k28_declared_context_ceiling: TokenCount = token_count(count: 1048576)
 
-data kimi_k28_context_ceiling_citation: FactCitation = FactCitation {
-  fact: DeclarationRef {
-    module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
-    decl_name: "kimi_k28_declared_context_ceiling" as NonEmptyStr,
-    field: WholeDeclaration,
-  },
-  authority: kimi_code_models_authority,
-}
-
-type KimiVendorMeasurementStanding
-  = MeasurementUnestablished
-  | MeasurementEstablished { instrument: NonEmptyStr }
-
-type VendorCharacterization {
-  claim: NonEmptyStr
-  measurement: KimiVendorMeasurementStanding
-}
-
-data kimi_k28_vendor_characterization_performance_close_to_k3: VendorCharacterization = VendorCharacterization {
-  claim: "Performance close to K3" as NonEmptyStr,
-  measurement: MeasurementUnestablished,
-}
-
-data kimi_k28_vendor_characterization_more_efficient_thinking: VendorCharacterization = VendorCharacterization {
-  claim: "more efficient thinking" as NonEmptyStr,
-  measurement: MeasurementUnestablished,
-}
-
-type KimiQualityReadingConstruction
-  = KimiQualityReadingRefusedUnestablishedMeasurement { characterization: VendorCharacterization }
-  | KimiQualityReadingRefusedVendorCharacterization { characterization: VendorCharacterization }
-
-fn kimi_vendor_characterization_as_quality_reading(
-  characterization: VendorCharacterization,
-) -> KimiQualityReadingConstruction {
-  match characterization.measurement {
-    MeasurementUnestablished => KimiQualityReadingRefusedUnestablishedMeasurement {
-      characterization: characterization,
-    }
-    MeasurementEstablished { instrument: _ } => KimiQualityReadingRefusedVendorCharacterization {
-      characterization: characterization,
-    }
-  }
-}
-
 fn kimi_code_k28_preview_fact(decl_name: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
     module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
@@ -360,6 +315,11 @@ data kimi_code_k28_preview_provider_integration_frontier: List<FrontierRow> = [
     ref: kimi_code_k28_preview_fact(decl_name: "kimi_code_route" as NonEmptyStr),
     reason: "KIMI28-1 is the owning change: it binds this resolver on the admitted Kimi Code live-request path; this change does not",
     dissolution: unbound_dissolution(description: "KIMI28-1 binds kimi_code_route as the production resolver on an admitted Kimi Code live request"),
+  ),
+  frontier_row_decl(
+    ref: kimi_code_k28_preview_fact(decl_name: "kimi_k28_declared_context_ceiling" as NonEmptyStr),
+    reason: "KIMI28-1 request admission applies this TokenCount as the K2.8 Preview context bound; this change does not admit requests",
+    dissolution: unbound_dissolution(description: "KIMI28-1 request admission consumes kimi_k28_declared_context_ceiling when binding an admitted Kimi Code request's context bound"),
   ),
   frontier_row_decl(
     ref: kimi_code_k28_preview_fact(decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr),
