@@ -6661,23 +6661,20 @@ pub fn run_required_floor(
         // complete in the interpreter and simply never switched on here, so a CPU budget stood
         // in for it while printing the wall rule's own error text.
         //
-        // Both clocks are armed deliberately, and INDEPENDENTLY (operator ruling 2026-08-19,
-        // BUDGET POLICY CUT, superseding correction — "DO NOT set CPU and wall to the same
-        // 5000ms"). CPU catches a spin; wall catches a witness that is slow because of what it
-        // reaches for, which CPU cannot see: the worst row measured burned 504 SECONDS of wall
-        // under a 5-second ceiling and returned an ordinary Bool, because its time was
-        // filesystem reads and its CPU never approached the limit. The wall limit is
-        // deliberately looser than the CPU limit so ordinary host scheduling delay on a pure
-        // in-process claim cannot itself trip an interrupt while the claim is still within its
-        // CPU envelope.
+        // ONLY THE WALL CLOCK IS ARMED, and the paragraph that stood here described two. It
+        // read "Both clocks are armed deliberately, and INDEPENDENTLY (operator ruling
+        // 2026-08-19 ... DO NOT set CPU and wall to the same 5000ms)" and then explained that
+        // which clock is armed is the claim's COST POLICY, selected through a
+        // `changed_witness_cpu_deadline` predicate. Both halves are now false: the predicate is
+        // deleted, and no claim arms a CPU deadline.
         //
-        // WHICH CLOCK IS ARMED IS THE CLAIM'S COST POLICY, and only the CPU one moves
-        // (`v2.workflow.required_floor` `changed_witness_cpu_deadline`, FLOOR-CHANGED-COST-0).
-        // Under `ChangedCostDebtVerdictOnly` the CPU deadline is NOT armed, so the interrupt
-        // cannot preempt the verdict the changed set exists to learn; the same 500ms figure is
-        // still carried on the claim and is published against the debt identity below. The wall
-        // budget is armed identically under both policies — a claim that is blocked or stuck
-        // still reaches no verdict, and that is still a red.
+        // WHAT SURVIVES FROM IT IS THE WALL CLOCK'S OWN JUSTIFICATION, which is untouched and is
+        // why the next line still arms it: wall catches a witness that is slow because of what it
+        // REACHES FOR, which no amount of counting the claim's own work can see. The worst row
+        // measured burned 504 SECONDS of wall under a 5-second ceiling and returned an ordinary
+        // Bool, because its time was filesystem reads while its CPU never approached the limit.
+        // A claim that is blocked or stuck still reaches no verdict, and that is still a red.
+        //
         // NO CPU DEADLINE IS ARMED, FOR ANY CLAIM (operator ruling via fierce-lark-661,
         // 2026-09-12; `v2.workflow.required_floor` `claim_cost_basis_standing` reports
         // `CpuTimeBasis` as `BasisObservedOnly`). The `match` on `cost_policy` that stood here
