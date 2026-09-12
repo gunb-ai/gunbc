@@ -169,7 +169,7 @@ data held_stage_delivery_receipts: List<StageDeliveryReceipt> = [
   StageDeliveryReceipt {
     kind: ReferenceGraphInstrumentDelivered,
     producer: "tools.reference_derived_graph.report" as NonEmptyStr,
-    discriminated_by: "test.claim.reference_derived_graph_witness.reference_only_module_has_edge_and_unused_import_does_not" as NonEmptyStr,
+    discriminated_by: "tools.reference_derived_graph.main" as NonEmptyStr,
   }
 ]
 

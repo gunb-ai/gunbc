@@ -1,7 +1,6 @@
 module v2.lens.module_graph
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.filesystem.filesystem_io
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
