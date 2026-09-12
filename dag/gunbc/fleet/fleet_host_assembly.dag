@@ -1,6 +1,7 @@
 module gunbc.fleet_host_assembly
 
 import std.types { List, NonEmptyStr, Bool }
+import std.list { list_any, list_cover }
 import product.placement_supply {
   HostIdentity,
   PhysicalAssetIdentity,
@@ -267,14 +268,12 @@ fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> B
 }
 
 fn component_acquired_from_lot(rows: List<AssembledComponent>, component: PhysicalAssetIdentity, lot: InventoryLotIdentity) -> Bool {
-  fold(rows, init: false, f: fn(acc, row) {
-    acc || (
-      physical_asset_identity_eq(a: row.component, b: component)
-        && match row.acquisition {
-          ComponentAcquiredFromLot { lot: bound } => inventory_lot_identity_eq(left: lot, right: bound)
-          ComponentAcquisitionUnrecorded { read_obligation: _ } => false
-        }
-    )
+  list_any(xs: rows, p: fn(row) {
+    physical_asset_identity_eq(a: row.component, b: component)
+      && match row.acquisition {
+        ComponentAcquiredFromLot { lot: bound } => inventory_lot_identity_eq(left: lot, right: bound)
+        ComponentAcquisitionUnrecorded { read_obligation: _ } => false
+      }
   })
 }
 
@@ -290,13 +289,8 @@ fn every_cooler_component_is_from_its_lot(rows: List<AssembledComponent>) -> Boo
     && component_acquired_from_lot(rows: rows, component: cooler_srv4, lot: cooler_srv4_lot_identity)
 }
 
-fn physical_identities_contain(ids: List<PhysicalAssetIdentity>, id: PhysicalAssetIdentity) -> Bool {
-  fold(ids, init: false, f: fn(acc, x) { acc || physical_asset_identity_eq(a: x, b: id) })
-}
-
-fn physical_identities_cover(held: List<PhysicalAssetIdentity>, expected: List<PhysicalAssetIdentity>) -> Bool {
-  fold(expected, init: true, f: fn(acc, e) { acc && physical_identities_contain(ids: held, id: e) })
-    && fold(held, init: true, f: fn(acc, h) { acc && physical_identities_contain(ids: expected, id: h) })
+fn assembly_covers_component_roster(rows: List<AssembledComponent>) -> Bool {
+  list_cover(held: map(rows, r => r.component), expected: srv_assembly_component_roster, eq: physical_asset_identity_eq)
 }
 
 data srv_assembly_component_roster: List<PhysicalAssetIdentity> = [
@@ -309,17 +303,13 @@ data srv_assembly_component_roster: List<PhysicalAssetIdentity> = [
   cooler_srv3, cooler_srv4,
 ]
 
-fn assembly_covers_component_roster(rows: List<AssembledComponent>) -> Bool {
-  physical_identities_cover(held: map(rows, r => r.component), expected: srv_assembly_component_roster)
-}
-
 fn is_cooler_asset(id: PhysicalAssetIdentity) -> Bool {
   physical_asset_identity_eq(a: id, b: cooler_srv3) || physical_asset_identity_eq(a: id, b: cooler_srv4)
 }
 
 fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: PhysicalAssetIdentity, host: HostIdentity) -> Bool {
-  fold(containments, init: false, f: fn(acc, c) {
-    acc || match c {
+  list_any(xs: containments, p: fn(c) {
+    match c {
       ChassisContainsHost { chassis: ch, host: h } =>
         physical_asset_identity_eq(a: ch, b: chassis) && host_identity_eq(a: h, b: host)
       HostContainsComponent { host: _, component: _ } => false
@@ -331,8 +321,8 @@ fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: Phy
 }
 
 fn containment_has_component(containments: List<PhysicalContainment>, host: HostIdentity, component: PhysicalAssetIdentity) -> Bool {
-  fold(containments, init: false, f: fn(acc, c) {
-    acc || match c {
+  list_any(xs: containments, p: fn(c) {
+    match c {
       HostContainsComponent { host: h, component: comp } =>
         host_identity_eq(a: h, b: host) && physical_asset_identity_eq(a: comp, b: component)
       ChassisContainsHost { chassis: _, host: _ } => false
@@ -363,11 +353,9 @@ fn assembly_containments_join(rows: List<AssembledComponent>, containments: List
             || (physical_asset_identity_eq(a: ch, b: chassis_srv4) && host_identity_eq(a: h, b: operator_host_srv4))
         HostContainsComponent { host: h, component: comp } =>
           !is_cooler_asset(id: comp)
-            && fold(rows, init: false, f: fn(found, row) {
-              found || (
-                host_identity_eq(a: row.host, b: h)
-                  && physical_asset_identity_eq(a: row.component, b: comp)
-              )
+            && list_any(xs: rows, p: fn(row) {
+              host_identity_eq(a: row.host, b: h)
+                && physical_asset_identity_eq(a: row.component, b: comp)
             })
         SiteContainsRoom { site: _, room: _ } => false
         RoomContainsRack { room: _, rack: _ } => false

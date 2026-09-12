@@ -1,6 +1,7 @@
 module test.claim.fleet_host_assembly_witness
 
 import std.types { Bool, String }
+import std.list { list_any }
 import product.placement_supply {
   ChassisContainsHost,
   HostContainsComponent,
@@ -54,12 +55,8 @@ test fn w_omitting_one_component_changes_the_derived_count() -> Bool {
 }
 
 test fn w_boards_and_processors_are_present() -> Bool {
-  fold(srv_assembly_components, init: false, f: fn(found, row) {
-    found || physical_asset_identity_eq(a: row.component, b: board_srv1)
-  })
-    && fold(srv_assembly_components, init: false, f: fn(found, row) {
-      found || physical_asset_identity_eq(a: row.component, b: processor_srv1)
-    })
+  list_any(xs: srv_assembly_components, p: fn(row) { physical_asset_identity_eq(a: row.component, b: board_srv1) })
+    && list_any(xs: srv_assembly_components, p: fn(row) { physical_asset_identity_eq(a: row.component, b: processor_srv1) })
     && fold(srv_assembly_components, init: true, f: fn(acc, row) {
       acc && match row.acquisition {
         ComponentAcquiredFromLot { lot: _ } => true
