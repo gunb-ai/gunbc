@@ -7,6 +7,9 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod grounded_shared_carrier_wrap_test;
+
+#[cfg(test)]
 mod map_insert_record_shaped_refusal_test;
 
 #[cfg(test)]
