@@ -175,11 +175,16 @@ data spark_serving_route_region_obligation: NonEmptyStr = "gunbc.spark.serving_o
 // machines (review 63995).
 //
 // THE SUBJECT IS THE REALIZATION THAT ANSWERED, NOT A HOST LIST, because the same hosts can carry
-// more than one deployment and the route's facts are about the one being offered. The coverage
-// question below reads its hosts; gunbc.spark.first_party_serving reads the readback the running
-// engine answered with to decide which declared launch it is, and therefore whose container
-// environment may be attributed to it. Passing a bare host list let those two answers come from
-// different deployments (operator-routed review of #11083).
+// more than one deployment and the route's facts are about the one being offered. Passing a bare
+// host list let the region and the service come from different deployments (operator-routed review
+// of #11083).
+//
+// WHAT THE TWO FIELDS DECIDE, CORRECTED: an earlier spelling of this paragraph said the readback
+// decides which declared launch the process is and therefore whose container environment may be
+// attributed to it. The implementation does NEITHER. The hosts decide the REGION, against the
+// operator's dated allocation. The readback decides only the DIAGNOSIS the service refusal carries,
+// because a reported configuration can agree without establishing which deployment answered -- so
+// the service is refused for every input, and no container environment is attributed to anything.
 //
 // AN EMPTY HOST LIST REFUSES, and that arm is the reason this is a fold over the UNCOVERED set
 // rather than an all() over the covered one: all() of nothing is true, so a group whose membership

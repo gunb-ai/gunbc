@@ -114,12 +114,15 @@ fn t_foreign_realization() -> SparkServingRealization {
   }
 }
 
-// POSITIVE CONTROL. The first-party scope admits, and the permit carries the route and posture it
-// was admitted under rather than merely existing.
-// THIS WITNESS USED TO ASSERT THAT THE FIRST-PARTY SCOPE ADMITS, AND IT NO LONGER CAN. It is kept
+// THIS WITNESS USED TO ASSERT THAT THE FIRST-PARTY SCOPE ADMITS AND THAT THE PERMIT CARRIED THE
+// ROUTE AND POSTURE IT WAS ADMITTED UNDER. It no longer can, and that description is recorded here
+// in the past tense rather than left standing above this paragraph, where a reader met it first. It is kept
 // rather than deleted because it is the executed statement of what this repair COSTS: the work item
 // this module was built for asks that the dev end-to-end run PASS the two spark serving walls, and
-// after this change it does not. The route refuses, for a reason nothing here can retire -- the only
+// this producer now refuses instead. SCOPED HONESTLY, that is a statement about THIS PRODUCER and not
+// about the run: the harness takes SparkOfferBound directly to its missing-Work refusal and does not
+// call spark_first_party_admission at all, so the dev run does not reach this refusal and its
+// terminal is unchanged by it. The route refuses, for a reason nothing here can retire -- the only
 // environment the corpus holds for a serving container is the one it declares the container is
 // CREATED with, and no producer reads a running one. The refusal is therefore unconditional rather
 // than situational, and it stands until the capability named at
