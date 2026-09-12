@@ -21,7 +21,7 @@ import gunbc.runner.runner_usage_receipt {
   produce_runner_usage_receipt, RunnerUsageProduced, RunnerUsageRefused,
   UsageMeterMissing, UsageSubjectMismatch, UsageInitiatorMissing, UsageInitiatorJobMismatch,
   UsageVcpuCountZero, UsageClockResolutionZero, UsageClockBasisNotWall,
-  UsageIntervalsUnorderedOrIncomparable, metered_vcpu_minutes_fraction,
+  UsageIntervalOrderRefused, RunnerInstantsIncomparable, RunnerInstantsReversed, metered_vcpu_minutes_fraction,
 }
 import gunbc.runner.runner_teardown_receipt {
   RunnerEnvironmentInventory, RunnerResourceReading, RunnerResourcePresent,
@@ -31,7 +31,14 @@ import gunbc.runner.runner_teardown_receipt {
   TeardownObservationMissing, TeardownSelfObservation, TeardownInventoryMismatch,
   TeardownPositiveControlMissing, TeardownResourceSurvived, TeardownResourceUnreadable,
   TeardownSubjectMismatch, TeardownObserverChanged, TeardownBootMismatch,
-  TeardownObservationUnorderedOrIncomparable, produce_runner_teardown_receipt,
+  TeardownObservationOrderRefused, produce_runner_teardown_receipt,
+}
+
+import std.roster_frontier { frontier_rows_well_formed }
+import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
+
+test fn evidence_frontier_is_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: runner_canary_executed_evidence_frontier)
 }
 
 // Controlled inputs only. No fixture data below is a host capture, and no live receipt is minted.
@@ -142,14 +149,23 @@ test fn different_tenant_or_attempt_cannot_supply_usage_or_initiator() -> Bool {
 
 test fn invalid_interval_and_cross_clock_refuse() -> Bool {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
-  [fixture_at(ns: 9000000000), fixture_at(ns: 61000000000),
-   fixture_instant(ns: 50000000000, origin: "other-boot", basis: WallClock),
-   fixture_instant(ns: 50000000000, origin: "fixture-boot", basis: CpuClock)]
-    |> all(reaped => match produce_runner_usage_receipt(expected: subject,
+  ["reversed_vm", "reversed_retirement", "origin", "basis"]
+    |> all(axis => {
+      let reaped = if axis == "reversed_vm" { fixture_at(ns: 9000000000) }
+        else if axis == "reversed_retirement" { fixture_at(ns: 61000000000) }
+        else { fixture_instant(ns: 50000000000,
+          origin: if axis == "origin" { "other-boot" } else { "fixture-boot" },
+          basis: if axis == "basis" { CpuClock } else { WallClock }) }
+      match produce_runner_usage_receipt(expected: subject,
       reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 4, reaped: reaped, resolution: 1) },
       initiator: fixture_initiator(subject: subject)) {
-      RunnerUsageRefused { cause: UsageIntervalsUnorderedOrIncomparable } => true
+      RunnerUsageRefused { cause: UsageIntervalOrderRefused { diagnostic: RunnerInstantsReversed { pair: p } } } =>
+        (axis == "reversed_vm" && (p.location as String) == "jailer_launched/vmm_reaped") ||
+        (axis == "reversed_retirement" && (p.location as String) == "vmm_reaped/capacity_retired")
+      RunnerUsageRefused { cause: UsageIntervalOrderRefused { diagnostic: RunnerInstantsIncomparable { pair: p } } } =>
+        (axis == "origin" || axis == "basis") && (p.location as String) == "jailer_launched/vmm_reaped"
       _ => false
+      }
     })
 }
 
@@ -299,13 +315,17 @@ test fn stale_or_wrong_teardown_subjects_refuse() -> Bool {
       RunnerTeardownRefused { cause: TeardownSubjectMismatch } => axis == "subject"
       RunnerTeardownRefused { cause: TeardownInventoryMismatch } => axis == "inventory"
       RunnerTeardownRefused { cause: TeardownObserverChanged } => axis == "observer"
-      RunnerTeardownRefused { cause: TeardownObservationUnorderedOrIncomparable } => axis == "clock" || axis == "order"
+      RunnerTeardownRefused { cause: TeardownObservationOrderRefused { diagnostic: RunnerInstantsIncomparable { pair: p } } } =>
+        axis == "clock" && (p.location as String) == "issued_at/after"
+      RunnerTeardownRefused { cause: TeardownObservationOrderRefused { diagnostic: RunnerInstantsReversed { pair: p } } } =>
+        axis == "order" && (p.location as String) == "issued_at/after"
       _ => false
     }
   })
 }
 
 fn main() -> Bool {
+  evidence_frontier_is_well_formed() &&
   fractional_minutes_preserve_meter_and_exclude_staging() &&
   missing_meter_and_initiator_refuse() &&
   different_tenant_or_attempt_cannot_supply_usage_or_initiator() &&

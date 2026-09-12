@@ -1,11 +1,12 @@
 module gunbc.runner.runner_usage_receipt
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String, List }
+import v2.std.optional { Optional, Present, Absent }
 import std.nat { Nat }
 import std.algebra { FieldOfFractions }
 import std.measure {
   Nanosecond, ObservationInstant, HardwareThreadCount, WallClock,
-  compare_instants, InstantBefore, InstantSame, nanosecond, nanosecond_count,
+  compare_instants, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, nanosecond, nanosecond_count,
   hardware_thread_count_value, minute, minute_to_millisecond, millisecond_to_nanosecond,
 }
 import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
@@ -31,12 +32,31 @@ fn runner_attempt_subject_eq<P>(a: RunnerAttemptSubject<P>, b: RunnerAttemptSubj
   (a.attempt as String) == (b.attempt as String)
 }
 
-fn runner_instant_le(a: ObservationInstant, b: ObservationInstant) -> Bool {
-  match compare_instants(a: a, b: b) {
-    InstantBefore => true
-    InstantSame => true
-    _ => false
-  }
+// Retain the compared captures and pair location in each diagnostic. Cross-clock observations
+// have no ordering; they are not inverted intervals.
+type RunnerInstantPair {
+  location: NonEmptyStr
+  earlier: ObservationInstant
+  later: ObservationInstant
+}
+
+type RunnerInstantOrderRefusal
+  = RunnerInstantsIncomparable { pair: RunnerInstantPair }
+  | RunnerInstantsReversed { pair: RunnerInstantPair }
+
+fn runner_instant_order_refusal(pairs: List<RunnerInstantPair>) -> Optional<RunnerInstantOrderRefusal> {
+  pairs |> fold(init: Absent, f: fn(found, pair) {
+    match found {
+      Present { value: _ } => found
+      Absent => match compare_instants(a: pair.earlier, b: pair.later) {
+        InstantBefore => Absent
+        InstantSame => Absent
+        InstantAfter => Present { value: RunnerInstantsReversed { pair: pair } }
+        InstantIncomparable { left: _, right: _ } =>
+          Present { value: RunnerInstantsIncomparable { pair: pair } }
+      }
+    }
+  })
 }
 
 // All four instants must share an origin and wall basis. Producer resolution is retained so a
@@ -64,8 +84,11 @@ type RunnerUsageRefusal
   | UsageVcpuCountZero
   | UsageClockResolutionZero
   | UsageClockBasisNotWall
-  | UsageIntervalsUnorderedOrIncomparable
+  | UsageIntervalOrderRefused { diagnostic: RunnerInstantOrderRefusal }
 
+// Product-dimension gap: std.measure has typed Count and Time operands but no product quantity.
+// This carrier retains exactness and controlled construction; its product dimension awaits that
+// capability. Tracked by runner_canary_evidence_frontier.runner_canary_executed_evidence_frontier.
 // Minutes are an exact fraction of the universal nanoseconds-per-minute scale. The constructor
 // owns both numerator and denominator; the caller cannot supply a rounded total beside the meter.
 type MeteredVcpuMinutes sole_constructor {
@@ -102,32 +125,35 @@ fn runner_usage_from_observation<P>(
   } else {
     match meter.jailer_launched.basis {
       WallClock => {
-        if !runner_instant_le(a: meter.capacity_acquired, b: meter.jailer_launched) ||
-           !runner_instant_le(a: meter.jailer_launched, b: meter.vmm_reaped) ||
-           !runner_instant_le(a: meter.vmm_reaped, b: meter.capacity_retired) {
-          RunnerUsageRefused { cause: UsageIntervalsUnorderedOrIncomparable }
-        } else {
-          match initiator {
-            JobInitiatorUnobserved { cause: c } =>
-              RunnerUsageRefused { cause: UsageInitiatorMissing { cause: c } }
-            JobInitiatorObserved { work: w, attempt: a, class: _, principal: _, evidence: _ } => {
-              if !fabric_identity_eq(left: expected.work, right: w) || (expected.attempt as String) != (a as String) {
-                RunnerUsageRefused { cause: UsageInitiatorJobMismatch }
-              } else {
-                let elapsed = nanosecond_count(n: meter.vmm_reaped.since_origin) -
-                  nanosecond_count(n: meter.jailer_launched.since_origin)
-                let held = nanosecond_count(n: meter.capacity_retired.since_origin) -
-                  nanosecond_count(n: meter.capacity_acquired.since_origin)
-                RunnerUsageProduced { receipt: RunnerUsageReceipt {
-                  meter: meter,
-                  initiator: initiator,
-                  vcpu_minutes: MeteredVcpuMinutes { count: FieldOfFractions {
-                    num: elapsed * hardware_thread_count_value(t: meter.configured_vcpus),
-                    denom: nanosecond_count(n: millisecond_to_nanosecond(m: minute_to_millisecond(m: minute(count: 1)))),
-                  } },
-                  vm_elapsed: nanosecond(count: elapsed),
-                  capacity_held: nanosecond(count: held),
-                } }
+        match runner_instant_order_refusal(pairs: [
+          RunnerInstantPair { location: "capacity_acquired/jailer_launched", earlier: meter.capacity_acquired, later: meter.jailer_launched },
+          RunnerInstantPair { location: "jailer_launched/vmm_reaped", earlier: meter.jailer_launched, later: meter.vmm_reaped },
+          RunnerInstantPair { location: "vmm_reaped/capacity_retired", earlier: meter.vmm_reaped, later: meter.capacity_retired },
+        ]) {
+          Present { value: d } => RunnerUsageRefused { cause: UsageIntervalOrderRefused { diagnostic: d } }
+          Absent => {
+            match initiator {
+              JobInitiatorUnobserved { cause: c } =>
+                RunnerUsageRefused { cause: UsageInitiatorMissing { cause: c } }
+              JobInitiatorObserved { work: w, attempt: a, class: _, principal: _, evidence: _ } => {
+                if !fabric_identity_eq(left: expected.work, right: w) || (expected.attempt as String) != (a as String) {
+                  RunnerUsageRefused { cause: UsageInitiatorJobMismatch }
+                } else {
+                  let elapsed = nanosecond_count(n: meter.vmm_reaped.since_origin) -
+                    nanosecond_count(n: meter.jailer_launched.since_origin)
+                  let held = nanosecond_count(n: meter.capacity_retired.since_origin) -
+                    nanosecond_count(n: meter.capacity_acquired.since_origin)
+                  RunnerUsageProduced { receipt: RunnerUsageReceipt {
+                    meter: meter,
+                    initiator: initiator,
+                    vcpu_minutes: MeteredVcpuMinutes { count: FieldOfFractions {
+                      num: elapsed * hardware_thread_count_value(t: meter.configured_vcpus),
+                      denom: nanosecond_count(n: millisecond_to_nanosecond(m: minute_to_millisecond(m: minute(count: 1)))),
+                    } },
+                    vm_elapsed: nanosecond(count: elapsed),
+                    capacity_held: nanosecond(count: held),
+                  } }
+                }
               }
             }
           }

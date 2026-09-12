@@ -7,7 +7,7 @@ import std.decl_ref { declaration_ref_eq }
 import gunbc.build_cache_instance { ProcessIdentity, process_identity_eq }
 import gunbc.runner.runner_job_initiator { RunnerEvidenceSource }
 import gunbc.runner.runner_usage_receipt {
-  RunnerAttemptSubject, runner_attempt_subject_eq, runner_instant_le,
+  RunnerAttemptSubject, runner_attempt_subject_eq, RunnerInstantPair, RunnerInstantOrderRefusal, runner_instant_order_refusal,
 }
 
 // Expected resources come from the launch allocation, not the observer's discovered population.
@@ -69,7 +69,7 @@ type RunnerTeardownRefusal
   | TeardownObserverChanged
   | TeardownInstrumentChanged
   | TeardownBootMismatch
-  | TeardownObservationUnorderedOrIncomparable
+  | TeardownObservationOrderRefused { diagnostic: RunnerInstantOrderRefusal }
   | TeardownPositiveControlMissing { resource: NonEmptyStr }
   | TeardownResourceSurvived { resource: NonEmptyStr }
   | TeardownResourceUnreadable { resource: NonEmptyStr, cause: NonEmptyStr }
@@ -155,22 +155,27 @@ fn runner_teardown_from_observations<P>(
             (request.destroyer.boot_id as String) != (request.subject.boot_id as String) ||
             (after.observer.boot_id as String) != (request.subject.boot_id as String) {
     RunnerTeardownRefused { cause: TeardownBootMismatch }
-  } else if !runner_instant_le(a: before.at, b: request.issued_at) ||
-            !runner_instant_le(a: request.issued_at, b: after.at) {
-    RunnerTeardownRefused { cause: TeardownObservationUnorderedOrIncomparable }
   } else {
-    let refusal = runner_resource_transitions(before: before.readback, after: after.readback)
-      |> fold(init: Absent, f: fn(found, row) {
-        match found {
-          Present { value: _ } => found
-          Absent => runner_resource_transition_refusal(row: row)
+    match runner_instant_order_refusal(pairs: [
+      RunnerInstantPair { location: "before/issued_at", earlier: before.at, later: request.issued_at },
+      RunnerInstantPair { location: "issued_at/after", earlier: request.issued_at, later: after.at },
+    ]) {
+      Present { value: d } => RunnerTeardownRefused { cause: TeardownObservationOrderRefused { diagnostic: d } }
+      Absent => {
+        let refusal = runner_resource_transitions(before: before.readback, after: after.readback)
+          |> fold(init: Absent, f: fn(found, row) {
+            match found {
+              Present { value: _ } => found
+              Absent => runner_resource_transition_refusal(row: row)
+            }
+          })
+        match refusal {
+          Present { value: c } => RunnerTeardownRefused { cause: c }
+          Absent => RunnerTeardownProduced { receipt: RunnerTeardownReceipt {
+            request: request, before: before, after: after,
+          } }
         }
-      })
-    match refusal {
-      Present { value: c } => RunnerTeardownRefused { cause: c }
-      Absent => RunnerTeardownProduced { receipt: RunnerTeardownReceipt {
-        request: request, before: before, after: after,
-      } }
+      }
     }
   }
 }
