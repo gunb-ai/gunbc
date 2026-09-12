@@ -664,8 +664,40 @@ fn run_native_binary(
             )
         })?;
         if written != output.stdout {
+            // THE CAPTURED BYTES ARE KEPT BESIDE THE REFUSAL, NOT DROPPED. This arm exists because
+            // rows that vanish on a refusal are unrecoverable; discarding the child's bytes here
+            // because the readback disagreed would repeat that exact loss at the moment the
+            // evidence is most contested. The child's stdout goes to a sibling path whose name says
+            // what it is, and the refusal names both files so a reader can compare them.
+            let captured = path.with_extension("jsonl.captured");
+            let captured_note = match std::fs::write(&captured, &output.stdout) {
+                Ok(()) => format!("child bytes preserved at {}", captured.display()),
+                Err(e) => format!(
+                    "child bytes could NOT be preserved at {} ({e}) — they exist only in this process",
+                    captured.display()
+                ),
+            };
+            // LOCATED: the first differing offset, not just the sizes. Equal lengths with different
+            // content is the case sizes alone cannot report, and it is the case that matters most.
+            let first_difference = written
+                .iter()
+                .zip(output.stdout.iter())
+                .position(|(a, b)| a != b)
+                .map(|offset| {
+                    format!(
+                        "first differs at byte {offset} (stored 0x{:02x}, produced 0x{:02x})",
+                        written[offset], output.stdout[offset]
+                    )
+                })
+                .unwrap_or_else(|| {
+                    format!(
+                        "one is a prefix of the other: stored {} byte(s), produced {} byte(s)",
+                        written.len(),
+                        output.stdout.len()
+                    )
+                });
             return Err(format!(
-                "V2-NATIVE REFUSAL cause=NativeRunRowsNotPreserved — {} holds {} byte(s) but the child wrote {}; the persisted rows are not the rows that were produced",
+                "V2-NATIVE REFUSAL cause=NativeRunRowsNotPreserved — {} holds {} byte(s) but the child wrote {}; {first_difference}; {captured_note}. The persisted rows are not the rows that were produced, so nothing may be joined against them",
                 path.display(),
                 written.len(),
                 output.stdout.len()
