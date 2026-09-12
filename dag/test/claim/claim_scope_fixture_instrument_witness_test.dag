@@ -1,0 +1,76 @@
+module test.claim.claim_scope_fixture_instrument_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  ClaimScopeFixtureOutcome,
+  FixtureSource,
+  fixture_source,
+  claim_scope_fixture,
+  claim_scope_refusal_names,
+  claim_scope_was_accepted
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: `claim_scope_fixture` BUILDS A REAL CLAIM SCOPE over a caller-authored manifest.
+//
+// `compile_fixture` stops at `compile_to_resolved`. Several refusals the corpus cares about live
+// further on, in `claim_scope_for` -- the scope builder the required floor calls once per claim
+// module. Nothing CI executes could reach those: the fixture harness could not see them, and a
+// corpus module authored to carry the offending shape would refuse the whole floor rather than sit
+// in it as a probe. This instrument closes that gap, and these rows are what say it works.
+//
+// WHAT THIS FILE DOES AND DOES NOT WITNESS. It witnesses THE INSTRUMENT: that a manifest reaches
+// scope construction at all, that an accepted scope reports `ClaimScopeAccepted`, and that a scope
+// refusal reaches the caller as `ClaimScopeRefused` carrying the refusal's own words. It does NOT
+// witness any particular wall -- the bare-name-ambiguity refusal this instrument was built for
+// lands separately and brings its own controls, because a control for a wall belongs with the wall
+// rather than ahead of it.
+//
+// NO std.types IMPORT IN ANY FIXTURE, and that is load-bearing rather than terseness. The
+// instrument compiles the supplied manifest with NO corpus roots, so `import std.types { Int }`
+// names a module the subject does not contain and would refuse the whole compile -- including the
+// row that must be ACCEPTED. `Int` needs no import: it is in kernel_type_set and every module
+// sees it.
+
+data csf_module_source: String = "module csf.user\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+
+// THE POSITIVE CONTROL. A one-module manifest whose entry names it. Scope construction must
+// succeed and the outcome must be `ClaimScopeAccepted`.
+test fn a_well_formed_manifest_builds_a_claim_scope() -> Bool {
+  claim_scope_was_accepted(
+    o: claim_scope_fixture(
+      fixture: MultiModuleCompileFixture {
+        sources: [fixture_source("csf/user.dag", csf_module_source)],
+        entry: "csf/user.dag"
+      },
+      entry_module_path: "csf.user"
+    )
+  )
+}
+
+// THE DISCRIMINATING RED, and it is a REAL scope refusal rather than a harness error. The manifest
+// is identical and well-formed; only the entry MODULE PATH differs, naming a module the prepared
+// subject does not contain. `claim_scope_for` answers that with
+// `CLAIM-SCOPE REFUSAL cause=EntryModuleOutsidePreparedSubject`, which is the arm this row proves
+// reaches the caller.
+//
+// WHY THIS PAIR AND NOT A MALFORMED MANIFEST. A ragged or unparseable manifest would also come back
+// non-accepted, through `ClaimScopeInstrumentRefused` or `ClaimScopeCompileRefused` -- and both of
+// those mean the HARNESS or the SOURCE broke, not that a scope refused. A red that could be
+// satisfied by either would not discriminate the thing this instrument exists to carry. These two
+// rows differ by exactly one string, so the only variable is the scope builder's own verdict.
+test fn an_entry_outside_the_subject_reaches_the_caller_as_a_scope_refusal() -> Bool {
+  claim_scope_refusal_names(
+    cause_marker: "EntryModuleOutsidePreparedSubject",
+    o: claim_scope_fixture(
+      fixture: MultiModuleCompileFixture {
+        sources: [fixture_source("csf/user.dag", csf_module_source)],
+        entry: "csf/user.dag"
+      },
+      entry_module_path: "csf.module_that_the_manifest_does_not_contain"
+    )
+  )
+}

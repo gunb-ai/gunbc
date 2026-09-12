@@ -285,6 +285,23 @@ fn claim_scope_was_refused(o: ClaimScopeFixtureOutcome) -> Bool {
   }
 }
 
+// AND WHICH REFUSAL IT WAS. `claim_scope_was_refused` says only that the scope builder refused,
+// which is not the same claim as "it refused for the reason under test": a probe satisfied by ANY
+// refusal goes green the day an unrelated one starts firing first, and would then be cited as
+// coverage for a cause it never observed. This reader matches the arm AND requires the cause to
+// name the expected refusal, so a red has to be the red the caller meant.
+//
+// Substring scan via the ambient split, the idiom the corpus already uses for this: a marker is
+// contained when splitting on it yields more than one piece.
+fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) -> Bool {
+  match o {
+    ClaimScopeRefused { cause: c } => (split(s: c, delimiter: cause_marker) |> count) > 1
+    ClaimScopeAccepted { module_count: n } => false
+    ClaimScopeCompileRefused { blocking_count: n } => false
+    ClaimScopeInstrumentRefused { cause: c } => false
+  }
+}
+
 fn claim_scope_was_accepted(o: ClaimScopeFixtureOutcome) -> Bool {
   match o {
     ClaimScopeAccepted { module_count: n } => true
