@@ -93,10 +93,13 @@ type PreOsObservationCapabilities {
   host_callback: HostCallbackCapability
 }
 
-// THE ONE QUESTION A DOWNSTREAM FOLD ASKS OF THE CONSOLE AXIS. The OEM-decode and localization
-// axes are consumed by gunbc.machine_intake_pre_os_bringup_verdict matching the profile's fields
-// directly (oem_sel_decode_standing, remediation_localization); a predicate here for each would
-// be a second reading of one field with no consumer (DESIGN section 3c).
+// THE ONE QUESTION THIS CHANGE'S EXECUTING READER ASKS OF THE CONSOLE AXIS.
+// The remaining profile axes (sel, oem_sel_decode, web_event_log, dimm_localization,
+// memory_power, managed_ac, host_callback) are a declared frontier: they are consumed by
+// gunbc.machine_intake_pre_os_bringup_verdict when that module lands (gunbc#11110). Until
+// that consumer is in the same closure they are not dangling — they are the home still-dove-458
+// owns — and this change must not mint a second reading of them. Trigger: that verdict
+// module resolving and matching oem_sel_decode / dimm_localization directly.
 
 // May a console capture that contains nothing beyond the session banner be read as evidence about
 // the HOST? Only when the console is known to emit: on a silent-console platform the same bytes

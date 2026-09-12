@@ -467,6 +467,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag --function witness_checked_in_screenshots_match_receipts")
   },
   WitnessExclusionRow {
+    pattern: "megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "wet-integration class (wet_integration_offline_note posture), same class as served_surface_browser_artifact_integrity_witness_test: committed_spx_ui_surface_hashes_to_the_catalog_identity executes sha256sum against artifacts/bmc/mtcollins1-megarac-api-surface.txt. Hermetic discovery REFUSES rather than fabricating a digest. The 0.32 catalog identity stays a named digest on extdeps.bmc.megarac; this row is the executing hash, not a second identity.",
+    dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag --function committed_spx_ui_surface_hashes_to_the_catalog_identity")
+  },
+  WitnessExclusionRow {
     pattern: "emit_source_store_test.dag",
     classification: OfflineLocalRecipe,
     reason: excl_predates_per_row_reason,

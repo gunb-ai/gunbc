@@ -10,10 +10,10 @@ import extdeps.bmc.megarac {
   CdActiveSessionsFlagByteIsNotACount,
   ChannelPresentDelivering,
   ChannelPresentNotDelivering,
-  FramebufferRecorder,
+  DiesOnReset,
   GenIdDoesNotIdentifyASender,
+  MegaRacBmcIsNfsClientHostSeesVirtualCd,
   MegaRacIpmiSelPayloadPreserved,
-  MegaRacServedUiAbsence,
   MegaRacSolSessionChannel,
   MegaRacWebEventLogOemEmptySelData,
   OemSelDecodeAbsentFromControllerRenderer,
@@ -28,32 +28,26 @@ import extdeps.bmc.megarac {
   ServedUiFactFirmwareUncatalogued,
   ServedUiFactKnown,
   SilentChannelRefusedAsHostFact,
-  SolStreamRecorder,
+  SurvivesHostAndControllerReset,
   megarac_bios_adjacent_paths_at_0_32,
   megarac_cd_active_sessions_flag_byte,
   megarac_cd_active_sessions_session_count,
-  megarac_controller_decodes_oem_sel,
   megarac_firmware_0_32,
+  megarac_framebuffer_recorder_reset_survival,
   megarac_gen_id_as_sender,
   megarac_gen_id_standing,
-  megarac_ipmi_sel_preserves_oem_payload,
-  megarac_live_sol_activate_survives_reset,
-  megarac_recorder_survives_reset,
+  megarac_ipmi_sel_layout,
+  megarac_live_sol_activate_reset_survival,
   megarac_redirection_is_connecting,
   megarac_redirection_is_started,
   megarac_redirection_status_of_wire,
-  megarac_remote_media_uses_pxe,
-  megarac_served_ui_absences_at_0_32,
-  megarac_sol_trigger_power_on_field_wire,
-  megarac_spx_ui_endpoint_count,
-  megarac_served_ui_has_bios_settings_surface,
-  megarac_served_ui_has_per_dimm_fru,
-  megarac_served_ui_has_redfish,
+  megarac_remote_media_role,
+  megarac_served_ui_absence_standing,
   megarac_silent_sol_is_host_fact,
-  megarac_spx_ui_surface_sha256,
+  megarac_sol_recorder_reset_survival,
+  megarac_sol_trigger_power_on_field_wire,
   megarac_video_trigger_power_on_field_wire,
-  megarac_web_event_log_preserves_oem_payload,
-  MegaRacSolSessionChannel,
+  megarac_web_event_log_layout,
 }
 import gunbc.machine_intake_pre_os_observation_capabilities {
   AggregateMemoryPowerExposed,
@@ -75,21 +69,14 @@ import gunbc.machine_intake_megarac_pre_os_channel {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn absence_roster_contains(xs: List<MegaRacServedUiAbsence>, want: MegaRacServedUiAbsence) -> Bool {
-  fold(xs, init: false, f: (acc, x) => acc || x == want)
-}
-
 fn path_roster_contains(xs: List<NonEmptyStr>, s: NonEmptyStr) -> Bool {
   fold(xs, init: false, f: (acc, x) => acc || x == s)
 }
 
-test fn served_ui_catalog_is_the_committed_255_endpoint_artifact() -> Bool {
-  megarac_spx_ui_surface_sha256 == "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd" as NonEmptyStr
-    && megarac_spx_ui_endpoint_count == 255
-}
-
 test fn media_route_is_bmc_nfs_client_not_pxe() -> Bool {
-  !megarac_remote_media_uses_pxe()
+  match megarac_remote_media_role {
+    MegaRacBmcIsNfsClientHostSeesVirtualCd => true
+  }
 }
 
 test fn cd_active_sessions_cannot_be_read_as_a_count() -> Bool {
@@ -132,48 +119,46 @@ test fn redirection_status_refuses_an_uncatalogued_firmware() -> Bool {
 }
 
 test fn recorders_survive_reset_and_live_sol_does_not() -> Bool {
-  megarac_recorder_survives_reset(subject: FramebufferRecorder)
-    && megarac_recorder_survives_reset(subject: SolStreamRecorder)
-    && !megarac_live_sol_activate_survives_reset()
+  megarac_framebuffer_recorder_reset_survival == SurvivesHostAndControllerReset
+    && megarac_sol_recorder_reset_survival == SurvivesHostAndControllerReset
+    && megarac_live_sol_activate_reset_survival == DiesOnReset
+    && megarac_framebuffer_recorder_reset_survival != megarac_live_sol_activate_reset_survival
     && megarac_video_trigger_power_on_field_wire() == "chassis_power_on_events_enable" as NonEmptyStr
     && megarac_sol_trigger_power_on_field_wire() == "chasis_power_on_events_enable" as NonEmptyStr
 }
 
 test fn served_ui_absences_are_first_class_at_0_32() -> Bool {
-  absence_roster_contains(xs: megarac_served_ui_absences_at_0_32, want: RedfishServiceAbsentFromServedUi)
-    && absence_roster_contains(xs: megarac_served_ui_absences_at_0_32, want: BiosUefiSettingsSurfaceAbsent)
-    && absence_roster_contains(xs: megarac_served_ui_absences_at_0_32, want: PerDimmFruAndTelemetryAbsentFromServedUi)
-    && absence_roster_contains(xs: megarac_served_ui_absences_at_0_32, want: OemSelDecodeAbsentFromControllerRenderer)
-    && path_roster_contains(xs: megarac_bios_adjacent_paths_at_0_32, s: "/api/maintenance/hpm/getbiosversions" as NonEmptyStr)
-    && match megarac_served_ui_has_redfish(firmware: megarac_firmware_0_32) {
-      ServedUiFactKnown { firmware: _, holds: false } => true
-      _ => false
-    }
-    && match megarac_served_ui_has_bios_settings_surface(firmware: megarac_firmware_0_32) {
-      ServedUiFactKnown { firmware: _, holds: false } => true
-      _ => false
-    }
-    && match megarac_served_ui_has_per_dimm_fru(firmware: megarac_firmware_0_32) {
-      ServedUiFactKnown { firmware: _, holds: false } => true
-      _ => false
-    }
-    && match megarac_controller_decodes_oem_sel(firmware: megarac_firmware_0_32) {
-      ServedUiFactKnown { firmware: _, holds: false } => true
-      _ => false
-    }
+  match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: RedfishServiceAbsentFromServedUi) {
+    ServedUiFactKnown { firmware: _, holds: true } =>
+      match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: BiosUefiSettingsSurfaceAbsent) {
+        ServedUiFactKnown { firmware: _, holds: true } =>
+          match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: PerDimmFruAndTelemetryAbsentFromServedUi) {
+            ServedUiFactKnown { firmware: _, holds: true } =>
+              match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: OemSelDecodeAbsentFromControllerRenderer) {
+                ServedUiFactKnown { firmware: _, holds: true } =>
+                  path_roster_contains(xs: megarac_bios_adjacent_paths_at_0_32, s: "/api/maintenance/hpm/getbiosversions" as NonEmptyStr)
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn other_firmware_does_not_inherit_0_32_absences() -> Bool {
   let other = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "1.00")
-  match megarac_served_ui_has_redfish(firmware: other) {
+  match megarac_served_ui_absence_standing(firmware: other, absence: RedfishServiceAbsentFromServedUi) {
     ServedUiFactFirmwareUncatalogued { firmware: _ } => true
     _ => false
   }
 }
 
 test fn web_event_log_empties_oem_payload_and_genid_is_not_a_sender() -> Bool {
-  !megarac_web_event_log_preserves_oem_payload()
-    && megarac_ipmi_sel_preserves_oem_payload()
+  megarac_web_event_log_layout == MegaRacWebEventLogOemEmptySelData
+    && megarac_ipmi_sel_layout == MegaRacIpmiSelPayloadPreserved
+    && megarac_web_event_log_layout != megarac_ipmi_sel_layout
     && match megarac_gen_id_as_sender(standing: megarac_gen_id_standing(gen_id1: 62, gen_id2: 17)) {
       GenIdDoesNotIdentifyASender { standing: _ } => true
     }
@@ -220,8 +205,4 @@ test fn present_silent_sol_refuses_as_a_host_fact() -> Bool {
       SilentChannelRefusedAsHostFact { channel: MegaRacSolSessionChannel } => true
       _ => false
     }
-}
-
-test fn event_log_layouts_are_distinct() -> Bool {
-  MegaRacWebEventLogOemEmptySelData != MegaRacIpmiSelPayloadPreserved
 }

@@ -41,10 +41,6 @@ fn megarac_sol_host_observation(
   )
 }
 
-fn megarac_sol_host_observation_admitted(profile: PreOsObservationCapabilities) -> Bool {
-  console_silence_is_informative(profile: profile)
-}
-
 fn megarac_sol_silent_refuses_host_fact(profile: PreOsObservationCapabilities) -> Bool {
   match megarac_sol_host_observation(profile: profile) {
     SilentChannelRefusedAsHostFact { channel: _ } => !console_silence_is_informative(profile: profile)

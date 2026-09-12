@@ -3,9 +3,14 @@ module extdeps.bmc.megarac
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
 import std.string_type { String }
+import v2.std.algebra { any }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.capability {
+  BmcFirmwareReleaseIdentity,
+  bmc_firmware_release_identity_eq,
+  bmc_firmware_release_identity_of_wire,
+}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
@@ -278,7 +283,7 @@ fn megarac_redirection_status_of_wire(
   firmware: BmcFirmwareReleaseIdentity,
   wire: Int,
 ) -> MegaRacRedirectionStatusLookup {
-  if firmware.family == AmiMegaRac && firmware.raw_version == "0.32" {
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
     let status = if wire == 0 {
       RedirectionStopped
     } else if wire == 1 {
@@ -342,20 +347,15 @@ fn megarac_sol_trigger_power_on_field_wire() -> NonEmptyStr {
   "chasis_power_on_events_enable" as NonEmptyStr
 }
 
-fn megarac_remote_media_uses_pxe() -> Bool {
-  false
-}
+type MegaRacResetSurvival
+  = SurvivesHostAndControllerReset
+  | DiesOnReset
 
-fn megarac_recorder_survives_reset(subject: MegaRacConsoleRecorderSubject) -> Bool {
-  match subject {
-    FramebufferRecorder => true
-    SolStreamRecorder => true
-  }
-}
+data megarac_framebuffer_recorder_reset_survival: MegaRacResetSurvival = SurvivesHostAndControllerReset
 
-fn megarac_live_sol_activate_survives_reset() -> Bool {
-  false
-}
+data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = SurvivesHostAndControllerReset
+
+data megarac_live_sol_activate_reset_survival: MegaRacResetSurvival = DiesOnReset
 
 // WHAT THIS SERVED UI CANNOT DO. Absences are first-class, keyed to the 0.32 catalog. They are
 // not omissions and not unit telemetry.
@@ -382,31 +382,18 @@ type MegaRacServedUiFactLookup
   = ServedUiFactKnown { firmware: BmcFirmwareReleaseIdentity, holds: Bool }
   | ServedUiFactFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
 
-fn megarac_served_ui_fact(
+fn megarac_served_ui_absence_standing(
   firmware: BmcFirmwareReleaseIdentity,
-  holds_at_0_32: Bool,
+  absence: MegaRacServedUiAbsence,
 ) -> MegaRacServedUiFactLookup {
-  if firmware.family == AmiMegaRac && firmware.raw_version == "0.32" {
-    ServedUiFactKnown { firmware: firmware, holds: holds_at_0_32 }
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
+    ServedUiFactKnown {
+      firmware: firmware,
+      holds: megarac_served_ui_absences_at_0_32 |> any(x => x == absence),
+    }
   } else {
     ServedUiFactFirmwareUncatalogued { firmware: firmware }
   }
-}
-
-fn megarac_served_ui_has_redfish(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
-  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
-}
-
-fn megarac_served_ui_has_bios_settings_surface(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
-  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
-}
-
-fn megarac_served_ui_has_per_dimm_fru(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
-  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
-}
-
-fn megarac_controller_decodes_oem_sel(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
-  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
 }
 
 // EVENT LOG SHAPE. The web log and ipmitool are two layouts. GenID1/GenID2 on the standard-event
@@ -436,13 +423,9 @@ fn megarac_gen_id_as_sender(standing: MegaRacGenIdStanding) -> MegaRacGenIdIsNot
   GenIdDoesNotIdentifyASender { standing: standing }
 }
 
-fn megarac_web_event_log_preserves_oem_payload() -> Bool {
-  false
-}
+data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOemEmptySelData
 
-fn megarac_ipmi_sel_preserves_oem_payload() -> Bool {
-  true
-}
+data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
 
 // CHANNEL PRESENCE VERSUS DELIVERY. A channel listed on the served UI is PRESENT. Whether it
 // delivers host bytes is a separate standing. Per-platform inhabitance of that standing lives in
