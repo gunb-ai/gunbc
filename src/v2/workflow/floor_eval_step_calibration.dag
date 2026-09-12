@@ -44,6 +44,29 @@ import std.types { NonEmptyStr }
 //   reading from the machine that actually executes the floor. The declared budget did not move
 //   with it, because a declared policy that tracked the calibration would BE the calibration.
 //
+//   "SLOWEST" MEANS SLOWEST WITHIN THE DECLARED CALIBRATION SAMPLE, NOT SLOWEST EVER OBSERVED, and
+//   the distinction is the difference between a pin and a ratchet. The sample is the four readings
+//   this row names, taken once by the stated procedure. A FIFTH reading exists and is deliberately
+//   NOT in it: the next floor run measured the same specimen at 152ms. It is recorded beside the
+//   sample as evidence and it does NOT re-pin the row.
+//
+//   WHY REFUSING THAT READING IS THE FAIL-CLOSED DIRECTION HERE, when taking it would look like the
+//   conservative move. A row that re-pins whenever a slower reading arrives is a measurement of the
+//   current environment wearing a pin's name -- it would drift upward forever on a fleet whose CPU
+//   readings drift, and automating its update would collapse it to `measure() == measure()`. That
+//   is the oracle defect DESIGN section 5 forbids and the exact shape of the two repudiated ceiling
+//   raises this file's consumer records (500 -> 1552, "measured-max plus one scheduler-quantum").
+//   The 138-to-152 movement is not a signal that the pin is wrong; IT IS THE PHENOMENON THIS WHOLE
+//   CHANGE EXISTS FOR, observed inside the calibration itself -- the same source, the same 110,011
+//   steps, ten percent more CPU. What absorbs it is the BAND in `eval_step_budget_grounding`, not a
+//   moving pin: re-derived against 152 the budget sits at a factor of 1.38 of the calibrated
+//   envelope, comfortably inside the declared two, so the grounding holds without the row moving.
+//
+//   RE-PINNING IS THEREFORE A DELIBERATE ACT, NOT MAINTENANCE. It happens when the grounding check
+//   goes red -- which is the executing signal that the conversion has genuinely left its band --
+//   or when the specimen itself is changed, and it is taken by re-running the named instrument
+//   rather than by adopting whatever the last floor run happened to report.
+//
 // WHAT THE CONVERSION DOES AND DOES NOT CLAIM, and this is the honesty boundary a later reader
 // must not erase. It claims that one millisecond of PURE INTERPRETED EVALUATION on the named host
 // is about this many eval steps. It does NOT claim that every step in the corpus costs the same:
@@ -68,7 +91,7 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work" as NonEmptyStr,
   instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/floor_eval_step_calibration_specimen_test.dag --function calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
-  host: "TWO HOSTS, TWO ARCHITECTURES, ONE STEP COUNT. Authoring: a gunbc session container, linux aarch64, 31 GiB cap inside a shared 64 GiB slice -- three consecutive executions read cpu=97ms, 110ms, 110ms. Execution: a self-hosted CI runner, linux amd64, under the required floor's own fold beside 3,784 other claims -- cpu=138ms. All four readings returned an IDENTICAL eval_steps of 110011. The recorded figure is the slowest of the four and comes from the machine that runs the floor" as NonEmptyStr,
+  host: "TWO HOSTS, TWO ARCHITECTURES, ONE STEP COUNT. The declared sample is FOUR readings. Authoring: a gunbc session container, linux aarch64, 31 GiB cap inside a shared 64 GiB slice -- three consecutive executions read cpu=97ms, 110ms, 110ms. Execution: a self-hosted CI runner, linux amd64, under the required floor's own fold beside 3,784 other claims -- cpu=138ms. The recorded figure is the slowest of those four and comes from the machine that runs the floor. A FIFTH READING IS KNOWN AND IS OUTSIDE THE SAMPLE BY CONSTRUCTION: the next floor run measured the same specimen at 152ms. It does not re-pin this row -- see the note above on why slowest-within-the-sample is a pin and slowest-ever-observed is a ratchet. EVERY ONE OF THE FIVE RETURNED AN IDENTICAL eval_steps OF 110011, across both architectures and every level of load, which is the property the ceiling actually rests on" as NonEmptyStr,
   readings: 4,
   specimen_eval_steps: 110011,
   specimen_cpu_ms: 138,
