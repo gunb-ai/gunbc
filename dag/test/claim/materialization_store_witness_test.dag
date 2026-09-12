@@ -12,9 +12,10 @@ import std.materialization_provider {
   request_key, request_kind, request_required_outputs,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
-  output_native_compiler_executable,
+  output_native_compiler_executable, output_native_compiler_build_diagnostics,
 }
 import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolumeRoot }
+import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import std.materialization_object {
   ArtifactPayload, payload_part,
   OpenedMaterializationStore,
@@ -81,12 +82,18 @@ fn universe_req() -> ArtifactRequest {
   }
 }
 
-fn compiler_req() -> ArtifactRequest {
-  NativeCompilerArtifactRequest {
-    emitted_closure_identity: h(v: "tree-1"),
-    build_toolchain: DeclaredInput { ref: "build_toolchain_identity", digest: h(v: "route-binary-1") },
-    target_platform: DeclaredInput { ref: "target_platform_identity", digest: h(v: "x86_64-unknown-linux-gnu") }
+fn generation_axes() -> PreMaterializationIdentity {
+  PreMaterializationIdentity {
+    producer_compiler: h(v: "tree-1"),
+    source_closure: h(v: "closure-1"),
+    target_model: h(v: "rust"),
+    toolchain: h(v: "rustc-1.93.0"),
+    build_configuration: h(v: "release")
   }
+}
+
+fn compiler_req() -> ArtifactRequest {
+  NativeCompilerArtifactRequest { generation: generation_axes() }
 }
 
 fn bundle_payloads() -> List<ArtifactPayload> {
@@ -372,5 +379,54 @@ test fn an_unreadable_object_fault_names_the_host_kind() -> Bool {
     StoreObjectUnavailable { fault: f } => starts_with(s: f.detail, prefix: "permission_denied: ")
     StoreObjectPresent { content: _ } => false
     StoreObjectAbsent => false
+  }
+}
+
+// EVERY CAUSAL AXIS OF THE GENERATION IS LOAD-BEARING ON THE COMPILER REQUEST KEY, and the axes are
+// v2.compiler.self_host.generation's, not a second list: perturbing any one of the five moves the
+// key, and the five perturbations are pairwise distinct, so no two axes are being folded into one
+// position. The earlier shape keyed only the closure, the toolchain and the target, so a changed
+// producer compiler or build configuration left the key fixed.
+test fn every_generation_causal_axis_is_load_bearing_on_the_compiler_key() -> Bool {
+  let base = generation_axes()
+  let k = request_key(req: compiler_req())
+  let variants = [
+    PreMaterializationIdentity { producer_compiler: h(v: "tree-2"), source_closure: base.source_closure, target_model: base.target_model, toolchain: base.toolchain, build_configuration: base.build_configuration },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: h(v: "closure-2"), target_model: base.target_model, toolchain: base.toolchain, build_configuration: base.build_configuration },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: h(v: "wasm"), toolchain: base.toolchain, build_configuration: base.build_configuration },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: base.target_model, toolchain: h(v: "rustc-1.94.0"), build_configuration: base.build_configuration },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: base.target_model, toolchain: base.toolchain, build_configuration: h(v: "debug") },
+  ]
+  let keys = variants |> map(g => request_key(req: NativeCompilerArtifactRequest { generation: g }))
+  let same_again = request_key(req: NativeCompilerArtifactRequest { generation: generation_axes() }) == k
+  let all_apart = (keys |> any(x => x == k)) == false
+  let pairwise_apart = (keys |> any(x => (keys |> filter(y => y == x) |> count()) > 1)) == false
+  same_again && all_apart && pairwise_apart && (variants |> count()) == 5
+}
+
+// AND THE PROVIDER IS NOT IN THAT KEY. The same compiler request served from two different stores
+// keys identically and yields the same content digest; only the receipt differs. A provider or store
+// instance in the computation key would give one artifact as many identities as it has homes.
+test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
+  let payloads = [
+    ArtifactPayload { id: output_native_compiler_executable, content: "ELF-bytes-fixture" },
+    ArtifactPayload { id: output_native_compiler_build_diagnostics, content: "" },
+  ]
+  let object = prepared_object(req: compiler_req(), payloads: payloads)
+  let other_store = OpenedMaterializationStore { provider: "some_other_realization" as CacheInterfaceId, instance: content_hash_of_value(value: "other-instance") }
+  let a = store_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectPresent { content: object })
+  let b = store_lookup_decide(store: other_store, req: compiler_req(), read: StoreObjectPresent { content: object })
+  match a {
+    StoreLookupHit { artifact: _, payloads: _, receipt: ra } =>
+      match b {
+        StoreLookupHit { artifact: _, payloads: _, receipt: rb } =>
+          ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
+            && ra.request_key == request_key(req: compiler_req())
+            && (ra.provider == rb.provider) == false
+        StoreLookupMiss { key: _ } => false
+        StoreLookupRefused { key: _, refusal: _ } => false
+      }
+    StoreLookupMiss { key: _ } => false
+    StoreLookupRefused { key: _, refusal: _ } => false
   }
 }

@@ -33,6 +33,10 @@ import std.computation_identity {
   IdentityUnknownCause, MissingConcept, MissingEnforcement
 }
 import std.artifact_store { ArtifactStore, store_put, store_put_fold }
+import v2.compiler.self_host.generation {
+  PreMaterializationIdentity,
+  pre_materialization_digest,
+}
 import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size }
 
@@ -155,11 +159,7 @@ type ArtifactRequest
       compiler: DeclaredInput
     }
   | ResolveClosureRequest { closure_digest: Fnv1a64Structural, compiler: DeclaredInput }
-  | NativeCompilerArtifactRequest {
-      emitted_closure_identity: Fnv1a64Structural,
-      build_toolchain: DeclaredInput,
-      target_platform: DeclaredInput
-    }
+  | NativeCompilerArtifactRequest { generation: PreMaterializationIdentity }
   | UniverseArtifactRequest { tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput }
   | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
 
@@ -175,12 +175,28 @@ type ArtifactRequest
 // same artifact in every realization, which is what lets a later realization serve what an
 // earlier one committed without re-keying.
 //
-// NativeCompilerArtifactRequest: the executable built from the seed-prepared emitted closure.
-// Subject = the emitted closure's content identity (gunbc.witness.v2_native_route
-// NativeRouteReceipt emitted_closure_identity); declared inputs = the build toolchain identity
-// and the target platform identity, because the same closure built by a different rustc or for a
-// different triple is a different executable. Requires the executable AND the build diagnostics:
-// a build whose warnings were dropped is not the build that ran.
+// NativeCompilerArtifactRequest: the executable built from the seed-prepared emitted closure. Its
+// identity is NOT re-invented here. v2.compiler.self_host.generation is the sole authority for what
+// identifies a compiler generation, and this request carries that module's PRE-MATERIALIZATION
+// projection -- the five CAUSAL axes (producer compiler, source closure, target model, toolchain,
+// build configuration) -- with the key derived by its own pre_materialization_digest. An earlier
+// shape keyed on {emitted closure, toolchain, target platform}, which dropped the producer compiler
+// and the build configuration: two generations differing only in those read as ONE computation, and
+// the differing artifact then reads as a same-key content CONFLICT rather than as a changed input.
+// That is the section 3 fork this lane was told not to create, and it is closed by consumption
+// rather than by a check. The sixth axis, materialized_artifact, is deliberately absent: it is
+// EARNED from verified stored bytes (a committed artifact read back and verified) and joined back to
+// GenerationIdentity afterwards, so it can never be caller-authored into a pre-build lookup.
+// Requires the executable AND the build diagnostics: a build whose warnings were dropped is not the
+// build that ran.
+//
+// THE IMPORT DIRECTION IS A STATED DEPARTURE, not an oversight. This is the only std module that
+// imports a v2 COMPILER module (other std modules import v2.std.*). The alternative was to restate
+// the five axes here, which is precisely the fork this change exists to close, and DESIGN section 3
+// puts a fact's home in its LAYER rather than its folder, with acyclicity as the import graph's only
+// structural law -- v2.compiler.self_host.generation imports nothing from this module, so the edge is
+// acyclic. If the axes ever need a home below the compiler, the move is generation's to make and this
+// consumer follows it; duplicating them here would not be that move.
 //
 // UniverseArtifactRequest: the derived test universe of one tested tree under one route binary --
 // the ordered test-identity population and the per-module import closures the route ingests.
@@ -215,7 +231,7 @@ fn request_fold<T>(
   parse_module: fn(Fnv1a64Structural, DeclaredInput) -> T,
   typecheck_module: fn(Fnv1a64Structural, List<InterfaceHash>, DeclaredInput) -> T,
   resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T,
-  native_compiler: fn(Fnv1a64Structural, DeclaredInput, DeclaredInput) -> T,
+  native_compiler: fn(PreMaterializationIdentity) -> T,
   universe: fn(Fnv1a64Structural, DeclaredInput) -> T,
   module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T
 ) -> T {
@@ -224,11 +240,7 @@ fn request_fold<T>(
     TypecheckModuleRequest { source_digest: sd, direct_import_interfaces: ii, compiler: c } =>
       typecheck_module(sd, ii, c)
     ResolveClosureRequest { closure_digest: cd, compiler: c } => resolve_closure(cd, c)
-    NativeCompilerArtifactRequest {
-      emitted_closure_identity: ec,
-      build_toolchain: bt,
-      target_platform: tp
-    } => native_compiler(ec, bt, tp)
+    NativeCompilerArtifactRequest { generation: g } => native_compiler(g)
     UniverseArtifactRequest { tested_tree_identity: tt, route_binary: rb } => universe(tt, rb)
     NativeModuleVerdictBundleRequest(subject) => module_verdict_bundle(subject)
   }
@@ -262,7 +274,7 @@ fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
     parse_module: (sd, c) => parse_source_artifact_kind,
     typecheck_module: (sd, ii, c) => typed_module_artifact_kind,
     resolve_closure: (cd, c) => resolved_graph_artifact_kind,
-    native_compiler: (ec, bt, tp) => native_compiler_artifact_kind,
+    native_compiler: g => native_compiler_artifact_kind,
     universe: (tt, rb) => native_test_universe_artifact_kind,
     module_verdict_bundle: subject => native_module_verdict_bundle_artifact_kind
   )
@@ -274,7 +286,7 @@ fn request_subject_digest(req: ArtifactRequest) -> Fnv1a64Structural {
     parse_module: (sd, c) => sd,
     typecheck_module: (sd, ii, c) => sd,
     resolve_closure: (cd, c) => cd,
-    native_compiler: (ec, bt, tp) => ec,
+    native_compiler: g => pre_materialization_digest(pre: g),
     universe: (tt, rb) => tt,
     module_verdict_bundle: subject => module_verdict_bundle_subject_digest(subject: subject)
   )
@@ -287,7 +299,13 @@ fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
     typecheck_module: (sd, ii, c) =>
       concat(ii |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }), [c]),
     resolve_closure: (cd, c) => [c],
-    native_compiler: (ec, bt, tp) => [bt, tp],
+    native_compiler: g => [
+      DeclaredInput { ref: "generation.producer_compiler", digest: g.producer_compiler },
+      DeclaredInput { ref: "generation.source_closure", digest: g.source_closure },
+      DeclaredInput { ref: "generation.target_model", digest: g.target_model },
+      DeclaredInput { ref: "generation.toolchain", digest: g.toolchain },
+      DeclaredInput { ref: "generation.build_configuration", digest: g.build_configuration }
+    ],
     universe: (tt, rb) => [rb],
     module_verdict_bundle: subject => []
   )
@@ -300,7 +318,7 @@ fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
     typecheck_module: (sd, ii, c) => [output_typed_module_interface, output_typecheck_diagnostics],
     resolve_closure: (cd, c) =>
       [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
-    native_compiler: (ec, bt, tp) =>
+    native_compiler: g =>
       [output_native_compiler_executable, output_native_compiler_build_diagnostics],
     universe: (tt, rb) =>
       [output_universe_test_identity_population, output_universe_module_import_closures],
@@ -372,7 +390,7 @@ fn request_key(req: ArtifactRequest) -> ContentHash {
         compiler_identity: c.digest
       ),
     resolve_closure: (cd, c) => local_request_key(req: req),
-    native_compiler: (ec, bt, tp) => local_request_key(req: req),
+    native_compiler: g => local_request_key(req: req),
     universe: (tt, rb) => local_request_key(req: req),
     module_verdict_bundle: subject => local_request_key(req: req)
   )
