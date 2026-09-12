@@ -1,65 +1,60 @@
 module v2.test.claim.map_carrier_shape_gate
 
+import std.decl_ref { decl_ref }
+import std.primitive_identity {
+  declaration_and_primitive_are_one_authority,
+  primitive_projection_for_declaration,
+}
+import std.primitive_projection {
+  DeclarationPrimitiveUndisposed,
+  DeclarationProjectsNoPrimitive,
+  DeclarationProjectsPrimitive,
+  DivergentProjection,
+  HostRealizedSeam,
+  ModeledProjection,
+  primitive_lookup,
+  primitive_map_insert,
+}
+import std.types { Int, Map }
 import v2.std.collection { empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
-import std.types { Map }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE GATE ON THE MAP CONSTRUCTION DELEGATE, AND WHY IT IS A WITNESS RATHER THAN AN AGREEMENT.
+// THE GATE ON THE MAP CONSTRUCTION DELEGATE AFTER IT LANDED.
 //
-// `Map` is reached through two constructors today: `empty_map()` yields the host's native map,
-// and a `Map { lookup: ... }` record literal yields a closure carrying its own lookup. The
-// interpreter grounds `v2.std.collection` `map_insert` on the NATIVE shape only —
-// `eval_builtin`'s `free_call.map_insert` arm matches `[Value::Map, k, v]` and answers `Ok(None)`
-// for anything else, which `try_v2_std_collection_map_primitive_grounding` turns into `None`,
-// falling through to the `.dag` body. So `map_insert`'s body is NOT dead: it is the live arm for
-// every record-shaped map.
+// `map_insert` used to construct `Map { lookup: ... }` so a record-shaped map could still insert
+// when the interpreter's native HAMT arm returned Ok(None). That body was O(n) per lookup of
+// the earliest key. The HostRealizedSeam delegates are now the insert and lookup authority:
+// `map_insert_primitive_delegate` / `map_lookup_primitive_delegate` self-call, and the public
+// surfaces call them. Native maps stay HAMT. A record-shaped `Map { lookup: ... }` reaching
+// insert is a TypeError at the seam rather than a fallthrough that wraps another closure frame.
 //
-// That was learned the expensive way. `map_insert` was switched to delegate to its primitive
-// after measuring zero cross-module references in the EMITTED tree — true, and true only of the
-// emitted path. The interpreter half was inferred from the same premise rather than measured, and
-// 14 floor witnesses died with "call depth exceeded 100000 at fn 'map_insert_primitive_delegate'".
-// A review approved the diff; the defect was not in the diff.
-//
-// These two arms are that measurement, enrolled. `record_shaped` is the discriminating one: it
-// passes only while a record-shaped map can still reach `map_insert`, so it goes RED the moment
-// the delegate lands while any `Map { lookup: ... }` literal survives — which is exactly the
-// premature-landing defect, caught in seconds instead of by a floor run.
-//
-// DISSOLUTION, AND ITS PREMISE IS NOW NARROWER THAN WHEN IT WAS WRITTEN. The original condition
-// read: when the finite `Map { lookup: ... }` literals have migrated to `empty_map` + `map_insert`
-// and the delegate lands as the closing move, `record_shaped` inverts — asserting the record route
-// is unrepresentable rather than that it works. It does not simply delete: that would remove the
-// only executing evidence that the two shapes were ever reconciled.
-//
-// The migration named there has happened. The 25 finite fact maps are `map_insert` chains over
-// `empty_map()`, the 8 empties are `empty_map()`, and the open population — every literal whose
-// lookup is a delegate or an unbounded-domain closure — names `PartialFunction` and is no longer
-// spelled `Map` at all. What survives is not a residue awaiting migration: `map_insert`'s own
-// `.dag` body constructs a record-shaped `Map` and MUST, because that is the arm the interpreter
-// falls through to. So the record route is now produced by exactly one authority — the insert
-// itself — plus this file's fixture.
-//
-// That changes what the closing move can be. The delegate cannot land by waiting for literals to
-// disappear, because the last one is `map_insert`'s own return value: making `map_insert` delegate
-// to the primitive while its body is the only record producer is the self-recursion that killed 14
-// floor witnesses. The remaining condition is a HOST fact, not a corpus one — the interpreter's
-// `free_call.map_insert` arm accepting the record shape, or the record shape ceasing to be
-// reachable — and until one of those holds, this gate is a healthy guard being quiet, not a dead
-// one.
-// Gate for the map construction delegate. map_insert grounds on the native map shape only; its .dag
-// body is the live arm for record-shaped maps built by Map { lookup: ... } literals.
-// record_shaped_map_reaches_map_insert reds if the delegate lands while any such literal survives.
+// `native_map_reaches_map_insert` is the positive control. The seam-fidelity pair is the
+// discriminating cost witness: it is green only while insert and lookup are HostRealizedSeam
+// (the primitive-backed shape) and would go RED if those declarations were restored to the
+// closure-chain ModeledProjection body. Paired wall-clock at two sizes is an instrument, not a
+// merge-blocking literal; the two sizes below only check that the first-inserted key remains
+// findable, citing the same producer.
 
 fn native_map_after_insert() -> Optional<String> {
   let m = empty_map()
   map_lookup(m: map_insert(m, "k", "v"), key: "k")
 }
 
-fn record_shaped_map_after_insert() -> Optional<String> {
-  let m = Map { lookup: fn(_) { Absent } }
-  map_lookup(m: map_insert(m, "k", "v"), key: "k")
+fn insert_from(m: Map<Int, Int>, i: Int, n: Int) -> Map<Int, Int> {
+  if i >= n {
+    m
+  } else {
+    insert_from(m: map_insert(m, i, i), i: i + 1, n: n)
+  }
+}
+
+fn first_key_survives_later_inserts(n: Int) -> Bool {
+  match map_lookup(m: insert_from(m: empty_map(), i: 0, n: n), key: 0) {
+    Present { value: v } => v == 0
+    Absent => false
+  }
 }
 
 test fn native_map_reaches_map_insert() -> Bool {
@@ -69,9 +64,64 @@ test fn native_map_reaches_map_insert() -> Bool {
   }
 }
 
-test fn record_shaped_map_reaches_map_insert() -> Bool {
-  match record_shaped_map_after_insert() {
-    Present { value: v } => v == "v"
-    Absent => false
-  }
+test fn map_insert_delegate_is_host_realized_seam() -> Bool {
+  declaration_and_primitive_are_one_authority(
+    declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate"),
+    primitive: primitive_map_insert,
+  )
+    && match primitive_projection_for_declaration(
+      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate")
+    ) {
+      DeclarationProjectsNoPrimitive => false
+      DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+      DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+        match fidelity {
+          HostRealizedSeam => true
+          ModeledProjection => false
+          DivergentProjection { divergence: _ } => false
+        }
+    }
+}
+
+test fn map_lookup_delegate_is_host_realized_seam() -> Bool {
+  declaration_and_primitive_are_one_authority(
+    declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate"),
+    primitive: primitive_lookup,
+  )
+    && match primitive_projection_for_declaration(
+      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate")
+    ) {
+      DeclarationProjectsNoPrimitive => false
+      DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+      DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+        match fidelity {
+          HostRealizedSeam => true
+          ModeledProjection => false
+          DivergentProjection { divergence: _ } => false
+        }
+    }
+}
+
+test fn map_insert_surface_is_modeled_projection_of_the_insert_primitive() -> Bool {
+  declaration_and_primitive_are_one_authority(
+    declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert"),
+    primitive: primitive_map_insert,
+  )
+    && match primitive_projection_for_declaration(
+      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert")
+    ) {
+      DeclarationProjectsNoPrimitive => false
+      DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+      DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+        match fidelity {
+          HostRealizedSeam => false
+          ModeledProjection => true
+          DivergentProjection { divergence: _ } => false
+        }
+    }
+}
+
+test fn first_inserted_key_is_found_after_many_inserts() -> Bool {
+  first_key_survives_later_inserts(n: 8)
+    && first_key_survives_later_inserts(n: 64)
 }

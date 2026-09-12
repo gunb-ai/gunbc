@@ -7444,7 +7444,8 @@ macro_rules! v1_map_grounding_arms {
         $cb! {
             $fname;
             arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
-            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
+            arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
+            arm "map_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
         }
     };
 }
@@ -7513,13 +7514,12 @@ fn try_v2_std_collection_map_primitive_grounding(
     let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
-        Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
+        Ok(None) => Some(Err(InterpError::TypeError {
             msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
+                "{V2_STD_COLLECTION_MODULE}.{}: native map primitive refused this argument shape (host misconfiguration, or a non-native map carrier reached a HostRealizedSeam)",
                 fn_node.name
             ),
         })),
-        Ok(None) => None,
         Err(e) => Some(Err(e)),
     }
 }

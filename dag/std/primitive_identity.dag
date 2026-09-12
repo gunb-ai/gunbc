@@ -28,7 +28,7 @@ import std.primitive_projection {
   PrimitiveProjection, PrimitiveProjectionAnswer,
   DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive, DeclarationPrimitiveUndisposed,
   primitive_projection_roster, primitive_projection_row_for_declaration,
-  primitive_length, primitive_map_insert, primitive_map_get, primitive_empty_map,
+  primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_empty_map,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
@@ -1080,6 +1080,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "length",
   "map_insert",
   "map_get",
+  "lookup",
   "empty_map",
   "decl_facts",
   "decl_facts_at",
@@ -1394,6 +1395,8 @@ data primitive_map_insert_traversal: PrimitiveTraversalOrderFact = PrimitiveTrav
 
 data primitive_map_get_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_map_get, order: OrderFreeResult }
 
+data primitive_lookup_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_lookup, order: OrderFreeResult }
+
 data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_empty_map, order: OrderFreeResult }
 
 // The parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their
@@ -1441,6 +1444,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
   primitive_map_get_traversal,
+  primitive_lookup_traversal,
   primitive_empty_map_traversal,
   primitive_decl_facts_traversal,
   primitive_decl_facts_at_traversal,
