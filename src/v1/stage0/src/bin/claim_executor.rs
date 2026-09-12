@@ -1069,6 +1069,34 @@ fn run() -> Result<ExitCode, ExitCode> {
         // a green here and an emitting board are one fact rather than two.
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
+            // THE SHARED RESOLVE UNIVERSE BELONGS TO THE PHASE THAT BUILT IT, AND ITS LIFETIME ENDS
+            // HERE. Measured on srv1 (`--required-ci`, 48G scope, run at 3d20e9c6): the floor phase
+            // entered at `current=15137792000` — 15.1 GB already charged before it prepared
+            // anything — and peaked at 29.5 GB. The phases above run in THIS process and nothing
+            // released what they built, so the floor began its own work already at the CI slot's
+            // `memory_high` line (`gunbc.runner_slot_allocation`: high 15 GiB, max 16 GiB), and
+            // every page it then touched was contended. That is why the stall specimens refuse
+            // during the floor's own typecheck while the same binary on a host with headroom
+            // reports `major faults 0, stall 0 faults/min at 99.2% user cpu`.
+            //
+            // IT IS A DECLARED LIFETIME, NOT A LOW-MEMORY REFLEX. The floor does not ask whether
+            // memory is tight; it states that a corpus index built by regen is regen's, and that a
+            // later phase needing one builds and is BILLED for its own. The floor's warms have been
+            // reporting `provenance=already-warm-on-entry
+            // triggered_by=a-site-ahead-of-floor-preparation` with `rss_growth_bytes=0` — that arm
+            // exists to name exactly this ordering defect, and this is the repair it names. After
+            // this call those warms attribute their real cost instead of zero.
+            //
+            // THE RECLAIM IS REPORTED, NEVER ASSUMED. A run that frees nothing prints the same
+            // shape as one that frees gigabytes, so this line is evidence either way rather than a
+            // claim that the release worked.
+            let (rss_kb_before, trim_reclaimed_kb, rss_kb_after) =
+                v1_compiler::cli_run::release_process_shared_universe();
+            eprintln!(
+                "required-ci: phase-boundary shared-universe release \
+                 rss_kb_before={rss_kb_before} trim_reclaimed_kb={trim_reclaimed_kb} \
+                 rss_kb_after={rss_kb_after}"
+            );
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
             let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
             match v1_compiler::cli_run::run_required_floor(

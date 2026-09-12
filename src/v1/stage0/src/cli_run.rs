@@ -10790,6 +10790,41 @@ pub(crate) fn reset_process_shared_index_for_test() {
     PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
 
+/// END THE SHARED RESOLVE UNIVERSE'S LIFETIME AT A PHASE BOUNDARY, and report what that returned.
+///
+/// THE FACT THIS EXISTS FOR, measured on srv1 (`--required-ci`, 48G scope): the floor phase ENTERS
+/// at `current=15137792000` — 15.1 GB already charged to the process before it prepares anything —
+/// and peaks at 29.5 GB. The phases ahead of it (parse, regen, v2-emission) run in the SAME process
+/// and nothing releases what they built, so the floor begins its own work already at the CI slot's
+/// `memory_high` line (`gunbc.runner_slot_allocation`: high 15 GiB, max 16 GiB). The corpus-wide
+/// `MultiEntryIndex` these thread-locals memoize is the largest such retention: `required_regen_host`
+/// reaches `process_shared_index` at six sites, and the floor's own warms then report
+/// `provenance=already-warm-on-entry triggered_by=a-site-ahead-of-floor-preparation` with
+/// `rss_growth_bytes=0` — attributing nothing, because the cost was paid in an earlier phase.
+///
+/// IT IS A LIFETIME, NOT AN OPTIMISATION, and the distinction decides where the call goes. A cache
+/// dropped because memory is tight would be tuning; this is a declaration that the shared universe
+/// belongs to ONE phase and does not outlive it. A later phase that needs it rebuilds it and is
+/// BILLED for it, which is what makes the next run's attribution honest — the `already-warm`
+/// provenance arm exists precisely to name this ordering defect, and this is the repair it names.
+///
+/// RETURNS THE RECLAIM RATHER THAN PRINTING IT, so the caller reports it on its own phase line and
+/// a run that reclaims nothing is as visible as one that reclaims gigabytes. Never inferred from
+/// the drop: both readings are taken around it, and `malloc_trim` runs between them because glibc
+/// returning pages to the allocator is not the same event as returning them to the kernel — an
+/// earlier measurement that skipped the trim read a reclaim of zero while the live heap had in fact
+/// halved (`full_inventory_release_trim_reclaimed_kb` records the same distinction one phase over).
+pub fn release_process_shared_universe() -> (u64, u64, u64) {
+    let before_kb = current_rss_bytes().unwrap_or(0) / 1024;
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        *s.borrow_mut() = [None, None];
+    });
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
+    let trim_reclaimed_kb = trim_retained_heap().unwrap_or(0);
+    let after_kb = current_rss_bytes().unwrap_or(0) / 1024;
+    (before_kb, trim_reclaimed_kb, after_kb)
+}
+
 /// THE LIVE-READ SELECTION MANIFEST, and why it carries a subject rather than a timestamp.
 ///
 /// G2 classification is expensive: it needs fn-arrow declaration facts reflected out of a
