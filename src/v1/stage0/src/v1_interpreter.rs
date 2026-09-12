@@ -4189,6 +4189,65 @@ pub struct PreparedScopeIndexes {
 }
 
 impl PreparedScopeIndexes {
+    /// THE SITE-RELATIVE TIERS, AND THE ONLY IMPLEMENTATION OF THEM.
+    ///
+    /// A bare reference resolves first through the site file's OWN module's qualified
+    /// declaration, then through the module that file explicitly imported the name FROM — and
+    /// both only for a name the shared slot cannot represent unambiguously, which is the
+    /// condition that makes the tiers worth consulting at all. `None` means no tier answered and
+    /// the reference reaches the shared bare slot below.
+    ///
+    /// `InterpContext::lookup_fn_from` IS this method plus that slot, and the bare-name
+    /// ambiguity census asks this same method whether a reference falls through to it. They
+    /// cannot drift, because there is nothing to drift from: an earlier revision stated "one
+    /// rule, one home" while leaving the interpreter its own copy, and the two copies had
+    /// already disagreed on this gate.
+    ///
+    /// `ResolvedFuncEnv.parents` is exactly wrong for the second tier and was tried — this
+    /// carrier's own `file_import_bindings` note says why: it is the FLATTENED TRANSITIVE
+    /// closure, which "does not separate a direct import from a transitively reachable module".
+    /// A wildcard import binds no names and contributes nothing here, which is the residue the
+    /// census exists to find.
+    fn site_resolved_fn(&self, site_file: &str, name: &str) -> Option<&Rc<Node>> {
+        if name.contains('.')
+            || site_file.is_empty()
+            || !self.ambiguous_bare_function_names.contains(name)
+        {
+            return None;
+        }
+        if let Some(module_path) = self.file_module_paths.get(site_file) {
+            if let Some(node) = self.fn_nodes.get(&format!("{module_path}.{name}")) {
+                return Some(node);
+            }
+        }
+        if let Some(source_module) = self
+            .file_import_bindings
+            .get(&(site_file.to_string(), name.to_string()))
+        {
+            if let Some(node) = self.fn_nodes.get(&format!("{source_module}.{name}")) {
+                return Some(node);
+            }
+        }
+        None
+    }
+
+    /// DOES A BARE VALUE REFERENCE AT THIS SITE FALL THROUGH TO THE SHARED SLOT? The census's
+    /// question and the wall's, answered by the resolution the interpreter performs rather than
+    /// by a restatement of it.
+    pub fn falls_through_to_shared_slot(&self, site_file: &str, name: &str) -> bool {
+        self.site_resolved_fn(site_file, name).is_none()
+    }
+
+    /// AND WHICH MODULE ANSWERED, when one did. The census's negative — a pair that has left the
+    /// ambiguous-read list — proves only that the list moved; this says what the reference now
+    /// resolves TO, which is what a qualification is actually for. Derived from the resolved
+    /// declaration's own source file through the same `file_module_paths` the first tier reads,
+    /// so it names the module that answered rather than the module the census hoped would.
+    pub fn site_resolved_module(&self, site_file: &str, name: &str) -> Option<String> {
+        let node = self.site_resolved_fn(site_file, name)?;
+        self.file_module_paths.get(node.span.file.as_str()).cloned()
+    }
+
     /// EVERY RESOLUTION THIS INDEX SET CAN ANSWER, rendered at identity grain and sorted, so
     /// two index sets can be compared for equality of ANSWERS rather than of construction path.
     /// Items are identified by `Rc` address: the same declaration node, not merely an equal
@@ -4979,33 +5038,20 @@ impl InterpContext {
     /// subject and retires with namespace-only resolution, where a reference has exactly one
     /// declarer by construction.
     fn lookup_fn_from(&self, name: &str, site_file: &str) -> Option<&Rc<Node>> {
-        if !name.contains('.')
-            && !site_file.is_empty()
-            && self.indexes.ambiguous_bare_function_names.contains(name)
-        {
-            if let Some(module_path) = self.indexes.file_module_paths.get(site_file) {
-                let qualified = format!("{}.{}", module_path, name);
-                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
-                    return Some(node);
-                }
-            }
-            // THEN WHERE THE AUTHOR SAID IT COMES FROM: an explicitly imported name resolves to
-            // the module it was imported FROM, a fact the shared slot discards. Without this tier
-            // `import a.b.c { anchor }` is inert whenever another module in scope declares
-            // `anchor` -- the reference lands on the precedence winner and the import line reads
-            // as though it decided something.
-            if let Some(source_module) = self
-                .indexes
-                .file_import_bindings
-                .get(&(site_file.to_string(), name.to_string()))
-            {
-                let qualified = format!("{}.{}", source_module, name);
-                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
-                    return Some(node);
-                }
-            }
-        }
-        self.indexes.fn_nodes.get(name)
+        // WHERE THE REFERENCE WAS WRITTEN ANSWERS FIRST: the site file's own module's
+        // declaration, then where the author said the name comes from -- an explicitly imported
+        // name resolves to the module it was imported FROM, a fact the shared slot discards.
+        // Without that tier `import a.b.c { anchor }` is inert whenever another module in scope
+        // declares `anchor`: the reference lands on the precedence winner and the import line
+        // reads as though it decided something.
+        //
+        // Both tiers live in `PreparedScopeIndexes::site_resolved_fn`, which is also what the
+        // bare-name ambiguity census asks whether a reference falls through to the slot below.
+        // One implementation, so the population the census names is the population execution
+        // resolves.
+        self.indexes
+            .site_resolved_fn(site_file, name)
+            .or_else(|| self.indexes.fn_nodes.get(name))
     }
 
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
@@ -7444,7 +7490,8 @@ macro_rules! v1_map_grounding_arms {
         $cb! {
             $fname;
             arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
-            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
+            arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
+            arm "map_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
         }
     };
 }
@@ -7513,13 +7560,12 @@ fn try_v2_std_collection_map_primitive_grounding(
     let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
-        Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
+        Ok(None) => Some(Err(InterpError::TypeError {
             msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
+                "{V2_STD_COLLECTION_MODULE}.{}: native map primitive refused this argument shape (host misconfiguration, or a non-native map carrier reached a HostRealizedSeam)",
                 fn_node.name
             ),
         })),
-        Ok(None) => None,
         Err(e) => Some(Err(e)),
     }
 }
@@ -14117,6 +14163,10 @@ mod write_file_create_new_tests {
         for r in results.iter().filter(|r| r.is_err()) {
             let e = r.as_ref().unwrap_err();
             assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+            // Every loser reaches the `error_kind` channel as the occupied arm, which is what lets
+            // a put-if-absent consumer (std.materialization_object store_commit_settle) read back
+            // and converge instead of refusing.
+            assert_eq!(super::io_error_kind_name(e), "already_exists");
         }
         assert!(path.exists(), "the winner's target must be published");
         assert_eq!(std::fs::read(&path).expect("target").len(), payload.len());
@@ -14240,7 +14290,24 @@ struct FileResult {
     byte_count: i64,
     path: String,
     error: String,
+    // The host error's kind, projected onto extdeps.filesystem.filesystem_io FilesystemFailureKind's
+    // closed names ("" on success). Carried so a consumer can separate NotFound from
+    // PermissionDenied / AlreadyExists without reading `error`'s text.
+    error_kind: String,
     content: String,
+}
+
+/// The one projection from a host `std::io::Error` onto the `error_kind` channel's closed roster
+/// (extdeps.filesystem.filesystem_io admit_filesystem_failure_kind). Every kind outside the three
+/// named ones is "other" -- the host still distinguished it, but no consumer has asked for it yet.
+fn io_error_kind_name(e: &std::io::Error) -> String {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => "not_found",
+        std::io::ErrorKind::AlreadyExists => "already_exists",
+        std::io::ErrorKind::PermissionDenied => "permission_denied",
+        _ => "other",
+    }
+    .to_string()
 }
 
 fn dispatch_file(
@@ -14293,6 +14360,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: String::new(),
+                        error_kind: String::new(),
                         content: String::new(),
                     }),
                     Err(e) => Ok(FileResult {
@@ -14300,6 +14368,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14319,6 +14388,7 @@ fn dispatch_file(
                                 byte_count: content.len() as i64,
                                 path,
                                 error: String::new(),
+                                error_kind: String::new(),
                                 content,
                             })
                         }
@@ -14327,6 +14397,7 @@ fn dispatch_file(
                             byte_count: 0,
                             path,
                             error,
+                            error_kind: "other".to_string(),
                             content: String::new(),
                         }),
                     },
@@ -14335,6 +14406,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14362,6 +14434,7 @@ fn dispatch_file(
                         byte_count,
                         path,
                         error: String::new(),
+                        error_kind: String::new(),
                         content: String::new(),
                     }),
                     Err(e) => Ok(FileResult {
@@ -14369,6 +14442,7 @@ fn dispatch_file(
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14396,17 +14470,19 @@ fn dispatch_file(
                         byte_count,
                         path,
                         error: String::new(),
+                        error_kind: String::new(),
                         content: String::new(),
                     }),
-                    // The refusal carries the host's message verbatim and does NOT classify itself.
-                    // Deciding "already existed" from the error TEXT would be a heuristic standing in
-                    // for an observation; the caller learns the create did not happen and why the
-                    // host said so, which is what it needs to refuse.
+                    // The refusal carries the host's message verbatim in `error` and the host
+                    // error's KIND in `error_kind`, so "already existed" is classified by the host's
+                    // own io::ErrorKind -- never by matching the error TEXT, which would be a
+                    // heuristic standing in for an observation.
                     Err(e) => Ok(FileResult {
                         success: false,
                         byte_count: 0,
                         path,
                         error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
                         content: String::new(),
                     }),
                 };
@@ -14449,6 +14525,7 @@ fn dispatch_file(
                 byte_count,
                 path,
                 error: String::new(),
+                error_kind: String::new(),
                 content: String::new(),
             }),
             Err(e) => Ok(FileResult {
@@ -14456,6 +14533,7 @@ fn dispatch_file(
                 byte_count: 0,
                 path,
                 error: format!("{}", e),
+                error_kind: io_error_kind_name(&e),
                 content: String::new(),
             }),
         }
@@ -14470,6 +14548,7 @@ fn dispatch_file(
                 byte_count: s.len() as i64,
                 path,
                 error: String::new(),
+                error_kind: String::new(),
                 content: s,
             }),
             Err(e) => Ok(FileResult {
@@ -14477,6 +14556,7 @@ fn dispatch_file(
                 byte_count: 0,
                 path,
                 error: format!("{}", e),
+                error_kind: io_error_kind_name(&e),
                 content: String::new(),
             }),
         }
@@ -14515,6 +14595,7 @@ fn map_file_outputs(
             "bytes_written" | "bytes" | "byte_count" => Value::Int(result.byte_count),
             "path" => str_value(result.path.clone()),
             "error" => str_value(result.error.clone()),
+            "error_kind" => str_value(result.error_kind.clone()),
             "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
@@ -22992,7 +23073,9 @@ mod the_emitted_listing_producer_refuses_too {
             &src,
             format!(
                 "fn main() {{\n    let file_path = std::env::args().nth(1).unwrap();\n    \
-                 let (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = {}\n{}\n}}\n",
+                 {}\n    \
+                 let (file_success, file_content, file_error, file_byte_count, file_error_kind): (bool, String, String, i64, String) = {}\n{}\n}}\n",
+                crate::v1_compiler_emit_rust::file_io_error_kind_fn(),
                 crate::v1_compiler_emit_rust::file_list_match_expr(),
                 expectations
             ),

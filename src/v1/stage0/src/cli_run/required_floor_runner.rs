@@ -809,6 +809,87 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
     }
 }
 
+/// Names of `test fn` / `test data` declarations at the resolved diff base, per path.
+/// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
+/// census is an observation failure and never becomes an empty map.
+pub(crate) fn floor_base_test_decl_census(
+    paths: &[String],
+) -> Result<std::collections::HashMap<String, HashSet<String>>, String> {
+    use v1_interpreter::Value;
+    if paths.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let comparison = floor_diff_comparison_readout()?;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let path_values: Vec<Value> = paths.iter().map(|p| str_value(p.clone())).collect();
+    let args = [
+        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("paths".to_string()), list_value_from_vec(path_values)),
+    ];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "floor_run_base_test_decl_census",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("floor_run_base_test_decl_census: {e}"))?;
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseTestDeclCensusRefused") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.to_string()),
+                _ => Err("base test-declaration census refused (no reason)".to_string()),
+            }
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseTestDeclCensus") => {
+            let rows = match ctx.field(fields, "rows") {
+                Some(Value::List(items)) => items,
+                _ => return Err("BaseTestDeclCensus missing `rows` list".to_string()),
+            };
+            let mut out = std::collections::HashMap::new();
+            for item in rows.iter() {
+                let Value::Record { type_name, fields } = item else {
+                    return Err(format!(
+                        "BaseTestDeclCensus row was not FloorBasePathTestDecls: {}",
+                        ctx.format_value(item)
+                    ));
+                };
+                if !ctx.sym_eq(*type_name, "FloorBasePathTestDecls") {
+                    return Err(format!(
+                        "BaseTestDeclCensus row type `{}`, expected FloorBasePathTestDecls",
+                        ctx.resolve(*type_name)
+                    ));
+                }
+                let path = match ctx.field(fields, "path") {
+                    Some(Value::Str(s)) => normalize_repo_path(s),
+                    _ => return Err("FloorBasePathTestDecls missing `path`".to_string()),
+                };
+                let names = match ctx.field(fields, "names") {
+                    Some(v) => string_list_from_value(v, "names")?,
+                    None => return Err("FloorBasePathTestDecls missing `names`".to_string()),
+                };
+                out.insert(path, names.into_iter().collect());
+            }
+            Ok(out)
+        }
+        other => Err(format!(
+            "floor_run_base_test_decl_census returned `{}`, expected FloorBaseTestDeclCensus",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 pub(crate) fn floor_diff_edits_from_diff_text(
     index: &MultiEntryIndex,
     diff_text: &str,
@@ -817,7 +898,39 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
-    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added)
+    // No census: `enrolled_test_fns` stays empty. Attribution tests read `edited_test_fns` /
+    // `touched_entry_files` / data items from this wrapper; enrolment is only answered when
+    // `floor_diff_edits_from_diff_text_with_base_names` (or production) supplies the census.
+    floor_diff_edits_from_line_ranges(
+        index,
+        &line_ranges,
+        &changed,
+        &departed,
+        &added,
+        None,
+        &std::collections::HashMap::new(),
+    )
+}
+
+pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+    base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
+) -> Result<FloorDiffEdits, String> {
+    let line_ranges = parse_unified_diff_line_ranges(diff_text);
+    let changed = parse_unified_diff_changed_new_lines(diff_text);
+    let departed = parse_unified_diff_departed_paths(diff_text);
+    let added = parse_unified_diff_added_paths(diff_text);
+    let rename_from = parse_unified_diff_rename_sources(diff_text);
+    floor_diff_edits_from_line_ranges(
+        index,
+        &line_ranges,
+        &changed,
+        &departed,
+        &added,
+        Some(base_test_decl_names),
+        &rename_from,
+    )
 }
 
 // Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
@@ -829,6 +942,8 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
+    base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
+    rename_from: &std::collections::HashMap<String, String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -997,12 +1112,22 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             }
             if test_fn_names.contains(name) {
                 edited_test_fns.insert((file_norm.clone(), name.clone()));
-                // NEWLY ENROLLED, AND THE CONDITION IS THE PATH'S rather than the line's. A test
-                // fn in a path whose declaration set is established fresh at NEW has never
-                // executed under its current qualified identity; one in a modified path may be a
-                // long-standing witness whose body was touched. Only the first may be refused for
-                // its cost by a gate that must never red a PR for debt it did not author.
-                if added_paths.contains(&file_norm) {
+                // NEWLY ENROLLED = declared now and not declared at the resolved diff base.
+                // The census is path-keyed. A rename destination is absent at the NEW path, so
+                // looking up the dest would enrol every fn as new — the author's-only-moved
+                // case. Enrolment therefore reads the SOURCE path when `rename_from` names one.
+                // Without a census there is no enrolment answer: the added-path rule is the
+                // superseded rung and must not remain as a silent alternative (review 64246).
+                let newly_declared = match base_test_decl_names {
+                    Some(at_base) => {
+                        let census_path = rename_from.get(&file_norm).unwrap_or(&file_norm);
+                        !at_base
+                            .get(census_path)
+                            .is_some_and(|names| names.contains(name))
+                    }
+                    None => false,
+                };
+                if newly_declared {
                     enrolled_test_fns.insert((file_norm.clone(), name.clone()));
                 }
             } else if *is_data {
@@ -1065,8 +1190,9 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// so "which test declarations did this change touch" has ONE producer; this function only spells
 /// the result as the qualified `module.function` identity the disposition receipt is keyed by. A
 /// wholly added `.dag` file contributes every test declaration it carries; a modified file
-/// contributes the declarations whose lines the diff reached. An observation or attribution failure
-/// REFUSES — it never widens to "no changed witnesses".
+/// contributes the declarations whose lines the diff reached. Newly enrolled identities are the
+/// subset whose names are absent from `floor_run_base_test_decl_census` at the resolved diff
+/// base. An observation or attribution failure REFUSES — it never widens to "no changed witnesses".
 ///
 /// THE TWO PROJECTIONS COME BACK TOGETHER rather than from two calls. Each call re-runs
 /// `floor_observe_git_diff_unified_for_ci` — a wet observation over the whole diff — and two calls
@@ -1090,12 +1216,27 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
+    let rename_from = parse_unified_diff_rename_sources(&diff_text);
+    let mut dag_paths: std::collections::HashSet<String> = line_ranges_by_file
+        .keys()
+        .filter(|p| p.ends_with(".dag"))
+        .cloned()
+        .collect();
+    for (dest, src) in &rename_from {
+        if dest.ends_with(".dag") {
+            dag_paths.insert(src.clone());
+        }
+    }
+    let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
         &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
+        Some(&base_test_decl_names),
+        &rename_from,
     )?;
     let quarantined = quarantine_probe_admitted_pairs();
     let root = process_workspace_root();
@@ -3408,7 +3549,7 @@ pub(crate) fn floor_cgroup_dir() -> String {
     .clone()
 }
 
-/// One entry's enrolled witness names, exactly as `v2.workflow.floor_discovery_producer`
+/// One entry's enrolled witness names, exactly as `v2.workflow.floor_discovery_source_authority`
 /// answered them; the site-projection loop's unit.
 struct FloorDiscoveryFile {
     path: String,
@@ -3419,7 +3560,7 @@ struct FloorDiscoveryFile {
 /// The `.dag` module whose per-file fold IS the required floor's roster. Evaluated by qualified
 /// name in its own exact scope, like every other floor authority; a closure seed of the
 /// gate-bounded prepared subject (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`).
-const FLOOR_DISCOVERY_AUTHORITY_MODULE: &str = "v2.workflow.floor_discovery_producer";
+const FLOOR_DISCOVERY_AUTHORITY_MODULE: &str = "v2.workflow.floor_discovery_source_authority";
 
 pub fn floor_seam(name: &str) {
     if let Ok(mut g) = FLOOR_SEAM.lock() {
@@ -4487,7 +4628,8 @@ pub fn run_required_floor(
     // ── SHARED-BUILD ATTRIBUTION: the bare-reference edge index ───────────────────────────
     //
     // THIRD WARM, SAME REPAIR AS THE TWO ABOVE. The bare-reference edge index
-    // (`both_closure_edge_index`, and through it `tree_bare_census_for_root` per root) is a fact
+    // (`whole_pool_closure_edge_index`, explicitly demanded by `warm_bare_reference_edge_index`,
+    // which also warms `tree_bare_census_for_root` for reconciliation) is a fact
     // of the SUBJECT, not of any claim: memoized once per index — the census trace reports two
     // misses over two source roots against ONE index address, `edge_index_construction {
     // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED
@@ -4984,7 +5126,7 @@ pub fn run_required_floor(
         ];
         let outcome = v1_interpreter::run_in_context_with_args(
             &producer_frame,
-            "v2.workflow.floor_discovery_producer.discover_floor_rows_for_source",
+            "v2.workflow.floor_discovery_source_authority.discover_floor_rows_for_source",
             &args,
             false,
         )
@@ -4999,7 +5141,7 @@ pub fn run_required_floor(
     }
     let finalized = v1_interpreter::run_in_context_with_args(
         &producer_frame,
-        "v2.workflow.floor_discovery_producer.floor_discovery_finalize_source_outcomes",
+        "v2.workflow.floor_discovery_source_authority.floor_discovery_finalize_source_outcomes",
         &[(
             Some("outcomes".to_string()),
             list_value_from_vec(discovery_outcomes),
@@ -6410,6 +6552,22 @@ pub fn run_required_floor(
     let mut scope_build_split = crate::cli_run::ScopeBuildSplit::default();
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
+    // THE DISTINCT POPULATION, which the summed total cannot express: `names_total` adds one
+    // scope's count to the next, so a name claimed in 300 scopes is counted 300 times. The set a
+    // rename campaign has to dissolve is this one — name to the claimants that spell it, unioned
+    // across every scope that reached them — plus how many scopes each name is ambiguous in,
+    // which is what ranks the offenders.
+    let mut ambiguous_claimants: BTreeMap<String, BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
+    let mut ambiguous_scope_count: BTreeMap<String, usize> = BTreeMap::new();
+    // AND THE READS: (name, referring module) sites, unioned across scopes. This is the
+    // population a refusal is affordable against — a declared name nothing reads bare is a
+    // convention, and the corpus carries whole families of those.
+    let mut ambiguous_read_sites: BTreeMap<(String, String), BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
+    // The positive half: (name, referring module) -> the module that answered it, for names that
+    // ARE ambiguous in the shared slot but are not read through it at this site.
+    let mut qualified_read_sites: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
@@ -6443,10 +6601,29 @@ pub fn run_required_floor(
             scope_build_split.accumulate(&built.build_split);
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
-            if built.ambiguous_bare_names > 0 {
+            if !built.ambiguous_bare_names.is_empty() {
                 scopes_with_ambiguity += 1;
-                ambiguous_total += built.ambiguous_bare_names;
-                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names);
+                ambiguous_total += built.ambiguous_bare_names.len();
+                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names.len());
+                for (name, referring, resolved) in built.qualified_bare_reads.iter() {
+                    qualified_read_sites
+                        .entry((name.clone(), referring.clone()))
+                        .or_default()
+                        .insert(resolved.clone());
+                }
+                for row in built.ambiguous_bare_reads.iter() {
+                    ambiguous_read_sites
+                        .entry((row.name.clone(), row.referring_module.clone()))
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
+                for row in built.ambiguous_bare_names.iter() {
+                    *ambiguous_scope_count.entry(row.name.clone()).or_insert(0) += 1;
+                    ambiguous_claimants
+                        .entry(row.name.clone())
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
             }
             current_scope = Some((claim.module_path.clone(), built));
         }
@@ -7252,9 +7429,127 @@ pub fn run_required_floor(
     // reference closure never donates a colliding name and the flat registry is adequate in
     // practice; anything else sizes the terminal per-module-environment correction.
     eprintln!(
-        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
-        scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max
+        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={} \
+         names_distinct={}",
+        scopes_with_ambiguity,
+        scope_constructions,
+        ambiguous_total,
+        ambiguous_max,
+        ambiguous_claimants.len()
     );
+    let ambiguous_claimants_len = ambiguous_claimants.len();
+    // AND THE NAMES THEMSELVES. `names_total` sizes the population and names nothing in it, so
+    // it can size a campaign and cannot be the campaign's input. Layer 2 of this class is a
+    // refusal landed together with the rename or qualification of every site it would refuse;
+    // these lines ARE that site list, one per distinct name, carrying every claimant and the
+    // kinds they claim it as. Not truncated to a top-N: a census whose tail is elided is an
+    // allow-list with extra steps, and the refusal this feeds admits none.
+    {
+        let mut kind_histogram: BTreeMap<String, usize> = BTreeMap::new();
+        // The union is folded back into the SAME carrier the scope produced, so the census line
+        // and the per-scope rows answer about one type and the kind signature is read off it
+        // rather than recomputed here — the alternative was a second copy of that fold living in
+        // the reporter.
+        let mut ranked: Vec<crate::cli_run::AmbiguousBareName> = ambiguous_claimants
+            .into_iter()
+            .map(|(name, claimants)| crate::cli_run::AmbiguousBareName {
+                name,
+                claimants: claimants.into_iter().collect(),
+            })
+            .collect();
+        // Scope count descending, then the name, so the ordering is a function of the census and
+        // not of a map's iteration.
+        ranked.sort_by(|a, b| {
+            let a_scopes = ambiguous_scope_count.get(&a.name).copied().unwrap_or(0);
+            let b_scopes = ambiguous_scope_count.get(&b.name).copied().unwrap_or(0);
+            b_scopes.cmp(&a_scopes).then_with(|| a.name.cmp(&b.name))
+        });
+        for row in ranked.iter() {
+            let name = &row.name;
+            let claimants = &row.claimants;
+            let signature = row.kind_signature();
+            *kind_histogram.entry(signature.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-name] name={name} scopes={} kinds={signature} \
+                 claimants={sites}",
+                ambiguous_scope_count.get(name).copied().unwrap_or(0)
+            );
+        }
+        let mix = kind_histogram
+            .iter()
+            .map(|(signature, count)| format!("{signature}={count}"))
+            .collect::<Vec<String>>()
+            .join(" ");
+        // The kind mix, folded from the same rows rather than tallied beside them. A signature
+        // mixing `data` with `fn` is the dangerous shape — it crosses the evaluator's kind
+        // dispatch — and one that is `fn+fn` is the common shape that merely picks a body.
+        eprintln!("[floor-bare-name-ambiguity-kinds] {mix}");
+    }
+    // THE READS, WHICH ARE THE DEFECTS. Everything above is a DECLARATION census: it says which
+    // names two transitively-reached modules both spell. A name nothing references bare is
+    // harmless, and the corpus deliberately carries per-module convention rows that hundreds of
+    // modules each declare — so the population a refusal has to dissolve is not that one, it is
+    // the set of reference SITES that actually fall through to the ambiguous shared slot.
+    // Counted statically over each scope's whole closure, never over the lookups this fold
+    // happened to execute: a reference on a path no witness runs is exactly the site a later
+    // refusal would surprise. The grain is (name, referring module), which is the grain a fix is
+    // written at — `refs_by_module` publishes a module's free references deduped, so this is a
+    // count of referencing modules per name and NOT a count of occurrences.
+    {
+        let mut read_names: BTreeMap<String, usize> = BTreeMap::new();
+        for ((name, referring_module), claimants) in ambiguous_read_sites.iter() {
+            *read_names.entry(name.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-read] name={name} referring_module={referring_module} \
+                 claimants={sites}"
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] read_name_module_pairs={} \
+             read_names_distinct={} declared_names_distinct={}",
+            ambiguous_read_sites.len(),
+            read_names.len(),
+            ambiguous_claimants_len
+        );
+        // THE ADJACENT CLASS THIS CENSUS DELIBERATELY DOES NOT COVER, named so that a zero here
+        // can never be read as "no ambiguity in the corpus". A value-position read is what the
+        // evaluator resolves through the shared slot; a TYPE whose spelling two modules share is
+        // a real ambiguity in a different channel, and the corpus carries a large deliberate
+        // instance of it -- String, Int, List, Bool, WireContract each declared by both `std.*`
+        // and its `v2.std.*` self-host copy. That double is owned by the v2 self-host
+        // replacement migration, which ends it by ending the double, and is not a rename this
+        // wall could ask for.
+        // WHAT THE QUALIFIED SITES RESOLVE TO. A site that has left the ambiguous list above
+        // has either been qualified or has stopped being read; these lines say which, and name
+        // the declaration the reference now reaches. Without them the only evidence a
+        // qualification worked is a row disappearing from a census this same process produces.
+        for ((name, referring_module), resolved) in qualified_read_sites.iter() {
+            eprintln!(
+                "[floor-bare-name-ambiguity-bound] name={name} referring_module={referring_module} \
+                 resolves_to={}",
+                resolved.iter().cloned().collect::<Vec<String>>().join(",")
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] qualified_name_module_pairs={}",
+            qualified_read_sites.len()
+        );
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] channel=value_position_only \
+             not_covered=type_position_name_collisions \
+             owner=v2_self_host_replacement_migration"
+        );
+    }
     // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
     // the mean cost of a scope that cost anything; a scope whose modules were all resident from
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the
@@ -8482,6 +8777,10 @@ mod scope_fragment_memo_equivalence {
             assert_eq!(
                 memoized.ambiguous_bare_names, control.ambiguous_bare_names,
                 "{entry}: ambiguity population diverged"
+            );
+            assert_eq!(
+                memoized.ambiguous_bare_reads, control.ambiguous_bare_reads,
+                "{entry}: ambiguous READ sites diverged"
             );
             assert_eq!(
                 memoized.resolution_fingerprint(),

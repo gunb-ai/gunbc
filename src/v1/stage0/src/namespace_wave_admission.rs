@@ -270,13 +270,10 @@ pub enum AdmissionSubject {
         module: &'static str,
         in_declaration: &'static str,
         spelling: &'static str,
-        /// Where the relocated spelling now resolves — the module the admission's own PR moved
-        /// the name TO. Not consulted by delta matching (the delta subject carries no target);
-        /// it is the referent of the CONSUMPTION proof: after the admitting PR merges, the base
-        /// itself binds the spelling to exactly this module, which is the positive, decidable
-        /// fact that separates a consumed row from an author-error row. A row that cannot name
-        /// where its name went is not an admission of a relocation.
-        target: &'static str,
+        /// Exact candidate set after the admitted transition, checked at the head before
+        /// admission and at the base to derive consumption. A set, never merely one member
+        /// whose presence could hide unexpected candidates. The const roster stays authored.
+        expected_candidates: &'static [&'static str],
     },
 }
 
@@ -294,7 +291,7 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 module,
                 in_declaration,
                 spelling,
-                target: _,
+                expected_candidates: _,
             },
             DeltaSubject::Binding {
                 module: observed_module,
@@ -319,8 +316,8 @@ pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
             module,
             in_declaration,
             spelling,
-            target,
-        } => format!("binding {module}::{in_declaration} `{spelling}` -> {target}"),
+            expected_candidates,
+        } => format!("binding {module}::{in_declaration} `{spelling}` -> {expected_candidates:?}"),
     }
 }
 
@@ -592,7 +589,7 @@ pub struct TransitionAdmission {
 /// rows authored by gunbc#9985 are removed by their own dissolve-on trigger, which is that pull
 /// request merging: c2cd45dcff9 IS that merge, so `extdeps.llm.anthropic_rest` already imports the
 /// four hoisted spellings from `extdeps.llm.anthropic_messages_api` on the base of every run, and
-/// `admission_consumed_at_base` proves the relocation the rows admit. Like the RLM-2b pair before
+/// `admission_satisfied_at` proves the relocation the rows admit. Like the RLM-2b pair before
 /// them, they were BORN CONSUMED — authored in the same commit that merged their subject, so no
 /// run after that commit could ever match them.
 ///
@@ -1013,7 +1010,7 @@ pub struct TransitionAdmission {
 /// Same admitted target, one hop further out.
 ///
 /// Neither consumer file is in this diff, so base equals head for both and
-/// `admission_consumed_at_base` holds on all nineteen.
+/// `admission_satisfied_at` holds on all nineteen.
 ///
 /// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND BY NO OTHER. `consumed_due` is
 /// `roster_touched && !consumed.is_empty()`: a consumed row does NOT refuse unrelated pull requests,
@@ -1051,7 +1048,7 @@ pub struct TransitionAdmission {
 /// correction matters because the wrong version overstates this cohort's blast radius.
 ///
 /// After #10358 lands, each of these spellings binds to `gunbc.model.ollama_choice` at the base, so
-/// `admission_consumed_at_base` holds and the rows report CONSUMED -- not stale. A stale row matches
+/// `admission_satisfied_at` holds and the rows report CONSUMED -- not stale. A stale row matches
 /// no delta; a consumed row is one the base has already satisfied. Different states, different
 /// reporters.
 ///
@@ -1101,7 +1098,7 @@ pub struct TransitionAdmission {
 /// negative answer a total observer would have produced only if the fact were genuinely absent.
 ///
 /// WHAT WOULD ACTUALLY SETTLE IT is the production predicate rather than any hand join.
-/// `admission_consumed_at_base` resolves the full (module, enclosing declaration, spelling) subject
+/// `admission_satisfied_at` resolves the full (module, enclosing declaration, spelling) subject
 /// through the re-export chain and requires the base candidate set to be the EXACT SINGLETON named
 /// by the target. Every hand join above is a NECESSARY condition only; it agreed with the mechanism
 /// on these rows and did not establish what the mechanism establishes. The wall's own run at the
@@ -1129,7 +1126,7 @@ pub struct TransitionAdmission {
 /// uniform "found" was not available to it.
 ///
 /// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
-/// paragraphs above -- `admission_consumed_at_base` resolves the full subject through the re-export
+/// paragraphs above -- `admission_satisfied_at` resolves the full subject through the re-export
 /// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
 /// exact head is the proof.
 ///
@@ -1180,7 +1177,7 @@ pub struct TransitionAdmission {
 /// `00_core.dag`, so neither row's target set is ambiguous and no competing local declaration
 /// shadows either call site.
 ///
-/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_consumed_at_base`
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_satisfied_at`
 /// resolves the full subject through the re-export chain and requires an exact singleton, which no
 /// hand join reproduces. The wall's own run at the exact head is the proof.
 ///
@@ -1707,65 +1704,1890 @@ pub struct TransitionAdmission {
 /// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
 /// empty was the resting state and one change authoring rows back into it is the ordinary motion.
 ///
-/// gunbc#11071 LinuxKernelRelease rehome (2026-09-11). `gunbc.served_surface_browser_observation`
-/// authored `LinuxKernelRelease`, the brand for what `uname -r` answers. That is a fact the Linux
-/// kernel owns, and it was declared inside a downstream RECEIPT module — so when
-/// `extdeps.linux.edac` needed to key its GHES/APEI topology facts to a kernel release it could not
-/// reach the brand at all: an extdeps module may not import a gunbc one. The only two landings were
-/// re-coining the brand upstream, which is the §3 fork, or moving it. It moved, to the new
-/// `extdeps.linux.kernel`, and both prior consumers import it from there.
+/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
+/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
+/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
+/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
+/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
+/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
+/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `LinuxKernelRelease` is authored
-/// on both sides in all three declarations below, and what changed is which declaration it admits:
-/// base `{gunbc.served_surface_browser_observation}`, head `{extdeps.linux.kernel}`. That is the
-/// motion this wall exists to make an author say out loud. It is not `AuthoredReferenceResolution`:
-/// the name was bound to a real declaration that this change deliberately relocated.
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12). #11137 merged. The required floor on gunbc#11121
+/// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
+/// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
+/// Empty is the resting state; this touch deletes the row rather than inheriting it.
+/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
+/// CONSUMED outcome is authored here.
+/// THE SAME DISSOLUTION, WITH THE DISPOSITION WRITTEN DOWN -- a continuation of the paragraph
+/// above rather than a second ordinal for one event. Main recorded the retirement and cited the
+/// floor run that reported the row stale; what follows is why the disposition was nearly the
+/// wrong one, which is the part that generalises. The `gunbc#11137
+/// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
+/// description that stood above it goes with it. Its trigger, authored as "this row goes when
+/// #11137 merges", FIRED: #11137 merged as 34d2a8db32 ("Qualify the extdeps.tools bare-name reads
+/// by their declaring module"), so the base carries the named import, the delta stopped being
+/// producible, and the row became CONSUMED.
 ///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. The moved declaration is
-/// byte-identical to the one it replaces — same name, same `NonEmptyStr where brand(...)` body, same
-/// brand STRING, so every `as LinuxKernelRelease` ascription in the corpus denotes the same brand it
-/// did at the base; a changed brand string would have changed what the ascriptions mean and this row
-/// would be admitting a semantic change under a relocation's name. The two consumers are the
-/// complete population: `LinuxKernelRelease` resolved to exactly
-/// `gunbc.served_surface_browser_observation` and
-/// `test.claim.served_surface_browser_observation_witness` at the base, and both are edited here, so
-/// no third site is left resolving through a module that no longer authors the name. The witness
-/// suite over the consuming module passes on this head. The closure blast radius the same run
-/// measured is 4 modules — `extdeps.linux.kernel` imports only the citation vocabulary the base
-/// consumer already reached (`std.types`, `std.decl_ref`, `extdeps.external_authority`,
-/// `extdeps.uri`), so nothing downstream gained reach it did not have.
+/// THE DISTINCTION IS WORTH WRITING DOWN BECAUSE IT NEARLY WENT THE OTHER WAY. The row was
+/// reported as matching no delta on any open PR, and the required floor refused
+/// `namespace-wave-admission` on every branch carrying it, which makes DELETING IT look like
+/// roster hygiene -- an unmatched entry swept up by whoever the wall stopped. That is a different
+/// disposition from the one recorded here, and DESIGN section 4b(3) turns on exactly that
+/// difference: a declared row is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a deletion
+/// performed for the convenience of a green wall, written up as a trigger firing, would launder an
+/// unpaid debt into a discharged one and leave the next such row unprotected. The merge was
+/// checked by identity (`git log --oneline 34d2a8db32`) before this paragraph was written, not
+/// inferred from the refusal. Had #11137 still been open, the honest record here would have said
+/// the row was deleted unmatched, and the debt would have stayed visible.
 ///
-/// TRIGGER: these rows go when #11071 merges. The base then authors `LinuxKernelRelease` in
-/// `extdeps.linux.kernel`, the delta stops being producible, and CONSUMED comes due on the roster's
-/// next touch — adjudicated by the declaring-module join, not by this sentence.
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THE v2-NATIVE ROUTE'S MODULE SPLITS, 2026-09-11. Four facts moved to modules below their
+/// readers so the route could carry its own admission and its own discovery authority without a
+/// cycle and without dragging a policy closure into the emitted crate:
+/// `v2.compiler.native_test_vocabulary` (the NativeTest* verdict vocabulary, out of
+/// `v2.compiler.compile`), `v2.workflow.compile_door_cause_ownership` (the two-grain cause table,
+/// out of `v2.workflow.compile_door_ledger`), `v2.workflow.floor_discovery_source_authority` (the
+/// per-file discovery authority, out of the corpus walk) and `v2.workflow.floor_discovery_row`
+/// (the row vocabulary, out of the git-identified request half).
+///
+/// EVERY ROW BELOW IS `TargetChanged` AND NONE OF THEM MOVES A MEANING: each spelling denotes the
+/// same declaration it always did, now reached in the module the declaration moved to. The rows
+/// are enumerated by exact identity from the wave's own measured deltas rather than by a pattern
+/// over the four module pairs, because a pattern would silently admit a genuine rebind that landed
+/// in the same pair. DISSOLVE-ON: this PR merging, after which the base binds these spellings to
+/// exactly these targets and the rows read as consumed.
+///
+/// THIS PR AUTHORS 181 ROWS INTO A ROSTER MAIN LEFT EMPTY, and they arrive in #11165's vocabulary
+/// rather than the one they were written in. Each row carried `target: "X"` -- the single module
+/// the spelling now binds. #11165 replaced that with `expected_candidates`, THE EXACT CANDIDATE SET
+/// after the transition, and the difference is not a rename: `target` named a winner and could not
+/// see a second candidate standing beside it, which is precisely the blindness that field existed
+/// to have removed. The conversion below is therefore mechanical in FORM and a CLAIM in SUBSTANCE
+/// -- each singleton asserts that the named module is the ONLY candidate at that site.
+///
+/// THAT CLAIM IS ADJUDICATED BY THE EVALUATOR, NOT BY THIS PARAGRAPH. Where a site really has two
+/// candidates the row refuses with `expected candidates {...}, found candidates {...}`, which names
+/// its own repair; main's own note records a two-member result that a singleton proof could never
+/// accept, so some of these are expected to be wrong and to say so. A row that had been silently
+/// correct under `target` and is loud under `expected_candidates` has not regressed -- it has
+/// stopped hiding, which is the whole point of the change this merge brings in.
+/// Five of them arrived one wave late, and the reason is the predicate gap named above rather than
+/// a new rebind: the producer's `floor_discovery_merge_owned_data_record` spelled five names that
+/// moved to the source authority and was left without the import, so the first wave measured them
+/// as `NewUnresolvedness`. Writing the import turned each into a `TargetChanged` against the base
+/// (base: the producer's own declaration; head: the identical declaration in its new home), which
+/// `names_leaf` cannot see as authored resolution. Required floor run 34573949372 printed all five
+/// as unadjudicated; they are admitted here by the same exact identity as the rest.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.served_surface_browser_observation",
-            in_declaration: "ContainerVisibleHostKernel",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_emitted_build_warnings_denied",
+            spelling: "repo_self_warning_denial_rustflags",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.served_surface_browser_observation",
-            in_declaration: "playwright_chromium_151_linux_arm64_headless_navigation_run",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
+            module: "v2.test.v2_native_route",
+            in_declaration: "clean_emitted_build",
+            spelling: "repo_self_warning_denial_rustflags",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "gunbc#11071 LinuxKernelRelease rehome",
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
         subject: AdmissionSubject::Binding {
-            module: "test.claim.served_surface_browser_observation_witness",
-            in_declaration: "witness_run_owns_one_execution_identity",
-            spelling: "LinuxKernelRelease",
-            target: "extdeps.linux.kernel",
+            module: "v2.test.v2_native_route",
+            in_declaration: "an_unrecorded_rustc_identity_is_refused",
+            spelling: "repo_self_warning_denial_rustflags",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "rustflags_without_the_exact_denial_are_refused",
+            spelling: "repo_self_warning_denial_rustflags",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial_rustflags",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused",
+            spelling: "repo_self_warning_denial_rustflags",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route policy split: repo_self_warning_denial",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.repo_self_build",
+            in_declaration: "repo_self_clippy_command",
+            spelling: "repo_self_warning_denial",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryWalkState",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.test.claim.witness_execution_class_live_census_test",
+            in_declaration: "discovery_class_rows",
+            spelling: "FloorDiscoveryWalkState",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryWalkState",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.test.claim.witness_execution_class_live_census_test",
+            in_declaration: "live_discovery_state",
+            spelling: "FloorDiscoveryWalkState",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_walk_state_zero",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.test.claim.witness_execution_class_live_census_test",
+            in_declaration: "live_discovery_state",
+            spelling: "floor_discovery_walk_state_zero",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: EntryLiveTreeDispositionRefused",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.test.claim.witness_execution_class_live_census_test",
+            in_declaration: "plan_entry_disposition",
+            spelling: "EntryLiveTreeDispositionRefused",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: EntryLiveTreeResolved",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.test.claim.witness_execution_class_live_census_test",
+            in_declaration: "plan_entry_disposition",
+            spelling: "EntryLiveTreeResolved",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_resolve_entry_live_tree",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.test.claim.witness_execution_class_live_census_test",
+            in_declaration: "plan_entry_disposition",
+            spelling: "floor_discovery_resolve_entry_live_tree",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryWalkState",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.test.claim.witness_execution_class_live_census_test",
+            in_declaration: "plan_member_rows",
+            spelling: "FloorDiscoveryWalkState",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestVerdict",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "NativeRouteMemberRow",
+            spelling: "NativeTestVerdict",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FatalGrain",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "classify_native_refusal",
+            spelling: "FatalGrain",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStage",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "classify_native_refusal",
+            spelling: "NativeTestStage",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "classify_native_refusal",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEntry",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "classify_native_refusal",
+            spelling: "NativeTestStageEntry",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "classify_native_refusal",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "classify_native_refusal",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: cause_ownership_lookup",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "classify_native_refusal",
+            spelling: "cause_ownership_lookup",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedOther",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestReturnedOther",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEntry",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestStageEntry",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_context_refusals_backed",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedOther",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestReturnedOther",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEntry",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestStageEntry",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestVerdict",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_disposition",
+            spelling: "NativeTestVerdict",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_false_control_holds",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_false_control_holds",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_false_control_holds",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedOther",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_false_control_holds",
+            spelling: "NativeTestReturnedOther",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FatalGrain",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_file_refusals_attributed",
+            spelling: "FatalGrain",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: cause_ownership_lookup",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_file_refusals_attributed",
+            spelling: "cause_ownership_lookup",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: HeadGrain",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_head_advisories_attributed",
+            spelling: "HeadGrain",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: cause_ownership_lookup",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_head_advisories_attributed",
+            spelling: "cause_ownership_lookup",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_true_control_holds",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_true_control_holds",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_true_control_holds",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedOther",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.witness_v2_native_route",
+            in_declaration: "native_route_true_control_holds",
+            spelling: "NativeTestReturnedOther",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: BarrenTestSidecar",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_barren_refusal_reason_carries_its_path_holds",
+            spelling: "BarrenTestSidecar",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoverySidecarViolation",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_barren_refusal_reason_carries_its_path_holds",
+            spelling: "FloorDiscoverySidecarViolation",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_sidecar_refusal_reason",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_barren_refusal_reason_carries_its_path_holds",
+            spelling: "floor_discovery_sidecar_refusal_reason",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_barren_test_sidecar_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_barren_test_sidecar_refuses_red_control",
+            spelling: "floor_discovery_barren_test_sidecar_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_wire_contract_sidecar_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_equivalence_misplaced_wire_contract_refuses_holds",
+            spelling: "floor_discovery_wire_contract_sidecar_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_content_has_wire_contract_decl",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_equivalence_wire_contract_coproduct_scan_holds",
+            spelling: "floor_discovery_content_has_wire_contract_decl",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_content_has_wire_contract_decl",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_equivalence_wire_contract_variant_scan_holds",
+            spelling: "floor_discovery_content_has_wire_contract_decl",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_first_row_label",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_first_row_reads_substrate_only",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_entry_live_tree_disposition_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds",
+            spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_entry_live_tree_disposition_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_live_tree_duplicate_decl_refuses_red_control",
+            spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_entry_live_tree_disposition_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_live_tree_malformed_variant_refuses_red_control",
+            spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_entry_live_tree_disposition_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_live_tree_trailing_comment_refuses_red_control",
+            spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_barren_test_sidecar_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_non_test_entry_is_never_barren_holds",
+            spelling: "floor_discovery_barren_test_sidecar_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_barren_test_sidecar_refusal_for_content",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_populated_test_sidecar_admitted_holds",
+            spelling: "floor_discovery_barren_test_sidecar_refusal_for_content",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryAccepted",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_producer_empty_transport_red_control",
+            spelling: "FloorDiscoveryAccepted",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRefused",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_producer_empty_transport_red_control",
+            spelling: "FloorDiscoveryRefused",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryAccepted",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_producer_owned_data_row_holds",
+            spelling: "FloorDiscoveryAccepted",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRefused",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_producer_owned_data_row_holds",
+            spelling: "FloorDiscoveryRefused",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_rows_contain_entry_function",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoverySidecarViolation",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
+            spelling: "FloorDiscoverySidecarViolation",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: TestMarkedDecl",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
+            spelling: "TestMarkedDecl",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: WireContractDecl",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
+            spelling: "WireContractDecl",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_sidecar_refusal_reason",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
+            spelling: "floor_discovery_sidecar_refusal_reason",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_test_decl_sidecar_violation",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_sidecar_test_decl_allowed_holds",
+            spelling: "floor_discovery_test_decl_sidecar_violation",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_test_decl_sidecar_violation",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_sidecar_test_decl_misplaced_red_control",
+            spelling: "floor_discovery_test_decl_sidecar_violation",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_surface_text_scan_scaffold",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
+            in_declaration: "floor_discovery_surface_text_scan_scaffold_on_carrier",
+            spelling: "floor_discovery_surface_text_scan_scaffold",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestObservation",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_eval_body",
+            spelling: "NativeTestObservation",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_eval_body",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_eval_body",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedOther",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_eval_body",
+            spelling: "NativeTestReturnedOther",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_eval_body",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestObservation",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_eval_one",
+            spelling: "NativeTestObservation",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEntry",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_eval_one",
+            spelling: "NativeTestStageEntry",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestFileRefusal",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_file_refusal",
+            spelling: "NativeTestFileRefusal",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestObservation",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_observation_refused",
+            spelling: "NativeTestObservation",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_observation_refused",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStage",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.compile",
+            in_declaration: "native_test_observation_refused",
+            spelling: "NativeTestStage",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.effect_demand_floor_join",
+            in_declaration: "effect_demand_floor_join",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryAccepted",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.effect_demand_floor_join",
+            in_declaration: "effect_demand_floor_join_live",
+            spelling: "FloorDiscoveryAccepted",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.effect_demand_floor_join",
+            in_declaration: "effect_demand_floor_join_live",
+            spelling: "FloorDiscoveryRefused",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.effect_demand_floor_join",
+            in_declaration: "floor_join_fold_row",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.effect_demand.effect_demand_floor_join_test",
+            in_declaration: "probe_row",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.effect_demand.effect_demand_floor_join_test",
+            in_declaration: "probe_rows",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: discover_floor_rows_for_source",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "fdsa_finalize_one",
+            spelling: "discover_floor_rows_for_source",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_finalize_source_outcomes",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "fdsa_finalize_one",
+            spelling: "floor_discovery_finalize_source_outcomes",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "fdsa_rows_contain",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryAccepted",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "fdsa_view",
+            spelling: "FloorDiscoveryAccepted",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryProducerResult",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "fdsa_view",
+            spelling: "FloorDiscoveryProducerResult",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "fdsa_view",
+            spelling: "FloorDiscoveryRefused",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: discover_floor_rows_for_source",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "finalize_unions_per_source_outcomes",
+            spelling: "discover_floor_rows_for_source",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_finalize_source_outcomes",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "finalize_unions_per_source_outcomes",
+            spelling: "floor_discovery_finalize_source_outcomes",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: discover_floor_rows_for_source",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "one_violation_among_many_sources_stops_the_line",
+            spelling: "discover_floor_rows_for_source",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_finalize_source_outcomes",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.claim.floor_discovery_source_authority_test",
+            in_declaration: "one_violation_among_many_sources_stops_the_line",
+            spelling: "floor_discovery_finalize_source_outcomes",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: HeadGrain",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_migration",
+            spelling: "HeadGrain",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: MigrationOwned",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_migration",
+            spelling: "MigrationOwned",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: SharedSelfHostCriticalPath",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_migration",
+            spelling: "SharedSelfHostCriticalPath",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: ThisLaneCalibration",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_migration",
+            spelling: "ThisLaneCalibration",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: cause_ownership_lookup",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_migration",
+            spelling: "cause_ownership_lookup",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: HeadGrain",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_shared",
+            spelling: "HeadGrain",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: MigrationOwned",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_shared",
+            spelling: "MigrationOwned",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: SharedSelfHostCriticalPath",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_shared",
+            spelling: "SharedSelfHostCriticalPath",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: ThisLaneCalibration",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_shared",
+            spelling: "ThisLaneCalibration",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: cause_ownership_lookup",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_shared",
+            spelling: "cause_ownership_lookup",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: HeadGrain",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_this_lane",
+            spelling: "HeadGrain",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: MigrationOwned",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_this_lane",
+            spelling: "MigrationOwned",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: SharedSelfHostCriticalPath",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_this_lane",
+            spelling: "SharedSelfHostCriticalPath",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: ThisLaneCalibration",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_this_lane",
+            spelling: "ThisLaneCalibration",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: cause_ownership_lookup",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.compile_door_ledger_ownership",
+            in_declaration: "lane_ok_this_lane",
+            spelling: "cause_ownership_lookup",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestObservation",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.native_decl_selection",
+            in_declaration: "observation_is_entry_not_found",
+            spelling: "NativeTestObservation",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.native_decl_selection",
+            in_declaration: "observation_is_entry_not_found",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEntry",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.native_decl_selection",
+            in_declaration: "observation_is_entry_not_found",
+            spelling: "NativeTestStageEntry",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.native_decl_selection",
+            in_declaration: "the_requested_declaration_is_selected_and_evaluated",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_context_refusal_at_its_own_path_with_the_wrong_reason_is_refused",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_context_refusal_backed_by_another_modules_file_is_refused",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_context_refusal_backed_by_its_file_refusal_is_not_refused_on_that_clause",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_context_refusal_without_its_file_refusal_is_refused",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_context_stage_refusal_is_frontier_attributed_only_when_the_ledger_owns_it",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_false_against_an_expected_red_identity_is_the_expected_red_observed",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_false_against_the_standing_expectation_is_a_divergence",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_falsified_true_control_is_refused",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedOther",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_non_boolean_return_is_a_divergence_on_every_reference",
+            spelling: "NativeTestReturnedOther",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_pass_against_an_expected_red_identity_is_a_divergence",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_pass_agrees_with_the_standing_expectation",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_passed_false_control_is_refused",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_prepare_stage_refusal_is_frontier_attributed_only_when_the_ledger_owns_it",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_reached_verdict_on_a_route_gap_identity_is_a_divergence",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_reached_verdict_on_a_route_gap_identity_is_a_divergence",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_regressed_required_native_pass_is_refused",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_route_gap_refusal_off_the_boundary_is_an_exclusion",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_route_gap_refusal_off_the_boundary_is_an_exclusion",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "a_route_gap_refusal_off_the_boundary_is_an_exclusion",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "an_all_refused_population_is_refused",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEntry",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "an_entry_stage_refusal_is_a_driver_limit_only_at_a_known_reason",
+            spelling: "NativeTestStageEntry",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "an_eval_stage_refusal_is_the_boundary_only_at_a_boundary_reason",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "an_unattributed_exclusion_is_refused",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "false_row",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestFileRefusal",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "file_refusal_row",
+            spelling: "NativeTestFileRefusal",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "passed_row",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestFileRefusal",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "receipt_over",
+            spelling: "NativeTestFileRefusal",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestPassed",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "receipt_over",
+            spelling: "NativeTestPassed",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestReturnedFalse",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "receipt_over",
+            spelling: "NativeTestReturnedFalse",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "refused_row",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStage",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "refused_row",
+            spelling: "NativeTestStage",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageContext",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "the_census_counts_every_disposition",
+            spelling: "NativeTestStageContext",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEntry",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "the_census_counts_every_disposition",
+            spelling: "NativeTestStageEntry",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "the_census_counts_every_disposition",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStagePrepare",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "the_census_counts_every_disposition",
+            spelling: "NativeTestStagePrepare",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "the_route_gap_agrees_only_with_the_hermetic_boundary_refusal",
+            spelling: "NativeTestRefused",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: NativeTestStageEval",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.v2_native_route",
+            in_declaration: "the_route_gap_agrees_only_with_the_hermetic_boundary_refusal",
+            spelling: "NativeTestStageEval",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: HeadGrain",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.compile_door_ledger",
+            in_declaration: "cause_is_attributed",
+            spelling: "HeadGrain",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: cause_ownership_lookup",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.compile_door_ledger",
+            in_declaration: "cause_is_attributed",
+            spelling: "cause_ownership_lookup",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryProducerResult",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "discover_floor_corpus_rows_from_host_facts",
+            spelling: "FloorDiscoveryProducerResult",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_finalize",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "discover_floor_corpus_rows_from_host_facts",
+            spelling: "floor_discovery_finalize",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_walk_state_zero",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "discover_floor_corpus_rows_from_host_facts",
+            spelling: "floor_discovery_walk_state_zero",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryWalkState",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_apply_row_admission",
+            spelling: "FloorDiscoveryWalkState",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryRow",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "FloorDiscoveryRow",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryWalkState",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "FloorDiscoveryWalkState",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_record_walk_failure",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "floor_discovery_record_walk_failure",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: EntryLiveTreeDispositionRefused",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "EntryLiveTreeDispositionRefused",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: EntryLiveTreeResolved",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "EntryLiveTreeResolved",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_append_row",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "floor_discovery_append_row",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_record_disposition_refusal",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "floor_discovery_record_disposition_refusal",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_resolve_entry_live_tree",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_merge_owned_data_record",
+            spelling: "floor_discovery_resolve_entry_live_tree",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryWalkState",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_process_dag_file",
+            spelling: "FloorDiscoveryWalkState",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_fold_source",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_process_dag_file",
+            spelling: "floor_discovery_fold_source",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_path_excluded",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_process_dag_file",
+            spelling: "floor_discovery_path_excluded",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_record_walk_failure",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_process_dag_file",
+            spelling: "floor_discovery_record_walk_failure",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: FloorDiscoveryWalkState",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_walk_dir",
+            spelling: "FloorDiscoveryWalkState",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_record_walk_failure",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.floor_discovery_producer",
+            in_declaration: "floor_discovery_walk_dir",
+            spelling: "floor_discovery_record_walk_failure",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "v2-native-route module split: floor_discovery_walk_state_zero",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.realization_sweep",
+            in_declaration: "entry_canonical_identities",
+            spelling: "floor_discovery_walk_state_zero",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1794,7 +3616,7 @@ pub struct WaveAdmissionReport {
     /// Rows whose admitted relocation the BASE already satisfies — consumed by their own merge.
     /// Typed receipts, never refusals for an unrelated run: the deletion obligation they carry
     /// stands on the roster's own next touch (see the executor's roster-touched arm). Entered
-    /// only on the POSITIVE proof `admission_consumed_at_base`, never as the else-arm of "did
+    /// only on the POSITIVE proof `admission_satisfied_at`, never as the else-arm of "did
     /// not match a delta" — a row provable against neither side stays an UnmatchedAdmission
     /// refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
@@ -2198,11 +4020,19 @@ pub fn adjudicate(
 
     // ── ADMISSIONS ──
     let mut used: BTreeSet<usize> = BTreeSet::new();
+    let mut invalid_admissions = BTreeMap::new();
     for delta in deltas.iter_mut() {
         for (i, admission) in admissions.iter().enumerate() {
             if admission_subject_matches(&admission.subject, &delta.subject)
                 && admission.disposition == delta.disposition
             {
+                if matches!(admission.subject, AdmissionSubject::Binding { .. }) {
+                    if let Err(mismatch) = admission_satisfied_at(admission, head, &head_membership)
+                    {
+                        invalid_admissions.insert(i, format!("head {mismatch}"));
+                        continue;
+                    }
+                }
                 delta.admitted_by = Some(admission.label.to_string());
                 used.insert(i);
                 break;
@@ -2219,10 +4049,11 @@ pub fn adjudicate(
     // roster's garbage collector — externalized degradation (DESIGN §5).
     //
     // The two states are decidable apart, so this is a wall, not a ratchet: a consumed row's
-    // admitted relocation ALREADY HOLDS AT THE BASE (`admission_consumed_at_base`, a positive
+    // admitted relocation ALREADY HOLDS AT THE BASE (`admission_satisfied_at`, a positive
     // check against the base index), while an author-error row is provable against neither side.
-    // Only the proven arm is typed ConsumedByMerge; everything else unused still refuses as an
+    // Only the proven arm is typed ConsumedByMerge; everything else unused remains an
     // UnmatchedAdmission. The consumed arm does not widen: it is unreachable by fallthrough.
+    // Unmatched rows still refuse every PR; consumed rows come due on landing or roster edits.
     //
     // RETIRED BY: admissions bound to the delta content they admit, adjudicated per run and never
     // resident on main — the capability that makes a stale-able row unwritable. Until that
@@ -2234,21 +4065,25 @@ pub fn adjudicate(
         if used.contains(&i) {
             continue;
         }
-        if admission_consumed_at_base(a, base, &base_membership) {
-            consumed_admissions.push(format!(
+        let satisfaction = match invalid_admissions.get(&i) {
+            Some(mismatch) => Err(mismatch.clone()),
+            None => admission_satisfied_at(a, base, &base_membership)
+                .map_err(|mismatch| format!("base {mismatch}")),
+        };
+        match satisfaction {
+            Ok(()) => consumed_admissions.push(format!(
                 "{} ({} {}) already satisfied at the base — consumed by its own merge; deletion \
-                 is owed on the roster's next touch",
+                 is owed on landing or the roster's next touch",
                 a.label,
                 disposition_label(a.disposition),
                 admission_subject_render(&a.subject)
-            ));
-        } else {
-            stale_admissions.push(format!(
-                "{} ({} {}) matches no delta in this run",
+            )),
+            Err(mismatch) => stale_admissions.push(format!(
+                "{} ({} {}) has no valid admission in this run: {mismatch}",
                 a.label,
                 disposition_label(a.disposition),
                 admission_subject_render(&a.subject)
-            ));
+            )),
         }
     }
 
@@ -2260,33 +4095,51 @@ pub fn adjudicate(
     }
 }
 
-/// The POSITIVE consumption proof: the base itself already satisfies the admitted relocation.
-///
-/// Binding rows: the base binds (module, in_declaration, spelling) to EXACTLY the admitted
-/// target — a singleton set equal to it, not merely containing it. Membership rows: the base
-/// module's direct membership already carries the target. Anything less provable is not
-/// consumption; the caller refuses it as an UnmatchedAdmission.
-fn admission_consumed_at_base(
+/// Prove the admitted result at one index, or name its expected and observed candidates.
+/// The head check prevents authoring an unreachable lifecycle; the base check derives
+/// consumption. Membership keeps its existing presence proof; binding requires set equality.
+fn admission_satisfied_at(
     a: &TransitionAdmission,
-    base: &DeclarationIndex,
-    base_membership: &BTreeMap<String, BTreeSet<String>>,
-) -> bool {
+    index: &DeclarationIndex,
+    membership: &BTreeMap<String, BTreeSet<String>>,
+) -> Result<(), String> {
     match &a.subject {
-        AdmissionSubject::Membership { module, target } => base_membership
-            .get(*module)
-            .is_some_and(|members| members.contains(*target)),
+        AdmissionSubject::Membership { module, target } => {
+            if membership
+                .get(*module)
+                .is_some_and(|members| members.contains(*target))
+            {
+                Ok(())
+            } else {
+                Err(format!(
+                    "expected membership {module} -> {target}, found {:?}",
+                    membership.get(*module)
+                ))
+            }
+        }
         AdmissionSubject::Binding {
             module,
             in_declaration,
             spelling,
-            target,
+            expected_candidates,
         } => {
-            let Some(record) = index_get(base, module) else {
-                return false;
+            let expected: BTreeSet<String> =
+                expected_candidates.iter().map(|s| s.to_string()).collect();
+            let Some(record) = index_get(index, module) else {
+                return Err(format!(
+                    "expected candidates {expected:?}, found no module {module}"
+                ));
             };
-            let rows = binding_rows(base, record);
-            rows.get(&((*in_declaration).to_string(), (*spelling).to_string()))
-                .is_some_and(|set| set.len() == 1 && set.contains(*target))
+            let rows = binding_rows(index, record);
+            match rows.get(&((*in_declaration).to_string(), (*spelling).to_string())) {
+                Some(found) if *found == expected => Ok(()),
+                Some(found) => Err(format!(
+                    "expected candidates {expected:?}, found candidates {found:?}"
+                )),
+                None => Err(format!(
+                    "expected candidates {expected:?}, found no binding row"
+                )),
+            }
         }
     }
 }
@@ -2480,7 +4333,8 @@ use crate::cli_run::{workspace_root, DAG_PARSE_SWEEP_ROOTS};
 pub enum WaveAdmissionOutcome {
     /// The baseline resolves to the head, so there is no diff. A push to `main` after a squash
     /// merge is the whole population. NOT an admission: nothing was compared, and the phase
-    /// reports it under its own name.
+    /// reports it under its own name. Only an empty roster may take this arm: landing still
+    /// adjudicates and refuses stale or consumed rows when there is no diff.
     NoSubject { head: String },
     /// The baseline could not be observed. Refuses.
     NotEvaluated { reason: String },
@@ -2488,11 +4342,8 @@ pub enum WaveAdmissionOutcome {
         base: String,
         head: String,
         report: WaveAdmissionReport,
-        /// Whether this run's diff touches the admission roster's own source file. Consumed
-        /// rows are inert receipts for every other run; on this path their deletion is DUE, and
-        /// the executor refuses until the touching change removes them. This is what moves the
-        /// cleanup bill from bystanders to the roster: the next relocation PR by construction
-        /// touches this file and therefore cannot land while consumed rows stand.
+        /// Whether this diff touches the roster source. Consumed rows come due here
+        /// and on main (base == head); stale rows refuse regardless of this flag.
         roster_touched: bool,
     },
 }
@@ -2512,15 +4363,10 @@ pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_ad
 /// The executor keeps the receipts — it is the thing with a stderr — and asks this for the verdict,
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
-/// AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a permission standing
-/// over nothing — author error, and leaving it means the roster stops being a fact about the
-/// corpus.
-///
-/// A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already holds at the
-/// base (a positive proof), so for an unrelated run it is an inert typed receipt; billing its
-/// cleanup to that run was the externalized degradation eight dissolution PRs paid for. The
-/// deletion is due — and enforced — on the first change that touches the roster file itself,
-/// which every future relocation PR does by construction.
+/// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
+/// (base == head) or on a roster-source edit. Lifecycle is derived from the candidate-set
+/// proof, never predicted by an authored row. Policy authority:
+/// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
     match outcome {
         WaveAdmissionOutcome::NoSubject { head: _ } => None,
@@ -2528,24 +4374,41 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             Some("namespace-wave-admission (NotEvaluated)".to_string())
         }
         WaveAdmissionOutcome::Adjudicated {
-            base: _,
-            head: _,
+            base,
+            head,
             report,
             roster_touched,
         } => {
             let unadjudicated = report_unadjudicated(report);
-            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
-            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
+            let roster_due = base == head || *roster_touched;
+            let consumed_due = roster_due && !report.consumed_admissions.is_empty();
+            let stale_due = !report.stale_admissions.is_empty();
+            if unadjudicated.is_empty() && !stale_due && !consumed_due {
                 return None;
             }
+            let remedy = if stale_due || consumed_due {
+                let rows = report
+                    .stale_admissions
+                    .iter()
+                    .chain(&report.consumed_admissions)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                format!(
+                    "; delete these rows from {ADMISSION_ROSTER_REL_PATH}; declared transition \
+                     labels (including their trigger PR where authored): {rows}"
+                )
+            } else {
+                String::new()
+            };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){})",
+                 consumed admission(s){}){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
-                if consumed_due {
-                    " due for deletion on this roster-touching change"
+                if consumed_due || stale_due {
+                    " due for correction or deletion"
                 } else {
                     ""
                 }
@@ -2737,7 +4600,16 @@ pub fn run_required_wave_admission(
         }
     };
     if base == head {
-        return Ok(WaveAdmissionOutcome::NoSubject { head });
+        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
+            return Ok(WaveAdmissionOutcome::NoSubject { head });
+        }
+        // Landing owns roster debt even though it has no namespace delta to compare.
+        return Ok(WaveAdmissionOutcome::Adjudicated {
+            base,
+            head,
+            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
+            roster_touched: false,
+        });
     }
 
     let name_status = git_stdout(

@@ -1,6 +1,7 @@
 module extdeps.crypto.hash
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, Bool, List, Unit }
+import std.string_type { String }
 import std.algebra { trim }
 import std.content_hash {
   as_content_hash_cryptographic,

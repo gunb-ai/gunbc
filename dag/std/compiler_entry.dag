@@ -48,35 +48,77 @@ import std.measure {
 // reporting one typed verdict row per member. This is the driver the required-v2-native CI lane
 // executes; its contract is that every universe member reaches exactly one terminal observation,
 // never a silent remainder. The process re-derives its own exclusive wall partition on stderr
-// as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: exclusive
-// load / context / prepare / eval over parent_span_nanos) plus one `[native-prepare]` line per
-// unique module and one `[native-prepare-split]` line that partitions prepare into resolve vs
-// infer (the two halves native_test_resolve_module / native_test_infer_resolved). The
+// as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: the rows
+// NativeDriverExclusiveRows carries, over parent_span_nanos) plus one `[native-prepare-split]`
+// line per unique module that partitions prepare into resolve vs infer (the two halves
+// native_test_resolve_module / native_test_infer_resolved) and carries decls=. Its outcome names
+// which arm decided the module: accepted, infer_refused, resolve_refused, or context_refused --
+// the last for a module whose FILE this context already refused, which never enters the resolver,
+// so its resolve span is the refusal lookup and not a resolution it did not perform. The
 // `[native-cost-partition]` verdict is native_driver_cost_account over NativeDriverExclusiveRows,
-// not a second copy of the reconcile law. Re-run the emitted binary over a universe file to
-// re-derive the numbers.
+// not a second copy of the reconcile law: remainder_nanos is that fold's residual, and
+// OverAttributed carries no remainder field (underflow is not a number). A non-Reconciled
+// arm is a process refusal, not a printed string with exit 0. Re-run the emitted binary over
+// a universe file to re-derive the numbers.
 
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
 
+// MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED (SUCC3,
+// 2026-09-12). The per-module loop closed its prepare span and then let the module's resolved tree
+// fall out of scope at the end of the iteration, so freeing it was paid inside parent_span and
+// covered by no row: the full corpus refused at RemainderExceedsTolerance with a 238.5 ms residual
+// while the reduced subject, whose modules almost all refuse before a tree is built, reconciled at
+// 1.5 ms. The row is MEASURED around an explicit release, never derived as parent minus the others
+// -- a row defined as the remainder forces the residual to zero and makes the tolerance arm
+// unfireable, which is the defect this partition exists to catch.
 // THE NATIVE DRIVER'S EXCLUSIVE WALL PARTITION. claim_batch prints `[cost-partition]` over
 // resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
-// single-threaded wall. The grains are the driver's own (load / context / prepare / eval), not
-// a restatement of the resolve-split rows: context is the once-per-process ingest fold,
-// prepare is resolve+infer per unique module, eval is per identity. The law is the same
-// exclusive-sum law: exclusive rows must not exceed parent_span, and the remainder
-// (parent minus exclusive) must sit inside the declared tolerance or the receipt is not a
-// partition. Durations are std.measure Nanosecond (Time/Nano), not a bare Int whose unit
-// lives only in the field name. Re-derive by running the emitted binary; these rows are the
-// type of that stderr JSON, not a second ledger.
+// single-threaded wall. The grains are the driver's own, not a restatement of the resolve-split
+// rows, and THIS TYPE IS WHERE THEY ARE NAMED: the row set below is the grain, so prose that
+// re-lists the field names would be a second spelling of it that rots the moment a driver gains
+// a phase. The law is the same exclusive-sum law: exclusive rows must not exceed parent_span,
+// and the remainder (parent minus exclusive) must sit inside the declared tolerance or the
+// receipt is not a partition. Durations are std.measure Nanosecond (Time/Nano), not a bare Int
+// whose unit lives only in the field name. Re-derive by running the emitted binary; these rows
+// are the type of that stderr JSON, not a second ledger.
+//
+// WHY THE ROW SET IS A SUPERSET OF ANY ONE DRIVER'S PHASES. A driver reports zero for a phase it
+// does not have, and that zero is a fact about the driver rather than a gap in the law: the sum
+// and the tolerance check are unchanged by a zero row, so one law folds every driver. The route
+// that DERIVES its universe from source roots pays two phases a driver handed a universe file
+// cannot have -- universe_derivation (discovery, the import-closure walk, and the ingest
+// identity join, whose scanned-versus-ingested populations are what closure-scoped ingest is
+// judged by) and receipt_admission (minting the receipt and adjudicating it). They are members
+// of the exclusive sum like any other row, so an over-attribution routed through either is
+// caught by native_driver_cost_account and not by a second check.
+//
+// row_serialization IS A MEASURED SPAN AND NOT THE RESIDUAL, and the distinction is the whole
+// reason it exists rather than a widened tolerance. Serializing each observation to JSON and
+// writing it to stdout is real work the driver performs and no other row covers: it sits outside
+// eval, which is the sum of the identity fold and nothing else. It went unattributed until the
+// tolerance arm became a refusal and the route's own full-N run refused on it -- residual
+// 158600186 ns against a 50000000 ns tolerance, about 45 us per identity across 3544 identities.
+//
+// DEFINING IT AS "whatever is left" WOULD HAVE BEEN THE FABRICATION, not the fix: a row equal to
+// parent minus the others makes the sum identically equal to the parent, the residual identically
+// zero, and NativeDriverCostRemainderExceedsTolerance unfireable by construction -- a check that
+// cannot fail, which DESIGN section 5 calls worse than absent because it will be cited as
+// coverage. So the driver times the serialize-and-write span with its own clock reads, the
+// residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
+// is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
 
 type NativeDriverExclusiveRows {
   load: Nanosecond
+  universe_derivation: Nanosecond
   context: Nanosecond
   prepare: Nanosecond
   eval: Nanosecond
+  receipt_admission: Nanosecond
+  row_serialization: Nanosecond
+  module_release: Nanosecond
 }
 
 type NativeDriverCostAccounting
@@ -89,7 +131,7 @@ type NativeDriverCostAccounting
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval))
+  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release))
 }
 
 fn native_driver_cost_account(
@@ -116,5 +158,42 @@ fn native_driver_cost_account(
         tolerance: tolerance
       }
     }
+  }
+}
+
+// DECLARED FRONTIER (DESIGN §3c) — not a live bind on this head.
+// native_driver_cost_row_standing has no executing consumer here: planted witnesses
+// prove the fold; they do not exercise the spawn. Consumer: native_lane_runner
+// run_native_binary. Route: after the child exits, that spawn reads the relayed
+// stderr into NativeDriverChildExited and folds native_driver_cost_row_standing,
+// refusing NativeDriverCostRowsUnobserved. Trigger (DESIGN §4b(3) capability, not
+// an artifact): the host relays the child's stderr on successful exit
+// (native_lane_runner run_native_binary as changed by #10940). Kill condition: if
+// that relay lands and this standing is still unread, the row is dangling. Until
+// the capability holds, this PR stays off native_lane_runner (deep-cat-655 owns
+// it). Observed is [native-cost-partition] after exit; Unobserved is exited
+// without that tag; Pending is the child still running. On main, Command::output
+// drops the pipe on success (eager-raven-113 #11060 universe receipt: 15508s
+// admitted, 3536 verdict rows, zero partition tags in host-captured stderr). The
+// relay is exit-gated, not streamed.
+
+type NativeDriverChildStanding
+  = NativeDriverChildExited { stderr: String }
+  | NativeDriverChildStillRunning
+
+type NativeDriverCostRowStanding
+  = NativeDriverCostRowsObserved
+  | NativeDriverCostRowsUnobserved
+  | NativeDriverCostRowsPending
+
+fn native_driver_cost_row_standing(child: NativeDriverChildStanding) -> NativeDriverCostRowStanding {
+  match child {
+    NativeDriverChildStillRunning => NativeDriverCostRowsPending
+    NativeDriverChildExited { stderr } =>
+      if string_contains(s: stderr, pattern: "[native-cost-partition] ") {
+        NativeDriverCostRowsObserved
+      } else {
+        NativeDriverCostRowsUnobserved
+      }
   }
 }

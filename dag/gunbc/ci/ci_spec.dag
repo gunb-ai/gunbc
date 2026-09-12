@@ -59,6 +59,14 @@ import gunbc.commit_workflow {
 }
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.heal_revalidation {
+  heal_no_change_token,
+  heal_produced_token,
+  heal_author_commit_required_token,
+  heal_push_refused_token,
+  superseded_by_author_head_token,
+  superseded_by_healed_head_token
+}
 import gunbc.heal_push_plan {
   auto_push_eligible_committed_artifact_paths,
   author_commit_required_committed_artifact_paths,
@@ -2261,6 +2269,15 @@ fn ci_heal_author_commit_package_lines() -> List<String> {
 // ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
 // judged. The denominator is zero, which is precisely the state that must never be mistaken for a
 // clean numerator.
+// THE PUSH IS CLASSIFIED, NOT ASSUMED. Under the step default shell a bare push that loses a
+// non-fast-forward race ends the job on git's own exit status, so the outcome reaching every
+// reader is a raw rejection hint -- true about git and silent about which of the two states it is.
+// The two are decidable here and are separated by one question this job can answer: is the remote
+// branch still at the head this run judged? If it moved, the arm is gunbc.heal_revalidation
+// HealSupersededByAuthorHead, which owns the reasoning and the exit status. If it did not, the
+// push was refused for a reason that is not a race, and that stays a hard red. Neither arm forces
+// and neither retries: a second attempt against a branch that is still moving either loses again
+// or lands a repair derived from a tree nobody checked.
 fn ci_heal_shell_lines() -> List<String> {
   concat(
     [
@@ -2277,10 +2294,10 @@ fn ci_heal_shell_lines() -> List<String> {
             "PRIOR_HEAD=$(git rev-parse HEAD)",
             "if git diff --cached --quiet; then",
             "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
-            concat("    echo \"::error::HealAuthorCommitRequired head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2")))),
+            concat(concat("    echo \"::error::", concat(heal_author_commit_required_token, " head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=")), concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2")))),
             "    exit 1",
             "  fi",
-            "  echo \"HealNoChange head=$PRIOR_HEAD\"",
+            concat("  echo \"", concat(heal_no_change_token, " head=$PRIOR_HEAD\"")),
             "  exit 0",
             "else",
             "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
@@ -2299,8 +2316,17 @@ fn ci_heal_shell_lines() -> List<String> {
             concat(concat("  cat \"", heal_repair_declaration_artifact_path), "\" >> \"$HEAL_MESSAGE_FILE\""),
             "  git commit --no-verify -F \"$HEAL_MESSAGE_FILE\"",
             "  HEALED_HEAD=$(git rev-parse HEAD)",
-            "  git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}",
-            "  echo \"HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""
+            "  HEAL_BRANCH_REF=\"${{ github.head_ref || github.ref_name }}\"",
+            "  if ! git -c core.hooksPath= push origin \"HEAD:$HEAL_BRANCH_REF\"; then",
+            "    REMOTE_HEAD=$(git ls-remote origin \"refs/heads/$HEAL_BRANCH_REF\" | cut -f1)",
+            "    if [ -n \"$REMOTE_HEAD\" ] && [ \"$REMOTE_HEAD\" != \"$PRIOR_HEAD\" ]; then",
+            concat("      echo \"::notice::", concat(superseded_by_author_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF author_commit_paths=$AUTHOR_COMMIT_DRIFT changed_artifacts=$CHANGED_ARTIFACTS; the branch moved under this run, nothing was published, and the repair for the current head belongs to its own run\"")),
+            "      exit 0",
+            "    fi",
+            concat("    echo \"::error::", concat(heal_push_refused_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF -- the push was refused while the branch still stood at the head this run judged, so this is not a lost race\" >&2")),
+            "    exit 1",
+            "  fi",
+            concat("  echo \"", concat(heal_produced_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""))
           ]
         )
       )
@@ -2340,9 +2366,9 @@ fn gunbc_ci_heal_commit_push_script() -> String {
       gunbc_invoke_root_stamp_script(),
       fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
       concat("  ", concat(gunbc_ci_heal_dispatch_invoke(), "\n")),
-      "  echo \"SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n",
+      concat("  echo \"", concat(superseded_by_healed_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n")),
       "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
-      concat("    echo \"::error::HealAuthorCommitRequired head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=", concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
+      concat(concat("    echo \"::error::", concat(heal_author_commit_required_token, " head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=")), concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
       "  fi\n  exit 1\nfi\n"
     ],
     ""

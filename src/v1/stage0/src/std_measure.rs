@@ -792,6 +792,32 @@ pub fn ampere_count(a: Ampere) -> Nat {
     measure_count(a.clone())
 }
 
+pub type Gram = Rc<Measure<Mass, Milli, i64>>;
+
+pub fn gram(count: Nat) -> Gram {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn gram_count(g: Gram) -> Nat {
+    measure_count(g.clone())
+}
+
+pub type Coulomb = Rc<Measure<ElectricCharge, One, i64>>;
+
+pub fn coulomb(count: Nat) -> Coulomb {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn coulomb_count(q: Coulomb) -> Nat {
+    measure_count(q.clone())
+}
+
 pub fn nanometer(count: Nat) -> Nanometer {
     Rc::new(Measure {
         count: count.clone(),

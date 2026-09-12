@@ -34,6 +34,7 @@ import extdeps.realization.reconcile_in_process {
   typed_module_cache_id,
 }
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
+import extdeps.realization.materialization_store_local { materialization_store_local_facts }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   ArtifactIdentity,
@@ -143,6 +144,7 @@ data cache_catalog: List<CacheInterfaceCatalogFacts> = [
   resolved_graph_cache,
   parse_table_memo,
   compile_stage_memo_facts,
+  materialization_store_local_facts,
 ]
 
 data cache_catalog_rows: List<CacheInterfaceFacts> = cache_catalog
