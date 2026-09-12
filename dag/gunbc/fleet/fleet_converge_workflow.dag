@@ -62,6 +62,8 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_ci_org_actions_converge_invoke,
   gunbc_ci_app_control_plane_converge_invoke,
+  gunbc_ci_r2_mint_preflight_invoke,
+  gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
   gunbc_ci_runner_microvm_host_converge_invoke,
@@ -169,6 +171,8 @@ type FleetConvergeWorkflowMode
   | RunnerHostFileObserve
   | RunnerHostFileConverge
   | RunnerPasswordSessionToolConverge
+  | R2MintPreflight
+  | R2ObjectWriteMint
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -192,6 +196,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerHostFileObserve => "runner_host_file_observe"
     RunnerHostFileConverge => "runner_host_file_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
+    R2MintPreflight => "r2_mint_preflight"
+    R2ObjectWriteMint => "r2_object_write_mint"
   }
 }
 
@@ -216,7 +222,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -263,6 +269,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerHostFileObserve => none
     RunnerHostFileConverge => none
     RunnerPasswordSessionToolConverge => none
+    R2MintPreflight => none
+    R2ObjectWriteMint => none
   }
 }
 
@@ -1061,6 +1069,109 @@ fn fleet_converge_app_control_plane_step() -> Step {
   }
 }
 
+// ── THE R2 OBJECT-WRITE MINT, AS TWO DISPATCH-ONLY MODES ──────────────────────────────────────
+// WHY THIS IS A MODE AND NOT A JOB. The brief that requested this asked for one workflow_dispatch
+// job. A job is a standing claim on a paid runner and a new emission to enrol in the
+// generated-artifact roster; a mode is neither. This job is ALREADY dispatch-only, already pinned to
+// a self-hosted arm64 runner, already carries the WIF auth step that federates to
+// fleet-cloud-convergence@, and already downloads verified release bins rather than building gunbc
+// on the runner -- which is strictly better evidence than a build, because the binary is the one CI
+// verified. So the mint is two steps in the ceremony workflow that already exists. The operator
+// signed off on a dispatch-only addition for this purpose on 2026-09-12.
+//
+// THE PREFLIGHT IS SEPARATE FROM THE MINT AND THAT SEPARATION IS THE WHOLE SAFETY ARGUMENT.
+// AccountTokens.Create is non-idempotent and returns its value once. Reachability to
+// api.cloudflare.com and secretmanager.googleapis.com from this runner class is a fact to OBSERVE,
+// not to assume, and observing it by attempting the mint would mean learning that the runner cannot
+// reach Secret Manager only after a live credential exists on the account with nobody holding it.
+// r2_mint_preflight reads the pinned bootstrap version and lists the account's permission groups:
+// both hosts, no mutation. Dispatched BEFORE the operator's IAM grant lands it refuses typed and
+// located -- "THE BOOTSTRAP TOKEN COULD NOT BE READ: ..." -- with nothing spent, which is the
+// discriminating red for the whole federated route.
+//
+// NEITHER STEP TAKES A TOKEN AS AN INPUT, AND THAT IS A POSTURE RATHER THAN AN OMISSION. The estate
+// holds zero user-managed service-account keys. The only credential either step carries is the
+// short-lived access token the WIF auth step mints for THIS run, read in-process by
+// gunbc.auth.access_token_source rather than interpolated into a command line.
+data fleet_converge_r2_mint_preflight_step_if: String = fleet_converge_mode_step_if(mode: R2MintPreflight)
+data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2ObjectWriteMint)
+
+fn fleet_converge_r2_mint_preflight_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 mint preflight: bootstrap read + account permission-group listing (reachability, no mutation)" },
+    id: Present { value: "r2_mint_preflight" },
+    run: gunbc_ci_r2_mint_preflight_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_mint_preflight_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_mint_preflight_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 mint preflight receipt" },
+    id: Present { value: "r2_mint_preflight_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-mint-preflight")),
+      kv(key: "path", value: yaml_string(s: "target/r2-mint-preflight-permission-groups.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: fleet_converge_r2_mint_preflight_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_object_write_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 object-write token mint (AccountTokens.Create + Secret Manager custody)" },
+    id: Present { value: "r2_object_write_mint" },
+    run: gunbc_ci_r2_object_write_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_object_write_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE RECEIPT IS UPLOADED WITH always() AND ITS PATH IS A GLOB. always(), because a mint that
+// created a token and then failed to store it is the run whose receipt matters most and the run
+// that fails. A glob, because the receipt is named for the bucket the mint ran against
+// (gunbc.cloudflare.r2_token_mint_run r2_origin_token_name) and re-spelling that name here would be
+// a second authority for it -- the §3 decay that an edit to the allocation roster would silently
+// invalidate. if-no-files-found is warn rather than error for the same reason the condition is
+// always(): a refusal before the Create writes no receipt, and that is the correct outcome, not a
+// missing artifact.
+fn fleet_converge_r2_object_write_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 object-write mint receipt (token id + custody version resource; no secret)" },
+    id: Present { value: "r2_object_write_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-object-write-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: "/tmp/r2-*-object-write-mint-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_object_write_mint_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_app_control_plane_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload GitHub App control plane observation receipt" },
@@ -1386,6 +1497,10 @@ fn fleet_converge_job() -> Job {
         fleet_converge_org_actions_receipt_upload_step(),
         fleet_converge_app_control_plane_step(),
         fleet_converge_app_control_plane_receipt_upload_step(),
+        fleet_converge_r2_mint_preflight_step(),
+        fleet_converge_r2_mint_preflight_receipt_upload_step(),
+        fleet_converge_r2_object_write_mint_step(),
+        fleet_converge_r2_object_write_mint_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),
         fleet_converge_guest_image_converge_step(),
         fleet_converge_guest_image_receipt_upload_step(),
