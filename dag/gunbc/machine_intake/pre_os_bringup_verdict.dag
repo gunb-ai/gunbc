@@ -110,14 +110,19 @@ type FirmwareConsoleReport
   | TrainingRefusedByFirmware { statement: NonEmptyStr, locus: FirmwareStatedLocus }
 
 // THE TRAINING-REFUSAL STATEMENTS THIS GRAMMAR RECOGNISES, one row per capture that showed one.
-// A statement is matched by containment after the `ERROR:` prefix and whitespace, so the
+// The second row is independently grounded by the three DDR-init-failure captures
+// under artifacts/bmc/ dated 2026-09-12; it does not generalize the mixture class.
+// A statement is matched exactly after the `ERROR:` prefix and whitespace, so the
 // firmware's own indentation does not decide it.
 data firmware_training_refusal_statements: List<NonEmptyStr> = [
   "Non-identical DIMM mixture NOT supported!",
+  "DDR initialization failure. STOP!",
 ]
 
 fn is_training_refusal_statement(line: String) -> Bool {
-  any(firmware_training_refusal_statements, st => line |> contains(st as String))
+  let clean = trim(line)
+  if !starts_with(s: clean, prefix: firmware_error_line_prefix as String) { false }
+  else { any(firmware_training_refusal_statements, st => trim(substring(s: clean, start: 6, end: clean.length())) == st as String) }
 }
 
 data firmware_err_code_line_prefix: NonEmptyStr = "ERR:"
@@ -219,6 +224,13 @@ fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReport
 fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
   let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none, first_error_line: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
   let err_lines = list_length(items: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
+  let unknown = filter(xs: lines, f: line => is_firmware_error_line(line: line)
+    && !line_carries_marker(line: line, marker: firmware_socket_marker)
+    && !line_carries_marker(line: line, marker: firmware_memory_controller_marker)
+    && !is_training_refusal_statement(line: line)).first()
+  match unknown {
+    Present { value: line } => FirmwareErrorStatementUnrecognized { statement: trim(line) as NonEmptyStr }
+    Absent =>
   match done.statement {
     Present { value: st } => TrainingRefusedByFirmware { statement: st, locus: FirmwareStatedLocus { socket: done.socket, memory_controller: done.memory_controller } }
     Absent =>
@@ -226,6 +238,7 @@ fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
         Present { value: u } => FirmwareErrorStatementUnrecognized { statement: u }
         Absent => if err_lines > 0 { UndecodedErrorCodesOnly { err_lines: err_lines } } else { NoTerminalStated }
       }
+  }
   }
 }
 

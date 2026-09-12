@@ -1,0 +1,101 @@
+module gunbc.machine_intake_sel_stimulus_listener
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.numeric.base16 { base16_digit_rows }
+import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart }
+import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart, OtherStandardEvent }
+
+// ipmitool's rendered SEL is a durable append log, not a clock. Keep the complete
+// prefix so clear, rollover, replacement and reused record ids REFUSE. A numeric
+// greater-than cursor alone silently skips a cleared or wrapped log. Rendering
+// changes also refuse; they are not evidence of a new boot. OEM rows stay opaque.
+type SelWatermark sole_constructor { records: List<String> }
+type SelDelta { watermark: SelWatermark, events: List<SelWindowEvent> }
+
+fn sel_lines(text: String) -> List<String> {
+  filter(map(split(s: text, delimiter: "\n"), line => trim(line)), line => line != "")
+}
+
+fn sel_record_id(text: String) -> Int? {
+  if text.length() == 0 || text.length() > 4 { none } else {
+    fold(chars(s: text), init: Present { value: 0 }, f: (acc, cp) => match acc {
+      Absent => none
+      Present { value: n } => match filter(base16_digit_rows, row => code_point(row.lower) == cp || code_point(row.upper) == cp).first() {
+        Absent => none
+        Present { value: digit } => Present { value: n * 16 + digit.value }
+      }
+    })
+  }
+}
+
+fn sel_field(fields: List<String>, index: Int) -> String {
+  match fields.skip(n: index).first() { Absent => "" Present { value: field } => field }
+}
+
+fn sel_rendered_record(line: String) -> ObservationAttempt<SelWindowEvent, NonEmptyStr> {
+  let fields = map(split(s: line, delimiter: "|"), field => trim(field))
+  let id = sel_record_id(text: sel_field(fields: fields, index: 0))
+  let date = sel_field(fields: fields, index: 1)
+  let clock = sel_field(fields: fields, index: 2)
+  let sensor = sel_field(fields: fields, index: 3)
+  let description = sel_field(fields: fields, index: 4)
+  let asserted = sel_field(fields: fields, index: 5) == "Asserted"
+  match id {
+    Absent => ObservationRefused { cause: "SEL record id is not a rendered 16-bit hexadecimal id" }
+    Present { value: record_id } =>
+      if count(fields) != 6 || date == "" || clock == "" || sensor == "" {
+        ObservationRefused { cause: "SEL record is truncated or unrecognized" }
+      } else {
+        ObservationEstablished { observed: SelWindowEvent {
+          record_id: record_id, bmc_clock_rendering: concat(date, " ", clock) as NonEmptyStr,
+          kind: if count(fields) == 6 && asserted && starts_with(s: sensor, prefix: "System Boot Initiated ") && description == "Initiated by power up" {
+            BootRestart { offset: InitiatedByPowerUp }
+          } else if count(fields) == 6 && asserted && starts_with(s: sensor, prefix: "System Boot Initiated ") && description == "System Restart" {
+            BootRestart { offset: SystemRestart }
+          } else { OtherStandardEvent { rendering: line as NonEmptyStr } }
+        } }
+      }
+  }
+}
+
+fn sel_read(text: String) -> ObservationAttempt<SelWatermark, NonEmptyStr> {
+  let records = sel_lines(text: text)
+  let parsed = map(records, line => sel_rendered_record(line: line))
+  let ids = flat_map(parsed, row => match row { ObservationRefused { cause: _ } => [] ObservationEstablished { observed: e } => [e.record_id] })
+  if count(ids) != count(records) || fold(ids, init: -1, f: (previous, id) => if previous == -2 || id <= previous { -2 } else { id }) == -2 {
+    ObservationRefused { cause: "SEL snapshot malformed or has duplicate record ids" }
+  } else { ObservationEstablished { observed: SelWatermark { records: records } } }
+}
+
+fn sel_after(watermark: SelWatermark, text: String) -> ObservationAttempt<SelDelta, NonEmptyStr> {
+  match sel_read(text: text) {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: next } =>
+      if next.records.take(n: count(watermark.records)) != watermark.records {
+        ObservationRefused { cause: "SEL watermark prefix changed: clear, rollover or replacement; re-arm required" }
+      } else {
+        ObservationEstablished { observed: SelDelta { watermark: next,
+          events: flat_map(next.records.skip(n: count(watermark.records)), line => match sel_rendered_record(line: line) {
+            ObservationRefused { cause: _ } => []
+            ObservationEstablished { observed: event } => [event]
+          })
+        } }
+      }
+  }
+}
+
+// ACPI S0 is a stimulus alternative, never a second restart after power-up.
+// Match fields, not substrings anywhere in a row (OEM text is not a sensor).
+fn sel_is_stimulus(event: SelWindowEvent) -> Bool {
+  match event.kind {
+    BootRestart { offset } => match offset { InitiatedByPowerUp => true _ => false }
+    OtherStandardEvent { rendering } => {
+      let fields = map(split(s: rendering as String, delimiter: "|"), field => trim(field))
+      count(fields) == 6 && starts_with(s: sel_field(fields: fields, index: 3), prefix: "System ACPI Power State ")
+        && sel_field(fields: fields, index: 4) == "S0/G0: working" && sel_field(fields: fields, index: 5) == "Asserted"
+    }
+    _ => false
+  }
+}

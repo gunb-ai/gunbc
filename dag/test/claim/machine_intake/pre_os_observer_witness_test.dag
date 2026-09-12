@@ -1,0 +1,104 @@
+module test.claim.pre_os_observer_witness
+
+import std.types { Bool, String }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import gunbc.machine_intake_sel_stimulus_listener { sel_read, sel_after, sel_is_stimulus }
+import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_terminal_from_console, pre_os_has_banner, sol_activation_banner }
+import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware, NoTerminalStated }
+import gunbc.machine_intake_pre_os_observer { pre_os_milestones, pre_os_boot_assessment, pre_os_training_assessment }
+import gunbc.host_memory_qualification { TrainingOutcomeUnobserved, BootOutcomeUnobserved, BootReachedOperatingSystem }
+import std.goal_assessment { GoalIndeterminate, GoalAssessmentRefused, GoalSatisfied }
+
+
+data observer_test_old: String = "685 | 09/12/2026 | 10:59:50 | Power Supply PSU0 | Presence detected | Asserted"
+data observer_test_boot: String = "686 | 09/12/2026 | 10:59:51 | System Boot Initiated Sys_Boot_Restart | Initiated by power up | Asserted"
+
+test fn w_watermark_requires_new_record_and_preserves_bmc_identity() -> Bool {
+  match sel_read(text: observer_test_old) {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: watermark } => match sel_after(watermark: watermark, text: concat(observer_test_old, "\n", observer_test_boot)) {
+      ObservationRefused { cause: _ } => false
+      ObservationEstablished { observed: delta } => count(delta.events) == 1 && match delta.events.first() {
+        Absent => false
+        Present { value: event } => sel_is_stimulus(event: event) && event.record_id == 1670 && event.bmc_clock_rendering == "09/12/2026 10:59:51"
+      }
+    }
+  }
+}
+
+test fn w_sel_clear_refuses() -> Bool {
+  match sel_read(text: observer_test_old) {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: watermark } => match sel_after(watermark: watermark, text: observer_test_boot) {
+      ObservationRefused { cause: _ } => true _ => false
+    }
+  }
+}
+
+test fn w_same_record_is_not_a_new_stimulus() -> Bool {
+  match sel_read(text: observer_test_boot) {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: watermark } => match sel_after(watermark: watermark, text: observer_test_boot) {
+      ObservationEstablished { observed: delta } => count(delta.events) == 0 _ => false
+    }
+  }
+}
+
+test fn w_unknown_firmware_refuses() -> Bool {
+  match pre_os_terminal_from_console(text: "ERROR: a newly observed failure") { ObservationRefused { cause: _ } => true _ => false }
+}
+
+test fn w_zero_bytes_are_not_silence() -> Bool {
+  match pre_os_terminal_from_console(text: "") { ObservationRefused { cause: _ } => !pre_os_has_banner(text: "") _ => false }
+}
+
+test fn w_banner_is_only_activation() -> Bool {
+  pre_os_has_banner(text: sol_activation_banner as String) && match pre_os_terminal_from_console(text: sol_activation_banner as String) {
+    ObservationEstablished { observed: NoTerminalStated } => true _ => false
+  }
+}
+
+test fn w_ddr_statement_is_distinct_terminal() -> Bool {
+  match pre_os_terminal_from_console(text: "ERROR:   DDR initialization failure. STOP!") {
+    ObservationEstablished { observed: TrainingRefusedByFirmware { statement, locus: _ } } => contains(statement as String, "DDR initialization failure. STOP!")
+    _ => false
+  }
+}
+
+
+test fn w_quiet_sel_failed_collector_cannot_establish_training_or_boot() -> Bool {
+  let milestones = pre_os_milestones(console: ObservationRefused { cause: "collector failed" }, os_boot: ObservationRefused { cause: "no positive boot evidence" })
+  milestones.training == TrainingOutcomeUnobserved && milestones.boot == BootOutcomeUnobserved
+    && match pre_os_boot_assessment(milestones: milestones) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false }
+    && match pre_os_training_assessment(milestones: milestones) { GoalAssessmentRefused { cause: _ } => true _ => false }
+}
+
+test fn w_independent_positive_boot_does_not_require_a_sel() -> Bool {
+  let milestones = pre_os_milestones(console: ObservationRefused { cause: "no SOL on this platform" }, os_boot: ObservationEstablished { observed: BootReachedOperatingSystem })
+  match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => milestones.training == TrainingOutcomeUnobserved _ => false }
+}
+
+test fn w_known_statement_does_not_hide_unknown_statement() -> Bool {
+  match pre_os_terminal_from_console(text: "ERROR:   DDR initialization failure. STOP!\nERROR: new undecoded failure") { ObservationRefused { cause: _ } => true _ => false }
+}
+
+test fn w_known_substring_is_not_recognized_statement() -> Bool {
+  match pre_os_terminal_from_console(text: "ERROR: not actually DDR initialization failure. STOP!") { ObservationRefused { cause: _ } => true _ => false }
+}
+
+fn observer_test_boot_payload() -> String {
+  "[0.0] Linux version 6.12.108\n[17.5] Run /init as init process\nmarker=gunbc-runner-host-boot\nmachine=aarch64\nkernel=6.12.108\niface=eth0 mac=28:c1:3c:8a:d6:4a\nmarker-end=gunbc-runner-host-boot"
+}
+
+test fn w_positive_boot_requires_host_end_marker() -> Bool {
+  let payload = observer_test_boot_payload()
+  let truncated = split(s: payload, delimiter: "marker-end=").first()
+  let positive = pre_os_host_userspace_boot(text: payload, host_mac: "28:c1:3c:8a:d6:4a")
+  match positive {
+    ObservationEstablished { observed: BootReachedOperatingSystem } => match truncated {
+      Present { value: text } => match pre_os_host_userspace_boot(text: text, host_mac: "28:c1:3c:8a:d6:4a") { ObservationRefused { cause: _ } => true _ => false }
+      Absent => false
+    }
+    _ => false
+  }
+}

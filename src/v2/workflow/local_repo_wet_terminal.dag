@@ -551,6 +551,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_four_real_captures_retain_statement_inventory_and_missing_receipts" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_four_real_captures_retain_statement_inventory_and_missing_receipts",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_truncated_configuration_cannot_support_absence" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_truncated_configuration_cannot_support_absence",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_real_host_userspace_positive_and_truncated_negative" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_real_host_userspace_positive_and_truncated_negative",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness", function: "committed_spx_ui_surface_hashes_to_the_catalog_identity" },
       entry: "dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
       function: "committed_spx_ui_surface_hashes_to_the_catalog_identity",

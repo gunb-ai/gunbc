@@ -1,0 +1,102 @@
+module gunbc.machine_intake_pre_os_observer
+
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { trim }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly,
+  FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware, firmware_console_report,
+}
+import gunbc.host_memory_qualification {
+  DdrTrainingOutcome, TrainingFailed, TrainingOutcomeUnobserved,
+  HostBootOutcome, BootReachedOperatingSystem, BootOutcomeUnobserved,
+}
+import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
+import std.algebra { FreeSemigroup, Empty }
+
+
+// Activation acknowledgement ONLY. Neither this banner nor a wrapper's lifetime
+// establishes liveness, coverage, persistence, training or OS boot.
+data sol_activation_banner: NonEmptyStr = "[SOL Session operational.  Use ~? for help]"
+
+fn pre_os_has_banner(text: String) -> Bool {
+  any(split(s: text, delimiter: "\n"), line => trim(line) == sol_activation_banner as String)
+}
+
+// A terminal closes an assessed firmware attempt, never its machine's collector.
+// The supervised subscription continues and rotates durable chunks. No detach
+// or process-termination operation is reachable from this recognizer.
+fn pre_os_terminal_from_console(text: String) -> ObservationAttempt<FirmwareConsoleReport, NonEmptyStr> {
+  if text == "" { ObservationRefused { cause: "zero-byte capture: no console observation, not silence" } }
+  else { match firmware_console_report(lines: split(s: text, delimiter: "\n")) {
+    FirmwareErrorStatementUnrecognized { statement } => ObservationRefused { cause: concat("unrecognized firmware statement: ", statement as String) as NonEmptyStr }
+    report => ObservationEstablished { observed: report }
+  } }
+}
+
+
+// Independent milestones. An opaque checkpoint, an ACPI S0 record, collector
+// health, or SEL quiet cannot construct either success. OS userspace observation
+// remains distinct from a firmware training result for a declared population.
+type PreOsMilestones {
+  training: DdrTrainingOutcome
+  boot: HostBootOutcome
+  firmware: ObservationAttempt<FirmwareConsoleReport, NonEmptyStr>
+}
+
+fn pre_os_milestones(console: ObservationAttempt<String, NonEmptyStr>, os_boot: ObservationAttempt<HostBootOutcome, NonEmptyStr>) -> PreOsMilestones {
+  let report = match console {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: text } => pre_os_terminal_from_console(text: text)
+  }
+  PreOsMilestones {
+    firmware: report,
+    training: match report {
+      ObservationEstablished { observed: TrainingRefusedByFirmware { statement, locus: _ } } => TrainingFailed { detail: statement }
+      _ => TrainingOutcomeUnobserved
+    },
+    boot: match os_boot { ObservationEstablished { observed: boot } => boot ObservationRefused { cause: _ } => BootOutcomeUnobserved },
+  }
+}
+
+fn pre_os_boot_assessment(milestones: PreOsMilestones) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
+  match milestones.boot {
+    BootReachedOperatingSystem => GoalSatisfied { evidence: "independent host userspace milestone observed" }
+    _ => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "OS boot unestablished", tail: Empty } }
+  }
+}
+
+fn pre_os_training_assessment(milestones: PreOsMilestones) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
+  match milestones.firmware {
+    ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+    ObservationEstablished { observed: TrainingRefusedByFirmware { statement, locus: _ } } => GoalDiverged { deviations: FreeSemigroup { head: statement, tail: Empty } }
+    _ => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "training completion unestablished", tail: Empty } }
+  }
+}
+
+// Observing grammar of the committed first-own-image-boot capture. This is
+// userspace's emitted BEGIN/END pair plus its own host NIC and kernel identity,
+// not a BMC status. The source-to-machine authentication is checked by the
+// envelope consumer before this parser is called. No kernel boot UUID is minted.
+fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> ObservationAttempt<HostBootOutcome, NonEmptyStr> {
+  let lines = map(split(s: text, delimiter: "\n"), line => trim(line))
+  let beginning = "marker=gunbc-runner-host-boot"
+  let ending = "marker-end=gunbc-runner-host-boot"
+  let blocks = split(s: text, delimiter: beginning).skip(n: 1)
+  if any(lines, line => contains(line, "Linux version "))
+    && any(lines, line => contains(line, "Run /init as init process"))
+    && any(blocks, block => {
+      let before_end = split(s: block, delimiter: ending)
+      count(before_end) > 1 && match before_end.first() {
+        Absent => false
+        Present { value: body } => {
+          let fields = map(split(s: body, delimiter: "\n"), line => trim(line))
+          any(fields, line => line == "machine=aarch64")
+            && any(fields, line => starts_with(s: line, prefix: "kernel=") && line != "kernel=")
+            && any(fields, line => line == concat("iface=eth0 mac=", host_mac as String))
+        }
+      }
+    }) {
+    ObservationEstablished { observed: BootReachedOperatingSystem }
+  } else { ObservationRefused { cause: "complete host userspace boot marker, host NIC or kernel evidence missing" } }
+}

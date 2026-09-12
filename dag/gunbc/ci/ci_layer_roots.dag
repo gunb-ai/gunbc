@@ -469,6 +469,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "the wet lane un-darkens and admits live checked-in-artifact integrity rows under its own budget; this witness enrolls there as a declared execution row and this exclusion deletes. Local recipe until then: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/served_surface_browser_artifact_integrity_witness_test.dag --function witness_checked_in_screenshots_match_receipts")
   },
   WitnessExclusionRow {
+    pattern: "pre_os_capture_replay_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
     pattern: "megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,

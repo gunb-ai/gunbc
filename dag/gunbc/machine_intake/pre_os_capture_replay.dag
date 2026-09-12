@@ -1,0 +1,93 @@
+module gunbc.machine_intake_pre_os_capture_replay
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { decl_ref }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused }
+import gunbc.memory_configuration { MemoryConfiguration, PositionedMemoryModule }
+import gunbc.memory_observation {
+  MemoryCaptureCycles, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, memory_cycle_coverage_refusal, memory_inventory_in_capture, read_verified_memory_capture,
+}
+import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
+import gunbc.mtcollins_memory_change { mtcollins_hynix_part }
+import gunbc.machine_intake_pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
+import gunbc.machine_intake_pre_os_observer { pre_os_has_banner }
+
+// Historical files have inventory and statements, but no event-driven liveness,
+// SEL-watermark or independent flush receipts. Expose those facts independently;
+// do not invent a PreOsObserver from a script footer or its wall-clock duration.
+type PreOsArchiveSpec {
+  path: NonEmptyStr
+  sha256: NonEmptyStr
+  configuration: MemoryConfiguration
+  required_cycles: Nat
+  completion: NonEmptyStr
+}
+type PreOsArchiveReading {
+  spec: PreOsArchiveSpec
+  firmware: FirmwareConsoleReport
+  banner_present: Bool
+  script_exit_footer_present: Bool
+  inventory: ObservationAttempt<Bool, NonEmptyStr>
+  continuous_collection: ObservationAttempt<Bool, NonEmptyStr>
+}
+
+fn pre_os_archive_classify(spec: PreOsArchiveSpec, payload: String) -> PreOsArchiveReading {
+  let coverage = MemoryCaptureCycles { required_cycles: spec.required_cycles, start_token: "NOTICE:  DRAM FW version 210525", completion_token: spec.completion }
+  let inventory = match memory_cycle_coverage_refusal(coverage: coverage, payload: payload) {
+    Present { value: cause } => ObservationRefused { cause: cause }
+    Absent => if memory_inventory_in_capture(configuration: spec.configuration, coverage: coverage, payload: payload,
+      printed_parts: mtcollins_3ds_printed_parts(), printed_positions: mtcollins_3ds_printed_positions(configuration: spec.configuration), expected_payload_token: "DRAM populated DIMMs:") {
+      ObservationEstablished { observed: true }
+    } else { ObservationRefused { cause: "complete positioned inventory is absent from a captured cycle" } }
+  }
+  PreOsArchiveReading { spec: spec, firmware: firmware_console_report(lines: split(s: payload, delimiter: "\n")),
+    banner_present: pre_os_has_banner(text: payload),
+    script_exit_footer_present: contains(payload, "[COMMAND_EXIT_CODE=\"0\"]"), inventory: inventory,
+    continuous_collection: ObservationRefused { cause: "archive has no independent live-client, SEL watermark and flush receipts; wrapper lifetime is not evidence" },
+  }
+}
+
+fn pre_os_archive_specs() -> ObservationAttempt<List<PreOsArchiveSpec>, NonEmptyStr> {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { causes: _ } => ObservationRefused { cause: "Mt. Collins positions unresolved" }
+    PopulationRolesResolved { roles } => {
+      let mixture = mtcollins_3ds_configuration(roles: roles)
+      match mixture.population.first() {
+        Absent => ObservationRefused { cause: "reference inventory empty" }
+        Present { value: samsung } => {
+          let uniform = MemoryConfiguration { platform: mixture.platform, population: map(mixture.population, dimm =>
+            if dimm.position.socket == 0 { PositionedMemoryModule { position: dimm.position, part: samsung.part,
+              identity: samsung.identity, alternatives: samsung.alternatives, origin: samsung.origin } } else { dimm }) }
+          let socket0 = MemoryConfiguration { platform: uniform.platform, population: filter(uniform.population, dimm => dimm.position.socket == 0) }
+          ObservationEstablished { observed: [
+            PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-3ds-mixture-refusal-2026-09-12.txt", sha256: "de1af941fee140e0280b77722b68c338111441c567fff570ce9065f6a72258d8", configuration: mixture, required_cycles: 2, completion: "ERROR:   Non-identical DIMM mixture NOT supported!" },
+            PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-uniform-per-socket-ddr-init-failure-2026-09-12.txt", sha256: "1f8146273ee6e2152ca40991cc49d48d7758e94c3be46e5d1ebb961d3b094cb3", configuration: uniform, required_cycles: 1, completion: "ERROR:   DDR initialization failure. STOP!" },
+            PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-socket0-only-ddr-init-failure-2026-09-12.txt", sha256: "1fe93980e77ab7c1e38864332dfb803dd42a3624b3540d5bd2cf7088701d126f", configuration: socket0, required_cycles: 1, completion: "ERROR:   DDR initialization failure. STOP!" },
+            PreOsArchiveSpec { path: "artifacts/bmc/mtcollins1-sol-socket0-reseated-ddr-init-failure-2026-09-12.txt", sha256: "2baa7637d7fb328d20fb625bf801d90c89fb91dc337baf22f27b01425f0d18ca", configuration: socket0, required_cycles: 1, completion: "ERROR:   DDR initialization failure. STOP!" },
+          ] }
+        }
+      }
+    }
+  }
+}
+
+func replay_pre_os_archives() -> ProcessExit {
+  match pre_os_archive_specs() {
+    ObservationRefused { cause } => exit_failure(reason: cause as String)
+    ObservationEstablished { observed: specs } => {
+      let results = map(specs, spec => match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {
+        ObservationRefused { cause } => { println(cause as String) false }
+        ObservationEstablished { observed: payload } => {
+          let reading = pre_os_archive_classify(spec: spec, payload: payload)
+          println(concat(spec.path as String, ": firmware=", to_string(reading.firmware), "; banner=", to_string(reading.banner_present),
+            "; script_footer=", to_string(reading.script_exit_footer_present), "; inventory=", to_string(reading.inventory), "; continuous_collection=", to_string(reading.continuous_collection)))
+          true
+        }
+      })
+      if all(results, ok => ok) { ExitSuccess } else { exit_failure(reason: "archive read/hash verification failed") }
+    }
+  }
+}
