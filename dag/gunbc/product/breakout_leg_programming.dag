@@ -13,6 +13,8 @@ import extdeps.transceiver.sff_8636 {
   sff8636_interpret_extended_compliance,
 }
 import extdeps.transceiver.fs_145681 { FsBreakoutCablePart }
+import extdeps.instrument.fs_box_v4 { fs_box_v4_data_sheet }
+import product.fs_box_published_claims { current_fs_box_internet_constraint_instruction }
 import product.cable_order_admission { CableLinkRequirement }
 
 // WHAT IT COSTS THIS FLEET, BY HAND, TO USE A GENERIC BREAKOUT WHERE A DUAL-COMPATIBILITY ONE WAS NOT
@@ -58,13 +60,13 @@ type LegProgrammingProcedure {
 }
 
 data fs_box_v4_leg_programming: LegProgrammingProcedure = LegProgrammingProcedure {
-  tool: "FS BOX V4" as NonEmptyStr,
+  tool: fs_box_v4_data_sheet.product_name,
   legs_programmable_individually: true,
   requires_disconnect_from_both_ends: true,
   interrupted_write_recoverable: true,
   duration_per_leg: "a few minutes" as NonEmptyStr,
   standing: TranscribedUncited {
-    read_obligation: "FS's published FS BOX V4 user guide stating per-leg programming of QSFP56 breakout legs, disconnection from both ends, and recovery by re-flash after an interrupted write; until then these four properties rest on FS sales correspondence of 2026-09-11" as NonEmptyStr
+    read_obligation: "FS BOX V4 Data Sheet (resource.fs.com/mall/doc/20230224114704wojcth.pdf, copyright 2023) and FS BOX V3&V4&V5 FAQ (resource.fs.com/mall/resource/fs-box-v3v4v5-faq-20260824100858.pdf) were read; neither states per-leg programming of QSFP56 breakout legs, disconnection from both ends, recoverability after an interrupted write, or duration per leg. The data sheet's uses of interrupting are battery-endurance sentences only. Until a published user guide states those four properties, they rest on FS sales correspondence of 2026-09-11" as NonEmptyStr
   },
 }
 
@@ -98,7 +100,10 @@ fn breakout_leg_programming_intervention(procedure: LegProgrammingProcedure) -> 
     identity: "breakout-leg-nvidia-eth-reprogram" as HumanInterventionIdentity,
     frequency: DeviceOnce,
     subject: "each QSFP56 leg of a generic-coded QSFP-DD breakout serving a ConnectX-7",
-    instruction: leg_programming_instruction(procedure: procedure),
+    instruction: concat(
+      leg_programming_instruction(procedure: procedure),
+      current_fs_box_internet_constraint_instruction(),
+    ),
     completion_evidence: NoDischargeSiteModeled,
   }
 }
@@ -129,7 +134,7 @@ data fs_nvidia_eth_leg_coding: VendorAssertedLegCoding = VendorAssertedLegCoding
   coding_profile: "NVIDIA (ETH)" as NonEmptyStr,
   extended_compliance_code: 64,
   standing: TranscribedUncited {
-    read_obligation: "an EEPROM read (ethtool -m <dev> raw on) of a leg after an NVIDIA (ETH) re-flash, showing byte 192 at 0x40; until then the value rests on FS sales correspondence of 2026-09-11" as NonEmptyStr
+    read_obligation: "an EEPROM read (ethtool -m <dev> raw on) of a leg after an NVIDIA (ETH) re-flash, showing byte 192 at 0x40; the V4 data sheet and V3/V4/V5 FAQ do not mention byte 192, 0x40, or NVIDIA (ETH) coding, so they do not ground this value; until then it rests on FS sales correspondence of 2026-09-11" as NonEmptyStr
   },
 }
 
