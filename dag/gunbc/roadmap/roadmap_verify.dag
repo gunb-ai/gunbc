@@ -451,6 +451,11 @@ fn verify_attempt(
       }
     ContractCloses { validations } =>
       match first(validations) {
+        Absent =>
+          AttemptVerificationUnbound {
+            node_id: node_id,
+            reason: "ContractCloses is the nonempty arm of contract_closure, so first() Absent is uninhabited; List.first is still optional",
+          }
         Present { value: validation } =>
       match validation_operation_command(
         validation: validation,
