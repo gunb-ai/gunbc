@@ -381,6 +381,11 @@ type OemSelPayloadObserved
 
 // FACT TWO: WHAT THE MANUFACTURER'S REALIZATION SAID WHEN ASKED TO DECODE IT. Derived from the
 // capability profile so it cannot be authored more generously than the profile measured.
+// WHETHER AN ASSOCIATION MAY BE READ AS A DECODE is answered by matching this standing where it
+// is consumed: only ControllerDecodes licenses it, and then the decode is THEIRS, cited by the
+// authority the arm carries -- never this module's. On every other arm the answer is no, however
+// many occurrences the association counts, which is the arity repair
+// gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission prescribes.
 type OemSelDecodeStanding
   = ControllerDecodes { decode_authority: DeclarationRef }
   | ControllerDeclaredUnknown
@@ -511,9 +516,3 @@ fn oem_sel_empirical_association(
     decode_standing: oem_sel_decode_standing(profile: profile),
   }
 }
-
-// WHETHER AN ASSOCIATION MAY BE READ AS A DECODE is answered by matching `decode_standing` where it
-// is consumed: only ControllerDecodes licenses it, and then the decode is THEIRS, cited by the
-// authority the arm carries -- never this module's. On every other arm the answer is no, however
-// many occurrences the association counts, which is the arity repair
-// gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission prescribes.
