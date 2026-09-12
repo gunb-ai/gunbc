@@ -12254,6 +12254,38 @@ fn compile_diagnostic_census_value(
 /// the compiler's verdict, and a compile that never ran must never arrive as
 /// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
 /// conflated with passing).
+fn claim_scope_fixture_value(
+    outcome: crate::cli_run::ClaimScopeFixtureOutcome,
+    ctx: &InterpContext,
+) -> Value {
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("ClaimScopeFixtureOutcome"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match outcome {
+        crate::cli_run::ClaimScopeFixtureOutcome::InstrumentRefused { cause } => variant(
+            "ClaimScopeInstrumentRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::CompileRefused { diagnostics } => variant(
+            "ClaimScopeCompileRefused",
+            vec![(
+                ctx.sym("blocking_count"),
+                Value::Int(diagnostics.iter().filter(|row| row.blocking).count() as i64),
+            )],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::ScopeRefused { cause } => variant(
+            "ClaimScopeRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::ScopeAccepted { module_count } => variant(
+            "ClaimScopeAccepted",
+            vec![(ctx.sym("module_count"), Value::Int(module_count))],
+        ),
+    }
+}
+
 fn multi_module_compile_fixture_value(
     outcome: crate::cli_run::MultiModuleCompileFixtureOutcome,
     ctx: &InterpContext,
@@ -18757,6 +18789,16 @@ macro_rules! v1_builtin_arms {
                 let entry = expect_str($positional.get(2).copied(), $name)?;
                 Ok(Some(multi_module_compile_fixture_value(
                     crate::cli_run::compile_dag_multi_module_fixture(&paths, &contents, &entry),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.claim_scope_dag_multi_module_fixture" { "claim_scope_dag_multi_module_fixture" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(claim_scope_fixture_value(
+                    crate::cli_run::claim_scope_dag_multi_module_fixture(&paths, &contents, &entry),
                     $ctx,
                 )))
             },

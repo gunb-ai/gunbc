@@ -242,6 +242,117 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
 /// nothing about corpus-grain prevalence. Unlike the census it does NOT arm
 /// `with_type_ref_hit_ne_bind_measure`: the census arms it to sharpen masked type refs against a
 /// corpus pool this instrument does not have, so arming it here would be a knob with no subject.
+/// BUILD A CLAIM SCOPE over a caller-authored fixture manifest, and report what the scope
+/// builder said.
+///
+/// The manifest validation is deliberately the SAME shape as
+/// `compile_dag_multi_module_fixture`'s, because the failure modes it rejects are properties of
+/// a manifest and not of what one later does with it.
+///
+/// `entry_module_path` is a MODULE PATH (`amb.user`), not a file path: `claim_scope_for` is
+/// keyed on the module whose scope is being built, which is what the floor passes it.
+pub fn claim_scope_dag_multi_module_fixture(
+    paths: &[String],
+    contents: &[String],
+    entry_module_path: &str,
+) -> crate::cli_run::ClaimScopeFixtureOutcome {
+    use crate::cli_run::ClaimScopeFixtureOutcome as Outcome;
+    if paths.len() != contents.len() {
+        return Outcome::InstrumentRefused {
+            cause: format!(
+                "claim_scope_dag_multi_module_fixture: manifest is {} paths against {} contents; \
+                 a source is a (path, content) pair and a ragged manifest names no subject",
+                paths.len(),
+                contents.len()
+            ),
+        };
+    }
+    if paths.is_empty() {
+        return Outcome::InstrumentRefused {
+            cause: "claim_scope_dag_multi_module_fixture: empty manifest — an empty subject \
+                    builds a scope over nothing, which is could-not-measure wearing the \
+                    subject's verdict"
+                .to_string(),
+        };
+    }
+    let mut seen: HashSet<&str> = HashSet::new();
+    for path in paths.iter() {
+        if path.trim().is_empty() {
+            return Outcome::InstrumentRefused {
+                cause: "claim_scope_dag_multi_module_fixture: a supplied source has an empty path"
+                    .to_string(),
+            };
+        }
+        if !seen.insert(path.as_str()) {
+            return Outcome::InstrumentRefused {
+                cause: format!(
+                    "claim_scope_dag_multi_module_fixture: path '{path}' supplied twice; which \
+                     bytes are at that path is then undecidable"
+                ),
+            };
+        }
+    }
+    let files: Vec<Rc<v1_compiler_compile::SourceFile>> = paths
+        .iter()
+        .zip(contents.iter())
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
+        .collect();
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        v1_compiler_compile::compile_to_resolved(Rc::new(files.into()))
+    }));
+    let resolved = match compiled {
+        Ok(resolved) => resolved,
+        Err(_) => {
+            return Outcome::InstrumentRefused {
+                cause: "claim_scope_dag_multi_module_fixture: the compile panicked before \
+                        producing a graph"
+                    .to_string(),
+            };
+        }
+    };
+    let rows = compile_diagnostic_census_rows(&resolved.diagnostics);
+    let Some(graph) = resolved.graph.clone() else {
+        return Outcome::CompileRefused { diagnostics: rows };
+    };
+    if rows.iter().any(|row| row.blocking) {
+        return Outcome::CompileRefused { diagnostics: rows };
+    }
+    let module_count = graph.modules.len() as i64;
+    let source_indices = v1_compiler_compile::dag_graph_source_indices(graph.clone());
+    // THE SAME CARRIER THE FLOOR PASSES. Every field is supplied from this manifest rather than
+    // from a corpus: `full_inventory` and `discovery_exclusions` are empty because a fixture has
+    // no discovery step, and the counts describe this manifest. No corpus root is read, which is
+    // what keeps the subject under the calling test's control.
+    let prepared = crate::cli_run::PreparedRepository {
+        graph,
+        source_indices,
+        subject_digest: String::new(),
+        modules_resolved: module_count as usize,
+        modules_excluded: 0,
+        full_inventory: Vec::new(),
+        discovery_exclusions: HashMap::new(),
+    };
+    // WITHOUT MEMOS, deliberately: the memoized entry point caches fragments on a
+    // process-shared index keyed for the real corpus, and a fixture must not read from or write
+    // to it. This is the only difference from the floor's call, and it is a caching decision
+    // rather than a semantic one -- the same function computes the same scope either way.
+    let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::cli_run::claim_scope_for_without_memos(&prepared, entry_module_path)
+    }));
+    match built {
+        Err(_) => Outcome::InstrumentRefused {
+            cause: "claim_scope_dag_multi_module_fixture: scope construction panicked".to_string(),
+        },
+        Ok(Err(cause)) => Outcome::ScopeRefused { cause },
+        Ok(Ok(_scope)) => Outcome::ScopeAccepted { module_count },
+    }
+}
+
 pub fn compile_dag_multi_module_fixture(
     paths: &[String],
     contents: &[String],

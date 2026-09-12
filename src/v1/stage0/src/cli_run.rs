@@ -3122,6 +3122,39 @@ pub enum MultiModuleCompileFixtureOutcome {
     },
 }
 
+/// THE OUTCOME OF BUILDING A CLAIM SCOPE over a caller-authored fixture manifest.
+///
+/// The bare-name-ambiguity refusal lives in `claim_scope_for`, which the ordinary fixture
+/// instrument never reaches -- `compile_dag_multi_module_fixture` stops at
+/// `compile_to_resolved`. So a wall in the scope builder had a positive control that could run
+/// and a discriminating RED that could not: the fixture harness could not see it, and a corpus
+/// module authored to carry an ambiguous read would refuse the whole floor rather than sit there
+/// as a probe. DESIGN section 4b answers exactly that shape -- a state unrepresentable in the
+/// ACCEPTED corpus may still be representable as source handed to the compiler by a FIXTURE, and
+/// a compiler is a thing whose regression probes are invalid programs.
+///
+/// ONE DETECTOR, NOT TWO. This runs `claim_scope_for_without_memos` itself rather than
+/// re-deriving the ambiguity population, so the refusal a control observes IS the refusal the
+/// corpus floor would raise, from the same `ambiguous_reads` vector the census prints from. A
+/// second computation here -- even an identical one -- would be the second authority the census
+/// exists to avoid, and would be free to drift.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimScopeFixtureOutcome {
+    /// The harness itself could not measure: a ragged manifest, an entry naming no source, a
+    /// compile that never produced a graph. Distinct from a scope refusal so that a broken
+    /// fixture cannot render as "the scope was accepted" OR as "the wall fired".
+    InstrumentRefused { cause: String },
+    /// The manifest did not compile far enough to build a scope over. Carries the blocking
+    /// diagnostics so a control can tell "my fixture is malformed" from "the scope refused".
+    CompileRefused {
+        diagnostics: Vec<CompileDiagnosticCensusRow>,
+    },
+    /// `claim_scope_for` refused. `cause` is its typed, located message verbatim.
+    ScopeRefused { cause: String },
+    /// `claim_scope_for` accepted, and the scope holds no ambiguous bare-name read.
+    ScopeAccepted { module_count: i64 },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReferenceOccurrenceBindingDisposition {
     Bound {
