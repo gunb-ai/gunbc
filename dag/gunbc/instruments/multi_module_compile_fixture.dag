@@ -293,6 +293,10 @@ fn claim_scope_refusal_names(o: ClaimScopeFixtureOutcome, cause_marker: String) 
   }
 }
 
+// ACCEPTANCE IS SILENT ABOUT AMBIGUITY. The scope builder COLLECTS ambiguous bare-name reads onto
+// the accepted scope; it does not refuse on them. So this reader answers "the entry resolved and
+// the scope built", and NOT "the scope is unambiguous" -- a row asserting it establishes nothing
+// about that class, and must not be cited as coverage for a refusal that is not in this change.
 fn claim_scope_was_accepted(o: ClaimScopeFixtureOutcome) -> Bool {
   match o {
     ClaimScopeAccepted { module_count: n } => true

@@ -3158,7 +3158,16 @@ pub enum ClaimScopeFixtureOutcome {
     },
     /// `claim_scope_for` refused. `cause` is its typed, located message verbatim.
     ScopeRefused { cause: String },
-    /// `claim_scope_for` accepted, and the scope holds no ambiguous bare-name read.
+    /// `claim_scope_for` accepted: the entry module resolved, its scope built, and no refusal
+    /// the scope builder currently raises applied.
+    ///
+    /// ACCEPTANCE IS SILENT ABOUT AMBIGUITY, and that is not a temporary wording choice. The
+    /// scope builder COLLECTS `ambiguous_bare_reads` and returns them on the accepted scope; it
+    /// does not refuse on them. So this arm is compatible with any number of ambiguous bare
+    /// reads, and a control asserting it establishes nothing about that class. The refusal that
+    /// would make acceptance mean something stronger lands separately, with its own controls; a
+    /// reader who needs "no ambiguous read" must consult `ambiguous_bare_reads` rather than
+    /// infer it from this arm.
     ScopeAccepted { module_count: i64 },
 }
 
