@@ -16,7 +16,12 @@ import std.primitive_projection {
   primitive_map_insert,
 }
 import std.types { Int, Map }
-import v2.std.collection { empty_map, map_insert, map_lookup }
+import v2.std.collection {
+  empty_map,
+  map_insert,
+  map_insert_non_native_carrier_is_refused,
+  map_lookup,
+}
 import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -28,24 +33,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the earliest key. The HostRealizedSeam delegates are now the insert and lookup authority:
 // `map_insert_primitive_delegate` / `map_lookup_primitive_delegate` self-call, and the public
 // surfaces call them. Native maps stay HAMT. A record-shaped `Map { lookup: ... }` reaching
-// insert is refused at the seam (the carrier is returned unchanged, so the key is not admitted)
-// rather than a fallthrough that wraps another closure frame.
+// `map_insert` TypeErrors at the seam (Ok(None) is not fallthrough into a wrap body).
 //
 // `native_map_reaches_map_insert` is the positive control. `record_shaped_map_reaches_map_insert`
-// is inverted: it is green only while that record route does not admit the key. Restoring the
-// wrap body AND the Ok(None) fallthrough makes it Present and reds this control. The
-// HostRealizedSeam tests below assert roster agreement with the declared delegates; they are not
-// the discriminating cost witness. Paired wall-clock at two sizes is an instrument, not a
-// merge-blocking literal; the two sizes below only check that the first-inserted key remains
-// findable, citing the same producer.
+// is inverted: it feeds a record-shaped Map into `map_insert_non_native_carrier_is_refused`,
+// the same `Value::Map` match that makes insert TypeError. A throw is RuntimeErrored and cannot
+// stay enrolled as a Bool, so the predicate is the enrolled inversion. The HostRealizedSeam
+// tests below are roster agreement only. `first_inserted_key_is_found_after_many_inserts` is the
+// executing cost witness (green on the delegate HAMT). Paired wall-clock at two sizes is an
+// instrument, not a merge-blocking literal.
 
 fn native_map_after_insert() -> Optional<String> {
   let m = empty_map()
-  map_lookup(m: map_insert(m, "k", "v"), key: "k")
-}
-
-fn record_shaped_map_after_insert() -> Optional<String> {
-  let m = Map { lookup: fn(_) { Absent } }
   map_lookup(m: map_insert(m, "k", "v"), key: "k")
 }
 
@@ -72,10 +71,12 @@ test fn native_map_reaches_map_insert() -> Bool {
 }
 
 test fn record_shaped_map_reaches_map_insert() -> Bool {
-  match record_shaped_map_after_insert() {
-    Present { value: _ } => false
-    Absent => true
-  }
+  map_insert_non_native_carrier_is_refused(
+    m: Map { lookup: fn(_) { Absent } },
+    key: "k",
+    value: "v",
+  )
+    && !map_insert_non_native_carrier_is_refused(m: empty_map(), key: "k", value: "v")
 }
 
 test fn map_insert_delegate_is_host_realized_seam() -> Bool {
