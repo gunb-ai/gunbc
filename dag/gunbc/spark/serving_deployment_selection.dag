@@ -752,6 +752,11 @@ data v4_1_selection_frontier: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "PARTLY DISCHARGED: weight_fit_of now divides candidate_resident_footprint rather than the whole-artifact figure, candidate_readings and candidate_gaps carry ax_component_route, and the pool-gain fact is derived by gunbc.fabric.engram_materialization engram_pool_relief from the hops' own placements -- so a route that treats host-RAM or UVA placement as extra pool has no constructor rather than being caught by a check. WHAT REMAINS: no route has an established resident working set, so the routed component contributes FootprintUnread and the fit stays underivable. TRIGGER: a bounded measurement on separately admitted resources giving ResidentMemoryObserved or ResidentMemoryBoundedAbove for a route under an exact serving context. SUFFICIENT FOR: component_resident_share returns ComponentResidentBytes for that candidate, so weight_fit_of divides a number instead of reporting an obligation." as NonEmptyStr),
   ),
   frontier_row_decl(
+    ref: v4_1_selection_frontier_fact(decl_name: "component_route_gap_over" as NonEmptyStr),
+    reason: "an excluded candidate's own reason does not reach the spine's exclusion line, which carries identities only",
+    dissolution: unbound_dissolution(description: "TRIGGER: std.decision constraint_infeasibility_cause (or the ParetoEntry it reads) carries the candidate's own stated reason for failing a constraint, not only the candidate, constraint and axis identities. Until then a route established INFEASIBLE is excluded with its causes reaching the product root through candidate_resident_footprint's obligation rather than through the exclusion text, and this row says so instead of the module implying the causes are carried. SUFFICIENT FOR: NoFeasibleServingDeployment's causes name WHY each candidate was excluded, so the reply to an empty field is actionable without reading the route authority separately." as NonEmptyStr),
+  ),
+  frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "spark_fleet_snapshot" as NonEmptyStr),
     reason: "host availability is still this module's own scalar rather than the shared subject-relative commitment authority",
     dissolution: unbound_dissolution(description: "TRIGGER: gunbc.spark.host_commitment lands on main and its serving-selection integration (owner calm-ram-24, separately outstanding) replaces fleet_fits' comparison against spark_fleet_snapshot.host_count with a subject-relative admissibility question. This cut deliberately does NOT duplicate that free-host calculation and does not re-derive it privately: V4.1 uses the existing DeepSeek deployment on FabricGroupA, which its predecessor holds, so the global uncommitted set answers the wrong question for this subject. SUFFICIENT FOR: fleet_fits asks whether the hosts a candidate needs are admissible TO THIS SUBJECT rather than comparing a count against a snapshot scalar." as NonEmptyStr),
@@ -1094,12 +1099,8 @@ fn candidate_component_route_standings(c: DeploymentCandidate, p: ServingDecisio
 // arm that does not exist is zero. Writing zero here is what would make a narrow topology look
 // feasible on the strength of a measurement nobody took, and it would do it on the single screen
 // whose whole job is to rule impossible weights out.
-fn component_resident_footprint(
-  cp: ArtifactComponent,
-  c: DeploymentCandidate,
-  p: ServingDecisionParameters,
-) -> ArtifactFootprint {
-  match component_resident_share(s: component_route_standing_for(cp: cp, c: c, p: p)) {
+fn component_resident_footprint(cp: ArtifactComponent, st: ComponentRouteStanding) -> ArtifactFootprint {
+  match component_resident_share(s: st) {
     ComponentNotDecomposedHere => cp.footprint
     ComponentResidentBytes { bytes: b, route: r } =>
       FootprintReportedExternally {
@@ -1116,22 +1117,68 @@ fn component_resident_footprint(
 // THE QUANTITY THE SCREEN DIVIDES. With no components declared it is the whole-artifact footprint,
 // byte for byte and arm for arm, which is why nothing about the legacy artifacts changes. With
 // components declared it is the sum of what each one actually keeps resident under this candidate.
-fn candidate_resident_footprint(c: DeploymentCandidate, p: ServingDecisionParameters) -> ArtifactFootprint {
+// THE STANDINGS ARRIVE AS A VALUE. Each one runs a whole route selection, and this screen, the
+// reading fold and the gap fold all want the same answer for the same candidate -- so the value is
+// computed once at `project_candidate`, their least common ancestor, and carried. A first cut
+// re-derived them here and `weight_fit_of` was itself called twice per candidate, so the live V4.1
+// field ran the route decision three times per candidate over sixty candidates and the product-root
+// witness was CENSORED AT THE FLOOR'S 500 ms CEILING rather than evaluated. The repetition was
+// authored duplication with a shared-state ancestor, which DESIGN section 2 says to rewire rather
+// than to cache.
+fn candidate_resident_footprint_over(c: DeploymentCandidate, route_standings: List<ComponentRouteStanding>) -> ArtifactFootprint {
   if count(c.artifact.components) == 0 {
     c.artifact.footprint
   } else {
     sum_component_footprints(cps: map(
-      c.artifact.components,
-      cp => artifact_component(
-        identity: cp.identity,
-        label: cp.label,
-        footprint: component_resident_footprint(cp: cp, c: c, p: p),
-        placement: cp.placement)))
+      nat_range_inclusive(lo: 1, hi: count(c.artifact.components)),
+      n => resident_component_at(cps: c.artifact.components, standings: route_standings, index: n - 1)))
   }
 }
 
-fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisionParameters) -> WeightFit {
-  match candidate_resident_footprint(c: c, p: p) {
+// THE JOIN IS BY POSITION BECAUSE `candidate_component_route_standings` MAPS THE SAME LIST IN THE
+// SAME ORDER, so the two are the same length by construction and the absent arms below are
+// unreachable. They are written anyway and they FAIL CLOSED -- an unjoined index takes an unread
+// footprint rather than a neighbour's placement or a zero -- because an index that silently read as
+// another component's answer is the kind of defect no test would show.
+fn resident_component_at(
+  cps: List<ArtifactComponent>,
+  standings: List<ComponentRouteStanding>,
+  index: Nat,
+) -> ArtifactComponent {
+  match (cps.skip(index)).first() {
+    Absent => unjoined_component_slot(index: index)
+    Present { value: cp } => artifact_component(
+      identity: cp.identity,
+      label: cp.label,
+      footprint: match (standings.skip(index)).first() {
+        Absent => FootprintUnread {
+          obligation: join([
+            "component ", declaration_ref_display_key(ref: cp.identity),
+            " has no route standing at its own position, so its resident share is not established",
+          ], "") as NonEmptyStr,
+        }
+        Present { value: st } => component_resident_footprint(cp: cp, st: st)
+      },
+      placement: cp.placement)
+  }
+}
+
+fn unjoined_component_slot(index: Nat) -> ArtifactComponent {
+  artifact_component(
+    identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "unjoined_component_slot"),
+    label: "an index past the declared component population" as NonEmptyStr,
+    footprint: FootprintUnread {
+      obligation: join(["no component is declared at index ", to_string(index)], "") as NonEmptyStr,
+    },
+    placement: ComponentResident)
+}
+
+fn candidate_resident_footprint(c: DeploymentCandidate, p: ServingDecisionParameters) -> ArtifactFootprint {
+  candidate_resident_footprint_over(c: c, route_standings: candidate_component_route_standings(c: c, p: p))
+}
+
+fn weight_fit_over(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisionParameters, route_standings: List<ComponentRouteStanding>) -> WeightFit {
+  match candidate_resident_footprint_over(c: c, route_standings: route_standings) {
     FootprintUnread { obligation: o } => WeightFitUnderivable { because: o }
     FootprintReportedExternally { bytes: _, source: src } =>
       WeightFitUnderivable {
@@ -1149,6 +1196,10 @@ fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisio
           }
       }
   }
+}
+
+fn weight_fit_of(c: DeploymentCandidate, fleet: FleetSnapshot, p: ServingDecisionParameters) -> WeightFit {
+  weight_fit_over(c: c, fleet: fleet, p: p, route_standings: candidate_component_route_standings(c: c, p: p))
 }
 
 fn hosts_consumed(c: DeploymentCandidate) -> Nat {
@@ -1747,8 +1798,8 @@ fn runtime_gap(profile: ServingExecutionProfile, e: ServingDeploymentEvidenceSna
   }
 }
 
-fn weight_fit_reading(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> AxisReading? {
-  match weight_fit_of(c: c, fleet: e.fleet, p: p) {
+fn weight_fit_reading_over(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, fit: WeightFit) -> AxisReading? {
+  match fit {
     WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } =>
       Present { value: reading(axis: ax_weight_fit, v: flag(b: fleet_fits(c: c, fleet: e.fleet))) }
     WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => Present { value: reading(axis: ax_weight_fit, v: 0) }
@@ -1756,8 +1807,8 @@ fn weight_fit_reading(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
   }
 }
 
-fn weight_fit_gap(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> List<AxisGap> {
-  match weight_fit_of(c: c, fleet: e.fleet, p: p) {
+fn weight_fit_gap_over(fit: WeightFit) -> List<AxisGap> {
+  match fit {
     WeightFitUnderivable { because: b } => [AxisGap { axis: ax_weight_fit, cause: b }]
     WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => []
     WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => []
@@ -1820,12 +1871,24 @@ fn component_route_reading(route_standings: List<ComponentRouteStanding>) -> Axi
   }
 }
 
+// EVERY CAUSE THE ROUTE AUTHORITY PRODUCED REACHES THIS AXIS, infeasibility causes included.
+//
+// AND ONE LOSS IS DECLARED RATHER THAN PAPERED OVER. When a route is established INFEASIBLE this
+// axis reads zero, and `std.decision` `scan_feasibility` folds definite infeasibility before it
+// reads an entry's gaps -- so for that candidate these causes are shadowed, and the exclusion line
+// the spine emits is `constraint_infeasibility_cause`, which carries identities only. The route's
+// own reason then reaches the product root through `candidate_resident_footprint`'s obligation
+// rather than through the exclusion text. Widening the spine's exclusion cause to carry a
+// candidate's own reason is a `std.decision` change this brief did not ask for; it is a frontier row
+// (`serving_exclusion_cause_carries_identities_only`) rather than something done quietly here.
 fn component_route_gap_over(standings: List<ComponentRouteStanding>) -> List<AxisGap> {
   flat_map(standings, st =>
     map(
       concat(
-        map(component_route_needs(s: st), n => selection_evidence_need_cause(n: n)),
-        component_route_defects(s: st)),
+        concat(
+          map(component_route_needs(s: st), n => selection_evidence_need_cause(n: n)),
+          component_route_defects(s: st)),
+        component_route_infeasibility_causes(s: st)),
       cz => AxisGap { axis: ax_component_route, cause: cz }))
 }
 
@@ -1843,13 +1906,13 @@ fn optional_reading(r: AxisReading?) -> List<AxisReading> {
   }
 }
 
-fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, route_standings: List<ComponentRouteStanding>) -> List<AxisReading> {
+fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, route_standings: List<ComponentRouteStanding>, fit: WeightFit) -> List<AxisReading> {
   concat(
     concat(
       concat(optional_reading(r: quality_reading(profile: execution_profile_of(c: c, p: p), e: e)),
              optional_reading(r: runtime_reading(profile: execution_profile_of(c: c, p: p), e: e))),
       concat(
-        concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
+        concat(optional_reading(r: weight_fit_reading_over(c: c, e: e, fit: fit)),
                optional_reading(r: workload_reading(e: e))),
         optional_reading(r: component_route_reading(route_standings: route_standings)))),
     [
@@ -1863,12 +1926,12 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
     ])
 }
 
-fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, route_standings: List<ComponentRouteStanding>) -> List<AxisGap> {
+fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters, route_standings: List<ComponentRouteStanding>, fit: WeightFit) -> List<AxisGap> {
   concat(
     concat(
       concat(quality_gap(profile: execution_profile_of(c: c, p: p), e: e),
              runtime_gap(profile: execution_profile_of(c: c, p: p), e: e)),
-      concat(weight_fit_gap(c: c, e: e, p: p), workload_gap(e: e))),
+      concat(weight_fit_gap_over(fit: fit), workload_gap(e: e))),
     concat(
       concat(kv_bytes_gap(c: c), component_route_gap_over(standings: route_standings)),
       map(unfunded_performance_axes, a => AxisGap { axis: a, cause: unfunded_axis_obligation(axis: a) })))
@@ -1876,11 +1939,12 @@ fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, 
 
 fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
   let route_standings = candidate_component_route_standings(c: c, p: p)
+  let fit = weight_fit_over(c: c, fleet: e.fleet, p: p, route_standings: route_standings)
   ParetoEntry {
     identity: c.identity,
     display_label: c.label,
-    readings: candidate_readings(c: c, e: e, p: p, route_standings: route_standings),
-    missing_inputs: candidate_gaps(c: c, e: e, p: p, route_standings: route_standings),
+    readings: candidate_readings(c: c, e: e, p: p, route_standings: route_standings, fit: fit),
+    missing_inputs: candidate_gaps(c: c, e: e, p: p, route_standings: route_standings, fit: fit),
   }
 }
 

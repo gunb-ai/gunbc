@@ -277,14 +277,6 @@ fn safetensors_population_declared_bytes(s: SafetensorsPopulationStanding) -> By
   }
 }
 
-fn safetensors_population_is_established(s: SafetensorsPopulationStanding) -> Bool {
-  match s {
-    PopulationEstablished { population: _ } => true
-    PopulationIncomplete { obligation: _, partial_entry_count: _ } => false
-    PopulationRefused { defects: _ } => false
-  }
-}
-
 // ── THE SHARD FILE: DECLARED STRUCTURE AND CRYPTOGRAPHIC BYTES ARE TWO FACTS ───────────────────
 //
 // header_bytes is the JSON header length the 8-byte prefix declares, so a file's total size is
@@ -376,10 +368,3 @@ fn safetensors_shard_payload_agreement(shard: SafetensorsShardFile, declared: By
   }
 }
 
-fn safetensors_shard_payload_matches_population(shard: SafetensorsShardFile, declared: ByteSize) -> Bool {
-  match safetensors_shard_payload_agreement(shard: shard, declared: declared) {
-    ShardPayloadMatchesPopulation { bytes: _ } => true
-    ShardPayloadDisagreesWithPopulation { path: _, payload_bytes: _, declared: _ } => false
-    ShardPayloadUnderivable { path: _, because: _ } => false
-  }
-}

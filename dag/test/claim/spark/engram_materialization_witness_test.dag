@@ -31,7 +31,7 @@ import extdeps.safetensors.format {
   SafetensorsPopulationReading, PopulationScanned, PopulationPartiallyScanned, PopulationUnscanned,
   SafetensorsPopulationStanding, PopulationEstablished, PopulationIncomplete, PopulationRefused,
   safetensors_population_standing, safetensors_population_entries, safetensors_population_declared_bytes,
-  safetensors_shard_file, safetensors_shard_payload_matches_population,
+  safetensors_shard_file,
   SafetensorsShardAgreement, ShardPayloadMatchesPopulation, ShardPayloadDisagreesWithPopulation, ShardPayloadUnderivable,
   safetensors_shard_payload_agreement, safetensors_shard_payload, SafetensorsShardPayload,
   ShardPayloadDeclared, ShardHeaderExceedsFile, safetensors_shard_payload_defects,
@@ -66,7 +66,9 @@ import gunbc.fabric.engram_materialization {
   MaterializedComponentArtifact, materialized_component_artifact,
   FaithfulnessEvidence, ByteIdenticalToPublishedEncoding, StructurePreservingTransform, FaithfulnessUnestablished,
   FaithfulComponentRealization, RealizationFaithful, RealizationUnfaithful, RealizationEvidenceMissing,
-  realize_component, realization_is_faithful,
+  realize_component,
+  ComponentRealizationStanding, RealizationSettledFaithful, RealizationSettledUnfaithful, RealizationStandingOpen,
+  component_realization_standing, faithfulness_reading,
   RouteRole, DurableOrigin, FillSource, TokenTimeAccess, RetainedWorkingSet,
   RouteHop, route_hop, route_hop_placement, route_hop_is_content_addressed,
   MaterializationRoute, materialization_route, route_defects, route_key, route_hop_reaches_storage,
@@ -524,18 +526,28 @@ test fn a_faithfulness_relation_preserving_nothing_is_not_evidence() -> Bool {
 }
 
 test fn the_published_encoding_is_faithful_and_a_wrong_digest_is_not() -> Bool {
-  realization_is_faithful(r: realize_component(
+  match component_realization_standing(r: realize_component(
     standing: engram_component_standing,
     artifact: engram_published_artifact,
-    evidence: engram_published_faithfulness))
-    && realization_is_faithful(r: realize_component(
-      standing: engram_component_standing,
-      artifact: engram_resident_artifact,
-      evidence: engram_resident_faithfulness))
-    && !realization_is_faithful(r: realize_component(
-      standing: engram_component_standing,
-      artifact: engram_published_artifact,
-      evidence: ByteIdenticalToPublishedEncoding { shard_digests: [fixture_digest_a()] }))
+    evidence: engram_published_faithfulness)) {
+    RealizationSettledFaithful => true
+    RealizationSettledUnfaithful => false
+    RealizationStandingOpen => false
+  } && match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: engram_resident_artifact,
+    evidence: engram_resident_faithfulness)) {
+    RealizationSettledFaithful => true
+    RealizationSettledUnfaithful => false
+    RealizationStandingOpen => false
+  } && match component_realization_standing(r: realize_component(
+    standing: engram_component_standing,
+    artifact: engram_published_artifact,
+    evidence: ByteIdenticalToPublishedEncoding { shard_digests: [fixture_digest_a()] })) {
+    RealizationSettledUnfaithful => true
+    RealizationSettledFaithful => false
+    RealizationStandingOpen => false
+  }
 }
 
 // ── B. THE ROUTES ──────────────────────────────────────────────────────────────────────────────
@@ -992,5 +1004,77 @@ test fn an_open_route_question_is_absent_rather_than_scoring_not_yet_excluded() 
     ComponentPlacementSettled => true
     ComponentPlacementOpen => false
     ComponentPlacementExcluded => false
+  }
+}
+
+// ── A HALF-READ HEADER IS NOT A COMPONENT THAT CANNOT BE SERVED ────────────────────────────────
+//
+// THIS IS THE RED FOR THE SECOND INSTANCE OF THE TWO-VALUED COLLAPSE. `ax_route_faithful_realization`
+// is hard-constrained, and a first cut scored it from a `Bool` that returned false for BOTH a decided
+// `RealizationUnfaithful` and an open `RealizationEvidenceMissing`. Because `scan_feasibility` folds
+// definite infeasibility before unread-axis gaps, a component whose population was merely
+// PARTIALLY SCANNED would have read zero on every route, emptied the field, and reported
+// `NoFeasibleRealization` -- "this cannot be served" for a state whose truth is "nobody finished
+// reading the header". The open arm now has no reading, so the same field reports the evidence need.
+fn half_read_component_standing() -> ComponentSubjectStanding {
+  establish_component_subject(subject: component_subject(
+    identity: engram_component_identity,
+    label: "fixture: the Engram population with shard 48 unread" as NonEmptyStr,
+    upstream_revision: "fixture-revision" as NonEmptyStr,
+    population: safetensors_population_standing(reading: PopulationPartiallyScanned {
+      entries: deepseek_v4_1_flash_engram_entries_layer_1,
+      unread: "shard 48's header was not reached" as NonEmptyStr,
+    }),
+    published_encoding: engram_published_encoding,
+    published_shard_digests: [fixture_digest_a()],
+    population_standing: deepseek_v4_1_flash_engram_population_standing,
+  ))
+}
+
+test fn a_half_read_population_needs_evidence_rather_than_reporting_no_feasible_route() -> Bool {
+  match component_realization_standing(r: realize_component(
+    standing: half_read_component_standing(),
+    artifact: engram_published_artifact,
+    evidence: engram_published_faithfulness)) {
+    RealizationStandingOpen => true
+    RealizationSettledFaithful => false
+    RealizationSettledUnfaithful => false
+  } && match faithfulness_reading(r: realize_component(
+    standing: half_read_component_standing(),
+    artifact: engram_published_artifact,
+    evidence: engram_published_faithfulness)) {
+    Absent => true
+    Present { value: _ } => false
+  } && match select_component_route(
+    field: engram_route_field,
+    standing: half_read_component_standing(),
+    rows: engram_route_evidence_rows(context: context_a()),
+    context: context_a(),
+    evidence_snapshot: engram_route_evidence_snapshot) {
+    SelectionNeedsEvidence { needs: ns } => count(ns) > 0
+    NoFeasibleRealization { causes: _ } => false
+    SelectedWithin { candidate: _, receipt: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+// AND A DECIDED NEGATIVE STILL EXCLUDES. The asymmetry is the whole content of the three-state fold:
+// an encoding that demonstrably is not the subject's reads zero and is refused before Pareto, while
+// an unread one defers. If this scored absent too, the faithfulness constraint would be a decoration.
+test fn a_decided_unfaithful_encoding_still_reads_zero_and_excludes() -> Bool {
+  match faithfulness_reading(r: realize_component(
+    standing: engram_component_standing,
+    artifact: repacked_artifact(),
+    evidence: engram_published_faithfulness)) {
+    Present { value: r } => r.interval_micro.low == 0 && r.interval_micro.high == 0
+    Absent => false
+  } && match faithfulness_reading(r: realize_component(
+    standing: engram_component_standing,
+    artifact: engram_published_artifact,
+    evidence: engram_published_faithfulness)) {
+    Present { value: r } => r.interval_micro.low == 1
+    Absent => false
   }
 }

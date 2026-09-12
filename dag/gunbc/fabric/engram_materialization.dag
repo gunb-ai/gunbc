@@ -300,11 +300,36 @@ fn realize_component(
   }
 }
 
-fn realization_is_faithful(r: FaithfulComponentRealization) -> Bool {
+// THREE STATES, AND THE OPEN ONE HAS NO READING. This is the same law as
+// `ComponentRoutePlacementStanding` below and as `mechanism_reading` / `route_runtime_reading`
+// above, and the first cut of THIS axis broke it: a `Bool` collapsed `RealizationUnfaithful` --
+// a decided negative -- with `RealizationEvidenceMissing`, which is an open question, and the
+// hard constraint on this axis then excluded the candidate for both. Because `scan_feasibility`
+// folds definite infeasibility BEFORE unread-axis gaps, the `AxisGap` this module also emits for
+// the same axis was shadowed, so a component whose population was merely PARTIALLY SCANNED would
+// have been reported as one that cannot be served. An answer outrunning its evidence, in the
+// generous-looking direction that reads as rigour.
+//
+// There is deliberately NO Bool projection beside this fold. A two-valued predicate is exactly
+// what let the collapse happen, and leaving one here would be the next caller's foot-gun.
+type ComponentRealizationStanding
+  = RealizationSettledFaithful
+  | RealizationSettledUnfaithful
+  | RealizationStandingOpen
+
+fn component_realization_standing(r: FaithfulComponentRealization) -> ComponentRealizationStanding {
   match r {
-    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => true
-    RealizationUnfaithful { subject: _, defects: _ } => false
-    RealizationEvidenceMissing { subject: _, obligation: _ } => false
+    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => RealizationSettledFaithful
+    RealizationUnfaithful { subject: _, defects: _ } => RealizationSettledUnfaithful
+    RealizationEvidenceMissing { subject: _, obligation: _ } => RealizationStandingOpen
+  }
+}
+
+fn faithfulness_reading(r: FaithfulComponentRealization) -> AxisReading? {
+  match component_realization_standing(r: r) {
+    RealizationSettledFaithful => Present { value: route_reading(axis: ax_route_faithful_realization, v: 1) }
+    RealizationSettledUnfaithful => Present { value: route_reading(axis: ax_route_faithful_realization, v: 0) }
+    RealizationStandingOpen => none
   }
 }
 
@@ -1010,26 +1035,40 @@ fn resident_gap(s: RouteResidentMemoryStanding, route: DeclarationRef) -> List<A
   }
 }
 
+// THE TWO READINGS THAT SURVIVE A MISSING EVIDENCE ROW, because they are decided from the route's
+// own declaration rather than measured: a malformed chain is malformed whether or not anyone
+// measured it, and it is excluded on that basis rather than deferred.
+//
+// BOTH INTEGRITY FAILURES ARE DECIDED, AND THAT IS A STATED CHOICE RATHER THAN A LEFTOVER.
+// `IntegrityNotContentAddressed` says the hop at the declared verification point keys on existence;
+// `IntegrityVerificationPointAbsent` says the route names a role it has no hop in. Both are read
+// off the declared chain with no observation involved, so neither is an open question and scoring
+// zero for them is honest -- unlike faithfulness, where the subject's population and the relation
+// are evidence and can be missing. If a future route verified at a hop whose KEYING were itself
+// unobserved, that would be a third state and would need its own absent reading.
+fn route_structural_readings(c: RouteCandidate, origin_provider_id: String) -> List<AxisReading> {
+  [
+    route_reading(
+      axis: ax_route_well_formed,
+      v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id)) == 0)),
+    route_reading(
+      axis: ax_route_integrity,
+      v: route_flag(b: route_integrity_holds(s: route_integrity_standing(r: c.route)))),
+  ]
+}
+
 fn route_candidate_readings(
   c: RouteCandidate,
-  standing: ComponentSubjectStanding,
+  realization: FaithfulComponentRealization,
   origin_provider_id: String,
   evidence: RouteEvidence,
   wanted: RouteSubjectKey,
 ) -> List<AxisReading> {
   concat(
     concat(
-      [
-        route_reading(
-          axis: ax_route_faithful_realization,
-          v: route_flag(b: realization_is_faithful(r: realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)))),
-        route_reading(
-          axis: ax_route_well_formed,
-          v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id)) == 0)),
-        route_reading(
-          axis: ax_route_integrity,
-          v: route_flag(b: route_integrity_holds(s: route_integrity_standing(r: c.route)))),
-      ],
+      concat(
+        route_structural_readings(c: c, origin_provider_id: origin_provider_id),
+        optional_route_reading(r: faithfulness_reading(r: realization))),
       optional_route_reading(r: mechanism_reading(m: evidence.mechanism))),
     concat(
       optional_route_reading(r: route_runtime_reading(r: evidence.runtime, wanted: wanted)),
@@ -1046,6 +1085,7 @@ fn optional_route_reading(r: AxisReading?) -> List<AxisReading> {
 fn route_candidate_gaps(
   c: RouteCandidate,
   standing: ComponentSubjectStanding,
+  realization: FaithfulComponentRealization,
   evidence: RouteEvidence,
   wanted: RouteSubjectKey,
 ) -> List<AxisGap> {
@@ -1053,7 +1093,7 @@ fn route_candidate_gaps(
     concat(
       map(
         concat(
-          realization_obligations(r: realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)),
+          realization_obligations(r: realization),
           component_subject_obligations(s: standing)),
         o => AxisGap { axis: ax_route_faithful_realization, cause: o }),
       concat(mechanism_gap(m: evidence.mechanism), route_runtime_gap(r: evidence.runtime, wanted: wanted))),
@@ -1076,18 +1116,19 @@ fn project_route_candidate(
   rows: List<RouteEvidence>,
   wanted: RouteSubjectKey,
 ) -> ParetoEntry {
+  let realization = realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)
   match route_evidence_for(route: c.route.identity, wanted: wanted, rows: rows) {
     RouteEvidenceFound { evidence: e } => ParetoEntry {
       identity: c.route.identity,
       display_label: c.route.label,
-      readings: route_candidate_readings(c: c, standing: standing, origin_provider_id: origin_provider_id, evidence: e, wanted: wanted),
-      missing_inputs: route_candidate_gaps(c: c, standing: standing, evidence: e, wanted: wanted),
+      readings: route_candidate_readings(c: c, realization: realization, origin_provider_id: origin_provider_id, evidence: e, wanted: wanted),
+      missing_inputs: route_candidate_gaps(c: c, standing: standing, realization: realization, evidence: e, wanted: wanted),
     }
     RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os } =>
-      route_entry_without_evidence(c: c, standing: standing, origin_provider_id: origin_provider_id, wanted: w,
+      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os }))
     RouteEvidenceAbsent { route: rt, wanted: w } =>
-      route_entry_without_evidence(c: c, standing: standing, origin_provider_id: origin_provider_id, wanted: w,
+      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceAbsent { route: rt, wanted: w }))
   }
 }
@@ -1097,7 +1138,7 @@ fn project_route_candidate(
 // anyone measured it, and it is excluded on that basis rather than deferred.
 fn route_entry_without_evidence(
   c: RouteCandidate,
-  standing: ComponentSubjectStanding,
+  realization: FaithfulComponentRealization,
   origin_provider_id: String,
   wanted: RouteSubjectKey,
   causes: List<NonEmptyStr>,
@@ -1105,17 +1146,9 @@ fn route_entry_without_evidence(
   ParetoEntry {
     identity: c.route.identity,
     display_label: c.route.label,
-    readings: [
-      route_reading(
-        axis: ax_route_faithful_realization,
-        v: route_flag(b: realization_is_faithful(r: realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)))),
-      route_reading(
-        axis: ax_route_well_formed,
-        v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id)) == 0)),
-      route_reading(
-        axis: ax_route_integrity,
-        v: route_flag(b: route_integrity_holds(s: route_integrity_standing(r: c.route)))),
-    ],
+    readings: concat(
+      route_structural_readings(c: c, origin_provider_id: origin_provider_id),
+      optional_route_reading(r: faithfulness_reading(r: realization))),
     missing_inputs: concat(
       concat(
         map(causes, cz => AxisGap { axis: ax_route_nonresident_mechanism, cause: cz }),
@@ -1315,8 +1348,9 @@ fn component_resident_share(s: ComponentRouteStanding) -> ComponentResidentShare
         NoFeasibleRealization { causes: cs } => ComponentResidentUnderivable {
           because: join([
             "every route for component ", declaration_ref_display_key(ref: comp),
-            " violated a hard constraint (", to_string(count(cs)), " causes), so this component has no admissible placement under ",
-            route_subject_key_render(k: ctx),
+            " violated a hard constraint, so this component has no admissible placement under ",
+            route_subject_key_render(k: ctx), ": ",
+            join(map(cs, cz => cz as String), "; "),
           ], "") as NonEmptyStr,
         }
         CandidateFieldUnestablished { causes: cs } => ComponentResidentUnderivable {
@@ -1747,22 +1781,26 @@ data engram_route_evidence_snapshot: DeclarationRef = decl_ref(
 // The consumer passes the component it is asking about and the digest of its own exact serving
 // context. A component this subject does not cover gets `ComponentRouteNotThisSubject`, which is
 // how every legacy artifact keeps its present behaviour unchanged.
+// THE EVIDENCE ROWS ARE BUILT ONCE PER CONTEXT AND CARRIED TWICE. A first cut called
+// `engram_route_evidence_rows` separately for the selection and for the standing's own field --
+// one authored duplication of the expensive half, at the ancestor that has both demands.
 fn engram_route_standing(component: DeclarationRef, context: RouteSubjectKey) -> ComponentRouteStanding {
   if !declaration_ref_eq(a: component, b: engram_component_identity) {
     ComponentRouteNotThisSubject
   } else {
+    let rows = engram_route_evidence_rows(context: context)
     ComponentRouteDecided {
       component: engram_component_identity,
       context: context,
       result: select_component_route(
         field: engram_route_field,
         standing: engram_component_standing,
-        rows: engram_route_evidence_rows(context: context),
+        rows: rows,
         context: context,
         evidence_snapshot: engram_route_evidence_snapshot,
       ),
       routes: engram_routes,
-      evidence: engram_route_evidence_rows(context: context),
+      evidence: rows,
     }
   }
 }
