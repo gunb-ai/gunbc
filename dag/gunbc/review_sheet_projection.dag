@@ -1071,6 +1071,20 @@ fn buyer_review_sheet_projection(
   }
 }
 
+// Trigger: a public caller of review_sheet_ensure supplies
+// buyer_review_sheet_projection (derived_columns from the buyer roster,
+// rows keyed by Browse itemId). That caller cannot live in this module:
+// the roster is private strategy.buyer_review_sheet. Live GetValues /
+// BatchUpdate is a different frontier (live_sheets_transport_frontier).
+data buyer_review_ensure_projection_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_sheets",
+    decl_name: "review_sheet_ensure",
+    field: WholeDeclaration
+  }
+}
+
 data buyer_review_judgement_read_frontier: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {

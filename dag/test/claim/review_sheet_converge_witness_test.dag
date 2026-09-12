@@ -35,6 +35,7 @@ import gunbc.review_sheet_projection {
   buyer_review_operator_columns,
   buyer_review_sheet_schema,
   buyer_review_sheet_projection,
+  buyer_review_ensure_projection_frontier,
   buyer_review_judgement_read_frontier,
   JudgementBlank,
   JudgementEntered,
@@ -1534,6 +1535,17 @@ test fn buyer_review_sheet_schema_is_listing_identity_and_operator_entered_witho
       Absent => true
       Present { value: _ } => false
     }
+}
+
+test fn buyer_review_ensure_projection_is_a_declared_frontier() -> Bool {
+  match buyer_review_ensure_projection_frontier {
+    Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+      (b.module_path as String) == "gunbc.review_sheet_sheets"
+        && (b.decl_name as String) == "review_sheet_ensure"
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+    Terminal { reason: _ } => false
+  }
 }
 
 test fn buyer_review_projection_classify_does_not_write_operator_columns() -> Bool {
