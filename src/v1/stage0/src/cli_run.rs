@@ -40186,6 +40186,36 @@ fn reference_closure_index(
             FLOOR_PREPARED_SUBJECTS_PER_PROCESS
         ));
     }
+    let index = build_reference_closure_index(prepared)?;
+    REFERENCE_CLOSURE_INDEXES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), index.clone()))
+    });
+    Ok(index)
+}
+
+/// THE BUILD, LIFTED OUT OF THE CACHE THAT MEMOIZES IT.
+///
+/// Over the prepared subject alone: it walks that graph and returns the index, registering
+/// nothing and consulting nothing. It still REFUSES on its own subject-level ground --
+/// `ExprVarReconciliationMismatch`, where a traversed occurrence landed in no member -- which is a
+/// fact about the supplied graph and is deliberately distinct from the BUDGET refusal the cache
+/// above raises, which is a fact about the host process. `reference_closure_index` is this plus
+/// the bounded
+/// per-subject memo, and every production caller still goes through that -- the corpus subject
+/// and the `policy_prepared` subject observe exactly the behaviour they observed before this
+/// split, because the cache path is unchanged and this function is the body it always ran.
+///
+/// WHO NEEDS THE UNMEMOIZED FORM. A self-contained fixture subject built inside a floor claim
+/// (`claim_scope_dag_multi_module_fixture`). It is one module and is thrown away immediately, so
+/// it has no business in a cache sized and bounded for the floor's own long-lived subjects --
+/// registering it would spend one of `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` on a throwaway and
+/// refuse the next real subject. Raising that bound is deliberately not the remedy: it is a
+/// stated production cost wall, and widening it to fit a test instrument is the instrument
+/// dictating production limits.
+pub(crate) fn build_reference_closure_index(
+    prepared: &PreparedRepository,
+) -> Result<Rc<ReferenceClosureIndex>, String> {
     let started = std::time::Instant::now();
     // TWO PASSES, BECAUSE THE CLASSIFICATION IS ONLY DECIDABLE ONCE EVERY DECLARATION IS KNOWN.
     // Deciding that a name is a reference means deciding that SOME module declares it, and a
@@ -40318,10 +40348,6 @@ fn reference_closure_index(
         index.decl_index.len(),
         prepared.subject_digest
     );
-    REFERENCE_CLOSURE_INDEXES.with(|c| {
-        c.borrow_mut()
-            .push((prepared.subject_digest.clone(), index.clone()))
-    });
     Ok(index)
 }
 
@@ -40379,6 +40405,7 @@ pub fn claim_scope_for(
         entry_module_path,
         Some(fragments.as_ref()),
         order_index,
+        None,
     )
 }
 
@@ -40397,14 +40424,26 @@ pub fn claim_scope_for_without_memos(
         entry_module_path,
         None,
         build_scope_order_index(prepared),
+        None,
     )
 }
 
+/// `reference_index` is the ONE knob a caller has over the bounded per-subject memo, and `None`
+/// is exactly today's behaviour: consult and register in `REFERENCE_CLOSURE_INDEXES`, refusing a
+/// subject beyond `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`. Every production caller passes `None`,
+/// so the corpus subject and the `policy_prepared` subject observe no change from this parameter
+/// existing.
+///
+/// `Some(index)` is for a caller that has built the index for THIS subject itself and must not
+/// occupy a slot -- a self-contained, immediately-discarded fixture subject built inside a floor
+/// claim. Registering such a subject would spend one of a bounded population on a throwaway and
+/// refuse the next real one.
 fn claim_scope_for_with_memos(
     prepared: &PreparedRepository,
     entry_module_path: &str,
     fragments: Option<&v1_interpreter::ScopeFragmentCache>,
     order_index: Rc<ScopeOrderIndex>,
+    reference_index: Option<Rc<ReferenceClosureIndex>>,
 ) -> Result<PreparedClaimScope, String> {
     // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
     //
@@ -40458,7 +40497,10 @@ fn claim_scope_for_with_memos(
     // a function of the graph and not of a hash map's iteration -- order is part of the scope's
     // identity (`scope_identity`), and a scope whose identity varied run to run would defeat
     // every cache keyed on it.
-    let ref_index = reference_closure_index(prepared)?;
+    let ref_index = match reference_index {
+        Some(index) => index,
+        None => reference_closure_index(prepared)?,
+    };
     // A REFERENCED MODULE ARRIVES WITH ITS OWN IMPORT CLOSURE, not alone.
     //
     // The entry module's closure is taken from `func_env.parents` above precisely because a

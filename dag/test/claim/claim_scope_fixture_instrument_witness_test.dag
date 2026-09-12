@@ -37,6 +37,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data csf_module_source: String = "module csf.user\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
 
+// FOUR MORE DISTINCT SUBJECTS, each a different manifest and therefore a different
+// `subject_digest`. They exist to exercise the bound, not to vary the subject: see
+// `several_distinct_fixture_subjects_all_resolve` below.
+data csf_second_source: String = "module csf.second\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+data csf_third_source: String = "module csf.third\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+data csf_fourth_source: String = "module csf.fourth\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+data csf_fifth_source: String = "module csf.fifth\n\nfn probe(n: Int) -> Int {\n  n\n}\n"
+
+fn csf_scope_of(path: String, source: String, module_path: String) -> ClaimScopeFixtureOutcome {
+  claim_scope_fixture(
+    fixture: MultiModuleCompileFixture {
+      sources: [fixture_source(path, source)],
+      entry: path
+    },
+    entry_module_path: module_path
+  )
+}
+
 // THE POSITIVE CONTROL. A one-module manifest whose entry names it. Scope construction must
 // succeed and the outcome must be `ClaimScopeAccepted`.
 test fn a_well_formed_manifest_builds_a_claim_scope() -> Bool {
@@ -73,4 +91,29 @@ test fn an_entry_outside_the_subject_reaches_the_caller_as_a_scope_refusal() -> 
       entry_module_path: "csf.module_that_the_manifest_does_not_contain"
     )
   )
+}
+
+// CONDITION: THE FIXTURE MUST NOT COMPETE FOR THE FLOOR'S BOUNDED SUBJECT SLOTS, PROVEN BY
+// EXECUTION RATHER THAN BY READING THE CODE.
+//
+// `reference_closure_index` memoizes per prepared subject in a `thread_local!` bounded at
+// `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` = 2, and the required floor already holds both: the corpus
+// subject and the `policy_prepared` subject. FIVE DISTINCT fixture subjects therefore cannot all
+// resolve if the fixture registers in that cache -- the third would be refused, and on the floor
+// that is exactly what happened before the non-registering path landed.
+//
+// Five and not two, so the row fails if the fixture occupies even ONE slot: two would still fit a
+// process that happened to have room, and a probe that passes on a lucky cache is not evidence.
+//
+// THE SECOND HALF OF THE CONDITION -- that the corpus and policy subjects still resolve -- is
+// carried by the floor run that executes this row, not by a separate assertion: every other claim
+// in the floor is evaluated against the corpus subject, so if these five had evicted or exhausted
+// that cache the floor would refuse rather than report a verdict. A green floor CONTAINING this
+// row is the joint evidence; this row alone would not be.
+test fn several_distinct_fixture_subjects_all_resolve() -> Bool {
+  claim_scope_was_accepted(o: csf_scope_of(path: "csf/user.dag", source: csf_module_source, module_path: "csf.user"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/second.dag", source: csf_second_source, module_path: "csf.second"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/third.dag", source: csf_third_source, module_path: "csf.third"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/fourth.dag", source: csf_fourth_source, module_path: "csf.fourth"))
+    && claim_scope_was_accepted(o: csf_scope_of(path: "csf/fifth.dag", source: csf_fifth_source, module_path: "csf.fifth"))
 }
