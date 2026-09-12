@@ -35,10 +35,11 @@ import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 //
 // THIS MODULE IS THE SET. IT IS NOT YET THAT REPAIR, and the distinction is stated here rather than
 // left for a reader to discover, because a note that describes an intended end state in the past
-// tense is how a live fail-open comes to look closed. The selection screen does not consume this
-// module yet; its cutover waits on gunbc#11013, which rewrites that module. Until that lands the
-// scalar still admits unplaceable shapes, and the honest reading of this file is "the authority the
-// repair needs, with its second consumer still to arrive".
+// tense is how a live fail-open comes to look closed. The serving-selection cutover remains a
+// follow-up outside this change: the selection screen still carries the scalar fleet snapshot and
+// still admits unplaceable shapes, while this change adds the shared authority and rewires its
+// build and probe consumers. The honest reading of this file is "the authority the repair needs,
+// with its selection consumer still to arrive".
 //
 // THE SET IS DERIVED, NEVER AUTHORED. Every host list this module could have written already exists
 // somewhere that owns it, and restating one here would be the second authority DESIGN section 3
@@ -209,60 +210,40 @@ fn spark_host_commitments_in(
   }
 }
 
-// A STANDING HAS EXACTLY ONE CONSTRUCTION SITE AND IT IS INSIDE THE MEMBERSHIP CHECK.
+// A STANDING HAS EXACTLY ONE CONSTRUCTION SITE, AND IT IS THE TRAVERSAL OF THE POPULATION ITSELF.
 //
-// THIS IS THE SECOND CUT AT THE SAME DEFECT, and the first one is worth stating because it is the
-// instructive failure. The original producer took a host and four commitment lists and answered a
-// STANDING; handed a machine that is not a DGX Spark unit it found no cause and said
-// `SparkHostUncommitted`, which reads as "the fleet looked and nothing has claimed it" when the fleet
-// had not looked. The repair added the unit population and an Absent arm here -- and moved the
-// destructure into a `spark_standing_from_causes(host, causes)` helper, which was the SAME
-// UNRESTRICTED MINT one level down: no population, no membership, and an Empty arm handing back an
-// uncommitted standing for any host at all. Naming a helper "the mint" does not give it module
-// privacy; `.dag` has no visibility modifier, so an unchecked constructor is a public constructor.
+// THIS IS THE THIRD CUT AT ONE DEFECT AND THE PREVIOUS TWO EXPLAIN THE SHAPE. The original producer
+// took a host and four commitment lists and answered a STANDING; handed a machine that is not a DGX
+// Spark unit it found no cause and said `SparkHostUncommitted`, which reads as "the fleet looked and
+// nothing has claimed it" when the fleet had not looked. The first repair added the population and an
+// Absent arm but moved the destructure into a `spark_standing_from_causes(host, causes)` helper --
+// the same unrestricted mint one level down, because naming a helper "the mint" does not give it
+// module privacy: `.dag` has no visibility modifier, so an unchecked constructor is a public one. The
+// second repair deleted that helper and inlined the destructure behind a per-host membership scan.
 //
-// SO THE HELPER IS DELETED RATHER THAN WRAPPED. A third checked wrapper over it would have reproduced
-// exactly the rejected shape one level deeper, which is the delete-first reading DESIGN section 3
-// asks for: uproot the unrestricted root, then fix what refuses. The destructure now lives INSIDE the
-// membership-checked branch, so there is no reachable path from a host to a standing that skips the
-// roster, and the discriminating control reaches THIS boundary because there is no longer a lower one
-// for it to miss.
+// THAT SECOND REPAIR WAS CORRECT AND ITS ANNOTATION WAS WRONG, which is the part worth keeping. The
+// note here offered a choice between a repeated membership scan and the return of an unchecked mint,
+// and called the resulting quadratic the necessary price of one construction authority. It is not.
+// DESIGN section 6 says a proven cost-shape defect is ALWAYS fixed regardless of the realized n, and
+// names "n is small here" as not a time-stable justification -- so an eight-row roster does not
+// discharge it, and pricing a per-site exception is the move that rule exists to refuse. The
+// arithmetic was real: with n hosts and every commitment list empty, the outer traversal asked the
+// inner producer to rediscover each host in the same roster, so membership work grew as n(n+1)/2 with
+// no causes to join at all.
 //
-// THE COST THIS DELIBERATELY ACCEPTS, stated so nobody optimises it back into a hole: the roster fold
-// calls this checked constructor per unit, so membership is scanned once per host -- quadratic in the
-// fleet roster, where the scan is a TAUTOLOGY because the fold is walking that very population. The
-// obvious removal is to let the fold construct directly, which is precisely the unchecked mint this
-// paragraph exists to prevent from coming back. DESIGN section 6's bare-minimum-cost rule is about a
-// defect; this is the price of one construction authority over an eight-row roster, and if it ever
-// needs to be cheap the answer is a membership proof carried in the value, never a second path.
+// THE DISTINCTION THE FALSE CHOICE MISSED: A CONSTRUCTOR THAT TAKES A POPULATION AND CONSTRUCTS ONLY
+// WHILE TRAVERSING THAT POPULATION IS ALREADY POPULATION-BOUNDED. There is no independent host input
+// at the construction site to check, because the host being constructed for CAME FROM the traversal
+// -- membership follows from where it came from rather than from a scan asking whether it is there.
+// That is not the deleted function, which accepted an arbitrary host with no population in sight. So
+// the fold below is the sole construction authority, the destructure sits directly inside its walk of
+// `units`, and the per-host answer is a LOOKUP over the constructed result rather than a second mint.
+// One authority, no rescan, no proof type, and nothing for a later edit to route around.
 //
 // `spark_host_commitments_in` stays public and stays unchecked ON PURPOSE: it answers which of the
-// lists you handed it name this host, which is a question about the lists rather than a claim about
-// the fleet, and it returns a cause monoid rather than a standing, so it cannot be mistaken for one.
-fn spark_host_standing_in(
-  units: List<HostIdentity>,
-  assignments: List<SparkCellRoleAssignment>,
-  claimed_serving_hosts: List<HostIdentity>,
-  arm_claims: List<ServingArmHostClaim>,
-  held_reservation_hosts: List<HostIdentity>,
-  host: HostIdentity,
-) -> SparkHostStanding? {
-  if !any(units, u => host_identity_eq(a: u, b: host)) {
-    none
-  } else {
-    match spark_host_commitments_in(
-      assignments: assignments,
-      claimed_serving_hosts: claimed_serving_hosts,
-      arm_claims: arm_claims,
-      held_reservation_hosts: held_reservation_hosts,
-      host: host,
-    ) {
-      Empty => Present { value: SparkHostUncommitted { host: host } }
-      Cons { head: first, tail: rest } =>
-        Present { value: SparkHostCommitted { host: host, commitments: FreeSemigroup { head: first, tail: rest } } }
-    }
-  }
-}
+// lists you handed it name this host -- a question about the lists, not a claim about the fleet --
+// and it returns a cause monoid rather than a standing, so it is not another standing-producing
+// boundary and keeping it public does not recreate the deleted mint.
 
 fn spark_host_standings_in(
   units: List<HostIdentity>,
@@ -271,17 +252,40 @@ fn spark_host_standings_in(
   arm_claims: List<ServingArmHostClaim>,
   held_reservation_hosts: List<HostIdentity>,
 ) -> List<SparkHostStanding> {
-  flat_map(units, h => match spark_host_standing_in(
-    units: units,
+  map(units, h => match spark_host_commitments_in(
     assignments: assignments,
     claimed_serving_hosts: claimed_serving_hosts,
     arm_claims: arm_claims,
     held_reservation_hosts: held_reservation_hosts,
     host: h,
   ) {
-    Absent => []
-    Present { value: standing } => [standing]
+    Empty => SparkHostUncommitted { host: h }
+    Cons { head: first, tail: rest } =>
+      SparkHostCommitted { host: h, commitments: FreeSemigroup { head: first, tail: rest } }
   })
+}
+
+// THE PER-HOST ANSWER IS A LOOKUP OVER THAT RESULT, NOT A SECOND MINT. It constructs nothing: it asks
+// the constructed population whether it holds the host, so an outside-population host has no standing
+// to find and the Absent arm is a consequence of the roster rather than a check standing beside it.
+fn spark_host_standing_in(
+  units: List<HostIdentity>,
+  assignments: List<SparkCellRoleAssignment>,
+  claimed_serving_hosts: List<HostIdentity>,
+  arm_claims: List<ServingArmHostClaim>,
+  held_reservation_hosts: List<HostIdentity>,
+  host: HostIdentity,
+) -> SparkHostStanding? {
+  spark_standing_of(
+    standings: spark_host_standings_in(
+      units: units,
+      assignments: assignments,
+      claimed_serving_hosts: claimed_serving_hosts,
+      arm_claims: arm_claims,
+      held_reservation_hosts: held_reservation_hosts,
+    ),
+    host: host,
+  )
 }
 
 // THE SET, AS IDENTITIES, AND IT IS A PROJECTION OF THE STANDINGS RATHER THAN A SECOND DERIVATION.
