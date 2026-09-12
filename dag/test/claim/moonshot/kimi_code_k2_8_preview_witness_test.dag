@@ -13,6 +13,7 @@ import extdeps.moonshot.kimi_code_k2_8_preview {
   AliasEndPublished,
   kimi_code_is_request_model_id,
   kimi_code_request_id_wires,
+  kimi_code_request_id_wire,
   kimi_k28_thinking_effort_wire,
   kimi_k28_thinking_effort_wires,
   kimi_k28_default_thinking_effort,
@@ -27,10 +28,16 @@ import extdeps.moonshot.kimi_code_k2_8_preview {
   KimiForCodingHighspeed,
   KimiThinkingOff,
   KimiThinkingOn,
+  KimiHighSpeedThinkingOn,
   ServedK28Preview,
   ServedK3,
   ServedK27CodeHighspeed,
   kimi_code_served_version_name,
+  KimiCodeRouteResolved,
+  KimiCodeThinkingControlNotDocumented,
+  CitedAvailableOn,
+  StartDateNotPublishedOnCitedAuthorities,
+  kimi_code_catalog_as_of_2026_09_11,
   kimi_k28_vendor_characterization_performance_close_to_k3,
   kimi_k28_vendor_characterization_more_efficient_thinking,
   kimi_vendor_characterization_as_quality_reading,
@@ -40,14 +47,8 @@ import extdeps.moonshot.kimi_code_k2_8_preview {
 }
 import gunbc.kimi_code_k2_8_preview_observation {
   kimi_k28_artifact_standing,
-  OfficialCheckpointNotLocated,
+  CheckpointNotLocatedOnSearchedSurfaces,
   OfficialCheckpointLocated,
-  kimi_k28_local_construction,
-  KimiK28LocalConstructionUnconstructible,
-  KimiK28LocalConstructionDeferredToLocatedWeights,
-  KimiK28LocalModelArtifact,
-  KimiK28VllmCandidate,
-  KimiK28FitCalculation,
   kimi_code_executed_version_without_receipt,
   ExecutedVersionUnobserved,
   ExecutedVersionObserved,
@@ -67,10 +68,18 @@ test fn kimi_for_coding_wire_is_unchanged_while_served_version_changes() -> Bool
     && (kimi_for_coding_wire_id as String) == "kimi-for-coding"
     && (kimi_for_coding_k28_preview_assignment.served_version as String)
       == (kimi_k28_preview_served_version_name as String)
-    && (kimi_for_coding_k28_preview_assignment.effective_from as String) == "2026-09-11"
+    && match kimi_for_coding_k28_preview_assignment.effective_from {
+      CitedAvailableOn { on: d } => (d as String) == "2026-09-11"
+      StartDateNotPublishedOnCitedAuthorities { read_obligation: _ } => false
+    }
     && match kimi_for_coding_k28_preview_assignment.effective_until {
       AliasEndNotPublished => true
       AliasEndPublished { on: _ } => false
+    }
+    && (kimi_code_catalog_as_of_2026_09_11.observed_as_of as String) == "2026-09-11"
+    && match kimi_for_coding_highspeed_assignment.effective_from {
+      CitedAvailableOn { on: d } => (d as String) == "2026-07-14"
+      StartDateNotPublishedOnCitedAuthorities { read_obligation: _ } => false
     }
 }
 
@@ -104,53 +113,77 @@ test fn k2_8_preview_declared_context_ceiling_is_1048576() -> Bool {
 }
 
 test fn thinking_disabled_routes_k3_ids_to_k2_8_without_relabeling_the_request() -> Bool {
-  let k3 = kimi_code_route(requested: KimiK3, thinking: KimiThinkingOff)
-  let k3_256k = kimi_code_route(requested: KimiK3_256k, thinking: KimiThinkingOff)
-  let k28 = kimi_code_route(requested: KimiForCoding, thinking: KimiThinkingOff)
-  (k3.requested_wire as String) == "k3"
-    && (k3_256k.requested_wire as String) == "k3-256k"
-    && (k28.requested_wire as String) == "kimi-for-coding"
-    && match k3.served_version {
-      ServedK28Preview => true
-      ServedK3 => false
-      ServedK27CodeHighspeed => false
+  match kimi_code_route(requested: KimiK3, thinking: KimiThinkingOff) {
+    KimiCodeRouteResolved { route: k3 } =>
+      (kimi_code_request_id_wire(id: k3.requested_id) as String) == "k3"
+        && match k3.served_version {
+          ServedK28Preview => true
+          ServedK3 => false
+          ServedK27CodeHighspeed => false
+        }
+        && match k3.served_thinking {
+          KimiThinkingOff => true
+          KimiThinkingOn { effort: _ } => false
+          KimiHighSpeedThinkingOn => false
+        }
+        && (kimi_code_served_version_name(v: k3.served_version) as String) == "K2.8 Preview"
+    KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
+  }
+    && match kimi_code_route(requested: KimiK3_256k, thinking: KimiThinkingOff) {
+      KimiCodeRouteResolved { route: k3_256k } =>
+        (kimi_code_request_id_wire(id: k3_256k.requested_id) as String) == "k3-256k"
+          && match k3_256k.served_version {
+            ServedK28Preview => true
+            ServedK3 => false
+            ServedK27CodeHighspeed => false
+          }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
     }
-    && match k3.served_thinking {
-      KimiThinkingOff => true
-      KimiThinkingOn { effort: _ } => false
+    && match kimi_code_route(requested: KimiForCoding, thinking: KimiThinkingOff) {
+      KimiCodeRouteResolved { route: k28 } =>
+        (kimi_code_request_id_wire(id: k28.requested_id) as String) == "kimi-for-coding"
+          && match k28.served_version {
+            ServedK28Preview => true
+            ServedK3 => false
+            ServedK27CodeHighspeed => false
+          }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
     }
-    && match k3_256k.served_version {
-      ServedK28Preview => true
-      ServedK3 => false
-      ServedK27CodeHighspeed => false
-    }
-    && match k28.served_version {
-      ServedK28Preview => true
-      ServedK3 => false
-      ServedK27CodeHighspeed => false
-    }
-    && (kimi_code_served_version_name(v: k3.served_version) as String) == "K2.8 Preview"
 }
 
 test fn highspeed_remains_k2_7_code_highspeed() -> Bool {
-  let off = kimi_code_route(requested: KimiForCodingHighspeed, thinking: KimiThinkingOff)
-  let on = kimi_code_route(
-    requested: KimiForCodingHighspeed,
-    thinking: KimiThinkingOn { effort: KimiK28EffortMax },
-  )
   (kimi_for_coding_highspeed_assignment.served_version as String)
       == (kimi_k27_code_highspeed_served_version_name as String)
-    && (off.requested_wire as String) == "kimi-for-coding-highspeed"
-    && (on.requested_wire as String) == "kimi-for-coding-highspeed"
-    && match off.served_version {
-      ServedK27CodeHighspeed => true
-      ServedK28Preview => false
-      ServedK3 => false
+    && match kimi_code_route(requested: KimiForCodingHighspeed, thinking: KimiHighSpeedThinkingOn) {
+      KimiCodeRouteResolved { route: on } =>
+        (kimi_code_request_id_wire(id: on.requested_id) as String) == "kimi-for-coding-highspeed"
+          && match on.served_version {
+            ServedK27CodeHighspeed => true
+            ServedK28Preview => false
+            ServedK3 => false
+          }
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => false
     }
-    && match on.served_version {
-      ServedK27CodeHighspeed => true
-      ServedK28Preview => false
-      ServedK3 => false
+    && match kimi_code_route(requested: KimiForCodingHighspeed, thinking: KimiThinkingOff) {
+      KimiCodeThinkingControlNotDocumented { requested_id: id, thinking: t } =>
+        match id {
+          KimiForCodingHighspeed => match t {
+            KimiThinkingOff => true
+            KimiThinkingOn { effort: _ } => false
+            KimiHighSpeedThinkingOn => false
+          }
+          KimiForCoding => false
+          KimiK3 => false
+          KimiK3_256k => false
+        }
+      KimiCodeRouteResolved { route: _ } => false
+    }
+    && match kimi_code_route(
+      requested: KimiForCodingHighspeed,
+      thinking: KimiThinkingOn { effort: KimiK28EffortMax },
+    ) {
+      KimiCodeThinkingControlNotDocumented { requested_id: _, thinking: _ } => true
+      KimiCodeRouteResolved { route: _ } => false
     }
 }
 
@@ -173,31 +206,17 @@ test fn vendor_performance_prose_cannot_construct_a_quality_reading() -> Bool {
 
 test fn unlocated_k2_8_checkpoint_cannot_construct_a_local_model_artifact() -> Bool {
   match kimi_k28_artifact_standing {
-    OfficialCheckpointNotLocated { observed_at: at, searched_surfaces: surfaces, trigger: _ } =>
-      (at as String) == "2026-09-11" && (surfaces |> count) == 2
+    CheckpointNotLocatedOnSearchedSurfaces {
+      observed_at: at,
+      searched_surfaces: surfaces,
+      known_unsearched_official_surfaces: unsearched,
+      trigger: _,
+    } =>
+      (at as String) == "2026-09-11"
+        && (surfaces |> count) == 2
+        && (unsearched |> count) == 1
     OfficialCheckpointLocated { locator: _, observed_at: _ } => false
   }
-    && match kimi_k28_local_construction(
-      standing: kimi_k28_artifact_standing,
-      kind: KimiK28LocalModelArtifact,
-    ) {
-      KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
-      KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
-    }
-    && match kimi_k28_local_construction(
-      standing: kimi_k28_artifact_standing,
-      kind: KimiK28VllmCandidate,
-    ) {
-      KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
-      KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
-    }
-    && match kimi_k28_local_construction(
-      standing: kimi_k28_artifact_standing,
-      kind: KimiK28FitCalculation,
-    ) {
-      KimiK28LocalConstructionUnconstructible { kind: _, standing: _ } => true
-      KimiK28LocalConstructionDeferredToLocatedWeights { kind: _, locator: _ } => false
-    }
 }
 
 test fn executed_version_stays_unobserved_without_a_receipt() -> Bool {

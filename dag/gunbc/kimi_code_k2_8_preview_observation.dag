@@ -44,6 +44,7 @@ data kimi_code_executed_version_evidence: KimiCodeVersionEvidence = ExecutedVers
 type KimiK28SearchedSurface
   = MoonshotHuggingFaceOrg { locator: NonEmptyStr }
   | MoonshotGitHubOrg { locator: NonEmptyStr }
+  | MoonshotModelScopeOrg { locator: NonEmptyStr }
 
 data kimi_k28_hf_org_surface: KimiK28SearchedSurface = MoonshotHuggingFaceOrg {
   locator: "huggingface.co/moonshotai" as NonEmptyStr,
@@ -53,45 +54,24 @@ data kimi_k28_github_org_surface: KimiK28SearchedSurface = MoonshotGitHubOrg {
   locator: "github.com/MoonshotAI" as NonEmptyStr,
 }
 
+data kimi_k28_modelscope_org_surface: KimiK28SearchedSurface = MoonshotModelScopeOrg {
+  locator: "www.modelscope.cn/organization/moonshotai" as NonEmptyStr,
+}
+
 type KimiK28ArtifactStanding
   = OfficialCheckpointLocated { locator: NonEmptyStr, observed_at: NonEmptyStr }
-  | OfficialCheckpointNotLocated {
+  | CheckpointNotLocatedOnSearchedSurfaces {
       observed_at: NonEmptyStr
       searched_surfaces: List<KimiK28SearchedSurface>
+      known_unsearched_official_surfaces: List<KimiK28SearchedSurface>
       trigger: NonEmptyStr
     }
 
-data kimi_k28_artifact_standing: KimiK28ArtifactStanding = OfficialCheckpointNotLocated {
+data kimi_k28_artifact_standing: KimiK28ArtifactStanding = CheckpointNotLocatedOnSearchedSurfaces {
   observed_at: kimi_k28_checkpoint_search_observed_on,
   searched_surfaces: [kimi_k28_hf_org_surface, kimi_k28_github_org_surface],
-  trigger: "an official K2.8 checkpoint published on a searched surface with a citable revision, sufficient to construct a local ModelArtifact" as NonEmptyStr,
-}
-
-type KimiK28LocalConstructionKind
-  = KimiK28LocalModelArtifact
-  | KimiK28VllmCandidate
-  | KimiK28FitCalculation
-
-type KimiK28LocalConstruction
-  = KimiK28LocalConstructionUnconstructible {
-      kind: KimiK28LocalConstructionKind
-      standing: KimiK28ArtifactStanding
-    }
-  | KimiK28LocalConstructionDeferredToLocatedWeights {
-      kind: KimiK28LocalConstructionKind
-      locator: NonEmptyStr
-    }
-
-fn kimi_k28_local_construction(
-  standing: KimiK28ArtifactStanding,
-  kind: KimiK28LocalConstructionKind,
-) -> KimiK28LocalConstruction {
-  match standing {
-    OfficialCheckpointLocated { locator: loc, observed_at: _ } =>
-      KimiK28LocalConstructionDeferredToLocatedWeights { kind: kind, locator: loc }
-    OfficialCheckpointNotLocated { observed_at: _, searched_surfaces: _, trigger: _ } =>
-      KimiK28LocalConstructionUnconstructible { kind: kind, standing: standing }
-  }
+  known_unsearched_official_surfaces: [kimi_k28_modelscope_org_surface],
+  trigger: "an official K2.8 checkpoint published on any official Moonshot surface, including a surface not in this search, with a citable revision, sufficient for a live ModelArtifact / serving / fit constructor to consume this standing" as NonEmptyStr,
 }
 
 fn kimi_code_k28_preview_observation_fact(decl_name: NonEmptyStr) -> DeclarationRef {
@@ -104,9 +84,9 @@ fn kimi_code_k28_preview_observation_fact(decl_name: NonEmptyStr) -> Declaration
 
 data kimi_code_k28_preview_observation_frontier: List<FrontierRow> = [
   frontier_row_decl(
-    ref: kimi_code_k28_preview_observation_fact(decl_name: "kimi_k28_local_construction" as NonEmptyStr),
-    reason: "KIMI28-1 local serving stays out of scope; this change only records that weights are absent",
-    dissolution: unbound_dissolution(description: "a live local-serving or fit path consumes kimi_k28_local_construction after OfficialCheckpointLocated"),
+    ref: kimi_code_k28_preview_observation_fact(decl_name: "kimi_k28_artifact_standing" as NonEmptyStr),
+    reason: "KIMI28-1 local serving stays out of scope; this search does not feed a live ModelArtifact constructor",
+    dissolution: unbound_dissolution(description: "a live ModelArtifact / serving / fit constructor consumes kimi_k28_artifact_standing"),
   ),
   frontier_row_decl(
     ref: kimi_code_k28_preview_observation_fact(decl_name: "kimi_code_executed_version_evidence" as NonEmptyStr),

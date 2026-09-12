@@ -42,44 +42,58 @@ type KimiCodeAliasEnd
   = AliasEndNotPublished
   | AliasEndPublished { on: NonEmptyStr }
 
+type KimiCodeEffectiveFrom
+  = CitedAvailableOn { on: NonEmptyStr }
+  | StartDateNotPublishedOnCitedAuthorities { read_obligation: NonEmptyStr }
+
 type KimiCodeAliasAssignment {
   model_id: NonEmptyStr
   served_version: NonEmptyStr
-  effective_from: NonEmptyStr
+  effective_from: KimiCodeEffectiveFrom
   effective_until: KimiCodeAliasEnd
   authority: ExternalAuthority
 }
 
 // THE WIRE ID IS STABLE; THE SERVED VERSION IS TIME-BOUNDED. Overwriting a timeless "current
-// version" row would collapse two epochs onto one name. This assignment is the 2026-09-11
+// version" row would collapse two epochs onto one name. K2.8 Preview is the 2026-09-11
 // rollout; the cited docs do not publish an until date.
 data kimi_for_coding_k28_preview_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
   model_id: kimi_for_coding_wire_id,
   served_version: kimi_k28_preview_served_version_name,
-  effective_from: "2026-09-11" as NonEmptyStr,
+  effective_from: CitedAvailableOn { on: "2026-09-11" as NonEmptyStr },
   effective_until: AliasEndNotPublished,
   authority: kimi_code_whats_new_authority,
 }
 
+// HighSpeed "is now available" is the v0.24.0 whats-new heading dated July 14, 2026 — not the
+// 2026-09-11 catalog observation, and not an uncited July 9.
 data kimi_for_coding_highspeed_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
   model_id: kimi_for_coding_highspeed_wire_id,
   served_version: kimi_k27_code_highspeed_served_version_name,
-  effective_from: "2026-09-11" as NonEmptyStr,
+  effective_from: CitedAvailableOn { on: "2026-07-14" as NonEmptyStr },
+  effective_until: AliasEndNotPublished,
+  authority: kimi_code_whats_new_authority,
+}
+
+data kimi_k3_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  model_id: kimi_k3_wire_id,
+  served_version: kimi_k3_served_version_name,
+  effective_from: CitedAvailableOn { on: "2026-07-16" as NonEmptyStr },
+  effective_until: AliasEndNotPublished,
+  authority: kimi_code_whats_new_authority,
+}
+
+data kimi_k3_256k_assignment: KimiCodeAliasAssignment = KimiCodeAliasAssignment {
+  model_id: kimi_k3_256k_wire_id,
+  served_version: kimi_k3_served_version_name,
+  effective_from: StartDateNotPublishedOnCitedAuthorities {
+    read_obligation: "whats-new.html and models.html list k3-256k but do not publish a first-available date" as NonEmptyStr,
+  },
   effective_until: AliasEndNotPublished,
   authority: kimi_code_models_authority,
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
-      decl_name: "kimi_for_coding_k28_preview_assignment" as NonEmptyStr,
-      field: WholeDeclaration,
-    }
-  },
-  first_citation: kimi_code_whats_new_authority,
-  further_citations: [kimi_code_models_authority],
-}
+data kimi_code_catalog_observed_as_of: NonEmptyStr = "2026-09-11" as NonEmptyStr
 
 data kimi_for_coding_k28_preview_assignment_citation: FactCitation = FactCitation {
   fact: DeclarationRef {
@@ -140,6 +154,7 @@ data kimi_k28_default_thinking_effort: KimiK28ThinkingEffort = KimiK28EffortMax
 type KimiCodeThinkingControl
   = KimiThinkingOn { effort: KimiK28ThinkingEffort }
   | KimiThinkingOff
+  | KimiHighSpeedThinkingOn
 
 type KimiCodeServedVersion
   = ServedK28Preview
@@ -154,37 +169,141 @@ fn kimi_code_served_version_name(v: KimiCodeServedVersion) -> NonEmptyStr {
   }
 }
 
+type KimiCodeThinkingOnPolicy
+  = ThinkingOnWithK28Effort
+  | HighSpeedThinkingOnOnly
+
+type KimiCodeThinkingOffPolicy
+  = ThinkingOffServes { version: KimiCodeServedVersion }
+  | ThinkingOffNotDocumented
+
+type KimiCodeCatalogRow {
+  request_id: KimiCodeRequestId
+  assignment: KimiCodeAliasAssignment
+  served_when_thinking_on: KimiCodeServedVersion
+  thinking_on: KimiCodeThinkingOnPolicy
+  thinking_off: KimiCodeThinkingOffPolicy
+}
+
+type KimiCodeCatalogEpoch {
+  observed_as_of: NonEmptyStr
+  kimi_for_coding: KimiCodeCatalogRow
+  kimi_k3: KimiCodeCatalogRow
+  kimi_k3_256k: KimiCodeCatalogRow
+  kimi_for_coding_highspeed: KimiCodeCatalogRow
+}
+
+data kimi_code_catalog_as_of_2026_09_11: KimiCodeCatalogEpoch = KimiCodeCatalogEpoch {
+  observed_as_of: kimi_code_catalog_observed_as_of,
+  kimi_for_coding: KimiCodeCatalogRow {
+    request_id: KimiForCoding,
+    assignment: kimi_for_coding_k28_preview_assignment,
+    served_when_thinking_on: ServedK28Preview,
+    thinking_on: ThinkingOnWithK28Effort,
+    thinking_off: ThinkingOffServes { version: ServedK28Preview },
+  },
+  kimi_k3: KimiCodeCatalogRow {
+    request_id: KimiK3,
+    assignment: kimi_k3_assignment,
+    served_when_thinking_on: ServedK3,
+    thinking_on: ThinkingOnWithK28Effort,
+    thinking_off: ThinkingOffServes { version: ServedK28Preview },
+  },
+  kimi_k3_256k: KimiCodeCatalogRow {
+    request_id: KimiK3_256k,
+    assignment: kimi_k3_256k_assignment,
+    served_when_thinking_on: ServedK3,
+    thinking_on: ThinkingOnWithK28Effort,
+    thinking_off: ThinkingOffServes { version: ServedK28Preview },
+  },
+  kimi_for_coding_highspeed: KimiCodeCatalogRow {
+    request_id: KimiForCodingHighspeed,
+    assignment: kimi_for_coding_highspeed_assignment,
+    served_when_thinking_on: ServedK27CodeHighspeed,
+    thinking_on: HighSpeedThinkingOnOnly,
+    thinking_off: ThinkingOffNotDocumented,
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.moonshot.kimi_code_k2_8_preview" as NonEmptyStr,
+      decl_name: "kimi_code_catalog_as_of_2026_09_11" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: kimi_code_whats_new_authority,
+  further_citations: [kimi_code_models_authority],
+}
+
+fn kimi_code_catalog_row(epoch: KimiCodeCatalogEpoch, requested: KimiCodeRequestId) -> KimiCodeCatalogRow {
+  match requested {
+    KimiForCoding => epoch.kimi_for_coding
+    KimiK3 => epoch.kimi_k3
+    KimiK3_256k => epoch.kimi_k3_256k
+    KimiForCodingHighspeed => epoch.kimi_for_coding_highspeed
+  }
+}
+
 type KimiCodeRoute {
   requested_id: KimiCodeRequestId
-  requested_wire: NonEmptyStr
   served_version: KimiCodeServedVersion
   served_thinking: KimiCodeThinkingControl
 }
 
-// ROUTING IS A FUNCTION OF (REQUESTED ID, THINKING CONTROL). Thinking is its own field; thinking-off
-// for the K3 family and for K2.8 Preview is still served as K2.8 Preview (the request id is not
-// rewritten). HighSpeed stays K2.7 Code HighSpeed. Served version and thinking are not a cross product.
-fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingControl) -> KimiCodeRoute {
-  let wire = kimi_code_request_id_wire(id: requested)
-  let served_version = match thinking {
-    KimiThinkingOff => match requested {
-      KimiForCodingHighspeed => ServedK27CodeHighspeed
-      KimiForCoding => ServedK28Preview
-      KimiK3 => ServedK28Preview
-      KimiK3_256k => ServedK28Preview
+type KimiCodeRouteResult
+  = KimiCodeRouteResolved { route: KimiCodeRoute }
+  | KimiCodeThinkingControlNotDocumented {
+      requested_id: KimiCodeRequestId
+      thinking: KimiCodeThinkingControl
     }
-    KimiThinkingOn { effort: _ } => match requested {
-      KimiForCoding => ServedK28Preview
-      KimiK3 => ServedK3
-      KimiK3_256k => ServedK3
-      KimiForCodingHighspeed => ServedK27CodeHighspeed
+
+// ROUTING CONSUMES THE CATALOG EPOCH. Thinking-off for the K3 family and K2.8 Preview is served as
+// K2.8 Preview; the request id is not rewritten. HighSpeed is Thinking:ON only — effort levels and
+// thinking-off are not documented for that id, so those combinations refuse rather than ignore the control.
+fn kimi_code_route(requested: KimiCodeRequestId, thinking: KimiCodeThinkingControl) -> KimiCodeRouteResult {
+  let row = kimi_code_catalog_row(epoch: kimi_code_catalog_as_of_2026_09_11, requested: requested)
+  match thinking {
+    KimiThinkingOff => match row.thinking_off {
+      ThinkingOffServes { version: v } => KimiCodeRouteResolved {
+        route: KimiCodeRoute {
+          requested_id: requested,
+          served_version: v,
+          served_thinking: thinking,
+        },
+      }
+      ThinkingOffNotDocumented => KimiCodeThinkingControlNotDocumented {
+        requested_id: requested,
+        thinking: thinking,
+      }
     }
-  }
-  KimiCodeRoute {
-    requested_id: requested,
-    requested_wire: wire,
-    served_version: served_version,
-    served_thinking: thinking,
+    KimiThinkingOn { effort: _ } => match row.thinking_on {
+      ThinkingOnWithK28Effort => KimiCodeRouteResolved {
+        route: KimiCodeRoute {
+          requested_id: requested,
+          served_version: row.served_when_thinking_on,
+          served_thinking: thinking,
+        },
+      }
+      HighSpeedThinkingOnOnly => KimiCodeThinkingControlNotDocumented {
+        requested_id: requested,
+        thinking: thinking,
+      }
+    }
+    KimiHighSpeedThinkingOn => match row.thinking_on {
+      HighSpeedThinkingOnOnly => KimiCodeRouteResolved {
+        route: KimiCodeRoute {
+          requested_id: requested,
+          served_version: row.served_when_thinking_on,
+          served_thinking: thinking,
+        },
+      }
+      ThinkingOnWithK28Effort => KimiCodeThinkingControlNotDocumented {
+        requested_id: requested,
+        thinking: thinking,
+      }
+    }
   }
 }
 
