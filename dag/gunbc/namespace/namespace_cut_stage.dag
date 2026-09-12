@@ -183,13 +183,38 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // normalize. The producer is named here so the next reader re-runs it rather than trusting this
 // sentence: v2.test.claim.namespace_xl0.call_argument_mention_survival.
 //
-// TWO SEPARATE CAUSES, both isolated by mutation, and only the first is XL-0's to fix:
-//   1. the collector's own parse-projection exclusion skipped the subtree that carries a real
-//      module's content -- a speculative guard against double-counting that was never demonstrated,
-//      which blacked out the corpus while synthetic fixtures stayed green;
-//   2. with that removed, a reference occurring only inside a CALL is still invisible, because v2
-//      normalize erases call expressions (XL-2's finding, gunbc#11207). That half is not XL-0's and
-//      is triggered by the body-lowering repair, not by anything this stage can do.
+// WHAT THE PRODUCER ACTUALLY SEES ON THE PRODUCTION ROUTE, MEASURED OVER EVERY INGESTED ROOT:
+//
+//   REACHES IT:      a bare same-module value reference outside any call; a parameter reference;
+//                    a type-position name
+//   DOES NOT:        a QUALIFIED CROSS-MODULE reference, with or without a call;
+//                    a call argument; a callee name
+//
+// THE FIRST ROW OF THE SECOND GROUP IS WHY XL-0 HAS NO DENOMINATOR, and it is not the same fact as
+// the call erasure. An import-to-containment denominator is made of references that CROSS a module
+// boundary; a bare same-module name resolves inside its own module and contributes nothing. So the
+// population that survives is the part XL-0 cannot use, and a non-empty site list must not be read
+// as a working instrument.
+//
+// THREE CAUSES HAVE BEEN SEPARATED SO FAR, AND THE TRIGGERS ARE NOT ONE TRIGGER:
+//   1. MINE, FIXED: the collector's parse-projection exclusion skipped the subtree carrying a real
+//      module's content, which blacked out the corpus while hand-built fixtures stayed green.
+//   2. MINE, FIXED: its census folded the ingested roots while discarding the accumulator, so every
+//      "is absent" row was measured over the LAST root alone. That one manufactured a reported
+//      type-position miss that does not exist -- the row above is the corrected measurement.
+//   3. OPEN, AND NOT ATTRIBUTED: the qualified cross-module miss. A dotted reference in a BODY is
+//      not a dag_surface_qualified_name production at all -- it reaches the tree as a dot access
+//      over operand atoms -- so the collector, which recognises only the fold-list spine, never
+//      reassembles it. Whether resolution itself reads dotted body access is UNANSWERED: the probe
+//      built for it fails its own control, so no executed evidence exists either way.
+//
+// THE RESTORATION TRIGGER IS THEREFORE NOT THE BODY-LOWERING REPAIR ALONE, and an earlier revision
+// of this note said it was. Body lowering (XL-2, gunbc#11207) restores the call classes and NOTHING
+// ELSE; the qualified cross-module class is independent of calls and would still be missing after
+// it lands. A trigger naming less than the capability it restores gets retired while the capability
+// stays dead, which DESIGN section 4b(3) names exactly. XL-0 derives when the producer answers
+// NON-EMPTY over cross-module references on the production route -- that is the capability, and the
+// call classes are a separate, smaller one.
 //
 // Empty by construction again, and honestly so: no stage delivery instrument exists yet.
 data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
