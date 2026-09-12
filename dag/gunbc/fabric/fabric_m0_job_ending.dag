@@ -49,7 +49,9 @@ import gunbc.fabric_m0_publication { publish_work }
 // impersonate them.
 //
 // CONSUMERS (DESIGN 3c): test.claim.fabric_m0_job_ending_witness exercises every publication arm
-// through end_required_job under the hermetic mock, and tools.fabric_m0_origin_readback_probe
+// under the hermetic mock -- four through end_required_job, and PublishObligationsUnreadable on
+// the value directly, since publish_work derives the judged key from the Work it holds and that
+// arm has no route through the ending -- and tools.fabric_m0_origin_readback_probe
 // drives it over real bytes with a mutation control -- the same record read from the wrong
 // fixture file concludes Failure -- which is the half a constant-digest mock cannot show.
 // stamp_floor_receipt_with_conclusion is the existing receipt mint

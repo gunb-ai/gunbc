@@ -355,3 +355,18 @@ test fn pending_publication_never_maps_to_success() -> Bool {
       }
   }
 }
+
+// THE ONE ARM end_required_job CANNOT REACH. publish_work derives the judged key from the Work it
+// holds, so a resolution bound to a foreign work -- the only producer of PublishObligationsUnreadable
+// -- has no route through the ending. The mapping over it is exercised on the value directly: an
+// unenumerable roster is DECIDED, so it concludes Failure rather than waiting on reconciliation.
+test fn an_unreadable_roster_concludes_failure_rather_than_action_required() -> Bool {
+  check_conclusion_of_publication(
+    publication: PublishObligationsUnreadable {
+      attempt: the_attempt(),
+      subject: "contract",
+      cause: "a foreign work key cannot seal this contract's roster",
+      unresolved: [],
+    }
+  ) == Failure
+}
