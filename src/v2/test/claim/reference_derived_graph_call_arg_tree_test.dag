@@ -4,27 +4,48 @@ import std.types { Int }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_qualified_name_segments_from_capture,
+  qualified_name_from_module_node,
+  qualified_name_from_symbol_segments,
+}
 import v2.lens.module_graph {
   LocatedModuleRoot,
   ModuleDependencyEdge,
   reference_derived_edges_from_located_roots,
 }
-import v2.std.algebra { length }
+import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  outcome_accepted
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Edge, Node, Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// CALL-ARGUMENT TREE PROBE (XL-2 lowering). The collector walks the Node it is given; XL-4
-// ingest is parse_module, not normalize. claim_batch of the visibility assertions (edge count 1)
-// FAIL on both trees. These two rows record that measured absence. They go red when a
-// call-argument mention becomes a resolved owner. Trigger: eager-raven-113 body-lowering repair,
-// then XL-4 ingest of that repaired tree. Not a second collector.
+// COLLECTOR-ROUTE DEFICIENCY PROBES. The production edge producer is the collector, not a
+// parse-tree qualified-name walk. claim_batch of visibility (edge count 1) FAIL on parse and
+// normalize trees for call-argument, type-position, and body-value-outside-call. The == 0
+// rows below record that measured absence; they go red when lowering repair makes a resolved
+// owner. Trigger: eager-raven-113 lowering (type positions included), then XL-4 ingest of that
+// repaired tree. The parse-QN walk below is an oracle only — never the edge producer.
 
 data ca_provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\n"
 
@@ -187,4 +208,150 @@ test fn body_value_outside_call_is_missing_from_parse_tree_today_holds() -> Bool
 
 test fn body_value_outside_call_is_missing_from_normalized_tree_today_holds() -> Bool {
   ca_normalized_body_value_edge_count() == 0
+}
+
+data ca_no_qn_sites: List<QualifiedName> = []
+
+fn ca_qn_from_qualified_name_production(production_node: Node, module_root: Node) -> Outcome<QualifiedName> {
+  match parse_production_captured_child_optional(node: production_node) {
+    Absent =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^ca_parse_qn_oracle_capture_missing,
+            at: node_locus(node: production_node),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+    Present { value: capture } =>
+      match parse_qualified_name_segments_from_capture(qn_capture: capture, root: module_root) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: segments, diagnostics: _ } =>
+          qualified_name_from_symbol_segments(segments: segments, root: module_root)
+      }
+  }
+}
+
+fn ca_collect_non_import_qn_sites_from_edges(
+  edges: List<Edge>,
+  module_root: Node,
+  module_qn: QualifiedName,
+  acc: List<QualifiedName>
+) -> Outcome<List<QualifiedName>> {
+  match edges |> first {
+    Absent => outcome_accepted(value: acc)
+    Present { value: edge } =>
+      match ca_collect_non_import_qn_sites_from_node(
+        node: edge.target,
+        module_root: module_root,
+        module_qn: module_qn,
+        acc: acc
+      ) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: next_acc, diagnostics: _ } =>
+          ca_collect_non_import_qn_sites_from_edges(
+            edges: edges |> skip(1),
+            module_root: module_root,
+            module_qn: module_qn,
+            acc: next_acc
+          )
+      }
+  }
+}
+
+fn ca_collect_non_import_qn_sites_from_node(
+  node: Node,
+  module_root: Node,
+  module_qn: QualifiedName,
+  acc: List<QualifiedName>
+) -> Outcome<List<QualifiedName>> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        outcome_accepted(value: acc)
+      } else if id == ^dag_surface_qualified_name {
+        match ca_qn_from_qualified_name_production(production_node: node, module_root: module_root) {
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Accepted { value: site_qn, diagnostics: _ } =>
+            ca_collect_non_import_qn_sites_from_edges(
+              edges: node.children,
+              module_root: module_root,
+              module_qn: module_qn,
+              acc: if site_qn == module_qn {
+                acc
+              } else {
+                list_snoc_item(xs: acc, item: site_qn)
+              }
+            )
+        }
+      } else {
+        ca_collect_non_import_qn_sites_from_edges(
+          edges: node.children,
+          module_root: module_root,
+          module_qn: module_qn,
+          acc: acc
+        )
+      }
+    Absent =>
+      ca_collect_non_import_qn_sites_from_edges(
+        edges: node.children,
+        module_root: module_root,
+        module_qn: module_qn,
+        acc: acc
+      )
+  }
+}
+
+fn ca_collect_non_import_qn_sites(module_root: Node) -> Outcome<List<QualifiedName>> {
+  match qualified_name_from_module_node(root: module_root) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: module_qn, diagnostics: _ } =>
+      ca_collect_non_import_qn_sites_from_node(
+        node: module_root,
+        module_root: module_root,
+        module_qn: module_qn,
+        acc: ca_no_qn_sites
+      )
+  }
+}
+
+data ca_provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
+
+data ca_provided_value_dotted: String = "test.fixture.reference_derived_graph.provider.provided_value"
+
+fn ca_parse_qn_walk_site_count(consumer_text: String, file: Symbol, needle: String) -> Int {
+  match ca_parse_root(text: consumer_text, file: file) {
+    Rejected { diagnostics: _ } => ca_ingest_refused_count
+    Accepted { value: root, diagnostics: _ } =>
+      match ca_collect_non_import_qn_sites(module_root: root) {
+        Rejected { diagnostics: _ } => ca_ingest_refused_count
+        Accepted { value: sites, diagnostics: _ } =>
+          length(xs: sites |> filter(qn => qualified_name_to_dotted_string(qn: qn) == needle))
+      }
+  }
+}
+
+test fn parse_qn_walk_sees_type_position_provided_marker_holds() -> Bool {
+  ca_parse_qn_walk_site_count(
+    consumer_text: ca_type_pos_text,
+    file: ^ca_type_pos_qn_oracle,
+    needle: ca_provided_marker_dotted
+  ) > 0
+}
+
+test fn parse_qn_walk_does_not_see_body_value_provided_value_today_holds() -> Bool {
+  ca_parse_qn_walk_site_count(
+    consumer_text: ca_body_value_text,
+    file: ^ca_body_value_qn_oracle,
+    needle: ca_provided_value_dotted
+  ) == 0
+}
+
+test fn parse_qn_walk_does_not_see_call_arg_provided_value_today_holds() -> Bool {
+  ca_parse_qn_walk_site_count(
+    consumer_text: ca_call_arg_text,
+    file: ^ca_call_arg_qn_oracle,
+    needle: ca_provided_value_dotted
+  ) == 0
 }
