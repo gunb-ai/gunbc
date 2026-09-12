@@ -7,7 +7,7 @@ import std.keyed_roster {
   KeyedRosterBuilt,
   KeyedRosterBuildDuplicateKey,
 }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
@@ -53,8 +53,7 @@ type ReviewSheetProjection {
 // standing stays ListingGone on the apply pass. Located writes or a located refuse;
 // quiet success is refused. Judgement has no deletion arm.
 // identity_column in the intended binding is an eBay item id: a stub that keeps that key
-// still retains eBay data under a broad MAD reading. Identity split is deferred until
-// exemption wording puts the item id in scope.
+// still retains eBay data under a broad MAD reading.
 // Blanking DerivedField is a real meaning loss for human re-audit: title and price are why
 // they wrote buy, and a labelled stub does not carry that. The buyer loop still has
 // identity plus the operator cell and can refuse to re-ask. We gave something up; we did
@@ -195,58 +194,55 @@ fn read_derived_erasure_mark(cell: String) -> DerivedErasureMarkRead {
   }
 }
 
-type ReviewColumnRole
-  = RoleDerivedField
-  | RoleOperatorEntered
-  | RoleListingStanding
-  | RoleDerivedErasureMark
-
-fn review_column_role(kind: ReviewColumnKind) -> ReviewColumnRole {
+fn kind_is_derived_field(kind: ReviewColumnKind) -> Bool {
   match kind {
-    DerivedField { source_field: _ } => RoleDerivedField
-    OperatorEntered => RoleOperatorEntered
-    ListingStanding => RoleListingStanding
-    DerivedErasureMark => RoleDerivedErasureMark
+    DerivedField { source_field: _ } => true
+    OperatorEntered => false
+    ListingStanding => false
+    DerivedErasureMark => false
   }
 }
 
-fn review_column_role_eq(a: ReviewColumnRole, b: ReviewColumnRole) -> Bool {
-  match a {
-    RoleDerivedField => match b {
-      RoleDerivedField => true
-      RoleOperatorEntered => false
-      RoleListingStanding => false
-      RoleDerivedErasureMark => false
-    }
-    RoleOperatorEntered => match b {
-      RoleOperatorEntered => true
-      RoleDerivedField => false
-      RoleListingStanding => false
-      RoleDerivedErasureMark => false
-    }
-    RoleListingStanding => match b {
-      RoleListingStanding => true
-      RoleDerivedField => false
-      RoleOperatorEntered => false
-      RoleDerivedErasureMark => false
-    }
-    RoleDerivedErasureMark => match b {
-      RoleDerivedErasureMark => true
-      RoleDerivedField => false
-      RoleOperatorEntered => false
-      RoleListingStanding => false
-    }
+fn kind_is_operator_entered(kind: ReviewColumnKind) -> Bool {
+  match kind {
+    OperatorEntered => true
+    DerivedField { source_field: _ } => false
+    ListingStanding => false
+    DerivedErasureMark => false
   }
 }
 
-fn first_column_of_kind(schema: ReviewSheetSchema, role: ReviewColumnRole) -> ReviewColumn? {
+fn kind_is_listing_standing(kind: ReviewColumnKind) -> Bool {
+  match kind {
+    ListingStanding => true
+    DerivedField { source_field: _ } => false
+    OperatorEntered => false
+    DerivedErasureMark => false
+  }
+}
+
+fn kind_is_erasure_mark(kind: ReviewColumnKind) -> Bool {
+  match kind {
+    DerivedErasureMark => true
+    DerivedField { source_field: _ } => false
+    OperatorEntered => false
+    ListingStanding => false
+  }
+}
+
+type ObservedKindCell
+  = KindCell { value: String }
+  | KindAbsentFromSchema
+  | KindColumnMissingFromHeader { column: NonEmptyStr }
+
+fn first_column_of_kind(schema: ReviewSheetSchema, keep: fn(ReviewColumnKind) -> Bool) -> ReviewColumn? {
   schema.columns
-    |> filter(c => review_column_role_eq(a: review_column_role(kind: c.kind), b: role))
+    |> filter(c => keep(c.kind))
     |> first
 }
 
-fn schema_has_kind(schema: ReviewSheetSchema, role: ReviewColumnRole) -> Bool {
-  match first_column_of_kind(schema: schema, role: role) {
+fn schema_has_kind(schema: ReviewSheetSchema, keep: fn(ReviewColumnKind) -> Bool) -> Bool {
+  match first_column_of_kind(schema: schema, keep: keep) {
     Present { value: _ } => true
     Absent => false
   }
@@ -256,14 +252,14 @@ fn observed_cell_of_kind(
   schema: ReviewSheetSchema,
   header_by_name: Map<String, Int>,
   row: ObservedSheetRow,
-  role: ReviewColumnRole,
-) -> String? {
-  match first_column_of_kind(schema: schema, role: role) {
-    Absent => none
+  keep: fn(ReviewColumnKind) -> Bool,
+) -> ObservedKindCell {
+  match first_column_of_kind(schema: schema, keep: keep) {
+    Absent => KindAbsentFromSchema
     Present { value: col } =>
       match header_by_name.lookup(col.name as String) {
-        Absent => none
-        Present { value: idx } => Present { value: cell_at(cells: row.cells, index: idx) }
+        Absent => KindColumnMissingFromHeader { column: col.name }
+        Present { value: idx } => KindCell { value: cell_at(cells: row.cells, index: idx) }
       }
   }
 }
@@ -425,8 +421,15 @@ fn header_key_rows(headers: List<String>) -> List<KeyedRow<String, Int>> {
   map(headers |> enumerate, pair => KeyedRow { row_key: pair.second, value: pair.first })
 }
 
+fn review_sheet_listing_identity(listing_id: NonEmptyStr) -> NonEmptyStr {
+  listing_id
+}
+
 fn projection_key_rows(projection: ReviewSheetProjection) -> List<KeyedRow<String, ProjectionRow>> {
-  map(projection.rows, row => KeyedRow { row_key: row.listing_id as String, value: row })
+  map(projection.rows, row => KeyedRow {
+    row_key: review_sheet_listing_identity(listing_id: row.listing_id) as String,
+    value: row,
+  })
 }
 
 fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List<KeyedRow<String, Bool>> {
@@ -437,11 +440,14 @@ fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List
 }
 
 fn erasure_key_rows(erasures: List<DerivedPayloadErasure>) -> List<KeyedRow<String, DerivedPayloadErasure>> {
-  map(erasures, e => KeyedRow { row_key: e.listing_id as String, value: e })
+  map(erasures, e => KeyedRow {
+    row_key: review_sheet_listing_identity(listing_id: e.listing_id) as String,
+    value: e,
+  })
 }
 
 fn listing_has_erasure(erasure_by_id: Map<String, DerivedPayloadErasure>, listing_id: NonEmptyStr) -> Bool {
-  match erasure_by_id.lookup(listing_id as String) {
+  match erasure_by_id.lookup(review_sheet_listing_identity(listing_id: listing_id) as String) {
     Present { value: _ } => true
     Absent => false
   }
@@ -456,10 +462,11 @@ fn read_row_listing_standing(
     schema: schema,
     header_by_name: header_by_name,
     row: row,
-    role: RoleListingStanding,
+    keep: kind_is_listing_standing,
   ) {
-    Absent => none
-    Present { value: cell } => Present { value: read_listing_standing(cell: cell) }
+    KindAbsentFromSchema => none
+    KindColumnMissingFromHeader { column: _ } => none
+    KindCell { value: cell } => Present { value: read_listing_standing(cell: cell) }
   }
 }
 
@@ -472,10 +479,11 @@ fn read_row_erasure_mark(
     schema: schema,
     header_by_name: header_by_name,
     row: row,
-    role: RoleDerivedErasureMark,
+    keep: kind_is_erasure_mark,
   ) {
-    Absent => none
-    Present { value: cell } => Present { value: read_derived_erasure_mark(cell: cell) }
+    KindAbsentFromSchema => none
+    KindColumnMissingFromHeader { column: _ } => none
+    KindCell { value: cell } => Present { value: read_derived_erasure_mark(cell: cell) }
   }
 }
 
@@ -511,6 +519,13 @@ fn erasure_missing_standing_column_reason(listing_id: NonEmptyStr) -> NonEmptySt
   concat("derived payload erasure missing ListingStanding column listing=", listing_id as String) as NonEmptyStr
 }
 
+fn erasure_missing_standing_header_reason(listing_id: NonEmptyStr, column: NonEmptyStr) -> NonEmptyStr {
+  concat(
+    "derived payload erasure missing header ",
+    concat(column as String, concat(" listing=", listing_id as String)),
+  ) as NonEmptyStr
+}
+
 fn erasure_has_no_derived_field_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
   concat("derived payload erasure has no DerivedField column listing=", listing_id as String) as NonEmptyStr
 }
@@ -520,11 +535,11 @@ fn erasure_has_no_erasure_mark_reason(listing_id: NonEmptyStr) -> NonEmptyStr {
 }
 
 fn schema_has_derived_field(schema: ReviewSheetSchema) -> Bool {
-  schema_has_kind(schema: schema, role: RoleDerivedField)
+  schema_has_kind(schema: schema, keep: kind_is_derived_field)
 }
 
 fn schema_has_erasure_mark(schema: ReviewSheetSchema) -> Bool {
-  schema_has_kind(schema: schema, role: RoleDerivedErasureMark)
+  schema_has_kind(schema: schema, keep: kind_is_erasure_mark)
 }
 
 fn first_erasure_not_on_sheet(
@@ -532,7 +547,7 @@ fn first_erasure_not_on_sheet(
   observed_by_id: Map<String, Bool>,
 ) -> NonEmptyStr? {
   erasures
-    |> filter(e => match observed_by_id.lookup(e.listing_id as String) {
+    |> filter(e => match observed_by_id.lookup(review_sheet_listing_identity(listing_id: e.listing_id) as String) {
       Present { value: _ } => false
       Absent => true
     })
@@ -552,10 +567,20 @@ fn authorize_derived_payload_erasure(
     if in_projection {
       ErasureRefused { reason: erasure_still_projected_reason(listing_id: listing_id) }
     } else {
-      match read_row_listing_standing(schema: schema, header_by_name: header_by_name, row: row) {
-        Absent => ErasureRefused { reason: erasure_missing_standing_column_reason(listing_id: listing_id) }
-        Present { value: standing_read } =>
-          match standing_read {
+      match observed_cell_of_kind(
+        schema: schema,
+        header_by_name: header_by_name,
+        row: row,
+        keep: kind_is_listing_standing,
+      ) {
+        KindAbsentFromSchema =>
+          ErasureRefused { reason: erasure_missing_standing_column_reason(listing_id: listing_id) }
+        KindColumnMissingFromHeader { column: n } =>
+          ErasureRefused {
+            reason: erasure_missing_standing_header_reason(listing_id: listing_id, column: n)
+          }
+        KindCell { value: cell } =>
+          match read_listing_standing(cell: cell) {
             StandingKnown { state: standing_state } =>
               if listing_standing_eq(a: standing_state, b: StandingGone) {
                 if schema_has_derived_field(schema: schema) {
@@ -619,7 +644,7 @@ fn col_and_listing(column: NonEmptyStr, listing_id: NonEmptyStr) -> String {
 fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -> NonEmptyStr? {
   let derived = derived_by_column(row: row)
   schema.columns
-    |> filter(c => review_column_role_eq(a: review_column_role(kind: c.kind), b: RoleDerivedField))
+    |> filter(c => kind_is_derived_field(kind: c.kind))
     |> filter(c => match derived.lookup(c.name as String) {
       Absent => true
       Present { value: _ } => false
@@ -671,7 +696,7 @@ fn write_plan_touches_column(plan: ReviewSheetWritePlan, column: NonEmptyStr) ->
 
 fn operator_column_names(schema: ReviewSheetSchema) -> List<NonEmptyStr> {
   schema.columns
-    |> filter(c => review_column_role_eq(a: review_column_role(kind: c.kind), b: RoleOperatorEntered))
+    |> filter(c => kind_is_operator_entered(kind: c.kind))
     |> map(c => c.name)
 }
 
@@ -1465,6 +1490,15 @@ data buyer_review_judgement_read_frontier: Disposition = Scaffold {
   bind: DeclarationRef {
     module_path: "gunbc.review_sheet_projection",
     decl_name: "judgement_for_listing",
+    field: WholeDeclaration
+  }
+}
+
+data buyer_review_identity_split_frontier: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_projection",
+    decl_name: "review_sheet_listing_identity",
     field: WholeDeclaration
   }
 }
