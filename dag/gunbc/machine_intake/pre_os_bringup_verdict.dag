@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
 import std.decl_ref { DeclarationRef }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { trim }
 import extdeps.bmc.ipmi_sel {
   OemSelPayload,
@@ -178,6 +179,14 @@ type SelWindowEvent {
   bmc_clock_rendering: NonEmptyStr
   kind: SelWindowEventKind
 }
+
+// THE READER THAT TURNS `sel elist` BYTES INTO SelWindowEvent ROWS IS NOT IN THIS CHANGE. Today the
+// window is hand-transcribed from a digest-bound artifact (the regression corpus), which is honest
+// as evidence and redundant as production. The reader is the capability that retires those rows
+// and gives extdeps.bmc.ipmi_sel's record-type partition its first consumer.
+data sel_window_ingest_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a SEL-ingest reader that folds the controller's rendered event log (ipmitool sel elist, or a Redfish LogEntry collection) into SelWindowEvent rows -- classifying each record by its section 32 record-type code and each standard event by its section 42.2 sensor type -- SUFFICIENT FOR replacing every hand-transcribed SelWindowEvent corpus in machine-intake and for the SEL cursor collector to read forward from its recorded cursor",
+)
 
 // THE WINDOW AN ATTEMPT READS BEGINS AT THE CURSOR ITS SEL COLLECTOR RECORDED, which is why the
 // cursor is a collector proof and not a convenience: a verdict over records that predate the

@@ -11,11 +11,7 @@ import extdeps.bmc.ipmi_sel {
   FirmwareHang,
   FirmwareProgress,
   OemSelPayload,
-  OemTimestampedRecord,
-  SelRecordTypeReserved,
-  SystemEventRecord,
   SystemRestart,
-  sel_record_type_of_code,
 }
 import gunbc.machine_intake_pre_os_observation_capabilities {
   OemDecodeControllerDeclaredUnknown,
@@ -545,13 +541,4 @@ test fn no_oem_records_served_is_not_a_probe() -> Bool {
     OemDecodeNotProbed => true
     _ => false
   }
-}
-
-// ── the upstream record-type fold ──────────────────────────────────────────────────────────────
-
-test fn record_type_codes_partition_per_section_32() -> Bool {
-  let std_ok = match sel_record_type_of_code(code: 2) { SystemEventRecord => true  _ => false }
-  let oem_ok = match sel_record_type_of_code(code: 192) { OemTimestampedRecord { record_type_code: 192 } => true  _ => false }
-  let reserved_ok = match sel_record_type_of_code(code: 3) { SelRecordTypeReserved { record_type_code: 3 } => true  _ => false }
-  std_ok && oem_ok && reserved_ok
 }

@@ -27,7 +27,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.bmc.ipmi_sel",
-      decl_name: "sel_record_type_of_code",
+      decl_name: "OemSelPayload",
       field: WholeDeclaration
     }
   },
@@ -35,33 +35,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// SECTION 32.1 TABLE 32-1: record type 02h is the standard system event record. Section 32.2:
-// C0h-DFh are OEM timestamped records -- a 4-byte timestamp, a 3-byte manufacturer ID, and SIX
-// BYTES WHOSE MEANING THE SPECIFICATION ASSIGNS TO THE MANUFACTURER. Section 32.3: E0h-FFh are OEM
-// non-timestamped, thirteen manufacturer-defined bytes. Codes 03h-BFh are reserved.
-type SelRecordType
-  = SystemEventRecord
-  | OemTimestampedRecord { record_type_code: Int }
-  | OemNonTimestampedRecord { record_type_code: Int }
-  | SelRecordTypeReserved { record_type_code: Int }
-  | SelRecordTypeOutOfRange { record_type_code: Int }
-
-fn sel_record_type_of_code(code: Int) -> SelRecordType {
-  if code < 0 {
-    SelRecordTypeOutOfRange { record_type_code: code }
-  } else if code == 2 {
-    SystemEventRecord
-  } else if code < 192 {
-    SelRecordTypeReserved { record_type_code: code }
-  } else if code < 224 {
-    OemTimestampedRecord { record_type_code: code }
-  } else if code < 256 {
-    OemNonTimestampedRecord { record_type_code: code }
-  } else {
-    SelRecordTypeOutOfRange { record_type_code: code }
-  }
-}
-
+// SECTION 32.1 TABLE 32-1 ASSIGNS record type 02h to the standard system event record and section
+// 32.2 C0h-DFh to OEM timestamped records -- a 4-byte timestamp, a 3-byte manufacturer ID, and SIX
+// BYTES WHOSE MEANING THE SPECIFICATION ASSIGNS TO THE MANUFACTURER. The record-type classifier
+// over those codes is deliberately NOT declared here: nothing in the corpus feeds a raw type code
+// through one yet, and a fold with no route is a dangling declaration (DESIGN section 3c, review
+// 64384). It lands with the SEL-ingest reader named at
+// gunbc.machine_intake_pre_os_bringup_verdict sel_window_ingest_frontier, which is also what
+// retires the hand-transcribed window rows.
 // THE OEM PAYLOAD IS CARRIED AS THE BYTES THE CONTROLLER RENDERED, AND NOTHING ELSE. Section 32.2
 // says the six data bytes are "OEM defined" -- the specification neither decodes them nor names a
 // registry a reader could consult. A field here called `meaning` would be a decode the cited
