@@ -23516,6 +23516,7 @@ pub fn measure_selected_entry_closure_overlap(
         &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
+        None,
     )?;
     let declared_paths = index.module_graph_facts.declared_repo_paths();
 
@@ -24333,20 +24334,12 @@ fn collect_sorted_decl_lines_for_file(
 pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
     edited_test_fns: HashSet<(String, String)>,
-    /// Test fns declared in a path whose DECLARATION SET IS ESTABLISHED FRESH at NEW — a wholly
-    /// added file or a rename destination, exactly the population
-    /// `parse_unified_diff_added_paths` already rules on. These identities have never executed
-    /// under their current qualified spelling, so they are the NEWLY ENROLLED set the enrolment
-    /// margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
-    ///
-    /// A STRICT SUBSET OF `edited_test_fns`, AND DELIBERATELY NARROWER THAN "NEWLY ENROLLED"
-    /// IN FULL. A brand-new `test fn` added to an EXISTING file is also newly enrolled and is
-    /// NOT in this set: distinguishing it from a modified sibling needs the base revision's
-    /// declaration names, which no observation in this tree produces today. The narrower set is
-    /// the sound one — every member provably did not exist before, so the gate cannot refuse a
-    /// PR for a witness it did not author, which is the property that makes a merge-blocking
-    /// conjunct safe. The residual is a declared gap with a named trigger, not silence; see the
-    /// gate module's own header.
+    /// Test fns declared now and not declared at the resolved diff base — the NEWLY ENROLLED
+    /// set the enrolment margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
+    /// Names at the base come from `v2.workflow.floor_diff_observe`
+    /// `floor_run_base_test_decl_census`. A wholly added file, a rename destination, and a
+    /// brand-new `test fn` in an existing file are the same set difference; a modified sibling
+    /// whose name was already at the base is not a member.
     enrolled_test_fns: HashSet<(String, String)>,
     /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
     touched_entry_files: HashSet<String>,
@@ -25925,7 +25918,8 @@ impl ShardStyle {
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        list_value_from_vec, parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
+        floor_diff_edits_from_diff_text_with_base_names, list_value_from_vec,
+        parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
         parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, scan_test_decl_lines,
         FileLineRange,
     };
@@ -26179,6 +26173,77 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             enrolled,
             HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
             "an in-place edit inside one declaration enrolls that declaration and no sibling"
+        );
+    }
+
+    fn machine_shape_in_place_green_diff() -> (String, String) {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the renamed wall entry is in the tree");
+        let green_line = content
+            .lines()
+            .position(|l| l.starts_with("test fn gate_green_synthetic_shape_from_catalog_call"))
+            .expect("green sibling declared")
+            + 1;
+        (
+            dest.to_string(),
+            unified_diff_for_line(dest, green_line as i64 + 1),
+        )
+    }
+
+    // THE WIDENING: a test fn whose name is absent from the base census is newly enrolled
+    // even in a modified file. Without the census this was indistinguishable from a
+    // touched sibling and was not gated.
+    #[test]
+    fn new_test_fn_in_existing_file_is_enrolled_when_absent_from_base() {
+        let (dest, diff) = machine_shape_in_place_green_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            dest.clone(),
+            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("in-place modify with a base census must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == &dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled,
+            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
+            "a name the base census does not carry is newly enrolled"
+        );
+    }
+
+    // THE OTHER DIRECTION, so the widening cannot be satisfied by enrolling every edited
+    // test fn. The touched name WAS at the base, so it is a modified sibling and must
+    // not enter the margin gate's population.
+    #[test]
+    fn modified_test_fn_in_existing_file_is_not_enrolled_when_present_at_base() {
+        let (dest, diff) = machine_shape_in_place_green_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            dest.clone(),
+            HashSet::from([
+                "gate_green_synthetic_shape_from_catalog_call".to_string(),
+                "gate_red_synthetic_machine_shape_call".to_string(),
+            ]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("in-place modify with a base census must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == &dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert!(
+            enrolled.is_empty(),
+            "a name the base census already carries is a modified sibling, not a new enrolment; got {enrolled:?}"
         );
     }
 

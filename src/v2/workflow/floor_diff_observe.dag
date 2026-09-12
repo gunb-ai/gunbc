@@ -28,9 +28,11 @@ import gunbc.diff_baseline {
   DiffBaselineKind,
   diff_baseline_kind
 }
-import std.types { String, NonEmptyStr, GitRef }
+import std.types { String, NonEmptyStr, GitRef, FilePath }
 import std.logic { Bool }
+import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.git {
   GitDiffNameStatusComplete,
   GitDiffNameStatusTruncated,
@@ -410,4 +412,176 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
 
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
   floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
+}
+
+// BASE-REVISION TEST-DECLARATION CENSUS.
+//
+// THE CAPABILITY `v2.workflow.floor_enrolment_margin` NAMED as its next-rung trigger: names
+// declared at the resolved diff base, per path, sufficient for "was this identity declared at
+// the merge base". Absence of a path and failure to observe the base are different states.
+// `git show <base>:<path>` exits 128 for both, so absence is decided against the base tree
+// listing (`git.Inspect.ListTreePathsAtRevision`) BEFORE any show: a path the listing does not
+// carry is empty names by construction and is never shown; a show that then fails is
+// unreadable, with no empty-names arm left to absorb it. The same construction lives in
+// `tools.pr_containment_instrument` `base_file_reading`; this row asks a different question
+// (declaration names, not line text) of the same two git facts.
+//
+// 302ms is not a fact this observation carries. The percentile that consumes this census sits
+// in `floor_enrolment_margin` and is p90 over TWELVE green main runs.
+
+type FloorBasePathTestDecls {
+  path: String
+  names: List<String>
+}
+
+type FloorBaseTestDeclCensus
+  = BaseTestDeclCensus { rows: List<FloorBasePathTestDecls> }
+  | BaseTestDeclCensusRefused { reason: String }
+
+fn floor_nul_blob_contains_path(paths_nul: String, path: String) -> Bool {
+  fold(
+    split(s: paths_nul, delimiter: git_diff_name_status_field_separator),
+    init: false,
+    f: fn(acc, p) {
+      if acc {
+        true
+      } else {
+        p == path
+      }
+    }
+  )
+}
+
+fn floor_base_census_acc_append(
+  acc: FloorBaseTestDeclCensus,
+  path: String,
+  names: List<String>
+) -> FloorBaseTestDeclCensus {
+  match acc {
+    BaseTestDeclCensusRefused { reason: reason } =>
+      BaseTestDeclCensusRefused { reason: reason }
+    BaseTestDeclCensus { rows: rows } =>
+      BaseTestDeclCensus {
+        rows: concat(rows, [FloorBasePathTestDecls { path: path, names: names }])
+      }
+  }
+}
+
+fn floor_base_census_step(
+  acc: FloorBaseTestDeclCensus,
+  base: String,
+  paths_nul: String,
+  path: String
+) -> FloorBaseTestDeclCensus {
+  match acc {
+    BaseTestDeclCensusRefused { reason: reason } =>
+      BaseTestDeclCensusRefused { reason: reason }
+    BaseTestDeclCensus { rows: _ } =>
+      if !floor_nul_blob_contains_path(paths_nul: paths_nul, path: path) {
+        floor_base_census_acc_append(acc: acc, path: path, names: [])
+      } else {
+        let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+        if !shown.success {
+          BaseTestDeclCensusRefused {
+            reason: join([
+              "git.Core.Show failed for a path the base tree lists: ",
+              base,
+              ":",
+              path,
+              " — ",
+              shown.stderr,
+              "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
+            ], "")
+          }
+        } else {
+          floor_base_census_acc_append(
+            acc: acc,
+            path: path,
+            names: floor_discovery_scan_test_decl_names(content: shown.content)
+          )
+        }
+      }
+  }
+}
+
+fn floor_run_base_test_decl_census(base: String, paths: List<String>) -> FloorBaseTestDeclCensus {
+  let empty = fold(paths, init: true, f: fn(_acc, _path) { false })
+  if empty {
+    BaseTestDeclCensus { rows: [] }
+  } else {
+    let listed = git.Inspect.ListTreePathsAtRevision(ref: base as GitRef)
+    if !listed.success {
+      BaseTestDeclCensusRefused {
+        reason: join([
+          "git.Inspect.ListTreePathsAtRevision failed for ",
+          base,
+          " — ",
+          listed.stderr,
+          "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
+        ], "")
+      }
+    } else {
+      fold(paths, init: BaseTestDeclCensus { rows: [] }, f: fn(acc, path) {
+        floor_base_census_step(
+          acc: acc,
+          base: base,
+          paths_nul: listed.paths_nul,
+          path: path
+        )
+      })
+    }
+  }
+}
+
+fn floor_observe_base_test_decl_census(
+  policy: DiffPolicy,
+  paths: List<String>
+) -> FloorBaseTestDeclCensus {
+  match floor_resolve_baseline(policy: policy) {
+    BaselineRefused { reason: reason } => BaseTestDeclCensusRefused { reason: reason }
+    BaselineSourceConflict { window_detail: detail, override_ref: override_ref } =>
+      BaseTestDeclCensusRefused {
+        reason: join([
+          "baseline source conflict — ",
+          detail,
+          " while GUNBC_CI_DIFF_BASE is set to ",
+          override_ref,
+          "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
+        ], ""),
+      }
+    BaselineSelected { baseline: baseline } =>
+      floor_run_base_test_decl_census(
+        base: diff_baseline_diff_base(b: baseline),
+        paths: paths
+      )
+  }
+}
+
+fn floor_base_test_decl_names_for_path(
+  census: FloorBaseTestDeclCensus,
+  path: String
+) -> List<String> {
+  match census {
+    BaseTestDeclCensusRefused { reason: _ } => []
+    BaseTestDeclCensus { rows: rows } =>
+      fold(rows, init: [], f: fn(acc, row) {
+        if count(acc) != 0 {
+          acc
+        } else if row.path == path {
+          row.names
+        } else {
+          acc
+        }
+      })
+  }
+}
+
+fn floor_base_test_decl_names_contain(names: List<String>, name: String) -> Bool {
+  fold(names, init: false, f: fn(acc, n) {
+    if acc {
+      true
+    } else {
+      n == name
+    }
+  })
 }

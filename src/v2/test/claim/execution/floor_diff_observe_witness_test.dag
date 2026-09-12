@@ -1,6 +1,7 @@
 module v2.test.execution.floor_diff_observe_witness
 
 import std.logic { Bool }
+import std.types { List, String }
 import gunbc.ci_spec { DiffMergeBase }
 import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
@@ -9,10 +10,16 @@ import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
   NameStatusDiffOk,
   NameStatusDiffFail,
+  FloorBaseTestDeclCensus,
+  BaseTestDeclCensus,
+  BaseTestDeclCensusRefused,
   floor_run_git_diff_unified,
   floor_run_git_diff_name_status,
   floor_observe_git_diff_unified_for_ci,
-  floor_observe_git_diff_name_status_for_ci
+  floor_observe_git_diff_name_status_for_ci,
+  floor_run_base_test_decl_census,
+  floor_base_test_decl_names_for_path,
+  floor_base_test_decl_names_contain
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -43,6 +50,68 @@ test fn witness_invalid_base_name_status_fails_closed() -> Bool {
   match floor_run_git_diff_name_status(base: "__gunbc_invalid_diff_base__", head: "HEAD", mode: DiffMergeBase) {
     NameStatusDiffFail { reason: _ } => true
     NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
+  }
+}
+
+data base_census_present_path: String = "src/v2/test/claim/execution/floor_diff_observe_witness_test.dag"
+data base_census_absent_path: String = "__gunbc_absent_declaration_census__.dag"
+data base_census_known_test_fn: String = "witness_present_path_yields_declared_test_fn_names"
+data base_census_unknown_test_fn: String = "witness_this_name_is_not_declared_in_this_file"
+
+fn census_at_head(paths: List<String>) -> FloorBaseTestDeclCensus {
+  floor_run_base_test_decl_census(base: "HEAD", paths: paths)
+}
+
+// Invalid ref: the listing fails, so the census REFUSES. If Show-failure were treated as
+// empty names, this control would still pass (listing fails first). The ABSENT-PATH control
+// below is the one that would go green under that defect; this one is the other direction.
+test fn witness_invalid_base_declaration_census_fails_closed() -> Bool {
+  match floor_run_base_test_decl_census(
+    base: "__gunbc_invalid_diff_base__",
+    paths: [base_census_present_path]
+  ) {
+    BaseTestDeclCensusRefused { reason: _ } => true
+    BaseTestDeclCensus { rows: _ } => false
+  }
+}
+
+// A path the valid base tree does not carry is EMPTY NAMES, never a refusal. If the census
+// used only `git show` and mapped every 128 to refusal, this control would fail. Together
+// with the invalid-base control it proves the two 128s were not collapsed.
+test fn witness_absent_path_at_valid_base_is_empty_not_refused() -> Bool {
+  let census = census_at_head(paths: [base_census_absent_path])
+  match census {
+    BaseTestDeclCensusRefused { reason: _ } => false
+    BaseTestDeclCensus { rows: _ } =>
+      count(floor_base_test_decl_names_for_path(
+        census: census,
+        path: base_census_absent_path
+      )) == 0
+  }
+}
+
+// Positive control AND its mutation in one function: a path this file itself occupies at
+// HEAD must yield THIS function's name, and must not yield a name the file does not declare.
+// If the scanner returned every token, the unknown-name conjunct fails; if it returned
+// nothing, the known-name conjunct fails.
+test fn witness_present_path_yields_declared_test_fn_names() -> Bool {
+  let census = census_at_head(paths: [base_census_present_path])
+  match census {
+    BaseTestDeclCensusRefused { reason: _ } => false
+    BaseTestDeclCensus { rows: _ } =>
+      floor_base_test_decl_names_contain(
+        names: floor_base_test_decl_names_for_path(
+          census: census,
+          path: base_census_present_path
+        ),
+        name: base_census_known_test_fn
+      ) && !floor_base_test_decl_names_contain(
+        names: floor_base_test_decl_names_for_path(
+          census: census,
+          path: base_census_present_path
+        ),
+        name: base_census_unknown_test_fn
+      )
   }
 }
 
