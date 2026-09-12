@@ -12125,11 +12125,12 @@ fn compile_diagnostic_census_value(
     }
 }
 
-/// Projects a host multi-module fixture outcome into the `tools.multi_module_compile_fixture`
-/// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
-/// the compiler's verdict, and a compile that never ran must never arrive as
-/// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
-/// conflated with passing).
+/// Projects a host CLAIM SCOPE fixture outcome into the `tools.multi_module_compile_fixture`
+/// coproduct. Four arms, kept distinct for the reason the compile projection keeps three: a
+/// refusal about the HOST PROCESS (`ClaimScopeInstrumentRefused`) and one about the SUBJECT
+/// (`ClaimScopeRefused`) must not wear each other's verdict, and a manifest that never reached
+/// scope construction must arrive as `ClaimScopeCompileRefused` carrying its diagnostics rather
+/// than as a bare non-acceptance (DESIGN §5 — could-not-measure conflated with a verdict).
 fn claim_scope_fixture_value(
     outcome: crate::cli_run::ClaimScopeFixtureOutcome,
     ctx: &InterpContext,
@@ -12162,6 +12163,11 @@ fn claim_scope_fixture_value(
     }
 }
 
+/// Projects a host multi-module fixture outcome into the `tools.multi_module_compile_fixture`
+/// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
+/// the compiler's verdict, and a compile that never ran must never arrive as
+/// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
+/// conflated with passing).
 fn multi_module_compile_fixture_value(
     outcome: crate::cli_run::MultiModuleCompileFixtureOutcome,
     ctx: &InterpContext,

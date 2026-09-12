@@ -215,33 +215,6 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
     CompileDiagnosticCensus::Observed(compile_diagnostic_census_rows(&result.diagnostics))
 }
 
-/// Host realization backing the `compile_dag_multi_module_fixture` builtin: compile a
-/// CALLER-AUTHORED SET of `.dag` modules through the v1 pipeline to the Rust render target, with
-/// NO corpus roots, NO module index, and no filesystem read of any kind.
-///
-/// WHY THIS EXISTS BESIDE [`compile_dag_diagnostic_census`] RATHER THAN INSIDE IT. The census
-/// takes ONE synthetic module and resolves its imports against
-/// [`build_module_path_index_from_witness_roots`], which walks the live checkout. That makes it
-/// unable to answer any question whose subject is the RELATIONSHIP BETWEEN TWO MODULES — a
-/// cross-module name collision, an import that must not bind, a spelling held by both a local
-/// declaration and a corpus one — because the corpus is always in the pool and the second module
-/// can never be authored. Three lanes hit that wall independently before this instrument existed:
-/// invalid fixtures had to be relocated out of the corpus for want of it, an ambiguity arm was
-/// measured and deleted for want of it, and this repository's own DESIGN names the missing
-/// multi-module compile fixture as the next-rung trigger for the acyclicity class.
-///
-/// CORPUS ISOLATION IS BY CONSTRUCTION, not by a flag. The supplied manifest IS the source vector
-/// handed to `compile_to_resolved_with_options`; there is no code path here that consults a module
-/// index, so a fixture module may reuse a corpus module's spelling and bind its OWN declaration.
-/// That is the property control 5 of the witness pins, and it is what makes the instrument usable
-/// for resolution questions at all.
-///
-/// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): the v1 pipeline
-/// to the Rust render target over an authored multi-module subject. It observes nothing about the
-/// interpreter's disposition of the same program, nothing about other emission targets, and
-/// nothing about corpus-grain prevalence. Unlike the census it does NOT arm
-/// `with_type_ref_hit_ne_bind_measure`: the census arms it to sharpen masked type refs against a
-/// corpus pool this instrument does not have, so arming it here would be a knob with no subject.
 /// BUILD A CLAIM SCOPE over a caller-authored fixture manifest, and report what the scope
 /// builder said.
 ///
@@ -381,9 +354,10 @@ pub fn claim_scope_dag_multi_module_fixture(
         Ok(index) => index,
         Err(cause) => return Outcome::ScopeRefused { cause },
     };
-    // WITHOUT MEMOS, deliberately: `claim_scope_for` reaches per-subject memo caches, and a
-    // fixture -- whose PreparedRepository is synthesized here and carries an empty subject digest
-    // -- must neither read from nor write to them. So this calls the SAME
+    // WITHOUT MEMOS, deliberately: `claim_scope_for` reaches per-subject memo caches bounded at
+    // `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`, and a fixture subject -- synthesized here, one
+    // module wide, discarded immediately -- must neither read from nor write to them, because
+    // occupying one of that bounded population would refuse the next real subject. So this calls the SAME
     // `claim_scope_for_with_memos` the floor's entry point calls, passing `None` for the fragment
     // cache and a scope-private order index. That is a caching decision rather than a semantic
     // one: it is one function computing one scope, which is what keeps this instrument and the
@@ -410,6 +384,33 @@ pub fn claim_scope_dag_multi_module_fixture(
     }
 }
 
+/// Host realization backing the `compile_dag_multi_module_fixture` builtin: compile a
+/// CALLER-AUTHORED SET of `.dag` modules through the v1 pipeline to the Rust render target, with
+/// NO corpus roots, NO module index, and no filesystem read of any kind.
+///
+/// WHY THIS EXISTS BESIDE [`compile_dag_diagnostic_census`] RATHER THAN INSIDE IT. The census
+/// takes ONE synthetic module and resolves its imports against
+/// [`build_module_path_index_from_witness_roots`], which walks the live checkout. That makes it
+/// unable to answer any question whose subject is the RELATIONSHIP BETWEEN TWO MODULES — a
+/// cross-module name collision, an import that must not bind, a spelling held by both a local
+/// declaration and a corpus one — because the corpus is always in the pool and the second module
+/// can never be authored. Three lanes hit that wall independently before this instrument existed:
+/// invalid fixtures had to be relocated out of the corpus for want of it, an ambiguity arm was
+/// measured and deleted for want of it, and this repository's own DESIGN names the missing
+/// multi-module compile fixture as the next-rung trigger for the acyclicity class.
+///
+/// CORPUS ISOLATION IS BY CONSTRUCTION, not by a flag. The supplied manifest IS the source vector
+/// handed to `compile_to_resolved_with_options`; there is no code path here that consults a module
+/// index, so a fixture module may reuse a corpus module's spelling and bind its OWN declaration.
+/// That is the property control 5 of the witness pins, and it is what makes the instrument usable
+/// for resolution questions at all.
+///
+/// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): the v1 pipeline
+/// to the Rust render target over an authored multi-module subject. It observes nothing about the
+/// interpreter's disposition of the same program, nothing about other emission targets, and
+/// nothing about corpus-grain prevalence. Unlike the census it does NOT arm
+/// `with_type_ref_hit_ne_bind_measure`: the census arms it to sharpen masked type refs against a
+/// corpus pool this instrument does not have, so arming it here would be a knob with no subject.
 pub fn compile_dag_multi_module_fixture(
     paths: &[String],
     contents: &[String],
