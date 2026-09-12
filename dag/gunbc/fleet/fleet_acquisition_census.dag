@@ -1,0 +1,377 @@
+module gunbc.fleet_acquisition_census
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.inventory {
+  CatalogRowExact,
+  CatalogRowUnread,
+  InventoryEvent,
+  InventoryLotAllocator,
+  InventoryLotEvidence,
+  InventoryLotIdentity,
+  LandedCostHeldPrivately,
+  LotAcquired,
+  LotCatalogIdentity,
+  LotReceived,
+  ProcurementLot,
+  ReceiptHeldPrivately,
+  mint_inventory_lot_identity,
+}
+import gunbc.fleet_physical_inventory {
+  dimm_lot_64gib_32x,
+  dimm_lot_64gib_32x_ledger,
+  dgx_spark_micro_center_lot,
+  dgx_spark_micro_center_lot_ledger,
+  dgx_spark_ebay_pair_lot,
+  dgx_spark_ebay_pair_lot_ledger,
+  fleet_lot_allocator_after_dgx_spark_ebay,
+}
+import product.lot_sales_tax {
+  LotTaxEvidence,
+  SalesTaxCollected,
+  SalesTaxAttestedIncluded,
+  SalesTaxIncludedJurisdictionUnread,
+  SalesTaxTreatmentUnrecorded,
+  RateTranscribedFromNamedReceiptLine,
+  RateDerivedFromReceiptBaseAndTax,
+  ResidualUseTaxOwed,
+  ResidualUseTaxNone,
+  UseTaxResidualStanding,
+  sales_tax_rate_millionths,
+  admit_lot_tax_population,
+  LotTaxPopulationComplete,
+  LotTaxPopulationRepeatedLot,
+  residual_owed_lot_count,
+  attested_lot_count,
+  unread_or_unrecorded_lot_count,
+}
+import extdeps.tax.new_jersey_sales_and_use {
+  nj_statewide_sales_tax_rate_millionths_of_unity,
+  nj_uez_reduced_sales_tax_rate_millionths_of_unity,
+}
+import extdeps.tax.new_york_city_sales_and_use {
+  nyc_combined_sales_tax_rate_millionths_of_unity,
+}
+
+// ONE JOIN of procurement lots the operator owns. Spark lots stay in
+// gunbc.fleet_physical_inventory; this module continues that allocator and adds the
+// remaining completed purchases plus tax standing. Completeness is this list, not a count.
+//
+// THIS POPULATION IS A FLOOR. Closing it requires: (1) dredged component receipts for
+// srv1-srv4 assemblies, (2) acquisition records for switch/printers/AMS/PDU/pi/coolers,
+// (3) a tax line for the eBay Spark pair and the DIMM lot, (4) unit identities for the
+// Mt. Collins twenty and the Q80 sixty-two once serials are read. Until then a tax review
+// over this join is still a floor in DESIGN section 5's sense.
+
+type AcquisitionCensusStanding
+  = CensusClosed
+  | CensusFloor { close_by: NonEmptyStr }
+
+data fleet_acquisition_census_standing: AcquisitionCensusStanding = CensusFloor {
+  close_by: "Dredge srv1-srv4 component receipts; read peripheral purchase records; transcribe the eBay Spark and DIMM tax lines; bind Mt. Collins and Q80 units to identities after serials are read" as NonEmptyStr,
+}
+
+data nyc_use_tax_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
+  destination_jurisdiction: "New York City" as NonEmptyStr,
+  destination_combined_rate: sales_tax_rate_millionths(millionths: nyc_combined_sales_tax_rate_millionths_of_unity),
+}
+
+fn private_received_lot(
+  identity: InventoryLotIdentity,
+  catalog: LotCatalogIdentity,
+  display_label: NonEmptyStr,
+  quantity_acquired: Nat,
+) -> ProcurementLot {
+  ProcurementLot {
+    identity: identity,
+    receipt: ReceiptHeldPrivately,
+    catalog: catalog,
+    display_label: display_label,
+    quantity_acquired: quantity_acquired,
+    landed_cost: LandedCostHeldPrivately,
+  }
+}
+
+fn acquired_and_received(lot: ProcurementLot) -> List<InventoryEvent> {
+  [
+    LotAcquired { lot: lot.identity },
+    LotReceived { lot: lot.identity, quantity: lot.quantity_acquired },
+  ]
+}
+
+data mt_collins_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_ebay).id
+data alloc_after_mt_collins: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_ebay).alloc
+data q80_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_mt_collins).id
+data alloc_after_q80: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_mt_collins).alloc
+data altrad8ud_board_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_q80).id
+data alloc_after_boards: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_q80).alloc
+data switch_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_boards).id
+data alloc_after_switch: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_boards).alloc
+data printer_01_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_switch).id
+data alloc_after_printer_01: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_switch).alloc
+data printer_02_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_printer_01).id
+data alloc_after_printer_02: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_printer_01).alloc
+data ams_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_printer_02).id
+data alloc_after_ams: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_printer_02).alloc
+data pdu_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_ams).id
+data alloc_after_pdu: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_ams).alloc
+data pi_controller_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_pdu).id
+data alloc_after_pi: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_pdu).alloc
+data cooler_srv3_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_pi).id
+data alloc_after_cooler_srv3: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_pi).alloc
+data cooler_srv4_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_cooler_srv3).id
+
+data q80_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cpu.ampere",
+  decl_name: "altra_q8030_catalog",
+  field: WholeDeclaration,
+}
+
+data altrad8ud_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.boards.asrock_rack",
+  decl_name: "asrock_altrad8ud_1l2t_catalog",
+  field: WholeDeclaration,
+}
+
+data switch_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.network.tp_link",
+  decl_name: "tp_link_tl_sg1024s_catalog",
+  field: WholeDeclaration,
+}
+
+data printer_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.printing.bambu_lab_a1_mini",
+  decl_name: "a1_mini_build_envelope",
+  field: WholeDeclaration,
+}
+
+data ams_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.printing.bambu_lab_ams_lite",
+  decl_name: "ams_lite_feed_path_suitability",
+  field: WholeDeclaration,
+}
+
+data pdu_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.power.eaton_tripp_lite",
+  decl_name: "eaton_tripp_lite_rs_1215_family_catalog",
+  field: WholeDeclaration,
+}
+
+data cooler_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cooling.dynatron",
+  decl_name: "dynatron_w1_catalog",
+  field: WholeDeclaration,
+}
+
+data no_acquisition_record: NonEmptyStr = "No acquisition record found in the public corpus; tax treatment unrecorded. Dredge the receipt before asserting a jurisdiction."
+
+data mt_collins_twenty_lot: ProcurementLot = private_received_lot(
+  identity: mt_collins_lot_identity,
+  catalog: CatalogRowUnread {
+    observed_family: "Ampere Mt. Collins" as NonEmptyStr,
+    read_obligation: "Read the vendor SKU from the held receipt before citing an exact Ampere Mt. Collins catalog row; twenty units is a quantity, not a SKU" as NonEmptyStr,
+  },
+  display_label: "Ampere Mt. Collins, twenty-unit acquisition" as NonEmptyStr,
+  quantity_acquired: 20,
+)
+
+data q80_processor_lot: ProcurementLot = private_received_lot(
+  identity: q80_lot_identity,
+  catalog: CatalogRowExact { row: q80_catalog_ref },
+  display_label: "Ampere Altra Q80-30, 62-unit acquisition" as NonEmptyStr,
+  quantity_acquired: 62,
+)
+
+data altrad8ud_board_lot: ProcurementLot = private_received_lot(
+  identity: altrad8ud_board_lot_identity,
+  catalog: CatalogRowExact { row: altrad8ud_catalog_ref },
+  display_label: "ASRock Rack ALTRAD8UD-1L2T, four-board acquisition" as NonEmptyStr,
+  quantity_acquired: 4,
+)
+
+data switch_01_lot: ProcurementLot = private_received_lot(
+  identity: switch_lot_identity,
+  catalog: CatalogRowExact { row: switch_catalog_ref },
+  display_label: "TP-Link TL-SG1024S switch acquisition" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data printer_01_lot: ProcurementLot = private_received_lot(
+  identity: printer_01_lot_identity,
+  catalog: CatalogRowExact { row: printer_catalog_ref },
+  display_label: "Bambu Lab A1 mini printer-01 acquisition" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data printer_02_lot: ProcurementLot = private_received_lot(
+  identity: printer_02_lot_identity,
+  catalog: CatalogRowExact { row: printer_catalog_ref },
+  display_label: "Bambu Lab A1 mini printer-02 acquisition" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data ams_01_lot: ProcurementLot = private_received_lot(
+  identity: ams_lot_identity,
+  catalog: CatalogRowExact { row: ams_catalog_ref },
+  display_label: "Bambu Lab AMS Lite acquisition" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data pdu_01_lot: ProcurementLot = private_received_lot(
+  identity: pdu_lot_identity,
+  catalog: CatalogRowExact { row: pdu_catalog_ref },
+  display_label: "Eaton Tripp Lite PDU acquisition" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data pi_controller_lot: ProcurementLot = private_received_lot(
+  identity: pi_controller_lot_identity,
+  catalog: CatalogRowUnread {
+    observed_family: "Raspberry Pi controller" as NonEmptyStr,
+    read_obligation: "Observe exact Raspberry Pi model and revision before citing a catalog row; none is authored today" as NonEmptyStr,
+  },
+  display_label: "Pi-controller acquisition" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data cooler_srv3_lot: ProcurementLot = private_received_lot(
+  identity: cooler_srv3_lot_identity,
+  catalog: CatalogRowExact { row: cooler_catalog_ref },
+  display_label: "Dynatron W1 cooler for srv3" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data cooler_srv4_lot: ProcurementLot = private_received_lot(
+  identity: cooler_srv4_lot_identity,
+  catalog: CatalogRowExact { row: cooler_catalog_ref },
+  display_label: "Dynatron W1 cooler for srv4" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
+data mt_collins_twenty_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: mt_collins_twenty_lot)
+data q80_processor_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: q80_processor_lot)
+data altrad8ud_board_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: altrad8ud_board_lot)
+data switch_01_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: switch_01_lot)
+data printer_01_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: printer_01_lot)
+data printer_02_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: printer_02_lot)
+data ams_01_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: ams_01_lot)
+data pdu_01_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: pdu_01_lot)
+data pi_controller_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: pi_controller_lot)
+data cooler_srv3_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: cooler_srv3_lot)
+data cooler_srv4_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: cooler_srv4_lot)
+
+data fleet_acquisition_ledgers: List<InventoryLotEvidence> = [
+  InventoryLotEvidence { lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger },
+  InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+  InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  InventoryLotEvidence { lot: mt_collins_twenty_lot, events: mt_collins_twenty_lot_ledger },
+  InventoryLotEvidence { lot: q80_processor_lot, events: q80_processor_lot_ledger },
+  InventoryLotEvidence { lot: altrad8ud_board_lot, events: altrad8ud_board_lot_ledger },
+  InventoryLotEvidence { lot: switch_01_lot, events: switch_01_lot_ledger },
+  InventoryLotEvidence { lot: printer_01_lot, events: printer_01_lot_ledger },
+  InventoryLotEvidence { lot: printer_02_lot, events: printer_02_lot_ledger },
+  InventoryLotEvidence { lot: ams_01_lot, events: ams_01_lot_ledger },
+  InventoryLotEvidence { lot: pdu_01_lot, events: pdu_01_lot_ledger },
+  InventoryLotEvidence { lot: pi_controller_lot, events: pi_controller_lot_ledger },
+  InventoryLotEvidence { lot: cooler_srv3_lot, events: cooler_srv3_lot_ledger },
+  InventoryLotEvidence { lot: cooler_srv4_lot, events: cooler_srv4_lot_ledger },
+]
+
+data dimm_lot_tax: LotTaxEvidence = LotTaxEvidence {
+  lot: dimm_lot_64gib_32x.identity,
+  standing: SalesTaxTreatmentUnrecorded {
+    read_obligation: "DIMM lot tax treatment is not in the public corpus and was not relayed; read the held receipt" as NonEmptyStr,
+  },
+}
+
+data spark_micro_center_lot_tax: LotTaxEvidence = LotTaxEvidence {
+  lot: dgx_spark_micro_center_lot.identity,
+  standing: SalesTaxCollected {
+    collection: RateTranscribedFromNamedReceiptLine {
+      jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
+      rate: sales_tax_rate_millionths(millionths: nj_uez_reduced_sales_tax_rate_millionths_of_unity),
+      receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
+    },
+    residual: nyc_use_tax_residual,
+  },
+}
+
+data spark_ebay_lot_tax: LotTaxEvidence = LotTaxEvidence {
+  lot: dgx_spark_ebay_pair_lot.identity,
+  standing: SalesTaxIncludedJurisdictionUnread {
+    read_obligation: "Marketplace-collected tax; jurisdiction and rate unverified. Do not assume the Micro Center UEZ rate" as NonEmptyStr,
+  },
+}
+
+data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
+  lot: mt_collins_lot_identity,
+  standing: SalesTaxCollected {
+    collection: RateDerivedFromReceiptBaseAndTax {
+      jurisdiction: "New Jersey statewide" as NonEmptyStr,
+      rate: sales_tax_rate_millionths(millionths: nj_statewide_sales_tax_rate_millionths_of_unity),
+    },
+    residual: nyc_use_tax_residual,
+  },
+}
+
+data q80_lot_tax: LotTaxEvidence = LotTaxEvidence {
+  lot: q80_lot_identity,
+  standing: SalesTaxAttestedIncluded {
+    jurisdiction: "New York" as NonEmptyStr,
+    residual: ResidualUseTaxNone,
+    attestation: "Operator attests New York tax was paid. The private corpus also has an all-in planning figure that divides by the NYC rate; that is not a receipt tax line" as NonEmptyStr,
+  },
+}
+
+data altrad8ud_board_lot_tax: LotTaxEvidence = LotTaxEvidence {
+  lot: altrad8ud_board_lot_identity,
+  standing: SalesTaxAttestedIncluded {
+    jurisdiction: "New York" as NonEmptyStr,
+    residual: ResidualUseTaxNone,
+    attestation: "Operator attests New York tax was paid. The private corpus states in its own words that whether the displayed Newegg total includes tax was not recorded; a receipt reading has not been done" as NonEmptyStr,
+  },
+}
+
+fn unrecorded_tax(lot: InventoryLotIdentity) -> LotTaxEvidence {
+  LotTaxEvidence {
+    lot: lot,
+    standing: SalesTaxTreatmentUnrecorded { read_obligation: no_acquisition_record },
+  }
+}
+
+data fleet_lot_tax_evidence: List<LotTaxEvidence> = [
+  dimm_lot_tax,
+  spark_micro_center_lot_tax,
+  spark_ebay_lot_tax,
+  mt_collins_lot_tax,
+  q80_lot_tax,
+  altrad8ud_board_lot_tax,
+  unrecorded_tax(lot: switch_lot_identity),
+  unrecorded_tax(lot: printer_01_lot_identity),
+  unrecorded_tax(lot: printer_02_lot_identity),
+  unrecorded_tax(lot: ams_lot_identity),
+  unrecorded_tax(lot: pdu_lot_identity),
+  unrecorded_tax(lot: pi_controller_lot_identity),
+  unrecorded_tax(lot: cooler_srv3_lot_identity),
+  unrecorded_tax(lot: cooler_srv4_lot_identity),
+]
+
+fn fleet_acquisition_ledger_count() -> Nat {
+  fleet_acquisition_ledgers.length()
+}
+
+fn fleet_lot_tax_row_count() -> Nat {
+  fleet_lot_tax_evidence.length()
+}
+
+fn fleet_tax_join_covers_every_ledger() -> Bool {
+  fleet_acquisition_ledgers.length() == fleet_lot_tax_evidence.length()
+    && match admit_lot_tax_population(rows: fleet_lot_tax_evidence) {
+      LotTaxPopulationRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+      LotTaxPopulationComplete { rows: rows } =>
+        residual_owed_lot_count(rows: rows) == 2
+          && attested_lot_count(rows: rows) == 2
+          && unread_or_unrecorded_lot_count(rows: rows) == 10
+    }
+}

@@ -1,0 +1,47 @@
+module extdeps.tax.new_jersey_sales_and_use
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// New Jersey Sales and Use Tax Act rates as the Division of Taxation publishes them.
+// Independently governed from New York City's combined rate and from any operator lot
+// standing: a statutory rate change must not require editing a fleet census, and a
+// derived receipt rate matching this figure is still a derived rate, not a statute read.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nj.gov/treasury/taxation/salestax.shtml"
+  }
+}
+
+data nj_uez_rate_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nj.gov/treasury/taxation/businesses/salestax/uez-over.shtml"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tax.new_jersey_sales_and_use",
+      decl_name: "nj_statewide_sales_tax_rate_millionths_of_unity",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [nj_uez_rate_authority]
+}
+
+// Millionths of unity so 6.625 percent is exact: 66250 / 1_000_000 = 0.06625.
+// std.measure Percent is Nat-denominated whole points and cannot carry this rate.
+data nj_statewide_sales_tax_rate_millionths_of_unity: Nat = 66250
+
+data nj_statewide_rate_effective: NonEmptyStr = "on and after 2018-01-01, N.J.S.A. 54:32B-3 as published by the Division of Taxation Rates and Boundaries page"
+
+// Half the statewide rate under N.J.S.A. 52:27H-80, published as 3.3125 percent.
+data nj_uez_reduced_sales_tax_rate_millionths_of_unity: Nat = 33125

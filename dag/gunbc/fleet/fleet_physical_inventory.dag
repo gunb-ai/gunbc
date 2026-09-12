@@ -608,6 +608,8 @@ data fleet_lot_allocator_after_dgx_spark_micro_center: InventoryLotAllocator = m
 
 data dgx_spark_ebay_pair_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).id
 
+data fleet_lot_allocator_after_dgx_spark_ebay: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).alloc
+
 // An exact catalog citation is scoped to its evidenced acquisition.
 data dgx_spark_micro_center_catalog_reference: DeclarationRef = DeclarationRef {
   module_path: "extdeps.systems.nvidia",

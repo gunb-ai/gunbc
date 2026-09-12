@@ -1,0 +1,91 @@
+module test.claim.fleet_acquisition_census_witness
+
+import std.types { Bool, List, String }
+import std.nat { Nat }
+import product.inventory {
+  InventoryLotEvidence, AllLedgersAdmitted, LedgerEvidenceRefused,
+  admit_ledger_evidence, sum_inventory_balances,
+  InventoryPopulationSummed, InventoryPopulationRepeatedLot,
+  inventory_lot_identity_eq,
+}
+import gunbc.fleet_physical_inventory {
+  dimm_lot_64gib_32x,
+  dimm_lot_64gib_32x_ledger,
+  dgx_spark_micro_center_lot,
+  dgx_spark_micro_center_lot_ledger,
+  dgx_spark_ebay_pair_lot,
+  dgx_spark_ebay_pair_lot_ledger,
+}
+import gunbc.fleet_acquisition_census {
+  fleet_acquisition_ledgers,
+  fleet_lot_tax_evidence,
+  fleet_tax_join_covers_every_ledger,
+  fleet_acquisition_census_standing,
+  CensusFloor,
+  CensusClosed,
+  mt_collins_twenty_lot,
+  q80_processor_lot,
+  altrad8ud_board_lot,
+}
+import gunbc.fleet_host_assembly {
+  srv_assembly_components,
+  board_components_bound_to_the_four_board_lot,
+  every_non_board_acquisition_is_unrecorded,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn population_is(evidence: List<InventoryLotEvidence>, acquired: Nat, received: Nat, owned: Nat) -> Bool {
+  match admit_ledger_evidence(evidence: evidence) {
+    AllLedgersAdmitted { ledgers: ledgers } => {
+      match sum_inventory_balances(ledgers: ledgers) {
+        InventoryPopulationRepeatedLot { repetition: _ } => false
+        InventoryPopulationSummed { balance: b } =>
+          b.acquired == acquired && b.received == received && b.owned == owned
+      }
+    }
+    LedgerEvidenceRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+  }
+}
+
+data without_mt_collins: List<InventoryLotEvidence> = concat(
+  [
+    InventoryLotEvidence { lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger },
+    InventoryLotEvidence { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+    InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  ],
+  fleet_acquisition_ledgers.skip(n: 4),
+)
+
+// 32 DIMM + 6 Spark + 2 Spark + 20 Mt. Collins + 62 Q80 + 4 boards + 8 peripherals = 134.
+test fn w_joined_lots_derive_one_population() -> Bool {
+  fleet_acquisition_ledgers.length() == 14
+    && fleet_lot_tax_evidence.length() == 14
+    && fleet_tax_join_covers_every_ledger()
+    && population_is(evidence: fleet_acquisition_ledgers, acquired: 134, received: 134, owned: 134)
+    && match fleet_acquisition_census_standing {
+      CensusFloor { close_by: c } => (c as String).length() > 0
+      CensusClosed => false
+    }
+}
+
+test fn w_omitting_the_mt_collins_lot_changes_the_derived_population() -> Bool {
+  population_is(evidence: fleet_acquisition_ledgers, acquired: 134, received: 134, owned: 134)
+    && population_is(evidence: without_mt_collins, acquired: 114, received: 114, owned: 114)
+}
+
+test fn w_q80_and_boards_are_independent_of_spark() -> Bool {
+  !inventory_lot_identity_eq(left: q80_processor_lot.identity, right: mt_collins_twenty_lot.identity)
+    && !inventory_lot_identity_eq(left: altrad8ud_board_lot.identity, right: q80_processor_lot.identity)
+    && !inventory_lot_identity_eq(left: altrad8ud_board_lot.identity, right: dgx_spark_micro_center_lot.identity)
+    && q80_processor_lot.quantity_acquired == 62
+    && altrad8ud_board_lot.quantity_acquired == 4
+    && mt_collins_twenty_lot.quantity_acquired == 20
+}
+
+test fn w_assembly_binds_four_boards_and_leaves_other_parts_unpurchased() -> Bool {
+  board_components_bound_to_the_four_board_lot(rows: srv_assembly_components) == 4
+    && every_non_board_acquisition_is_unrecorded(rows: srv_assembly_components)
+    && srv_assembly_components.length() == 26
+}
