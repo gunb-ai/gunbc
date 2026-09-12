@@ -3,7 +3,6 @@ module gunbc.machine_intake_pre_os_capture_replay
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused }
 import gunbc.memory_configuration { MemoryConfiguration, PositionedMemoryModule }
 import gunbc.memory_observation {
@@ -47,15 +46,11 @@ fn pre_os_quiet_archive_assessment(payload: String) -> PreOsQuietArchiveAssessme
   }
 }
 
-func replay_pre_os_quiet_archive() -> ProcessExit {
+func replay_pre_os_quiet_archive() -> ObservationAttempt<PreOsQuietArchiveAssessment, NonEmptyStr> {
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-known-good-socket0-2026-09-12.txt",
     expected_sha256: "81137a1169d3d1bc4fde2ae91910a85e9b70c4195e53d248d7d668adc347eb64") {
-    ObservationRefused { cause } => exit_failure(reason: cause as String)
-    ObservationEstablished { observed: payload } => {
-      let assessed = pre_os_quiet_archive_assessment(payload: payload)
-      println(to_string(assessed))
-      ExitSuccess
-    }
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: payload } => ObservationEstablished { observed: pre_os_quiet_archive_assessment(payload: payload) }
   }
 }
 
@@ -121,20 +116,17 @@ fn pre_os_archive_specs() -> ObservationAttempt<List<PreOsArchiveSpec>, NonEmpty
   }
 }
 
-func replay_pre_os_archives() -> ProcessExit {
+func replay_pre_os_archives() -> List<ObservationAttempt<PreOsArchiveReading, NonEmptyStr>> {
   match pre_os_archive_specs() {
-    ObservationRefused { cause } => exit_failure(reason: cause as String)
-    ObservationEstablished { observed: specs } => {
-      let results = map(specs, spec => match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {
-        ObservationRefused { cause } => { println(cause as String) false }
-        ObservationEstablished { observed: payload } => {
-          let reading = pre_os_archive_classify(spec: spec, payload: payload)
-          println(concat(spec.path as String, ": firmware=", to_string(reading.firmware), "; banner=", to_string(reading.banner_present),
-            "; script_footer=", to_string(reading.script_exit_footer_present), "; inventory=", to_string(reading.inventory), "; continuous_collection=", to_string(reading.continuous_collection)))
-          true
-        }
-      })
-      if all(results, ok => ok) { ExitSuccess } else { exit_failure(reason: "archive read/hash verification failed") }
-    }
+    ObservationRefused { cause } => [ObservationRefused { cause: cause }]
+    ObservationEstablished { observed: specs } => map(specs, spec => match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: payload } => ObservationEstablished { observed: pre_os_archive_classify(spec: spec, payload: payload) }
+    })
   }
+}
+
+func replay_pre_os_archive_ledger() -> String {
+  concat("Historical archive observations; firmware-attempt association is unestablished.\n", to_string(replay_pre_os_archives()),
+    "\nWithdrawn quiet-SEL control:\n", to_string(replay_pre_os_quiet_archive()))
 }
