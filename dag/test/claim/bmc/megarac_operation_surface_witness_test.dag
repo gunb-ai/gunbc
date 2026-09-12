@@ -1,6 +1,7 @@
 module test.claim.megarac_operation_surface_witness
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, NonEmptyStr }
+import v2.std.algebra { any }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
@@ -42,10 +43,6 @@ import extdeps.bmc.megarac {
 }
 import extdeps.ampere.oem_sel {
   ampere_iana_private_enterprise_number,
-  ampere_oem_sel_manufacturer_id_byte0,
-  ampere_oem_sel_manufacturer_id_byte1,
-  ampere_oem_sel_manufacturer_id_byte2,
-  ampere_oem_sel_pen_matches_le_bytes,
   ampere_oem_sel_producer_layout,
   ampere_openbmc_boot_syndrome_sensor_number,
 }
@@ -71,10 +68,6 @@ import gunbc.machine_intake_megarac_pre_os_channel {
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-fn path_roster_contains(xs: List<NonEmptyStr>, s: NonEmptyStr) -> Bool {
-  fold(xs, init: false, f: (acc, x) => acc || x == s)
-}
 
 test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
   match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1) {
@@ -123,7 +116,7 @@ test fn served_ui_absences_are_first_class_at_0_32() -> Bool {
             ServedUiFactKnown { firmware: _, holds: true } =>
               match megarac_served_ui_absence_standing(firmware: megarac_firmware_0_32, absence: MegaRacWebEventLogOemDescriptionUnknown) {
                 ServedUiFactKnown { firmware: _, holds: true } =>
-                  path_roster_contains(xs: megarac_bios_adjacent_paths_at_0_32, s: "/api/maintenance/hpm/getbiosversions" as NonEmptyStr)
+                  megarac_bios_adjacent_paths_at_0_32 |> any(x => x == "/api/maintenance/hpm/getbiosversions" as NonEmptyStr)
                 _ => false
               }
             _ => false
@@ -204,13 +197,8 @@ test fn unacknowledged_session_never_claims_the_host_produced_no_bytes() -> Bool
     }
 }
 
-test fn ampere_oem_sel_pen_is_the_le_manufacturer_id_bytes() -> Bool {
-  ampere_oem_sel_pen_matches_le_bytes(
-    pen: ampere_iana_private_enterprise_number,
-    b0: ampere_oem_sel_manufacturer_id_byte0,
-    b1: ampere_oem_sel_manufacturer_id_byte1,
-    b2: ampere_oem_sel_manufacturer_id_byte2,
-  ) && ampere_oem_sel_producer_layout.iana_pen == ampere_iana_private_enterprise_number
+test fn ampere_oem_sel_layout_sensor_is_boot_syndrome_not_0xde() -> Bool {
+  ampere_oem_sel_producer_layout.iana_pen == ampere_iana_private_enterprise_number
     && ampere_oem_sel_producer_layout.sensor_number == ampere_openbmc_boot_syndrome_sensor_number
     && ampere_oem_sel_producer_layout.sensor_number != 222
 }

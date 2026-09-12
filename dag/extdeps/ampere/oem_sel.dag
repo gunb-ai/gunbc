@@ -56,15 +56,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data ampere_iana_private_enterprise_number: Int = 52538
 
-data ampere_oem_sel_manufacturer_id_byte0: Int = 58
-
-data ampere_oem_sel_manufacturer_id_byte1: Int = 205
-
-data ampere_oem_sel_manufacturer_id_byte2: Int = 0
-
 data ampere_openbmc_boot_syndrome_sensor_number: Int = 235
 
 data ampere_openbmc_boot_syndrome_type_nibble: Int = 4
+
+fn ampere_pen_le_octet(pen: Int, place: Int) -> Int {
+  (pen / place) % 256
+}
 
 type AmpereOemSelProducerLayout {
   iana_pen: Int
@@ -79,9 +77,9 @@ type AmpereOemSelProducerLayout {
 
 data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelProducerLayout {
   iana_pen: ampere_iana_private_enterprise_number,
-  manufacturer_id_byte0: ampere_oem_sel_manufacturer_id_byte0,
-  manufacturer_id_byte1: ampere_oem_sel_manufacturer_id_byte1,
-  manufacturer_id_byte2: ampere_oem_sel_manufacturer_id_byte2,
+  manufacturer_id_byte0: ampere_pen_le_octet(pen: ampere_iana_private_enterprise_number, place: 1),
+  manufacturer_id_byte1: ampere_pen_le_octet(pen: ampere_iana_private_enterprise_number, place: 256),
+  manufacturer_id_byte2: ampere_pen_le_octet(pen: ampere_iana_private_enterprise_number, place: 65536),
   sensor_number: ampere_openbmc_boot_syndrome_sensor_number,
   type_nibble: ampere_openbmc_boot_syndrome_type_nibble,
   interface_spec: ampere_altra_soc_bmc_interface_spec_v1_43,
@@ -89,8 +87,4 @@ data ampere_oem_sel_producer_layout: AmpereOemSelProducerLayout = AmpereOemSelPr
     ampere_openbmc_dimm_train_fail_log,
     ampere_misc_altra_host_error_monitor,
   ],
-}
-
-fn ampere_oem_sel_pen_matches_le_bytes(pen: Int, b0: Int, b1: Int, b2: Int) -> Bool {
-  pen == (b0 + (b1 * 256) + (b2 * 65536))
 }
