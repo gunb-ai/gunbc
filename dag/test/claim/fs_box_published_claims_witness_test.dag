@@ -48,7 +48,25 @@ test fn faq_names_hpe_compatible_optics_as_not_reconfigurable() -> Bool {
   )
 }
 
-test fn data_sheet_two_v4_colors_and_a_v3_ordering_line() -> Bool {
+test fn data_sheet_configurable_media_are_fs_optics_and_cables() -> Bool {
+  string_contains(
+    s: fs_box_v4_data_sheet.configurable_media as String,
+    pattern: "FS transceivers and DAC/AOC cables",
+  )
+}
+
+test fn data_sheet_and_faq_spell_macos_differently() -> Bool {
+  fold(
+    fs_box_v4_data_sheet.operating_systems,
+    init: false,
+    f: (hit, row) => hit || string_contains(s: row as String, pattern: "Mac OS"),
+  )
+    && fold(
+      fs_box_v3_v4_v5_faq.operating_systems,
+      init: false,
+      f: (hit, row) => hit || string_contains(s: row as String, pattern: "macOS"),
+    )
+}
   fs_box_v4_color_sku_count() == 2
     && fs_box_v4_ordering_names_part(name: "FS BOX V3" as NonEmptyStr)
 }
