@@ -77,34 +77,20 @@ type CollectorRunningProof
   | SelCursorRecorded { last_record_id: Int, recorded_at: EpochMs }
   | ControllerObservedReachable { at: EpochMs }
 
+// A PROVEN COLLECTOR CARRIES ONLY ITS PROOF; its kind is DERIVED from the proof, so a SEL cursor
+// offered as the proof that a console capture is running is not a state that can be written
+// (review 64203: construction over validation). Only the unproven and absent arms name a kind
+// explicitly, because they have no proof to derive it from.
 type CollectorStanding
-  = CollectorProvenRunning { kind: CollectorKind, proof: CollectorRunningProof }
+  = CollectorProvenRunning { proof: CollectorRunningProof }
   | CollectorArmedUnproven { kind: CollectorKind }
   | CollectorAbsent { kind: CollectorKind }
 
-// A PROOF MUST BE THE RIGHT KIND OF PROOF FOR ITS COLLECTOR. A SEL cursor offered as the proof
-// that a console capture is running is a category error, and a fold that accepted any proof for
-// any collector would let one live instrument vouch for three.
-fn proof_matches_collector(kind: CollectorKind, proof: CollectorRunningProof) -> Bool {
-  match kind {
-    ConsoleCapture =>
-      match proof {
-        ConsoleSessionBannerSeen { capture_path: _, banner_bytes: _ } => true
-        SelCursorRecorded { last_record_id: _, recorded_at: _ } => false
-        ControllerObservedReachable { at: _ } => false
-      }
-    SelCursorTail =>
-      match proof {
-        ConsoleSessionBannerSeen { capture_path: _, banner_bytes: _ } => false
-        SelCursorRecorded { last_record_id: _, recorded_at: _ } => true
-        ControllerObservedReachable { at: _ } => false
-      }
-    ControllerLivenessWatch =>
-      match proof {
-        ConsoleSessionBannerSeen { capture_path: _, banner_bytes: _ } => false
-        SelCursorRecorded { last_record_id: _, recorded_at: _ } => false
-        ControllerObservedReachable { at: _ } => true
-      }
+fn proof_kind(proof: CollectorRunningProof) -> CollectorKind {
+  match proof {
+    ConsoleSessionBannerSeen { capture_path: _, banner_bytes: _ } => ConsoleCapture
+    SelCursorRecorded { last_record_id: _, recorded_at: _ } => SelCursorTail
+    ControllerObservedReachable { at: _ } => ControllerLivenessWatch
   }
 }
 
@@ -149,13 +135,11 @@ fn console_lease_is_held(lease: HeldLease) -> Bool {
 
 // THE GAPS, ONE ARM EACH, because each has a different repair: an absent sink is a filesystem
 // step; a stale lease is a process to kill and a session to deactivate; a missing baseline is a
-// watcher to re-arm BEFORE the action; a mismatched proof is a bug in whoever assembled the
-// roster.
+// watcher to re-arm BEFORE the action.
 type CollectorGap
   = EvidenceSinkMissing
   | ConsoleLeaseNotHeld { observed: HeldLeaseObservedState }
   | CollectorNotProven { kind: CollectorKind }
-  | CollectorProofMismatched { kind: CollectorKind }
 
 // SEALED. The only producer is collectors_ready below, so a CollectorsReady in hand IS the fact
 // that every gap above was checked and none held. There is no literal any other module can write.
@@ -172,7 +156,7 @@ type CollectorsReadiness
 
 fn standing_kind(c: CollectorStanding) -> CollectorKind {
   match c {
-    CollectorProvenRunning { kind: k, proof: _ } => k
+    CollectorProvenRunning { proof: p } => proof_kind(proof: p)
     CollectorArmedUnproven { kind: k } => k
     CollectorAbsent { kind: k } => k
   }
@@ -185,8 +169,7 @@ fn collector_gap_for(kind: CollectorKind, collectors: List<CollectorStanding>) -
     Absent => Present { value: CollectorNotProven { kind: kind } }
     Present { value: s } =>
       match s {
-        CollectorProvenRunning { kind: k, proof: p } =>
-          if proof_matches_collector(kind: k, proof: p) { none } else { Present { value: CollectorProofMismatched { kind: k } } }
+        CollectorProvenRunning { proof: _ } => none
         CollectorArmedUnproven { kind: k } => Present { value: CollectorNotProven { kind: k } }
         CollectorAbsent { kind: k } => Present { value: CollectorNotProven { kind: k } }
       }

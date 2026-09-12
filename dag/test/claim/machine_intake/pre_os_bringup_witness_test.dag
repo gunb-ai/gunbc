@@ -26,10 +26,8 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   BmcControllerReset,
   ChassisPowerCycle,
   CollectorNotProven,
-  CollectorProofMismatched,
   CollectorStanding,
   CollectorProvenRunning,
-  ConsoleCapture,
   ConsoleLeaseNotHeld,
   ConsoleSessionBannerSeen,
   ControllerColdReset,
@@ -45,7 +43,6 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   NotReady,
   Ready,
   SelCursorRecorded,
-  SelCursorTail,
   collectors_ready,
   power_actuation_outcome,
   power_actuation_request,
@@ -110,9 +107,9 @@ test fn law_three_opaque_oem_stays_opaque_over_the_corpus() -> Bool {
 
 fn proven_collectors() -> List<CollectorStanding> {
   [
-    CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
-    CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
-    CollectorProvenRunning { kind: ControllerLivenessWatch, proof: ControllerObservedReachable { at: 1 } },
+    CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
+    CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+    CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
   ]
 }
 
@@ -134,27 +131,11 @@ test fn a_missing_liveness_watch_is_named_as_the_gap() -> Bool {
     sink: EvidenceSinkPresent { directory: "sink" },
     console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
     collectors: [
-      CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
-      CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+      CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "x.log", banner_bytes: byte_size(count: 86) } },
+      CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
     ],
   ) {
     NotReady { gap: CollectorNotProven { kind: ControllerLivenessWatch } } => true
-    _ => false
-  }
-}
-
-test fn a_sel_cursor_offered_as_a_console_proof_refuses_as_mismatched() -> Bool {
-  match collectors_ready(
-    attempt: mtcollins1_ac_cycle_attempt,
-    sink: EvidenceSinkPresent { directory: "sink" },
-    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
-    collectors: [
-      CollectorProvenRunning { kind: ConsoleCapture, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
-      CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
-      CollectorProvenRunning { kind: ControllerLivenessWatch, proof: ControllerObservedReachable { at: 1 } },
-    ],
-  ) {
-    NotReady { gap: CollectorProofMismatched { kind: ConsoleCapture } } => true
     _ => false
   }
 }
@@ -200,7 +181,7 @@ fn oem(id: Int) -> SelWindowEvent {
 
 test fn two_restarts_without_progress_is_below_the_threshold_and_undetermined() -> Bool {
   match pre_os_bringup_verdict(
-    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4)],
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4), restart(id: 5)],
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   ) {
@@ -211,7 +192,7 @@ test fn two_restarts_without_progress_is_below_the_threshold_and_undetermined() 
 
 test fn a_firmware_hang_record_is_not_progress() -> Bool {
   match pre_os_bringup_verdict(
-    window: [restart(id: 1), hang(id: 2), restart(id: 3), hang(id: 4), restart(id: 5), hang(id: 6)],
+    window: [restart(id: 1), hang(id: 2), restart(id: 3), hang(id: 4), restart(id: 5), hang(id: 6), restart(id: 7)],
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   ) {
@@ -222,12 +203,12 @@ test fn a_firmware_hang_record_is_not_progress() -> Bool {
 
 test fn oem_records_carry_no_weight_in_the_verdict() -> Bool {
   let with_oem = pre_os_bringup_verdict(
-    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4), restart(id: 5), oem(id: 6)],
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4), restart(id: 5), oem(id: 6), restart(id: 7)],
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   )
   let without_oem = pre_os_bringup_verdict(
-    window: [restart(id: 1), restart(id: 3), restart(id: 5)],
+    window: [restart(id: 1), restart(id: 3), restart(id: 5), restart(id: 7)],
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   )
@@ -256,7 +237,7 @@ test fn progress_after_one_restart_reads_as_progress_even_beside_oem_records() -
 // (review 64164); a good boot followed by a run BELOW the bound still reads as progress.
 test fn an_early_good_boot_does_not_outvote_a_trailing_failure_run() -> Bool {
   match pre_os_bringup_verdict(
-    window: [restart(id: 1), progress(id: 2), restart(id: 3), restart(id: 4), restart(id: 5)],
+    window: [restart(id: 1), progress(id: 2), restart(id: 3), restart(id: 4), restart(id: 5), restart(id: 6)],
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   ) {
@@ -271,7 +252,7 @@ test fn a_trailing_run_below_the_bound_after_progress_still_reads_as_progress() 
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   ) {
-    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 2 } => true
+    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 1 } => true
     _ => false
   }
 }
@@ -282,7 +263,7 @@ test fn the_whole_corpus_window_uncut_reaches_the_terminal_despite_the_early_goo
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   ) {
-    PhysicalRemediationRequired { restarts_without_progress: 20, localization: _ } => true
+    PhysicalRemediationRequired { restarts_without_progress: 19, localization: _ } => true
     _ => false
   }
 }
@@ -317,7 +298,7 @@ test fn on_an_emitting_console_a_banner_only_capture_beside_an_empty_window_is_n
 
 test fn a_platform_that_exposes_per_slot_evidence_localizes_by_pointer_never_by_slot() -> Bool {
   match pre_os_bringup_verdict(
-    window: [restart(id: 1), restart(id: 2), restart(id: 3)],
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4)],
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: emitting_console_profile(),
   ) {
@@ -326,9 +307,38 @@ test fn a_platform_that_exposes_per_slot_evidence_localizes_by_pointer_never_by_
   }
 }
 
-test fn the_corpus_window_holds_twenty_one_restarts_of_which_one_saw_progress() -> Bool {
+test fn the_corpus_window_holds_twenty_closed_cycles_one_with_progress_and_one_open_pending() -> Bool {
   let cycles = boot_cycles(window: mtcollins1_sel_window)
-  list_length(items: cycles) == 21 && list_length(items: filter(xs: cycles, f: c => c.progress_seen)) == 1
+  list_length(items: cycles.closed) == 20
+    && list_length(items: filter(xs: cycles.closed, f: c => c.progress_seen)) == 1
+    && match cycles.open {
+      Present { value: c } => c.restart_record_id == 1102 && c.progress_seen == false
+      Absent => false
+    }
+}
+
+// THE OPEN CYCLE IS PENDING, NOT FAILED: two closed failures plus a restart the window cut off
+// stay below the bound (review 64203), while progress already seen in the open cycle counts.
+test fn a_restart_cut_off_by_the_window_end_does_not_count_toward_the_bound() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: RestartsBelowTerminalThreshold { restarts_without_progress: 2 } } => true
+    _ => false
+  }
+}
+
+test fn progress_in_the_open_cycle_resets_the_trailing_run() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [restart(id: 1), restart(id: 2), restart(id: 3), restart(id: 4), progress(id: 5)],
+    console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 3 } => true
+    _ => false
+  }
 }
 
 // ── the upstream record-type fold ──────────────────────────────────────────────────────────────

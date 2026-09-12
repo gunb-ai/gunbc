@@ -33,10 +33,9 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   CollectorProvenRunning,
   CollectorStanding,
   CollectorsReadiness,
-  ConsoleCapture,
+  ControllerLivenessWatch,
   ConsoleLeaseNotHeld,
   ConsoleSessionBannerSeen,
-  ControllerLivenessWatch,
   ControllerObservedReachable,
   EvidenceSinkPresent,
   HostWarmReset,
@@ -45,7 +44,6 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   PowerActuationKind,
   Ready,
   SelCursorRecorded,
-  SelCursorTail,
   collectors_ready,
   power_actuation_request,
   power_actuation_request_readiness,
@@ -382,15 +380,15 @@ data mtcollins1_console_lease_epoch: LeaseEpoch = LeaseEpoch {
 }
 
 data mtcollins1_ac_cycle_collectors_as_run: List<CollectorStanding> = [
-  CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
-  CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
+  CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
+  CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
   CollectorArmedUnproven { kind: ControllerLivenessWatch },
 ]
 
 data mtcollins1_ac_cycle_collectors_as_required: List<CollectorStanding> = [
-  CollectorProvenRunning { kind: ConsoleCapture, proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
-  CollectorProvenRunning { kind: SelCursorTail, proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
-  CollectorProvenRunning { kind: ControllerLivenessWatch, proof: ControllerObservedReachable { at: 1789164310688 } },
+  CollectorProvenRunning { proof: ConsoleSessionBannerSeen { capture_path: "11-ac-sol.log", banner_bytes: byte_size(count: 86) } },
+  CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1059, recorded_at: 1789164803054 } },
+  CollectorProvenRunning { proof: ControllerObservedReachable { at: 1789164310688 } },
 ]
 
 fn mtcollins1_ac_cycle_readiness_as_run() -> CollectorsReadiness {

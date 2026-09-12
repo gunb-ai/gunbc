@@ -90,23 +90,24 @@ type BootCycleReading {
   progress_seen: Bool
 }
 
-type BootCycleFold {
+// THE WINDOW'S CYCLES: the CLOSED ones, each ended by the next restart, and the one still OPEN
+// when the window ended. The open cycle is kept apart because the window's end is not evidence
+// about it (review 64203): a restart with no progress record yet may report progress a moment
+// after the capture stopped. Progress already seen in the open cycle IS evidence and counts;
+// absence of progress in it counts for nothing.
+type BootCycleWindow {
   closed: List<BootCycleReading>
   open: BootCycleReading?
 }
 
-fn close_open_cycle(acc: BootCycleFold) -> List<BootCycleReading> {
-  match acc.open {
-    Absent => acc.closed
-    Present { value: c } => append(acc.closed, [c])
-  }
-}
-
-fn boot_cycle_step(acc: BootCycleFold, event: SelWindowEvent) -> BootCycleFold {
+fn boot_cycle_step(acc: BootCycleWindow, event: SelWindowEvent) -> BootCycleWindow {
   match event.kind {
     BootRestart { offset: o } =>
-      BootCycleFold {
-        closed: close_open_cycle(acc: acc),
+      BootCycleWindow {
+        closed: match acc.open {
+          Absent => acc.closed
+          Present { value: c } => append(acc.closed, [c])
+        },
         open: Present { value: BootCycleReading { restart_record_id: event.record_id, restart_offset: o, progress_seen: false } },
       }
     FirmwareProgressRecord { offset: fo } =>
@@ -114,7 +115,7 @@ fn boot_cycle_step(acc: BootCycleFold, event: SelWindowEvent) -> BootCycleFold {
         Absent => acc
         Present { value: c } =>
           if firmware_offset_is_progress(offset: fo) {
-            BootCycleFold {
+            BootCycleWindow {
               closed: acc.closed,
               open: Present { value: BootCycleReading { restart_record_id: c.restart_record_id, restart_offset: c.restart_offset, progress_seen: true } },
             }
@@ -129,16 +130,25 @@ fn boot_cycle_step(acc: BootCycleFold, event: SelWindowEvent) -> BootCycleFold {
 
 // THE OEM ARM ABOVE IS `acc`, UNCONDITIONALLY, and that line is the wall: an OEM record can neither
 // open a cycle nor mark progress. Whatever 0fde70330102 means, it means it OUTSIDE this fold.
-fn boot_cycles(window: List<SelWindowEvent>) -> List<BootCycleReading> {
-  close_open_cycle(acc: fold(window, init: BootCycleFold { closed: [], open: none }, f: (acc, e) => boot_cycle_step(acc: acc, event: e)))
+fn boot_cycles(window: List<SelWindowEvent>) -> BootCycleWindow {
+  fold(window, init: BootCycleWindow { closed: [], open: none }, f: (acc, e) => boot_cycle_step(acc: acc, event: e))
 }
 
-fn cycles_with_progress(cycles: List<BootCycleReading>) -> Int {
-  list_length(items: filter(xs: cycles, f: c => c.progress_seen))
+fn open_cycle_saw_progress(cycles: BootCycleWindow) -> Bool {
+  match cycles.open {
+    Absent => false
+    Present { value: c } => c.progress_seen
+  }
 }
 
-fn cycles_without_progress(cycles: List<BootCycleReading>) -> Int {
-  list_length(items: filter(xs: cycles, f: c => c.progress_seen == false))
+// PROGRESS IS COUNTED WHEREVER IT WAS SEEN, closed or open; absence of progress is counted over
+// CLOSED cycles only.
+fn cycles_with_progress(cycles: BootCycleWindow) -> Int {
+  list_length(items: filter(xs: cycles.closed, f: c => c.progress_seen)) + (if open_cycle_saw_progress(cycles: cycles) { 1 } else { 0 })
+}
+
+fn closed_cycles_without_progress(cycles: BootCycleWindow) -> Int {
+  list_length(items: filter(xs: cycles.closed, f: c => c.progress_seen == false))
 }
 
 // ── the verdict ────────────────────────────────────────────────────────────────────────────────
@@ -174,13 +184,14 @@ type PreOsBringupVerdict
   | BringupUndetermined { cause: BringupUndeterminedCause }
   | PhysicalRemediationRequired { restarts_without_progress: Int, localization: RemediationLocalization }
 
-// THE RUN OF RESTARTS SINCE THE LAST PROGRESS. A cycle that saw progress resets the count, so the
+// THE RUN OF CLOSED RESTARTS SINCE THE LAST PROGRESS. A cycle that saw progress resets the count, so the
 // figure is the length of the TRAILING failure sequence -- the only one that says anything about
 // the host as it is now. Counting every progress-less cycle in the window would let one early good
 // boot outvote any number of later failures (review 64164 on gunbc#11110), which is a bound that
 // never engages.
-fn trailing_restarts_without_progress(cycles: List<BootCycleReading>) -> Int {
-  fold(cycles, init: 0, f: (acc, c) => if c.progress_seen { 0 } else { acc + 1 })
+fn trailing_restarts_without_progress(cycles: BootCycleWindow) -> Int {
+  let closed_run = fold(cycles.closed, init: 0, f: (acc, c) => if c.progress_seen { 0 } else { acc + 1 })
+  if open_cycle_saw_progress(cycles: cycles) { 0 } else { closed_run }
 }
 
 // THE FOLD. Its inputs are the window, the profile and the console reading; NOT an OEM payload,
@@ -203,7 +214,7 @@ fn pre_os_bringup_verdict(
 ) -> PreOsBringupVerdict {
   let cycles = boot_cycles(window: window)
   let with_progress = cycles_with_progress(cycles: cycles)
-  let without_progress = cycles_without_progress(cycles: cycles)
+  let without_progress = closed_cycles_without_progress(cycles: cycles)
   let trailing = trailing_restarts_without_progress(cycles: cycles)
   if trailing >= restart_without_progress_terminal_threshold {
     PhysicalRemediationRequired { restarts_without_progress: trailing, localization: remediation_localization(profile: profile) }
