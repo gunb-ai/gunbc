@@ -62,8 +62,6 @@ fn resolve_decl_fact_by_qualified_name(
 
 data authored_string_literal_edge_name: Symbol = ^authored_string_literal
 
-data skeleton_edge_is_authored_string_literal_predicate_disposition: String = "🟡 MODELED-INERT `*_is_*` over EdgeLabel (Named intern equality, Positional => false). Owner: v2.std.decl_facts_skeleton. Lane: DataItem LitStr attach / constructor-spelling skip. Dissolve-on: named edges are a closed roster that includes authored_string_literal_edge_name so the skip is inhabitance of that constructor rather than a Bool predicate — the same capability as collect_authored_string_literals_dissolve_on (typechecked projection intern deletes the attach and this skip together)."
-
 fn skeleton_edge_is_authored_string_literal(e: Edge) -> Bool {
   match e.label {
     Named { name: nm } => nm == authored_string_literal_edge_name
@@ -241,4 +239,4 @@ data skeleton_marshal_atom_lexeme_dissolve_on: DissolutionCondition = unbound_di
 
 data authored_string_literal_edge_host_spelling_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Host AUTHORED_STRING_LITERAL_EDGE in data_initializer_identity.rs is the intern spelling of authored_string_literal_edge_name. Dissolve-on: that host const is emitted from this Symbol row so a rename cannot silently un-skip constructor-spelling walks.")
 
-data collect_authored_string_literals_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Host collect_authored_string_literals attaches parse-tree LitStr atoms onto the decl_facts Node for atom_identities_in_node / v1_consumer_discovery. It is not DataInitDecl.literal_fp (one SOURCE fingerprint of a top-level literal for dual-representation / effect_reach). Dissolve-on: marshal_data_initializer_projection itself interns every initializer LitStr into the typechecked Node so this attach is deleted.")
+data collect_authored_string_literals_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Host collect_authored_string_literals attaches parse-tree LitStr atoms onto the decl_facts Node for atom_identities_in_node / v1_consumer_discovery. It is not DataInitDecl.literal_fp (one SOURCE fingerprint of a top-level literal for dual-representation / effect_reach). 🟡 skeleton_edge_is_authored_string_literal is Named intern equality / Positional => false over EdgeLabel until that intern is inhabitance of a closed named-edge roster. Dissolve-on: marshal_data_initializer_projection itself interns every initializer LitStr into the typechecked Node so this attach and that EdgeLabel skip are deleted together.")
