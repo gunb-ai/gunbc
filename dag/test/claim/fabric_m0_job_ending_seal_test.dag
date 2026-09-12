@@ -99,10 +99,11 @@ fn job_ending_probe_source(body: String) -> String {
     + "    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: \"read refused\" } },\n"
     + "  }\n"
     + "}\n"
+    + "fn the_attempt() -> AttemptIdentity {\n  \"attempt-1\" as AttemptIdentity\n}\n"
     + "fn sanctioned_ending() -> JobEnding {\n"
     + "  end_required_job(\n"
     + "    work: fixture_work(),\n"
-    + "    attempt: \"attempt-1\" as AttemptIdentity,\n"
+    + "    attempt: the_attempt(),\n"
     + "    computation: ComputationSucceeded,\n"
     + "    committed: [],\n"
     + "    observations: [],\n"
@@ -118,11 +119,15 @@ fn job_ending_probe_source(body: String) -> String {
     + "\n}\n"
 }
 
+// EVERY BRAND CAST IS IN THE SHARED PREAMBLE TOO. `as AttemptIdentity` and `as CommitNamespace`
+// each raise one advisory WhereRefinementUnenforced row, so a cast present in one body and not
+// the other is a second axis: measured on the delta at 43f659763c, the forged literal's attempt
+// cast alone left red=29/green=28 on that key while the seal key was exactly 1/0.
 // The sanctioned mint is in the SHARED preamble so both arms typecheck it. The one-axis
 // body is then either that mint or the forbidden literal; otherwise the green arm's extra
 // diagnostics from instantiating end_required_job fail the exact-key differential while
 // the keyed SoleConstructorViolation counts still pass (the floor red at 4c0bf81).
-data forged_job_ending_body: String = "if false { sanctioned_ending() } else { JobEnding { publication: PublishPendingReconciliation { attempt: \"attempt-1\" as AttemptIdentity, subject: \"commit-manifest\", cause: \"forged\", unresolved: [] }, conclusion: Success } }"
+data forged_job_ending_body: String = "if false { sanctioned_ending() } else { JobEnding { publication: PublishPendingReconciliation { attempt: the_attempt(), subject: \"commit-manifest\", cause: \"forged\", unresolved: [] }, conclusion: Success } }"
 
 data sanctioned_body: String = "sanctioned_ending()"
 
