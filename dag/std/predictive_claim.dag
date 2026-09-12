@@ -36,9 +36,20 @@ type PredictionTestDiscrimination
   = IsolatedMechanism { isolation_evidence: DeclarationRef }
   | ConfoundedMechanisms { first_confound: NonEmptyStr, further_confounds: List<NonEmptyStr> }
 
+// Retrievability established only after the outcome does not establish pre-outcome publication.
+// Identity history records corrections/amendments without silently replacing the earlier citation.
+type PostOutcomePredictionArchive {
+  commit: CommitSha
+  artifact: FilePath
+  archive_ref: NonEmptyStr
+  identity_history: NonEmptyStr
+  report: DeclarationRef
+}
+
 type PredictionRegistration
   = ConversationOnly { report: DeclarationRef }
   | CommittedPredictionWithoutWitnessedOrder { commit: CommitSha, artifact: FilePath, report: DeclarationRef }
+  | PostOutcomeArchivedPrediction { archive: PostOutcomePredictionArchive }
   | PreregisteredPrediction {
       commit: CommitSha,
       declaration: DeclarationRef,
@@ -149,6 +160,7 @@ fn predictive_receipt_precedes_commit<S, O>(receipt: PredictionTestReceipt<S, O>
   match receipt.registration {
     ConversationOnly { report: _ } => true
     CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => true
+    PostOutcomeArchivedPrediction { archive: _ } => true
     PreregisteredPrediction { commit: _, declaration: _, recorded_at: _, started_at: _, observed_at: observed } => observed < recorded_at
   }
 }
@@ -194,6 +206,7 @@ fn append_predictive_observation<S, O>(
     decl_ref(module_path: "std.predictive_claim", decl_name: "observe_predictive_test"),
     decl_ref(module_path: "std.predictive_claim", decl_name: "record_conversation_prediction_test"),
     decl_ref(module_path: "std.predictive_claim", decl_name: "record_committed_prediction_test"),
+    decl_ref(module_path: "std.predictive_claim", decl_name: "record_archived_prediction_test"),
   ]
 {
   if count(predictive_falsifiers(model: model)) > 0 {
@@ -276,6 +289,22 @@ fn record_committed_prediction_test<S, O>(
   )
 }
 
+// Archiving an unchanged historical object is useful evidence, but cannot retroactively earn
+// the registration standing of an independently retrievable pre-intervention snapshot.
+fn record_archived_prediction_test<S, O>(
+  model: PredictiveModel<S, O>,
+  configuration: S,
+  observation: RecordedFact<O>,
+  source: DeclarationRef,
+  archive: PostOutcomePredictionArchive,
+  discrimination: PredictionTestDiscrimination,
+) -> PredictiveModelResult<S, O> {
+  append_predictive_observation(
+    model: model, configuration: configuration, observation: observation, source: source,
+    registration: PostOutcomeArchivedPrediction { archive: archive }, discrimination: discrimination,
+  )
+}
+
 // Counterexamples force a new revision with a strictly smaller scope: the old scope is preserved
 // in full, and the added predicate must exclude the observed counterexample. The killed version
 // and ALL its receipts remain in the lineage. A restriction's physical meaning remains an
@@ -342,6 +371,7 @@ type PredictiveStanding
       preregistered_isolated_matches: Int,
       weak_matches: Int,
       committed_unwitnessed_matches: Int,
+      post_outcome_archived_matches: Int,
       inconclusive: Int,
       narrowed_revisions: Int,
     }
@@ -361,6 +391,7 @@ fn predictive_standing<S, O>(model: PredictiveModel<S, O>) -> PredictiveStanding
     let isolated = matches |> filter(receipt => match receipt.registration {
       ConversationOnly { report: _ } => false
       CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => false
+      PostOutcomeArchivedPrediction { archive: _ } => false
       PreregisteredPrediction { commit: _, declaration: _, recorded_at: _, started_at: _, observed_at: _ } =>
         match receipt.discrimination {
           IsolatedMechanism { isolation_evidence: _ } => true
@@ -372,6 +403,10 @@ fn predictive_standing<S, O>(model: PredictiveModel<S, O>) -> PredictiveStanding
       weak_matches: count(matches) - count(isolated),
       committed_unwitnessed_matches: count(matches |> filter(receipt => match receipt.registration {
         CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => true
+        _ => false
+      })),
+      post_outcome_archived_matches: count(matches |> filter(receipt => match receipt.registration {
+        PostOutcomeArchivedPrediction { archive: _ } => true
         _ => false
       })),
       inconclusive: count(model.tests) - count(matches),

@@ -10,11 +10,11 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsDimmPopulationRow, mt_collins_population_16_dimms,
 }
 import std.predictive_claim {
-  Prediction, PredictionRestriction, AdversarialTestingObligation,
+  Prediction, PredictionRestriction, AdversarialTestingObligation, PostOutcomePredictionArchive,
   ApproximatePredictionWindow, ConfoundedMechanisms,
   PredictiveModel, PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
   PredictiveClaimRefusal, PredictiveStanding, PredictiveNextObligation,
-  begin_predictive_model, record_committed_prediction_test, narrow_predictive_model,
+  begin_predictive_model, record_archived_prediction_test, narrow_predictive_model,
   predictive_standing, predictive_next_obligation,
 }
 
@@ -62,6 +62,39 @@ data spare_screen_prediction_artifact: FilePath = "docs/probes/mtcollins1_spare_
 // Read the file AT spare_screen_prediction_commit, not as a path in the current source tree.
 data spare_screen_prediction_archive: NonEmptyStr = "Original commit archived after the outcome at gunb-ai/gunbc refs/tags/evidence/mtcollins1-spare-screen-a47ce298890. Fetch that ref, then read docs/probes/mtcollins1_spare_module_screen_prediction_2026-09-11.md at a47ce298890ac8dca72cda501b8a1225fcb740ec. Archival publication is not a witnessed preregistration. Artifact: https://github.com/gunb-ai/gunbc/blob/a47ce298890ac8dca72cda501b8a1225fcb740ec/docs/probes/mtcollins1_spare_module_screen_prediction_2026-09-11.md"
 
+
+// Source: parent correction msg_ad6e1573-f92d-474b-84af-28bc36c41dfe. The original
+// and amended Git trees agree, but identity and committer time changed. Neither author time nor
+// testimony is an independently witnessed publication/start ordering.
+type SpareScreenIdentityCorrection {
+  message_id: NonEmptyStr
+  originally_reported_commit: CommitSha
+  amended_published_commit: CommitSha
+  author_time_quotation: NonEmptyStr
+  committer_time_quotation: NonEmptyStr
+  ordering_testimony: NonEmptyStr
+  mixed_commit_content: NonEmptyStr
+}
+
+data spare_screen_identity_correction: SpareScreenIdentityCorrection = SpareScreenIdentityCorrection {
+  message_id: "msg_ad6e1573-f92d-474b-84af-28bc36c41dfe",
+  originally_reported_commit: spare_screen_prediction_commit,
+  amended_published_commit: "e72f8930cf647ef15abed0da676853e2c3ce51c2" as CommitSha,
+  author_time_quotation: "2026-09-11T23:41:21Z",
+  committer_time_quotation: "2026-09-11T23:45:19Z",
+  ordering_testimony: "The parent asserts the content was committed before installation, which began after 23:45Z, with outcome at 23:52:13Z. This is testimony plus an amended object, not independently witnessed ordering.",
+  mixed_commit_content: "The commit carries the prediction document together with the review-64125 Mt. Jade refusal fix; it does not isolate prediction publication from unrelated work.",
+}
+
+fn spare_screen_archive_receipt() -> PostOutcomePredictionArchive {
+  PostOutcomePredictionArchive {
+    commit: spare_screen_identity_correction.originally_reported_commit,
+    artifact: spare_screen_prediction_artifact,
+    archive_ref: "refs/tags/evidence/mtcollins1-spare-screen-a47ce298890",
+    identity_history: concat("Originally cited identity was detached and unpublished; amended published identity is ", spare_screen_identity_correction.amended_published_commit),
+    report: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "spare_screen_identity_correction"),
+  }
+}
 
 data spare_screen_configuration: SpareScreenConfiguration = SpareScreenConfiguration {
   population: mt_collins_population_16_dimms,
@@ -118,11 +151,11 @@ fn spare_screen_prediction() -> Prediction<SpareScreenConfiguration, SpareScreen
 fn falsified_spare_screen_model() -> PredictiveModelResult<SpareScreenConfiguration, SpareScreenOutcome> {
   match begin_predictive_model(prediction: spare_screen_prediction()) {
     PredictiveModelRefused { cause: cause } => PredictiveModelRefused { cause: cause }
-    PredictiveModelAccepted { model: model } => record_committed_prediction_test(
+    PredictiveModelAccepted { model: model } => record_archived_prediction_test(
       model: model, configuration: spare_screen_configuration,
       observation: RecordedFact { id: "msg_94eec616-spare-screen-restart" as RecordedFactId, value: RestartInsideDeclaredWindow },
-      commit: spare_screen_prediction_commit, artifact: spare_screen_prediction_artifact,
-      report: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "spare_screen_outcome_report"),
+      archive: spare_screen_archive_receipt(),
+      source: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_spare_screen_prediction", decl_name: "spare_screen_outcome_report"),
       discrimination: ConfoundedMechanisms {
         first_confound: "Sixteen modules change at once; the committed prediction explicitly says failure does not identify which module.",
         further_confounds: [
@@ -178,6 +211,11 @@ fn spare_screen_prediction_cli() -> CliWireResponse {
   let report = spare_screen_outcome_report
   predictive_review_cli(result: narrowed_spare_screen_model(), context: [
     spare_screen_prediction_archive,
+    concat("Identity correction report: ", spare_screen_identity_correction.message_id),
+    concat("Original author time (not publication proof): ", spare_screen_identity_correction.author_time_quotation),
+    concat("Amended committer time (not publication proof): ", spare_screen_identity_correction.committer_time_quotation),
+    spare_screen_identity_correction.ordering_testimony,
+    spare_screen_identity_correction.mixed_commit_content,
     concat("Reported experiment: ", report.message_id),
     concat("Restart after power-on (ms): ", to_string(report.restart_after_power_on)),
     concat("OEM payload quotation: ", report.oem_payload_quotation),

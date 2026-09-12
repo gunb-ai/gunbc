@@ -10,7 +10,7 @@ import std.predictive_claim {
   AdversarialTestingObligation, Prediction, PredictionRestriction,
   PredictionObservationWindow, BoundedPredictionWindow, PredictionWindowNotRecorded,
   PredictionTestDiscrimination, IsolatedMechanism, ConfoundedMechanisms,
-  ConversationOnly, PreregisteredPrediction, CommittedPredictionWithoutWitnessedOrder,
+  ConversationOnly, PreregisteredPrediction, CommittedPredictionWithoutWitnessedOrder, PostOutcomeArchivedPrediction,
   PredictiveModel, PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
   PredictiveClaimRefusal, PredictionNotRecordedBeforeStart, PredictionObservationBeforeStart,
   PredictionSnapshotPredatesItsEvidence,
@@ -22,7 +22,7 @@ import std.predictive_claim {
   UntestedPrediction, NarrowedPredictionAwaitingTest, TestedPrediction,
   FalsifiedPredictionNeedsNarrowing,
   begin_predictive_model, start_predictive_test, observe_predictive_test,
-  record_conversation_prediction_test, record_committed_prediction_test, narrow_predictive_model,
+  record_conversation_prediction_test, record_committed_prediction_test, record_archived_prediction_test, narrow_predictive_model,
   predictive_standing, predictive_scope_admits,
   predictive_next_obligation, AdversarialTestRequired, CounterexampleNarrowingRequired,
 }
@@ -32,7 +32,7 @@ import gunbc.machine_intake_mtcollins1_memory_prediction {
 import gunbc.machine_intake_mtcollins1_spare_screen_prediction {
   spare_screen_prediction_review, spare_screen_prediction_cli, SpareScreenPredictionReported, SpareScreenPredictionRefused,
   spare_screen_configuration, original_screen_configuration, spare_screen_prediction_commit,
-  spare_screen_prediction, SpareScreenConfiguration, SpareScreenOutcome, TrainingAndPostObserved,
+  spare_screen_prediction, spare_screen_archive_receipt, SpareScreenConfiguration, SpareScreenOutcome, TrainingAndPostObserved,
   RestartInsideDeclaredWindow,
 }
 
@@ -187,7 +187,7 @@ test fn no_tests_and_five_surviving_tests_are_different_standings() -> Bool {
       UntestedPrediction => match tested {
         PredictiveModelRefused { cause: _ } => false
         PredictiveModelAccepted { model: tested_model } => match predictive_standing(model: tested_model) {
-          TestedPrediction { preregistered_isolated_matches: n, weak_matches: weak, committed_unwitnessed_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
+          TestedPrediction { preregistered_isolated_matches: n, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
             n == 5 && weak == 0 && unknown == 0 && revisions == 0
           _ => false
         }
@@ -204,7 +204,7 @@ test fn confounding_and_missing_preregistration_each_weaken_a_match() -> Bool {
     match result {
       PredictiveModelRefused { cause: _ } => false
       PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
-        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
           strong == 0 && weak == 1 && unknown == 0
         _ => false
       }
@@ -216,7 +216,7 @@ test fn unknown_outcome_is_not_confirmation() -> Bool {
   match fixture_run(result: fixture_model(), configuration: 1, value: 2, id: "unknown") {
     PredictiveModelRefused { cause: _ } => false
     PredictiveModelAccepted { model: model } => match predictive_standing(model: model) {
-      TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
+      TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
         strong == 0 && weak == 0 && unknown == 1
       _ => false
     }
@@ -298,7 +298,7 @@ test fn tonight_is_one_weak_conversation_match_and_not_preregistered() -> Bool {
     MemoryPredictionReviewRefused { result: _ } => false
     MemoryPredictionReported { model: result, standing: standing, next_obligation: _, report: report, census_frontier: _ } => {
       let weak = match standing {
-        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak_count, committed_unwitnessed_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak_count, committed_unwitnessed_matches: _, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: revisions } =>
           strong == 0 && weak_count == 1 && unknown == 0 && revisions == 0
         _ => false
       }
@@ -308,6 +308,7 @@ test fn tonight_is_one_weak_conversation_match_and_not_preregistered() -> Bool {
           && all(model.tests, receipt => match receipt.registration {
             ConversationOnly { report: _ } => true
             CommittedPredictionWithoutWitnessedOrder { commit: _, artifact: _, report: _ } => false
+            PostOutcomeArchivedPrediction { archive: _ } => false
             PreregisteredPrediction { commit: _, declaration: _, recorded_at: _, started_at: _, observed_at: _ } => false
           })
       }
@@ -326,7 +327,7 @@ test fn a_commit_without_witnessed_order_is_distinct_from_conversation_and_prere
     ) {
       PredictiveModelRefused { cause: _ } => false
       PredictiveModelAccepted { model: committed } => match predictive_standing(model: committed) {
-        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: partial, inconclusive: unknown, narrowed_revisions: _ } =>
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: partial, post_outcome_archived_matches: _, inconclusive: unknown, narrowed_revisions: _ } =>
           strong == 0 && weak == 1 && partial == 1 && unknown == 0
         _ => false
       }
@@ -347,7 +348,7 @@ test fn spare_screen_archives_the_falsified_commit_and_narrows_without_inventing
         && all(model.superseded, version => version.prediction.claim.proposition == TrainingAndPostObserved
           && version.falsifying_receipt.observation.value == RestartInsideDeclaredWindow
           && match version.falsifying_receipt.registration {
-            CommittedPredictionWithoutWitnessedOrder { commit: commit, artifact: _, report: _ } => commit == spare_screen_prediction_commit
+            PostOutcomeArchivedPrediction { archive: archive } => archive.commit == spare_screen_prediction_commit
             _ => false
           })
     }
@@ -366,8 +367,29 @@ test fn training_instead_of_restart_would_not_falsify_the_spare_screen() -> Bool
     ) {
       PredictiveModelRefused { cause: _ } => false
       PredictiveModelAccepted { model: survived } => match predictive_standing(model: survived) {
-        TestedPrediction { preregistered_isolated_matches: _, weak_matches: weak, committed_unwitnessed_matches: partial, inconclusive: _, narrowed_revisions: revisions } =>
+        TestedPrediction { preregistered_isolated_matches: _, weak_matches: weak, committed_unwitnessed_matches: partial, post_outcome_archived_matches: _, inconclusive: _, narrowed_revisions: revisions } =>
           weak == 1 && partial == 1 && revisions == 0
+        _ => false
+      }
+    }
+  }
+}
+
+test fn archival_publication_never_earns_committed_or_preregistered_match_standing() -> Bool {
+  match begin_predictive_model(prediction: spare_screen_prediction()) {
+    PredictiveModelRefused { cause: _ } => false
+    PredictiveModelAccepted { model: model } => match record_archived_prediction_test(
+      model: model, configuration: spare_screen_configuration,
+      observation: RecordedFact { id: "archived-training-fixture" as RecordedFactId, value: TrainingAndPostObserved },
+      source: decl_ref(module_path: "std.types", decl_name: "kernel_type_set"),
+      archive: spare_screen_archive_receipt(), discrimination: fixture_discrimination(isolated: true),
+    ) {
+      PredictiveModelRefused { cause: _ } => false
+      PredictiveModelAccepted { model: survived } => match predictive_standing(model: survived) {
+        TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak,
+          committed_unwitnessed_matches: committed, post_outcome_archived_matches: archived,
+          inconclusive: unknown, narrowed_revisions: revisions } =>
+          strong == 0 && weak == 1 && committed == 0 && archived == 1 && unknown == 0 && revisions == 0
         _ => false
       }
     }
@@ -388,7 +410,8 @@ test fn operator_reports_keep_the_weak_match_and_the_falsified_revision_visible(
     CliWirePrintable { bytes: bytes, exit: exit } => match exit {
       ExitSuccess => bytes.contains("NARROWED, awaiting a new test")
         && bytes.contains("SUPERSEDED: mtcollins1-supported-shape-suffices-v1")
-        && bytes.contains("FALSIFIES prediction") && bytes.contains("ordering not independently witnessed")
+        && bytes.contains("FALSIFIES prediction") && bytes.contains("post-outcome archive; ordering asserted only")
+        && bytes.contains("e72f8930cf647ef15abed0da676853e2c3ce51c2")
         && bytes.contains("0fde70331102") && bytes.contains("TESTING STILL DUE")
       _ => false
     }
@@ -415,6 +438,7 @@ func predictive_claim_contract_probe() -> ProcessExit {
     && a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration()
     && spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass()
     && training_instead_of_restart_would_not_falsify_the_spare_screen()
+    && archival_publication_never_earns_committed_or_preregistered_match_standing()
     && operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() {
     return ExitSuccess
   }

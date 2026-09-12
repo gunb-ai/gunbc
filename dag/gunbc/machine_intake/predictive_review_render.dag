@@ -8,7 +8,7 @@ import std.symbols { Ascii }
 import extdeps.render.surface { PlainTerminal }
 import gunbc.cli_wire { CliWireResponse, cli_wire_response }
 import std.predictive_claim {
-  PredictionRegistration, ConversationOnly, CommittedPredictionWithoutWitnessedOrder, PreregisteredPrediction,
+  PredictionRegistration, ConversationOnly, CommittedPredictionWithoutWitnessedOrder, PreregisteredPrediction, PostOutcomeArchivedPrediction,
   PredictionTestReceipt, ConsistentWithPrediction, ContradictsPrediction, PredictionTestInconclusive,
   IsolatedMechanism, ConfoundedMechanisms,
   PredictiveStanding, UntestedPrediction, NarrowedPredictionAwaitingTest, TestedPrediction, FalsifiedPredictionNeedsNarrowing,
@@ -45,6 +45,12 @@ fn prediction_registration_text(registration: PredictionRegistration) -> String 
     ConversationOnly { report: report } => concat("conversation-only; no immutable pre-outcome receipt: ", declaration_ref_display_key(ref: report))
     CommittedPredictionWithoutWitnessedOrder { commit: commit, artifact: artifact, report: _ } =>
       concat("committed; ordering not independently witnessed: ", concat(commit, concat(":", artifact)))
+    PostOutcomeArchivedPrediction { archive: archive } => join([
+      "post-outcome archive; ordering asserted only; identity history: ", archive.identity_history,
+      "; original object: ", archive.commit, ":", archive.artifact,
+      "; retrieval ref: ", archive.archive_ref,
+      "; correction source: ", declaration_ref_display_key(ref: archive.report),
+    ], "")
     PreregisteredPrediction { commit: commit, declaration: declaration, recorded_at: _, started_at: _, observed_at: _ } =>
       concat("preregistered on supplied ordered observations: ", concat(commit, concat(" ", declaration_ref_display_key(ref: declaration))))
   }
@@ -55,10 +61,10 @@ fn predictive_standing_text(standing: PredictiveStanding) -> String {
     UntestedPrediction => "UNTESTED prediction"
     NarrowedPredictionAwaitingTest { revisions: n } => concat("NARROWED, awaiting a new test; retained falsified revisions: ", to_string(n))
     FalsifiedPredictionNeedsNarrowing { narrowed_revisions: n } => concat("FALSIFIED, narrowing required; earlier narrowed revisions: ", to_string(n))
-    TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: committed, inconclusive: unknown, narrowed_revisions: revisions } =>
+    TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: committed, post_outcome_archived_matches: archived, inconclusive: unknown, narrowed_revisions: revisions } =>
       join(["TESTED prediction; preregistered isolated matches=", to_string(strong),
         "; weak matches=", to_string(weak), " (committed without witnessed ordering=", to_string(committed),
-        "); inconclusive=", to_string(unknown), "; narrowed revisions=", to_string(revisions)], "")
+        "; post-outcome archived=", to_string(archived), "); inconclusive=", to_string(unknown), "; narrowed revisions=", to_string(revisions)], "")
   }
 }
 
