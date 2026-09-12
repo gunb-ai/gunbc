@@ -99,14 +99,32 @@ fn job_ending_probe_source(body: String) -> String {
     + "    outcome: CasStoreRefused { cause: CasUnreadableReadRefused { detail: \"read refused\" } },\n"
     + "  }\n"
     + "}\n"
+    + "fn sanctioned_ending() -> JobEnding {\n"
+    + "  end_required_job(\n"
+    + "    work: fixture_work(),\n"
+    + "    attempt: \"attempt-1\" as AttemptIdentity,\n"
+    + "    computation: ComputationSucceeded,\n"
+    + "    committed: [],\n"
+    + "    observations: [],\n"
+    + "    namespace: \"fabric-m0/v1/commit\" as CommitNamespace,\n"
+    + "    manifest_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex },\n"
+    + "    members: [],\n"
+    + "    transport: answered(),\n"
+    + "    observed: ManifestReadUnavailable { cause: \"origin unbound\" }\n"
+    + "  )\n"
+    + "}\n"
     + "fn subject() -> JobEnding {\n  "
     + body
     + "\n}\n"
 }
 
-data forged_job_ending_body: String = "JobEnding { publication: PublishPendingReconciliation { attempt: \"attempt-1\" as AttemptIdentity, subject: \"commit-manifest\", cause: \"forged\", unresolved: [] }, conclusion: Success }"
+// The sanctioned mint is in the SHARED preamble so both arms typecheck it. The one-axis
+// body is then either that mint or the forbidden literal; otherwise the green arm's extra
+// diagnostics from instantiating end_required_job fail the exact-key differential while
+// the keyed SoleConstructorViolation counts still pass (the floor red at 4c0bf81).
+data forged_job_ending_body: String = "if false { sanctioned_ending() } else { JobEnding { publication: PublishPendingReconciliation { attempt: \"attempt-1\" as AttemptIdentity, subject: \"commit-manifest\", cause: \"forged\", unresolved: [] }, conclusion: Success } }"
 
-data sanctioned_body: String = "end_required_job(work: fixture_work(), attempt: \"attempt-1\" as AttemptIdentity, computation: ComputationSucceeded, committed: [], observations: [], namespace: \"fabric-m0/v1/commit\" as CommitNamespace, manifest_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex }, members: [], transport: answered(), observed: ManifestReadUnavailable { cause: \"origin unbound\" })"
+data sanctioned_body: String = "sanctioned_ending()"
 
 test fn a_forged_success_beside_pending_is_refused_at_compile() -> Bool {
   sole_constructor_on_job_ending(source: job_ending_probe_source(body: forged_job_ending_body)) == 1
