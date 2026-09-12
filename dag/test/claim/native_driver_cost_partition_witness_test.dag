@@ -27,7 +27,8 @@ fn sample_exclusive_rows() -> NativeDriverExclusiveRows {
     prepare: nanosecond(count: 59277814291),
     eval: nanosecond(count: 3531894),
     receipt_admission: nanosecond(count: 31775),
-    row_serialization: nanosecond(count: 0)
+    row_serialization: nanosecond(count: 0),
+    module_release: nanosecond(count: 0)
   }
 }
 
@@ -61,7 +62,8 @@ test fn exclusive_rows_past_the_parent_are_over_attributed() -> Bool {
       prepare: nanosecond(count: 40),
       eval: nanosecond(count: 0),
       receipt_admission: nanosecond(count: 0),
-      row_serialization: nanosecond(count: 0)
+      row_serialization: nanosecond(count: 0),
+      module_release: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -82,7 +84,8 @@ test fn a_remainder_past_tolerance_is_not_a_partition() -> Bool {
       prepare: nanosecond(count: 10),
       eval: nanosecond(count: 10),
       receipt_admission: nanosecond(count: 0),
-      row_serialization: nanosecond(count: 0)
+      row_serialization: nanosecond(count: 0),
+      module_release: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -115,7 +118,8 @@ test fn an_over_attribution_routed_through_universe_derivation_is_the_same_refus
       prepare: nanosecond(count: 10),
       eval: nanosecond(count: 10),
       receipt_admission: nanosecond(count: 10),
-      row_serialization: nanosecond(count: 0)
+      row_serialization: nanosecond(count: 0),
+      module_release: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -136,7 +140,8 @@ test fn an_over_attribution_routed_through_receipt_admission_is_the_same_refusal
       prepare: nanosecond(count: 10),
       eval: nanosecond(count: 10),
       receipt_admission: nanosecond(count: 80),
-      row_serialization: nanosecond(count: 0)
+      row_serialization: nanosecond(count: 0),
+      module_release: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -162,7 +167,8 @@ test fn a_driver_handed_its_universe_reconciles_with_the_phases_it_does_not_have
       prepare: nanosecond(count: 150),
       eval: nanosecond(count: 50),
       receipt_admission: nanosecond(count: 0),
-      row_serialization: nanosecond(count: 0)
+      row_serialization: nanosecond(count: 0),
+      module_release: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -182,7 +188,8 @@ test fn a_driver_that_derives_its_universe_reconciles_over_the_same_law() -> Boo
       prepare: nanosecond(count: 150),
       eval: nanosecond(count: 40),
       receipt_admission: nanosecond(count: 10),
-      row_serialization: nanosecond(count: 0)
+      row_serialization: nanosecond(count: 0),
+      module_release: nanosecond(count: 0)
     },
     tolerance: native_driver_cost_remainder_tolerance_nanos
   ) {
@@ -244,7 +251,8 @@ fn serialization_sample_rows_measured() -> NativeDriverExclusiveRows {
     prepare: nanosecond(count: 59277814291),
     eval: nanosecond(count: 3531894),
     receipt_admission: nanosecond(count: 31775),
-    row_serialization: nanosecond(count: 158600186)
+    row_serialization: nanosecond(count: 158600186),
+    module_release: nanosecond(count: 0)
   }
 }
 
@@ -256,7 +264,8 @@ fn serialization_sample_rows_dropped() -> NativeDriverExclusiveRows {
     prepare: nanosecond(count: 59277814291),
     eval: nanosecond(count: 3531894),
     receipt_admission: nanosecond(count: 31775),
-    row_serialization: nanosecond(count: 0)
+    row_serialization: nanosecond(count: 0),
+    module_release: nanosecond(count: 0)
   }
 }
 

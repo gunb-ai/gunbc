@@ -66,6 +66,14 @@ type CompilerEntryDriver
   | DirectIngestDriver
   | SourceRootEvalDriver
 
+// MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED (SUCC3,
+// 2026-09-12). The per-module loop closed its prepare span and then let the module's resolved tree
+// fall out of scope at the end of the iteration, so freeing it was paid inside parent_span and
+// covered by no row: the full corpus refused at RemainderExceedsTolerance with a 238.5 ms residual
+// while the reduced subject, whose modules almost all refuse before a tree is built, reconciled at
+// 1.5 ms. The row is MEASURED around an explicit release, never derived as parent minus the others
+// -- a row defined as the remainder forces the residual to zero and makes the tolerance arm
+// unfireable, which is the defect this partition exists to catch.
 // THE NATIVE DRIVER'S EXCLUSIVE WALL PARTITION. claim_batch prints `[cost-partition]` over
 // resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
 // single-threaded wall. The grains are the driver's own, not a restatement of the resolve-split
@@ -110,6 +118,7 @@ type NativeDriverExclusiveRows {
   eval: Nanosecond
   receipt_admission: Nanosecond
   row_serialization: Nanosecond
+  module_release: Nanosecond
 }
 
 type NativeDriverCostAccounting
@@ -122,7 +131,7 @@ type NativeDriverCostAccounting
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization))
+  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release))
 }
 
 fn native_driver_cost_account(

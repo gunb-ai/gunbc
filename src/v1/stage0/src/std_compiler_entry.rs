@@ -35,6 +35,7 @@ pub struct NativeDriverExclusiveRows {
     pub eval: Nanosecond,
     pub receipt_admission: Nanosecond,
     pub row_serialization: Nanosecond,
+    pub module_release: Nanosecond,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -65,13 +66,14 @@ pub fn native_driver_cost_remainder_tolerance_nanos() -> Nanosecond {
 
 pub fn native_driver_exclusive_sum(rows: Rc<NativeDriverExclusiveRows>) -> Nanosecond {
     crate::std_measure::nanosecond(
-        ((((((crate::std_measure::nanosecond_count(rows.load.clone())
+        (((((((crate::std_measure::nanosecond_count(rows.load.clone())
             + crate::std_measure::nanosecond_count(rows.universe_derivation.clone()))
             + crate::std_measure::nanosecond_count(rows.context.clone()))
             + crate::std_measure::nanosecond_count(rows.prepare.clone()))
             + crate::std_measure::nanosecond_count(rows.eval.clone()))
             + crate::std_measure::nanosecond_count(rows.receipt_admission.clone()))
-            + crate::std_measure::nanosecond_count(rows.row_serialization.clone())),
+            + crate::std_measure::nanosecond_count(rows.row_serialization.clone()))
+            + crate::std_measure::nanosecond_count(rows.module_release.clone())),
     )
 }
 

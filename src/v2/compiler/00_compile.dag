@@ -1913,9 +1913,47 @@ fn native_lane_universe_after_ownership(facts: List<NativeLaneSourceFacts>) -> O
 // could never have explained a member's verdict, so carrying it here was never evidence.
 // Membership over module names. `contains` takes the equality it uses rather than assuming one, so
 // the name comparison is supplied here once instead of at each of the three call sites.
-fn native_lane_module_named(xs: List<String>, name: String) -> Bool {
-  contains(xs: xs, item: name, eq: fn(a, b) { a == b })
+// THE MEMBERSHIP SETS ARE BUILT ONCE AND KEYED (review 64753). The annotation on
+// native_lane_file_refusal_for_path promised that this lookup, the closure walk and the ingest
+// join "all retarget in one motion" when the keyed delegate landed. It landed -- v2.std.collection
+// map_insert delegates to map_insert_primitive_delegate -- and only the walk moved, leaving the
+// join answering membership by list scan with no standing drop for the residual. DESIGN section 6
+// fixes a proven cost shape regardless of the realized n, and section 4b(2) forbids the
+// can-climb-now stall without a named trigger. The join was the expensive one: per ingested read it
+// scanned the facts list and then the closure list, so a corpus of F facts and C closure members
+// cost O(reads x (F + C)) where it now costs O(reads) against two sets built once.
+fn native_lane_module_set(modules: List<String>) -> Map<String, Bool> {
+  fold_list(
+    xs: modules,
+    empty: empty_map(),
+    cons: fn(acc, m) { map_insert(acc, m, true) }
+  )
 }
+
+fn native_lane_module_in_set(set: Map<String, Bool>, name: String) -> Bool {
+  match map_lookup(set, name) {
+    Absent => false
+    Present { value: present } => present
+  }
+}
+
+// PATH -> DECLARED MODULE, KEYED. Absent here means EITHER no facts row for the path OR a row that
+// declares no module. Both already led every consumer to the same arm -- the read is not a closure
+// member -- so collapsing them into one absent answer changes no verdict; the arm that needs to
+// TELL them apart is the refusal message below, which reads the facts row directly.
+fn native_lane_module_by_path(facts: List<NativeLaneSourceFacts>) -> Map<Symbol, String> {
+  fold_list(
+    xs: facts,
+    empty: empty_map(),
+    cons: fn(acc, f) {
+      match f.module {
+        Absent => acc
+        Present { value: declared } => map_insert(acc, f.path, declared)
+      }
+    }
+  )
+}
+
 
 // THE WALK'S BUDGET IS A REFUSAL, NEVER A TRUNCATION (review 63719, DESIGN section 5). The
 // reachable set decides what the front end is given, so a walk that stopped early and answered
@@ -1953,17 +1991,16 @@ fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> 
 // facts are now walked once per round and each fact contributes its imports if its own module
 // is on this round's frontier, which is the same answer for strictly less work.
 // 
-// IT IS STILL NOT THE KEYED JOIN, and this comment does not get to imply otherwise: the
-// frontier membership test below is a list scan, so the round remains O(facts x frontier) and
-// the walk O(rounds x facts x frontier). Removing that factor needs keyed lookup, which v2
-// does not have — `v2.std.collection` `map_insert` builds a CLOSURE CHAIN whose lookup walks
-// every prior insert, so a set built from it answers membership in O(n) exactly like
-// `contains`. The capability is declared and unrealized: `v2.std.collection`
-// `map_insert_host_binding` binds `std.primitives` `map_insert_contract` and nothing delegates
-// to it. THE TRIGGER IS A ROW, NOT THIS PARAGRAPH (review 64571):
-// `gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership`, which names the capability as
-// gunbc#11121 and says its toucher retires the row. Until it lands this fold is the honest shape
-// rather than a keyed set in name.
+// THE FRONTIER MEMBERSHIP IS KEYED. The walk carries seen_set as a Map and consults
+// native_lane_facts_index rather than rescanning the facts list, so a round costs one lookup per
+// frontier member instead of a scan of every fact. v2.std.collection map_insert and map_lookup
+// delegate to the host primitives, and the sibling consumers below -- the ingest join, the
+// outside-closure check and the per-path refusal lookup -- read sets built once from the same
+// primitives.
+//
+// THE ORDER THIS PRODUCES IS FRONTIER ORDER, NOT FACT ORDER, and every consumer reads the result
+// as a set; the receipt carries the closure size rather than a position, so no consumer can
+// depend on the difference.
 type NativeLaneClosureStep {
   unseen: List<String>
   seen_set: Map<String, Bool>
@@ -2133,10 +2170,10 @@ fn native_lane_closure_modules(
 // name we are looking for", and a source that declares no module cannot; it is not a stand-in for
 // a name we failed to read. The lexeme form is used only inside a refusal message, where the
 // absent case names itself rather than rendering as an empty gap in the sentence.
-fn native_lane_facts_module_named(xs: List<String>, facts: NativeLaneSourceFacts) -> Bool {
+fn native_lane_facts_module_in_set(set: Map<String, Bool>, facts: NativeLaneSourceFacts) -> Bool {
   match facts.module {
     Absent => false
-    Present { value: declared } => native_lane_module_named(xs: xs, name: declared)
+    Present { value: declared } => native_lane_module_in_set(set: set, name: declared)
   }
 }
 
@@ -2147,26 +2184,22 @@ fn native_lane_facts_module_lexeme(facts: NativeLaneSourceFacts) -> String {
   }
 }
 
-fn native_lane_module_for_path(facts: List<NativeLaneSourceFacts>, path: Symbol) -> Optional<String> {
-  match list_find_first(xs: facts, predicate: fn(f) { f.path == path }) {
-    Absent => optional_absent()
-    Present { value: f } => f.module
-  }
-}
 
 fn native_lane_closure_ingest(
   ingest: SourceRootIngest,
   facts: List<NativeLaneSourceFacts>,
   closure: List<String>
 ) -> SourceRootIngest {
+  let by_path = native_lane_module_by_path(facts: facts)
+  let closure_set = native_lane_module_set(modules: closure)
   fold_list(
     xs: ingest,
     empty: Empty,
     cons: fn(acc, read) {
-      match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+      match map_lookup(by_path, read.compilation_unit) {
         Absent => acc
         Present { value: declared } =>
-          if native_lane_module_named(xs: closure, name: declared) {
+          if native_lane_module_in_set(set: closure_set, name: declared) {
             list_snoc_item(xs: acc, item: read)
           } else {
             acc
@@ -2244,12 +2277,14 @@ fn native_lane_ingest_matches_closure(
   receipt: NativeLaneIngestReceipt,
   ingest: SourceRootIngest
 ) -> Outcome<Bool> {
+  let by_path = native_lane_module_by_path(facts: facts)
+  let closure_set = native_lane_module_set(modules: receipt.closure_modules)
   let ingested_outside = list_find_first(
     xs: ingest,
     predicate: fn(read) {
-      match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+      match map_lookup(by_path, read.compilation_unit) {
         Absent => true
-        Present { value: declared } => !native_lane_module_named(xs: receipt.closure_modules, name: declared)
+        Present { value: declared } => !native_lane_module_in_set(set: closure_set, name: declared)
       }
     }
   )
@@ -2261,28 +2296,28 @@ fn native_lane_ingest_matches_closure(
           "ingested source is not a closure member: path ",
           symbol_lexeme(sym: read.compilation_unit),
           ", declared module ",
-          match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+          match map_lookup(by_path, read.compilation_unit) {
             Absent => "(none -- the header declares no module, so nothing can import it)"
             Present { value: m } => m
           }
         )
       )
     Absent => {
-      let ingested_modules = fold_list(
+      let ingested_set = fold_list(
         xs: ingest,
-        empty: [],
+        empty: empty_map(),
         cons: fn(acc, read) {
-          match native_lane_module_for_path(facts: facts, path: read.compilation_unit) {
+          match map_lookup(by_path, read.compilation_unit) {
             Absent => acc
-            Present { value: m } => list_snoc_item(xs: acc, item: m)
+            Present { value: m } => map_insert(acc, m, true)
           }
         }
       )
       let closure_member_absent = list_find_first(
         xs: facts,
         predicate: fn(f) {
-          native_lane_facts_module_named(xs: receipt.closure_modules, facts: f)
-            && !native_lane_facts_module_named(xs: ingested_modules, facts: f)
+          native_lane_facts_module_in_set(set: closure_set, facts: f)
+            && !native_lane_facts_module_in_set(set: ingested_set, facts: f)
         }
       )
       match closure_member_absent {
@@ -2314,26 +2349,29 @@ fn native_lane_ingest_matches_closure(
 // carrying the resolver's own fatal reason. Every declaration gets exactly one row either way,
 // so the population has no silent remainder to explain.
 
-// THE LOOKUP CONSUMES THE ONE FIRST-MATCH FOLD, AND THE NEXT STEP IS NAMED (review 64135). This
-// was authored as a fold over Optional that kept walking after the accumulator was Present, which
-// is the re-invention DESIGN section 2 forbids -- v2.std.algebra list_find_first already existed,
-// carrying the promotion rule this consumer fired -- and the missing early exit sat in a
-// per-module x per-refusal position, so it is fixed regardless of the realized n (section 6).
+// THE REFUSALS ARE KEYED BY PATH, BUILT ONCE PER RUN (review 64753). The join was O(modules x
+// refusals): a first-match scan per module over every file refusal the context carries. The index
+// is built once by the caller that owns the loop -- the rendered driver, which is the only thing
+// that knows a loop is about to happen -- and each module answers with one map_lookup.
 //
-// WHAT THIS IS STILL NOT, stated so it is not read as finished: a first-match scan is O(refusals)
-// per module and the caller runs it once per universe module, so the join remains O(modules x
-// refusals) with the early exit only improving the constant.
-//
-// THE TRIGGER IS A MISSING CAPABILITY, NOT A DEFERRED CHORE, and naming it as one was the defect
-// review 64181 caught. A path-keyed index cannot be built in v2 today: `v2.std.collection`
-// `map_insert` returns a Map whose `lookup` closes over the previous map, so an n-insert set
-// answers membership by walking n frames -- asymptotically the `contains` this would replace.
-// `empty_map` is the only wired delegate in that module. The capability is already MODELLED and
-// unrealized: `v2.std.collection` `map_insert_host_binding` binds `std.primitives`
-// `map_insert_contract`, and nothing delegates to it. When that delegate lands, this lookup and
-// the closure walk and the ingest join all retarget in one motion.
-fn native_lane_file_refusal_for_path(refusals: FreeMonoid<NativeTestFileRefusal>, path: Symbol) -> Optional<NativeTestFileRefusal> {
-  list_find_first(xs: refusals, predicate: fn(fr) { fr.path == path })
+// THE ABSENT ANSWER IS A REAL ANSWER. A path with no refusal row is a path this context did not
+// refuse, which is exactly what the resolution arm below needs to know; there is no third state in
+// which the index fails to say, so the total Optional is the whole result.
+fn native_lane_file_refusal_index(
+  refusals: FreeMonoid<NativeTestFileRefusal>
+) -> Map<Symbol, NativeTestFileRefusal> {
+  fold_list(
+    xs: refusals,
+    empty: empty_map(),
+    cons: fn(acc, fr) { map_insert(acc, fr.path, fr) }
+  )
+}
+
+fn native_lane_file_refusal_for_path(
+  index: Map<Symbol, NativeTestFileRefusal>,
+  path: Symbol
+) -> Optional<NativeTestFileRefusal> {
+  map_lookup(index, path)
 }
 
 fn native_lane_member_row(module: String, declaration: String, verdict: NativeTestVerdict) -> NativeRouteMemberRow {
@@ -2403,9 +2441,10 @@ type NativeLaneModuleResolution
 
 fn native_lane_module_resolution(
   context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
   entry: NativeLaneUniverseModule
 ) -> NativeLaneModuleResolution {
-  match native_lane_file_refusal_for_path(refusals: context.file_refusals, path: entry.path) {
+  match native_lane_file_refusal_for_path(index: refusal_index, path: entry.path) {
     Present { value: fr } =>
       NativeLaneModuleContextRowsDecided {
         rows: native_lane_module_refusal_rows(
