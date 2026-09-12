@@ -270,13 +270,10 @@ pub enum AdmissionSubject {
         module: &'static str,
         in_declaration: &'static str,
         spelling: &'static str,
-        /// Where the relocated spelling now resolves — the module the admission's own PR moved
-        /// the name TO. Not consulted by delta matching (the delta subject carries no target);
-        /// it is the referent of the CONSUMPTION proof: after the admitting PR merges, the base
-        /// itself binds the spelling to exactly this module, which is the positive, decidable
-        /// fact that separates a consumed row from an author-error row. A row that cannot name
-        /// where its name went is not an admission of a relocation.
-        target: &'static str,
+        /// Exact candidate set after the admitted transition, checked at the head before
+        /// admission and at the base to derive consumption. A set, never merely one member
+        /// whose presence could hide unexpected candidates. The const roster stays authored.
+        expected_candidates: &'static [&'static str],
     },
 }
 
@@ -294,7 +291,7 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 module,
                 in_declaration,
                 spelling,
-                target: _,
+                expected_candidates: _,
             },
             DeltaSubject::Binding {
                 module: observed_module,
@@ -319,8 +316,8 @@ pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
             module,
             in_declaration,
             spelling,
-            target,
-        } => format!("binding {module}::{in_declaration} `{spelling}` -> {target}"),
+            expected_candidates,
+        } => format!("binding {module}::{in_declaration} `{spelling}` -> {expected_candidates:?}"),
     }
 }
 
@@ -592,7 +589,7 @@ pub struct TransitionAdmission {
 /// rows authored by gunbc#9985 are removed by their own dissolve-on trigger, which is that pull
 /// request merging: c2cd45dcff9 IS that merge, so `extdeps.llm.anthropic_rest` already imports the
 /// four hoisted spellings from `extdeps.llm.anthropic_messages_api` on the base of every run, and
-/// `admission_consumed_at_base` proves the relocation the rows admit. Like the RLM-2b pair before
+/// `admission_satisfied_at` proves the relocation the rows admit. Like the RLM-2b pair before
 /// them, they were BORN CONSUMED — authored in the same commit that merged their subject, so no
 /// run after that commit could ever match them.
 ///
@@ -1013,7 +1010,7 @@ pub struct TransitionAdmission {
 /// Same admitted target, one hop further out.
 ///
 /// Neither consumer file is in this diff, so base equals head for both and
-/// `admission_consumed_at_base` holds on all nineteen.
+/// `admission_satisfied_at` holds on all nineteen.
 ///
 /// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND BY NO OTHER. `consumed_due` is
 /// `roster_touched && !consumed.is_empty()`: a consumed row does NOT refuse unrelated pull requests,
@@ -1051,7 +1048,7 @@ pub struct TransitionAdmission {
 /// correction matters because the wrong version overstates this cohort's blast radius.
 ///
 /// After #10358 lands, each of these spellings binds to `gunbc.model.ollama_choice` at the base, so
-/// `admission_consumed_at_base` holds and the rows report CONSUMED -- not stale. A stale row matches
+/// `admission_satisfied_at` holds and the rows report CONSUMED -- not stale. A stale row matches
 /// no delta; a consumed row is one the base has already satisfied. Different states, different
 /// reporters.
 ///
@@ -1101,7 +1098,7 @@ pub struct TransitionAdmission {
 /// negative answer a total observer would have produced only if the fact were genuinely absent.
 ///
 /// WHAT WOULD ACTUALLY SETTLE IT is the production predicate rather than any hand join.
-/// `admission_consumed_at_base` resolves the full (module, enclosing declaration, spelling) subject
+/// `admission_satisfied_at` resolves the full (module, enclosing declaration, spelling) subject
 /// through the re-export chain and requires the base candidate set to be the EXACT SINGLETON named
 /// by the target. Every hand join above is a NECESSARY condition only; it agreed with the mechanism
 /// on these rows and did not establish what the mechanism establishes. The wall's own run at the
@@ -1129,7 +1126,7 @@ pub struct TransitionAdmission {
 /// uniform "found" was not available to it.
 ///
 /// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
-/// paragraphs above -- `admission_consumed_at_base` resolves the full subject through the re-export
+/// paragraphs above -- `admission_satisfied_at` resolves the full subject through the re-export
 /// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
 /// exact head is the proof.
 ///
@@ -1180,7 +1177,7 @@ pub struct TransitionAdmission {
 /// `00_core.dag`, so neither row's target set is ambiguous and no competing local declaration
 /// shadows either call site.
 ///
-/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_consumed_at_base`
+/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_satisfied_at`
 /// resolves the full subject through the re-export chain and requires an exact singleton, which no
 /// hand join reproduces. The wall's own run at the exact head is the proof.
 ///
@@ -1753,6 +1750,27 @@ pub struct TransitionAdmission {
 /// in the same pair. DISSOLVE-ON: this PR merging, after which the base binds these spellings to
 /// exactly these targets and the rows read as consumed.
 ///
+/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
+/// CONSUMED outcome is authored here. The old sentence predicted CONSUMED for a two-member
+/// result that the singleton proof could never accept.
+/// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
+/// The EMPTY DOES NOT MEAN PERMISSIVE rule above makes this shrink fail-closed. This is the
+/// same instance deletion carried by the other cleanup PRs; the landing-incidence repair
+/// must itself discharge the roster debt it now enforces.
+/// THIS PR AUTHORS 181 ROWS INTO A ROSTER MAIN LEFT EMPTY, and they arrive in #11165's vocabulary
+/// rather than the one they were written in. Each row carried `target: "X"` -- the single module
+/// the spelling now binds. #11165 replaced that with `expected_candidates`, THE EXACT CANDIDATE SET
+/// after the transition, and the difference is not a rename: `target` named a winner and could not
+/// see a second candidate standing beside it, which is precisely the blindness that field existed
+/// to have removed. The conversion below is therefore mechanical in FORM and a CLAIM in SUBSTANCE
+/// -- each singleton asserts that the named module is the ONLY candidate at that site.
+///
+/// THAT CLAIM IS ADJUDICATED BY THE EVALUATOR, NOT BY THIS PARAGRAPH. Where a site really has two
+/// candidates the row refuses with `expected candidates {...}, found candidates {...}`, which names
+/// its own repair; main's own note records a two-member result that a singleton proof could never
+/// accept, so some of these are expected to be wrong and to say so. A row that had been silently
+/// correct under `target` and is loud under `expected_candidates` has not regressed -- it has
+/// stopped hiding, which is the whole point of the change this merge brings in.
 /// Five of them arrived one wave late, and the reason is the predicate gap named above rather than
 /// a new rebind: the producer's `floor_discovery_merge_owned_data_record` spelled five names that
 /// moved to the source authority and was left without the import, so the first wave measured them
@@ -1767,7 +1785,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_emitted_build_warnings_denied",
             spelling: "repo_self_warning_denial_rustflags",
-            target: "gunbc.repo_self_warning_policy",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1777,7 +1795,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "clean_emitted_build",
             spelling: "repo_self_warning_denial_rustflags",
-            target: "gunbc.repo_self_warning_policy",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1787,7 +1805,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "an_unrecorded_rustc_identity_is_refused",
             spelling: "repo_self_warning_denial_rustflags",
-            target: "gunbc.repo_self_warning_policy",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1797,7 +1815,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "rustflags_without_the_exact_denial_are_refused",
             spelling: "repo_self_warning_denial_rustflags",
-            target: "gunbc.repo_self_warning_policy",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1807,7 +1825,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_warning_or_a_non_zero_status_on_the_emitted_build_is_refused",
             spelling: "repo_self_warning_denial_rustflags",
-            target: "gunbc.repo_self_warning_policy",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1817,7 +1835,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.repo_self_build",
             in_declaration: "repo_self_clippy_command",
             spelling: "repo_self_warning_denial",
-            target: "gunbc.repo_self_warning_policy",
+            expected_candidates: &["gunbc.repo_self_warning_policy"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1827,7 +1845,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
             in_declaration: "discovery_class_rows",
             spelling: "FloorDiscoveryWalkState",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1837,7 +1855,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
             in_declaration: "live_discovery_state",
             spelling: "FloorDiscoveryWalkState",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1847,7 +1865,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
             in_declaration: "live_discovery_state",
             spelling: "floor_discovery_walk_state_zero",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1857,7 +1875,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
             in_declaration: "plan_entry_disposition",
             spelling: "EntryLiveTreeDispositionRefused",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1867,7 +1885,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
             in_declaration: "plan_entry_disposition",
             spelling: "EntryLiveTreeResolved",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1877,7 +1895,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
             in_declaration: "plan_entry_disposition",
             spelling: "floor_discovery_resolve_entry_live_tree",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1887,7 +1905,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.test.claim.witness_execution_class_live_census_test",
             in_declaration: "plan_member_rows",
             spelling: "FloorDiscoveryWalkState",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1897,7 +1915,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "NativeRouteMemberRow",
             spelling: "NativeTestVerdict",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1907,7 +1925,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "classify_native_refusal",
             spelling: "FatalGrain",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1917,7 +1935,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "classify_native_refusal",
             spelling: "NativeTestStage",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1927,7 +1945,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "classify_native_refusal",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1937,7 +1955,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "classify_native_refusal",
             spelling: "NativeTestStageEntry",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1947,7 +1965,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "classify_native_refusal",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1957,7 +1975,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "classify_native_refusal",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1967,7 +1985,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "classify_native_refusal",
             spelling: "cause_ownership_lookup",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1977,7 +1995,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1987,7 +2005,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -1997,7 +2015,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2007,7 +2025,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestReturnedOther",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2017,7 +2035,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2027,7 +2045,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestStageEntry",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2037,7 +2055,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2047,7 +2065,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_context_refusals_backed",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2057,7 +2075,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2067,7 +2085,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2077,7 +2095,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2087,7 +2105,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestReturnedOther",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2097,7 +2115,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2107,7 +2125,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestStageEntry",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2117,7 +2135,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2127,7 +2145,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2137,7 +2155,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_disposition",
             spelling: "NativeTestVerdict",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2147,7 +2165,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_false_control_holds",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2157,7 +2175,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_false_control_holds",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2167,7 +2185,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_false_control_holds",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2177,7 +2195,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_false_control_holds",
             spelling: "NativeTestReturnedOther",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2187,7 +2205,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_file_refusals_attributed",
             spelling: "FatalGrain",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2197,7 +2215,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_file_refusals_attributed",
             spelling: "cause_ownership_lookup",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2207,7 +2225,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_head_advisories_attributed",
             spelling: "HeadGrain",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2217,7 +2235,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_head_advisories_attributed",
             spelling: "cause_ownership_lookup",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2227,7 +2245,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_true_control_holds",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2237,7 +2255,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_true_control_holds",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2247,7 +2265,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_true_control_holds",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2257,7 +2275,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.witness_v2_native_route",
             in_declaration: "native_route_true_control_holds",
             spelling: "NativeTestReturnedOther",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2267,7 +2285,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_barren_refusal_reason_carries_its_path_holds",
             spelling: "BarrenTestSidecar",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2277,7 +2295,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_barren_refusal_reason_carries_its_path_holds",
             spelling: "FloorDiscoverySidecarViolation",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2287,7 +2305,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_barren_refusal_reason_carries_its_path_holds",
             spelling: "floor_discovery_sidecar_refusal_reason",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2297,7 +2315,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_barren_test_sidecar_refuses_red_control",
             spelling: "floor_discovery_barren_test_sidecar_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2307,7 +2325,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_equivalence_misplaced_wire_contract_refuses_holds",
             spelling: "floor_discovery_wire_contract_sidecar_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2317,7 +2335,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_equivalence_wire_contract_coproduct_scan_holds",
             spelling: "floor_discovery_content_has_wire_contract_decl",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2327,7 +2345,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_equivalence_wire_contract_variant_scan_holds",
             spelling: "floor_discovery_content_has_wire_contract_decl",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2337,7 +2355,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_first_row_label",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2347,7 +2365,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_first_row_reads_substrate_only",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2357,7 +2375,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_live_tree_disposition_note_sibling_not_declaration_holds",
             spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2367,7 +2385,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_live_tree_duplicate_decl_refuses_red_control",
             spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2377,7 +2395,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_live_tree_malformed_variant_refuses_red_control",
             spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2387,7 +2405,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_live_tree_trailing_comment_refuses_red_control",
             spelling: "floor_discovery_entry_live_tree_disposition_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2397,7 +2415,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_non_test_entry_is_never_barren_holds",
             spelling: "floor_discovery_barren_test_sidecar_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2407,7 +2425,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_populated_test_sidecar_admitted_holds",
             spelling: "floor_discovery_barren_test_sidecar_refusal_for_content",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2417,7 +2435,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_producer_empty_transport_red_control",
             spelling: "FloorDiscoveryAccepted",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2427,7 +2445,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_producer_empty_transport_red_control",
             spelling: "FloorDiscoveryRefused",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2437,7 +2455,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_producer_owned_data_row_holds",
             spelling: "FloorDiscoveryAccepted",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2447,7 +2465,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_producer_owned_data_row_holds",
             spelling: "FloorDiscoveryRefused",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2457,7 +2475,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_rows_contain_entry_function",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2467,7 +2485,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
             spelling: "FloorDiscoverySidecarViolation",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2477,7 +2495,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
             spelling: "TestMarkedDecl",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2487,7 +2505,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
             spelling: "WireContractDecl",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2497,7 +2515,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_sidecar_combined_refusal_reports_both_holds",
             spelling: "floor_discovery_sidecar_refusal_reason",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2507,7 +2525,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_sidecar_test_decl_allowed_holds",
             spelling: "floor_discovery_test_decl_sidecar_violation",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2517,7 +2535,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_sidecar_test_decl_misplaced_red_control",
             spelling: "floor_discovery_test_decl_sidecar_violation",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2527,7 +2545,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "test.claim.floor_discovery_hand_rust_equivalence_witness",
             in_declaration: "floor_discovery_surface_text_scan_scaffold_on_carrier",
             spelling: "floor_discovery_surface_text_scan_scaffold",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2537,7 +2555,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_eval_body",
             spelling: "NativeTestObservation",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2547,7 +2565,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_eval_body",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2557,7 +2575,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_eval_body",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2567,7 +2585,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_eval_body",
             spelling: "NativeTestReturnedOther",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2577,7 +2595,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_eval_body",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2587,7 +2605,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_eval_one",
             spelling: "NativeTestObservation",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2597,7 +2615,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_eval_one",
             spelling: "NativeTestStageEntry",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2607,7 +2625,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_file_refusal",
             spelling: "NativeTestFileRefusal",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2617,7 +2635,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_observation_refused",
             spelling: "NativeTestObservation",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2627,7 +2645,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_observation_refused",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2637,7 +2655,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.compile",
             in_declaration: "native_test_observation_refused",
             spelling: "NativeTestStage",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2647,7 +2665,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.effect_demand_floor_join",
             in_declaration: "effect_demand_floor_join",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2657,7 +2675,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.effect_demand_floor_join",
             in_declaration: "effect_demand_floor_join_live",
             spelling: "FloorDiscoveryAccepted",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2667,7 +2685,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.effect_demand_floor_join",
             in_declaration: "effect_demand_floor_join_live",
             spelling: "FloorDiscoveryRefused",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2677,7 +2695,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.compiler.effect_demand_floor_join",
             in_declaration: "floor_join_fold_row",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2687,7 +2705,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.effect_demand.effect_demand_floor_join_test",
             in_declaration: "probe_row",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2697,7 +2715,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.effect_demand.effect_demand_floor_join_test",
             in_declaration: "probe_rows",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2707,7 +2725,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "fdsa_finalize_one",
             spelling: "discover_floor_rows_for_source",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2717,7 +2735,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "fdsa_finalize_one",
             spelling: "floor_discovery_finalize_source_outcomes",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2727,7 +2745,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "fdsa_rows_contain",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2737,7 +2755,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "fdsa_view",
             spelling: "FloorDiscoveryAccepted",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2747,7 +2765,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "fdsa_view",
             spelling: "FloorDiscoveryProducerResult",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2757,7 +2775,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "fdsa_view",
             spelling: "FloorDiscoveryRefused",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2767,7 +2785,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "finalize_unions_per_source_outcomes",
             spelling: "discover_floor_rows_for_source",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2777,7 +2795,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "finalize_unions_per_source_outcomes",
             spelling: "floor_discovery_finalize_source_outcomes",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2787,7 +2805,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "one_violation_among_many_sources_stops_the_line",
             spelling: "discover_floor_rows_for_source",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2797,7 +2815,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.claim.floor_discovery_source_authority_test",
             in_declaration: "one_violation_among_many_sources_stops_the_line",
             spelling: "floor_discovery_finalize_source_outcomes",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2807,7 +2825,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_migration",
             spelling: "HeadGrain",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2817,7 +2835,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_migration",
             spelling: "MigrationOwned",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2827,7 +2845,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_migration",
             spelling: "SharedSelfHostCriticalPath",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2837,7 +2855,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_migration",
             spelling: "ThisLaneCalibration",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2847,7 +2865,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_migration",
             spelling: "cause_ownership_lookup",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2857,7 +2875,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_shared",
             spelling: "HeadGrain",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2867,7 +2885,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_shared",
             spelling: "MigrationOwned",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2877,7 +2895,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_shared",
             spelling: "SharedSelfHostCriticalPath",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2887,7 +2905,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_shared",
             spelling: "ThisLaneCalibration",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2897,7 +2915,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_shared",
             spelling: "cause_ownership_lookup",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2907,7 +2925,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_this_lane",
             spelling: "HeadGrain",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2917,7 +2935,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_this_lane",
             spelling: "MigrationOwned",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2927,7 +2945,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_this_lane",
             spelling: "SharedSelfHostCriticalPath",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2937,7 +2955,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_this_lane",
             spelling: "ThisLaneCalibration",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2947,7 +2965,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.compile_door_ledger_ownership",
             in_declaration: "lane_ok_this_lane",
             spelling: "cause_ownership_lookup",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2957,7 +2975,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.native_decl_selection",
             in_declaration: "observation_is_entry_not_found",
             spelling: "NativeTestObservation",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2967,7 +2985,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.native_decl_selection",
             in_declaration: "observation_is_entry_not_found",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2977,7 +2995,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.native_decl_selection",
             in_declaration: "observation_is_entry_not_found",
             spelling: "NativeTestStageEntry",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2987,7 +3005,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.native_decl_selection",
             in_declaration: "the_requested_declaration_is_selected_and_evaluated",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -2997,7 +3015,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_context_refusal_at_its_own_path_with_the_wrong_reason_is_refused",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3007,7 +3025,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_context_refusal_backed_by_another_modules_file_is_refused",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3017,7 +3035,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_context_refusal_backed_by_its_file_refusal_is_not_refused_on_that_clause",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3027,7 +3045,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_context_refusal_without_its_file_refusal_is_refused",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3037,7 +3055,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_context_stage_refusal_is_frontier_attributed_only_when_the_ledger_owns_it",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3047,7 +3065,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_false_against_an_expected_red_identity_is_the_expected_red_observed",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3057,7 +3075,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_false_against_the_standing_expectation_is_a_divergence",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3067,7 +3085,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_falsified_true_control_is_refused",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3077,7 +3095,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_non_boolean_return_is_a_divergence_on_every_reference",
             spelling: "NativeTestReturnedOther",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3087,7 +3105,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_pass_against_an_expected_red_identity_is_a_divergence",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3097,7 +3115,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_pass_agrees_with_the_standing_expectation",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3107,7 +3125,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_passed_false_control_is_refused",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3117,7 +3135,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_prepare_stage_refusal_is_frontier_attributed_only_when_the_ledger_owns_it",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3127,7 +3145,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_reached_verdict_on_a_route_gap_identity_is_a_divergence",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3137,7 +3155,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_reached_verdict_on_a_route_gap_identity_is_a_divergence",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3147,7 +3165,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_regressed_required_native_pass_is_refused",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3157,7 +3175,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_route_gap_refusal_off_the_boundary_is_an_exclusion",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3167,7 +3185,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_route_gap_refusal_off_the_boundary_is_an_exclusion",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3177,7 +3195,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "a_route_gap_refusal_off_the_boundary_is_an_exclusion",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3187,7 +3205,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "an_all_refused_population_is_refused",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3197,7 +3215,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "an_entry_stage_refusal_is_a_driver_limit_only_at_a_known_reason",
             spelling: "NativeTestStageEntry",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3207,7 +3225,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "an_eval_stage_refusal_is_the_boundary_only_at_a_boundary_reason",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3217,7 +3235,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "an_unattributed_exclusion_is_refused",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3227,7 +3245,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "false_row",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3237,7 +3255,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "file_refusal_row",
             spelling: "NativeTestFileRefusal",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3247,7 +3265,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "passed_row",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3257,7 +3275,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "receipt_over",
             spelling: "NativeTestFileRefusal",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3267,7 +3285,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "receipt_over",
             spelling: "NativeTestPassed",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3277,7 +3295,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "receipt_over",
             spelling: "NativeTestReturnedFalse",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3287,7 +3305,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "refused_row",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3297,7 +3315,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "refused_row",
             spelling: "NativeTestStage",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3307,7 +3325,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "the_census_counts_every_disposition",
             spelling: "NativeTestStageContext",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3317,7 +3335,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "the_census_counts_every_disposition",
             spelling: "NativeTestStageEntry",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3327,7 +3345,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "the_census_counts_every_disposition",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3337,7 +3355,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "the_census_counts_every_disposition",
             spelling: "NativeTestStagePrepare",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3347,7 +3365,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "the_route_gap_agrees_only_with_the_hermetic_boundary_refusal",
             spelling: "NativeTestRefused",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3357,7 +3375,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.test.v2_native_route",
             in_declaration: "the_route_gap_agrees_only_with_the_hermetic_boundary_refusal",
             spelling: "NativeTestStageEval",
-            target: "v2.compiler.native_test_vocabulary",
+            expected_candidates: &["v2.compiler.native_test_vocabulary"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3367,7 +3385,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.compile_door_ledger",
             in_declaration: "cause_is_attributed",
             spelling: "HeadGrain",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3377,7 +3395,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.compile_door_ledger",
             in_declaration: "cause_is_attributed",
             spelling: "cause_ownership_lookup",
-            target: "v2.workflow.compile_door_cause_ownership",
+            expected_candidates: &["v2.workflow.compile_door_cause_ownership"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3387,7 +3405,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "discover_floor_corpus_rows_from_host_facts",
             spelling: "FloorDiscoveryProducerResult",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3397,7 +3415,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "discover_floor_corpus_rows_from_host_facts",
             spelling: "floor_discovery_finalize",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3407,7 +3425,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "discover_floor_corpus_rows_from_host_facts",
             spelling: "floor_discovery_walk_state_zero",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3417,7 +3435,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_apply_row_admission",
             spelling: "FloorDiscoveryWalkState",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3427,7 +3445,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "FloorDiscoveryRow",
-            target: "v2.workflow.floor_discovery_row",
+            expected_candidates: &["v2.workflow.floor_discovery_row"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3437,7 +3455,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "FloorDiscoveryWalkState",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3447,7 +3465,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "floor_discovery_record_walk_failure",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3457,7 +3475,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "EntryLiveTreeDispositionRefused",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3467,7 +3485,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "EntryLiveTreeResolved",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3477,7 +3495,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "floor_discovery_append_row",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3487,7 +3505,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "floor_discovery_record_disposition_refusal",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3497,7 +3515,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_merge_owned_data_record",
             spelling: "floor_discovery_resolve_entry_live_tree",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3507,7 +3525,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_process_dag_file",
             spelling: "FloorDiscoveryWalkState",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3517,7 +3535,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_process_dag_file",
             spelling: "floor_discovery_fold_source",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3527,7 +3545,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_process_dag_file",
             spelling: "floor_discovery_path_excluded",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3537,7 +3555,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_process_dag_file",
             spelling: "floor_discovery_record_walk_failure",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3547,7 +3565,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_walk_dir",
             spelling: "FloorDiscoveryWalkState",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3557,7 +3575,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.floor_discovery_producer",
             in_declaration: "floor_discovery_walk_dir",
             spelling: "floor_discovery_record_walk_failure",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3567,7 +3585,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "v2.workflow.realization_sweep",
             in_declaration: "entry_canonical_identities",
             spelling: "floor_discovery_walk_state_zero",
-            target: "v2.workflow.floor_discovery_source_authority",
+            expected_candidates: &["v2.workflow.floor_discovery_source_authority"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
@@ -3596,7 +3614,7 @@ pub struct WaveAdmissionReport {
     /// Rows whose admitted relocation the BASE already satisfies — consumed by their own merge.
     /// Typed receipts, never refusals for an unrelated run: the deletion obligation they carry
     /// stands on the roster's own next touch (see the executor's roster-touched arm). Entered
-    /// only on the POSITIVE proof `admission_consumed_at_base`, never as the else-arm of "did
+    /// only on the POSITIVE proof `admission_satisfied_at`, never as the else-arm of "did
     /// not match a delta" — a row provable against neither side stays an UnmatchedAdmission
     /// refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
@@ -4000,11 +4018,19 @@ pub fn adjudicate(
 
     // ── ADMISSIONS ──
     let mut used: BTreeSet<usize> = BTreeSet::new();
+    let mut invalid_admissions = BTreeMap::new();
     for delta in deltas.iter_mut() {
         for (i, admission) in admissions.iter().enumerate() {
             if admission_subject_matches(&admission.subject, &delta.subject)
                 && admission.disposition == delta.disposition
             {
+                if matches!(admission.subject, AdmissionSubject::Binding { .. }) {
+                    if let Err(mismatch) = admission_satisfied_at(admission, head, &head_membership)
+                    {
+                        invalid_admissions.insert(i, format!("head {mismatch}"));
+                        continue;
+                    }
+                }
                 delta.admitted_by = Some(admission.label.to_string());
                 used.insert(i);
                 break;
@@ -4021,10 +4047,11 @@ pub fn adjudicate(
     // roster's garbage collector — externalized degradation (DESIGN §5).
     //
     // The two states are decidable apart, so this is a wall, not a ratchet: a consumed row's
-    // admitted relocation ALREADY HOLDS AT THE BASE (`admission_consumed_at_base`, a positive
+    // admitted relocation ALREADY HOLDS AT THE BASE (`admission_satisfied_at`, a positive
     // check against the base index), while an author-error row is provable against neither side.
-    // Only the proven arm is typed ConsumedByMerge; everything else unused still refuses as an
+    // Only the proven arm is typed ConsumedByMerge; everything else unused remains an
     // UnmatchedAdmission. The consumed arm does not widen: it is unreachable by fallthrough.
+    // Unmatched rows still refuse every PR; consumed rows come due on landing or roster edits.
     //
     // RETIRED BY: admissions bound to the delta content they admit, adjudicated per run and never
     // resident on main — the capability that makes a stale-able row unwritable. Until that
@@ -4036,21 +4063,25 @@ pub fn adjudicate(
         if used.contains(&i) {
             continue;
         }
-        if admission_consumed_at_base(a, base, &base_membership) {
-            consumed_admissions.push(format!(
+        let satisfaction = match invalid_admissions.get(&i) {
+            Some(mismatch) => Err(mismatch.clone()),
+            None => admission_satisfied_at(a, base, &base_membership)
+                .map_err(|mismatch| format!("base {mismatch}")),
+        };
+        match satisfaction {
+            Ok(()) => consumed_admissions.push(format!(
                 "{} ({} {}) already satisfied at the base — consumed by its own merge; deletion \
-                 is owed on the roster's next touch",
+                 is owed on landing or the roster's next touch",
                 a.label,
                 disposition_label(a.disposition),
                 admission_subject_render(&a.subject)
-            ));
-        } else {
-            stale_admissions.push(format!(
-                "{} ({} {}) matches no delta in this run",
+            )),
+            Err(mismatch) => stale_admissions.push(format!(
+                "{} ({} {}) has no valid admission in this run: {mismatch}",
                 a.label,
                 disposition_label(a.disposition),
                 admission_subject_render(&a.subject)
-            ));
+            )),
         }
     }
 
@@ -4062,33 +4093,51 @@ pub fn adjudicate(
     }
 }
 
-/// The POSITIVE consumption proof: the base itself already satisfies the admitted relocation.
-///
-/// Binding rows: the base binds (module, in_declaration, spelling) to EXACTLY the admitted
-/// target — a singleton set equal to it, not merely containing it. Membership rows: the base
-/// module's direct membership already carries the target. Anything less provable is not
-/// consumption; the caller refuses it as an UnmatchedAdmission.
-fn admission_consumed_at_base(
+/// Prove the admitted result at one index, or name its expected and observed candidates.
+/// The head check prevents authoring an unreachable lifecycle; the base check derives
+/// consumption. Membership keeps its existing presence proof; binding requires set equality.
+fn admission_satisfied_at(
     a: &TransitionAdmission,
-    base: &DeclarationIndex,
-    base_membership: &BTreeMap<String, BTreeSet<String>>,
-) -> bool {
+    index: &DeclarationIndex,
+    membership: &BTreeMap<String, BTreeSet<String>>,
+) -> Result<(), String> {
     match &a.subject {
-        AdmissionSubject::Membership { module, target } => base_membership
-            .get(*module)
-            .is_some_and(|members| members.contains(*target)),
+        AdmissionSubject::Membership { module, target } => {
+            if membership
+                .get(*module)
+                .is_some_and(|members| members.contains(*target))
+            {
+                Ok(())
+            } else {
+                Err(format!(
+                    "expected membership {module} -> {target}, found {:?}",
+                    membership.get(*module)
+                ))
+            }
+        }
         AdmissionSubject::Binding {
             module,
             in_declaration,
             spelling,
-            target,
+            expected_candidates,
         } => {
-            let Some(record) = index_get(base, module) else {
-                return false;
+            let expected: BTreeSet<String> =
+                expected_candidates.iter().map(|s| s.to_string()).collect();
+            let Some(record) = index_get(index, module) else {
+                return Err(format!(
+                    "expected candidates {expected:?}, found no module {module}"
+                ));
             };
-            let rows = binding_rows(base, record);
-            rows.get(&((*in_declaration).to_string(), (*spelling).to_string()))
-                .is_some_and(|set| set.len() == 1 && set.contains(*target))
+            let rows = binding_rows(index, record);
+            match rows.get(&((*in_declaration).to_string(), (*spelling).to_string())) {
+                Some(found) if *found == expected => Ok(()),
+                Some(found) => Err(format!(
+                    "expected candidates {expected:?}, found candidates {found:?}"
+                )),
+                None => Err(format!(
+                    "expected candidates {expected:?}, found no binding row"
+                )),
+            }
         }
     }
 }
@@ -4282,7 +4331,8 @@ use crate::cli_run::{workspace_root, DAG_PARSE_SWEEP_ROOTS};
 pub enum WaveAdmissionOutcome {
     /// The baseline resolves to the head, so there is no diff. A push to `main` after a squash
     /// merge is the whole population. NOT an admission: nothing was compared, and the phase
-    /// reports it under its own name.
+    /// reports it under its own name. Only an empty roster may take this arm: landing still
+    /// adjudicates and refuses stale or consumed rows when there is no diff.
     NoSubject { head: String },
     /// The baseline could not be observed. Refuses.
     NotEvaluated { reason: String },
@@ -4290,11 +4340,8 @@ pub enum WaveAdmissionOutcome {
         base: String,
         head: String,
         report: WaveAdmissionReport,
-        /// Whether this run's diff touches the admission roster's own source file. Consumed
-        /// rows are inert receipts for every other run; on this path their deletion is DUE, and
-        /// the executor refuses until the touching change removes them. This is what moves the
-        /// cleanup bill from bystanders to the roster: the next relocation PR by construction
-        /// touches this file and therefore cannot land while consumed rows stand.
+        /// Whether this diff touches the roster source. Consumed rows come due here
+        /// and on main (base == head); stale rows refuse regardless of this flag.
         roster_touched: bool,
     },
 }
@@ -4314,15 +4361,10 @@ pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_ad
 /// The executor keeps the receipts — it is the thing with a stderr — and asks this for the verdict,
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
-/// AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a permission standing
-/// over nothing — author error, and leaving it means the roster stops being a fact about the
-/// corpus.
-///
-/// A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already holds at the
-/// base (a positive proof), so for an unrelated run it is an inert typed receipt; billing its
-/// cleanup to that run was the externalized degradation eight dissolution PRs paid for. The
-/// deletion is due — and enforced — on the first change that touches the roster file itself,
-/// which every future relocation PR does by construction.
+/// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
+/// (base == head) or on a roster-source edit. Lifecycle is derived from the candidate-set
+/// proof, never predicted by an authored row. Policy authority:
+/// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
     match outcome {
         WaveAdmissionOutcome::NoSubject { head: _ } => None,
@@ -4330,24 +4372,41 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             Some("namespace-wave-admission (NotEvaluated)".to_string())
         }
         WaveAdmissionOutcome::Adjudicated {
-            base: _,
-            head: _,
+            base,
+            head,
             report,
             roster_touched,
         } => {
             let unadjudicated = report_unadjudicated(report);
-            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
-            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
+            let roster_due = base == head || *roster_touched;
+            let consumed_due = roster_due && !report.consumed_admissions.is_empty();
+            let stale_due = !report.stale_admissions.is_empty();
+            if unadjudicated.is_empty() && !stale_due && !consumed_due {
                 return None;
             }
+            let remedy = if stale_due || consumed_due {
+                let rows = report
+                    .stale_admissions
+                    .iter()
+                    .chain(&report.consumed_admissions)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                format!(
+                    "; delete these rows from {ADMISSION_ROSTER_REL_PATH}; declared transition \
+                     labels (including their trigger PR where authored): {rows}"
+                )
+            } else {
+                String::new()
+            };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){})",
+                 consumed admission(s){}){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
-                if consumed_due {
-                    " due for deletion on this roster-touching change"
+                if consumed_due || stale_due {
+                    " due for correction or deletion"
                 } else {
                     ""
                 }
@@ -4539,7 +4598,16 @@ pub fn run_required_wave_admission(
         }
     };
     if base == head {
-        return Ok(WaveAdmissionOutcome::NoSubject { head });
+        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
+            return Ok(WaveAdmissionOutcome::NoSubject { head });
+        }
+        // Landing owns roster debt even though it has no namespace delta to compare.
+        return Ok(WaveAdmissionOutcome::Adjudicated {
+            base,
+            head,
+            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
+            roster_touched: false,
+        });
     }
 
     let name_status = git_stdout(

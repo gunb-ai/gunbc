@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_shared_probe_root_lets_one_run_compile_anothers_source
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_shared_probe_root_lets_one_run_compile_anothers_source: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_shared_probe_root_lets_one_run_compile_anothers_source" as NonEmptyStr,
+
+  receipts: [
+    "**a shared probe root lets one run compile another run source** (two executions of the same pipeline on one host materialize their generated crate into a directory keyed by WHAT is being built rather than by WHO is building it, so the second writer overwrites the first. Nothing detects it: there is no lock, no lease and no identity check on the directory. The loser compiles the winner source against its own dependencies, and the type errors that result are attributed to the loser tree.)",
+
+    "INVALID STATE: a build whose SOURCE came from one revision and whose DEPENDENCIES came from another, with a diagnostic that names only the second. The artifact directory is a shared mutable resource held without exclusion, and its contents claim to be a projection of the tree that is reading them.",
+
+    "WHY IT SURVIVES REVIEW: every component is correct in isolation. The emitter emits correctly, the compiler compiles correctly, and the refusal is a true statement about the bytes it was handed. The defect is only visible in the JOIN between two runs, which no single run can see -- and the failing run is the innocent one, so the evidence points away from the cause.",
+
+    "THE DIAGNOSTIC IS ACTIVELY MISLEADING, which is what raises this above ordinary flakiness. The refusal names a real incompatibility between the source it found and the dependencies it holds, so it reads as a defect in the tree that refused. On 2026-09-12 (gunbc#10940) a successor run refused with E0063 naming three missing fields on a cost-row type, and the first reading -- mine -- was that the branch emitted a broken driver. It did not: the emitted main on disk was the BASE revision, written minutes earlier by a concurrently running baseline, and it predated the three fields the branch had added. An hour of a review cycle was spent on the wrong tree.",
+
+    "DISTINGUISHING FACT, so the next reader gets there faster: READ THE GENERATED ARTIFACT, not just the diagnostic. If its content corresponds to a revision other than the one being built -- a field set, a call, a spelling that belongs to a different head -- the build is compiling somebody else source. A timestamp on the generated file that falls inside another run window is the confirming reading.",
+
+    "NOT THE SAME AS THE PERMISSION FORM, and the relationship is the point. The same shared directory already produced a LOUD instance: a required lane hit EACCES against another job artifacts, and the repair routed that lane to a declared per-job root. The environment-declared root was therefore already a known mitigation for the loud form while the SILENT form stayed reachable for every execution that does not declare one. A collision class fixed for the case that announces itself, and left open for the case that does not, is the more dangerous half surviving.",
+
+    "RUNG: found BELOW the ladder. The wrong answer is silent -- the run does not merely fail, it fails with a confident and specific cause about the wrong subject.",
+
+    "CEILING 4, structurally impossible, and it is reachable because the missing fact is one the system already has. A probe root keyed by the TREE AND RUN IDENTITY cannot be shared by two runs, so the invalid state has no constructor; a held lease on the directory reaches the same place by exclusion rather than by naming. The choice between them is a design question, not a research one.",
+
+    "NEXT-RUNG TRIGGER (a CAPABILITY, not an artifact): the generated-crate location is derived from the identity of the run that produces it -- tree, head and invocation -- rather than from the identity of the thing being built. Setting an environment variable per launch is a MITIGATION and does not discharge this row: it protects the launches that remember, leaves every other caller on the shared path, and cannot be relied on by anything that did not set it.",
+
+    "REVIEW TELL: a generated or cached artifact path assembled from what is being produced -- an entry path, a crate name, a content kind -- with no component naming who is producing it, and no lock beside it. Ask what happens when two runs execute at once on one host, and whether the second one would be able to tell.",
+  ],
+
+  evidence: [],
+}
