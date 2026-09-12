@@ -457,6 +457,23 @@ fn witness_subject(entry: String, function: String, module_path: String) -> Witn
     module_path: module_path as NonEmptyStr
   }
 }
+// THE CLAIMED RUNG IS DOWNGRADED, AND THE EVIDENCE IS THE REASON (gunbc#11004, 2026-09-12). This
+// row claimed MechanicallyPreventable on the strength of the discriminating red named below,
+// `gate_red_quadratic_rejects`. That witness lives in `test/claim/long/`, a
+// `gunbc.ci_layer_roots witness_exclusion_frontier` pattern, so no required run had ever planned
+// it and no verdict existed. gunbc#11073's long-home arm ran it for the first time and it FAILED:
+// measured with a three-way discriminator, the specimen normalizes and the gate ACCEPTS it,
+// because `accumulator_copy_findings` returns no suspect for the fold-append accumulator shape the
+// lens exists to refuse. Confirmed latent rather than regressed -- one binary, FAIL against
+// origin/main and against the head, both sibling controls PASS on both.
+//
+// So the executed evidence establishes that the invalid state is NOT prevented, and DESIGN section
+// 4b(1) admits only the rung executed evidence supports. `Mitigatable` is the honest arm: the gate
+// is total and returns a typed outcome on every tree, so harm is contained, and nothing above that
+// is established while the analyzer misses its own specimen. The class is
+// `gunbc.recurring_failure_mode required_lens_red_control_never_executes_from_its_home`, the red is
+// admitted in `gunbc.explicit_witness_admission` with a trigger naming the analyzer capability, and
+// the RESTORATION of this rung is that same trigger -- not the witness greening by any other route.
 data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
   identity: "accumulator_copy_root_lens" as NonEmptyStr,
   kind: RequiredRootLens,
@@ -464,7 +481,7 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
     module_path: "v2.lens.complexity_accumulator_copy.compile_gate",
     decl_name: "accumulator_copy_compile_gate"
   ) },
-  claimed_rung: MechanicallyPreventable,
+  claimed_rung: Mitigatable,
   discriminating_red: "a rooted tree threading a copied accumulator through a fold, which the gate must reject with a located diagnostic rather than a widened pass" as NonEmptyStr,
   positive_control: "the resolved add fixture, which threads no copy and must pass the root-required roster unchanged (src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag)" as NonEmptyStr,
   witnesses: [
