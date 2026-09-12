@@ -31,6 +31,10 @@ import gunbc.spark.vllm_observed {
 }
 import gunbc.spark.first_party_serving {
   SparkServingRealization, spark_serving_usage_stats_standing, spark_usage_stats_telemetry_path,
+  spark_serving_usage_stats_unread_cause, SparkTelemetryUnreadCause,
+  TelemetryReadbackUnresolved, TelemetryReportedPathDiffers, TelemetryDeclaredPathUnpinned,
+  TelemetryNoHostMembership, TelemetryHostsWithoutObservedLanes,
+  TelemetryConfigurationMatchedButUnread,
   spark_first_party_use_scope, spark_first_party_admission,
   spark_first_party_sanction_roster, spark_first_party_route_facts, spark_first_party_posture,
   spark_sanctions_disposition, spark_export_disposition, spark_prohibited_use_disposition,
@@ -312,14 +316,14 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
 // still returns Unread, for the missing-launch-bound-evidence reason rather than for either of the
 // two earlier causes. Before this repair this exact input produced an established standing.
 test fn a_matching_readback_does_not_establish_the_effective_telemetry_configuration() -> Bool {
-  match spark_serving_usage_stats_standing(realization: t_pair_realization()) {
-    UsageStatsEnabledByDefault { basis: _ } => false
-    UsageStatsDisabledByLaunch { mechanism: _ } => false
-    UsageStatsLaunchUnread { obligation: o } =>
-      string_contains(s: o as String, pattern: "MATCHING REPORTED CONFIGURATION DOES NOT ESTABLISH")
-        && string_contains(s: o as String, pattern: "EFFECTIVE TELEMETRY CONFIGURATION OF THE PROCESS THAT ANSWERED")
-        && !string_contains(s: o as String, pattern: "no environment model for the deployment that answered")
-        && !string_contains(s: o as String, pattern: "no set of machines whose serving container environment could be read")
+  match spark_serving_usage_stats_unread_cause(realization: t_pair_realization()) {
+    TelemetryConfigurationMatchedButUnread { configured_model_path: p } =>
+      (p as String) == t_declared_path()
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
   }
 }
 
@@ -344,10 +348,14 @@ test fn the_missing_evidence_refusal_produces_an_unread_telemetry_path() -> Bool
 // have handed this launch the pair route's answer, so a native GLM engine would have been admitted
 // on route facts describing a different container. It is unread now, which refuses.
 test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool {
-  match spark_serving_usage_stats_standing(realization: t_foreign_realization()) {
-    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no environment model for the deployment that answered")
-    UsageStatsEnabledByDefault { basis: _ } => false
-    UsageStatsDisabledByLaunch { mechanism: _ } => false
+  match spark_serving_usage_stats_unread_cause(realization: t_foreign_realization()) {
+    TelemetryReportedPathDiffers { reported: rep, declared: dec } =>
+      (dec as String) == t_declared_path() && (rep as String) != t_declared_path()
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
   }
 }
 
@@ -371,13 +379,16 @@ test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
 // -- reading more of the lane roster answers nothing while the realization names no hosts (review
 // 64438).
 test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
-  match spark_serving_usage_stats_standing(realization: SparkServingRealization {
+  match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
     hosts: [] as List<HostIdentity>,
     readback: t_readback(path: t_declared_path()),
   }) {
-    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no host membership")
-    UsageStatsEnabledByDefault { basis: _ } => false
-    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => true
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
   }
 }
 
@@ -388,13 +399,16 @@ test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
 // Partial evidence is missing evidence: srv5 has an observed lane and srv1 does not, and the answer
 // is the obligation rather than srv5's environment.
 test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_observed_half() -> Bool {
-  match spark_serving_usage_stats_standing(realization: SparkServingRealization {
+  match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
     hosts: [operator_host_srv5, operator_host_srv1],
     readback: t_readback(path: t_declared_path()),
   }) {
-    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "no observed fabric lane")
-    UsageStatsEnabledByDefault { basis: _ } => false
-    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => true
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
   }
 }
 
@@ -403,12 +417,15 @@ test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_ob
 // identity join launch-bound rather than declaration-bound: with nothing reported by the process,
 // there is nothing to compare to the declared path.
 test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
-  match spark_serving_usage_stats_standing(realization: SparkServingRealization {
+  match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
     hosts: [operator_host_srv5, operator_host_srv6],
     readback: ModelsRouteDocumentUnreadable { cause: "the document's data member is not an array" as NonEmptyStr },
   }) {
-    UsageStatsLaunchUnread { obligation: o } => string_contains(s: o as String, pattern: "did not resolve")
-    UsageStatsEnabledByDefault { basis: _ } => false
-    UsageStatsDisabledByLaunch { mechanism: _ } => false
+    TelemetryReadbackUnresolved => true
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
   }
 }

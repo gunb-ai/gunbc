@@ -461,16 +461,33 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // configuration, and matching a configuration is not being the launch that configuration describes
 // -- a second engine started with the same model path reports the same string. Nothing observable
 // here separates them, so the residual is real rather than pending: no widening of this comparison
-// closes it, and a consumer may not read RealizationIsPairServing as identity. The consequence is
+// closes it. The ARM NAME now carries that limit rather than this sentence -- it is
+// RealizationMatchesPairServingConfiguration, which is what it establishes. The consequence is
 // carried where it matters, at spark_serving_usage_stats_declared_environment_obligation: because
 // this arm does not establish which launch answered, no declared fact about that launch -- its
 // container environment above all -- may be attributed to the process on the strength of it.
 // AND SEPARATELY, on bytes: the path is the path the server was CONFIGURED with, which
 // gunbc.spark.vllm_observed states is strong evidence about intent and no evidence about bytes, so
 // the incarnation join is open too and nothing here closes it.
+// THE ARM IS NAMED FOR WHAT IT ESTABLISHES, WHICH IS NOT IDENTITY. An earlier spelling called it
+// RealizationIsPairServing and then spent a paragraph telling consumers not to read it as identity.
+// That is a name asserting what the value may not be relied on to mean, and the warning was doing
+// work the type should do -- DESIGN 4c is explicit that no Accepted program reads an annotation, so
+// a consumer that trusted the name was never going to meet the caveat. The consumer that did exactly
+// that was in this same change: spark_serving_route_standing named a specific deployment on the
+// strength of this arm. Construction over validation (DESIGN 5) puts the fix in the constructor.
+//
+// AND THE FAILURES ARE TYPED RATHER THAN A SENTENCE. They used to collapse into one
+// a single unidentified arm carrying a String, so the three situations -- a readback that did not
+// resolve, a path that disagreed, a snapshot with nothing to compare against -- were distinguishable
+// only by reading the prose. Witnesses had to discriminate them with string_contains, which is
+// validation standing where construction was available, and a case mismatch in exactly that pattern
+// cost a floor run on this branch.
 type SparkRealizationIdentity
-  = RealizationIsPairServing { configured_model_path: NonEmptyStr }
-  | RealizationUnidentified { cause: NonEmptyStr }
+  = RealizationMatchesPairServingConfiguration { configured_model_path: NonEmptyStr }
+  | RealizationReportedPathDiffers { reported: NonEmptyStr, declared: NonEmptyStr }
+  | RealizationDeclaredPathUnpinned
+  | RealizationReadbackUnresolved
 
 fn spark_realization_identity(realization: SparkServingRealization) -> SparkRealizationIdentity {
   match realization.readback {
@@ -478,26 +495,16 @@ fn spark_realization_identity(realization: SparkServingRealization) -> SparkReal
       match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
         Present { value: declared } =>
           if (r.configured_model_path as String) == declared {
-            RealizationIsPairServing { configured_model_path: r.configured_model_path }
+            RealizationMatchesPairServingConfiguration { configured_model_path: r.configured_model_path }
           } else {
-            RealizationUnidentified {
-              cause: join([
-                "the engine reports the model path ", r.configured_model_path as String,
-                ", which is not the path the pair-serving launch is declared to serve (",
-                declared,
-                "), so this repository has no environment model for the deployment that answered",
-              ], "") as NonEmptyStr,
+            RealizationReportedPathDiffers {
+              reported: r.configured_model_path,
+              declared: declared as NonEmptyStr,
             }
           }
-        Absent =>
-          RealizationUnidentified {
-            cause: "the pair-serving snapshot is unpinned, so no declared model path exists to compare the engine's reported one against" as NonEmptyStr,
-          }
+        Absent => RealizationDeclaredPathUnpinned
       }
-    _ =>
-      RealizationUnidentified {
-        cause: "the route's /v1/models readback did not resolve, so nothing the running process reported identifies which declared launch it is" as NonEmptyStr,
-      }
+    _ => RealizationReadbackUnresolved
   }
 }
 
@@ -534,26 +541,73 @@ data spark_serving_usage_stats_declared_environment_obligation: NonEmptyStr = "g
 
 data spark_serving_usage_stats_unobserved_hosts_obligation: NonEmptyStr = "gunbc.spark.first_party_serving: one or more hosts of the realization that answered has no observed fabric lane, so the telemetry answer would rest on its siblings. Partial evidence is missing evidence, and this arm refuses rather than answering from the observed half. READING THOSE LANES IS NECESSARY AND IS NOT SUFFICIENT: an earlier spelling ended by asking for them as though the path would then resolve. A fully lane-covered realization still refuses, because a lane's DECLARED container environment is not a reading of the process that answered -- see spark_serving_usage_stats_declared_environment_obligation."
 
-fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> VllmUsageStatsLaunchStanding {
+// WHY THE CAUSE IS A VALUE AND THE SENTENCE IS DERIVED FROM IT. Every arm of this standing refuses,
+// and extdeps.vllm.usage_stats gives the refusal one shape -- UsageStatsLaunchUnread carrying a
+// String -- because that is upstream's vocabulary for "we did not read it" and is not ours to
+// reshape. Six materially different situations were therefore collapsing into one arm distinguished
+// only by the prose inside it, and the consequence showed up in this change's own witnesses: they
+// separated the causes with string_contains, which is validation standing exactly where
+// construction was available. A case mismatch in that pattern cost a floor run on this branch.
+//
+// SO THE CAUSE IS TYPED, THE OBLIGATION IS RENDERED FROM IT, and a consumer that needs to know WHY
+// matches a variant rather than grepping a sentence. This is the ceiling the
+// diagnostic_asserts_standing_no_check_evaluated row names for its own class -- a note constructed
+// FROM the outcome value rather than authored beside it -- applied here, where the same defect shape
+// appeared one layer out.
+type SparkTelemetryUnreadCause
+  = TelemetryReadbackUnresolved
+  | TelemetryReportedPathDiffers { reported: NonEmptyStr, declared: NonEmptyStr }
+  | TelemetryDeclaredPathUnpinned
+  | TelemetryNoHostMembership
+  | TelemetryHostsWithoutObservedLanes
+  | TelemetryConfigurationMatchedButUnread { configured_model_path: NonEmptyStr }
+
+fn spark_serving_usage_stats_unread_cause(realization: SparkServingRealization) -> SparkTelemetryUnreadCause {
   match spark_realization_identity(realization: realization) {
-    RealizationUnidentified { cause: why } => UsageStatsLaunchUnread { obligation: why }
-    RealizationIsPairServing { configured_model_path: identified_by } => {
-      let missing = spark_realization_hosts_without_lanes(realization: realization)
+    RealizationReadbackUnresolved => TelemetryReadbackUnresolved
+    RealizationDeclaredPathUnpinned => TelemetryDeclaredPathUnpinned
+    RealizationReportedPathDiffers { reported: rep, declared: dec } =>
+      TelemetryReportedPathDiffers { reported: rep, declared: dec }
+    RealizationMatchesPairServingConfiguration { configured_model_path: matched } =>
       if count(realization.hosts) == 0 {
-        UsageStatsLaunchUnread { obligation: spark_serving_usage_stats_unread_obligation }
-      } else if count(missing) > 0 {
-        UsageStatsLaunchUnread { obligation: spark_serving_usage_stats_unobserved_hosts_obligation }
+        TelemetryNoHostMembership
+      } else if count(spark_realization_hosts_without_lanes(realization: realization)) > 0 {
+        TelemetryHostsWithoutObservedLanes
       } else {
-        UsageStatsLaunchUnread {
-          obligation: join([
-            "the deployment that answered matches the pair-serving launch's declared configuration (model path ",
-            identified_by as String,
-            ") and every one of its hosts has an observed lane. MATCHING REPORTED CONFIGURATION DOES NOT ESTABLISH THE EFFECTIVE TELEMETRY CONFIGURATION, so no standing is claimed for this launch either way. ",
-            spark_serving_usage_stats_declared_environment_obligation as String,
-          ], "") as NonEmptyStr,
-        }
+        TelemetryConfigurationMatchedButUnread { configured_model_path: matched }
       }
-    }
+  }
+}
+
+fn spark_telemetry_unread_obligation(cause: SparkTelemetryUnreadCause) -> NonEmptyStr {
+  match cause {
+    TelemetryReadbackUnresolved =>
+      "the route's /v1/models readback did not resolve, so nothing the running process reported identifies which declared launch it is" as NonEmptyStr
+    TelemetryDeclaredPathUnpinned =>
+      "the pair-serving snapshot is unpinned, so no declared model path exists to compare the engine's reported one against" as NonEmptyStr
+    TelemetryReportedPathDiffers { reported: rep, declared: dec } =>
+      join([
+        "the engine reports the model path ", rep as String,
+        ", which is not the path the pair-serving launch is declared to serve (", dec as String,
+        "), so this repository has no environment model for the deployment that answered",
+      ], "") as NonEmptyStr
+    TelemetryNoHostMembership => spark_serving_usage_stats_unread_obligation
+    TelemetryHostsWithoutObservedLanes => spark_serving_usage_stats_unobserved_hosts_obligation
+    TelemetryConfigurationMatchedButUnread { configured_model_path: matched } =>
+      join([
+        "the deployment that answered matches the pair-serving launch's declared configuration (model path ",
+        matched as String,
+        ") and every one of its hosts has an observed lane. MATCHING REPORTED CONFIGURATION DOES NOT ESTABLISH THE EFFECTIVE TELEMETRY CONFIGURATION, so no standing is claimed for this launch either way. ",
+        spark_serving_usage_stats_declared_environment_obligation as String,
+      ], "") as NonEmptyStr
+  }
+}
+
+fn spark_serving_usage_stats_standing(realization: SparkServingRealization) -> VllmUsageStatsLaunchStanding {
+  UsageStatsLaunchUnread {
+    obligation: spark_telemetry_unread_obligation(
+      cause: spark_serving_usage_stats_unread_cause(realization: realization),
+    ),
   }
 }
 
