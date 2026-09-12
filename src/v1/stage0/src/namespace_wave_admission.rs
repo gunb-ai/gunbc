@@ -1752,6 +1752,32 @@ pub struct TransitionAdmission {
 /// TRIGGER: these rows are consumed by their own merge. Once gunbc#10994 is on main the base binds
 /// each spelling to the module named in `target`, the delta stops being producible, and the wall
 /// reports them CONSUMED on the next roster-touching change, which is what deletes them.
+///
+/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
+/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
+/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
+/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
+/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
+/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
+/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
+///
+///
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, this merge). The one `gunbc#11137 sha256sum names
+/// Filesystem instead of reaching it` row is deleted, and its per-row account with it. #11137
+/// merged (34d2a8db32d, after this branch's base 0ece6f38313), so this branch's base now authors
+/// the qualified `{ Filesystem }` import, the TargetChanged delta that row admits stopped being
+/// producible, and a consumed row's deletion comes due on this roster's OWN next touch. This merge
+/// is that touch. It is the same rule the thirty-fifth dissolution above applied to #11071's three
+/// rows, applied to the change that applied it.
+///
+/// THE DELETION IS DELIBERATE AND IS RECORDED HERE RATHER THAN LEFT SILENT, which is the whole
+/// reason this paragraph exists. #11137's row arrived through a merge rather than being authored
+/// on this branch, and dropping a merged-in row by rule -- "rows from main are consumed by
+/// construction" -- would have been an assumption about main's content rather than a measurement
+/// of it. It was measured: main's side of this file is exactly one commit, #11137, which REPLACED
+/// the #11071 narrative with its own. So what is retired here is a landed change's live row, and
+/// its record is preserved by this entry, not erased with it. The accumulating dissolution ledger
+/// is what makes that possible: records persist, per-row accounts die with their rows.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "gunbc#10994 sizing unbundling: `IntricacyHigh` moves to `gunbc.roadmap_sizing`",

@@ -53,6 +53,7 @@ import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_ga
 import gunbc.rung_drop.spark_serving_fleet_global_configuration_drop { spark_serving_fleet_global_configuration_drop }
 import gunbc.rung_drop.harness_seat_ceiling_by_operator_policy { harness_seat_ceiling_by_operator_policy }
 import gunbc.rung_drop.serving_cost_axes_asserted_unmeasured { serving_cost_axes_asserted_unmeasured }
+import gunbc.rung_drop.provider_path_jurisdiction_unread_admits { provider_path_jurisdiction_unread_admits }
 import gunbc.rung_drop.serving_offer_identity_is_the_exporter_process { serving_offer_identity_is_the_exporter_process }
 import gunbc.rung_drop.witness_deferral_freeze_forward_rule_rung_drop { witness_deferral_freeze_forward_rule_rung_drop }
 import gunbc.rung_drop.deleted_cadence_reference_drop { deleted_cadence_reference_drop }
@@ -100,6 +101,7 @@ data rung_drop_roster: List<RungDrop> = [
   spark_serving_fleet_global_configuration_drop,
   harness_seat_ceiling_by_operator_policy,
   serving_cost_axes_asserted_unmeasured,
+  provider_path_jurisdiction_unread_admits,
   serving_offer_identity_is_the_exporter_process,
   witness_deferral_freeze_forward_rule_rung_drop,
   deleted_cadence_reference_drop,

@@ -44,6 +44,7 @@ import gunbc.specification_citation_read_provenance {
   DatedPublisherLocatorMirrorTextIngested,
   PeerSessionPdfTextIngested,
   DocumentLocatorFetchedAndTextIngested,
+  DocumentMirrorLocatorFetchedAndTextIngested,
   OperatorSuppliedDocumentText,
   mt_jade_mirror_citation_read_receipt,
 }
@@ -238,6 +239,7 @@ test fn w_the_table_3_read_is_receipted_as_a_dated_mirror_capture() -> Bool {
     DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => false
     PeerSessionPdfTextIngested { peer_session: _, detail: _ } => false
     DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => false
+    DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: _, detail: _ } => false
     OperatorSuppliedDocumentText {} => false
   }
     && (mt_jade_mirror_citation_read_receipt.subject.decl_name as String) == "mt_jade_reference_platform"
