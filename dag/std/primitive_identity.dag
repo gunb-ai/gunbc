@@ -713,8 +713,16 @@ data primitive_sorted_map_keys_traversal: PrimitiveTraversalOrderFact = Primitiv
 // mandatory determinism gate: map_keys exposes host map order, while
 // sorted_map_keys sorts by K's declared Ord. Before the sorted primitive joined
 // PrimitiveIdentity, its green witness was acceptance by non-membership rather
-// than an answered order classification. This wall does not claim map_keys caused
-// the emitter's observed byte drift; the corpus sweep found no such path.
+// than an answered order classification. THE LAST SENTENCE OF THIS ANNOTATION WAS
+// FALSE AND IS CORRECTED IN PLACE RATHER THAN DELETED. It read that this wall does
+// not claim map_keys caused the emitter's observed byte drift, because the corpus
+// sweep found no such path. The path existed and that sweep missed it: v1.compile
+// serialize_typed_module and emit_dag_artifact both fed map_keys of an item registry
+// straight into dag-artifact.json, so two runs of one binary over one unchanged tree
+// emitted the same key SET in two orders. Both sites now read sorted_map_keys. The
+// correction stays here because an annotation asserting an ABSENCE is exactly the
+// claim a later reader does not re-derive, and this one was readable as evidence that
+// the emitter was already clean.
 
 data primitive_map_values_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
   primitive: primitive_map_values,

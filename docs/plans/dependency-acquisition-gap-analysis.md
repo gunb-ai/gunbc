@@ -50,18 +50,29 @@ five modules that share no vocabulary.
 
 ### The last row is the class the operator named
 
-`gunbc.host_cli_dependency` carries the fallback for a dependency with no bespoke arm:
+`gunbc.host_cli_dependency` carries the fallback for a dependency with no bespoke arm.
 
-```
-data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
-  HostCliEnrollmentRequirement {
-    tool: "npm",
-    provision: "apt install npm on falsifier cadence runner image",
-  },
-]
-```
+The roster is `gunbc.host_cli_dependency` `codex_wet_materialization_host_cli_requirements`, walked
+by `first_absent_host_cli_dependency` and observed through `observe_host_cli_dependency`. Read those
+declarations rather than a copy of them here — §6, name the instrument rather than transcribing its
+output, and §3, cite the symbol rather than a positional or duplicated copy.
 
-`provision` is a `NonEmptyStr` — **an instruction to a human, typed as a string**.
+**Updated by #11061, because that change falsified how this section used to make its point.** It
+transcribed the row as it then stood and observed that its `provision` field was a `NonEmptyStr` —
+"an instruction to a human, typed as a string". That field is gone: the requirement wrapper carried
+a tool NAME resolved back to a `CliTool` by a hand-rolled if-chain, and carrying the `CliTool`
+itself made the unresolvable row unconstructible, which deleted the resolver, its unresolved arm,
+and the `provision` prose that only fed that arm. The roster is now a plain `List<CliTool>`, and
+the install sentence a refusal carries is derived from `CliTool.installable_via` through
+`install_hint` rather than authored beside it.
+
+**That narrows the defect below without dissolving it.** The hint is no longer a free-text sentence
+that can disagree with the tool it describes; it is derived from the tool's own declared install
+sources. But `installable_via` is still a description of how a human would install the thing, not a
+route anything executes — `SourceApt { package }` names a package, and no modeled effect consumes it
+to converge a host. So the paragraph that follows was written about `provision` and remains true of
+`installable_via`: what changed is that the sentence is now derived rather than authored, not that
+anything acquires the dependency.
 
 It is worth being precise about what is and is not wrong here, because the obvious reading is the
 wrong one. The module's *refusal* behaviour is correct and deliberately so: an absent tool stops
@@ -69,7 +80,8 @@ with a typed `HostDependencyAbsent` carrying tool and hint, and the module's own
 "absent npm stops as HostDependencyAbsent, **never auto-install inside the witness**". That is
 §5 fail-closed, and auto-installing inside a witness would be the absorbing fallback.
 
-**The defect is that the refusal has no route to a fix.** It hands a person a sentence, and there is
+**The defect is that the refusal has no route to a fix.** It hands a person a sentence — derived
+from the tool's declared install sources since #11061, but still only a sentence — and there is
 no modeled thing that sentence refers to — so the convergence cannot act on it, no census can count
 what is unprovisioned, and nothing goes red when the hint rots. An unmodeled dependency is invisible
 to every instrument that would otherwise rank it for work.
@@ -133,10 +145,12 @@ the root: build the arm, move all six at once, delete the old arms and their she
 same motion. Six is a tractable atomic cut, and a surviving `EnsuredDependencyKind` would be an
 attractor — every later dependency would be answered in its vocabulary.
 
-**Phase 3 — the prose route closes.** `host_cli_dependency`'s `provision: NonEmptyStr` becomes a
-reference to a `Dependency`. The refusal then *names the acquisition that would satisfy it*, so an
-absent tool is a routable obligation rather than a sentence, and unprovisioned dependencies become
-countable.
+**Phase 3 — the prose route closes.** Stated against `provision: NonEmptyStr` when written; #11061
+deleted that field, so the subject is now the install sentence `host_cli_dependency` derives from
+`CliTool.installable_via` through `install_hint`. The phase is unchanged in substance: that
+derivation becomes a reference to a `Dependency`, so the refusal *names the acquisition that would
+satisfy it* and an absent tool is a routable obligation rather than a sentence — derived prose is
+still prose. Unprovisioned dependencies become countable only at that point.
 
 **Phase 4 — ntfy is a data row**, and so is the next one.
 

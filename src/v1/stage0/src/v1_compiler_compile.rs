@@ -2277,7 +2277,7 @@ pub fn serialize_typed_module(
             ),
             json_list(Rc::new({
                 let mut __result = Vec::new();
-                for k in Rc::new(v1_rt::map_keys(&module.item_registry.clone()))
+                for k in Rc::new(v1_rt::sorted_map_keys(&module.item_registry.clone()))
                     .iter()
                     .cloned()
                 {
@@ -2412,7 +2412,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         .join(&", ".to_string());
         let item_registry_json = Rc::new({
             let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::map_keys(&typed.item_registry.clone()))
+            for k in Rc::new(v1_rt::sorted_map_keys(&typed.item_registry.clone()))
                 .iter()
                 .cloned()
             {
@@ -2783,45 +2783,32 @@ pub struct CensusFillParse {
 
 pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
     {
-        let prepared = Rc::new({
-            let mut __result = Vec::new();
-            for s in sources.iter().cloned() {
-                __result.push({
-                    let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
-                        s.content.clone(),
-                        s.path.clone(),
-                        dag_parse_environment(),
-                    );
-                    let si =
-                        crate::v1_std_core::build_newline_index(s.path.clone(), s.content.clone());
-                    Rc::new(FrontendPrepared {
-                        tokens: artifact.tokens.clone(),
-                        annotations: artifact.annotations.clone(),
-                        source_length: v1_rt::string_length(&s.content.clone()),
-                        newline_index: si.clone(),
-                    })
-                });
-            }
-            __result
-        });
-        let intern_table = prepared.iter().cloned().fold(
-            crate::v1_std_core::empty_intern_table(),
-            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| {
-                crate::v1_std_core::pre_intern_tokens(p.tokens.clone(), t)
-            },
-        );
-        let parsed = prepared.iter().cloned().fold(
+        let parsed = sources.iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
                 module_inputs: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
-                intern_table: intern_table.clone(),
+                intern_table: crate::v1_std_core::empty_intern_table(),
                 occurrence_allocator:
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
                 annotations: crate::std_source_annotation::source_annotation_graph_empty(),
                 annotation_diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+            |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| {
+                let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
+                    s.content.clone(),
+                    s.path.clone(),
+                    dag_parse_environment(),
+                );
+                let p = Rc::new(FrontendPrepared {
+                    tokens: artifact.tokens.clone(),
+                    annotations: artifact.annotations.clone(),
+                    source_length: v1_rt::string_length(&s.content.clone()),
+                    newline_index: crate::v1_std_core::build_newline_index(
+                        s.path.clone(),
+                        s.content.clone(),
+                    ),
+                });
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
@@ -2829,7 +2816,10 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                         p.newline_index.clone().file.clone(),
                         p.newline_index.clone(),
                     ),
-                    acc.intern_table.clone(),
+                    crate::v1_std_core::pre_intern_tokens(
+                        p.tokens.clone(),
+                        acc.intern_table.clone(),
+                    ),
                     acc.occurrence_allocator.clone(),
                 );
                 let bound = crate::v1_compiler_annotation_bind::admit_source_annotations(
