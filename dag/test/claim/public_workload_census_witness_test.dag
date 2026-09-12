@@ -16,7 +16,8 @@ import gunbc.runner_label_resolution {
 import gunbc.public_workload_census {
   DeclaredArm, DeclaredNotArm, DeclaredArchitectureUnresolved,
   ObservedExecution, NoRunObserved, JobRunObserved, TestsExecuted, NoTestsExecuted,
-  observed_job_labels, observed_job_run_attempt, observed_primary_label,
+  observed_job_labels, observed_job_run_attempt, observed_label_standing,
+  ObservedLabel, NoRunObservedForLabel, JobResourceCarriedNoLabels,
   baseline_admission, baseline_is_admitted, baseline_attempt_matches_observed_job,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   DeclaredProviderKnown, DeclaredProviderUnresolved,
@@ -99,10 +100,11 @@ test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_ar
     DeclaredArm { via } => false
     DeclaredNotArm { via, architecture } => false
   }
-  let observed_arm = catalog_is_arm(
-    label: observed_primary_label(o: candidate_pdns_dnsdist_arm.observed),
-    observed_at: candidate_pdns_dnsdist_arm.observation_time,
-  )
+  let observed_arm = match observed_label_standing(o: candidate_pdns_dnsdist_arm.observed) {
+    ObservedLabel { label } => catalog_is_arm(label: label, observed_at: candidate_pdns_dnsdist_arm.observation_time)
+    NoRunObservedForLabel { obligation } => false
+    JobResourceCarriedNoLabels { job_id } => false
+  }
   declared_unresolved && observed_arm
 }
 

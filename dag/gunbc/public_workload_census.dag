@@ -17,7 +17,9 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
 }
-import std.decl_ref { declaration_ref_eq }
+import std.decl_ref { declaration_ref_eq, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import gunbc.runner_label_resolution {
   resolve_runner_label,
   arm_standing,
@@ -49,10 +51,19 @@ import gunbc.runner_label_resolution {
 // FIVE PROMOTIONS THE CARRIERS KEEP APART: an x64 catalog row is not Arm; a green job that ran no
 // test is not a baseline; an unobserved cache is not warm; provider use is not verified spend;
 // a census outcome does not authorize a trial.
+//
+// DECLARED FRONTIER (DESIGN section 3c). This module is the census: rows and selection folds
+// land here. The executing consumer that *replays* a selected job is incumbent-head-to-head,
+// a separate year_end_plan item blocked on runner-canary and fabric-m0. A witness that imports
+// these declarations is not that consumer.
 
-type CensusVerdict<Reading> sole_constructor {
-  reading: Reading
-}
+data public_workload_census_replay_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "selected_workloads"),
+    reason: "the examined job population and the two-or-three complementary selection land in this change; incumbent-head-to-head is the named later consumer that replays those jobs. Nothing outside test.claim in this change drives a trial or a comparison from selected_workloads. WorkflowJobRun.labels and run_attempt ARE consumed here by observed_job_labels and observed_job_run_attempt — that is production reading of the GitHub job resource, not a reason to pretend the census itself already has a replay caller",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.year_end_plan item incumbent-head-to-head (blocked on runner-canary and fabric-m0). TRIGGER: a production func outside test.claim calls selected_workloads (or reads workload_census) to bind a replay or comparison. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing this module"),
+  ),
+]
 
 type DeclaredRunner
   = DeclaredLabel { label: String }
@@ -67,39 +78,35 @@ type DeclaredProviderStanding
   = DeclaredProviderKnown { via: DeclaredRunner, provider_module: NonEmptyStr }
   | DeclaredProviderUnresolved { via: DeclaredRunner, cause: NonEmptyStr }
 
-fn first_alternative_standing(
+fn alternative_arm_standings(
   alternatives: List<String>,
   observed_at: Rfc3339Timestamp,
-) -> ArmStanding {
-  if count(alternatives) == 0 {
-    ArmUndetermined { label: "", cause: "declared runs-on expression listed no concrete alternatives" }
-  } else {
-    arm_standing(r: resolve_runner_label(label: alternatives.first(), observed_at: observed_at))
-  }
+) -> List<ArmStanding> {
+  map(alternatives, l => arm_standing(r: resolve_runner_label(label: l, observed_at: observed_at)))
 }
 
-fn alternatives_any_undetermined(alternatives: List<String>, observed_at: Rfc3339Timestamp) -> Bool {
-  any(alternatives, l => match arm_standing(r: resolve_runner_label(label: l, observed_at: observed_at)) {
+fn arm_standing_is_undetermined(s: ArmStanding) -> Bool {
+  match s {
     ArmUndetermined { label, cause } => true
     ArmConfirmed { label, snapshot } => false
     NotArmConfirmed { label, architecture, snapshot } => false
-  })
+  }
 }
 
-fn alternatives_any_arm(alternatives: List<String>, observed_at: Rfc3339Timestamp) -> Bool {
-  any(alternatives, l => match arm_standing(r: resolve_runner_label(label: l, observed_at: observed_at)) {
+fn arm_standing_is_arm(s: ArmStanding) -> Bool {
+  match s {
     ArmConfirmed { label, snapshot } => true
     NotArmConfirmed { label, architecture, snapshot } => false
     ArmUndetermined { label, cause } => false
-  })
+  }
 }
 
-fn alternatives_any_not_arm(alternatives: List<String>, observed_at: Rfc3339Timestamp) -> Bool {
-  any(alternatives, l => match arm_standing(r: resolve_runner_label(label: l, observed_at: observed_at)) {
+fn arm_standing_is_not_arm(s: ArmStanding) -> Bool {
+  match s {
     NotArmConfirmed { label, architecture, snapshot } => true
     ArmConfirmed { label, snapshot } => false
     ArmUndetermined { label, cause } => false
-  })
+  }
 }
 
 fn declared_architecture_standing(
@@ -116,52 +123,60 @@ fn declared_architecture_standing(
           DeclaredArchitectureUnresolved { via: spec, cause: cause }
       }
     DeclaredExpression { expression, alternatives } =>
-      if alternatives_any_undetermined(alternatives: alternatives, observed_at: observed_at) {
+      if count(alternatives) == 0 {
         DeclaredArchitectureUnresolved {
           via: spec,
-          cause: "at least one declared alternative is absent from the surveyed runner catalogs, so architecture is not established by the workflow file alone",
+          cause: "declared runs-on expression listed no concrete alternatives",
         }
-      } else if alternatives_any_arm(alternatives: alternatives, observed_at: observed_at)
-        && alternatives_any_not_arm(alternatives: alternatives, observed_at: observed_at) {
-        DeclaredArchitectureUnresolved {
-          via: spec,
-          cause: "declared alternatives mix catalog Arm and not-Arm labels; the workflow does not establish a single architecture",
-        }
-      } else if alternatives_any_arm(alternatives: alternatives, observed_at: observed_at) {
-        DeclaredArm { via: spec }
       } else {
-        match first_alternative_standing(alternatives: alternatives, observed_at: observed_at) {
-          NotArmConfirmed { label, architecture, snapshot } =>
-            DeclaredNotArm { via: spec, architecture: architecture }
-          ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
-          ArmUndetermined { label, cause } =>
-            DeclaredArchitectureUnresolved { via: spec, cause: cause }
+        let standings = alternative_arm_standings(alternatives: alternatives, observed_at: observed_at)
+        if any(standings, s => arm_standing_is_undetermined(s: s)) {
+          DeclaredArchitectureUnresolved {
+            via: spec,
+            cause: "at least one declared alternative is absent from the surveyed runner catalogs, so architecture is not established by the workflow file alone",
+          }
+        } else if any(standings, s => arm_standing_is_arm(s: s)) && any(standings, s => arm_standing_is_not_arm(s: s)) {
+          DeclaredArchitectureUnresolved {
+            via: spec,
+            cause: "declared alternatives mix catalog Arm and not-Arm labels; the workflow does not establish a single architecture",
+          }
+        } else if any(standings, s => arm_standing_is_arm(s: s)) {
+          DeclaredArm { via: spec }
+        } else {
+          match standings.first() {
+            NotArmConfirmed { label, architecture, snapshot } =>
+              DeclaredNotArm { via: spec, architecture: architecture }
+            ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
+            ArmUndetermined { label, cause } =>
+              DeclaredArchitectureUnresolved { via: spec, cause: cause }
+          }
         }
       }
   }
 }
 
-fn alternatives_any_provider_unresolved(
+fn alternative_provider_readings(
   alternatives: List<String>,
   observed_at: Rfc3339Timestamp,
-) -> Bool {
-  any(alternatives, l => match provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)) {
-    ProviderUnresolved { label, cause } => true
-    ProviderFromCatalog { provider, label, snapshot } => false
-  })
+) -> List<ProviderReading> {
+  map(alternatives, l => provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)))
 }
 
-fn alternatives_share_one_provider(
-  alternatives: List<String>,
-  observed_at: Rfc3339Timestamp,
-) -> Bool {
-  if count(alternatives) == 0 {
+fn provider_reading_is_unresolved(r: ProviderReading) -> Bool {
+  match r {
+    ProviderUnresolved { label, cause } => true
+    ProviderFromCatalog { provider, label, snapshot } => false
+  }
+}
+
+fn provider_readings_share_one_catalog_provider(readings: List<ProviderReading>) -> Bool {
+  if count(readings) == 0 {
     false
   } else {
-    match provider_reading(r: resolve_runner_label(label: alternatives.first(), observed_at: observed_at)) {
+    match readings.first() {
       ProviderUnresolved { label, cause } => false
       ProviderFromCatalog { provider: first_provider, label, snapshot } =>
-        all(alternatives, l => match provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)) {
+        all(readings, r => match r {
           ProviderFromCatalog { provider, label, snapshot } =>
             declaration_ref_eq(a: provider, b: first_provider)
           ProviderUnresolved { label, cause } => false
@@ -183,22 +198,30 @@ fn declared_provider_standing(
           DeclaredProviderUnresolved { via: spec, cause: cause }
       }
     DeclaredExpression { expression, alternatives } =>
-      if alternatives_any_provider_unresolved(alternatives: alternatives, observed_at: observed_at) {
+      if count(alternatives) == 0 {
         DeclaredProviderUnresolved {
           via: spec,
-          cause: "at least one declared alternative is absent from the surveyed runner catalogs, so the workflow file does not establish a provider",
-        }
-      } else if alternatives_share_one_provider(alternatives: alternatives, observed_at: observed_at) {
-        match provider_reading(r: resolve_runner_label(label: alternatives.first(), observed_at: observed_at)) {
-          ProviderFromCatalog { provider, label, snapshot } =>
-            DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
-          ProviderUnresolved { label, cause } =>
-            DeclaredProviderUnresolved { via: spec, cause: cause }
+          cause: "declared runs-on expression listed no concrete alternatives",
         }
       } else {
-        DeclaredProviderUnresolved {
-          via: spec,
-          cause: "declared alternatives resolve to more than one surveyed provider, so the workflow file does not establish which one will run",
+        let readings = alternative_provider_readings(alternatives: alternatives, observed_at: observed_at)
+        if any(readings, r => provider_reading_is_unresolved(r: r)) {
+          DeclaredProviderUnresolved {
+            via: spec,
+            cause: "at least one declared alternative is absent from the surveyed runner catalogs, so the workflow file does not establish a provider",
+          }
+        } else if provider_readings_share_one_catalog_provider(readings: readings) {
+          match readings.first() {
+            ProviderFromCatalog { provider, label, snapshot } =>
+              DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+            ProviderUnresolved { label, cause } =>
+              DeclaredProviderUnresolved { via: spec, cause: cause }
+          }
+        } else {
+          DeclaredProviderUnresolved {
+            via: spec,
+            cause: "declared alternatives resolve to more than one surveyed provider, so the workflow file does not establish which one will run",
+          }
         }
       }
   }
@@ -229,16 +252,22 @@ fn observed_job_run_attempt(job: WorkflowJobRun) -> Int {
   job.run_attempt
 }
 
-fn observed_primary_label(o: ObservedExecution) -> String {
+type ObservedLabelStanding
+  = ObservedLabel { label: String }
+  | NoRunObservedForLabel { obligation: NonEmptyStr }
+  | JobResourceCarriedNoLabels { job_id: Int }
+
+fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
   match o {
+    NoRunObserved { obligation } => NoRunObservedForLabel { obligation: obligation }
     JobRunObserved { job, head_sha, correctness } =>
-      fold(observed_job_labels(job: job), init: "", f: fn(acc, l) {
+      fold(observed_job_labels(job: job), init: JobResourceCarriedNoLabels { job_id: job.id }, f: fn(acc, l) {
         match acc {
-          "" => l
-          _ => acc
+          JobResourceCarriedNoLabels { job_id } => ObservedLabel { label: l }
+          ObservedLabel { label } => acc
+          NoRunObservedForLabel { obligation } => acc
         }
       })
-    NoRunObserved { obligation } => ""
   }
 }
 
@@ -246,14 +275,17 @@ fn observed_provider_standing(
   o: ObservedExecution,
   observed_at: Rfc3339Timestamp,
 ) -> ProviderReading {
-  let label = observed_primary_label(o: o)
-  if label == "" {
-    ProviderUnresolved {
-      label: label,
-      cause: "no runner label was observed on a job resource",
+  match observed_label_standing(o: o) {
+    ObservedLabel { label } =>
+      provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at))
+    NoRunObservedForLabel { obligation } => ProviderUnresolved {
+      label: "(no run)",
+      cause: concat("no runner label was observed because no job run was observed: ", obligation),
     }
-  } else {
-    provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at))
+    JobResourceCarriedNoLabels { job_id } => ProviderUnresolved {
+      label: "(empty labels)",
+      cause: "the job resource carried an empty labels list",
+    }
   }
 }
 
@@ -284,46 +316,59 @@ type BaselineAdmission
     }
   | BaselineRefused { cause: NonEmptyStr }
 
-fn baseline_admission(o: ObservedExecution) -> CensusVerdict<BaselineAdmission> {
+fn baseline_admission(o: ObservedExecution) -> BaselineAdmission {
   match o {
     NoRunObserved { obligation } =>
-      CensusVerdict { reading: BaselineRefused { cause: concat("no run observed: ", obligation) } }
+      BaselineRefused { cause: concat("no run observed: ", obligation) }
     JobRunObserved { job, head_sha, correctness } =>
       if conclusion_is_success(c: job.conclusion) == false {
-        CensusVerdict { reading: BaselineRefused {
+        BaselineRefused {
           cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
-        } }
+        }
       } else {
         match correctness {
-          TestsExecuted { step } => CensusVerdict { reading: BaselineAdmitted {
-            job_id: job.id,
-            run_id: job.run_id,
-            run_attempt: observed_job_run_attempt(job: job),
-            head_sha: head_sha,
-            test_step: step,
-            observed_label: observed_primary_label(o: o),
-          } }
-          NoTestsExecuted { note } => CensusVerdict { reading: BaselineRefused {
-            cause: concat("job succeeded but executed no correctness check: ", note),
-          } }
+          TestsExecuted { step } => match observed_label_standing(o: o) {
+            ObservedLabel { label } => BaselineAdmitted {
+              job_id: job.id,
+              run_id: job.run_id,
+              run_attempt: observed_job_run_attempt(job: job),
+              head_sha: head_sha,
+              test_step: step,
+              observed_label: label,
+            }
+            NoRunObservedForLabel { obligation } => BaselineRefused {
+              cause: concat("no run observed: ", obligation),
+            }
+            JobResourceCarriedNoLabels { job_id } => BaselineRefused {
+              cause: "the observed job concluded success and ran tests, but the job resource carried no runner labels",
+            }
+          }
+          NoTestsExecuted { note } =>
+            BaselineRefused { cause: concat("job succeeded but executed no correctness check: ", note) }
         }
       }
   }
 }
 
-fn baseline_is_admitted(b: CensusVerdict<BaselineAdmission>) -> Bool {
-  match b.reading {
+fn baseline_is_admitted(b: BaselineAdmission) -> Bool {
+  match b {
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
     BaselineRefused { cause } => false
   }
 }
 
 fn observed_arm_standing(o: ObservedExecution, observed_at: Rfc3339Timestamp) -> ArmStanding {
-  let label = observed_primary_label(o: o)
-  if label == "" {
-    ArmUndetermined { label: label, cause: "no runner label was observed on a job resource" }
-  } else {
-    arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at))
+  match observed_label_standing(o: o) {
+    ObservedLabel { label } =>
+      arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at))
+    NoRunObservedForLabel { obligation } => ArmUndetermined {
+      label: "(no run)",
+      cause: concat("no runner label was observed because no job run was observed: ", obligation),
+    }
+    JobResourceCarriedNoLabels { job_id } => ArmUndetermined {
+      label: "(empty labels)",
+      cause: "the job resource carried an empty labels list",
+    }
   }
 }
 
@@ -347,20 +392,18 @@ type CacheCondition
   | RemoteWarmOnFreshWorker { evidence: NonEmptyStr }
   | CacheConditionUnestablished { cause: NonEmptyStr }
 
-fn cache_condition(m: CacheMechanism) -> CensusVerdict<CacheCondition> {
+fn cache_condition(m: CacheMechanism) -> CacheCondition {
   match m.observation {
-    CacheHitConfirmed { evidence } =>
-      CensusVerdict { reading: RemoteWarmOnFreshWorker { evidence: evidence } }
-    CacheMissConfirmed { evidence } =>
-      CensusVerdict { reading: LogicalCold { evidence: evidence } }
-    CacheUnobserved { obligation } => CensusVerdict { reading: CacheConditionUnestablished {
+    CacheHitConfirmed { evidence } => RemoteWarmOnFreshWorker { evidence: evidence }
+    CacheMissConfirmed { evidence } => LogicalCold { evidence: evidence }
+    CacheUnobserved { obligation } => CacheConditionUnestablished {
       cause: concat(m.name, concat(" was declared in the workflow and never observed: ", obligation)),
-    } }
+    }
   }
 }
 
-fn cache_condition_is_warm(c: CensusVerdict<CacheCondition>) -> Bool {
-  match c.reading {
+fn cache_condition_is_warm(c: CacheCondition) -> Bool {
+  match c {
     RemoteWarmOnFreshWorker { evidence } => true
     LogicalCold { evidence } => false
     CacheConditionUnestablished { cause } => false
@@ -428,8 +471,8 @@ type TrialAuthorization
 
 data trial_refusal_note: NonEmptyStr = "a census is not a mandate: nothing in this item authorizes a trial, a migration PR, or outreach"
 
-fn trial_authorization_from_census() -> CensusVerdict<TrialAuthorization> {
-  CensusVerdict { reading: TrialUnauthorized { cause: trial_refusal_note } }
+fn trial_authorization_from_census() -> TrialAuthorization {
+  TrialUnauthorized { cause: trial_refusal_note }
 }
 
 type ResourceRequirements
@@ -462,7 +505,7 @@ type WorkloadCandidate {
   external_effects: List<ExternalEffect>
   replay: ReplayAdmission
   spend: SpendStanding
-  trial: CensusVerdict<TrialAuthorization>
+  trial: TrialAuthorization
   selection: CandidateSelection
 }
 
@@ -478,7 +521,7 @@ fn candidate_observed_provider(c: WorkloadCandidate) -> ProviderReading {
   observed_provider_standing(o: c.observed, observed_at: c.observation_time)
 }
 
-fn candidate_baseline(c: WorkloadCandidate) -> CensusVerdict<BaselineAdmission> {
+fn candidate_baseline(c: WorkloadCandidate) -> BaselineAdmission {
   baseline_admission(o: c.observed)
 }
 
@@ -505,8 +548,8 @@ fn observed_job_attempt(o: ObservedExecution) -> Int? {
   }
 }
 
-fn baseline_attempt(b: CensusVerdict<BaselineAdmission>) -> Int? {
-  match b.reading {
+fn baseline_attempt(b: BaselineAdmission) -> Int? {
+  match b {
     BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } =>
       Present { value: run_attempt }
     BaselineRefused { cause } => Absent

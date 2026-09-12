@@ -15,9 +15,10 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 
-// WorkflowJobRun.labels and run_attempt are consumed by gunbc.public_workload_census
-// (observed_job_labels, observed_job_run_attempt) so the former §3c frontier for those
-// fields is dissolved: a production fold outside test.claim reads both.
+// WorkflowJobRun.labels and run_attempt are read by gunbc.public_workload_census
+// (observed_job_labels, observed_job_run_attempt). That is production consumption of the
+// GitHub job-resource fields. Who consumes the census population itself is a separate §3c
+// question, recorded on gunbc.public_workload_census public_workload_census_replay_consumer_frontier_rows.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
