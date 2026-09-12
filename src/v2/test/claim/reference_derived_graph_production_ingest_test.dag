@@ -28,14 +28,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // normalized_tree_roots_to_nodes (via located_roots_from_source_root_ingest), then the one
 // collector. Not a second parse_module ingest.
 // Call-argument and callee: tree-side; go red when eager-raven-113 lowering lands, then this ingest.
-// Type-position on this fixture is a QUALIFIED name (provider.ProvidedMarker), re-derived here:
-// the full spelling is not a site and there is no edge. Same open class as a qualified body
-// mention (collector reassembly of the access chain), not XL-0's retracted "type-position
-// names do not reach the collector" and not body-lowering.
-// Qualified cross-module body mention: enrolled as absent, NOT hardened as tree-loss. A body
-// qualified name is dag_field_access_body_node (Transform of a dot atom plus operands). The
-// collector currently emits those as separate bare sites. That pair of rows retires when the
-// collector reassembles the chain into one ReferenceSite, not when body-lowering lands.
+// Type position is not a frontier. consumer_type_imported measures a type-position-only
+// ProvidedMarker the collector can see (imported bare name). consumer_type_only is a qualified
+// name in type position and belongs with the still-open qualified-cross-module class.
+// Qualified cross-module body mention: collector/resolver representation gap (dag_field_access_body_node).
+// That pair retires when the collector reassembles the chain into one ReferenceSite, not when
+// body-lowering lands.
 
 data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
 
@@ -51,6 +49,8 @@ data consumer_type_only_text: String = "module test.fixture.reference_derived_gr
 
 data consumer_callee_only_text: String = "module test.fixture.reference_derived_graph.consumer_callee_only\nimport std.types { Int }\nfn uses_only_as_callee() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_fn()\n}\n"
 
+data consumer_type_imported_text: String = "module test.fixture.reference_derived_graph.consumer_type_imported\nimport std.types { Int }\nimport test.fixture.reference_derived_graph.provider { ProvidedMarker }\nfn uses(x: ProvidedMarker) -> Int {\n  1\n}\n"
+
 data provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
 
 data consumer_reference_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_reference_only.dag"
@@ -64,6 +64,8 @@ data consumer_call_only_path: String = "dag/test/fixture/reference_derived_graph
 data consumer_type_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_only.dag"
 
 data consumer_callee_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_callee_only.dag"
+
+data consumer_type_imported_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_imported.dag"
 
 data provider_module: String = "test.fixture.reference_derived_graph.provider"
 
@@ -92,7 +94,10 @@ data fixture_ingest: SourceRootIngest = Cons {
             head: fixture_read(text: consumer_type_only_text, path: consumer_type_only_path, unit: ^type_only_unit),
             tail: Cons {
               head: fixture_read(text: consumer_callee_only_text, path: consumer_callee_only_path, unit: ^callee_only_unit),
-              tail: Empty
+              tail: Cons {
+                head: fixture_read(text: consumer_type_imported_text, path: consumer_type_imported_path, unit: ^type_imported_unit),
+                tail: Empty
+              }
             }
           }
         }
@@ -102,6 +107,8 @@ data fixture_ingest: SourceRootIngest = Cons {
 }
 
 data provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
+
+data provided_marker_bare: String = "ProvidedMarker"
 
 fn production_edge_count(path: String, target: String) -> Int {
   match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
@@ -116,16 +123,16 @@ fn production_edge_count(path: String, target: String) -> Int {
   }
 }
 
-fn type_position_provided_marker_site_count() -> Int {
+fn site_spelling_count(path: String, needle: String) -> Int {
   match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
     Rejected { diagnostics: _ } => production_ingest_refused_count
     Accepted { value: items, diagnostics: _ } =>
-      match items |> filter(item => item.path == consumer_type_only_path) |> first {
+      match items |> filter(item => item.path == path) |> first {
         Absent => production_ingest_refused_count
         Present { value: item } =>
           length(
             xs: collect_module_reference_sites(root: item.root).sites
-              |> filter(site => qualified_name_to_dotted_string(qn: site.spelling) == provided_marker_dotted)
+              |> filter(site => qualified_name_to_dotted_string(qn: site.spelling) == needle)
           )
       }
   }
@@ -150,12 +157,25 @@ test fn production_route_call_contents_are_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
 }
 
+// Re-derived: qualified type-position spelling is not a site and makes no edge. Same trigger
+// as the qualified body mention (collector reassembly), not lowering and not the retracted census.
 test fn production_route_type_position_qualified_site_is_missing_today_holds() -> Bool {
-  type_position_provided_marker_site_count() == 0
+  site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 0
 }
 
-test fn production_route_type_position_edge_is_missing_today_holds() -> Bool {
+test fn production_route_type_position_qualified_edge_is_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_type_only_path, target: provider_module) == 0
+}
+
+// Type-position-only reference (imported bare ProvidedMarker). Measured here, not declared
+// missing on the retracted census. If the site is present and the edge is not, the cause is
+// resolution or edge derivation.
+test fn production_route_type_imported_bare_site_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_type_imported_path, needle: provided_marker_bare) > 0
+}
+
+test fn production_route_type_imported_edge_from_this_fixture_holds() -> Bool {
+  production_edge_count(path: consumer_type_imported_path, target: provider_module) == 1
 }
 
 // Tree-side (whole call expression). Trigger: eager-raven-113 lowering, then this ingest.
