@@ -55,7 +55,9 @@ import gunbc.fabric.engram_materialization {
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteDecided,
   ComponentResidentShare, ComponentResidentBytes, ComponentResidentUnderivable, ComponentNotDecomposedHere,
   RouteSubjectKey, route_subject_key,
-  component_resident_share, component_route_needs, component_route_is_admissible,
+  component_resident_share, component_route_needs,
+  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementExcluded, ComponentPlacementOpen,
+  component_route_placement_standing,
   component_route_defects, component_route_infeasibility_causes,
   engram_route_standing, engram_component_identity,
   engram_pool_relief, engram_route_a_resident,
@@ -1789,12 +1791,33 @@ fn workload_gap(e: ServingDeploymentEvidenceSnapshot) -> List<AxisGap> {
 // THE STANDINGS ARE COMPUTED ONCE PER CANDIDATE AND CARRIED. Each one runs a whole route selection,
 // and the reading fold, the gap fold and the fit screen all want the same answer -- so the value is
 // shared from `project_candidate`, their least common ancestor, rather than recomputed at each.
-fn component_route_holds_over(standings: List<ComponentRouteStanding>) -> Bool {
-  all(standings, st => component_route_is_admissible(s: st))
-}
-
-fn component_route_holds(c: DeploymentCandidate, p: ServingDecisionParameters) -> Bool {
-  component_route_holds_over(standings: candidate_component_route_standings(c: c, p: p))
+// THE READING IS ABSENT WHILE THE PLACEMENT QUESTION IS OPEN, and that absence is the whole point.
+// `scan_feasibility` names a hard-constrained axis in its evidence needs only when the candidate has
+// NO reading on it; an axis that always scores something is never reported, so a first cut that
+// scored 1 for "not excluded yet" left the route obligation invisible at the product root -- the
+// live V4.1 decision returned the same `ServingDeploymentNeedsEvidence` it returned before this
+// change, for entirely unrelated reasons, and nothing would have caught that.
+//
+// An established route INFEASIBILITY still scores zero and still excludes this candidate -- and only
+// this candidate, because the route was evaluated under this candidate's own context.
+fn component_route_reading(route_standings: List<ComponentRouteStanding>) -> AxisReading? {
+  if any(route_standings, st => match component_route_placement_standing(s: st) {
+    ComponentPlacementExcluded => true
+    ComponentPlacementSettled => false
+    ComponentPlacementOpen => false
+  }) {
+    Present { value: reading(axis: ax_component_route, v: 0) }
+  } else {
+    if all(route_standings, st => match component_route_placement_standing(s: st) {
+      ComponentPlacementSettled => true
+      ComponentPlacementExcluded => false
+      ComponentPlacementOpen => false
+    }) {
+      Present { value: reading(axis: ax_component_route, v: 1) }
+    } else {
+      none
+    }
+  }
 }
 
 fn component_route_gap_over(standings: List<ComponentRouteStanding>) -> List<AxisGap> {
@@ -1825,8 +1848,10 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
     concat(
       concat(optional_reading(r: quality_reading(profile: execution_profile_of(c: c, p: p), e: e)),
              optional_reading(r: runtime_reading(profile: execution_profile_of(c: c, p: p), e: e))),
-      concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
-             optional_reading(r: workload_reading(e: e)))),
+      concat(
+        concat(optional_reading(r: weight_fit_reading(c: c, e: e, p: p)),
+               optional_reading(r: workload_reading(e: e))),
+        optional_reading(r: component_route_reading(route_standings: route_standings)))),
     [
       reading(axis: ax_native_quality, v: flag(b: native_quality_holds(c: c))),
       reading(axis: ax_no_redundancy, v: flag(b: no_redundancy_holds(c: c))),
@@ -1835,7 +1860,6 @@ fn candidate_readings(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapsh
       reading(axis: ax_useful_context, v: useful_context(p: p, demand: e.workload)),
       reading(axis: ax_independent_replicas, v: c.topology.replica_count),
       reading(axis: ax_replica_capacity_share_lost, v: replica_capacity_share_lost_percent(c: c)),
-      reading(axis: ax_component_route, v: flag(b: component_route_holds_over(standings: route_standings))),
     ])
 }
 

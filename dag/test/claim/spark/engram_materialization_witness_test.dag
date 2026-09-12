@@ -32,6 +32,9 @@ import extdeps.safetensors.format {
   SafetensorsPopulationStanding, PopulationEstablished, PopulationIncomplete, PopulationRefused,
   safetensors_population_standing, safetensors_population_entries, safetensors_population_declared_bytes,
   safetensors_shard_file, safetensors_shard_payload_matches_population,
+  SafetensorsShardAgreement, ShardPayloadMatchesPopulation, ShardPayloadDisagreesWithPopulation, ShardPayloadUnderivable,
+  safetensors_shard_payload_agreement, safetensors_shard_payload, SafetensorsShardPayload,
+  ShardPayloadDeclared, ShardHeaderExceedsFile, safetensors_shard_payload_defects,
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram,
@@ -87,7 +90,9 @@ import gunbc.fabric.engram_materialization {
   ComponentRouteField, component_route_field, select_component_route,
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteDecided,
   ComponentResidentShare, ComponentResidentBytes, ComponentResidentUnderivable, ComponentNotDecomposedHere,
-  component_resident_share, component_route_is_admissible,
+  component_resident_share,
+  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementExcluded, ComponentPlacementOpen,
+  component_route_placement_standing,
   engram_component_identity, engram_component_standing, engram_routes,
   engram_route_a_resident, engram_route_b_host_nvme, engram_route_c_nfs_token_time, engram_route_d_nfs_fill_then_nvme,
   engram_route_a_identity, engram_route_b_identity, engram_route_c_identity, engram_route_d_identity,
@@ -259,10 +264,54 @@ test fn each_engram_shard_file_is_its_header_plus_exactly_that_layers_payload() 
     Present { value: b1 } => match safetensors_population_declared_bytes(s: l14) {
       Absent => false
       Present { value: b14 } =>
-        safetensors_shard_payload_matches_population(shard: deepseek_v4_1_flash_engram_shard_1.file, declared: b1)
-          && safetensors_shard_payload_matches_population(shard: deepseek_v4_1_flash_engram_shard_14.file, declared: b14)
+        match safetensors_shard_payload_agreement(shard: deepseek_v4_1_flash_engram_shard_1.file, declared: b1) {
+          ShardPayloadMatchesPopulation { bytes: b } => byte_size_count(b: b) == byte_size_count(b: b1)
+          ShardPayloadDisagreesWithPopulation { path: _, payload_bytes: _, declared: _ } => false
+          ShardPayloadUnderivable { path: _, because: _ } => false
+        } && match safetensors_shard_payload_agreement(shard: deepseek_v4_1_flash_engram_shard_14.file, declared: b14) {
+          ShardPayloadMatchesPopulation { bytes: b } => byte_size_count(b: b) == byte_size_count(b: b14)
+          ShardPayloadDisagreesWithPopulation { path: _, payload_bytes: _, declared: _ } => false
+          ShardPayloadUnderivable { path: _, because: _ } => false
+        }
     }
   }
+}
+
+// A SHARD WHOSE HEADER EXCEEDS ITS FILE HAS NO PAYLOAD SIZE, AND THAT IS NOT A PAYLOAD OF ZERO.
+// The first cut computed the payload in the constructor and answered zero here, which then compared
+// equal to nothing and unequal to every real population -- a fabricated quantity standing where a
+// refusal belonged. This is its red: the derivation refuses, the defect is counted, and the
+// agreement fold reports underivable rather than a bare false that would read like a size mismatch.
+fn impossible_shard() -> SafetensorsShardFile {
+  safetensors_shard_file(
+    path: "fixture-impossible.safetensors" as NonEmptyStr,
+    header_bytes: byte_size(count: 4096),
+    file_bytes: byte_size(count: 64),
+  )
+}
+
+test fn a_shard_whose_header_exceeds_its_file_refuses_rather_than_declaring_no_payload() -> Bool {
+  match safetensors_shard_payload(shard: impossible_shard()) {
+    ShardHeaderExceedsFile { path: _, declared_overhead: o, file_bytes: fb } =>
+      o == 4104 && byte_size_count(b: fb) == 64
+    ShardPayloadDeclared { bytes: _ } => false
+  } && count(safetensors_shard_payload_defects(shard: impossible_shard())) == 1
+    && count(safetensors_shard_payload_defects(shard: deepseek_v4_1_flash_engram_shard_1.file)) == 0
+    && match safetensors_shard_payload_agreement(shard: impossible_shard(), declared: byte_size(count: 0)) {
+      ShardPayloadUnderivable { path: _, because: _ } => true
+      ShardPayloadMatchesPopulation { bytes: _ } => false
+      ShardPayloadDisagreesWithPopulation { path: _, payload_bytes: _, declared: _ } => false
+    }
+    && match safetensors_shard_payload_agreement(
+      shard: safetensors_shard_file(
+        path: "fixture-short.safetensors" as NonEmptyStr,
+        header_bytes: byte_size(count: 8),
+        file_bytes: byte_size(count: 100)),
+      declared: byte_size(count: 999)) {
+      ShardPayloadDisagreesWithPopulation { path: _, payload_bytes: pb, declared: _ } => byte_size_count(b: pb) == 84
+      ShardPayloadMatchesPopulation { bytes: _ } => false
+      ShardPayloadUnderivable { path: _, because: _ } => false
+    }
 }
 
 // THE CONFIG AND THE HEADERS ARE DIFFERENT FILES, so their agreement is evidence. The embed row
@@ -924,5 +973,24 @@ test fn every_candidate_violating_a_hard_constraint_is_infeasible_not_refused() 
     SelectionNeedsPolicy { survivors: _ } => false
     CandidateFieldUnestablished { causes: _ } => false
     RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+
+// THE OPEN PLACEMENT HAS NO READING, AND THAT ABSENCE IS WHAT THE SERVING DECISION REPORTS. This is
+// the red for the defect that shipped in the first cut of this integration: the axis scored 1 for
+// "not excluded yet", so `scan_feasibility` never named it and the product-root control passed for
+// unrelated reasons. Three states, three answers, and only the settled one scores.
+test fn an_open_route_question_is_absent_rather_than_scoring_not_yet_excluded() -> Bool {
+  match component_route_placement_standing(s: engram_route_standing(component: engram_component_identity, context: context_a())) {
+    ComponentPlacementOpen => true
+    ComponentPlacementSettled => false
+    ComponentPlacementExcluded => false
+  } && match component_route_placement_standing(s: engram_route_standing(
+    component: decl_ref(module_path: "test.claim.spark.engram_materialization_witness_test", decl_name: "unrelated_component"),
+    context: context_a())) {
+    ComponentPlacementSettled => true
+    ComponentPlacementOpen => false
+    ComponentPlacementExcluded => false
   }
 }

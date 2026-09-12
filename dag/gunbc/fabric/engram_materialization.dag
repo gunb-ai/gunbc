@@ -711,7 +711,7 @@ type RoutePhysicalAccessStanding
       receipt: DeclarationRef
       logical_requests_per_token: Nat
       physical_reads_per_token: Nat
-      bytes_transferred_per_token: Nat
+      bytes_transferred_per_token: ByteSize
     }
   | PhysicalAccessUnobserved { obligation: NonEmptyStr }
 
@@ -1350,17 +1350,29 @@ fn component_route_needs(s: ComponentRouteStanding) -> List<SelectionEvidenceNee
   }
 }
 
-fn component_route_is_admissible(s: ComponentRouteStanding) -> Bool {
+// THREE STATES, AND THE OPEN ONE HAS NO READING. A hard-constrained axis that always carries a
+// reading is never "unread", so `std.decision` `scan_feasibility` never names it and the consumer's
+// evidence needs silently omit it -- which is exactly what the first cut did: it scored 1 for
+// "not yet excluded" and the route obligation never reached the serving result at all. So:
+// established infeasibility scores zero and excludes; a settled placement scores one; and every
+// state in which the route question is still open answers ABSENT, which is what makes the serving
+// decision report the need.
+type ComponentRoutePlacementStanding
+  = ComponentPlacementSettled
+  | ComponentPlacementExcluded
+  | ComponentPlacementOpen
+
+fn component_route_placement_standing(s: ComponentRouteStanding) -> ComponentRoutePlacementStanding {
   match s {
-    ComponentRouteNotThisSubject => true
+    ComponentRouteNotThisSubject => ComponentPlacementSettled
     ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
       match res {
-        SelectedWithin { candidate: _, receipt: _ } => true
-        SelectionNeedsEvidence { needs: _ } => true
-        SelectionNeedsPolicy { survivors: _ } => true
-        NoFeasibleRealization { causes: _ } => false
-        CandidateFieldUnestablished { causes: _ } => true
-        RealizationSelectionRefused { defects: _ } => true
+        SelectedWithin { candidate: _, receipt: _ } => ComponentPlacementSettled
+        NoFeasibleRealization { causes: _ } => ComponentPlacementExcluded
+        SelectionNeedsEvidence { needs: _ } => ComponentPlacementOpen
+        SelectionNeedsPolicy { survivors: _ } => ComponentPlacementOpen
+        CandidateFieldUnestablished { causes: _ } => ComponentPlacementOpen
+        RealizationSelectionRefused { defects: _ } => ComponentPlacementOpen
       }
   }
 }

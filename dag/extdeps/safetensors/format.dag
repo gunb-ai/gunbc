@@ -292,29 +292,94 @@ fn safetensors_population_is_established(s: SafetensorsPopulationStanding) -> Bo
 // asserted -- and the sha256 is over the FILE, which is a different subject from the population
 // the header declares. A digest match proves the bytes are the published bytes. It does not prove
 // the header's shapes describe them, and the header's shapes do not prove the bytes arrived.
+//
+// EVERY FIELD IS A ByteSize. A first cut typed `header_bytes` as a bare `Nat` beside two `ByteSize`
+// siblings on the same record -- two representations of one quantity, which then forced
+// `byte_size_count` unwrapping purely to reconcile them. The prefix length is a byte count like the
+// other two and is carried as one.
+//
+// AND THERE IS NO STORED payload_bytes. The first cut computed it in the constructor and answered
+// ZERO when the declared header exceeded the file size -- a fabricated quantity with no refusal
+// anywhere behind it, so an impossible shard row read as a shard with an empty payload and the
+// agreement test below compared that zero against a real population total. DESIGN section 5's
+// failure arm must refuse, never widen, so the payload is a FOLD with a refusing arm rather than a
+// field, and the impossible state can no longer be carried at all.
 type SafetensorsShardFile sole_constructor {
   path: NonEmptyStr
-  header_bytes: Nat
+  header_bytes: ByteSize
   file_bytes: ByteSize
-  payload_bytes: ByteSize
 }
 
-fn safetensors_shard_file(path: NonEmptyStr, header_bytes: Nat, file_bytes: ByteSize) -> SafetensorsShardFile {
-  SafetensorsShardFile {
-    path: path,
-    header_bytes: header_bytes,
-    file_bytes: file_bytes,
-    payload_bytes: byte_size(count: safetensors_declared_payload_bytes(header_bytes: header_bytes, file_bytes: file_bytes)),
+fn safetensors_shard_file(path: NonEmptyStr, header_bytes: ByteSize, file_bytes: ByteSize) -> SafetensorsShardFile {
+  SafetensorsShardFile { path: path, header_bytes: header_bytes, file_bytes: file_bytes }
+}
+
+data safetensors_header_length_prefix_bytes: ByteSize = byte_size(count: 8)
+
+fn safetensors_shard_declared_overhead(header_bytes: ByteSize) -> Nat {
+  byte_size_count(b: safetensors_header_length_prefix_bytes) + byte_size_count(b: header_bytes)
+}
+
+// THE PAYLOAD IS DERIVABLE OR THE SHARD IS IMPOSSIBLE, and those are two values rather than one
+// number the caller has to interpret. A file smaller than its own declared prefix-plus-header is
+// not a file with no tensors in it: it is a row whose two figures contradict each other, and the
+// remedy is to re-read the header rather than to proceed with a zero.
+type SafetensorsShardPayload
+  = ShardPayloadDeclared { bytes: ByteSize }
+  | ShardHeaderExceedsFile { path: NonEmptyStr, declared_overhead: Nat, file_bytes: ByteSize }
+
+fn safetensors_shard_payload(shard: SafetensorsShardFile) -> SafetensorsShardPayload {
+  let overhead = safetensors_shard_declared_overhead(header_bytes: shard.header_bytes)
+  if byte_size_count(b: shard.file_bytes) >= overhead {
+    ShardPayloadDeclared { bytes: byte_size(count: byte_size_count(b: shard.file_bytes) - overhead) }
+  } else {
+    ShardHeaderExceedsFile { path: shard.path, declared_overhead: overhead, file_bytes: shard.file_bytes }
   }
 }
 
-data safetensors_header_length_prefix_bytes: Nat = 8
+fn safetensors_shard_payload_defects(shard: SafetensorsShardFile) -> List<NonEmptyStr> {
+  match safetensors_shard_payload(shard: shard) {
+    ShardPayloadDeclared { bytes: _ } => []
+    ShardHeaderExceedsFile { path: pth, declared_overhead: o, file_bytes: fb } =>
+      [join([
+        "safetensors shard ", pth as String, " declares an 8-byte prefix plus a header totalling ",
+        to_string(o), " bytes inside a file of ", to_string(byte_size_count(b: fb)),
+        " bytes; the two figures contradict each other and no payload size follows from them",
+      ], "") as NonEmptyStr]
+  }
+}
 
-fn safetensors_declared_payload_bytes(header_bytes: Nat, file_bytes: ByteSize) -> Nat {
-  let overhead = safetensors_header_length_prefix_bytes + header_bytes
-  if byte_size_count(b: file_bytes) >= overhead { byte_size_count(b: file_bytes) - overhead } else { safetensors_no_bytes }
+// THE AGREEMENT HAS THREE ANSWERS AND NONE OF THEM IS A BARE FALSE. A shard whose payload cannot be
+// derived at all is a different state from one whose derivable payload is the wrong size, and only
+// the first is a defect in the shard row rather than in the join.
+type SafetensorsShardAgreement
+  = ShardPayloadMatchesPopulation { bytes: ByteSize }
+  | ShardPayloadDisagreesWithPopulation { path: NonEmptyStr, payload_bytes: ByteSize, declared: ByteSize }
+  | ShardPayloadUnderivable { path: NonEmptyStr, because: NonEmptyStr }
+
+fn safetensors_shard_payload_agreement(shard: SafetensorsShardFile, declared: ByteSize) -> SafetensorsShardAgreement {
+  match safetensors_shard_payload(shard: shard) {
+    ShardHeaderExceedsFile { path: pth, declared_overhead: o, file_bytes: fb } =>
+      ShardPayloadUnderivable {
+        path: pth,
+        because: join([
+          "the declared prefix plus header is ", to_string(o),
+          " bytes against a file of ", to_string(byte_size_count(b: fb)), " bytes",
+        ], "") as NonEmptyStr,
+      }
+    ShardPayloadDeclared { bytes: b } =>
+      if byte_size_count(b: b) == byte_size_count(b: declared) {
+        ShardPayloadMatchesPopulation { bytes: b }
+      } else {
+        ShardPayloadDisagreesWithPopulation { path: shard.path, payload_bytes: b, declared: declared }
+      }
+  }
 }
 
 fn safetensors_shard_payload_matches_population(shard: SafetensorsShardFile, declared: ByteSize) -> Bool {
-  byte_size_count(b: shard.payload_bytes) == byte_size_count(b: declared)
+  match safetensors_shard_payload_agreement(shard: shard, declared: declared) {
+    ShardPayloadMatchesPopulation { bytes: _ } => true
+    ShardPayloadDisagreesWithPopulation { path: _, payload_bytes: _, declared: _ } => false
+    ShardPayloadUnderivable { path: _, because: _ } => false
+  }
 }

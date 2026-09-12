@@ -547,7 +547,7 @@ type DeepseekV41EngramShard sole_constructor {
 data deepseek_v4_1_flash_engram_shard_1: DeepseekV41EngramShard = DeepseekV41EngramShard {
   file: safetensors_shard_file(
     path: deepseek_v4_1_flash_engram_shard_1_path,
-    header_bytes: 656,
+    header_bytes: byte_size(count: 656),
     file_bytes: byte_size(count: 101535150936),
   ),
   sha256: Sha256Digest { hex: "824db4881320407ac340736d14dcee5ecd748c27d0f5836b8127ecc2e3781b0f" as Sha256DigestHex },
@@ -556,7 +556,7 @@ data deepseek_v4_1_flash_engram_shard_1: DeepseekV41EngramShard = DeepseekV41Eng
 data deepseek_v4_1_flash_engram_shard_14: DeepseekV41EngramShard = DeepseekV41EngramShard {
   file: safetensors_shard_file(
     path: deepseek_v4_1_flash_engram_shard_14_path,
-    header_bytes: 664,
+    header_bytes: byte_size(count: 664),
     file_bytes: byte_size(count: 101537926640),
   ),
   sha256: Sha256Digest { hex: "976330f4954338e1ad8b508c32aa912032c7ad908959fd53c8307650fe4520ed" as Sha256DigestHex },

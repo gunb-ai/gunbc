@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, de
 import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
-import std.pareto { LowerIsBetter, SelectionAxis }
+import std.pareto { AxisGap, AxisReading, LowerIsBetter, SelectionAxis }
 import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
 import std.roster_frontier {
   FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
@@ -71,7 +71,7 @@ import gunbc.spark.serving_deployment_selection {
   ArtifactComponent, artifact_component, ArtifactComponentPlacement, ComponentResident, ComponentPlacedByRoute,
   v4_1_artifact_components, legacy_undecomposed_artifact,
   artifact_decomposition_defect, candidate_resident_footprint, sum_component_footprints,
-  footprint_bytes, component_route_holds,
+  footprint_bytes, component_route_reading,
   FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -1112,9 +1112,10 @@ test fn an_undecomposed_artifact_divides_exactly_what_it_divided_before() -> Boo
     FootprintUnread { obligation: _ } => true
     FootprintObservedOnFleet { bytes: _, how: _ } => false
     FootprintReportedExternally { bytes: _, source: _ } => false
-  } && component_route_holds(
-    c: cand(name: "legacy_glm2", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)),
-    p: serving_parameters_current)
+  } && match component_route_reading(route_standings: []) {
+    Present { value: r } => r.interval_micro.low == 1
+    Absent => false
+  }
 }
 
 // AND THE V4.1 CANDIDATE'S RESIDENT FOOTPRINT IS UNREAD RATHER THAN SMALLER. With no route selected,
