@@ -261,12 +261,12 @@ fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> 
   }
 }
 
-fn value_range_from_append(row: AppendListingRow, tab: NonEmptyStr) -> ValueRange {
-  ValueRange {
-    range: sheet_qualified_span(tab: tab, span: row.a1),
+fn value_ranges_from_append(row: AppendListingRow, tab: NonEmptyStr) -> List<ValueRange> {
+  map(row.runs, run => ValueRange {
+    range: sheet_qualified_span(tab: tab, span: run.a1),
     majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
-    values: Present { value: [row.cells] },
-  }
+    values: Present { value: [run.cells] },
+  })
 }
 
 type TabBoundWritePlan {
@@ -277,7 +277,9 @@ type TabBoundWritePlan {
 fn value_ranges_from_write_plan(bound: TabBoundWritePlan) -> List<ValueRange> {
   concat(
     map(bound.plan.patches, w => value_range_from_derived_write(write: w, tab: bound.tab)),
-    map(bound.plan.appends, row => value_range_from_append(row: row, tab: bound.tab)),
+    fold(bound.plan.appends, init: [], f: fn(acc, row) {
+      concat(acc, value_ranges_from_append(row: row, tab: bound.tab))
+    }),
   )
 }
 

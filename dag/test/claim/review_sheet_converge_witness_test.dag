@@ -25,6 +25,8 @@ import gunbc.review_sheet_projection {
   write_plan_touches_column,
   classify_review_sheet,
   conflict_reason,
+  append_listing_row,
+  columns_by_name,
   judgement_for_listing,
   buyer_review_judgement_read_frontier,
   JudgementBlank,
@@ -686,25 +688,35 @@ test fn absent_listing_appends_a_located_row() -> Bool {
           Present { value: a } =>
             (a.listing_id as String) == "L2"
               && a.sheet_row == 2
-              && a1_row_span_wire(span: a.a1) == "A2:D2"
-              && match a.cells |> first {
-                Present { value: id } =>
-                  id == "L2"
-                    && match value_ranges_from_write_plan(
-                      bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
-                    ) |> first {
-                      Present { value: vr } =>
-                        vr.range == "Review!A2:D2"
-                          && match vr.values {
-                            Present { value: rows } =>
-                              match rows |> first {
-                                Present { value: cells } =>
-                                  match cells.skip(n: 1).first() {
-                                    Present { value: title } => title == "beta"
-                                    Absent => false
-                                  }
-                                Absent => false
-                              }
+              && match a.runs |> first {
+                Present { value: run } =>
+                  a1_row_span_wire(span: run.a1) == "A2:C2"
+                    && match run.cells |> first {
+                      Present { value: id } =>
+                        id == "L2"
+                          && match run.cells.skip(n: 2).first() {
+                            Present { value: standing } =>
+                              standing == w_standing_observed()
+                                && (run.cells |> count) == 3
+                                && match value_ranges_from_write_plan(
+                                  bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                ) |> first {
+                                  Present { value: vr } =>
+                                    vr.range == "Review!A2:C2"
+                                      && match vr.values {
+                                        Present { value: rows } =>
+                                          match rows |> first {
+                                            Present { value: cells } =>
+                                              match cells.skip(n: 1).first() {
+                                                Present { value: title } => title == "beta"
+                                                Absent => false
+                                              }
+                                            Absent => false
+                                          }
+                                        Absent => false
+                                      }
+                                  Absent => false
+                                }
                             Absent => false
                           }
                       Absent => false
@@ -727,42 +739,46 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
     ReviewSheetNeedsWrite { plan: p } =>
       match p.appends |> first {
         Present { value: a } =>
-          match a.cells.skip(n: 1).first() {
-            Present { value: standing } =>
-              standing == w_standing_observed()
-                && match a.cells.skip(n: 2).first() {
-                  Present { value: title } =>
-                    title == "alpha"
-                      && match a.cells.skip(n: 3).first() {
-                        Present { value: judgement } =>
-                          judgement == ""
-                            && match value_ranges_from_write_plan(
-                              bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
-                            ) |> first {
-                              Present { value: vr } =>
-                                match vr.values {
-                                  Present { value: rows } =>
-                                    match rows |> first {
-                                      Present { value: cells } =>
-                                        match cells.skip(n: 1).first() {
-                                          Present { value: standing_cell } =>
-                                            standing_cell == w_standing_observed()
-                                              && match cells.skip(n: 2).first() {
-                                                Present { value: title_cell } => title_cell == "alpha"
-                                                Absent => false
-                                              }
-                                          Absent => false
-                                        }
-                                      Absent => false
-                                    }
-                                  Absent => false
-                                }
-                              Absent => false
-                            }
-                        Absent => false
-                      }
-                  Absent => false
-                }
+          match a.runs |> first {
+            Present { value: run } =>
+              match run.cells.skip(n: 1).first() {
+                Present { value: standing } =>
+                  standing == w_standing_observed()
+                    && match run.cells.skip(n: 2).first() {
+                      Present { value: title } =>
+                        title == "alpha"
+                          && (run.cells |> count) == 3
+                          && match run.cells.skip(n: 3).first() {
+                            Present { value: _ } => false
+                            Absent =>
+                              match value_ranges_from_write_plan(
+                                bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                              ) |> first {
+                                Present { value: vr } =>
+                                  match vr.values {
+                                    Present { value: rows } =>
+                                      match rows |> first {
+                                        Present { value: cells } =>
+                                          match cells.skip(n: 1).first() {
+                                            Present { value: standing_cell } =>
+                                              standing_cell == w_standing_observed()
+                                                && match cells.skip(n: 2).first() {
+                                                  Present { value: title_cell } => title_cell == "alpha"
+                                                  Absent => false
+                                                }
+                                            Absent => false
+                                          }
+                                        Absent => false
+                                      }
+                                    Absent => false
+                                  }
+                                Absent => false
+                              }
+                          }
+                      Absent => false
+                    }
+                Absent => false
+              }
             Absent => false
           }
         Absent => false
@@ -770,6 +786,30 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
     ReviewSheetConverged => false
     ReviewSheetConflict { conflict: _ } => false
     ReviewSheetUnreadable { reason: _ } => false
+  }
+}
+
+test fn append_over_populated_operator_cell_refuses() -> Bool {
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", w_standing_observed(), "buy"]],
+  )
+  match append_listing_row(
+    observed: observed,
+    projection_row: w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
+    schema: w_schema(),
+    headers: w_headers(),
+    column_by_name: columns_by_name(schema: w_schema()),
+    sheet_row: 2,
+    plan: ReviewSheetWritePlan { patches: [], appends: [] },
+  ) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "append would overwrite operator column judgement")
+        && string_contains(s: r as String, pattern: "listing=L2")
+        && string_contains(s: r as String, pattern: "row=2")
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
   }
 }
 
@@ -1433,6 +1473,55 @@ test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
     ReviewSheetNeedsApiEnable { plan: _ } => false
     ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetOperatorRefused { reason: _ } => false
+  }
+}
+
+test fn enabled_api_does_not_demand_serviceusage_enable_iam() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
+      project: w_fixture_project(),
+      writer: w_fixture_writer(),
+    ),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: sid } => sid == id
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+  }
+}
+
+test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_disabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetAwaitingCreation,
+    serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
+      project: w_fixture_project(),
+      writer: w_fixture_writer(),
+    ),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      string_contains(s: i.identity as String, pattern: "gcp-serviceusage-enable-iam")
+        && string_contains(s: i.instruction as String, pattern: "serviceusage.services.enable")
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
 }
 

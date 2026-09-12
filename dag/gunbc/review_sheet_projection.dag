@@ -83,11 +83,15 @@ type DerivedCellWrite {
   value: String
 }
 
+type AppendCellRun {
+  a1: A1RowSpan
+  cells: List<String>
+}
+
 type AppendListingRow {
   listing_id: NonEmptyStr
   sheet_row: Int
-  a1: A1RowSpan
-  cells: List<String>
+  runs: List<AppendCellRun>
 }
 
 type ReviewSheetWritePlan {
@@ -199,19 +203,23 @@ fn a1_cell_wire(cell: A1Cell) -> String {
   concat(cell.column.letter as String, to_string(cell.row))
 }
 
-fn a1_row_span(sheet_row: Int, cell_count: Int) -> A1RowSpan? {
-  if cell_count < 1 {
+fn a1_row_span_cols(sheet_row: Int, start_column: Int, last_column: Int) -> A1RowSpan? {
+  if last_column < start_column {
     none
   } else {
-    match a1_cell(column_index: 0, sheet_row: sheet_row) {
+    match a1_cell(column_index: start_column, sheet_row: sheet_row) {
       Absent => none
       Present { value: start } =>
-        match a1_cell(column_index: cell_count - 1, sheet_row: sheet_row) {
+        match a1_cell(column_index: last_column, sheet_row: sheet_row) {
           Absent => none
           Present { value: end } => Present { value: A1RowSpan { start: start, end: end } }
         }
     }
   }
+}
+
+fn a1_row_span(sheet_row: Int, cell_count: Int) -> A1RowSpan? {
+  a1_row_span_cols(sheet_row: sheet_row, start_column: 0, last_column: cell_count - 1)
 }
 
 fn a1_row_span_wire(span: A1RowSpan) -> String {
@@ -547,39 +555,153 @@ fn fold_columns_for_row(
   })
 }
 
-fn append_cell_for_column(column: ReviewColumn, derived: Map<String, String>) -> String {
-  match column.kind {
-    ListingStanding => listing_standing_label(state: StandingObserved)
-    OperatorEntered => ""
-    DerivedField { source_field: _ } =>
-      match derived.lookup(column.name as String) {
-        Present { value: v } => v
-        Absent => ""
-      }
-  }
-}
-
 fn columns_by_name(schema: ReviewSheetSchema) -> Map<String, ReviewColumn> {
   fold(schema.columns, init: empty_map(), f: fn(acc, c) {
     map_insert(acc, c.name as String, c)
   })
 }
 
-fn append_cell_for_header(
+fn append_cell_for_column(column: ReviewColumn, derived: Map<String, String>) -> String? {
+  match column.kind {
+    ListingStanding => Present { value: listing_standing_label(state: StandingObserved) }
+    OperatorEntered => none
+    DerivedField { source_field: _ } =>
+      match derived.lookup(column.name as String) {
+        Present { value: v } => Present { value: v }
+        Absent => Present { value: "" }
+      }
+  }
+}
+
+fn header_append_cell(
   listing_id: NonEmptyStr,
   identity_column: NonEmptyStr,
   column_by_name: Map<String, ReviewColumn>,
   derived: Map<String, String>,
   header: String,
-) -> String {
+) -> String? {
   if header == (identity_column as String) {
-    listing_id as String
+    Present { value: listing_id as String }
   } else {
     match column_by_name.lookup(header) {
+      Absent => none
       Present { value: column } => append_cell_for_column(column: column, derived: derived)
-      Absent => ""
     }
   }
+}
+
+type AppendRunAcc {
+  runs: List<AppendCellRun>
+  has_open: Bool
+  open_start: Int
+  open_last: Int
+  open_cells: List<String>
+}
+
+fn empty_append_run_acc() -> AppendRunAcc {
+  AppendRunAcc {
+    runs: [],
+    has_open: false,
+    open_start: 0,
+    open_last: 0,
+    open_cells: [],
+  }
+}
+
+fn flushed_append_run_acc(acc: AppendRunAcc, sheet_row: Int) -> AppendRunAcc? {
+  if acc.has_open {
+    match a1_row_span_cols(sheet_row: sheet_row, start_column: acc.open_start, last_column: acc.open_last) {
+      Absent => none
+      Present { value: a1 } =>
+        Present {
+          value: AppendRunAcc {
+            runs: concat(acc.runs, [AppendCellRun { a1: a1, cells: acc.open_cells }]),
+            has_open: false,
+            open_start: 0,
+            open_last: 0,
+            open_cells: [],
+          }
+        }
+    }
+  } else {
+    Present { value: acc }
+  }
+}
+
+fn push_append_cell(acc: AppendRunAcc, sheet_row: Int, column_index: Int, value: String) -> AppendRunAcc? {
+  if acc.has_open {
+    if column_index == acc.open_last + 1 {
+      Present {
+        value: AppendRunAcc {
+          runs: acc.runs,
+          has_open: true,
+          open_start: acc.open_start,
+          open_last: column_index,
+          open_cells: concat(acc.open_cells, [value]),
+        }
+      }
+    } else {
+      match flushed_append_run_acc(acc: acc, sheet_row: sheet_row) {
+        Absent => none
+        Present { value: flushed } =>
+          Present {
+            value: AppendRunAcc {
+              runs: flushed.runs,
+              has_open: true,
+              open_start: column_index,
+              open_last: column_index,
+              open_cells: [value],
+            }
+          }
+      }
+    }
+  } else {
+    Present {
+      value: AppendRunAcc {
+        runs: acc.runs,
+        has_open: true,
+        open_start: column_index,
+        open_last: column_index,
+        open_cells: [value],
+      }
+    }
+  }
+}
+
+fn operator_overwrite_reason(
+  observed: ObservedSheet,
+  schema: ReviewSheetSchema,
+  header_by_name: Map<String, Int>,
+  sheet_row: Int,
+) -> NonEmptyStr? {
+  let data_index = sheet_row - 2
+  match observed.rows |> filter(r => r.data_index == data_index) |> first {
+    Absent => none
+    Present { value: row } =>
+      schema.columns
+        |> filter(c => match c.kind {
+          OperatorEntered => true
+          DerivedField { source_field: _ } => false
+          ListingStanding => false
+        })
+        |> filter(c => match header_by_name.lookup(c.name as String) {
+          Absent => false
+          Present { value: idx } => cell_at(cells: row.cells, index: idx) != ""
+        })
+        |> map(c => c.name)
+        |> first
+  }
+}
+
+fn append_overwrite_reason(
+  listing_id: NonEmptyStr,
+  column: NonEmptyStr,
+  sheet_row: Int,
+) -> NonEmptyStr {
+  concat(
+    "append would overwrite operator column ",
+    concat(column as String, concat(" listing=", concat(listing_id as String, concat(" row=", to_string(sheet_row))))),
+  ) as NonEmptyStr
 }
 
 fn append_row_for(
@@ -590,23 +712,91 @@ fn append_row_for(
   sheet_row: Int,
 ) -> AppendListingRow? {
   let derived = derived_by_column(row: projection_row)
-  let cells = map(headers, h => append_cell_for_header(
-    listing_id: projection_row.listing_id,
-    identity_column: schema.identity_column,
-    column_by_name: column_by_name,
-    derived: derived,
-    header: h,
-  ))
-  match a1_row_span(sheet_row: sheet_row, cell_count: cells |> count) {
-    Absent => none
-    Present { value: a1 } =>
-      Present {
-        value: AppendListingRow {
+  match fold(headers |> enumerate, init: Present { value: empty_append_run_acc() }, f: fn(acc, pair) {
+    match acc {
+      Absent => none
+      Present { value: builder } =>
+        match header_append_cell(
           listing_id: projection_row.listing_id,
-          sheet_row: sheet_row,
-          a1: a1,
-          cells: cells,
+          identity_column: schema.identity_column,
+          column_by_name: column_by_name,
+          derived: derived,
+          header: pair.second,
+        ) {
+          Absent => Present { value: builder }
+          Present { value: cell } => push_append_cell(
+            acc: builder,
+            sheet_row: sheet_row,
+            column_index: pair.first,
+            value: cell,
+          )
         }
+    }
+  }) {
+    Absent => none
+    Present { value: builder } =>
+      match flushed_append_run_acc(acc: builder, sheet_row: sheet_row) {
+        Absent => none
+        Present { value: flushed } =>
+          if (flushed.runs |> count) == 0 {
+            none
+          } else {
+            Present {
+              value: AppendListingRow {
+                listing_id: projection_row.listing_id,
+                sheet_row: sheet_row,
+                runs: flushed.runs,
+              }
+            }
+          }
+      }
+  }
+}
+
+fn append_listing_row(
+  observed: ObservedSheet,
+  projection_row: ProjectionRow,
+  schema: ReviewSheetSchema,
+  headers: List<String>,
+  column_by_name: Map<String, ReviewColumn>,
+  sheet_row: Int,
+  plan: ReviewSheetWritePlan,
+) -> ReviewSheetClassification {
+  match keyed_roster_build(incomings: header_key_rows(headers: headers), key_eq: review_sheet_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
+      ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+    KeyedRosterBuilt { rows: header_rows } =>
+      match operator_overwrite_reason(
+        observed: observed,
+        schema: schema,
+        header_by_name: keyed_string_map(rows: header_rows),
+        sheet_row: sheet_row,
+      ) {
+        Present { value: column } =>
+          ReviewSheetUnreadable {
+            reason: append_overwrite_reason(
+              listing_id: projection_row.listing_id,
+              column: column,
+              sheet_row: sheet_row,
+            )
+          }
+        Absent =>
+          match append_row_for(
+            projection_row: projection_row,
+            schema: schema,
+            headers: headers,
+            column_by_name: column_by_name,
+            sheet_row: sheet_row,
+          ) {
+            Absent =>
+              ReviewSheetUnreadable {
+                reason: concat(
+                  "unrepresentable A1 for append listing ",
+                  projection_row.listing_id as String,
+                ) as NonEmptyStr
+              }
+            Present { value: row } => ReviewSheetNeedsWrite { plan: plan_plus_append(plan: plan, row: row) }
+          }
       }
   }
 }
@@ -700,23 +890,15 @@ fn finish_classify(
                   reason: omitted_derived_column_reason(listing_id: pair.second.listing_id, column: col)
                 }
               Absent =>
-                match append_row_for(
+                append_listing_row(
+                  observed: observed,
                   projection_row: pair.second,
                   schema: projection.schema,
                   headers: observed.headers,
                   column_by_name: column_by_name,
                   sheet_row: start_row + pair.first,
-                ) {
-                  Absent =>
-                    ReviewSheetUnreadable {
-                      reason: concat(
-                        "unrepresentable A1 for append listing ",
-                        pair.second.listing_id as String,
-                      ) as NonEmptyStr
-                    }
-                  Present { value: row } =>
-                    ReviewSheetNeedsWrite { plan: plan_plus_append(plan: accp, row: row) }
-                }
+                  plan: accp,
+                )
             }
         }
       })

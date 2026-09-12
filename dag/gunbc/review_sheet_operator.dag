@@ -178,6 +178,56 @@ fn review_sheet_estate_unresolved_calling_home() -> ReviewSheetOperatorAdmission
   }
 }
 
+fn admit_review_sheet_after_enablement_ready(
+  spreadsheet: BuyerReviewSpreadsheet,
+  share: HumanIntervention,
+  sharing_policy: WorkspaceDomainSharingPolicy,
+  tenancy: ReviewSheetAccountTenancy,
+) -> ReviewSheetOperatorAdmission {
+  match spreadsheet {
+    SpreadsheetAwaitingCreation =>
+      ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
+    SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
+      match tenancy {
+        AccountTenancyUnobserved =>
+          ReviewSheetOperatorRefused {
+            reason: "Google account tenancy unread" as NonEmptyStr
+          }
+        ReviewSheetPlainGoogleAccount =>
+          match share.completion_evidence {
+            DischargedAt { evidence: _ } =>
+              ReviewSheetOperatorAdmitted { spreadsheet_id: id }
+            NoDischargeSiteModeled =>
+              ReviewSheetAwaitingHuman { intervention: share }
+          }
+        ReviewSheetWorkspaceDomain =>
+          match sharing_policy {
+            DomainSharingPolicyUnobserved =>
+              ReviewSheetOperatorRefused {
+                reason: concat(
+                  google_workspace_product as String,
+                  " domain sharing policy unread; the operator is admin and the policy is readable",
+                ) as NonEmptyStr
+              }
+            DomainSharingForbidsExternalPrincipals =>
+              ReviewSheetOperatorRefused {
+                reason: concat(
+                  google_workspace_product as String,
+                  " domain sharing policy forbids sharing with a service-account principal",
+                ) as NonEmptyStr
+              }
+            DomainSharingAllowsServiceAccountShare =>
+              match share.completion_evidence {
+                DischargedAt { evidence: _ } =>
+                  ReviewSheetOperatorAdmitted { spreadsheet_id: id }
+                NoDischargeSiteModeled =>
+                  ReviewSheetAwaitingHuman { intervention: share }
+              }
+          }
+      }
+  }
+}
+
 fn admit_review_sheet_operator(
   project: GcpProjectId,
   writer: ServiceAccountEmail,
@@ -189,61 +239,25 @@ fn admit_review_sheet_operator(
   sharing_policy: WorkspaceDomainSharingPolicy,
   tenancy: ReviewSheetAccountTenancy,
 ) -> ReviewSheetOperatorAdmission {
-  match serviceusage_enable_iam.completion_evidence {
-            NoDischargeSiteModeled =>
-              ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
-            DischargedAt { evidence: _ } =>
-            match sheets_api_enablement_decision(
-              policy: enablement_policy,
-              project: project,
-              observed: enablement,
-            ) {
-              Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
-              Apply { plan: plan } => ReviewSheetNeedsApiEnable { plan: plan }
-              Noop =>
-                match spreadsheet {
-                  SpreadsheetAwaitingCreation =>
-                    ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
-                  SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
-                    match tenancy {
-                      AccountTenancyUnobserved =>
-                        ReviewSheetOperatorRefused {
-                          reason: "Google account tenancy unread" as NonEmptyStr
-                        }
-                      ReviewSheetPlainGoogleAccount =>
-                        match share.completion_evidence {
-                          DischargedAt { evidence: _ } =>
-                            ReviewSheetOperatorAdmitted { spreadsheet_id: id }
-                          NoDischargeSiteModeled =>
-                            ReviewSheetAwaitingHuman { intervention: share }
-                        }
-                      ReviewSheetWorkspaceDomain =>
-                        match sharing_policy {
-                          DomainSharingPolicyUnobserved =>
-                            ReviewSheetOperatorRefused {
-                              reason: concat(
-                                google_workspace_product as String,
-                                " domain sharing policy unread; the operator is admin and the policy is readable",
-                              ) as NonEmptyStr
-                            }
-                          DomainSharingForbidsExternalPrincipals =>
-                            ReviewSheetOperatorRefused {
-                              reason: concat(
-                                google_workspace_product as String,
-                                " domain sharing policy forbids sharing with a service-account principal",
-                              ) as NonEmptyStr
-                            }
-                          DomainSharingAllowsServiceAccountShare =>
-                            match share.completion_evidence {
-                              DischargedAt { evidence: _ } =>
-                                ReviewSheetOperatorAdmitted { spreadsheet_id: id }
-                              NoDischargeSiteModeled =>
-                                ReviewSheetAwaitingHuman { intervention: share }
-                            }
-                        }
-                    }
-                }
-            }
+  match sheets_api_enablement_decision(
+    policy: enablement_policy,
+    project: project,
+    observed: enablement,
+  ) {
+    Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
+    Apply { plan: plan } =>
+      match serviceusage_enable_iam.completion_evidence {
+        NoDischargeSiteModeled =>
+          ReviewSheetAwaitingHuman { intervention: serviceusage_enable_iam }
+        DischargedAt { evidence: _ } => ReviewSheetNeedsApiEnable { plan: plan }
+      }
+    Noop =>
+      admit_review_sheet_after_enablement_ready(
+        spreadsheet: spreadsheet,
+        share: share,
+        sharing_policy: sharing_policy,
+        tenancy: tenancy,
+      )
   }
 }
 
