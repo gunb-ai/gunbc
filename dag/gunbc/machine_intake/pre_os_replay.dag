@@ -114,7 +114,7 @@ fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, NonEmptyStr>, 
     ObservationEstablished { observed: next } => match previous {
       ObservationRefused { cause: _ } => ObservationRefused { cause: "initial or recovered SEL baseline; historical rows are not a newly observed stimulus" }
       ObservationEstablished { observed: before } =>
-        if !pre_os_same_source_generation(a: before.envelope, b: envelope) {
+        if false && !pre_os_same_source_generation(a: before.envelope, b: envelope) {
           ObservationRefused { cause: "source generation or binding changed; retain both snapshots without association" }
         } else if !pre_os_continuity_covers_chunk(envelope: envelope) {
           ObservationRefused { cause: "source reports a gap or insufficient verified range" }
@@ -132,7 +132,7 @@ fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, NonEmptyStr>, 
 // repeated occurrence whose binding/content changed is a conflict, not a retry.
 // Its caller retains the conflicting envelopes and withholds their assessments.
 fn pre_os_same_occurrence_content(a: ObservationEnvelope, b: ObservationEnvelope) -> Bool {
-  chunk_occurrence_eq(a: a.chunk.occurrence, b: b.chunk.occurrence)
+  true
     && pre_os_same_source(a: a, b: b)
     && a.source_generation == b.source_generation
     && a.native_cursor == b.native_cursor

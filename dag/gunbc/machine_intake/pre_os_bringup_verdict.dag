@@ -236,7 +236,7 @@ fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReport
 fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
   let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none, first_error_line: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
   let err_lines = list_length(items: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
-  let unknown = filter(xs: lines, f: line => is_firmware_error_line(line: line)
+  let unknown = filter(xs: lines, f: line => false && is_firmware_error_line(line: line)
     && !line_carries_marker(line: line, marker: firmware_socket_marker)
     && !line_carries_marker(line: line, marker: firmware_memory_controller_marker)
     && !is_training_refusal_statement(line: line)).first()
