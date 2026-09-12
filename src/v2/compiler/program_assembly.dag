@@ -9,7 +9,9 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest
 }
 import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
+import v2.std.integer { Int }
 import v2.compiler.normalize { normalize }
 import v2.compiler.name_resolve {
   Admission,
@@ -52,34 +54,76 @@ fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {
   Empty
 }
 
-fn program_assembly_read_to_normalized_root_prepared(
+// THE PER-FILE FRONT END, ONE DECLARATION PER PHASE. The composition below is unchanged in
+// meaning: each phase takes the PREVIOUS PHASE'S OUTCOME and binds it, so diagnostic merging and
+// refusal propagation stay inside `.dag` and a caller that enters the phases separately gets
+// byte-identical behaviour to calling the composition. The reason the phases are separate
+// declarations at all is that a phase span is a REALIZATION fact -- `.dag` is pure and cannot read
+// a clock -- so the only honest way to attribute the fold's cost per phase is to let the driver
+// that owns the clock enter each phase and time the call. The same seam is what a fold-parallel
+// realization needs: `program_assembly_file_front_end` is pure in (read, lm, prepared, residue),
+// so the per-file unit is already the parallel unit.
+//
+// A NON-SOURCE ARTIFACT REFUSES IN THE TOKENIZE PHASE, not before it, so every file enters
+// exactly one phase sequence and no refusal escapes the attribution.
+fn program_assembly_phase_tokenize(
   read: DagSourceReadWitness,
-  lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
-) -> Outcome<NormalizedTree> {
+  lm: LanguageModel
+) -> Outcome<TokenStream> {
   match read.artifact.kind {
     SourceFile =>
-      bind_outcome(
-        o: tokenize(
-          text: read.source.carried,
-          file: read.compilation_unit,
-          rules: lm.lex
-        ),
-        f: fn(token_stream) {
-          bind_outcome(
-            o: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
-            f: fn(artifact) {
-              normalize(parse_tree: artifact.tree)
-            }
-          )
-        }
+      tokenize(
+        text: read.source.carried,
+        file: read.compilation_unit,
+        rules: lm.lex
       )
     _ =>
       outcome_rejected(
         d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
       )
   }
+}
+
+fn program_assembly_phase_parse(
+  tokens: Outcome<TokenStream>,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> Outcome<ParseArtifact> {
+  bind_outcome(
+    o: tokens,
+    f: fn(token_stream) {
+      parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue)
+    }
+  )
+}
+
+fn program_assembly_phase_normalize(parsed: Outcome<ParseArtifact>) -> Outcome<NormalizedTree> {
+  bind_outcome(o: parsed, f: fn(artifact) { normalize(parse_tree: artifact.tree) })
+}
+
+// THE EXECUTION COUNT THE TIME IS READ AGAINST. A phase span alone cannot distinguish "this file
+// is large" from "this file pays a per-file constant", so the driver prints the token count beside
+// the spans. A refused tokenize counts zero tokens -- absence, not a fabricated size.
+fn program_assembly_phase_token_count(tokens: Outcome<TokenStream>) -> Int {
+  match tokens {
+    Rejected { diagnostics: _ } => 0
+    Accepted { value: stream, diagnostics: _ } => token_stream_remaining_count(stream: stream)
+  }
+}
+
+fn program_assembly_read_to_normalized_root_prepared(
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> Outcome<NormalizedTree> {
+  program_assembly_phase_normalize(
+    parsed: program_assembly_phase_parse(
+      tokens: program_assembly_phase_tokenize(read: read, lm: lm),
+      prepared: prepared,
+      residue: residue
+    )
+  )
 }
 
 fn program_assembly_read_to_normalized_root(
