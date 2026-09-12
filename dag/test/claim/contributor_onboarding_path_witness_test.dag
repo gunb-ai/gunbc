@@ -46,6 +46,8 @@ import tools.docs_projection_gate {
   committed_docs_located_artifacts
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.nat { Nat }
+import std.types { String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -62,38 +64,48 @@ test fn the_declared_path_is_a_gapless_total_order() -> Bool {
 
 // THE DISCRIMINATING RED FOR THE ORDER. A duplicated ordinal must be refused, and the fixture
 // authors the duplicate rather than hoping the live roster contains one.
+// THE FIXTURES ARE AUTHORED, NOT SLICED OFF THE LIVE ROSTER. The predicate under test answers
+// for an arbitrary list, so the discriminating inputs are two-element lists written here: one
+// well-ordered, one with a duplicate, one with a gap. Deriving them from onboarding_steps would
+// make the RED depend on what the live roster happens to contain, which is the input the roster
+// is free to change.
+fn fixture_step(ordinal: Nat, id: String) -> OnboardingStep {
+  OnboardingStep {
+    ordinal: ordinal,
+    id: id as NonEmptyStr,
+    goal: "a fixture step" as NonEmptyStr,
+    command: "",
+    verification: "a fixture verification" as NonEmptyStr,
+    blocker: SelfServe,
+  }
+}
+
+data fixture_well_ordered: List<OnboardingStep> = [
+  fixture_step(ordinal: 1, id: "first"),
+  fixture_step(ordinal: 2, id: "second"),
+]
+
+data fixture_duplicated_ordinal: List<OnboardingStep> = [
+  fixture_step(ordinal: 1, id: "first"),
+  fixture_step(ordinal: 1, id: "second"),
+]
+
+data fixture_gapped_ordinal: List<OnboardingStep> = [
+  fixture_step(ordinal: 1, id: "first"),
+  fixture_step(ordinal: 3, id: "second"),
+]
+
+// THE DISCRIMINATING RED FOR THE ORDER, with its positive control beside it so the arm cannot be
+// satisfied by a predicate that refuses everything.
 test fn a_duplicated_ordinal_is_refused() -> Bool {
-  let two = fold(onboarding_steps, init: [], f: fn(acc, s) {
-    if count(acc) < 2 { append(acc, items: [s]) } else { acc }
-  })
-  let collided = map(two, s => OnboardingStep {
-    ordinal: 1,
-    id: s.id,
-    goal: s.goal,
-    command: s.command,
-    verification: s.verification,
-    blocker: s.blocker,
-  })
-  count(collided) == 2
-    && !step_ordinals_are_gapless(steps: collided)
-    && step_ordinals_are_gapless(steps: two)
+  step_ordinals_are_gapless(steps: fixture_well_ordered)
+    && !step_ordinals_are_gapless(steps: fixture_duplicated_ordinal)
 }
 
 // AND A GAP IS REFUSED TOO, which a duplicate check alone does not establish: two steps numbered
 // 1 and 3 are distinct and still leave a reader unable to tell whether they missed one.
 test fn a_gap_in_the_ordinals_is_refused() -> Bool {
-  let two = fold(onboarding_steps, init: [], f: fn(acc, s) {
-    if count(acc) < 2 { append(acc, items: [s]) } else { acc }
-  })
-  let gapped = map(two, s => OnboardingStep {
-    ordinal: if s.ordinal == 1 { 1 } else { 3 },
-    id: s.id,
-    goal: s.goal,
-    command: s.command,
-    verification: s.verification,
-    blocker: s.blocker,
-  })
-  !step_ordinals_are_gapless(steps: gapped)
+  !step_ordinals_are_gapless(steps: fixture_gapped_ordinal)
 }
 
 // EVERY OBSTACLE IS REACHABLE FROM THE PATH. An identity join over step ids, not a count: an

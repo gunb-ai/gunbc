@@ -245,7 +245,7 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
     step_id: "run-witnesses" as NonEmptyStr,
     symptom: "The run refuses before doing any work, reporting that the host memory budget is unreadable." as NonEmptyStr,
     cause: "No cgroup memory.high or memory.max binds the process, so the planning allowance is unknown and the run refuses rather than admitting against the widest cap it could have chosen. The authority is explicit that this is not a state an environment integer can rescue: the planning-request variable may only narrow an observed bound, never supply a missing one, and treating it as a rescue converts a typed refusal into an unbounded resolve on an unbounded host." as NonEmptyStr,
-    disposition: DocumentedRemedy { remedy: "Run under an executor that exposes an enforceable cgroup memory bound. Do not reach for the planning-request variable to clear this refusal -- it is the escape hatch the refusal exists to refuse, and the run it admits is killed rather than refused." as NonEmptyStr },
+    disposition: DocumentedRemedy { remedy: "There are two environment variables here and only one of them is an answer. GUNBC_MEMORY_BUDGET_BYTES is a PLANNING REQUEST: gunbc.host_budget_source states that it may only narrow an observed bound and can never supply a missing one, so reaching for it to clear this refusal is the escape hatch the refusal exists to refuse -- and the run it admits is SIGKILLed rather than refused, which is strictly worse than the refusal it replaced. GUNBC_BIND_MEMORY_CGROUP_BYTES is the one that binds: v1_compiler.memory_governor apply_memory_cgroup_bind writes an actual memory.max for the process, announces which of its three continuing states it took, and REFUSES rather than proceeding when the controller is unavailable, the tree is unwritable or the request does not fit the machine. So request a real bound, and read the memory-cgroup-bind line the run prints to confirm which state you got: not requested, already bound, or applying." as NonEmptyStr },
     discoverable_from_symptom: true,
   },
   OnboardingObstacle {
@@ -261,6 +261,13 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
     cause: "Several committed documents are projections of .dag authorities, including DESIGN.md itself, and the generated-artifact phase adjudicates them against those authorities. Editing the projection edits the copy." as NonEmptyStr,
     disposition: RemediedByDerivation { how: "The change step above names the regeneration recipe as its command, and the build-lane step names the phase whose refusal prints that recipe beside the drifted path, so the loop closes without the reader knowing which files are generated in advance." as NonEmptyStr },
     discoverable_from_symptom: true,
+  },
+  OnboardingObstacle {
+    step_id: "change" as NonEmptyStr,
+    symptom: "A fold whose accumulator starts as an empty list compiles into a wall of errors saying a field does not exist on a type the author never wrote, pointing at lines far from the fold." as NonEmptyStr,
+    cause: "An empty list literal as a fold seed has no element type to infer from, so the accumulator resolves to the bare free monoid and every later field access on its elements is a field on THAT type. The diagnostics are therefore correct and land nowhere near the cause. Observed while writing this change's own witness: one seeded fold produced eleven field-does-not-exist errors across two functions, none of them on the fold." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Give the accumulator an element type the seed can carry, or author the fixture as a typed data declaration instead of folding one out of a live roster. When a diagnostic says a field is missing on a type you did not name, read it as an inference failure upstream rather than as a mistake at the line it cites." as NonEmptyStr },
+    discoverable_from_symptom: false,
   },
   OnboardingObstacle {
     step_id: "propose" as NonEmptyStr,
