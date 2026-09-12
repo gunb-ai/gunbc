@@ -165,7 +165,7 @@ data cooler_catalog_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data no_acquisition_record: NonEmptyStr = "No acquisition record found in the public corpus; tax treatment unrecorded. Dredge the receipt before asserting a jurisdiction."
+data tax_treatment_unread: NonEmptyStr = "Tax treatment is not in the public corpus and was not relayed; read the held receipt before asserting a jurisdiction."
 
 data mt_collins_twenty_lot: ProcurementLot = private_received_lot(
   identity: mt_collins_lot_identity,
@@ -337,7 +337,7 @@ data altrad8ud_board_lot_tax: LotTaxEvidence = LotTaxEvidence {
 fn unrecorded_tax(lot: InventoryLotIdentity) -> LotTaxEvidence {
   LotTaxEvidence {
     lot: lot,
-    standing: SalesTaxTreatmentUnrecorded { read_obligation: no_acquisition_record },
+    standing: SalesTaxTreatmentUnrecorded { read_obligation: tax_treatment_unread },
   }
 }
 

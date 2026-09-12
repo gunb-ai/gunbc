@@ -34,7 +34,7 @@ import product.lot_sales_tax {
   TaxWithoutLedger,
   LotTaxJoinRepeatedLot,
 }
-import std.measure { parts_per_million, parts_per_million_count }
+import std.measure { parts_per_million, parts_per_million_count, parts_per_million_scale_million }
 import extdeps.tax.new_jersey_sales_and_use {
   nj_statewide_sales_tax_rate,
   nj_uez_reduced_sales_tax_rate,
@@ -112,6 +112,7 @@ test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
     && parts_per_million_count(m: nyc_combined_sales_tax_rate) == 88750
     && parts_per_million_count(m: nj_uez_reduced_sales_tax_rate) * 2
       == parts_per_million_count(m: nj_statewide_sales_tax_rate)
+    && parts_per_million_count(m: nj_statewide_sales_tax_rate) < parts_per_million_scale_million()
 }
 
 test fn w_population_fold_refuses_a_repeated_lot() -> Bool {

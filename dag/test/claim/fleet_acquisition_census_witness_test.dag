@@ -30,7 +30,8 @@ import gunbc.fleet_acquisition_census {
 import gunbc.fleet_host_assembly {
   srv_assembly_components,
   board_components_bound_to_the_four_board_lot,
-  every_non_board_acquisition_is_unrecorded,
+  cooler_components_bound_to_their_lots,
+  every_recorded_component_lot_is_admitted,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -84,8 +85,9 @@ test fn w_q80_and_boards_are_independent_of_spark() -> Bool {
     && mt_collins_twenty_lot.quantity_acquired == 20
 }
 
-test fn w_assembly_binds_four_boards_and_leaves_other_parts_unpurchased() -> Bool {
+test fn w_assembly_binds_boards_and_coolers_to_their_lots() -> Bool {
   board_components_bound_to_the_four_board_lot(rows: srv_assembly_components) == 4
-    && every_non_board_acquisition_is_unrecorded(rows: srv_assembly_components)
+    && cooler_components_bound_to_their_lots(rows: srv_assembly_components) == 2
+    && every_recorded_component_lot_is_admitted(rows: srv_assembly_components)
     && srv_assembly_components.length() == 26
 }

@@ -17,6 +17,7 @@ import extdeps.units.iso_80000_3 {
 import extdeps.units.dimensionless {
   parts_per_ten_thousand_unity_count,
   percent_unity_hundred_count,
+  parts_per_million_unity_count,
 }
 
 type Quantity =
@@ -1430,6 +1431,10 @@ fn parts_per_million(count: Nat) -> PartsPerMillion {
 
 fn parts_per_million_count(m: PartsPerMillion) -> Nat {
   measure_count(m)
+}
+
+fn parts_per_million_scale_million() -> Nat {
+  parts_per_million_unity_count()
 }
 
 // One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same

@@ -18,7 +18,8 @@ import gunbc.fleet_host_assembly {
   ComponentAcquiredFromLot,
   ComponentAcquisitionUnrecorded,
   board_components_bound_to_the_four_board_lot,
-  every_non_board_acquisition_is_unrecorded,
+  cooler_components_bound_to_their_lots,
+  every_recorded_component_lot_is_admitted,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -35,8 +36,9 @@ fn first_containment_is_chassis(c: PhysicalContainment) -> Bool {
 }
 
 test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
-  every_non_board_acquisition_is_unrecorded(rows: srv_assembly_components)
+  every_recorded_component_lot_is_admitted(rows: srv_assembly_components)
     && board_components_bound_to_the_four_board_lot(rows: srv_assembly_components) == 4
+    && cooler_components_bound_to_their_lots(rows: srv_assembly_components) == 2
     && srv_assembly_components.length() == 26
     && srv_assembly_containments.length() == 24
     && match srv_assembly_containments.first() {

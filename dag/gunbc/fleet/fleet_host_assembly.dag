@@ -1,12 +1,13 @@
 module gunbc.fleet_host_assembly
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, Bool }
 import product.placement_supply {
   HostIdentity,
   PhysicalAssetIdentity,
   PhysicalContainment,
   HostContainsComponent,
   ChassisContainsHost,
+  physical_asset_identity_eq,
 }
 import product.inventory {
   InventoryLotIdentity,
@@ -30,7 +31,11 @@ import gunbc.fleet_asset_identity {
   cooler_srv3,
   cooler_srv4,
 }
-import gunbc.fleet_acquisition_census { altrad8ud_board_lot_identity }
+import gunbc.fleet_acquisition_census {
+  altrad8ud_board_lot_identity,
+  cooler_srv3_lot_identity,
+  cooler_srv4_lot_identity,
+}
 
 // SRV1 THROUGH SRV4 ARE ASSEMBLIES, NOT ACQUISITIONS. There is no single lot and no receipt
 // to cite for the host identity. Component-grain identities and an assembly relation bind
@@ -209,8 +214,8 @@ data srv_assembly_components: List<AssembledComponent> = [
     component: drive_srv4,
     catalog: unread_family(family: "host NVMe" as NonEmptyStr, obligation: "Samsung 970 EVO 500 GB is fleet intent, not a source-lot; dredge the purchase" as NonEmptyStr),
   ),
-  unrecorded_component(host: operator_host_srv3, component: cooler_srv3, catalog: CatalogRowExact { row: dynatron_w1_catalog_ref }),
-  unrecorded_component(host: operator_host_srv4, component: cooler_srv4, catalog: CatalogRowExact { row: dynatron_w1_catalog_ref }),
+  lot_component(host: operator_host_srv3, component: cooler_srv3, catalog: CatalogRowExact { row: dynatron_w1_catalog_ref }, lot: cooler_srv3_lot_identity),
+  lot_component(host: operator_host_srv4, component: cooler_srv4, catalog: CatalogRowExact { row: dynatron_w1_catalog_ref }, lot: cooler_srv4_lot_identity),
 ]
 
 // Cooler-to-host containments for srv3/srv4 already live in gunbc.fleet_physical_inventory
@@ -242,10 +247,16 @@ data srv_assembly_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv4, component: drive_srv4 },
 ]
 
-fn every_non_board_acquisition_is_unrecorded(rows: List<AssembledComponent>) -> Bool {
+fn recorded_component_lot_is_admitted(lot: InventoryLotIdentity) -> Bool {
+  inventory_lot_identity_eq(left: lot, right: altrad8ud_board_lot_identity)
+    || inventory_lot_identity_eq(left: lot, right: cooler_srv3_lot_identity)
+    || inventory_lot_identity_eq(left: lot, right: cooler_srv4_lot_identity)
+}
+
+fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {
   fold(rows, init: true, f: fn(acc, row) {
     acc && match row.acquisition {
-      ComponentAcquiredFromLot { lot: lot } => inventory_lot_identity_eq(left: lot, right: altrad8ud_board_lot_identity)
+      ComponentAcquiredFromLot { lot: lot } => recorded_component_lot_is_admitted(lot: lot)
       ComponentAcquisitionUnrecorded { read_obligation: _ } => true
     }
   })
@@ -257,6 +268,25 @@ fn board_components_bound_to_the_four_board_lot(rows: List<AssembledComponent>) 
       ComponentAcquiredFromLot { lot: lot } =>
         if inventory_lot_identity_eq(left: lot, right: altrad8ud_board_lot_identity) { acc + 1 } else { acc }
       ComponentAcquisitionUnrecorded { read_obligation: _ } => acc
+    }
+  })
+}
+
+fn cooler_bound_to_its_lot(row: AssembledComponent, component: PhysicalAssetIdentity, lot: InventoryLotIdentity) -> Bool {
+  physical_asset_identity_eq(a: row.component, b: component)
+    && match row.acquisition {
+      ComponentAcquiredFromLot { lot: bound } => inventory_lot_identity_eq(left: lot, right: bound)
+      ComponentAcquisitionUnrecorded { read_obligation: _ } => false
+    }
+}
+
+fn cooler_components_bound_to_their_lots(rows: List<AssembledComponent>) -> Nat {
+  fold(rows, init: 0, f: fn(acc, row) {
+    if cooler_bound_to_its_lot(row: row, component: cooler_srv3, lot: cooler_srv3_lot_identity)
+      || cooler_bound_to_its_lot(row: row, component: cooler_srv4, lot: cooler_srv4_lot_identity) {
+      acc + 1
+    } else {
+      acc
     }
   })
 }
