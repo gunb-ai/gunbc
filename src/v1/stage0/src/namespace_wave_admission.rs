@@ -1755,20 +1755,17 @@ pub struct TransitionAdmission {
 ///
 /// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
 /// stops being producible, and CONSUMED comes due on the roster's next touch.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "gunbc#11137 extdeps.tools.sha256sum names Filesystem instead of reaching it",
-    // The rationale, the safety adjudication and the trigger are in the doc comment on this
-    // const rather than repeated here. In one line: the bare `import
-    // extdeps.filesystem.filesystem_io` became `{ Filesystem }`, which narrowed this
-    // spelling's candidate set without changing what it resolves to.
-    subject: AdmissionSubject::Binding {
-        module: "extdeps.tools.sha256sum",
-        in_declaration: "extdeps_external_authority_anchor",
-        spelling: "extdeps_external_authority_anchor",
-        target: "extdeps.tools.sha256sum",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+///
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11170). #11137 merged, so the named `Filesystem`
+/// import is on the base, the sha256sum `TargetChanged` delta is no longer producible, and the
+/// required floor on this branch (run 34688079348, runner srv1-18-1789206420-3261576) reported
+/// that row as `STALE ADMISSION ... matches no delta in this run`. The trigger above fired. This
+/// change edits the roster, so it is the toucher the rule charges, and the deletion is paid here
+/// rather than inherited by an unrelated lane. Empty is the resting state. The FAQ duration
+/// carrier change that occasioned this touch produced `ExplicitlyEvaluatedZeroDelta membership
+/// extdeps.instrument.fs_box_v3_v4_v5_faq -> std.measure` and no binding delta, so it does not
+/// author a replacement row.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
