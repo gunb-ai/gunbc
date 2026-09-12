@@ -38,8 +38,7 @@ import gunbc.review_sheet_projection {
   JudgementEntered,
   JudgementUnreadable,
   listing_standing_label,
-  derived_erasure_mark_label,
-  ErasureApplied,
+  derived_erasure_applied_label,
   read_listing_standing,
   StandingObserved,
   StandingGone,
@@ -217,7 +216,7 @@ fn w_standing_gone() -> String {
 }
 
 fn w_erasure_applied() -> String {
-  derived_erasure_mark_label(state: ErasureApplied)
+  derived_erasure_applied_label
 }
 
 fn w_erasure(listing_id: NonEmptyStr) -> DerivedPayloadErasure {
