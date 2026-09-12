@@ -6,6 +6,7 @@ import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, C
 import std.decl_ref { DeclarationRef }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { trim }
+import extdeps.numeric.base16 { base16_digit_rows }
 import extdeps.bmc.ipmi_sel {
   OemSelPayload,
   SystemBootInitiatedOffset,
@@ -167,8 +168,18 @@ fn is_firmware_error_line(line: String) -> Bool {
 
 fn line_carries_marker(line: String, marker: NonEmptyStr) -> Bool {
   let clean = trim(line)
-  is_firmware_error_line(line: clean)
-    && starts_with(s: trim(substring(s: clean, start: 6, end: clean.length())), prefix: marker as String)
+  if !is_firmware_error_line(line: clean) { false } else {
+    let body = trim(substring(s: clean, start: 6, end: clean.length()))
+    let fields = split(s: body, delimiter: "]:")
+    starts_with(s: body, prefix: marker as String) && count(fields) == 2
+      && match fields.skip(n: 1).first() {
+        Absent => false
+        Present { value: suffix } => {
+          let code = trim(suffix)
+          code.length() == 8 && all(chars(s: code), cp => any(base16_digit_rows, digit => code_point(digit.lower) == cp || code_point(digit.upper) == cp))
+        }
+      }
+  }
 }
 
 // `first_error_line` is EVERY `ERROR:` line's witness, locus lines included, so an error the

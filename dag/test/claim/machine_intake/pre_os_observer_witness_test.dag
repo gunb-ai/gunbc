@@ -79,7 +79,7 @@ test fn w_independent_positive_boot_does_not_require_a_sel() -> Bool {
 }
 
 test fn w_known_statement_does_not_hide_unknown_statement() -> Bool {
-  all(["ERROR: new undecoded failure", "ERROR: unknown fault mentioning SK[0]"], unknown =>
+  all(["ERROR: new undecoded failure", "ERROR: unknown fault mentioning SK[0]", "ERROR: SK[0]: new unknown failure"], unknown =>
     match pre_os_terminal_from_console(text: concat("ERROR:   DDR initialization failure. STOP!\n", unknown)) { ObservationRefused { cause: _ } => true _ => false })
 }
 
