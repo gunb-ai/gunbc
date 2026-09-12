@@ -1,0 +1,123 @@
+module v2.workflow.legacy_repair_tap
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.content_hash { structural_content_hash }
+import std.decl_ref { decl_ref }
+import std.occurrence_identity { ValidatedOccurrenceTransport }
+import v2.workflow.legacy_repair_observation {
+  RepairSite,
+  RepairSiteRoster,
+  LegacyRepairObservation,
+  LegacyRepairObservationRow,
+  LegacyRepairObservationSubject,
+  repair_site_roster_identity
+}
+import v2.workflow.legacy_binding_observation { LegacyBindingObservation }
+import v2.workflow.legacy_baseline_capture {
+  CheckoutMaterialization,
+  TreeDerivedSubjectReceipt,
+  capture_legacy_baseline
+}
+import v2.workflow.legacy_baseline_persisted_observation {
+  persist_legacy_baseline,
+  PersistAdmission
+}
+
+// XL-1 LIVE REPAIR TAP. Sole consumer of the seed builtin emit_rust_reference_derived_rows_bridge.
+// Roster-from-same-rows is a declared tautology (parent 2026-09-12): checkable, not structurally
+// independent of answering. The arm is never enrolled on a required-floor path; one offline run
+// per pinned base stores the observation. Deleted with v1.compiler.emit_rust / the interpreter.
+
+type ReferenceDerivedCandidateDisposition
+  = CandidateSurvived { provider_module: String }
+  | CandidateOwnModule
+  | CandidateVariantDelegatedToParent { parent_enum: String }
+  | CandidateVariantParentUnresolved
+  | CandidateRegistryAbsent
+  | CandidateLeafAmbiguous
+  | CandidateExportProofFailed { provider_module: String }
+
+type ReferenceDerivedCandidateRow {
+  module_name: String
+  name: String
+  disposition: ReferenceDerivedCandidateDisposition
+}
+
+fn repair_site_from_row(row: ReferenceDerivedCandidateRow) -> RepairSite? {
+  if row.module_name == "" || row.name == "" {
+    none
+  } else {
+    Present {
+      value: RepairSite {
+        module_name: row.module_name as NonEmptyStr,
+        name: row.name as NonEmptyStr
+      }
+    }
+  }
+}
+
+fn append_site_from_row(
+  acc: List<RepairSite>,
+  row: ReferenceDerivedCandidateRow
+) -> List<RepairSite> {
+  match repair_site_from_row(row: row) {
+    Absent => acc
+    Present { value: site } => concat(acc, [site])
+  }
+}
+
+fn repair_roster_from_bridge_rows(rows: List<ReferenceDerivedCandidateRow>) -> RepairSiteRoster {
+  RepairSiteRoster { sites: fold(rows, init: [], f: append_site_from_row) }
+}
+
+fn append_observation_row(
+  acc: List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>>,
+  row: ReferenceDerivedCandidateRow
+) -> List<LegacyRepairObservationRow<ReferenceDerivedCandidateDisposition>> {
+  match repair_site_from_row(row: row) {
+    Absent => acc
+    Present { value: site } => concat(acc, [LegacyRepairObservationRow { site: site, outcome: row.disposition }])
+  }
+}
+
+fn repair_observation_from_bridge_rows(
+  rows: List<ReferenceDerivedCandidateRow>
+) -> LegacyRepairObservation<ReferenceDerivedCandidateDisposition> {
+  let roster = repair_roster_from_bridge_rows(rows: rows)
+  LegacyRepairObservation {
+    subject: LegacyRepairObservationSubject {
+      semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+      source_set_digest: structural_content_hash(digest: "2222222222222222"),
+      compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+      repairer_identity: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_reference_derived_rows"),
+      repair_site_roster_digest: repair_site_roster_identity(roster: roster),
+      resolution_registry_digest: structural_content_hash(digest: "5555555555555555")
+    },
+    rows: fold(rows, init: [], f: append_observation_row)
+  }
+}
+
+fn persist_capture_from_bridge_rows<O>(
+  materialization: CheckoutMaterialization,
+  tree_subject: TreeDerivedSubjectReceipt,
+  observation: LegacyBindingObservation<O>,
+  transport: ValidatedOccurrenceTransport,
+  rows: List<ReferenceDerivedCandidateRow>
+) -> PersistAdmission<O, ReferenceDerivedCandidateDisposition> {
+  persist_legacy_baseline(
+    outcome: capture_legacy_baseline(
+      materialization: materialization,
+      tree_subject: tree_subject,
+      observation: observation,
+      transport: transport,
+      repair_observation: repair_observation_from_bridge_rows(rows: rows),
+      repair_roster: repair_roster_from_bridge_rows(rows: rows)
+    )
+  )
+}
+
+fn xl1_live_repair_tap_tally() -> Int {
+  emit_rust_reference_derived_rows_bridge() |> count
+}
+
+data emit_rust_reference_derived_rows_bridge_v1_deletion: String = "Deleted with v1.compiler.emit_rust and the interpreter (gunbc.v1_deletion_plan InterpreterDeleted). Listed from land day. Sole consumer: v2.workflow.legacy_repair_tap persist_capture_from_bridge_rows / xl1_live_repair_tap_tally."
