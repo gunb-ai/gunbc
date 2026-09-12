@@ -23,15 +23,26 @@ import std.types { NonEmptyStr }
 //
 // THE TWO HALVES ARE OF DIFFERENT KINDS AND ARE CARRIED SEPARATELY.
 //
-//   `specimen_eval_steps` is DETERMINISTIC. It is what the interpreter performs for that source,
-//   and three consecutive executions returned the identical figure. It is not an environmental
-//   reading and is not a bet.
+//   `specimen_eval_steps` is DETERMINISTIC, AND THAT IS NOW MEASURED ACROSS ARCHITECTURES RATHER
+//   THAN ASSUMED. Three consecutive local executions returned the identical figure, which only
+//   establishes that it is stable on one machine. The required floor then executed the same
+//   specimen on a CI runner -- a different host, a different architecture (linux/amd64 against the
+//   authoring container's aarch64), a different corpus state -- and reported the SAME 110,011.
+//   That is the load-bearing property of this whole design stated as a receipt: the quantity the
+//   ceiling gates on did not move when the machine did, while the CPU reading beside it moved 25%.
 //
 //   `specimen_cpu_ms` is ENVIRONMENTAL, and the whole reason this change exists is that such
 //   readings drift. It is therefore recorded as the SLOWEST of the readings taken, never the mean
 //   and never the fastest: a slower specimen yields FEWER steps per millisecond, which makes the
 //   derived ceiling TIGHTER. The fail-closed direction is chosen deliberately, so that drift in
 //   the calibration host cannot silently widen what a claim may spend.
+//
+//   THE RULE WAS APPLIED AGAINST THE AUTHOR'S OWN FIRST READING, which is the only reason it is
+//   worth writing down. The figure here was 110ms -- the slowest of three readings on the authoring
+//   container -- until the floor ran the specimen on a CI runner and read 138ms. Keeping 110 would
+//   have been the faster of two hosts chosen after the fact, so the row carries 138: the slowest
+//   reading from the machine that actually executes the floor. The declared budget did not move
+//   with it, because a declared policy that tracked the calibration would BE the calibration.
 //
 // WHAT THE CONVERSION DOES AND DOES NOT CLAIM, and this is the honesty boundary a later reader
 // must not erase. It claims that one millisecond of PURE INTERPRETED EVALUATION on the named host
@@ -57,10 +68,10 @@ type EvalStepCalibration = PinnedSpecimenCalibration {
 data floor_eval_step_calibration: EvalStepCalibration = PinnedSpecimenCalibration {
   specimen: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work" as NonEmptyStr,
   instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/floor_eval_step_calibration_specimen_test.dag --function calibration_specimen_performs_its_declared_work, read from its [witness] line (cpu=..ms eval_steps=..)" as NonEmptyStr,
-  host: "gunbc session container, linux aarch64, 31 GiB cap inside a shared 64 GiB slice; three consecutive executions read cpu=97ms, 110ms, 110ms at an identical eval_steps=110011" as NonEmptyStr,
-  readings: 3,
+  host: "TWO HOSTS, TWO ARCHITECTURES, ONE STEP COUNT. Authoring: a gunbc session container, linux aarch64, 31 GiB cap inside a shared 64 GiB slice -- three consecutive executions read cpu=97ms, 110ms, 110ms. Execution: a self-hosted CI runner, linux amd64, under the required floor's own fold beside 3,784 other claims -- cpu=138ms. All four readings returned an IDENTICAL eval_steps of 110011. The recorded figure is the slowest of the four and comes from the machine that runs the floor" as NonEmptyStr,
+  readings: 4,
   specimen_eval_steps: 110011,
-  specimen_cpu_ms: 110,
+  specimen_cpu_ms: 138,
 }
 
 // THE GROUNDING VERDICT, AS A CLOSED COPRODUCT RATHER THAN A BOOL.
