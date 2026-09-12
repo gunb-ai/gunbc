@@ -1,6 +1,7 @@
 module gunbc.cloudflare.r2_origin_object
 
-import std.types { String, NonEmptyStr, Bool, Int, FilePath, HttpStatus }
+import std.types { String, NonEmptyStr, Bool, Int, FilePath, HttpStatus, http_status_of }
+import std.citation { http_status_is_success }
 import std.algebra { trim }
 import std.resources { Network }
 import std.decl_ref { DeclarationRef }
@@ -99,7 +100,9 @@ import gunbc.fabric_m0_origin_readback {
 // THE STATUS COMES FROM curl's --write-out ON STDOUT, so the transport's own exit code is not the
 // classifier's input: curl -f exits 22 for every non-2xx, and 22 does not say whether the store
 // said 404 or 403. Three digits on stdout do. "000" is curl's word for "no status was received",
-// and a stdout that is not three digits at all is a transport that did not run as modeled.
+// and a stdout that is not three digits at all is a transport that did not run as modeled. The
+// parsed Int is admitted through std.types http_status_of -- the range lives beside the HttpStatus
+// refinement and nowhere else -- and 2xx is std.citation http_status_is_success, consumed.
 type S3TransferAnswer
   = S3Answered { status: HttpStatus }
   | S3NotAnswered { cause: NonEmptyStr }
@@ -116,20 +119,16 @@ fn classify_s3_transfer(observation: ProcessObservation) -> S3TransferAnswer {
         S3NotAnswered {
           cause: join(["the transport printed no HTTP status (exit ", to_string(observation.exit_code), "): ", trim(s: observation.stderr)], "") as NonEmptyStr,
         }
-      Present { value: status } =>
-        if status < 100 || status > 599 {
-          S3NotAnswered {
-            cause: join(["the transport printed a status outside HTTP's range: ", code], "") as NonEmptyStr,
-          }
-        } else {
-          S3Answered { status: status }
+      Present { value: n } =>
+        match http_status_of(n: n) {
+          Absent =>
+            S3NotAnswered {
+              cause: join(["the transport printed a status outside HTTP's range: ", code], "") as NonEmptyStr,
+            }
+          Present { value: status } => S3Answered { status: status }
         }
     }
   }
-}
-
-fn s3_status_is_success(status: HttpStatus) -> Bool {
-  status >= 200 && status < 300
 }
 
 data s3_status_not_found: HttpStatus = 404
@@ -152,7 +151,7 @@ fn classify_origin_put(key: NonEmptyStr, answer: S3TransferAnswer, stderr: Strin
         cause: concat("the PUT may have committed, no verdict was received; reconcile by fetching the key: ", cause as String) as NonEmptyStr,
       }
     S3Answered { status: status } =>
-      if s3_status_is_success(status: status) {
+      if http_status_is_success(status: status) {
         OriginObjectStored { key: key }
       } else if status == s3_status_precondition_failed {
         OriginObjectAlreadyPresent { key: key }
@@ -302,7 +301,7 @@ fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, std
   match answer {
     S3NotAnswered { cause: cause } => OriginFetchRefused { cause: cause }
     S3Answered { status: status } =>
-      if s3_status_is_success(status: status) {
+      if http_status_is_success(status: status) {
         OriginFetchStagedAt { staged_path: staged_path }
       } else if status == s3_status_not_found {
         OriginFetchAbsent
