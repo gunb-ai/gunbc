@@ -23,6 +23,8 @@ import gunbc.review_sheet_projection {
   ReviewSheetUnreadable,
   write_plan_preserves_operator_columns,
   write_plan_touches_column,
+  write_plan_covers_column_letter,
+  a1_row_span_includes_letter,
   classify_review_sheet,
   conflict_reason,
   append_listing_row,
@@ -53,6 +55,7 @@ import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
   value_ranges_from_write_plan,
+  value_range_includes_column_letter,
   TabBoundWritePlan,
   ReadbackObserved,
   ReadbackUnreadable,
@@ -683,7 +686,10 @@ test fn absent_listing_appends_a_located_row() -> Bool {
   let observed = w_observed(headers: w_headers(), rows: [])
   match classify_review_sheet(observed: observed, projection: projection) {
     ReviewSheetNeedsWrite { plan: p } =>
-      (p.patches |> count) == 0
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
+        && !write_plan_covers_column_letter(plan: p, letter: "D")
+        && (p.patches |> count) == 0
         && match p.appends |> first {
           Present { value: a } =>
             (a.listing_id as String) == "L2"
@@ -691,6 +697,7 @@ test fn absent_listing_appends_a_located_row() -> Bool {
               && match a.runs |> first {
                 Present { value: run } =>
                   a1_row_span_wire(span: run.a1) == "A2:C2"
+                    && !a1_row_span_includes_letter(span: run.a1, letter: "D")
                     && match run.cells |> first {
                       Present { value: id } =>
                         id == "L2"
@@ -698,6 +705,12 @@ test fn absent_listing_appends_a_located_row() -> Bool {
                             Present { value: standing } =>
                               standing == w_standing_observed()
                                 && (run.cells |> count) == 3
+                                && all(
+                                  value_ranges_from_write_plan(
+                                    bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                  ),
+                                  vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
+                                )
                                 && match value_ranges_from_write_plan(
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ) |> first {
@@ -737,7 +750,10 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
   let observed = w_observed(headers: headers, rows: [])
   match classify_review_sheet(observed: observed, projection: projection) {
     ReviewSheetNeedsWrite { plan: p } =>
-      match p.appends |> first {
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
+        && !write_plan_covers_column_letter(plan: p, letter: "D")
+        && match p.appends |> first {
         Present { value: a } =>
           match a.runs |> first {
             Present { value: run } =>
@@ -751,9 +767,15 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
                           && match run.cells.skip(n: 3).first() {
                             Present { value: _ } => false
                             Absent =>
-                              match value_ranges_from_write_plan(
-                                bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
-                              ) |> first {
+                              all(
+                                value_ranges_from_write_plan(
+                                  bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                ),
+                                vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
+                              )
+                                && match value_ranges_from_write_plan(
+                                  bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                ) |> first {
                                 Present { value: vr } =>
                                   match vr.values {
                                     Present { value: rows } =>

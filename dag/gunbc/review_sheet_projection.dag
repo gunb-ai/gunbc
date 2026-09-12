@@ -86,6 +86,7 @@ type DerivedCellWrite {
 type AppendCellRun {
   a1: A1RowSpan
   cells: List<String>
+  columns: List<NonEmptyStr>
 }
 
 type AppendListingRow {
@@ -226,6 +227,29 @@ fn a1_row_span_wire(span: A1RowSpan) -> String {
   concat(a1_cell_wire(cell: span.start), concat(":", a1_cell_wire(cell: span.end)))
 }
 
+fn a1_letter_index(letter: String) -> Int? {
+  a1_column_letters
+    |> enumerate
+    |> filter(pair => pair.second == letter)
+    |> map(pair => pair.first)
+    |> first
+}
+
+fn a1_row_span_includes_letter(span: A1RowSpan, letter: String) -> Bool {
+  match a1_letter_index(letter: span.start.column.letter as String) {
+    Absent => false
+    Present { value: start_i } =>
+      match a1_letter_index(letter: span.end.column.letter as String) {
+        Absent => false
+        Present { value: end_i } =>
+          match a1_letter_index(letter: letter) {
+            Absent => false
+            Present { value: i } => i >= start_i && i <= end_i
+          }
+      }
+  }
+}
+
 type A1WireToken
   = A1WireOpenColumn { column: A1Column }
   | A1WireCell { cell: A1Cell }
@@ -359,10 +383,26 @@ fn write_plan_nonempty(plan: ReviewSheetWritePlan) -> Bool {
 
 fn write_plan_touches_column(plan: ReviewSheetWritePlan, column: NonEmptyStr) -> Bool {
   fold(plan.patches, init: false, f: fn(acc, w) { acc || w.column == column })
+    || fold(plan.appends, init: false, f: fn(acc, row) {
+      acc || fold(row.runs, init: false, f: fn(racc, run) {
+        racc || fold(run.columns, init: false, f: fn(cacc, n) { cacc || n == column })
+      })
+    })
 }
 
 fn operator_column_names(schema: ReviewSheetSchema) -> List<NonEmptyStr> {
   schema.columns |> filter(c => match c.kind { OperatorEntered => true  DerivedField { source_field: _ } => false  ListingStanding => false }) |> map(c => c.name)
+}
+
+fn write_plan_covers_column_letter(plan: ReviewSheetWritePlan, letter: String) -> Bool {
+  fold(plan.patches, init: false, f: fn(acc, w) {
+    acc || (w.a1.column.letter as String) == letter
+  })
+    || fold(plan.appends, init: false, f: fn(acc, row) {
+      acc || fold(row.runs, init: false, f: fn(racc, run) {
+        racc || a1_row_span_includes_letter(span: run.a1, letter: letter)
+      })
+    })
 }
 
 fn write_plan_preserves_operator_columns(schema: ReviewSheetSchema, plan: ReviewSheetWritePlan) -> Bool {
@@ -596,6 +636,7 @@ type AppendRunAcc {
   open_start: Int
   open_last: Int
   open_cells: List<String>
+  open_columns: List<NonEmptyStr>
 }
 
 fn empty_append_run_acc() -> AppendRunAcc {
@@ -605,6 +646,7 @@ fn empty_append_run_acc() -> AppendRunAcc {
     open_start: 0,
     open_last: 0,
     open_cells: [],
+    open_columns: [],
   }
 }
 
@@ -615,11 +657,12 @@ fn flushed_append_run_acc(acc: AppendRunAcc, sheet_row: Int) -> AppendRunAcc? {
       Present { value: a1 } =>
         Present {
           value: AppendRunAcc {
-            runs: concat(acc.runs, [AppendCellRun { a1: a1, cells: acc.open_cells }]),
+            runs: concat(acc.runs, [AppendCellRun { a1: a1, cells: acc.open_cells, columns: acc.open_columns }]),
             has_open: false,
             open_start: 0,
             open_last: 0,
             open_cells: [],
+            open_columns: [],
           }
         }
     }
@@ -628,7 +671,13 @@ fn flushed_append_run_acc(acc: AppendRunAcc, sheet_row: Int) -> AppendRunAcc? {
   }
 }
 
-fn push_append_cell(acc: AppendRunAcc, sheet_row: Int, column_index: Int, value: String) -> AppendRunAcc? {
+fn push_append_cell(
+  acc: AppendRunAcc,
+  sheet_row: Int,
+  column_index: Int,
+  column: NonEmptyStr,
+  value: String,
+) -> AppendRunAcc? {
   if acc.has_open {
     if column_index == acc.open_last + 1 {
       Present {
@@ -638,6 +687,7 @@ fn push_append_cell(acc: AppendRunAcc, sheet_row: Int, column_index: Int, value:
           open_start: acc.open_start,
           open_last: column_index,
           open_cells: concat(acc.open_cells, [value]),
+          open_columns: concat(acc.open_columns, [column]),
         }
       }
     } else {
@@ -651,6 +701,7 @@ fn push_append_cell(acc: AppendRunAcc, sheet_row: Int, column_index: Int, value:
               open_start: column_index,
               open_last: column_index,
               open_cells: [value],
+              open_columns: [column],
             }
           }
       }
@@ -663,6 +714,7 @@ fn push_append_cell(acc: AppendRunAcc, sheet_row: Int, column_index: Int, value:
         open_start: column_index,
         open_last: column_index,
         open_cells: [value],
+        open_columns: [column],
       }
     }
   }
@@ -728,6 +780,7 @@ fn append_row_for(
             acc: builder,
             sheet_row: sheet_row,
             column_index: pair.first,
+            column: pair.second as NonEmptyStr,
             value: cell,
           )
         }

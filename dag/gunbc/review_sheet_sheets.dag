@@ -29,6 +29,7 @@ import gunbc.review_sheet_projection {
   a1_cell_wire,
   a1_origin_cell,
   a1_row_span_wire,
+  a1_row_span_includes_letter,
   a1_from_wire,
   A1Column,
   A1Cell,
@@ -258,6 +259,35 @@ fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> 
     range: sheet_qualified_cell(tab: tab, cell: write.a1),
     majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
     values: Present { value: [[write.value]] },
+  }
+}
+
+fn value_range_includes_column_letter(range: String, letter: String) -> Bool {
+  match split(s: range, delimiter: "!") |> skip(n: 1) |> first {
+    Absent => false
+    Present { value: span_wire } =>
+      match split(s: span_wire, delimiter: ":") |> first {
+        Absent => false
+        Present { value: start_wire } =>
+          match a1_from_wire(token: start_wire) {
+            A1WireOpenColumn { column: _ } => false
+            A1WireUnreadable { reason: _ } => false
+            A1WireCell { cell: start } =>
+              match split(s: span_wire, delimiter: ":") |> skip(n: 1) |> first {
+                Absent => (start.column.letter as String) == letter
+                Present { value: end_wire } =>
+                  match a1_from_wire(token: end_wire) {
+                    A1WireOpenColumn { column: _ } => false
+                    A1WireUnreadable { reason: _ } => false
+                    A1WireCell { cell: end } =>
+                      a1_row_span_includes_letter(
+                        span: A1RowSpan { start: start, end: end },
+                        letter: letter,
+                      )
+                  }
+              }
+          }
+      }
   }
 }
 
