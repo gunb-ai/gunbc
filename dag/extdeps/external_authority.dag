@@ -10,7 +10,7 @@ type ExternalAuthority {
 }
 
 // CITED VERSUS TYPED-UNCITED IS ONE STANDING, not a per-domain coproduct. product.node_power_envelope
-// TwoDpcRateCeiling.evidence and std.decision ObjectiveTerm.ground are the same warrant kind:
+// TwoDpcRateCeilingTable.evidence and std.decision ObjectiveTerm.ground are the same warrant kind:
 // either the figure points at ExternalAuthority, or it carries uncitedness as a read_obligation
 // naming what would ground it. Relocated here so a second CitedToAuthority cannot be minted.
 type CitedFigureStanding

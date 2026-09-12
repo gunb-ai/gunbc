@@ -7,61 +7,61 @@ data exact_duplicate_match_arm_not_refused: RecurringFailureMode = RecurringFail
   identity: "exact_duplicate_match_arm_not_refused" as NonEmptyStr,
 
   receipts: [
-    "**an exact duplicate constructor pattern appears twice in one match, the second arm is unreachable, and the compiler accepts both -- so SOURCE ORDER silently decides which body answers** (INVALID STATE: two arms of one `match` name the SAME closed-variant constructor with DIFFERENT bodies. ",
+    "**an exact duplicate constructor pattern appears twice in one match, the second arm is unreachable, and the compiler accepts both -- so SOURCE ORDER silently decides which body answers** (INVALID STATE: two arms of one `match` name the SAME closed-variant constructor with DIFFERENT bodies.",
 
-    "HARM: the second body is dead, and nothing says so. ",
+    "HARM: the second body is dead, and nothing says so.",
 
-    "The author wrote it believing it would run; the reader cannot tell which of the two the machine picks without knowing the arm-selection rule; and the wrong one being first is a wrong answer that type-checks, projects and passes every gate. ",
+    "The author wrote it believing it would run; the reader cannot tell which of the two the machine picks without knowing the arm-selection rule; and the wrong one being first is a wrong answer that type-checks, projects and passes every gate.",
 
-    "THE SPECIMEN IS MINE AND IS MEASURED (gunbc#9981, 2026-09-03). ",
+    "THE SPECIMEN IS MINE AND IS MEASURED (gunbc#9981, 2026-09-03).",
 
-    "`probe_owner_is_wet_lib_module` in `v2.test.claim.self_host.stage0_executable_assembly_test` carried `WetActuatorLibModuleOwner` twice -- once as the matching arm binding `module_basename` and `declaration_route`, and again in the trailing list of `=> false` arms, where I had added it while enumerating the coproduct for exhaustiveness. ",
+    "`probe_owner_is_wet_lib_module` in `v2.test.claim.self_host.stage0_executable_assembly_test` carried `WetActuatorLibModuleOwner` twice -- once as the matching arm binding `module_basename` and `declaration_route`, and again in the trailing list of `=> false` arms, where I had added it while enumerating the coproduct for exhaustiveness.",
 
-    "The compiler accepted it in every lane it reached. ",
+    "The compiler accepted it in every lane it reached.",
 
-    "It was found by a review reading the arm list, not by any check. ",
+    "It was found by a review reading the arm list, not by any check.",
 
-    "THIS IS THE DUAL OF EXHAUSTIVENESS, NOT AN INSTANCE OF IT. ",
+    "THIS IS THE DUAL OF EXHAUSTIVENESS, NOT AN INSTANCE OF IT.",
 
-    "Exhaustiveness asks whether the UNION of the arms covers the domain, and gunbc does refuse when it does not -- the same file's missing `WetActuatorLibModuleOwner` arm refused loudly earlier in the same PR. ",
+    "Exhaustiveness asks whether the UNION of the arms covers the domain, and gunbc does refuse when it does not -- the same file's missing `WetActuatorLibModuleOwner` arm refused loudly earlier in the same PR.",
 
-    "The unasked question is whether each arm CONTRIBUTES an inhabitant no earlier arm already covers. ",
+    "The unasked question is whether each arm CONTRIBUTES an inhabitant no earlier arm already covers.",
 
-    "A duplicate arm makes the union no larger, so an exhaustiveness check is green by construction on exactly the source that carries this defect: adding the duplicate is the one edit that cannot move that verdict. ",
+    "A duplicate arm makes the union no larger, so an exhaustiveness check is green by construction on exactly the source that carries this defect: adding the duplicate is the one edit that cannot move that verdict.",
 
-    "THE MEASURED GRAIN IS NARROW AND IS STATED NARROWLY, because the general form is not the same question. ",
+    "THE MEASURED GRAIN IS NARROW AND IS STATED NARROWLY, because the general form is not the same question.",
 
-    "Deciding whether an arbitrary later pattern is subsumed by the union of earlier ones is a coverage problem over guards, nested patterns and bindings; the measured specimen is the decidable corner of it -- two SYNTACTICALLY IDENTICAL closed-variant constructor heads at the same match. ",
+    "Deciding whether an arbitrary later pattern is subsumed by the union of earlier ones is a coverage problem over guards, nested patterns and bindings; the measured specimen is the decidable corner of it -- two SYNTACTICALLY IDENTICAL closed-variant constructor heads at the same match.",
 
-    "Claiming the general form here would put a ratchet where a wall is available, and would let the narrow wall be cited as coverage for the broad class. ",
+    "Claiming the general form here would put a ratchet where a wall is available, and would let the narrow wall be cited as coverage for the broad class.",
 
-    "RUNG FOUND AT: outside the ladder -- the state is writable, accepted, and silent. ",
+    "RUNG FOUND AT: outside the ladder -- the state is writable, accepted, and silent.",
 
-    "CEILING: 3, structurally guaranteed, and the reason it is not 4 is that a `match` is written arm by arm, so a second identical head is spellable in any source a human or a generator can emit; no constructor arrangement removes it. ",
+    "CEILING: 3, structurally guaranteed, and the reason it is not 4 is that a `match` is written arm by arm, so a second identical head is spellable in any source a human or a generator can emit; no constructor arrangement removes it.",
 
-    "What rung 3 buys is that no `Accepted` program contains one. ",
+    "What rung 3 buys is that no `Accepted` program contains one.",
 
-    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **a match-arm usefulness judgment in the compiler frontend that REFUSES a second arm whose constructor head is already covered, locating both the duplicate and the arm that covers it** -- with a discriminating RED (two identical constructor patterns, different bodies, refused at the second arm), an accepted positive control (two distinct constructor patterns, accepted), and a retention control establishing that adding a variant to the coproduct does not weaken the duplicate judgment. ",
+    "NEXT TRIGGER, NAMED AS THE CAPABILITY: **a match-arm usefulness judgment in the compiler frontend that REFUSES a second arm whose constructor head is already covered, locating both the duplicate and the arm that covers it** -- with a discriminating RED (two identical constructor patterns, different bodies, refused at the second arm), an accepted positive control (two distinct constructor patterns, accepted), and a retention control establishing that adding a variant to the coproduct does not weaken the duplicate judgment.",
 
     "A diagnostic that names the duplicate without refusing it does not discharge this: a warning on an accepted program is the tier DESIGN section 6 calls an inert lens, and this class is silent precisely because nothing stops the line.)",
 
-    "**RECURRENCE, FOUR DAYS LATER, SAME AUTHOR, FOUND THE SAME WAY -- BY A REVIEWER READING THE ARM LIST** (gunbc#10723, review 61771, 2026-09-07). ",
+    "**RECURRENCE, FOUR DAYS LATER, SAME AUTHOR, FOUND THE SAME WAY -- BY A REVIEWER READING THE ARM LIST** (gunbc#10723, review 61771, 2026-09-07).",
 
-    "`unrealized_actuator_steps_refuse_rather_than_reporting_absent` in `test.claim.nbd_proxy_virtual_media_install` carried `ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }` TWICE in each of two of its three match blocks -- copy residue from pasting the new arm, at a different indentation from the arm it duplicated. ",
+    "`unrealized_actuator_steps_refuse_rather_than_reporting_absent` in `test.claim.nbd_proxy_virtual_media_install` carried `ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }` TWICE in each of two of its three match blocks -- copy residue from pasting the new arm, at a different indentation from the arm it duplicated.",
 
-    "The witness ran GREEN with the duplicates present, which is the whole point: the recurrence is not evidence that the earlier filing was wrong, it is evidence that a filed class with a named trigger and no built wall keeps producing specimens. ",
+    "The witness ran GREEN with the duplicates present, which is the whole point: the recurrence is not evidence that the earlier filing was wrong, it is evidence that a filed class with a named trigger and no built wall keeps producing specimens.",
 
-    "WHAT THIS RECURRENCE ADDS IS THE ASYMMETRY MEASURED IN BOTH DIRECTIONS ON ONE FILE, rather than inferred across two incidents. ",
+    "WHAT THIS RECURRENCE ADDS IS THE ASYMMETRY MEASURED IN BOTH DIRECTIONS ON ONE FILE, rather than inferred across two incidents.",
 
-    "The row above states that exhaustiveness refuses a MISSING arm while saying nothing about a DUPLICATE one, citing the earlier specimen's other PR for the refusing half. ",
+    "The row above states that exhaustiveness refuses a MISSING arm while saying nothing about a DUPLICATE one, citing the earlier specimen's other PR for the refusing half.",
 
-    "Here both halves were executed against the same tree minutes apart: deleting the arm refuses at resolve with `non-exhaustive match: missing variant(s) ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }`, and duplicating it is accepted in silence. ",
+    "Here both halves were executed against the same tree minutes apart: deleting the arm refuses at resolve with `non-exhaustive match: missing variant(s) ActuatorStepRefused { cause: ActuatorStepActuatorHostUnsatisfiable }`, and duplicating it is accepted in silence.",
 
-    "One direction is a hard wall, the other is not looked at, and the compiler already walks the tree that would decide it. ",
+    "One direction is a hard wall, the other is not looked at, and the compiler already walks the tree that would decide it.",
 
-    "A SECOND-ORDER RECEIPT FROM THE SAME REPAIR, worth carrying because the remedy nearly caused the defect it was removing: the fix was a `sed` keyed on the duplicates' column-4 indentation, and the FIRST block's legitimate arm sits at column 4 too, so the edit deleted three arms where two were duplicates. ",
+    "A SECOND-ORDER RECEIPT FROM THE SAME REPAIR, worth carrying because the remedy nearly caused the defect it was removing: the fix was a `sed` keyed on the duplicates' column-4 indentation, and the FIRST block's legitimate arm sits at column 4 too, so the edit deleted three arms where two were duplicates.",
 
-    "That was caught by re-reading the region, and the control run afterwards would in fact have caught it as well -- the missing arm refuses -- which is the one direction this class does have a wall in. ",
+    "That was caught by re-reading the region, and the control run afterwards would in fact have caught it as well -- the missing arm refuses -- which is the one direction this class does have a wall in.",
 
     "RECOGNITION RULE, ADDED: an edit that removes a duplicated arm is keyed on the accident (whitespace, order, position) rather than on the identity, so it can only be verified by re-reading the arms it left behind, never by the green run that follows.",
   ],

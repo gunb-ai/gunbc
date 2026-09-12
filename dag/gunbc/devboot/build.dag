@@ -434,18 +434,17 @@ fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
   ).exit_code == 0
 }
 
-// THE TEXT ENTRIES ARE WRITTEN THROUGH THE TYPED FILESYSTEM SURFACE, not through a shell. Rendering a subject into a shell command means the subject's own bytes become part of a command line -- a quoting question at a runtime-present site, where a typed write exists and answers it structurally. The write's own report is not consulted because the hash immediately after it is the stronger observation: hash-object refuses on a file that is not there, so a failed write cannot pass for a staged entry.
+// THE TEXT ENTRIES GO TO GIT AS BYTES ON STDIN, via git.Plumbing
+// HashObjectWriteStdin: never through a file, whose bytes another producer of the same token can
+// replace between the write and the hash, and never through argv, where the subject's own bytes
+// would become part of a command line.
 type GitOidOutcome
   = GitOidPresent { oid: String }
   | GitOidCommandFailed { exit_code: Int, stderr: String }
 
-fn stage_text_blob(repo_root: String, path: String, text: String) -> GitOidOutcome {
-  let written = Filesystem.Write(path: path, content: text)
-  if !written.success {
-    GitOidCommandFailed { exit_code: 1, stderr: written.error }
-  } else {
-    hash_blob_file(repo_root: repo_root, path: path)
-  }
+fn stage_text_blob(repo_root: String, text: String) -> GitOidOutcome {
+  let hashed = git.Plumbing.HashObjectWriteStdin(address: devboot_repo_address(repo_root: repo_root), content: text)
+  if hashed.exit_code == 0 { GitOidPresent { oid: trim(s: hashed.oid) } } else { GitOidCommandFailed { exit_code: hashed.exit_code, stderr: trim(s: hashed.stderr) } }
 }
 
 fn hash_blob_file(repo_root: String, path: String) -> GitOidOutcome {
@@ -517,22 +516,20 @@ fn publish_request(
   subject_text: String,
   program: String,
 ) -> RequestPublication {
-  let staging = join([work_root, "/", token, "/request"], "")
-  let index_path = join([work_root, "/", token, "/request.index"], "")
+  let token_root = join([work_root, "/", token], "")
+  let index_path = join([token_root, "/request.index"], "")
   let fresh = devboot_witness_run(
     site: retained_devboot_rm_rf,
     workdir: repo_root,
     bin_path: "rm",
-    args: ["-rf", staging, index_path],
+    args: ["-rf", index_path],
   )
-  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
-  let subject_path = join([staging, "/subject"], "")
-  let program_path = join([staging, "/program"], "")
-  match stage_text_blob(repo_root: repo_root, path: subject_path, text: subject_text) {
+  let made = devboot_ensure_directory(repo_root: repo_root, path: token_root)
+  match stage_text_blob(repo_root: repo_root, text: subject_text) {
     GitOidCommandFailed { exit_code, stderr } =>
       RequestPublicationRefused { detail: join(["could not stage the requested subject: ", stderr], "") }
     GitOidPresent { oid: subject_oid } =>
-      match stage_text_blob(repo_root: repo_root, path: program_path, text: program) {
+      match stage_text_blob(repo_root: repo_root, text: program) {
         GitOidCommandFailed { exit_code, stderr } =>
           RequestPublicationRefused { detail: join(["could not stage the requested program: ", stderr], "") }
         GitOidPresent { oid: program_oid } =>
@@ -981,21 +978,21 @@ fn publish_produced_tree(
   artifact_sha256: Sha256Digest?,
   refusal_text: String,
 ) -> ProducedPublication {
-  let staging = join([work_root, "/", token, "/produced"], "")
-  let index_path = join([work_root, "/", token, "/produced.index"], "")
+  let token_root = join([work_root, "/", token], "")
+  let index_path = join([token_root, "/produced.index"], "")
   let fresh = devboot_witness_run(
     site: retained_devboot_rm_rf,
     workdir: repo_root,
     bin_path: "rm",
-    args: ["-rf", staging, index_path],
+    args: ["-rf", index_path],
   )
-  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
-  match stage_text_blob(repo_root: repo_root, path: join([staging, "/subject"], ""), text: subject_text) {
+  let made = devboot_ensure_directory(repo_root: repo_root, path: token_root)
+  match stage_text_blob(repo_root: repo_root, text: subject_text) {
     GitOidCommandFailed { exit_code, stderr } =>
       produced_publication_refused(detail: join(["could not stage the produced subject: ", stderr], ""))
     GitOidPresent { oid: subject_oid } =>
       let staged_subject = stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: subject_oid, entry: produced_subject_entry, mode: "100644")
-      match stage_text_blob(repo_root: repo_root, path: join([staging, "/host"], ""), text: observed_producer_host(repo_root: repo_root)) {
+      match stage_text_blob(repo_root: repo_root, text: observed_producer_host(repo_root: repo_root)) {
         GitOidCommandFailed { exit_code, stderr } =>
           produced_publication_refused(detail: join(["could not stage the producing host: ", stderr], ""))
         GitOidPresent { oid: host_oid } =>
@@ -1008,11 +1005,7 @@ fn publish_produced_tree(
                   match hash_blob_file(repo_root: repo_root, path: artifact_path) {
                     GitOidCommandFailed { exit_code, stderr } => false
                     GitOidPresent { oid: artifact_oid } =>
-                      match stage_text_blob(
-                        repo_root: repo_root,
-                        path: join([staging, "/sha256"], ""),
-                        text: render_sha256_digest(digest: digest),
-                      ) {
+                      match stage_text_blob(repo_root: repo_root, text: render_sha256_digest(digest: digest)) {
                         GitOidCommandFailed { exit_code, stderr } => false
                         GitOidPresent { oid: digest_oid } =>
                           stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: artifact_oid, entry: produced_artifact_entry, mode: "100755")
@@ -1021,7 +1014,7 @@ fn publish_produced_tree(
                   }
               }
             } else {
-              match stage_text_blob(repo_root: repo_root, path: join([staging, "/refusal"], ""), text: refusal_text) {
+              match stage_text_blob(repo_root: repo_root, text: refusal_text) {
                 GitOidCommandFailed { exit_code, stderr } => false
                 GitOidPresent { oid: refusal_oid } =>
                   stage_blob_entry(repo_root: repo_root, index_path: index_path, oid: refusal_oid, entry: produced_refusal_entry, mode: "100644")

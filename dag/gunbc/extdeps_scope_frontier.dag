@@ -498,6 +498,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/docker/images/xomoxcc_dgx_spark_sglang.dag",
   "dag/extdeps/vllm/recipe_deepseek_v4_1_flash.dag",
   "dag/extdeps/ebay/browse.dag",
+  "dag/extdeps/ebay/marketplace_account_deletion.dag",
   "dag/extdeps/google/workspace.dag",
   "dag/extdeps/google/sheets.dag"
 ]
