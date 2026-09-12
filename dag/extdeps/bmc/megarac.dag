@@ -263,9 +263,16 @@ type MegaRacTriggerPowerOnFieldName
   = ChassisPowerOnEventsEnable
   | ChasisPowerOnEventsEnable
 
-data megarac_video_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = ChassisPowerOnEventsEnable
+fn megarac_recorder_trigger_power_on_field(subject: MegaRacConsoleRecorderSubject) -> MegaRacTriggerPowerOnFieldName {
+  match subject {
+    FramebufferRecorder => ChassisPowerOnEventsEnable
+    SolStreamRecorder => ChasisPowerOnEventsEnable
+  }
+}
 
-data megarac_sol_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = ChasisPowerOnEventsEnable
+data megarac_video_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = megarac_recorder_trigger_power_on_field(subject: FramebufferRecorder)
+
+data megarac_sol_trigger_power_on_field: MegaRacTriggerPowerOnFieldName = megarac_recorder_trigger_power_on_field(subject: SolStreamRecorder)
 
 fn megarac_trigger_power_on_field_wire(name: MegaRacTriggerPowerOnFieldName) -> NonEmptyStr {
   match name {
@@ -278,9 +285,16 @@ type MegaRacResetSurvival
   = SurvivesHostAndControllerReset
   | DiesOnReset
 
-data megarac_framebuffer_recorder_reset_survival: MegaRacResetSurvival = SurvivesHostAndControllerReset
+fn megarac_recorder_reset_survival(subject: MegaRacConsoleRecorderSubject) -> MegaRacResetSurvival {
+  match subject {
+    FramebufferRecorder => SurvivesHostAndControllerReset
+    SolStreamRecorder => SurvivesHostAndControllerReset
+  }
+}
 
-data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = SurvivesHostAndControllerReset
+data megarac_framebuffer_recorder_reset_survival: MegaRacResetSurvival = megarac_recorder_reset_survival(subject: FramebufferRecorder)
+
+data megarac_sol_recorder_reset_survival: MegaRacResetSurvival = megarac_recorder_reset_survival(subject: SolStreamRecorder)
 
 data megarac_live_sol_activate_reset_survival: MegaRacResetSurvival = DiesOnReset
 
