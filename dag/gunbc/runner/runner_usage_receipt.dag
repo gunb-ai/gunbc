@@ -1,0 +1,155 @@
+module gunbc.runner.runner_usage_receipt
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.algebra { FieldOfFractions }
+import std.measure {
+  Nanosecond, ObservationInstant, HardwareThreadCount, WallClock,
+  compare_instants, InstantBefore, InstantSame, nanosecond, nanosecond_count,
+  hardware_thread_count_value, minute, minute_to_millisecond, millisecond_to_nanosecond,
+}
+import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
+import std.scoped_authorization { AttemptIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.runner.runner_job_initiator {
+  JobInitiatorProvenance, JobInitiatorObserved, JobInitiatorUnobserved, RunnerEvidenceSource,
+}
+
+// The metering basis is runner_two_attempt_receipt.metering_intervals: allocated vCPUs times
+// monotonic launch-to-reap duration. CPU utilization is a different quantity; staging/retirement
+// belongs to the capacity-held interval. No price, credit, rounding or invoice policy enters here.
+type RunnerAttemptSubject<P> {
+  work: FabricIdentity<P, WorkKey>
+  host: HostIdentity
+  boot_id: NonEmptyStr
+  attempt: AttemptIdentity
+}
+
+fn runner_attempt_subject_eq<P>(a: RunnerAttemptSubject<P>, b: RunnerAttemptSubject<P>) -> Bool {
+  fabric_identity_eq(left: a.work, right: b.work) && host_identity_eq(a: a.host, b: b.host) &&
+  (a.boot_id as String) == (b.boot_id as String) &&
+  (a.attempt as String) == (b.attempt as String)
+}
+
+fn runner_instant_le(a: ObservationInstant, b: ObservationInstant) -> Bool {
+  match compare_instants(a: a, b: b) {
+    InstantBefore => true
+    InstantSame => true
+    _ => false
+  }
+}
+
+// All four instants must share an origin and wall basis. Producer resolution is retained so a
+// whole-second capture cannot masquerade as nanosecond precision merely by changing its units.
+type RunnerMeterObservation<P> {
+  subject: RunnerAttemptSubject<P>
+  configured_vcpus: HardwareThreadCount
+  capacity_acquired: ObservationInstant
+  jailer_launched: ObservationInstant
+  vmm_reaped: ObservationInstant
+  capacity_retired: ObservationInstant
+  clock_resolution: Nanosecond
+  evidence: RunnerEvidenceSource
+}
+
+type RunnerMeterReading<P>
+  = RunnerMeterObserved { observation: RunnerMeterObservation<P> }
+  | RunnerMeterUnobserved { cause: NonEmptyStr }
+
+type RunnerUsageRefusal
+  = UsageMeterMissing { cause: NonEmptyStr }
+  | UsageSubjectMismatch
+  | UsageInitiatorMissing { cause: NonEmptyStr }
+  | UsageInitiatorJobMismatch
+  | UsageVcpuCountZero
+  | UsageClockResolutionZero
+  | UsageClockBasisNotWall
+  | UsageIntervalsUnorderedOrIncomparable
+
+// Minutes are an exact fraction of the universal nanoseconds-per-minute scale. The constructor
+// owns both numerator and denominator; the caller cannot supply a rounded total beside the meter.
+type MeteredVcpuMinutes sole_constructor {
+  count: FieldOfFractions<Nat>
+}
+
+fn metered_vcpu_minutes_fraction(usage: MeteredVcpuMinutes) -> FieldOfFractions<Nat> {
+  usage.count
+}
+
+type RunnerUsageReceipt<P> sole_constructor {
+  meter: RunnerMeterObservation<P>
+  initiator: JobInitiatorProvenance<P>
+  vcpu_minutes: MeteredVcpuMinutes
+  vm_elapsed: Nanosecond
+  capacity_held: Nanosecond
+}
+
+type RunnerUsageResult<P>
+  = RunnerUsageProduced { receipt: RunnerUsageReceipt<P> }
+  | RunnerUsageRefused { cause: RunnerUsageRefusal }
+
+fn runner_usage_from_observation<P>(
+  expected: RunnerAttemptSubject<P>,
+  meter: RunnerMeterObservation<P>,
+  initiator: JobInitiatorProvenance<P>,
+) -> RunnerUsageResult<P> {
+  if !runner_attempt_subject_eq(a: expected, b: meter.subject) {
+    RunnerUsageRefused { cause: UsageSubjectMismatch }
+  } else if hardware_thread_count_value(t: meter.configured_vcpus) == 0 {
+    RunnerUsageRefused { cause: UsageVcpuCountZero }
+  } else if nanosecond_count(n: meter.clock_resolution) == 0 {
+    RunnerUsageRefused { cause: UsageClockResolutionZero }
+  } else {
+    match meter.jailer_launched.basis {
+      WallClock => {
+        if !runner_instant_le(a: meter.capacity_acquired, b: meter.jailer_launched) ||
+           !runner_instant_le(a: meter.jailer_launched, b: meter.vmm_reaped) ||
+           !runner_instant_le(a: meter.vmm_reaped, b: meter.capacity_retired) {
+          RunnerUsageRefused { cause: UsageIntervalsUnorderedOrIncomparable }
+        } else {
+          match initiator {
+            JobInitiatorUnobserved { cause: c } =>
+              RunnerUsageRefused { cause: UsageInitiatorMissing { cause: c } }
+            JobInitiatorObserved { work: w, attempt: a, class: _, principal: _, evidence: _ } => {
+              if !fabric_identity_eq(left: expected.work, right: w) || (expected.attempt as String) != (a as String) {
+                RunnerUsageRefused { cause: UsageInitiatorJobMismatch }
+              } else {
+                let elapsed = nanosecond_count(n: meter.vmm_reaped.since_origin) -
+                  nanosecond_count(n: meter.jailer_launched.since_origin)
+                let held = nanosecond_count(n: meter.capacity_retired.since_origin) -
+                  nanosecond_count(n: meter.capacity_acquired.since_origin)
+                RunnerUsageProduced { receipt: RunnerUsageReceipt {
+                  meter: meter,
+                  initiator: initiator,
+                  vcpu_minutes: MeteredVcpuMinutes { count: FieldOfFractions {
+                    num: elapsed * hardware_thread_count_value(t: meter.configured_vcpus),
+                    denom: nanosecond_count(n: millisecond_to_nanosecond(m:
+                      minute_to_millisecond(m: minute(count: 1)))),
+                  } },
+                  vm_elapsed: nanosecond(count: elapsed),
+                  capacity_held: nanosecond(count: held),
+                } }
+              }
+            }
+          }
+        }
+      }
+      _ => RunnerUsageRefused { cause: UsageClockBasisNotWall }
+    }
+  }
+}
+
+// Named pure receipt producer. A live meter transport has not been executed on the canary host;
+// calling this with a fixture is evidence about the fold, never about an actual host interval.
+fn produce_runner_usage_receipt<P>(
+  expected: RunnerAttemptSubject<P>,
+  reading: RunnerMeterReading<P>,
+  initiator: JobInitiatorProvenance<P>,
+) -> RunnerUsageResult<P> {
+  match reading {
+    RunnerMeterUnobserved { cause: c } =>
+      RunnerUsageRefused { cause: UsageMeterMissing { cause: c } }
+    RunnerMeterObserved { observation: o } =>
+      runner_usage_from_observation(expected: expected, meter: o, initiator: initiator)
+  }
+}

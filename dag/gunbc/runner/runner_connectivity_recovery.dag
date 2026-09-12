@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance {
+  process_identity_eq,
   RunnerSlotIdentity,
   ProcessIdentity,
 }
@@ -193,12 +194,6 @@ data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
 // derivation than the one that named it, and nothing related the two.
 fn recovery_runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
   runner_slot_unit_name(slot: slot)
-}
-
-fn process_identity_eq(a: ProcessIdentity, b: ProcessIdentity) -> Bool {
-  (a.boot_id as String) == (b.boot_id as String)
-    && a.pid == b.pid
-    && (a.start_time as String) == (b.start_time as String)
 }
 
 fn remote_observation_registration(obs: RunnerRemoteObservation) -> RunnerRemoteRegistration? {

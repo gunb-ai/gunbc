@@ -1,0 +1,20 @@
+module gunbc.runner.runner_canary_evidence_frontier
+
+import std.types { List }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+
+// Operator-directed scope on 2026-09-12: fixture-execute the lasting receipt shapes while the
+// canary host awaits physical restoration. These are evidence obligations, not live observations.
+// No changed standing is asserted for runner_attempt_launch's host-boot execution path.
+data runner_canary_executed_evidence_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "produce_runner_usage_receipt"),
+    reason: "The pure producer is fixture-executed only. No canary host meter transport has produced this receipt; the host is unavailable and host-shell/boot-image access is refused.",
+    dissolution: unbound_dissolution(description: "A real GitHub job ending bound to the same FabricIdentity and AttemptIdentity consumes a receipt produced by produce_runner_usage_receipt from preserved launch/reap and capacity acquisition/retirement observations, configured vCPUs, clock domain and resolution, with observed JobInitiatorClass provenance. Named consumer: billing-receipts, which applies real founding price and invoice credit without altering usage. Fixture execution or transcription of the old host summary does not satisfy this obligation.")),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_teardown_receipt", decl_name: "produce_runner_teardown_receipt"),
+    reason: "The pure producer is fixture-executed only. Independent host observation before and after destruction has not executed; cleanup output from the destroyer is not that evidence.",
+    dissolution: unbound_dissolution(description: "The runner-canary completion consumer joins a real job's metered receipt to produce_runner_teardown_receipt for the same work/attempt and launch inventory. An observer independent of destruction preserves its own present-before and absent-after captures; withholding its output and retaining one owned resource each demonstrably refuse through that live consumer. The host must first be physically restored and an authorized observation path provided. No restart recovery, lease renewal or multi-host scheduling is required.")),
+]
