@@ -64,3 +64,14 @@ test fn w_timeline_separates_os_milestone_from_boot_identity_and_present_admissi
       && contains(pre_os_timeline_view(rows: rows), "kernel_boot")
   } && all(other_machine, row => count(row.cycles) == 0 && match row.association { ObservationRefused { cause: _ } => true _ => false })
 }
+
+// A delivery receipt is new evidence about an existing occurrence, not a new
+// host event and not an unchanged retry that may be discarded.
+test fn w_same_occurrence_new_continuity_receipt_is_retained() -> Bool {
+  let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let b = ObservationEnvelope { binding: a.binding, source_generation: a.source_generation, native_cursor: a.native_cursor,
+    ownership: a.ownership, chunk: a.chunk, producer_timestamp: a.producer_timestamp, received: a.received, local_commit: a.local_commit,
+    downstream: a.downstream, continuity: ContinuityEstablished { verified_through: 200 } }
+  count(pre_os_unique_occurrences(envelopes: [a, a, b, b])) == 2
+    && !pre_os_occurrence_conflicts(envelopes: [a, b], subject: a)
+}

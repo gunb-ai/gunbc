@@ -10,7 +10,7 @@ import gunbc.memory_observation {
 }
 import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
 import gunbc.machine_intake_pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
-import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_host_population_statement }
+import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_host_population_statement, pre_os_firmware_boot_selection }
 import gunbc.machine_intake_sel_stimulus_listener { sel_snapshot_summary }
 import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation }
 
@@ -126,7 +126,33 @@ func replay_pre_os_archives() -> List<ObservationAttempt<PreOsArchiveReading, No
   }
 }
 
+type PreOsFirmwareSelectionArchiveAssessment {
+  selection: ObservationAttempt<NonEmptyStr, NonEmptyStr>
+  milestones: PreOsMilestones
+}
+
+func replay_pre_os_host_archive() -> ObservationAttempt<PreOsHostArchiveAssessment, NonEmptyStr> {
+  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log",
+    expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: payload } => ObservationEstablished { observed: pre_os_host_archive_assessment(payload: payload, host_mac: "28:c1:3c:8a:d6:4a") }
+  }
+}
+
+func replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelectionArchiveAssessment, NonEmptyStr> {
+  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-rerun-attached-before-stimulus-2026-09-12.txt",
+    expected_sha256: "c0ca51569050d46c225881eee7de46bad436953e8564a2509f016ceed5475eb7") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: payload } => ObservationEstablished { observed: PreOsFirmwareSelectionArchiveAssessment {
+      selection: pre_os_firmware_boot_selection(text: payload, rendered_host_mac: "28-C1-3C-8A-D6-4A"),
+      milestones: pre_os_milestones(console: ObservationEstablished { observed: payload }, os_boot: pre_os_host_userspace_boot(text: payload, host_mac: "28:c1:3c:8a:d6:4a")),
+    } }
+  }
+}
+
 func replay_pre_os_archive_ledger() -> String {
   concat("Historical archive observations; firmware-attempt association is unestablished.\n", to_string(replay_pre_os_archives()),
-    "\nWithdrawn quiet-SEL control:\n", to_string(replay_pre_os_quiet_archive()))
+    "\nWithdrawn quiet-SEL control:\n", to_string(replay_pre_os_quiet_archive()),
+    "\nHost-produced OS milestone; population scope is carried in the assessment:\n", to_string(replay_pre_os_host_archive()),
+    "\nFirmware selection rerun; not an OS milestone:\n", to_string(replay_pre_os_selection_archive()))
 }

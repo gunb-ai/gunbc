@@ -96,7 +96,7 @@ fn pre_os_captured_cycles(span: PreOsConsoleSpan, host_mac: NonEmptyStr, rendere
         let cycle = PreOsCapturedCycleReading {
           firmware_attempt: ObservationRefused { cause: "no evidence joins this captured cycle to a firmware boot identity" },
           kernel_boot: ObservationRefused { cause: "host milestone does not supply a kernel boot UUID" },
-          anchor: ObservationAttempt<PreOsCapturedCycleAnchor, NonEmptyStr> { occurrence: origin, stream_offset: acc.next_offset },
+          anchor: anchor,
           milestones: pre_os_milestones(console: ObservationEstablished { observed: part }, os_boot: pre_os_host_userspace_boot(text: part, host_mac: host_mac)),
           firmware_selection: pre_os_firmware_boot_selection(text: part, rendered_host_mac: rendered_host_mac),
         }
