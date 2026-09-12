@@ -148,6 +148,24 @@ fn arg_value_symbol(arg_capture: Node) -> Optional<Symbol> {
   }
 }
 
+// A STATED DIVERGENCE FROM THE COMPILER'S OWN NAMED-ARGUMENT ACCESSOR (DESIGN section 3b), not an
+// unstated fork. v2.compiler.body_lowering_fold body_lower_named_arg_value_optional decodes the same
+// `name ^dag_token_colon value` spine and is the authority for what a named argument IS, so this
+// function should consume it and does not. THE REASON IS A DEFECT IN THAT ACCESSOR, NAMED BY SYMBOL:
+// it finishes through body_lower_arg_operand_optional into body_lower_operand_ref_optional, which on
+// a sequence operand recurses into pair.left ALONE. For `left: seed + acc` that returns the operand
+// for `seed` and drops `acc` -- an under-approximation of the identifiers the argument names, which
+// is precisely the reading review 64393 caught in the first version of this repair and the silent
+// widening DESIGN section 5 forbids. Consuming the authority as it stands would reintroduce the bug
+// this function exists to avoid, so the two answer different questions today: that accessor answers
+// what operand an argument LOWERS TO, this one answers what the argument's VALUE SUBTREE is.
+//
+// The class is filed at gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand,
+// and the compiler-side repair is its own lane because body_lowering_fold is a load-bearing pipeline
+// file. TRIGGER: when body_lower_named_arg_value_optional preserves the full sequence rather than
+// narrowing to its first element, this function DISSOLVES INTO IT -- arg_value_node deletes and
+// arg_value_mentions censuses whatever that accessor returns. Until then the divergence is stated
+// here rather than argued in a review thread.
 fn arg_value_node(arg_capture: Node) -> Node {
   match sequence_left_node(cap: arg_capture) {
     Absent => arg_capture
