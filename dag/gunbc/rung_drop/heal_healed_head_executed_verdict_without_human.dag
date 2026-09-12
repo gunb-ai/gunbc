@@ -26,6 +26,6 @@ data heal_healed_head_executed_verdict_without_human: RungDrop = RungDrop {
       "heal-generated-artifacts HealProduced heads",
       "gunbc.ci_spec gunbc_ci_heal_commit_push_script (auto-dispatch splice, deleted)",
     ],
-    restoration_trigger: "required checks execute on the gated pull_request run for a bot-pushed healed head, so GitHub's name-keyed PR rollup sees conclusions without a second same-named workflow_dispatch on that SHA. SUFFICIENT FOR: a healed PR's statusCheckRollup showing real conclusions after heal without a human dispatching a second run. Restoring tools.ci_heal_dispatch auto-invoke does not retire this row",
+    restoration_trigger: "the gated pull_request run for a bot-pushed healed head starts and completes its required jobs with no human POST /actions/runs/<id>/approve and no workflow_dispatch on that SHA, so the name-keyed PR rollup sees those conclusions. SUFFICIENT FOR: HealProduced then statusCheckRollup showing real conclusions on that SHA with zero human approvals of that run and zero workflow_dispatch runs on that SHA. Approving the gated run is the standing remedy and does not restore an executed verdict without a human. Restoring tools.ci_heal_dispatch auto-invoke does not retire this row",
   }
 }
