@@ -442,14 +442,28 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             if value.get("_terminal").and_then(|t| t.as_str()) != Some("complete") {
                 return Err(format!("terminal marker is not complete: {line}"));
             }
-            // EVERY MARKER FIELD IS REQUIRED, NONE IS DEFAULTED. These were `unwrap_or` defaults,
-            // and each one fabricated a different lie: a missing `rows`/`universe`/`file_refusals`
-            // printed as `0` in the route's own summary line, so a marker that lost its counts
-            // reported a run that measured nothing; a missing `admitted` defaulted to `false` and
-            // a missing `summary` to the empty string, so the refusal downstream read
-            // `cause=AdmissionRefused — ` with no cause at all. The binary's own outbound rule a
-            // few lines below is the opposite — it refuses a missing or duplicated host-fact key
-            // rather than defaulting one — and the inbound side now matches it (review 64181).
+            // EVERY FIELD THE MODE CARRIES IS REQUIRED, NONE IS DEFAULTED -- AND WHICH FIELDS THOSE
+            // ARE IS A FACT ABOUT THE MODE. These were `unwrap_or` defaults, and each one
+            // fabricated a different lie: a missing `rows`/`universe`/`file_refusals` printed as
+            // `0` in the route's own summary line, and a missing `admitted` defaulted to `false`
+            // with an empty `summary`, so the refusal downstream read `cause=AdmissionRefused — `
+            // with no cause at all.
+            //
+            // THE FIRST FIX WAS TOO STRICT AND THE ROUTE CAUGHT IT. Requiring the adjudicate field
+            // set on EVERY marker refused the census run, whose marker is
+            // `{"_terminal":"complete","mode":"census","file_refusals":N}` and which has no
+            // population to count: census exists to report the malformed control's per-file
+            // refusals and nothing else. Demanding `rows`/`universe`/`admitted`/`summary` there was
+            // requiring a fact the mode does not have -- the mirror image of defaulting one it
+            // does. So the required set is keyed by mode, and both modes still refuse a missing
+            // field rather than inventing it.
+            //
+            // THE CENSUS ARM'S ZEROS ARE NOT A MEASUREMENT AND NOTHING READS THEM, which is what
+            // keeps this from being the defaulting it replaces: the census consumer touches
+            // `terminal.mode` and the separately carried file refusals, and never `rows`,
+            // `universe`, `admitted` or `summary`. They are struct fill for fields the mode does
+            // not have. If a future consumer wants a count from a census marker, the honest change
+            // is a per-mode marker type, not a zero that has quietly become load-bearing.
             let need_u64 = |key: &str| -> Result<u64, String> {
                 value
                     .get(key)
@@ -463,16 +477,33 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                     .map(|s| s.to_string())
                     .ok_or_else(|| format!("terminal marker carries no {key}: {line}"))
             };
-            terminal = Some(NativeTerminalMarker {
-                mode: need_str("mode")?,
-                rows: need_u64("rows")?,
-                universe: need_u64("universe")?,
-                file_refusals: need_u64("file_refusals")?,
-                admitted: value
-                    .get("admitted")
-                    .and_then(|a| a.as_bool())
-                    .ok_or_else(|| format!("terminal marker carries no admitted: {line}"))?,
-                summary: need_str("summary")?,
+            let mode = need_str("mode")?;
+            let file_refusals = need_u64("file_refusals")?;
+            terminal = Some(match mode.as_str() {
+                "census" => NativeTerminalMarker {
+                    mode,
+                    rows: 0,
+                    universe: 0,
+                    file_refusals,
+                    admitted: false,
+                    summary: String::new(),
+                },
+                "adjudicate" => NativeTerminalMarker {
+                    rows: need_u64("rows")?,
+                    universe: need_u64("universe")?,
+                    admitted: value
+                        .get("admitted")
+                        .and_then(|a| a.as_bool())
+                        .ok_or_else(|| format!("terminal marker carries no admitted: {line}"))?,
+                    summary: need_str("summary")?,
+                    mode,
+                    file_refusals,
+                },
+                other => {
+                    return Err(format!(
+                        "terminal marker reports an unknown mode {other:?}: {line}"
+                    ))
+                }
             });
             continue;
         }

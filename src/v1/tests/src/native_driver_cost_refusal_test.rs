@@ -35,6 +35,9 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             context: nanosecond(40),
             prepare: nanosecond(40),
             eval: nanosecond(0),
+            universe_derivation: nanosecond(0),
+            receipt_admission: nanosecond(0),
+            row_serialization: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -59,6 +62,9 @@ fn reconciled_parent_passes() {
             context: nanosecond(3380085706753),
             prepare: nanosecond(59277814291),
             eval: nanosecond(3531894),
+            universe_derivation: nanosecond(0),
+            receipt_admission: nanosecond(0),
+            row_serialization: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
