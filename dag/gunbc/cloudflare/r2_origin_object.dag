@@ -10,7 +10,12 @@ import extdeps.shell
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.exec.command { LocalExec }
 import extdeps.transports.rest { mutation_status_is_commit_ambiguous }
-import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command }
+import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool }
+import gunbc.host_cli_dependency {
+  observe_host_cli_dependency,
+  HostCliDependencyPresent,
+  HostCliDependencyAbsent,
+}
 import extdeps.cloudflare.r2 {
   R2S3Endpoint,
   R2ObjectLocator,
@@ -199,6 +204,29 @@ fn origin_direction_word(direction: OriginDirection) -> String {
   }
 }
 
+// THE TRANSPORT'S HOST DEPENDENCY IS OBSERVED BEFORE ANY CREDENTIAL IS FETCHED, and the row it
+// observes is the SigV4 one: extdeps.tools.curl curl_aws_sigv4_cli_tool carries the >= 7.75 pin
+// --aws-sigv4 needs, so it is this operation's requirement and this is its executing consumer. A
+// host without curl refuses here, typed and with the install hint, rather than spawning a program
+// that does not exist after a token has already been materialized on disk. What this observes is
+// PRESENCE: gunbc.host_cli_dependency checks the name on PATH and does not read a version, which is
+// the standing every CliTool on this fleet has today; the version pin is carried, not checked.
+func origin_transport_present() -> OriginTransportStanding {
+  match observe_host_cli_dependency(tool: curl_aws_sigv4_cli_tool) {
+    HostCliDependencyAbsent { absence: absence } =>
+      OriginTransportAbsent {
+        cause: join(["THE TRANSPORT IS NOT ON THIS HOST: ", absence.tool as String, " (", absence.hint, ")"], "") as NonEmptyStr,
+      }
+    HostCliDependencyPresent => OriginTransportPresent
+  }
+}
+
+type OriginTransportStanding
+  = OriginTransportPresent
+  | OriginTransportAbsent { cause: NonEmptyStr }
+
+// THE TARGET RESOLUTION IS PURE so every refusal arm is reachable from the declarations alone; the
+// host observation above is consulted by the two effectful entries before it.
 fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> OriginTarget {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: intervention } =>
@@ -239,6 +267,9 @@ func put_origin_object(
   key: NonEmptyStr,
   token_source: AccessTokenSource,
 ) -> OriginPutOutcome uses net: Network {
+  match origin_transport_present() {
+    OriginTransportAbsent { cause: cause } => OriginPutRefused { key: key, cause: cause }
+    OriginTransportPresent =>
   match resolve_origin_target(direction: OriginWrite, key: key) {
     OriginTargetRefused { cause: cause } => OriginPutRefused { key: key, cause: cause }
     OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } =>
@@ -270,6 +301,7 @@ func put_origin_object(
           }
         }
       }
+  }
   }
 }
 
@@ -321,6 +353,9 @@ func fetch_origin_object(
   key: NonEmptyStr,
   token_source: AccessTokenSource,
 ) -> OriginFetchOutcome uses net: Network {
+  match origin_transport_present() {
+    OriginTransportAbsent { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+    OriginTransportPresent =>
   match resolve_origin_target(direction: OriginRead, key: key) {
     OriginTargetRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
     OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } => {
@@ -365,5 +400,6 @@ func fetch_origin_object(
         }
       }
     }
+  }
   }
 }
