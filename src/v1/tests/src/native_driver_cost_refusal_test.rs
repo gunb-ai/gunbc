@@ -110,7 +110,7 @@ fn a_completed_capture_with_no_cost_rows_is_unobserved() {
     ));
     assert!(
         matches!(
-            standing.as_ref(),
+            standing,
             NativeDriverCostRowStanding::NativeDriverCostRowsUnobserved
         ),
         "empty stderr after a completed spawn is unobserved, not a green partition"
@@ -127,7 +127,7 @@ fn a_planted_partition_line_is_observed() {
     ));
     assert!(
         matches!(
-            standing.as_ref(),
+            standing,
             NativeDriverCostRowStanding::NativeDriverCostRowsObserved
         ),
         "the partition tag after exit is Observed"
@@ -141,7 +141,7 @@ fn a_child_that_has_not_exited_is_pending_not_unobserved() {
     ));
     assert!(
         matches!(
-            standing.as_ref(),
+            standing,
             NativeDriverCostRowStanding::NativeDriverCostRowsPending
         ),
         "Command::output never returns until exit; empty mid-run is pending, not unobserved"

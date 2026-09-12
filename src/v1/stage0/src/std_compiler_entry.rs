@@ -115,6 +115,18 @@ pub enum NativeDriverChildStanding {
     NativeDriverChildExited { stderr: String },
     NativeDriverChildStillRunning,
 }
+impl NativeDriverChildStanding {
+    pub fn stderr(&self) -> String {
+        match self {
+            NativeDriverChildStanding::NativeDriverChildExited { stderr: __val, .. } => {
+                __val.clone()
+            }
+            NativeDriverChildStanding::NativeDriverChildStillRunning => {
+                panic!("no stderr on unit variant")
+            }
+        }
+    }
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -128,16 +140,16 @@ pub enum NativeDriverCostRowStanding {
 
 pub fn native_driver_cost_row_standing(
     child: Rc<NativeDriverChildStanding>,
-) -> Rc<NativeDriverCostRowStanding> {
-    match child.as_ref() {
+) -> NativeDriverCostRowStanding {
+    match (*child.clone()).clone() {
         NativeDriverChildStanding::NativeDriverChildStillRunning => {
-            Rc::new(NativeDriverCostRowStanding::NativeDriverCostRowsPending)
+            NativeDriverCostRowStanding::NativeDriverCostRowsPending
         }
-        NativeDriverChildStanding::NativeDriverChildExited { stderr } => {
-            if v1_rt::string_contains(stderr, "[native-cost-partition] ".to_string()) {
-                Rc::new(NativeDriverCostRowStanding::NativeDriverCostRowsObserved)
+        NativeDriverChildStanding::NativeDriverChildExited { stderr: stderr, .. } => {
+            if v1_rt::string_contains(&stderr, "[native-cost-partition] ".to_string()) {
+                NativeDriverCostRowStanding::NativeDriverCostRowsObserved
             } else {
-                Rc::new(NativeDriverCostRowStanding::NativeDriverCostRowsUnobserved)
+                NativeDriverCostRowStanding::NativeDriverCostRowsUnobserved
             }
         }
     }
@@ -149,8 +161,6 @@ pub struct RetainedHostCliKernel;
 pub struct DirectIngestDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRootEvalDriver;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NativeDriverChildStillRunning;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeDriverCostRowsObserved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
