@@ -1731,12 +1731,27 @@ pub struct TransitionAdmission {
 /// This row's subject landed. So this is the same motion as the two shrinks already recorded here,
 /// taken by the trigger the row was authored with rather than by a reinterpretation of it.
 ///
-/// TWO FRAMES FOR ONE ROW, NAMED TOGETHER SO A LATER READER CAN JOIN THE RECORD TO THE REFUSAL. The
-/// dissolution records call such a row CONSUMED -- its admitted relocation is already satisfied at
-/// the base. The floor called this one STALE, which is a different counter with a different
-/// consequence: consumed is a typed receipt, stale is an UnmatchedAdmission REFUSAL, and stale
-/// refuses whether or not anyone touched the roster. That is why #11162 refused on a file byte-
-/// identical to main's, and why "consumed" alone would not explain the red that forced this edit.
+/// ITS OWN TRIGGER PROMISED A DISPOSITION THE EVALUATOR COULD NOT ASSIGN IT, and that is the part
+/// worth reading before trusting any row's stated lifecycle. The trigger said "CONSUMED comes due
+/// on the roster's next touch". CONSUMED was unreachable for this row BY CONSTRUCTION:
+/// `admission_consumed_at_base`'s Binding arm proves consumption only on `set.len() == 1 &&
+/// set.contains(target)` -- "a singleton set equal to it, not merely containing it", as its own doc
+/// says -- and this row's documented head set is `{extdeps.shell, extdeps.tools.sha256sum}`, two
+/// members. `len() == 1` is false for it forever. So it could only ever report STALE, which is the
+/// arm that refuses every unrelated pull request, never the polite one that waits for a roster
+/// touch. The accurate history is: the subject landed, the delta stopped being producible, and the
+/// row went STALE -- an UnmatchedAdmission -- refusing everyone until deleted.
+///
+/// THE GENERALISATION, WHICH IS BIGGER THAN THIS ROW. Any TargetChanged binding row whose head
+/// candidate set has more than one member has an unreachable CONSUMED condition; only a narrowing
+/// that ends at EXACTLY the target can ever be proved consumed. Every other shape can only go
+/// stale, and stale is fleet-wide. So this roster's stated lifecycle holds for singleton narrowings
+/// and silently becomes a whole-fleet blocker for the rest -- a DESIGN section 4b(3) defect, a
+/// declared trigger naming a disposition the evaluator cannot assign, so the row never retires and
+/// the cost lands on whoever opens the next pull request. A row of that shape should either declare
+/// STALE as its retirement arm or narrow to the target, and this file already carries the opposite
+/// correction above (a record predicting stale for rows that reported consumed), so both directions
+/// of the confusion are now on the record.
 ///
 /// AND IT DID NOT MERELY LINGER. Because `stale_admissions` is computed PER RUN and a pull_request
 /// build adjudicates the merge commit, a row whose subject has landed can never be matched by a PR
