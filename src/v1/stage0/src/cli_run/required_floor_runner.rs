@@ -4628,7 +4628,8 @@ pub fn run_required_floor(
     // ── SHARED-BUILD ATTRIBUTION: the bare-reference edge index ───────────────────────────
     //
     // THIRD WARM, SAME REPAIR AS THE TWO ABOVE. The bare-reference edge index
-    // (`both_closure_edge_index`, and through it `tree_bare_census_for_root` per root) is a fact
+    // (`whole_pool_closure_edge_index`, explicitly demanded by `warm_bare_reference_edge_index`,
+    // which also warms `tree_bare_census_for_root` for reconciliation) is a fact
     // of the SUBJECT, not of any claim: memoized once per index — the census trace reports two
     // misses over two source roots against ONE index address, `edge_index_construction {
     // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED
