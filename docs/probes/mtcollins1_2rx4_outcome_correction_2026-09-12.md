@@ -73,3 +73,38 @@ shape is too coarse to ask the question without fabricating an answer. Forcing t
 The two tested cohorts produced DIFFERENT observed behaviour under a comparison that held the
 population shape, socket, connectors and twelve companion modules constant. That contrast is
 real and it is the most useful thing tonight produced. It is not a diagnosis.
+
+## ADDENDUM — a positive readback that is not telemetry
+
+Obtained after the correction above was written, with srv1/srv2 access granted.
+
+**The one-shot boot override was CONSUMED.** Before the 01:17:06Z reset, `chassis bootparam
+get 5` read `Boot Flag Valid` / `BIOS EFI boot` / `Force Boot from CD/DVD`. At 01:33:16Z it
+reads `Boot Flag Invalid` / `No override`.
+
+Firmware clears a one-shot override WHEN IT READS IT to select a boot device. So this
+configuration reached BOOT-DEVICE SELECTION.
+
+WHY THIS IS BETTER EVIDENCE THAN THE WATTS: it is the same instrument used in the opposite
+direction during the failing rounds, where the override remained VALID AND UNCONSUMED across
+multiple restarts -- which was the evidence that firmware never reached boot selection there.
+One discriminator, both polarities, observed on the same unit. It is a control-plane fact about
+firmware behaviour rather than an aggregate sensor reading whose validity and freshness were
+never established.
+
+WHAT IT ESTABLISHES: POST completed and boot-device selection was reached. Together with
+`Boot_Progress` asserted at 01:18:46Z and the `12c805000000`/`12c805004000` pair at 01:19:30Z
+-- the pair's first appearance since the DIMM change, having been static at 49 occurrences all
+evening.
+
+WHAT IT STILL DOES NOT ESTABLISH: memory training completion as a terminal (no constructor for
+it exists), that all sixteen modules were recognized, capacity, or any qualification. The census
+image's output was NOT retrievable: /srv/bmc holds only ISOs with nothing written since
+2026-09-10, the host NIC 28:c1:3c:8a:d6:4a appears in neither srv1's nor srv2's ARP table, and
+SOL returned 86 bytes identical to every other capture tonight. The image reports over serial
+only, and that channel is dead on this controller.
+
+SO THE POPULATION-LEVEL READBACK REMAINS UNOBTAINED, and by a capability gap rather than a
+choice: this platform exposes no per-DIMM telemetry out-of-band, and the in-band route requires
+a console that does not work. Closing it needs either a working console, a diagnostic image that
+writes to the share instead of the console, or host network reachability.
