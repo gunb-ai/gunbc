@@ -5,8 +5,6 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import std.types { Int }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.lens.module_graph {
-  LocatedModuleRoot,
-  ModuleDependencyEdge,
   located_roots_from_source_root_ingest,
   reference_derived_edges_from_located_roots,
 }
