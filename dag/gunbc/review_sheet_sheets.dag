@@ -23,7 +23,7 @@ import gunbc.review_sheet_projection {
   ReviewSheetUnreadable,
   DerivedCellWrite,
   AppendListingRow,
-  classify_review_sheet_with_erasure,
+  classify_review_sheet,
   DerivedPayloadErasure,
   conflict_reason,
   a1_cell_eq,
@@ -415,7 +415,7 @@ fn review_sheet_ensure(
               ) as NonEmptyStr
             }
           } else {
-            let classified = classify_review_sheet_with_erasure(
+            let classified = classify_review_sheet(
               observed: observed,
               projection: projection,
               erasures: erasures,

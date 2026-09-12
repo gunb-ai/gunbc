@@ -27,7 +27,6 @@ import gunbc.review_sheet_projection {
   write_plan_covers_column_letter,
   a1_row_span_includes_letter,
   classify_review_sheet,
-  classify_review_sheet_with_erasure,
   DerivedPayloadErasure,
   conflict_reason,
   append_listing_row,
@@ -241,9 +240,9 @@ test fn converge_twice_unchanged_is_noop() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), ""]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetConverged =>
-      match classify_review_sheet(observed: observed, projection: projection) {
+      match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
         ReviewSheetConverged => true
         ReviewSheetNeedsWrite { plan: _ } => false
         ReviewSheetConflict { conflict: _ } => false
@@ -261,7 +260,7 @@ test fn converge_preserves_populated_human_column() -> Bool {
     headers: w_headers(),
     rows: [["L1", "", w_standing_observed(), "buy"]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetNeedsWrite { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && match judgement_for_listing(
@@ -287,7 +286,7 @@ test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> B
     headers: w_headers(),
     rows: [["L1", "hand-edited", w_standing_observed(), ""]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetConflict { conflict: c } =>
       string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
         && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=title")
@@ -320,9 +319,9 @@ test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
       ["L1", "alpha", w_standing_observed(), "buy"],
     ],
   )
-  match classify_review_sheet(observed: sorted, projection: projection) {
+  match classify_review_sheet(observed: sorted, projection: projection, erasures: []) {
     ReviewSheetConverged =>
-      match classify_review_sheet(observed: resorted, projection: projection) {
+      match classify_review_sheet(observed: resorted, projection: projection, erasures: []) {
         ReviewSheetConverged =>
           match judgement_for_listing(
             observed: resorted,
@@ -360,7 +359,7 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), "buy"]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetNeedsWrite { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && (p.appends |> count) == 0
@@ -391,7 +390,7 @@ test fn derived_payload_erasure_blanks_derived_keeps_judgement_and_listing_gone(
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_gone(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -433,7 +432,7 @@ test fn derived_payload_erasure_refuses_while_listing_still_projected() -> Bool 
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -454,7 +453,7 @@ test fn derived_payload_erasure_refuses_until_standing_is_listing_gone() -> Bool
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -475,7 +474,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_when_standing_is
     headers: ["listing_id", "standing", "judgement"],
     rows: [["L1", w_standing_observed(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -499,7 +498,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_while_still_proj
     headers: ["listing_id", "standing", "judgement"],
     rows: [["L1", w_standing_observed(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -520,7 +519,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_when_gone_and_au
     headers: ["listing_id", "standing", "judgement"],
     rows: [["L1", w_standing_gone(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -538,7 +537,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_when_gone_and_au
 test fn derived_payload_erasure_refuses_listing_not_on_sheet() -> Bool {
   let projection = w_projection(rows: [])
   let observed = w_observed(headers: w_headers(), rows: [])
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -558,7 +557,7 @@ test fn derived_payload_erasure_already_empty_derived_is_converged() -> Bool {
     headers: w_headers(),
     rows: [["L1", "", w_standing_gone(), "buy", w_erasure_applied()]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -576,7 +575,7 @@ test fn derived_payload_erasure_duplicate_listing_is_unreadable() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_gone(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [
@@ -645,7 +644,7 @@ test fn gone_listing_with_derived_payload_still_restores_when_it_returns() -> Bo
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_gone(), "buy"]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetNeedsWrite { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && fold(p.patches, init: false, f: fn(acc, w) {
@@ -670,7 +669,7 @@ test fn applied_erasure_mark_does_not_restore_derived_when_the_listing_returns()
     headers: w_headers(),
     rows: [["L1", "", w_standing_gone(), "buy", w_erasure_applied()]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [],
@@ -700,7 +699,7 @@ test fn derived_payload_erasure_refuses_without_erasure_mark_column() -> Bool {
     headers: ["listing_id", "title", "standing", "judgement"],
     rows: [["L1", "alpha", w_standing_gone(), "buy"]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -721,7 +720,7 @@ test fn derived_payload_erasure_refuses_when_standing_header_is_missing() -> Boo
     headers: ["listing_id", "title", "judgement", "erasure"],
     rows: [["L1", "alpha", "buy", ""]],
   )
-  match classify_review_sheet_with_erasure(
+  match classify_review_sheet(
     observed: observed,
     projection: projection,
     erasures: [w_erasure(listing_id: "L1" as NonEmptyStr)],
@@ -997,7 +996,7 @@ test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
     headers: ["listing_id", "title", "standing", "judgement", "erasure", "title"],
     rows: [["L1", "alpha", w_standing_observed(), "", "hand-edit"]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "duplicate header title")
         && !string_contains(s: r as String, pattern: "derived cell conflict")
@@ -1013,7 +1012,7 @@ test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", "Obsered", ""]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetConflict { conflict: c } =>
       string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
         && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=standing")
@@ -1064,7 +1063,7 @@ test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool 
     headers: concat(["listing_id"], a1_column_letters),
     rows: [concat(["L1"], map(a1_column_letters, n => ""))],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetUnreadable { reason: r } => string_contains(s: r as String, pattern: "unrepresentable A1 column index 26")
     ReviewSheetConverged => false
     ReviewSheetNeedsWrite { plan: _ } => false
@@ -1075,7 +1074,7 @@ test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool 
 test fn absent_listing_appends_a_located_row() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "beta")])
   let observed = w_observed(headers: w_headers(), rows: [])
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetNeedsWrite { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
@@ -1139,7 +1138,7 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
   let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "alpha")])
   let headers = ["listing_id", "standing", "title", "judgement", "erasure"]
   let observed = w_observed(headers: headers, rows: [])
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetNeedsWrite { plan: p } =>
       write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
         && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
@@ -1234,7 +1233,7 @@ test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool
     headers: w_headers(),
     rows: [["L1", "", w_standing_observed(), ""]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "projection omitted derived column title")
         && string_contains(s: r as String, pattern: "listing=L1")
@@ -1253,7 +1252,7 @@ test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), ""]],
   )
-  match classify_review_sheet(observed: observed, projection: projection) {
+  match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
     ReviewSheetUnreadable { reason: r } =>
       string_contains(s: r as String, pattern: "projection omitted derived column title")
         && !string_contains(s: r as String, pattern: "derived cell conflict")

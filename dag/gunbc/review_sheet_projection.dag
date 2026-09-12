@@ -206,36 +206,12 @@ fn first_present_column(acc: ReviewColumn?, next: ReviewColumn?) -> ReviewColumn
   }
 }
 
-fn first_derived_field_column(schema: ReviewSheetSchema) -> ReviewColumn? {
+fn first_column_where(
+  schema: ReviewSheetSchema,
+  take: fn(ReviewColumn) -> ReviewColumn?,
+) -> ReviewColumn? {
   fold(schema.columns, init: none, f: fn(acc, col) {
-    first_present_column(acc: acc, next: match col.kind {
-      DerivedField { source_field: _ } => Present { value: col }
-      OperatorEntered => none
-      ListingStanding => none
-      DerivedErasureMark => none
-    })
-  })
-}
-
-fn first_listing_standing_column(schema: ReviewSheetSchema) -> ReviewColumn? {
-  fold(schema.columns, init: none, f: fn(acc, col) {
-    first_present_column(acc: acc, next: match col.kind {
-      ListingStanding => Present { value: col }
-      DerivedField { source_field: _ } => none
-      OperatorEntered => none
-      DerivedErasureMark => none
-    })
-  })
-}
-
-fn first_erasure_mark_column(schema: ReviewSheetSchema) -> ReviewColumn? {
-  fold(schema.columns, init: none, f: fn(acc, col) {
-    first_present_column(acc: acc, next: match col.kind {
-      DerivedErasureMark => Present { value: col }
-      DerivedField { source_field: _ } => none
-      OperatorEntered => none
-      ListingStanding => none
-    })
+    first_present_column(acc: acc, next: take(col))
   })
 }
 
@@ -441,7 +417,12 @@ fn read_row_listing_standing(
   match observed_cell_for_column(
     header_by_name: header_by_name,
     row: row,
-    column: first_listing_standing_column(schema: schema),
+    column: first_column_where(schema: schema, take: col => match col.kind {
+      ListingStanding => Present { value: col }
+      DerivedField { source_field: _ } => none
+      OperatorEntered => none
+      DerivedErasureMark => none
+    }),
   ) {
     KindAbsentFromSchema => none
     KindColumnMissingFromHeader { column: _ } => none
@@ -457,7 +438,12 @@ fn read_row_erasure_mark(
   match observed_cell_for_column(
     header_by_name: header_by_name,
     row: row,
-    column: first_erasure_mark_column(schema: schema),
+    column: first_column_where(schema: schema, take: col => match col.kind {
+      DerivedErasureMark => Present { value: col }
+      DerivedField { source_field: _ } => none
+      OperatorEntered => none
+      ListingStanding => none
+    }),
   ) {
     KindAbsentFromSchema => none
     KindColumnMissingFromHeader { column: _ } => none
@@ -540,7 +526,12 @@ fn authorize_derived_payload_erasure(
       match observed_cell_for_column(
         header_by_name: header_by_name,
         row: row,
-        column: first_listing_standing_column(schema: schema),
+        column: first_column_where(schema: schema, take: col => match col.kind {
+          ListingStanding => Present { value: col }
+          DerivedField { source_field: _ } => none
+          OperatorEntered => none
+          DerivedErasureMark => none
+        }),
       ) {
         KindAbsentFromSchema =>
           ErasureRefused { reason: erasure_missing_standing_column_reason(listing_id: listing_id) }
@@ -552,11 +543,21 @@ fn authorize_derived_payload_erasure(
           match read_listing_standing(cell: cell) {
             StandingKnown { state: standing_state } =>
               if listing_standing_eq(a: standing_state, b: StandingGone) {
-                match first_derived_field_column(schema: schema) {
+                match first_column_where(schema: schema, take: col => match col.kind {
+                  DerivedField { source_field: _ } => Present { value: col }
+                  OperatorEntered => none
+                  ListingStanding => none
+                  DerivedErasureMark => none
+                }) {
                   Absent =>
                     ErasureRefused { reason: erasure_has_no_derived_field_reason(listing_id: listing_id) }
                   Present { value: _ } =>
-                    match first_erasure_mark_column(schema: schema) {
+                    match first_column_where(schema: schema, take: col => match col.kind {
+                      DerivedErasureMark => Present { value: col }
+                      DerivedField { source_field: _ } => none
+                      OperatorEntered => none
+                      ListingStanding => none
+                    }) {
                       Absent =>
                         ErasureRefused { reason: erasure_has_no_erasure_mark_reason(listing_id: listing_id) }
                       Present { value: _ } => ErasureAuthorized
@@ -613,22 +614,19 @@ fn col_and_listing(column: NonEmptyStr, listing_id: NonEmptyStr) -> String {
 
 fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -> NonEmptyStr? {
   let derived = derived_by_column(row: row)
-  fold(schema.columns, init: none, f: fn(acc, col) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        match col.kind {
-          DerivedField { source_field: _ } =>
-            match derived.lookup(col.name as String) {
-              Absent => Present { value: col.name }
-              Present { value: _ } => none
-            }
-          OperatorEntered => none
-          ListingStanding => none
-          DerivedErasureMark => none
-        }
-    }
-  })
+  match first_column_where(schema: schema, take: col => match col.kind {
+    DerivedField { source_field: _ } =>
+      match derived.lookup(col.name as String) {
+        Absent => Present { value: col }
+        Present { value: _ } => none
+      }
+    OperatorEntered => none
+    ListingStanding => none
+    DerivedErasureMark => none
+  }) {
+    Absent => none
+    Present { value: col } => Present { value: col.name }
+  }
 }
 
 fn missing_schema_header(schema: ReviewSheetSchema, header_by_name: Map<String, Int>) -> NonEmptyStr? {
@@ -1249,11 +1247,7 @@ fn append_listing_row(
   }
 }
 
-fn classify_review_sheet(observed: ObservedSheet, projection: ReviewSheetProjection) -> ReviewSheetClassification {
-  classify_review_sheet_with_erasure(observed: observed, projection: projection, erasures: [])
-}
-
-fn classify_review_sheet_with_erasure(
+fn classify_review_sheet(
   observed: ObservedSheet,
   projection: ReviewSheetProjection,
   erasures: List<DerivedPayloadErasure>,
