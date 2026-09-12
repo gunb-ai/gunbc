@@ -337,12 +337,24 @@ pub fn claim_scope_dag_multi_module_fixture(
         full_inventory: Vec::new(),
         discovery_exclusions: HashMap::new(),
     };
-    // WITHOUT MEMOS, deliberately: the memoized entry point caches fragments on a
-    // process-shared index keyed for the real corpus, and a fixture must not read from or write
-    // to it. This is the only difference from the floor's call, and it is a caching decision
-    // rather than a semantic one -- the same function computes the same scope either way.
+    // WITHOUT MEMOS, deliberately: `claim_scope_for` reaches per-subject memo caches, and a
+    // fixture -- whose PreparedRepository is synthesized here and carries an empty subject digest
+    // -- must neither read from nor write to them. So this calls the SAME
+    // `claim_scope_for_with_memos` the floor's entry point calls, passing `None` for the fragment
+    // cache and a scope-private order index. That is a caching decision rather than a semantic
+    // one: it is one function computing one scope, which is what keeps this instrument and the
+    // corpus floor on a single detector.
+    //
+    // `claim_scope_for_without_memos` is the obvious spelling and is NOT used: it is gated behind
+    // `cfg(any(test, feature = "interp_test_witness"))`, so a release build has no such function
+    // and this instrument has to run in one.
     let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::cli_run::claim_scope_for_without_memos(&prepared, entry_module_path)
+        crate::cli_run::claim_scope_for_with_memos(
+            &prepared,
+            entry_module_path,
+            None,
+            crate::cli_run::build_scope_order_index(&prepared),
+        )
     }));
     match built {
         Err(_) => Outcome::InstrumentRefused {
