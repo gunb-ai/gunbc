@@ -1,0 +1,422 @@
+module gunbc.cloudflare.r2_origin_object
+
+import std.types { String, NonEmptyStr, Bool, Int, FilePath, HttpStatus, http_status_of }
+import std.citation { http_status_is_success }
+import std.algebra { trim }
+import std.resources { Network }
+import std.decl_ref { DeclarationRef }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.shell
+import extdeps.shell.exec { ProcessObservation }
+import extdeps.exec.command { LocalExec }
+import extdeps.transports.rest { mutation_status_is_commit_ambiguous }
+import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool }
+import gunbc.host_cli_dependency {
+  observe_host_cli_dependency,
+  HostCliDependencyPresent,
+  HostCliDependencyAbsent,
+}
+import extdeps.cloudflare.r2 {
+  R2S3Endpoint,
+  R2ObjectLocator,
+  r2_object_url,
+  r2_s3_endpoint_host,
+  r2_s3_sigv4_region,
+}
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.auth.netrc_binding { netrc_binding_path }
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountId,
+  CloudflareAccountAllocated,
+  CloudflareAccountUnallocated,
+  fleet_cloudflare_account_standing,
+  DurableOriginBucket,
+  DurableOriginAllocated,
+  DurableOriginUnallocated,
+  fabric_durable_origin_standing,
+  bucket_purpose_key,
+  OriginCredentialStanding,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
+}
+import gunbc.cloudflare.r2_s3_netrc {
+  R2S3NetrcPlaced,
+  R2S3NetrcRefused,
+  R2S3NetrcRefusedResidueRemains,
+  place_r2_s3_netrc,
+  shred_r2_s3_netrc,
+}
+import gunbc.fabric_m0_origin_readback {
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  read_origin_staged_file,
+}
+
+// THE ONE ZERO-EGRESS DURABLE ORIGIN, READ AND WRITTEN. This module is the executing consumer that
+// turns the declarations around it into a capability: gunbc.cloudflare.r2_origin says which account,
+// which bucket and under which credentials; extdeps.cloudflare.r2 says what an R2 object address and
+// its SigV4 region ARE; extdeps.tools.curl is the transport handler bound to that S3 shape -- one of
+// N, and the only one bound today; gunbc.cloudflare.r2_s3_netrc is how the credential reaches the
+// transport without ever being an argv word. Nothing here names a bucket, an account, a region or
+// a group id: every such value is received from its authority.
+//
+// ZERO-EGRESS MEANS THERE IS ONE ORIGIN. A PUT lands in the allocated bucket and a GET reads from
+// it; there is no peer, no replica and no cache standing in for it on either path. A local cache is
+// a different subject with a different authority, and a read served from one cannot produce the
+// value fetch_origin_object returns, because that value carries an OriginReading digested over
+// bytes THIS function received from the origin at a path THIS function minted.
+//
+// THE GET STAGES ITS OWN OUTPUT, WHICH IS THE WHOLE REASON THIS MODULE EXISTS. The caller names a
+// KEY. The fetch mints a private directory, points the transport at a file inside it, and -- only
+// on a 200 -- hands that path to gunbc.fabric_m0_origin_readback read_origin_staged_file, the sole
+// mint of a confirming reading. There is no parameter through which a caller could substitute a
+// path of its own, so the digest a confirming readback carries is the digest of what the origin
+// returned. That is the capability gunbc.fabric_m0_origin_readback's trigger named; what it does
+// and does not close for the enclosing class is stated there, once.
+//
+// THE STAGED FILE IS THE PRODUCT AND IS NOT REMOVED. Its directory is minted per fetch, so two
+// concurrent fetches of one key cannot collide, and the OriginReading names the path for whoever
+// needs the bytes (a manifest's members are read from it). The CREDENTIAL beside it is shredded on
+// every arm out of the bracket, including the ones that never reached the transport.
+//
+// THE PUT IS CREATE-IF-ABSENT, DERIVED FROM THE ADMISSION RATHER THAN CHOSEN. The origin admits
+// commit manifests and content-addressed outputs (gunbc.cloudflare.r2_origin
+// DurableOriginAdmission): a content-addressed object at its own digest is byte-identical to any
+// earlier write, and a manifest slot is written once per attempt, so no admitted object is ever
+// legitimately OVERWRITTEN. If-None-Match: * makes that a store-side refusal (412) instead of a
+// convention. A 412 is reported as its own arm -- the object is already there, which for both
+// admitted populations is the lost-acknowledgement retry gunbc.fabric_m0_commit describes, not a
+// failure -- and is never folded into the stored arm, because "I wrote it" and "someone wrote it"
+// are different facts about durability.
+//
+// WHAT A PUT ANSWERS IS FOUR THINGS AND NOT THREE. A 2xx stored it; a 412 found it present; a 4xx
+// the store decided BEFORE committing anything and is a refusal this run may report as such; and a
+// 5xx or a transfer that never received a status may have committed -- extdeps.transports.rest
+// mutation_status_is_commit_ambiguous owns that boundary and is consumed, not restated -- so those
+// are OUTCOME UNKNOWN, which a caller reconciles by fetching, never by putting again. Collapsing
+// unknown into refused is the duplicate-write class gunbc.cloudflare.r2_token_mint_run records for
+// the token mint, arriving one layer down.
+//
+// THE STATUS COMES FROM curl's --write-out ON STDOUT, so the transport's own exit code is not the
+// classifier's input: curl -f exits 22 for every non-2xx, and 22 does not say whether the store
+// said 404 or 403. Three digits on stdout do. "000" is curl's word for "no status was received",
+// and a stdout that is not three digits at all is a transport that did not run as modeled. The
+// parsed Int is admitted through std.types http_status_of -- the range lives beside the HttpStatus
+// refinement and nowhere else -- and 2xx is std.citation http_status_is_success, consumed.
+type S3TransferAnswer
+  = S3Answered { status: HttpStatus }
+  | S3NotAnswered { cause: NonEmptyStr }
+
+fn classify_s3_transfer(observation: ProcessObservation) -> S3TransferAnswer {
+  let code = trim(s: observation.stdout)
+  if code == "000" {
+    S3NotAnswered {
+      cause: concat("no HTTP status was received from the origin: ", trim(s: observation.stderr)) as NonEmptyStr,
+    }
+  } else {
+    match parse_int(s: code) {
+      Absent =>
+        S3NotAnswered {
+          cause: join(["the transport printed no HTTP status (exit ", to_string(observation.exit_code), "): ", trim(s: observation.stderr)], "") as NonEmptyStr,
+        }
+      Present { value: n } =>
+        match http_status_of(n: n) {
+          Absent =>
+            S3NotAnswered {
+              cause: join(["the transport printed a status outside HTTP's range: ", code], "") as NonEmptyStr,
+            }
+          Present { value: status } => S3Answered { status: status }
+        }
+    }
+  }
+}
+
+data s3_status_not_found: HttpStatus = 404
+
+data s3_status_precondition_failed: HttpStatus = 412
+
+type OriginPutOutcome
+  = OriginObjectStored { key: NonEmptyStr }
+  | OriginObjectAlreadyPresent { key: NonEmptyStr }
+  | OriginPutRefused { key: NonEmptyStr, cause: NonEmptyStr }
+  | OriginPutOutcomeUnknown { key: NonEmptyStr, cause: NonEmptyStr }
+
+// THE PUT VERDICT IS PURE so both its unknown arms and its refused arm are reachable from a fixture:
+// a 500 and a 000 are representable as observations without a store in the loop.
+fn classify_origin_put(key: NonEmptyStr, answer: S3TransferAnswer, stderr: String) -> OriginPutOutcome {
+  match answer {
+    S3NotAnswered { cause: cause } =>
+      OriginPutOutcomeUnknown {
+        key: key,
+        cause: concat("the PUT may have committed, no verdict was received; reconcile by fetching the key: ", cause as String) as NonEmptyStr,
+      }
+    S3Answered { status: status } =>
+      if http_status_is_success(status: status) {
+        OriginObjectStored { key: key }
+      } else if status == s3_status_precondition_failed {
+        OriginObjectAlreadyPresent { key: key }
+      } else if mutation_status_is_commit_ambiguous(status: status) {
+        OriginPutOutcomeUnknown {
+          key: key,
+          cause: join(["the origin answered ", to_string(status), ", which does not establish that the PUT did not commit: ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      } else {
+        OriginPutRefused {
+          key: key,
+          cause: join(["the origin refused the PUT with ", to_string(status), ": ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+// WHICH ORIGIN, RESOLVED FROM THE DECLARATIONS AND REFUSING ON EVERY UNALLOCATED ARM. The account
+// id and the bucket are gunbc.cloudflare.r2_origin's; the credential for the requested direction is
+// read off the bucket, and an unminted one refuses HERE, naming the entry that mints it, before any
+// custody fetch or transport runs.
+type OriginDirection
+  = OriginRead
+  | OriginWrite
+
+type OriginTarget
+  = OriginTargetReady {
+      locator: R2ObjectLocator
+      access_key_id: NonEmptyStr
+      token_value: SecretRef
+    }
+  | OriginTargetRefused { cause: NonEmptyStr }
+
+fn origin_credential_for(direction: OriginDirection, bucket: DurableOriginBucket) -> OriginCredentialStanding {
+  match direction {
+    OriginRead => bucket.read_credential
+    OriginWrite => bucket.write_credential
+  }
+}
+
+fn origin_direction_word(direction: OriginDirection) -> String {
+  match direction {
+    OriginRead => "read"
+    OriginWrite => "write"
+  }
+}
+
+// THE TRANSPORT'S HOST DEPENDENCY IS OBSERVED BEFORE ANY CREDENTIAL IS FETCHED, and the row it
+// observes is the SigV4 one: extdeps.tools.curl curl_aws_sigv4_cli_tool carries the >= 7.75 pin
+// --aws-sigv4 needs, so it is this operation's requirement and this is its executing consumer. A
+// host without curl refuses here, typed and with the install hint, rather than spawning a program
+// that does not exist after a token has already been materialized on disk. What this observes is
+// PRESENCE: gunbc.host_cli_dependency checks the name on PATH and does not read a version, which is
+// the standing every CliTool on this fleet has today; the version pin is carried, not checked.
+func origin_transport_present() -> OriginTransportStanding {
+  match observe_host_cli_dependency(tool: curl_aws_sigv4_cli_tool) {
+    HostCliDependencyAbsent { absence: absence } =>
+      OriginTransportAbsent {
+        cause: join(["THE TRANSPORT IS NOT ON THIS HOST: ", absence.tool as String, " (", absence.hint, ")"], "") as NonEmptyStr,
+      }
+    HostCliDependencyPresent => OriginTransportPresent
+  }
+}
+
+type OriginTransportStanding
+  = OriginTransportPresent
+  | OriginTransportAbsent { cause: NonEmptyStr }
+
+// THE TARGET RESOLUTION IS PURE so every refusal arm is reachable from the declarations alone; the
+// host observation above is consulted by the two effectful entries before it.
+fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> OriginTarget {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: intervention } =>
+      OriginTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match fabric_durable_origin_standing() {
+        DurableOriginUnallocated { purpose: purpose } =>
+          OriginTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
+        DurableOriginAllocated { bucket: bucket } =>
+          match origin_credential_for(direction: direction, bucket: bucket) {
+            OriginCredentialUnminted { mint_entry: entry } =>
+              OriginTargetRefused {
+                cause: join([
+                  "THE ORIGIN'S ", origin_direction_word(direction: direction),
+                  " CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String,
+                  " and pin the stored version in gunbc.cloudflare.r2_origin before this operation can sign a request",
+                ], "") as NonEmptyStr,
+              }
+            OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>
+              OriginTargetReady {
+                locator: R2ObjectLocator {
+                  endpoint: R2S3Endpoint { account_id: account_id as String, jurisdiction: bucket.jurisdiction },
+                  bucket_name: bucket.bucket_name,
+                  key: key,
+                },
+                access_key_id: access_key_id,
+                token_value: token_value,
+              }
+          }
+      }
+  }
+}
+
+// WHAT BECAME OF THE WRITE CREDENTIAL, CARRIED BESIDE THE STORE'S ANSWER AND NEVER FOLDED INTO
+// IT. An earlier shape demoted a stored object to OriginPutRefused when the credential's private
+// directory could not be removed, with the leak named only in the cause string. That lost a true
+// fact (the store DID store it) and hid another inside prose: a caller that then fetched the object
+// and found it confirmed had every typed reason to publish success, and the leaked credential went
+// unreported -- laundered through durability (gunbc#11157 review 64512). Two facts, two carriers.
+type WriteCredentialCustody
+  = WriteCredentialShredded
+  | WriteCredentialResidueRemains { cause: NonEmptyStr }
+
+// THE WRITE'S WHOLE ANSWER: what the store said, and whether the credential it was said with is
+// gone. A consumer that wants durability reads verdict; one that decides whether the process may
+// exit clean reads both.
+type OriginPut {
+  verdict: OriginPutOutcome
+  credential: WriteCredentialCustody
+}
+
+fn put_without_credential_exposure(verdict: OriginPutOutcome) -> OriginPut {
+  OriginPut { verdict: verdict, credential: WriteCredentialShredded }
+}
+
+data credential_residue_cause: NonEmptyStr = "the write credential's private directory could not be removed; credential material may remain and requires cleanup"
+
+// THE WRITE. local_path is the bytes to store and key is where; the credential is the origin's
+// WRITE token, which the reader never holds.
+func put_origin_object(
+  local_path: FilePath,
+  key: NonEmptyStr,
+  token_source: AccessTokenSource,
+) -> OriginPut uses net: Network {
+  match origin_transport_present() {
+    OriginTransportAbsent { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
+    OriginTransportPresent =>
+  match resolve_origin_target(direction: OriginWrite, key: key) {
+    OriginTargetRefused { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } =>
+      match place_r2_s3_netrc(
+        host: r2_s3_endpoint_host(endpoint: locator.endpoint) as NonEmptyStr,
+        access_key_id: access_key_id,
+        token_value: token_value,
+        token_source: token_source,
+      ) {
+        R2S3NetrcRefused { cause: cause } => put_without_credential_exposure(verdict: OriginPutRefused { key: key, cause: cause })
+        R2S3NetrcRefusedResidueRemains { cause: cause } =>
+          OriginPut { verdict: OriginPutRefused { key: key, cause: cause }, credential: WriteCredentialResidueRemains { cause: cause } }
+        R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
+          let observed = run_shell_command_observe(
+            command: curl_sigv4_s3_upload_command(
+              url: r2_object_url(locator: locator),
+              local_path: local_path as String,
+              netrc_path: netrc_binding_path(binding: binding),
+              sigv4_region: r2_s3_sigv4_region,
+              create_only: true,
+            ),
+            transport: LocalExec,
+          )
+          let shredded = shred_r2_s3_netrc(workspace: workspace)
+          OriginPut {
+            verdict: classify_origin_put(key: key, answer: classify_s3_transfer(observation: observed), stderr: observed.stderr),
+            credential: if shredded { WriteCredentialShredded } else { WriteCredentialResidueRemains { cause: credential_residue_cause } },
+          }
+        }
+      }
+  }
+  }
+}
+
+// A CREDENTIAL LEFT ON DISK IS REPORTED ON EVERY ARM, INCLUDING SUCCESS -- as its own field, not
+// as a demotion of the store's verdict. The verdict stays what the store said; the custody says
+// whether the process may call itself clean. A pure predicate over the pair so every consumer asks
+// one question the same way.
+fn put_is_clean(put: OriginPut) -> Bool {
+  match put.credential {
+    WriteCredentialShredded => true
+    WriteCredentialResidueRemains { cause: _ } => false
+  }
+}
+
+// THE READ VERDICT IS PURE UP TO THE DIGEST: which arm a status selects is decidable from a fixture,
+// and only the staged arm goes on to digest, which is the effect this module cannot fake.
+type OriginFetchVerdict
+  = OriginFetchStagedAt { staged_path: NonEmptyStr }
+  | OriginFetchAbsent
+  | OriginFetchRefused { cause: NonEmptyStr }
+
+fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, stderr: String) -> OriginFetchVerdict {
+  match answer {
+    S3NotAnswered { cause: cause } => OriginFetchRefused { cause: cause }
+    S3Answered { status: status } =>
+      if http_status_is_success(status: status) {
+        OriginFetchStagedAt { staged_path: staged_path }
+      } else if status == s3_status_not_found {
+        OriginFetchAbsent
+      } else {
+        OriginFetchRefused {
+          cause: join(["the origin refused the GET with ", to_string(status), ": ", trim(s: stderr)], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+data origin_staged_object_basename: String = "object"
+
+// THE READ. The caller names a key and receives an OriginFetchOutcome; it never names, sees in
+// advance, or can influence the path the bytes land at.
+func fetch_origin_object(
+  key: NonEmptyStr,
+  token_source: AccessTokenSource,
+) -> OriginFetchOutcome uses net: Network {
+  match origin_transport_present() {
+    OriginTransportAbsent { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+    OriginTransportPresent =>
+  match resolve_origin_target(direction: OriginRead, key: key) {
+    OriginTargetRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        OriginFetchUnavailable { key: key, cause: "no private directory could be minted to stage the origin's bytes, so nothing was fetched" }
+      } else {
+        let staged_path = join([staging.path as String, "/", origin_staged_object_basename], "") as NonEmptyStr
+        match place_r2_s3_netrc(
+          host: r2_s3_endpoint_host(endpoint: locator.endpoint) as NonEmptyStr,
+          access_key_id: access_key_id,
+          token_value: token_value,
+          token_source: token_source,
+        ) {
+          R2S3NetrcRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+          R2S3NetrcRefusedResidueRemains { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+          R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
+            let observed = run_shell_command_observe(
+              command: curl_sigv4_s3_download_command(
+                url: r2_object_url(locator: locator),
+                destination: staged_path as String,
+                netrc_path: netrc_binding_path(binding: binding),
+                sigv4_region: r2_s3_sigv4_region,
+              ),
+              transport: LocalExec,
+            )
+            let shredded = shred_r2_s3_netrc(workspace: workspace)
+            if shredded == false {
+              OriginFetchUnavailable { key: key, cause: "the read credential's private directory could not be removed after the GET; credential material may remain and requires cleanup, and the fetch is not reported as a reading" }
+            } else {
+              match classify_origin_fetch(answer: classify_s3_transfer(observation: observed), staged_path: staged_path, stderr: observed.stderr) {
+                OriginFetchAbsent => OriginObjectAbsent { key: key }
+                OriginFetchRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+                OriginFetchStagedAt { staged_path: p } =>
+                  match read_origin_staged_file(staged_path: p) {
+                    OriginReadingTaken { reading: reading } => OriginObjectStaged { key: key, reading: reading }
+                    OriginReadingUnavailable { staged_path: _, cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+                  }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  }
+}

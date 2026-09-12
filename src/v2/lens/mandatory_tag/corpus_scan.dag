@@ -12,7 +12,8 @@ import v2.std.text { String }
 // extdeps_external_authority_live_clean_tree_holds,
 // extdeps_external_authority_live_roster_module_count). The VERDICT authority for the extdeps
 // anchor requirement is v2.lens.mandatory_tag (the SubstrateMandatoryTag region fold, enrolled in
-// always_required_root_lenses, red/green-controlled at the v2 parse grain); this host seam survives
+// required_compile_lens_roster at CompileLensRoot grain, red/green-controlled at the v2 parse
+// grain); this host seam survives
 // ONLY for corpus cadence, because the interpreted v2 pipeline prices the whole-corpus parse-grain
 // witness out of every CI lane (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize
 // interpreted, ~330 extdeps modules; the modeled witness lives at

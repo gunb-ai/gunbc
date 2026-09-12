@@ -28,9 +28,13 @@ import gunbc.diff_baseline {
   DiffBaselineKind,
   diff_baseline_kind
 }
-import std.types { String, NonEmptyStr, GitRef }
+import std.types { String, NonEmptyStr, GitRef, FilePath, Map }
 import std.logic { Bool }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
+import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 import extdeps.git
+import extdeps.git.inspect
 import extdeps.git {
   GitDiffNameStatusComplete,
   GitDiffNameStatusTruncated,
@@ -411,3 +415,218 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
   floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
 }
+
+// BASE-REVISION TEST-DECLARATION CENSUS.
+//
+// THE CAPABILITY `v2.workflow.floor_enrolment_margin` NAMED as its next-rung trigger: names
+// declared at the resolved diff base, per path, sufficient for "was this identity declared at
+// the merge base". Absence of a path and failure to observe the base are different states.
+// `git show <base>:<path>` exits 128 for both, so absence is decided against the base tree
+// listing (`git.Inspect.ListTreePathsAtRevision`) BEFORE any show: a path the listing does not
+// carry is empty names by construction and is never shown; a show that then fails is
+// unreadable, with no empty-names arm left to absorb it. The same construction lives in
+// `tools.pr_containment_instrument` `base_file_reading`; this row asks a different question
+// (declaration names, not line text) of the same two git facts.
+//
+// THIS CENSUS IS PATH-KEYED AND RENAME-BLIND. Git lists and shows one path at one revision.
+// A rename destination is absent from the base tree under its NEW spelling, which is a true
+// empty-names answer for that path and must not be fused with unreadability. Following the
+// move — subtracting names that lived at `rename from` — is the enrolment consumer's join,
+// not a second observation. 302ms is not a fact this observation carries. The percentile
+// that consumes this census sits in `floor_enrolment_margin` and is p90 over TWELVE green
+// main runs.
+
+type FloorBasePathTestDecls {
+  path: String
+  names: List<String>
+}
+
+type FloorBaseTestDeclCensus
+  = BaseTestDeclCensus { rows: List<FloorBasePathTestDecls> }
+  | BaseTestDeclCensusRefused { reason: String }
+
+type FloorShowObservation {
+  success: Bool
+  content: String
+  stderr: String
+}
+
+fn floor_base_paths_present(paths_nul: String) -> Map<String, Bool> {
+  fold(
+    split(s: paths_nul, delimiter: git_diff_name_status_field_separator),
+    init: empty_map(),
+    f: fn(acc, p) {
+      if p == "" {
+        acc
+      } else {
+        map_insert(m: acc, key: p, value: true)
+      }
+    }
+  )
+}
+
+fn floor_base_census_acc_append(
+  acc: FloorBaseTestDeclCensus,
+  path: String,
+  names: List<String>
+) -> FloorBaseTestDeclCensus {
+  match acc {
+    BaseTestDeclCensusRefused { reason: reason } =>
+      BaseTestDeclCensusRefused { reason: reason }
+    BaseTestDeclCensus { rows: rows } =>
+      BaseTestDeclCensus {
+        rows: concat(rows, [FloorBasePathTestDecls { path: path, names: names }])
+      }
+  }
+}
+
+fn floor_base_census_step(
+  acc: FloorBaseTestDeclCensus,
+  base: String,
+  paths_present: Map<String, Bool>,
+  path: String,
+  shows: Map<String, FloorShowObservation>
+) -> FloorBaseTestDeclCensus {
+  match acc {
+    BaseTestDeclCensusRefused { reason: reason } =>
+      BaseTestDeclCensusRefused { reason: reason }
+    BaseTestDeclCensus { rows: _ } =>
+      match map_lookup(m: paths_present, key: path) {
+        Absent => floor_base_census_acc_append(acc: acc, path: path, names: [])
+        Present { value: _ } =>
+          match map_lookup(m: shows, key: path) {
+            Absent =>
+              BaseTestDeclCensusRefused {
+                reason: join([
+                  "git.Core.Show observation missing for a path the base tree lists: ",
+                  base,
+                  ":",
+                  path,
+                  "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
+                ], "")
+              }
+            Present { value: shown } =>
+              if !shown.success {
+                BaseTestDeclCensusRefused {
+                  reason: join([
+                    "git.Core.Show failed for a path the base tree lists: ",
+                    base,
+                    ":",
+                    path,
+                    " — ",
+                    shown.stderr,
+                    "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
+                  ], "")
+                }
+              } else {
+                floor_base_census_acc_append(
+                  acc: acc,
+                  path: path,
+                  names: floor_discovery_scan_test_decl_names(content: shown.content)
+                )
+              }
+          }
+      }
+  }
+}
+
+fn floor_base_test_decl_census_from_listing(
+  base: String,
+  paths: List<String>,
+  listing_success: Bool,
+  listing_stderr: String,
+  paths_nul: String,
+  shows: Map<String, FloorShowObservation>
+) -> FloorBaseTestDeclCensus {
+  let empty = fold(paths, init: true, f: fn(_acc, _path) { false })
+  if empty {
+    BaseTestDeclCensus { rows: [] }
+  } else if !listing_success {
+    BaseTestDeclCensusRefused {
+      reason: join([
+        "git.Inspect.ListTreePathsAtRevision failed for ",
+        base,
+        " — ",
+        listing_stderr,
+        "; halting the floor (BASE-DECLARATION-CENSUS REFUSAL)",
+      ], "")
+    }
+  } else {
+    let paths_present = floor_base_paths_present(paths_nul: paths_nul)
+    fold(paths, init: BaseTestDeclCensus { rows: [] }, f: fn(acc, path) {
+      floor_base_census_step(
+        acc: acc,
+        base: base,
+        paths_present: paths_present,
+        path: path,
+        shows: shows
+      )
+    })
+  }
+}
+
+fn floor_run_base_test_decl_census(base: String, paths: List<String>) -> FloorBaseTestDeclCensus {
+  let empty = fold(paths, init: true, f: fn(_acc, _path) { false })
+  if empty {
+    BaseTestDeclCensus { rows: [] }
+  } else {
+    let listed = git.Inspect.ListTreePathsAtRevision(ref: base as GitRef)
+    if !listed.success {
+      floor_base_test_decl_census_from_listing(
+        base: base,
+        paths: paths,
+        listing_success: false,
+        listing_stderr: listed.stderr,
+        paths_nul: "",
+        shows: empty_map()
+      )
+    } else {
+      let paths_present = floor_base_paths_present(paths_nul: listed.paths_nul)
+      let shows = fold(paths, init: empty_map(), f: fn(acc, path) {
+        match map_lookup(m: paths_present, key: path) {
+          Absent => acc
+          Present { value: _ } => {
+            let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+            map_insert(
+              m: acc,
+              key: path,
+              value: FloorShowObservation {
+                success: shown.success,
+                content: shown.content,
+                stderr: shown.stderr
+              }
+            )
+          }
+        }
+      })
+      floor_base_test_decl_census_from_listing(
+        base: base,
+        paths: paths,
+        listing_success: true,
+        listing_stderr: listed.stderr,
+        paths_nul: listed.paths_nul,
+        shows: shows
+      )
+    }
+  }
+}
+
+fn floor_base_test_decl_names_for_path(
+  census: FloorBaseTestDeclCensus,
+  path: String
+) -> List<String> {
+  match census {
+    BaseTestDeclCensusRefused { reason: _ } => []
+    BaseTestDeclCensus { rows: rows } =>
+      fold(rows, init: [], f: fn(acc, row) {
+        if count(acc) != 0 {
+          acc
+        } else if row.path == path {
+          row.names
+        } else {
+          acc
+        }
+      })
+  }
+}
+

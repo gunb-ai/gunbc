@@ -1,0 +1,286 @@
+module extdeps.google.sheets
+
+import std.types { NonEmptyStr, String, Int, List, Secret, Bool, HttpMethod, AuthScheme }
+import extdeps.transports.rest { RestOutcome }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest"
+  }
+}
+
+data sheets_values_get_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/get"
+  }
+}
+
+data sheets_value_range_resource_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values"
+  }
+}
+
+data sheets_value_render_option_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest/v4/ValueRenderOption"
+  }
+}
+
+data sheets_values_batch_update_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/batchUpdate"
+  }
+}
+
+data sheets_quota_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/limits"
+  }
+}
+
+data sheets_oauth_scope_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.google.com/sheets/api/scopes"
+  }
+}
+
+data google_sheets_api: NonEmptyStr = "Google Sheets API"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.google.sheets",
+      decl_name: "google_sheets_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    sheets_values_get_citation,
+    sheets_value_range_resource_citation,
+    sheets_values_batch_update_citation,
+    sheets_value_render_option_citation,
+    sheets_quota_citation,
+    sheets_oauth_scope_citation
+  ]
+}
+
+data sheets_api_version: NonEmptyStr = "v4"
+
+data sheets_api_base: NonEmptyStr = concat("https://sheets.googleapis.com/", sheets_api_version as String) as NonEmptyStr
+
+data sheets_serviceusage_api_id: NonEmptyStr = "sheets.googleapis.com"
+
+data sheets_spreadsheets_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/spreadsheets"
+
+data sheets_spreadsheets_readonly_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/spreadsheets.readonly"
+
+data sheets_read_requests_per_minute_per_project: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_sheets" as NonEmptyStr,
+  scope: "read_requests_per_project" as NonEmptyStr,
+  requests: 300,
+  period: PerMinute
+}
+
+data sheets_write_requests_per_minute_per_project: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_sheets" as NonEmptyStr,
+  scope: "write_requests_per_project" as NonEmptyStr,
+  requests: 300,
+  period: PerMinute
+}
+
+data sheets_requests_per_minute_per_user: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_sheets" as NonEmptyStr,
+  scope: "requests_per_user" as NonEmptyStr,
+  requests: 60,
+  period: PerMinute
+}
+
+data sheets_rate_limits: List<UpstreamRateLimit> = [
+  sheets_read_requests_per_minute_per_project,
+  sheets_write_requests_per_minute_per_project,
+  sheets_requests_per_minute_per_user
+]
+
+type SheetsMajorDimension = DimensionRows | DimensionColumns
+
+fn sheets_major_dimension_wire(d: SheetsMajorDimension) -> String {
+  match d {
+    DimensionRows => "ROWS"
+    DimensionColumns => "COLUMNS"
+  }
+}
+
+fn sheets_major_dimension_from_wire(raw: String) -> SheetsMajorDimension? {
+  if raw == sheets_major_dimension_wire(d: DimensionRows) {
+    Present { value: DimensionRows }
+  } else {
+    if raw == sheets_major_dimension_wire(d: DimensionColumns) {
+      Present { value: DimensionColumns }
+    } else {
+      none
+    }
+  }
+}
+
+type SheetsValueInputOption = InputRaw | InputUserEntered
+
+fn sheets_value_input_option_wire(o: SheetsValueInputOption) -> String {
+  match o {
+    InputRaw => "RAW"
+    InputUserEntered => "USER_ENTERED"
+  }
+}
+
+fn sheets_value_input_option_from_wire(raw: String) -> SheetsValueInputOption? {
+  if raw == sheets_value_input_option_wire(o: InputRaw) {
+    Present { value: InputRaw }
+  } else {
+    if raw == sheets_value_input_option_wire(o: InputUserEntered) {
+      Present { value: InputUserEntered }
+    } else {
+      none
+    }
+  }
+}
+
+type SheetsValueRenderOption = RenderFormattedValue | RenderUnformattedValue | RenderFormula
+
+fn sheets_value_render_option_wire(o: SheetsValueRenderOption) -> String {
+  match o {
+    RenderFormattedValue => "FORMATTED_VALUE"
+    RenderUnformattedValue => "UNFORMATTED_VALUE"
+    RenderFormula => "FORMULA"
+  }
+}
+
+fn sheets_value_render_option_from_wire(raw: String) -> SheetsValueRenderOption? {
+  if raw == sheets_value_render_option_wire(o: RenderFormattedValue) {
+    Present { value: RenderFormattedValue }
+  } else {
+    if raw == sheets_value_render_option_wire(o: RenderUnformattedValue) {
+      Present { value: RenderUnformattedValue }
+    } else {
+      if raw == sheets_value_render_option_wire(o: RenderFormula) {
+        Present { value: RenderFormula }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+type SheetsError {
+  code: Int
+  message: String
+  status: String
+}
+
+type ValueRange {
+  range: String
+  majorDimension: String?
+  values: List<List<String>>?
+}
+
+data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ValueRange" },
+      JsonPending { field: "values[][] number-or-bool cells" }
+    ],
+    trigger: "a consumer needs unformatted numeric or boolean cells rather than FORMATTED_VALUE strings"
+  }
+]
+
+// Proto3 JSON omits default integers, so a zero-cell batchUpdate may omit totalUpdatedCells.
+// The operation output uses the same optionality; a required Int would refuse a legal body or mint 0.
+type BatchUpdateValuesResponse {
+  spreadsheetId: String
+  totalUpdatedRows: Int?
+  totalUpdatedColumns: Int?
+  totalUpdatedCells: Int?
+  totalUpdatedSheets: Int?
+  responses: List<ValueRange>?
+}
+
+service sheets.Spreadsheets {
+  config {
+    endpoint: sheets_api_base
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation GetValues {
+    input {
+      access_token: Secret
+      spreadsheet_id: String
+      range: String
+      value_render_option: SheetsValueRenderOption
+    }
+    output {
+      value_range: ValueRange
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/spreadsheets/\{spreadsheet_id\}/values/\{range\}",
+      query: { valueRenderOption: sheets_value_render_option_wire(o: value_render_option) }
+    }
+    response {
+      200 => ValueRange
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+
+  operation BatchUpdateValues {
+    input {
+      access_token: Secret
+      spreadsheet_id: String
+      value_input_option: SheetsValueInputOption
+      data: List<ValueRange>
+      include_values_in_response: Bool = false
+    }
+    output {
+      spreadsheet_id: String from "spreadsheetId"
+      total_updated_cells: Int? from "totalUpdatedCells"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}/values:batchUpdate",
+      body: {
+        valueInputOption: sheets_value_input_option_wire(o: value_input_option),
+        data: data,
+        includeValuesInResponse: include_values_in_response
+      }
+    }
+    response {
+      200 => BatchUpdateValuesResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+}

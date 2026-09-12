@@ -1,6 +1,7 @@
 module extdeps.systemd.systemd_run
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.types { NonEmptyStr, List, Bool, Int, Unit }
+import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
