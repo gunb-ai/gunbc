@@ -15,6 +15,11 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 
+// WorkflowJobRun.labels and run_attempt are read by gunbc.public_workload_census
+// (observed_job_labels, observed_job_run_attempt). That is production consumption of the
+// GitHub job-resource fields. Who consumes the census population itself is a separate §3c
+// question, recorded on gunbc.public_workload_census public_workload_census_replay_consumer_frontier_rows.
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -39,19 +44,6 @@ type WorkflowRunConclusion
   | TimedOut
   | ActionRequired
   | StartupFailure
-
-// DECLARED FRONTIER for the two fields this change adds to WorkflowJobRun. They are not consumed
-// in this change: the census that reads WorkflowJobRun today asks about starvation and has no use
-// for either, and filling its fixtures with labels: [] and run_attempt: 1 is padding rather than
-// consumption. Section 3c admits that state only with the trigger stated beside it, so it is
-// stated rather than left for a reader to infer from the fields' own rationale.
-data workflow_job_run_observed_runner_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun"),
-    reason: "labels and run_attempt are added for a runtime-observation carrier that does not exist in this change: a row recording what a job's run ACTUALLY selected, joined to the workflow-source identity the file was read at, so a declared runner label and an observed one stay separable. The census that reads WorkflowJobRun today (gunbc.superseded_run_starvation_census) asks a different question and reads neither, so the fixture entries this change adds are shape-completion and not consumption. The fields are modelled here rather than in the consumer because they are what the upstream job resource returns",
-    dissolution: unbound_dissolution(description: "a production fold outside test.claim reads WorkflowJobRun.labels and WorkflowJobRun.run_attempt - the capability being that an OBSERVED runner label and attempt reach a consumer that can tell them apart from the declared ones. NOT satisfied by a witness constructing a WorkflowJobRun, nor by a fixture carrying the fields, nor by a consumer that reads one of the two"),
-  )
-]
 
 data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(

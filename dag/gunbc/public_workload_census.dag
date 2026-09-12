@@ -1,0 +1,994 @@
+module gunbc.public_workload_census
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.measure { HardwareThreadCount, hardware_thread_count }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.toolchain.types { Architecture }
+import extdeps.github.workflow_runs {
+  WorkflowJobRun,
+  WorkflowRunConclusion,
+  Completed,
+  Success,
+  Failure,
+  Cancelled,
+  Neutral,
+  Skipped,
+  TimedOut,
+  ActionRequired,
+  StartupFailure,
+}
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import gunbc.runner_label_resolution {
+  resolve_runner_label,
+  arm_standing,
+  ArmStanding,
+  ArmConfirmed,
+  NotArmConfirmed,
+  ArmUndetermined,
+  provider_reading,
+  ProviderReading,
+  ProviderFromCatalog,
+  ProviderUnresolved,
+}
+
+// PUBLIC WORKFLOW-JOB CENSUS (year_end_plan item public-workload-census).
+//
+// THE SUBJECT IS A JOB, NOT A REPOSITORY. Compatibility is job-scoped: an Arm image-publishing
+// job proves nothing about whether a repository's build and tests run natively on Arm. Every row
+// is keyed on repository + inspected commit + workflow path + job key + matrix selector.
+//
+// DECLARED VERSUS OBSERVED ARE DIFFERENT FACTS. A workflow file declares a runs-on value; a job
+// resource may report the label that actually ran. Absence of a run is a recorded value
+// (NoRunObserved), never a blank. Architecture and provider are read from
+// gunbc.runner_label_resolution's vendor catalogs, never from a hyphen grammar: a label without a
+// catalog row is ArmUndetermined, not x64.
+//
+// THIS MODULE IS A CENSUS AND A SELECTION. It does not port, benchmark, authorize a trial, or
+// authorize outreach. Inspection is read-only: public workflow files (Get Repository Content at a
+// pinned ref) and public job-run metadata. No maintainer was contacted. Nothing here qualifies a
+// customer. Spend is unobserved on every row: a third-party label is use, not a bill.
+//
+// FIVE PROMOTIONS THE CARRIERS KEEP APART: an x64 catalog row is not Arm; a green job that ran no
+// test is not a baseline; an unobserved cache is not warm; provider use is not verified spend;
+// a census outcome does not authorize a trial.
+//
+// DECLARED FRONTIER (DESIGN section 3c). This module is the census: rows and selection folds
+// land here. The executing consumer that *replays* a selected job is incumbent-head-to-head,
+// a separate year_end_plan item blocked on runner-canary and fabric-m0. A witness that imports
+// these declarations is not that consumer.
+
+data public_workload_census_replay_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "selected_workloads"),
+    reason: "the examined job population and the two-or-three complementary selection land in this change; incumbent-head-to-head is the named later consumer that replays those jobs. Nothing outside test.claim in this change drives a trial or a comparison from selected_workloads. WorkflowJobRun.labels and run_attempt ARE consumed here by observed_job_labels and observed_job_run_attempt — that is production reading of the GitHub job resource, not a reason to pretend the census itself already has a replay caller",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.year_end_plan item incumbent-head-to-head (blocked on runner-canary and fabric-m0). TRIGGER: a production func outside test.claim calls selected_workloads (or reads workload_census) to bind a replay or comparison. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing this module"),
+  ),
+]
+
+type DeclaredRunner
+  = DeclaredLabel { label: String }
+  | DeclaredExpression { expression: String, alternatives: List<String> }
+
+type DeclaredArchitectureStanding
+  = DeclaredArm { via: DeclaredRunner }
+  | DeclaredNotArm { via: DeclaredRunner, architecture: Architecture }
+  | DeclaredArchitectureUnresolved { via: DeclaredRunner, cause: NonEmptyStr }
+
+type DeclaredProviderStanding
+  = DeclaredProviderKnown { via: DeclaredRunner, provider_module: NonEmptyStr }
+  | DeclaredProviderUnresolved { via: DeclaredRunner, cause: NonEmptyStr }
+
+fn alternative_arm_standings(
+  alternatives: List<String>,
+  observed_at: Rfc3339Timestamp,
+) -> List<ArmStanding> {
+  map(alternatives, l => arm_standing(r: resolve_runner_label(label: l, observed_at: observed_at)))
+}
+
+fn declared_architecture_standing(
+  spec: DeclaredRunner,
+  observed_at: Rfc3339Timestamp,
+) -> DeclaredArchitectureStanding {
+  match spec {
+    DeclaredLabel { label } =>
+      match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+        ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
+        NotArmConfirmed { label, architecture, snapshot } =>
+          DeclaredNotArm { via: spec, architecture: architecture }
+        ArmUndetermined { label, cause } =>
+          DeclaredArchitectureUnresolved { via: spec, cause: cause }
+      }
+    DeclaredExpression { expression, alternatives } =>
+      let standings = alternative_arm_standings(alternatives: alternatives, observed_at: observed_at)
+      match standings.first() {
+        Absent => DeclaredArchitectureUnresolved {
+          via: spec,
+          cause: "declared runs-on expression listed no concrete alternatives",
+        }
+        Present { value: first_standing } =>
+          if any(standings, s => match s {
+            ArmUndetermined { label, cause } => true
+            ArmConfirmed { label, snapshot } => false
+            NotArmConfirmed { label, architecture, snapshot } => false
+          }) {
+            DeclaredArchitectureUnresolved {
+              via: spec,
+              cause: "at least one declared alternative is absent from the surveyed runner catalogs, so architecture is not established by the workflow file alone",
+            }
+          } else if any(standings, s => match s {
+            ArmConfirmed { label, snapshot } => true
+            NotArmConfirmed { label, architecture, snapshot } => false
+            ArmUndetermined { label, cause } => false
+          }) && any(standings, s => match s {
+            NotArmConfirmed { label, architecture, snapshot } => true
+            ArmConfirmed { label, snapshot } => false
+            ArmUndetermined { label, cause } => false
+          }) {
+            DeclaredArchitectureUnresolved {
+              via: spec,
+              cause: "declared alternatives mix catalog Arm and not-Arm labels; the workflow does not establish a single architecture",
+            }
+          } else if any(standings, s => match s {
+            ArmConfirmed { label, snapshot } => true
+            NotArmConfirmed { label, architecture, snapshot } => false
+            ArmUndetermined { label, cause } => false
+          }) {
+            DeclaredArm { via: spec }
+          } else {
+            match first_standing {
+              NotArmConfirmed { label, architecture, snapshot } =>
+                DeclaredNotArm { via: spec, architecture: architecture }
+              ArmConfirmed { label, snapshot } => DeclaredArm { via: spec }
+              ArmUndetermined { label, cause } =>
+                DeclaredArchitectureUnresolved { via: spec, cause: cause }
+            }
+          }
+      }
+  }
+}
+
+fn alternative_provider_readings(
+  alternatives: List<String>,
+  observed_at: Rfc3339Timestamp,
+) -> List<ProviderReading> {
+  map(alternatives, l => provider_reading(r: resolve_runner_label(label: l, observed_at: observed_at)))
+}
+
+fn remaining_readings_share_catalog_provider(
+  first_provider: DeclarationRef,
+  readings: List<ProviderReading>,
+) -> Bool {
+  all(readings, r => match r {
+    ProviderFromCatalog { provider, label, snapshot } =>
+      declaration_ref_eq(a: provider, b: first_provider)
+    ProviderUnresolved { label, cause } => false
+  })
+}
+
+fn declared_provider_standing(
+  spec: DeclaredRunner,
+  observed_at: Rfc3339Timestamp,
+) -> DeclaredProviderStanding {
+  match spec {
+    DeclaredLabel { label } =>
+      match provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+        ProviderFromCatalog { provider, label, snapshot } =>
+          DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+        ProviderUnresolved { label, cause } =>
+          DeclaredProviderUnresolved { via: spec, cause: cause }
+      }
+    DeclaredExpression { expression, alternatives } =>
+      let readings = alternative_provider_readings(alternatives: alternatives, observed_at: observed_at)
+      match readings.first() {
+        Absent => DeclaredProviderUnresolved {
+          via: spec,
+          cause: "declared runs-on expression listed no concrete alternatives",
+        }
+        Present { value: first_reading } =>
+          if any(readings, r => match r {
+            ProviderUnresolved { label, cause } => true
+            ProviderFromCatalog { provider, label, snapshot } => false
+          }) {
+            DeclaredProviderUnresolved {
+              via: spec,
+              cause: "at least one declared alternative is absent from the surveyed runner catalogs, so the workflow file does not establish a provider",
+            }
+          } else {
+            match first_reading {
+              ProviderFromCatalog { provider, label, snapshot } =>
+                if remaining_readings_share_catalog_provider(first_provider: provider, readings: readings) {
+                  DeclaredProviderKnown { via: spec, provider_module: provider.module_path as NonEmptyStr }
+                } else {
+                  DeclaredProviderUnresolved {
+                    via: spec,
+                    cause: "declared alternatives resolve to more than one surveyed provider, so the workflow file does not establish which one will run",
+                  }
+                }
+              ProviderUnresolved { label, cause } =>
+                DeclaredProviderUnresolved { via: spec, cause: cause }
+            }
+          }
+      }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// OBSERVED EXECUTION. The job resource is the observation; correctness is a second reading of
+// the steps, not of the conclusion name.
+// -------------------------------------------------------------------------------------
+
+type CorrectnessObservation
+  = TestsExecuted { step: NonEmptyStr }
+  | NoTestsExecuted { note: NonEmptyStr }
+
+type ObservedExecution
+  = NoRunObserved { obligation: NonEmptyStr }
+  | JobRunObserved {
+      job: WorkflowJobRun
+      head_sha: CommitSha
+      correctness: CorrectnessObservation
+    }
+
+fn observed_job_labels(job: WorkflowJobRun) -> List<String> {
+  job.labels
+}
+
+fn observed_job_run_attempt(job: WorkflowJobRun) -> Int {
+  job.run_attempt
+}
+
+type ObservedLabelStanding
+  = ObservedLabel { label: String }
+  | NoRunObservedForLabel { obligation: NonEmptyStr }
+  | JobResourceCarriedNoLabels { job_id: Int }
+
+fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
+  match o {
+    NoRunObserved { obligation } => NoRunObservedForLabel { obligation: obligation }
+    JobRunObserved { job, head_sha, correctness } =>
+      match observed_job_labels(job: job).first() {
+        Absent => JobResourceCarriedNoLabels { job_id: job.id }
+        Present { value: l } => ObservedLabel { label: l }
+      }
+  }
+}
+
+fn observed_provider_standing(
+  o: ObservedExecution,
+  observed_at: Rfc3339Timestamp,
+) -> ProviderReading {
+  match observed_label_standing(o: o) {
+    ObservedLabel { label } =>
+      provider_reading(r: resolve_runner_label(label: label, observed_at: observed_at))
+    NoRunObservedForLabel { obligation } => ProviderUnresolved {
+      label: "(no run)",
+      cause: concat("no runner label was observed because no job run was observed: ", obligation),
+    }
+    JobResourceCarriedNoLabels { job_id } => ProviderUnresolved {
+      label: "(empty labels)",
+      cause: "the job resource carried an empty labels list",
+    }
+  }
+}
+
+type BaselineAdmission
+  = BaselineAdmitted {
+      job_id: Int
+      run_id: Int
+      run_attempt: Int
+      head_sha: CommitSha
+      test_step: NonEmptyStr
+      observed_label: String
+    }
+  | BaselineRefused { cause: NonEmptyStr }
+
+fn baseline_admission(o: ObservedExecution) -> BaselineAdmission {
+  match o {
+    NoRunObserved { obligation } =>
+      BaselineRefused { cause: concat("no run observed: ", obligation) }
+    JobRunObserved { job, head_sha, correctness } =>
+      match job.conclusion {
+        Absent => BaselineRefused {
+          cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+        }
+        Present { value: conclusion } => match conclusion {
+          Success => match correctness {
+            TestsExecuted { step } => match observed_label_standing(o: o) {
+              ObservedLabel { label } => BaselineAdmitted {
+                job_id: job.id,
+                run_id: job.run_id,
+                run_attempt: observed_job_run_attempt(job: job),
+                head_sha: head_sha,
+                test_step: step,
+                observed_label: label,
+              }
+              NoRunObservedForLabel { obligation } => BaselineRefused {
+                cause: concat("no run observed: ", obligation),
+              }
+              JobResourceCarriedNoLabels { job_id } => BaselineRefused {
+                cause: "the observed job concluded success and ran tests, but the job resource carried no runner labels",
+              }
+            }
+            NoTestsExecuted { note } =>
+              BaselineRefused { cause: concat("job succeeded but executed no correctness check: ", note) }
+          }
+          Failure => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Cancelled => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Neutral => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          Skipped => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          TimedOut => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          ActionRequired => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+          StartupFailure => BaselineRefused {
+            cause: "the observed job did not conclude success; a failed, cancelled or unconcluded job is not a baseline",
+          }
+        }
+      }
+  }
+}
+
+fn observed_arm_standing(o: ObservedExecution, observed_at: Rfc3339Timestamp) -> ArmStanding {
+  match observed_label_standing(o: o) {
+    ObservedLabel { label } =>
+      arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at))
+    NoRunObservedForLabel { obligation } => ArmUndetermined {
+      label: "(no run)",
+      cause: concat("no runner label was observed because no job run was observed: ", obligation),
+    }
+    JobResourceCarriedNoLabels { job_id } => ArmUndetermined {
+      label: "(empty labels)",
+      cause: "the job resource carried an empty labels list",
+    }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// CACHE: reading YAML is not observing hit or miss.
+// -------------------------------------------------------------------------------------
+
+type CacheObservation
+  = CacheUnobserved { obligation: NonEmptyStr }
+  | CacheMissConfirmed { evidence: NonEmptyStr }
+  | CacheHitConfirmed { evidence: NonEmptyStr }
+
+type CacheMechanism {
+  name: NonEmptyStr
+  layer: NonEmptyStr
+  observation: CacheObservation
+}
+
+type CacheCondition
+  = LogicalCold { evidence: NonEmptyStr }
+  | RemoteWarmOnFreshWorker { evidence: NonEmptyStr }
+  | CacheConditionUnestablished { cause: NonEmptyStr }
+
+fn cache_condition(m: CacheMechanism) -> CacheCondition {
+  match m.observation {
+    CacheHitConfirmed { evidence } => RemoteWarmOnFreshWorker { evidence: evidence }
+    CacheMissConfirmed { evidence } => LogicalCold { evidence: evidence }
+    CacheUnobserved { obligation } => CacheConditionUnestablished {
+      cause: concat(m.name, concat(" was declared in the workflow and never observed: ", obligation)),
+    }
+  }
+}
+
+data cache_read_obligation: NonEmptyStr = "this census read workflow YAML and the job-run resource (labels, conclusion, step names); no cache log line was read, so hit or miss is unobserved"
+
+// -------------------------------------------------------------------------------------
+// EXTERNAL EFFECTS. Registry pushes and cloud role assumption come out of BOTH replay
+// realizations. An artifact upload inside the same run is retained and timed.
+// -------------------------------------------------------------------------------------
+
+type ExternalEffectKind
+  = RegistryPush { registry: NonEmptyStr }
+  | CloudRoleAssumption { role: NonEmptyStr }
+  | CoverageUpload { service: NonEmptyStr }
+  | WorkflowArtifactUpload { artifact: NonEmptyStr }
+
+type EffectDisposition
+  = RemovedFromBothRealizations { cause: NonEmptyStr }
+  | RetainedAndTimed { cause: NonEmptyStr }
+
+type ExternalEffect {
+  kind: ExternalEffectKind
+  step: NonEmptyStr
+}
+
+fn effect_disposition(kind: ExternalEffectKind) -> EffectDisposition {
+  match kind {
+    RegistryPush { registry } => RemovedFromBothRealizations {
+      cause: "publishing mutates a third-party registry",
+    }
+    CloudRoleAssumption { role } => RemovedFromBothRealizations {
+      cause: "assuming a third party's cloud role is neither possible nor permissible for replay",
+    }
+    CoverageUpload { service } => RemovedFromBothRealizations {
+      cause: "a third-party coverage upload mutates an external service",
+    }
+    WorkflowArtifactUpload { artifact } => RetainedAndTimed {
+      cause: "an artifact upload inside the same run is required work and is timed as its own stage",
+    }
+  }
+}
+
+type ReplayAdmission
+  = ReplayAdmitted { note: NonEmptyStr }
+  | ReplayRefusedLicense { cause: NonEmptyStr }
+  | ReplayRefusedArchitecture { cause: NonEmptyStr }
+  | ReplayRefusedWorkload { cause: NonEmptyStr }
+
+data replay_derivation_note: NonEmptyStr = "public visibility is not a licence; source SPDX was read from GitHub's license API. External mutations named on the row are removed from both realizations, so a replay is a derived build/test (or build-only) contract, not an execution of the published pipeline"
+
+type SpendStanding
+  = SpendUnobserved { obligation: NonEmptyStr }
+
+data spend_unobserved_note: NonEmptyStr = "a runner label establishes provider USE, not spend; no customer bill was observed, and this census does not treat GitHub-hosted public minutes as a measured zero"
+
+type TrialAuthorization
+  = TrialUnauthorized { cause: NonEmptyStr }
+
+data trial_refusal_note: NonEmptyStr = "a census is not a mandate: nothing in this item authorizes a trial, a migration PR, or outreach"
+
+fn trial_authorization_from_census() -> TrialAuthorization {
+  TrialUnauthorized { cause: trial_refusal_note }
+}
+
+type ResourceRequirements
+  = ResourceRequirementsObserved {
+      hardware_threads: HardwareThreadCount
+      uses_container: Bool
+    }
+  | ResourceRequirementsUnobserved { obligation: NonEmptyStr }
+
+type CandidateSelection
+  = SelectedWorkload { rank: Int, complementarity: NonEmptyStr }
+  | CandidateRejected { reason: NonEmptyStr }
+  | CandidateUnresolved { obligation: NonEmptyStr }
+
+type WorkloadCandidate {
+  repository: NonEmptyStr
+  license_spdx: NonEmptyStr
+  inspected_commit: CommitSha
+  workflow_path: NonEmptyStr
+  workflow_blob_sha: NonEmptyStr
+  job_key: NonEmptyStr
+  job_display_name: NonEmptyStr
+  matrix_selector: NonEmptyStr
+  declared_runner: DeclaredRunner
+  observed: ObservedExecution
+  observation_time: Rfc3339Timestamp
+  workload_commands: List<NonEmptyStr>
+  resource_requirements: ResourceRequirements
+  caches: List<CacheMechanism>
+  external_effects: List<ExternalEffect>
+  replay: ReplayAdmission
+  spend: SpendStanding
+  trial: TrialAuthorization
+  selection: CandidateSelection
+}
+
+fn candidate_declared_architecture(c: WorkloadCandidate) -> DeclaredArchitectureStanding {
+  declared_architecture_standing(spec: c.declared_runner, observed_at: c.observation_time)
+}
+
+fn candidate_declared_provider(c: WorkloadCandidate) -> DeclaredProviderStanding {
+  declared_provider_standing(spec: c.declared_runner, observed_at: c.observation_time)
+}
+
+fn candidate_observed_provider(c: WorkloadCandidate) -> ProviderReading {
+  observed_provider_standing(o: c.observed, observed_at: c.observation_time)
+}
+
+fn candidate_baseline(c: WorkloadCandidate) -> BaselineAdmission {
+  baseline_admission(o: c.observed)
+}
+
+fn candidate_warm_cache_count(c: WorkloadCandidate) -> Int {
+  count(filter(c.caches, m => match cache_condition(m: m) {
+    RemoteWarmOnFreshWorker { evidence } => true
+    LogicalCold { evidence } => false
+    CacheConditionUnestablished { cause } => false
+  }))
+}
+
+fn observed_job_attempt(o: ObservedExecution) -> Int? {
+  match o {
+    JobRunObserved { job, head_sha, correctness } => Present { value: observed_job_run_attempt(job: job) }
+    NoRunObserved { obligation } => Absent
+  }
+}
+
+fn baseline_attempt(b: BaselineAdmission) -> Int? {
+  match b {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } =>
+      Present { value: run_attempt }
+    BaselineRefused { cause } => Absent
+  }
+}
+
+fn baseline_attempt_matches_observed_job(c: WorkloadCandidate) -> Bool {
+  match observed_job_attempt(o: c.observed) {
+    Present { value: job_attempt } => match baseline_attempt(b: candidate_baseline(c: c)) {
+      Present { value: admitted_attempt } => job_attempt == admitted_attempt
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// EXAMINED POPULATION. Every inspected job stays visible. Complementary selected three:
+// managed Rust tests (Depot), native C++ sanitizers (GitHub-hosted Arm, provider by expression),
+// Ubicloud Arm compile-and-publish with no test execution.
+// -------------------------------------------------------------------------------------
+
+data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
+  matrix_selector: "os=depot-ubuntu-24.04-arm-16",
+  declared_runner: DeclaredLabel { label: "depot-ubuntu-24.04-arm-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906536,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-ubuntu-24.04-arm-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-ubuntu-24.04-arm-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:32Z" },
+      completed_at: Present { value: "2026-09-04T16:08:13Z" },
+    },
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted {
+      step: "Run tests on depot-ubuntu-24.04-arm-16",
+    },
+  },
+  observation_time: "2026-09-04T16:03:32Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [
+    CacheMechanism {
+      name: "moonrepo/setup-rust (cache-base: main)",
+      layer: "cargo registry and compiler outputs",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+  ],
+  external_effects: [],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: SelectedWorkload {
+    rank: 1,
+    complementarity: "managed Rust workspace test: real correctness signal, single command, zero external mutation",
+  },
+}
+
+data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
+  repository: "PowerDNS/pdns",
+  license_spdx: "GPL-2.0",
+  inspected_commit: "0f2df8380e89bb066e947a5818f6267016847d98",
+  workflow_path: ".github/workflows/build-and-test-all.yml",
+  workflow_blob_sha: "f9f3f705735c2fe01922f075194c735246fe97aa",
+  job_key: "build-dnsdist",
+  job_display_name: "build dnsdist (asan+ubsan, full, -arm)",
+  matrix_selector: "sanitizers=asan+ubsan, features=full, architecture_suffix=-arm",
+  declared_runner: DeclaredExpression {
+    expression: "( vars.REPOSITORY_USE_UBICLOUD == '1' ) && format('ubicloud-standard-4{0}-ubuntu-2404', matrix.architecture_suffix) || format('ubuntu-24.04{0}', matrix.architecture_suffix)",
+    alternatives: ["ubicloud-standard-4-arm-ubuntu-2404", "ubuntu-24.04-arm"],
+  },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 100984779675,
+      run_id: 33860869079,
+      run_attempt: 1,
+      name: "build dnsdist (asan+ubsan, full, -arm)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubuntu-24.04-arm"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T09:57:28Z" },
+      completed_at: Present { value: "2026-09-04T10:07:09Z" },
+    },
+    head_sha: "0f2df8380e89bb066e947a5818f6267016847d98",
+    correctness: TestsExecuted {
+      step: "inv ci-dnsdist-run-unit-tests",
+    },
+  },
+  observation_time: "2026-09-04T09:57:28Z",
+  workload_commands: [
+    "inv install-dnsdist-build-deps",
+    "inv ci-dnsdist-configure full",
+    "inv ci-dnsdist-run-ninja",
+    "inv ci-dnsdist-run-unit-tests",
+  ],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 4),
+    uses_container: true,
+  },
+  caches: [
+    CacheMechanism {
+      name: "./.github/actions/cache (cache-key-base dnsdist-full-asan+ubsan-meson-arm-ccache)",
+      layer: "ccache compiler outputs",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+  ],
+  external_effects: [
+    ExternalEffect {
+      kind: CoverageUpload { service: "Coveralls" },
+      step: "Coveralls Parallel dnsdist unit",
+    },
+    ExternalEffect {
+      kind: WorkflowArtifactUpload { artifact: "dnsdist binaries" },
+      step: "Store the binaries",
+    },
+  ],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: SelectedWorkload {
+    rank: 2,
+    complementarity: "native C++ with sanitizers, meson/ninja and ccache in a container — a different compiler and cache layer from a cargo workspace",
+  },
+}
+
+data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
+  repository: "openobserve/openobserve",
+  license_spdx: "AGPL-3.0",
+  inspected_commit: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+  workflow_path: ".github/workflows/build-pr-image.yml",
+  workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
+  job_key: "build_pr_image_arm64",
+  job_display_name: "build_pr_image_arm64",
+  matrix_selector: "no matrix - single job",
+  declared_runner: DeclaredLabel { label: "ubicloud-standard-16-arm" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 99815950414,
+      run_id: 33495218702,
+      run_attempt: 1,
+      name: "build_pr_image_arm64",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubicloud-standard-16-arm"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-01T10:02:21Z" },
+      completed_at: Present { value: "2026-09-01T10:27:44Z" },
+    },
+    head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+    correctness: NoTestsExecuted {
+      note: "the step named 'Build and run binary' runs cargo build, then mkdir and mv; no test binary is executed",
+    },
+  },
+  observation_time: "2026-09-01T10:02:21Z",
+  workload_commands: [
+    "cargo build --features mimalloc --profile release-profiling --target aarch64-unknown-linux-gnu",
+  ],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [
+    CacheMechanism {
+      name: "Swatinem/rust-cache (prefix-key arm64)",
+      layer: "cargo registry and compiler outputs",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+    CacheMechanism {
+      name: "docker buildx type=gha (scope arm64)",
+      layer: "container image layers",
+      observation: CacheUnobserved { obligation: cache_read_obligation },
+    },
+  ],
+  external_effects: [
+    ExternalEffect {
+      kind: CloudRoleAssumption { role: "arn:aws:iam::058694856476:role/GitHubActionsRole" },
+      step: "Configure AWS Credentials",
+    },
+    ExternalEffect {
+      kind: RegistryPush { registry: "public.ecr.aws/zinclabs/openobserve-dev" },
+      step: "Build and push",
+    },
+  ],
+  replay: ReplayAdmitted { note: replay_derivation_note },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: SelectedWorkload {
+    rank: 3,
+    complementarity: "the only observed Ubicloud-Arm job in this census, a large compile plus image publish; admitted as build-performance only, with baseline admission refused because no test executes",
+  },
+}
+
+data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
+  repository: "openobserve/openobserve",
+  license_spdx: "AGPL-3.0",
+  inspected_commit: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+  workflow_path: ".github/workflows/build-pr-image.yml",
+  workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
+  job_key: "build_pr_image_amd64",
+  job_display_name: "build_pr_image_amd64",
+  matrix_selector: "no matrix - single job",
+  declared_runner: DeclaredLabel { label: "ubicloud-standard-8" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 99815950381,
+      run_id: 33495218702,
+      run_attempt: 1,
+      name: "build_pr_image_amd64",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubicloud-standard-8"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-01T10:02:15Z" },
+      completed_at: Absent,
+    },
+    head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+    correctness: NoTestsExecuted { note: "compile and registry push; no test step" },
+  },
+  observation_time: "2026-09-01T10:02:15Z",
+  workload_commands: [
+    "cargo build --features mimalloc --profile release-profiling --target x86_64-unknown-linux-gnu",
+  ],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 8),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [
+    ExternalEffect {
+      kind: RegistryPush { registry: "public.ecr.aws/zinclabs/openobserve-dev" },
+      step: "Build and push",
+    },
+  ],
+  replay: ReplayRefusedArchitecture {
+    cause: "catalog architecture for the declared and observed label is not Aarch64; an amd64 publish job is not Arm compatibility evidence",
+  },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "same workflow as the selected Arm compile, on ubicloud-standard-8, which the Ubicloud catalog records as x86_64 — the jobs-not-repositories specimen",
+  },
+}
+
+data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
+  repository: "openobserve/openobserve",
+  license_spdx: "AGPL-3.0",
+  inspected_commit: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+  workflow_path: ".github/workflows/build-pr-image.yml",
+  workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
+  job_key: "build",
+  job_display_name: "build",
+  matrix_selector: "no matrix - single job",
+  declared_runner: DeclaredLabel { label: "ubicloud-standard-16-arm" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 99823027605,
+      run_id: 33495218702,
+      run_attempt: 1,
+      name: "build",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubicloud-standard-16-arm"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-01T10:28:12Z" },
+      completed_at: Absent,
+    },
+    head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+    correctness: NoTestsExecuted { note: "manifest publish only; no compile and no test" },
+  },
+  observation_time: "2026-09-01T10:28:12Z",
+  workload_commands: [],
+  resource_requirements: ResourceRequirementsObserved {
+    hardware_threads: hardware_thread_count(count: 16),
+    uses_container: false,
+  },
+  caches: [],
+  external_effects: [
+    ExternalEffect {
+      kind: RegistryPush { registry: "public.ecr.aws/zinclabs/openobserve-dev" },
+      step: "docker-manifest-create",
+    },
+  ],
+  replay: ReplayRefusedWorkload {
+    cause: "the job publishes a multi-arch manifest; it does not compile or test natively",
+  },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateRejected {
+    reason: "Arm-hosted publishing is not native build/test evidence — the distinction the census exists to keep",
+  },
+}
+
+data candidate_biome_test_windows: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  job_display_name: "Test (depot-windows-2022-16)",
+  matrix_selector: "os=depot-windows-2022-16",
+  declared_runner: DeclaredLabel { label: "depot-windows-2022-16" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906483,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-windows-2022-16)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-windows-2022-16"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:03:31Z" },
+      completed_at: Present { value: "2026-09-04T16:13:50Z" },
+    },
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted { step: "Run tests on depot-windows-2022-16" },
+  },
+  observation_time: "2026-09-04T16:03:31Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsUnobserved {
+    obligation: "Depot Windows family is outside the surveyed Linux catalog, so thread count is not a catalog reading",
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayRefusedArchitecture {
+    cause: "extdeps.ci_runner.depot declared_scope excludes Windows families; architecture is catalog-undetermined, not inferred from the word windows",
+  },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateUnresolved {
+    obligation: "Depot publishes Windows runner types; this repository's catalog snapshot does not model them, so architecture is ArmUndetermined rather than NotArm. Closing it is a coverage obligation on the Depot catalog, not a finding that the job is x64",
+  },
+}
+
+data candidate_biome_test_macos: WorkloadCandidate = WorkloadCandidate {
+  repository: "biomejs/biome",
+  license_spdx: "Apache-2.0",
+  inspected_commit: "47d7383d049b36ff8eaba50912176928143dd9e9",
+  workflow_path: ".github/workflows/main.yml",
+  workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
+  job_key: "test",
+  job_display_name: "Test (depot-macos-latest)",
+  matrix_selector: "os=depot-macos-latest",
+  declared_runner: DeclaredLabel { label: "depot-macos-latest" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 101088906732,
+      run_id: 33892992396,
+      run_attempt: 1,
+      name: "Test (depot-macos-latest)",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["depot-macos-latest"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-04T16:08:06Z" },
+      completed_at: Absent,
+    },
+    head_sha: "a7f0c48e20e17ec8e70f09644fff4ec50f4e8f2e",
+    correctness: TestsExecuted { step: "Run tests on depot-macos-latest" },
+  },
+  observation_time: "2026-09-04T16:08:06Z",
+  workload_commands: ["cargo test --workspace --features=js_plugin"],
+  resource_requirements: ResourceRequirementsUnobserved {
+    obligation: "Depot macOS family and the -latest alias are outside the surveyed Linux catalog",
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayRefusedArchitecture {
+    cause: "depot-macos-latest is absent from the surveyed Linux catalog and is a vendor-floating alias besides",
+  },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateUnresolved {
+    obligation: "macOS family plus a -latest alias: neither architecture nor a pinned image is established by catalog lookup",
+  },
+}
+
+data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
+  repository: "openobserve/openobserve",
+  license_spdx: "AGPL-3.0",
+  inspected_commit: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+  workflow_path: ".github/workflows/build-pr-image.yml",
+  workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
+  job_key: "build_pr_image_summary",
+  job_display_name: "build_pr_image_summary",
+  matrix_selector: "no matrix - single job",
+  declared_runner: DeclaredLabel { label: "ubuntu-latest" },
+  observed: JobRunObserved {
+    job: WorkflowJobRun {
+      id: 99823407729,
+      run_id: 33495218702,
+      run_attempt: 1,
+      name: "build_pr_image_summary",
+      status: Completed,
+      conclusion: Present { value: Success },
+      labels: ["ubuntu-latest"],
+      created_at: Absent,
+      started_at: Present { value: "2026-09-01T10:29:11Z" },
+      completed_at: Absent,
+    },
+    head_sha: "6a1fc64811abf36424cec2523f0210a8223b19d1",
+    correctness: NoTestsExecuted { note: "aggregates sibling job conclusions; no compile or test" },
+  },
+  observation_time: "2026-09-01T10:29:11Z",
+  workload_commands: [],
+  resource_requirements: ResourceRequirementsUnobserved {
+    obligation: "ubuntu-latest is excluded from the hosted-runner catalog as a vendor-floating alias",
+  },
+  caches: [],
+  external_effects: [],
+  replay: ReplayRefusedArchitecture {
+    cause: "ubuntu-latest is excluded from extdeps.github.hosted_runners; architecture is undetermined",
+  },
+  spend: SpendUnobserved { obligation: spend_unobserved_note },
+  trial: trial_authorization_from_census(),
+  selection: CandidateUnresolved {
+    obligation: "ubuntu-latest is a floating alias this repository refuses to treat as a pinned architecture",
+  },
+}
+
+data workload_census: List<WorkloadCandidate> = [
+  candidate_biome_test,
+  candidate_pdns_dnsdist_arm,
+  candidate_openobserve_arm_build,
+  candidate_openobserve_amd64,
+  candidate_openobserve_manifest,
+  candidate_biome_test_windows,
+  candidate_biome_test_macos,
+  candidate_openobserve_summary,
+]
+
+fn selected_workloads() -> List<WorkloadCandidate> {
+  filter(workload_census, c => match c.selection {
+    SelectedWorkload { rank, complementarity } => true
+    CandidateRejected { reason } => false
+    CandidateUnresolved { obligation } => false
+  })
+}
+
+fn correctness_admitted_workloads() -> List<WorkloadCandidate> {
+  filter(selected_workloads(), c => match candidate_baseline(c: c) {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } =>
+      baseline_attempt_matches_observed_job(c: c)
+    BaselineRefused { cause } => false
+  })
+}
+
+fn rejected_candidates() -> List<WorkloadCandidate> {
+  filter(workload_census, c => match c.selection {
+    CandidateRejected { reason } => true
+    SelectedWorkload { rank, complementarity } => false
+    CandidateUnresolved { obligation } => false
+  })
+}
+
+fn unresolved_candidates() -> List<WorkloadCandidate> {
+  filter(workload_census, c => match c.selection {
+    CandidateUnresolved { obligation } => true
+    SelectedWorkload { rank, complementarity } => false
+    CandidateRejected { reason } => false
+  })
+}

@@ -1,0 +1,219 @@
+module test.claim.public_workload_census_witness
+
+import std.types { Bool, List, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.toolchain.types { X86_64 }
+import gunbc.runner_label_resolution {
+  resolve_runner_label,
+  arm_standing,
+  ArmConfirmed,
+  NotArmConfirmed,
+  ArmUndetermined,
+  ProviderFromCatalog,
+  ProviderUnresolved,
+}
+import gunbc.public_workload_census {
+  DeclaredArm, DeclaredNotArm, DeclaredArchitectureUnresolved,
+  ObservedExecution, NoRunObserved, JobRunObserved, TestsExecuted, NoTestsExecuted,
+  observed_job_labels, observed_job_run_attempt, observed_label_standing,
+  ObservedLabel, NoRunObservedForLabel, JobResourceCarriedNoLabels,
+  baseline_admission, BaselineAdmitted, BaselineRefused, baseline_attempt_matches_observed_job,
+  CandidateRejected, SelectedWorkload, CandidateUnresolved,
+  DeclaredProviderKnown, DeclaredProviderUnresolved,
+  candidate_declared_architecture, candidate_baseline,
+  candidate_declared_provider, candidate_observed_provider,
+  candidate_warm_cache_count,
+  effect_disposition, CoverageUpload, WorkflowArtifactUpload,
+  RemovedFromBothRealizations, RetainedAndTimed,
+  workload_census, selected_workloads, correctness_admitted_workloads,
+  rejected_candidates, unresolved_candidates,
+  candidate_biome_test, candidate_pdns_dnsdist_arm, candidate_openobserve_arm_build,
+  candidate_openobserve_amd64,
+}
+
+fn catalog_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    NotArmConfirmed { label, architecture, snapshot } => architecture == X86_64
+    ArmConfirmed { label, snapshot } => false
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+fn catalog_is_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
+  match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
+    ArmConfirmed { label, snapshot } => true
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => false
+  }
+}
+
+test fn witness_x64_catalog_label_is_never_arm_evidence() -> Bool {
+  catalog_not_arm(label: "ubicloud-standard-8", observed_at: "2026-09-01T10:02:15Z")
+    && catalog_not_arm(label: "ubicloud-standard-16", observed_at: "2026-09-01T10:02:15Z")
+    && catalog_not_arm(label: "depot-ubuntu-24.04-16", observed_at: "2026-09-04T16:03:32Z")
+    && catalog_not_arm(label: "ubuntu-24.04", observed_at: "2026-09-04T09:57:28Z")
+    && catalog_is_arm(label: "ubicloud-standard-16-arm", observed_at: "2026-09-01T10:02:21Z")
+    && catalog_is_arm(label: "depot-ubuntu-24.04-arm-16", observed_at: "2026-09-04T16:03:32Z")
+    && catalog_is_arm(label: "ubuntu-24.04-arm", observed_at: "2026-09-04T09:57:28Z")
+}
+
+test fn witness_an_unresolved_label_is_not_reported_as_x64() -> Bool {
+  match arm_standing(r: resolve_runner_label(label: "ubuntu-latest", observed_at: "2026-09-01T10:29:11Z")) {
+    ArmUndetermined { label, cause } => true
+    ArmConfirmed { label, snapshot } => false
+    NotArmConfirmed { label, architecture, snapshot } => false
+  }
+}
+
+test fn witness_selected_population_is_three_complementary_jobs() -> Bool {
+  let selected = selected_workloads()
+  count(selected) == 3
+    && count(correctness_admitted_workloads()) == 2
+    && candidate_biome_test.job_key == "test"
+    && candidate_pdns_dnsdist_arm.job_key == "build-dnsdist"
+    && candidate_openobserve_arm_build.job_key == "build_pr_image_arm64"
+    && candidate_biome_test.repository != candidate_pdns_dnsdist_arm.repository
+}
+
+test fn witness_rejected_and_unresolved_remain_visible() -> Bool {
+  count(rejected_candidates()) >= 2
+    && count(unresolved_candidates()) >= 2
+    && count(workload_census) == count(selected_workloads()) + count(rejected_candidates()) + count(unresolved_candidates())
+}
+
+test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
+  all(workload_census, c =>
+    !(c.inspected_commit == "")
+      && (c.workflow_blob_sha as String != c.inspected_commit)
+  )
+}
+
+test fn witness_biome_baseline_is_admitted_and_openobserve_is_not() -> Bool {
+  let biome = match candidate_baseline(c: candidate_biome_test) {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
+    BaselineRefused { cause } => false
+  }
+  let pdns = match candidate_baseline(c: candidate_pdns_dnsdist_arm) {
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => true
+    BaselineRefused { cause } => false
+  }
+  let openobserve = match candidate_baseline(c: candidate_openobserve_arm_build) {
+    BaselineRefused { cause } => true
+    BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+  }
+  biome && pdns && openobserve
+}
+
+test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm() -> Bool {
+  let declared = candidate_declared_architecture(c: candidate_pdns_dnsdist_arm)
+  let declared_unresolved = match declared {
+    DeclaredArchitectureUnresolved { via, cause } => true
+    DeclaredArm { via } => false
+    DeclaredNotArm { via, architecture } => false
+  }
+  let observed_arm = match observed_label_standing(o: candidate_pdns_dnsdist_arm.observed) {
+    ObservedLabel { label } => catalog_is_arm(label: label, observed_at: candidate_pdns_dnsdist_arm.observation_time)
+    NoRunObservedForLabel { obligation } => false
+    JobResourceCarriedNoLabels { job_id } => false
+  }
+  declared_unresolved && observed_arm
+}
+
+test fn witness_declared_and_observed_providers_are_separate_readings() -> Bool {
+  let biome_declared = match candidate_declared_provider(c: candidate_biome_test) {
+    DeclaredProviderKnown { via, provider_module } =>
+      provider_module as String == "extdeps.ci_runner.depot"
+    DeclaredProviderUnresolved { via, cause } => false
+  }
+  let pdns_declared_open = match candidate_declared_provider(c: candidate_pdns_dnsdist_arm) {
+    DeclaredProviderUnresolved { via, cause } => true
+    DeclaredProviderKnown { via, provider_module } => false
+  }
+  let pdns_observed_github = match candidate_observed_provider(c: candidate_pdns_dnsdist_arm) {
+    ProviderFromCatalog { provider, label, snapshot } =>
+      provider.module_path == "extdeps.ci_runner.github_actions"
+    ProviderUnresolved { label, cause } => false
+  }
+  biome_declared && pdns_declared_open && pdns_observed_github
+}
+
+test fn witness_openobserve_amd64_is_catalog_x64_and_rejected() -> Bool {
+  let declared = candidate_declared_architecture(c: candidate_openobserve_amd64)
+  let not_arm = match declared {
+    DeclaredNotArm { via, architecture } => architecture == X86_64
+    DeclaredArm { via } => false
+    DeclaredArchitectureUnresolved { via, cause } => false
+  }
+  let rejected = match candidate_openobserve_amd64.selection {
+    CandidateRejected { reason } => true
+    SelectedWorkload { rank, complementarity } => false
+    CandidateUnresolved { obligation } => false
+  }
+  not_arm && rejected
+}
+
+test fn witness_observed_labels_and_attempt_are_read_from_the_job_resource() -> Bool {
+  match candidate_biome_test.observed {
+    JobRunObserved { job, head_sha, correctness } =>
+      observed_job_labels(job: job) == ["depot-ubuntu-24.04-arm-16"]
+        && observed_job_run_attempt(job: job) == 1
+    NoRunObserved { obligation } => false
+  }
+}
+
+test fn witness_unobserved_cache_is_never_warm() -> Bool {
+  count(filter(workload_census, c => candidate_warm_cache_count(c: c) > 0)) == 0
+}
+
+test fn witness_effect_disposition_is_derived_from_kind() -> Bool {
+  match effect_disposition(kind: CoverageUpload { service: "Coveralls" }) {
+    RemovedFromBothRealizations { cause } => match effect_disposition(kind: WorkflowArtifactUpload { artifact: "dnsdist binaries" }) {
+      RetainedAndTimed { cause } => true
+      RemovedFromBothRealizations { cause } => false
+    }
+    RetainedAndTimed { cause } => false
+  }
+}
+
+test fn witness_admitted_baseline_carries_the_observed_run_attempt() -> Bool {
+  all(correctness_admitted_workloads(), c => baseline_attempt_matches_observed_job(c: c))
+}
+
+test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
+  match candidate_openobserve_arm_build.observed {
+    JobRunObserved { job, head_sha, correctness } => match correctness {
+      NoTestsExecuted { note } => match baseline_admission(o: candidate_openobserve_arm_build.observed) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      TestsExecuted { step } => false
+    }
+    NoRunObserved { obligation } => false
+  }
+}
+
+fn all_claims_hold() -> Bool {
+  witness_x64_catalog_label_is_never_arm_evidence()
+    && witness_an_unresolved_label_is_not_reported_as_x64()
+    && witness_selected_population_is_three_complementary_jobs()
+    && witness_rejected_and_unresolved_remain_visible()
+    && witness_every_row_is_job_scoped_and_versioned()
+    && witness_biome_baseline_is_admitted_and_openobserve_is_not()
+    && witness_pdns_declared_architecture_stays_unresolved_while_observed_is_arm()
+    && witness_declared_and_observed_providers_are_separate_readings()
+    && witness_openobserve_amd64_is_catalog_x64_and_rejected()
+    && witness_observed_labels_and_attempt_are_read_from_the_job_resource()
+    && witness_unobserved_cache_is_never_warm()
+    && witness_effect_disposition_is_derived_from_kind()
+    && witness_admitted_baseline_carries_the_observed_run_attempt()
+    && witness_a_green_job_without_tests_is_not_a_baseline()
+}
+
+fn public_workload_census_witness_main() -> ProcessExit {
+  if all_claims_hold() {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "one or more public workload census claims did not hold" }
+  }
+}
