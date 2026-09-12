@@ -11,6 +11,9 @@ import extdeps.bmc.megarac {
   MegaRacIpmiSelPayloadPreserved,
   MegaRacWebEventLogOemEmptySelData,
   RedirectionConnecting,
+  RedirectionKnownStopped,
+  RedirectionPresentationUnknown,
+  RedirectionPresenting,
   RedirectionStartedConnectionAccepted,
   RedirectionStatusFirmwareUncatalogued,
   RedirectionStatusKnown,
@@ -27,7 +30,7 @@ import extdeps.bmc.megarac {
   megarac_live_sol_activate_reset_survival,
   megarac_recorder_reset_survival,
   megarac_recorder_trigger_power_on_field,
-  megarac_redirection_presents_media,
+  megarac_redirection_presentation_standing,
   megarac_redirection_status_of_wire,
   megarac_served_ui_absence_standing,
   megarac_sol_recorder_reset_survival,
@@ -94,30 +97,30 @@ test fn redirection_status_refuses_an_uncatalogued_firmware() -> Bool {
 }
 
 test fn uncatalogued_wire_cannot_confirm_attachment() -> Bool {
-  megarac_redirection_presents_media(
+  megarac_redirection_presentation_standing(
     lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1),
-  )
-    && megarac_redirection_presents_media(
+  ) == RedirectionPresenting
+    && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 100),
-    )
-    && !megarac_redirection_presents_media(
+    ) == RedirectionPresenting
+    && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0),
-    )
-    && !megarac_redirection_presents_media(
+    ) == RedirectionKnownStopped
+    && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 2),
-    )
-    && !megarac_redirection_presents_media(
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 5),
-    )
-    && !megarac_redirection_presents_media(
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7),
-    )
-    && !megarac_redirection_presents_media(
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(
         firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.31"),
         wire: 1,
       ),
-    )
+    ) == RedirectionPresentationUnknown
 }
 
 test fn recorders_survive_reset_and_live_sol_does_not() -> Bool {

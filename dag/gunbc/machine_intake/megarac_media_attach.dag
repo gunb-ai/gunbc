@@ -1,7 +1,6 @@
 module gunbc.machine_intake_megarac_media_attach
 
 import std.types { Bool, Int, NonEmptyStr, String }
-import v2.std.algebra { any }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.megarac
 import extdeps.languages.json.parse {
@@ -380,35 +379,52 @@ func megarac_attach_with_token(
 // started refusing the moment a controller offered a second slot, with a message blaming the image.
 //
 // WHAT IS COMPARED IS WHAT THE ROW ACTUALLY ASSERTS: this device is presenting THIS NAME, as CD
-// media, with redirection started or connecting. Nonzero is not that fact: denial codes and
-// vendor-rendered stopped are nonzero and are not presenting. The wire goes through
-// megarac_redirection_status_of_wire; an unparseable status or an uncatalogued firmware cannot
-// confirm.
-fn configuration_row_confirms(
+// media, with redirection started or connecting. An unparseable status, an uncatalogued
+// firmware, or an uncatalogued wire is unread — not "not attached" — so StartMedia is refused.
+type ConfigurationRowStanding
+  = ConfigurationRowUnreadable { detail: String }
+  | ConfigurationRowPresenting
+  | ConfigurationRowNotThisPresentation
+
+fn configuration_row_standing(
   row: JsonValue,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
-) -> Bool {
-  let name_ok = match json_string_member(doc: row, key: "image_name") {
-    Absent => false
-    Present { value: n } => n == (image_name as String)
-  }
-  let presenting = match json_number_member(doc: row, key: "redirection_status") {
-    Absent => false
-    Present { value: st } =>
-      match parse_int(s: st) {
-        Absent => false
-        Present { value: wire } =>
-          megarac_redirection_presents_media(
-            lookup: megarac_redirection_status_of_wire(firmware: firmware, wire: wire),
-          )
+) -> ConfigurationRowStanding {
+  match json_string_member(doc: row, key: "image_name") {
+    Absent => ConfigurationRowNotThisPresentation
+    Present { value: n } =>
+      if n != (image_name as String) {
+        ConfigurationRowNotThisPresentation
+      } else {
+        match json_number_member(doc: row, key: "media_type") {
+          Absent => ConfigurationRowUnreadable { detail: "media_type missing on a row that names the image" }
+          Present { value: mt } =>
+            if mt != "1" {
+              ConfigurationRowUnreadable { detail: "a row names the image but is not CD media_type 1" }
+            } else {
+              match json_number_member(doc: row, key: "redirection_status") {
+                Absent => ConfigurationRowUnreadable { detail: "redirection_status missing on a row that names the image" }
+                Present { value: st } =>
+                  match parse_int(s: st) {
+                    Absent => ConfigurationRowUnreadable { detail: "redirection_status is not an integer" }
+                    Present { value: wire } =>
+                      match megarac_redirection_presentation_standing(
+                        lookup: megarac_redirection_status_of_wire(firmware: firmware, wire: wire),
+                      ) {
+                        RedirectionPresenting => ConfigurationRowPresenting
+                        RedirectionKnownStopped => ConfigurationRowNotThisPresentation
+                        RedirectionPresentationUnknown =>
+                          ConfigurationRowUnreadable {
+                            detail: "redirection_status is uncatalogued for this firmware or wire",
+                          }
+                      }
+                  }
+              }
+            }
+        }
       }
   }
-  let cd_media = match json_number_member(doc: row, key: "media_type") {
-    Absent => false
-    Present { value: mt } => mt == "1"
-  }
-  name_ok && presenting && cd_media
 }
 
 type PresentedMediaStanding
@@ -427,11 +443,18 @@ fn presented_media_standing(
       match images_array_elements(doc: v) {
         Absent => PresentedMediaUnreadable { detail: body }
         Present { value: rows } =>
-          if rows |> any(r => configuration_row_confirms(row: r, image_name: image_name, firmware: firmware)) {
-            PresentedMediaAttached
-          } else {
-            PresentedMediaNotAttached
-          }
+          fold(rows, init: PresentedMediaNotAttached, f: (acc, row) =>
+            match acc {
+              PresentedMediaUnreadable { detail: _ } => acc
+              PresentedMediaAttached => acc
+              PresentedMediaNotAttached =>
+                match configuration_row_standing(row: row, image_name: image_name, firmware: firmware) {
+                  ConfigurationRowUnreadable { detail: d } => PresentedMediaUnreadable { detail: d }
+                  ConfigurationRowPresenting => PresentedMediaAttached
+                  ConfigurationRowNotThisPresentation => PresentedMediaNotAttached
+                }
+            }
+          )
       }
   }
 }
@@ -444,10 +467,9 @@ fn presented_media_standing(
 //
 // THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. This firmware answers HTTP 500
 // on writes that take effect; mapping start.success == false to MegaRacStartRefused refused an
-// attach that was merely still mounting, and contradicted the comment this function already
-// carried. A missing confirmation after any start response is pending (Unconfirmed). StartRefused
-// is reserved for a start that failed AND whose configurations document is itself unreadable
-// as JSON — that is, when we cannot even ask the read-back.
+// attach that was merely still mounting. A known-stopped confirmation after any start response is
+// pending (Unconfirmed). An unreadable configurations document — parse failure or an uncatalogued
+// redirection standing — is ConfigurationsUnreadable: decoder ignorance is not a retry cue.
 func megarac_start_and_confirm(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
@@ -480,10 +502,6 @@ func megarac_start_and_confirm(
     PresentedMediaNotAttached =>
       MegaRacAttachUnconfirmed { image_name: image_name, configurations: configurations.body }
     PresentedMediaUnreadable { detail: d } =>
-      if start.success == false {
-        MegaRacStartRefused { detail: start.body }
-      } else {
-        MegaRacAttachUnconfirmed { image_name: image_name, configurations: d }
-      }
+      MegaRacConfigurationsUnreadable { detail: d }
   }
 }

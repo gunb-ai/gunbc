@@ -228,18 +228,25 @@ fn megarac_redirection_status_of_wire(
   }
 }
 
-// A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped, an uncatalogued
-// wire, and an uncatalogued firmware cannot confirm attachment: nonzero is not a success code,
-// and a firmware this decoder does not catalog cannot inherit 0.32's numbers.
-fn megarac_redirection_presents_media(lookup: MegaRacRedirectionStatusLookup) -> Bool {
+// A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped is known not
+// presenting. Uncatalogued firmware and uncatalogued wire are not "not presenting": they are
+// unread, and a Bool false here would license StartMedia.
+type MegaRacRedirectionPresentationStanding
+  = RedirectionPresenting
+  | RedirectionKnownStopped
+  | RedirectionPresentationUnknown
+
+fn megarac_redirection_presentation_standing(
+  lookup: MegaRacRedirectionStatusLookup,
+) -> MegaRacRedirectionPresentationStanding {
   match lookup {
-    RedirectionStatusFirmwareUncatalogued { firmware: _, wire: _ } => false
+    RedirectionStatusFirmwareUncatalogued { firmware: _, wire: _ } => RedirectionPresentationUnknown
     RedirectionStatusKnown { firmware: _, status: status } =>
       match status {
-        RedirectionStartedConnectionAccepted => true
-        RedirectionConnecting => true
-        RedirectionStopped => false
-        RedirectionWireUncatalogued { wire: _ } => false
+        RedirectionStartedConnectionAccepted => RedirectionPresenting
+        RedirectionConnecting => RedirectionPresenting
+        RedirectionStopped => RedirectionKnownStopped
+        RedirectionWireUncatalogued { wire: _ } => RedirectionPresentationUnknown
       }
   }
 }
