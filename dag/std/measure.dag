@@ -392,11 +392,35 @@ type Milliwatt = Measure<Power, Milli, Nat>
 // APPARENT POWER IS NOT POWER, and it is a separate dimension rather than a second Watt alias for
 // exactly the reason std.measure exists. A supply rated 120 V at 15 A can deliver 1800 volt-amperes;
 // how many WATTS that is depends on the load's power factor, which is a property of the load and is
-// not on any supply's datasheet. Carrying both on the Power dimension would make Watt and VoltAmpere
-// interchangeable at the type level, and the first comparison between a device's real draw and a
-// supply's rating would silently assert a power factor of one - a fabricated fact about hardware
-// nobody measured. They are different dimensions, so that comparison does not typecheck and a
-// consumer must declare the factor it is assuming.
+// not on any supply's datasheet. A comparison between a device's real draw and a supply's rating
+// would silently assert a power factor of one - a fabricated fact about hardware nobody measured -
+// so the two must not be interchangeable, and a consumer must declare the factor it is assuming.
+//
+// WHAT ENFORCES THAT SEPARATION IS THE ALIAS NAME, NOT THE DIMENSION, AND AN EARLIER VERSION OF THIS
+// ANNOTATION SAID OTHERWISE. It read that carrying both on the Power dimension would make Watt and
+// VoltAmpere interchangeable at the type level, and that they do not typecheck against each other
+// BECAUSE they are different dimensions. The conclusion is right and the mechanism is wrong, which
+// is the dangerous combination: a reader takes the stated mechanism as a general licence to buy
+// dimensional safety by minting a Quantity arm, and does not get it. Measured 2026-09-12 against the
+// local interpreter, three probes:
+//
+//   (1) two NAMED aliases over DIFFERENT dimensions - Measure<Time,One,Nat> and Measure<Memory,One,Nat> -
+//       REFUSE each other, rc=1, "type mismatch: expected Node(Minute<...>), got Node(Bytes<...>)".
+//   (2) the SAME two dimensions spelled INLINE with no alias ACCEPT each other, rc=0, no diagnostic:
+//       a Memory-dimensioned value flows into a Time-dimensioned parameter silently.
+//   (3) two differently-named aliases over the IDENTICAL dimension REFUSE each other, rc=1.
+//
+// (2) and (3) together settle it: alias comparison is NOMINAL, and the phantom marker argument is
+// carried into the type but takes no part in the equality decision. So Watt and VoltAmpere refuse
+// each other because they are two NAMES; they would refuse exactly as hard if both sat on Power, and
+// they would not refuse at all if both were spelled inline. THE SEPARATION THIS PARAGRAPH ARGUES FOR
+// IS REAL AND IS WORTH KEEPING - apparent power genuinely is not power - but it is bought by the
+// named alias, and every consumer that wants the wall must spell the alias rather than the shape.
+//
+// WHAT IS STILL OWED, stated rather than implied: nothing in the corpus executes the three probes
+// above, so this paragraph is prose about the compiler and DESIGN section 4c is explicit that no
+// Accepted program can read it. A discriminating witness over cases (2) and (3) is the enrolment
+// this claim needs before anyone may cite dimensional separation as a guarantee.
 type VoltAmpere = Measure<ApparentPower, One, Nat>
 
 type Volt = Measure<ElectricPotentialDifference, One, Nat>
