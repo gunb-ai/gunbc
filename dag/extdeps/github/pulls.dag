@@ -2,6 +2,7 @@ module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
+import std.string_type { String }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
