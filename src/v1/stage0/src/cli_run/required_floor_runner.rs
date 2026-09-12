@@ -2916,6 +2916,37 @@ pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
     FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.inventory.clone()))
 }
 
+/// One prepared source, looked up by the repo-relative path a roster row names.
+///
+/// WHY THIS EXISTS BESIDE `floor_prepared_inventory_snapshot`: that accessor clones the whole
+/// inventory vector, which is the right shape for a consumer that folds the corpus and the wrong
+/// one for a consumer asking about a SINGLE entry. The roster gate asks per entry, so cloning
+/// ~5k `Rc`s to read one of them would be the cost-shape defect DESIGN section 6 names, at the
+/// accessor rather than in the caller.
+///
+/// The match is on the prepared source's own path, normalized to `/`, accepting either the exact
+/// repo-relative spelling or that spelling as a trailing component — preparation stores whatever
+/// the module index gave it, and the roster authors repo-relative paths. It does NOT fall back to
+/// a disk read: absence here is a real answer (the entry is outside the prepared subject) and its
+/// caller refuses on it rather than reconstructing a second universe to look again.
+pub(crate) fn floor_prepared_source_for_entry_path(
+    entry_path: &str,
+) -> Option<Rc<crate::v1_compiler_compile::SourceFile>> {
+    let wanted = entry_path.replace('\\', "/");
+    let suffix = format!("/{wanted}");
+    FLOOR_PREPARED_AUTHORITY.with(|cell| {
+        cell.borrow().as_ref().and_then(|auth| {
+            auth.inventory
+                .iter()
+                .find(|view| {
+                    let p = view.source.path.replace('\\', "/");
+                    p == wanted || p.ends_with(&suffix)
+                })
+                .map(|view| view.source.clone())
+        })
+    })
+}
+
 pub(crate) fn floor_prepared_inventory_digest() -> Option<String> {
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         cell.borrow()
@@ -4193,9 +4224,27 @@ pub fn run_required_floor(
     // key here must match theirs; `canonical_shared_index_roots` normalizes relative and
     // absolute forms to the same key regardless.
     //
-    // dissolve-on: same as the module-path-index warm above — when the shared index derives
-    // from the prepared inventory instead of a second disk walk, this warm call becomes
+    // THOSE THREE CALL SITES ARE GONE (2026-09-12) AND THIS WARM IS NOT, WHICH IS WHY THE
+    // PARAGRAPH ABOVE IS KEPT IN THE PAST TENSE RATHER THAN DELETED WITH THEM. The roster
+    // gate now answers from the prepared subject's own bytes, parse-only, and touches no
+    // index at all (`roster_entry_registry`). So the MEASUREMENT above — 62.7-83.0s billed to
+    // one witness — is the receipt for a cost that no longer exists, and a reader looking for
+    // today's reason to warm must not find that receipt and take it as one.
+    //
+    // WHAT STILL JUSTIFIES THE WARM, stated because removing the original consumer without
+    // naming the surviving one would leave this call looking orphaned: the bare-reference
+    // edge-index warm below builds an index over these same roots regardless
+    // (`canonical_shared_index_roots` maps `source_roots` and `witness_layer_roots()` to one
+    // key), so the second universe is constructed on this run whether or not this line runs.
+    // Deleting the warm would therefore relocate the attribution onto the edge-index phase
+    // rather than remove any work — the exact move the three paragraphs above reject.
+    //
+    // dissolve-on: UNCHANGED IN SUBSTANCE AND NARROWER IN SCOPE — when the shared index
+    // derives from the prepared inventory instead of a second disk walk, this warm becomes
     // unnecessary rather than merely redundant, because there is no second authority to warm.
+    // The roster gate was one of its consumers and is now off it; the remaining consumers are
+    // the edge index, `changed_witness_identities`, the compile-clean gate, the four diff
+    // readouts and the discovery corpus, and the warm retires when the LAST of them moves.
     let (warmed_shared_index_modules, shared_index_warm) =
         observe_shared_build(false, "floor-preparation", || {
             process_shared_index(&witness_layer_roots())

@@ -811,24 +811,59 @@ pub(crate) fn commit_witness_field_str(
     }
 }
 
+/// ONE ROSTER ENTRY'S DECLARED NAMES, WITHOUT A SECOND CORPUS.
+///
+/// Under the required floor the bytes come from the PREPARED SUBJECT and from nowhere else: an
+/// entry the prepared authority does not hold is `OutsidePreparedSubject`, a typed and counted
+/// refusal, never a disk read that would go looking for a second answer to a question preparation
+/// has already answered. That is the rule this change exists to install — an unavailable prepared
+/// product refuses rather than silently rebuilding a universe.
+///
+/// Outside the floor there is no prepared subject for the entry to be outside OF, so the entry's
+/// own file is read. That is one file, parse-only: it is not the corpus index this function
+/// replaced, and the distinction is the whole point — the defect was never "reads from disk", it
+/// was "resolves a corpus to read a name set".
+pub(crate) fn roster_entry_registry(roots: &[String], entry: &str) -> RosterEntryRegistryCache {
+    let entry_path = match resolve_entry_file_under_roots(roots, entry) {
+        Ok(p) => p,
+        Err(detail) => return RosterEntryRegistryCache::EntryMissing { detail },
+    };
+    if floor_prepared_authority_active() {
+        return match floor_prepared_source_for_entry_path(entry)
+            .or_else(|| floor_prepared_source_for_entry_path(&entry_path))
+        {
+            Some(source) => roster_entry_registry_from_prepared_source(entry, &source),
+            None => RosterEntryRegistryCache::OutsidePreparedSubject {
+                detail: format!(
+                    "{entry} resolves to {entry_path} but the prepared subject does not hold it"
+                ),
+            },
+        };
+    }
+    match std::fs::read_to_string(&entry_path) {
+        Ok(content) => roster_entry_registry_from_prepared_source(
+            entry,
+            &crate::v1_compiler_compile::SourceFile {
+                path: entry_path,
+                content,
+            },
+        ),
+        Err(e) => RosterEntryRegistryCache::EntryResolveFailed {
+            detail: format!("{entry_path}: {e}"),
+        },
+    }
+}
+
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
-    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     matches!(
-        commit_witness_claim_pair_resolvability_with_index(
-            &index,
-            &roots,
-            entry,
-            function,
-            &mut entry_cache,
-        ),
+        commit_witness_claim_pair_resolvability(&roots, entry, function, &mut entry_cache),
         CommitWitnessClaimPairResolvability::Resolvable
     )
 }
 
-pub(crate) fn commit_witness_claim_pair_resolvability_with_index(
-    index: &MultiEntryIndex,
+pub(crate) fn commit_witness_claim_pair_resolvability(
     roots: &[String],
     entry: &str,
     function: &str,
@@ -836,7 +871,7 @@ pub(crate) fn commit_witness_claim_pair_resolvability_with_index(
 ) -> CommitWitnessClaimPairResolvability {
     let cached = entry_cache
         .entry(entry.to_string())
-        .or_insert_with(|| roster_entry_registry_cache(index, roots, entry));
+        .or_insert_with(|| roster_entry_registry(roots, entry));
     match cached {
         RosterEntryRegistryCache::EntryMissing { detail } => {
             CommitWitnessClaimPairResolvability::EntryMissing {
@@ -845,6 +880,11 @@ pub(crate) fn commit_witness_claim_pair_resolvability_with_index(
         }
         RosterEntryRegistryCache::EntryResolveFailed { detail } => {
             CommitWitnessClaimPairResolvability::EntryResolveFailed {
+                detail: detail.clone(),
+            }
+        }
+        RosterEntryRegistryCache::OutsidePreparedSubject { detail } => {
+            CommitWitnessClaimPairResolvability::OutsidePreparedSubject {
                 detail: detail.clone(),
             }
         }
@@ -867,12 +907,10 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
         )];
     };
     let roots = witness_layer_roots();
-    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
-        let cause = match commit_witness_claim_pair_resolvability_with_index(
-            &index,
+        let cause = match commit_witness_claim_pair_resolvability(
             &roots,
             &entry,
             &function,
@@ -884,6 +922,9 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
             }
             CommitWitnessClaimPairResolvability::EntryResolveFailed { detail } => {
                 format!("entry_resolve_failed:{detail}")
+            }
+            CommitWitnessClaimPairResolvability::OutsidePreparedSubject { detail } => {
+                format!("outside_prepared_subject:{detail}")
             }
             CommitWitnessClaimPairResolvability::FunctionNotFound => {
                 "function_not_found".to_string()

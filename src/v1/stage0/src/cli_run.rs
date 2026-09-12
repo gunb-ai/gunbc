@@ -32130,8 +32130,22 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
+    /// The floor prepared a subject and this roster entry is not in it. A SEPARATE ARM from
+    /// `EntryMissing`, because the two have opposite remedies: `EntryMissing` means the roster
+    /// names a path that is not on disk (fix the row), this means the path exists but preparation
+    /// excluded it or it fell outside the prepared closure (fix the subject, or the exclusion).
+    /// Collapsing them would be the not-applicable-rendered-as-malformed conflation DESIGN's
+    /// failure-mode list names — one symbol over "the input is wrong" and "this strategy had
+    /// nothing to say about it".
+    OutsidePreparedSubject {
+        detail: String,
+    },
     FunctionNotFound,
 }
 
@@ -32139,32 +32153,57 @@ pub(crate) enum CommitWitnessClaimPairResolvability {
 pub(crate) enum RosterEntryRegistryCache {
     EntryMissing { detail: String },
     EntryResolveFailed { detail: String },
+    OutsidePreparedSubject { detail: String },
     Functions(std::collections::HashSet<String>),
 }
 
-fn roster_entry_registry_cache(
-    index: &MultiEntryIndex,
-    roots: &[String],
+/// THE ROSTER GATE'S QUESTION IS PER-FILE, AND IT USED TO BE ANSWERED BY A SECOND CORPUS.
+///
+/// `commit_witness_claim_pair_resolvable` asks one thing: does the entry this roster row names
+/// declare the function it names. The answer used to be computed by resolving the entry's whole
+/// closure through a `MultiEntryIndex` and standing up an `InterpContext`, in order to read
+/// `ctx.item_registry.keys()` — a set of NAMES. Building a corpus-wide index to read a
+/// name set is the cost-shape defect DESIGN section 6 names, and it was not a small one: the index
+/// it required is a second typed universe over the SAME roots the floor has already prepared
+/// (`gunbc.ci_layer_roots` `witness_layer_roots` is the floor's own `--source-root` pair), priced
+/// by `prime_witness_execution_legs` at ~6GB and +44% wall.
+///
+/// This answers the same question from the PREPARED SUBJECT's own immutable source, parse-only.
+/// No index, no resolve, no typecheck, no second inventory — preparation already holds these bytes
+/// and this reads them where they lie.
+///
+/// THE GRAIN CHANGES AND THE CHANGE IS THE POINT. `item_registry` is the entry's whole CLOSURE, so
+/// a roster row naming a function that some IMPORTED module declares resolved green — binding by
+/// pool coincidence, the class `v2.workflow.floor2_prepared_subject`
+/// `floor2_binding_strictness_regression` already records one layer up. Per-file is what the roster
+/// means: `WitnessIdentity` in that same module is `module.function`, never a bare name. Agreement
+/// between the two readings over the live roster is measured by
+/// `roster_registry_prepared_matches_closure_reading` rather than assumed.
+///
+/// A PARSE FAILURE IS A TYPED ANSWER, NOT AN ABSENCE. `parse_dag_content` collapses a parse error
+/// into `None` — its own doc comment records that the class is unreconciled across its callers —
+/// so this caller converts it to `EntryResolveFailed` with the file named, which is the fail-closed
+/// reading and the same disposition the resolve path produced for an unparseable entry.
+fn roster_entry_registry_from_prepared_source(
     entry: &str,
+    source: &crate::v1_compiler_compile::SourceFile,
 ) -> RosterEntryRegistryCache {
-    let entry_path = match resolve_entry_file_under_roots(roots, entry) {
-        Ok(p) => p,
-        Err(detail) => {
-            return RosterEntryRegistryCache::EntryMissing { detail };
-        }
+    let Some(parsed) =
+        crate::module_path_index::parsed_dag_file::parse_dag_content(&source.content, &source.path)
+    else {
+        return RosterEntryRegistryCache::EntryResolveFailed {
+            detail: format!("prepared source for {entry} did not parse"),
+        };
     };
-    let (graph, source_indices) = match resolve_entry_with_index(index, &entry_path) {
-        Ok(r) => r,
-        Err(detail) => {
-            return RosterEntryRegistryCache::EntryResolveFailed { detail };
+    let mut names = std::collections::HashSet::new();
+    for item in parsed.items.iter() {
+        let name =
+            crate::v1_std_core::authored_name_at(parsed.source_indices.clone(), item.clone());
+        if !name.is_empty() {
+            names.insert(name);
         }
-    };
-    let ctx = make_eval_context(
-        &graph,
-        source_indices,
-        v1_interpreter::ExecutionMode::Hermetic,
-    );
-    RosterEntryRegistryCache::Functions(ctx.item_registry.keys().cloned().collect())
+    }
+    RosterEntryRegistryCache::Functions(names)
 }
 
 #[cfg(test)]

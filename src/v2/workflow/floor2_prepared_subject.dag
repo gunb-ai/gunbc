@@ -178,3 +178,83 @@ data floor2_binding_strictness_regression: FloorBindingStrictnessRegression = Fl
     population: ^cross_module_references_without_a_declared_import,
     restoration_trigger: ^resolution_enforces_declared_import_narrowing
   }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// WHAT PREPARATION HANDS TO EXECUTION, AND WHAT A CONSUMER MAY DO WHEN IT IS NOT THERE.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The module header already names the defect this section exists to close: "a second consumer over
+// the same tree pays a file walk and builds its own context." That sentence describes a MEASURED
+// duplicate — `gunbc.ci_layer_roots` `witness_layer_roots` is `["dag", "src/v2"]`, the floor's own
+// source-root pair, so the second context is the same corpus resolved twice — and until this
+// section there was nothing a consumer could be held to. Preparation produced products, consumers
+// took whichever route they happened to be written with, and rebuilding was as available as asking.
+//
+// THE PRODUCTS ARE DECLARED, NOT INVENTORIED. Only what a consumer is measured to take is named
+// here. A product nobody consumes would be this section's own version of the defect above: a
+// declaration standing where a fact was wanted.
+type PreparedProduct
+  = PreparedModuleSource
+  | PreparedClaimScope
+
+// THE CONSUMERS ARE NAMED SO THE JOIN IS CHECKABLE. `CommitWitnessRosterGate` is the host's
+// `roster_entry_registry`: it answers "does the entry this roster row names declare this function"
+// from the prepared subject's own bytes, parse-only. `WitnessClaimFold` is the per-claim projection
+// the floor already performs through `claim_scope_for`, which reads the prepared graph and resolves
+// nothing.
+type PreparedProductConsumer
+  = CommitWitnessRosterGate
+  | WitnessClaimFold
+
+fn prepared_product_for_consumer(consumer: PreparedProductConsumer) -> PreparedProduct {
+  match consumer {
+    CommitWitnessRosterGate => PreparedModuleSource
+    WitnessClaimFold => PreparedClaimScope
+  }
+}
+
+// AVAILABILITY IS AN OBSERVATION, AND ITS ABSENT ARM CARRIES WHY. `PreparedProductOutsideSubject`
+// is NOT "the lookup failed": it says the prepared subject was built and does not hold this
+// product, which has a different remedy from a missing file (fix the subject or its exclusions, not
+// the roster row). The host mirrors this distinction as
+// `CommitWitnessClaimPairResolvability::OutsidePreparedSubject`, a separate arm from `EntryMissing`
+// for the same reason.
+type PreparedProductAvailability
+  = PreparedProductHeld
+  | PreparedProductOutsideSubject { detail: Symbol }
+
+// THE LAW: AN UNAVAILABLE PREPARED PRODUCT REFUSES. IT DOES NOT REBUILD.
+//
+// This is the whole point of the section, and it is stated as a total function rather than as a
+// rule someone must follow, so that a consumer wanting a rebuild arm would have to ADD one here
+// and be seen doing it. There is deliberately no `PreparedProductReconstructed` — the arm whose
+// absence is the guarantee. Widening on absence is what DESIGN section 5 names the absorbing
+// fallback: "could not find the prepared product" and "here is a freshly built universe" are
+// different states, and answering the first with the second is how the duplicate corpus this module
+// already measures became available to ask for in the first place.
+type PreparedProductOutcome
+  = PreparedProductServed { product: PreparedProduct }
+  | PreparedProductRefused { product: PreparedProduct, consumer: PreparedProductConsumer, detail: Symbol }
+
+fn prepared_product_outcome(
+  consumer: PreparedProductConsumer,
+  availability: PreparedProductAvailability
+) -> PreparedProductOutcome {
+  match availability {
+    PreparedProductHeld => PreparedProductServed {
+      product: prepared_product_for_consumer(consumer: consumer)
+    }
+    PreparedProductOutsideSubject { detail: d } => PreparedProductRefused {
+      product: prepared_product_for_consumer(consumer: consumer),
+      consumer: consumer,
+      detail: d
+    }
+  }
+}
+
+fn prepared_product_outcome_refuses(outcome: PreparedProductOutcome) -> Bool {
+  match outcome {
+    PreparedProductServed { product: _ } => false
+    PreparedProductRefused { product: _, consumer: _, detail: _ } => true
+  }
+}
