@@ -59,8 +59,8 @@ fn sol_capture_reading(capture_path: NonEmptyStr, bytes: ByteSize, digest: Conte
 // ── the SEL window ─────────────────────────────────────────────────────────────────────────────
 
 // ONE RECORD AS THE BRING-UP READER SEES IT. Record ids are the controller's, as integers, so a
-// window can be cut at a cursor. The BMC clock rendering is carried verbatim because joining it to
-// an observer's clock needs the measured offset, which is a receipt in the observation module.
+// window can be cut at a cursor. The BMC clock rendering is carried verbatim; joining it to an
+// observer's clock is not modeled here, so no fold reads it as a time.
 type SelWindowEventKind
   = BootRestart { offset: SystemBootInitiatedOffset }
   | FirmwareProgressRecord { offset: SystemFirmwareProgressOffset }
@@ -256,6 +256,13 @@ type OemSelPayloadObserved
   = OemPayloadAbsentFromWindow { payload: OemSelPayload }
   | OemPayloadSeen { payload: OemSelPayload, occurrences: Int, first_record_id: Int, last_record_id: Int }
 
+fn oem_observed_payload(observed: OemSelPayloadObserved) -> OemSelPayload {
+  match observed {
+    OemPayloadAbsentFromWindow { payload: p } => p
+    OemPayloadSeen { payload: p, occurrences: _, first_record_id: _, last_record_id: _ } => p
+  }
+}
+
 fn oem_payload_seen_in_window(observed: OemSelPayloadObserved) -> Bool {
   match observed {
     OemPayloadAbsentFromWindow { payload: _ } => false
@@ -369,11 +376,13 @@ fn oem_sel_empirical_association(
   never_beside_candidates: List<OemSelPayload>,
   profile: PreOsObservationCapabilities,
 ) -> OemSelEmpiricalAssociation {
-  let present = filter(xs: never_beside_candidates, f: c => oem_payload_seen_in_window(observed: oem_payload_observed(window: window, payload: c)))
+  let candidate_readings = map(never_beside_candidates, c => oem_payload_observed(window: window, payload: c))
+  let present = map(filter(xs: candidate_readings, f: r => oem_payload_seen_in_window(observed: r)), r => oem_observed_payload(observed: r))
+  let absent = map(filter(xs: candidate_readings, f: r => oem_payload_seen_in_window(observed: r) == false), r => oem_observed_payload(observed: r))
   OemSelEmpiricalAssociation {
     observed: oem_payload_observed(window: window, payload: payload),
     never_within_same_cycle_as: filter(xs: present, f: c => payloads_co_occur_in_a_cycle(window: window, a: payload, b: c) == false),
-    candidates_absent_from_window: filter(xs: never_beside_candidates, f: c => oem_payload_seen_in_window(observed: oem_payload_observed(window: window, payload: c)) == false),
+    candidates_absent_from_window: absent,
     decode_standing: oem_sel_decode_standing(profile: profile),
   }
 }

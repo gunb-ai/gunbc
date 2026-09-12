@@ -1,7 +1,7 @@
 module gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
-import std.measure { ByteSize, Second, byte_size, second }
+import std.measure { ByteSize, byte_size }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.scoped_authorization { AttemptIdentity }
@@ -19,8 +19,9 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   HostCallbackIntendedNotDemonstrated,
   LocalizationUnavailableFromExposedTelemetry,
   NoManagedAcActuator,
-  OemDecodeControllerDeclaredUnknown,
   PreOsObservationCapabilities,
+  WebEventLogDecodeObservation,
+  oem_sel_decode_capability_of_web_log,
   SelStandardDecoded,
   SolPresentSilent,
   WebEventLogAvailable,
@@ -129,15 +130,6 @@ data mtcollins1_sol_captures: List<SolCaptureUnderCondition> = [
   SolCaptureUnderCondition { label: "after chassis reset (31-boot-sol.log, 99-digests.txt)", condition: Present { value: HostWarmReset }, artifact_path: "31-boot-sol.log", bytes: byte_size(count: 86), digest: mtcollins1_sol_session_banner_digest },
 ]
 
-// THE KEYSTROKE PROBE: two carriage returns fed into the session, 96 bytes back -- the banner plus
-// the probe's own "done rc=0". The session accepted input and returned no host bytes, which is
-// what separates SolPresentSilent from SolAbsent in the capability profile.
-data mtcollins1_sol_probe_digest: ContentHash = Sha256Hash(Sha256Digest {
-  hex: "e24f9ed8d9cedff87e6d11327c602c31fd7c3d9e2ba16e7e1ab0f8a91cdfe41e",
-})
-
-data mtcollins1_sol_probe_bytes: ByteSize = byte_size(count: 96)
-
 fn mtcollins1_sol_reading(capture: SolCaptureUnderCondition) -> SolCaptureReading {
   sol_capture_reading(
     capture_path: capture.artifact_path,
@@ -149,20 +141,26 @@ fn mtcollins1_sol_reading(capture: SolCaptureUnderCondition) -> SolCaptureReadin
 
 // ── the SEL window ─────────────────────────────────────────────────────────────────────────────
 
-data mtcollins1_sel_final_artifact_path: NonEmptyStr = "artifacts/bmc/mtcollins1-32dimm/50-sel-final.txt"
-
-data mtcollins1_sel_final_byte_count: ByteSize = byte_size(count: 99651)
-
-data mtcollins1_sel_final_digest: ContentHash = Sha256Hash(Sha256Digest {
-  hex: "14e84cd9cbd2d89d6be46caff42c3d5ab0a19079fa4546d6e6ec449f759c7ba5",
-})
+// THE WINDOW AND THE ARTIFACT IT WAS TRANSCRIBED FROM ARE ONE RECORD, so a consumer reading the
+// events reaches the digest through the same value and the binding is a consumed edge rather
+// than a row beside the rows.
+type SelWindowCapture {
+  artifact_path: NonEmptyStr
+  byte_count: ByteSize
+  digest: ContentHash
+  events: List<SelWindowEvent>
+}
 
 // RECORDS 0x3ea THROUGH 0x44f OF 50-sel-final.txt, transcribed one row each, record ids in decimal.
 // The window opens at the LAST BOOT THAT COMPLETED before the DIMM change (0x3ea restart, 0x3eb
 // firmware progress, 0x3ec/0x3ed the OEM pair) so the corpus contains a positive control, and runs
-// to the last record in the capture. The BMC clock rendering is the controller's and is about four
-// hours behind the observer's UTC (mtcollins1_bmc_clock_skew).
-data mtcollins1_sel_window: List<SelWindowEvent> = [
+// to the last record in the capture. The BMC clock rendering is the controller's own and is carried
+// verbatim; it is not joined to the observer's clock anywhere in this change.
+data mtcollins1_sel_final: SelWindowCapture = SelWindowCapture {
+  artifact_path: "artifacts/bmc/mtcollins1-32dimm/50-sel-final.txt",
+  byte_count: byte_size(count: 99651),
+  digest: Sha256Hash(Sha256Digest { hex: "14e84cd9cbd2d89d6be46caff42c3d5ab0a19079fa4546d6e6ec449f759c7ba5" }),
+  events: [
   SelWindowEvent { record_id: 1002, bmc_clock_rendering: "09/10/2026 09:24:13 PM UTC", kind: BootRestart { offset: SystemRestart } },
   SelWindowEvent { record_id: 1003, bmc_clock_rendering: "09/10/2026 09:25:27 PM UTC", kind: FirmwareProgressRecord { offset: FirmwareProgress { progress_rendering: "System boot initiated" } } },
   SelWindowEvent { record_id: 1004, bmc_clock_rendering: "09/10/2026 09:25:55 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "12c805000000" } } },
@@ -265,7 +263,12 @@ data mtcollins1_sel_window: List<SelWindowEvent> = [
   SelWindowEvent { record_id: 1101, bmc_clock_rendering: "09/11/2026 06:25:00 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
   SelWindowEvent { record_id: 1102, bmc_clock_rendering: "09/11/2026 06:30:08 PM UTC", kind: BootRestart { offset: SystemRestart } },
   SelWindowEvent { record_id: 1103, bmc_clock_rendering: "09/11/2026 06:30:11 PM UTC", kind: OemTimestamped { payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" } } },
-]
+  ],
+}
+
+fn mtcollins1_sel_window() -> List<SelWindowEvent> {
+  mtcollins1_sel_final.events
+}
 
 // THE CURSOR A COLLECTOR WOULD HAVE RECORDED BEFORE THE FIRST POST-CHANGE BOOT: 0x3ee, the
 // "Power off/down" that ended the last 16-DIMM boot. Everything after it is the 32-DIMM
@@ -297,15 +300,6 @@ data mtcollins1_oem_pair_beside_completed_boots: List<OemSelPayload> = [
 // its bytes. That is a weaker fact than "the controller looked at 0fde70330102 and declined": the
 // surface offers no OEM decode at all. It is recorded at that weaker strength, and the capability
 // profile's OemDecodeControllerDeclaredUnknown is the arm it supports.
-type WebEventLogDecodeObservation {
-  artifact_path: NonEmptyStr
-  digest: ContentHash
-  records_served: Int
-  oem_records_served: Int
-  advanced_event_description_uniformly: NonEmptyStr
-  oem_sel_data_empty: Bool
-}
-
 data mtcollins1_web_event_log_decode: WebEventLogDecodeObservation = WebEventLogDecodeObservation {
   artifact_path: "artifacts/bmc/mtcollins1-32dimm/40-weblog.json",
   digest: Sha256Hash(Sha256Digest { hex: "f0b466275a9edd5d6736e940ed776a446a415893ce2278c26a045cdc584516a8" }),
@@ -317,7 +311,8 @@ data mtcollins1_web_event_log_decode: WebEventLogDecodeObservation = WebEventLog
 
 // ── the capability profile, as measured today ──────────────────────────────────────────────────
 
-// SOL present but silent (four identical captures plus the keystroke probe); raw SEL and standard
+// SOL present but silent (four identical captures, and the keystroke probe 22-sol-probe.log --
+// two carriage returns fed in, only the banner and the probe's own exit line back); raw SEL and standard
 // decode yes (50-sel-final.txt renders every standard sensor event); OEM decode no
 // (mtcollins1_web_event_log_decode); web event log yes (it answered 500 records); per-DIMM
 // localization no (the SEL carries no slot-addressed record and the census module already
@@ -329,35 +324,12 @@ data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObserva
   controller_firmware: mtcollins1_firmware,
   console: SolPresentSilent,
   sel: SelStandardDecoded,
-  oem_sel_decode: OemDecodeControllerDeclaredUnknown,
+  oem_sel_decode: oem_sel_decode_capability_of_web_log(observation: mtcollins1_web_event_log_decode),
   web_event_log: WebEventLogAvailable,
   dimm_localization: LocalizationUnavailableFromExposedTelemetry,
   memory_power: AggregateMemoryPowerExposed,
   managed_ac: NoManagedAcActuator,
   host_callback: HostCallbackIntendedNotDemonstrated,
-}
-
-// ── the controller clock ───────────────────────────────────────────────────────────────────────
-
-// JOINED, NOT ASSUMED. SEL record 0x424 "Power Unit ChassisPwrStatus | AC lost" is stamped
-// 09/11/2026 06:13:51 PM by the controller; the observer's watcher (10-ac-meta.txt) logged the
-// controller unreachable at 2026-09-11T22:13:43.167Z. The two describe one AC removal, so the
-// controller's clock reads about 3h59m52s behind UTC. Any join of SEL time to observer time goes
-// through this row.
-type BmcClockSkewObservation {
-  sel_record_id: Int
-  sel_clock_rendering: NonEmptyStr
-  observer_instant: EpochMs
-  observer_artifact_path: NonEmptyStr
-  controller_behind_observer_by: Second
-}
-
-data mtcollins1_bmc_clock_skew: BmcClockSkewObservation = BmcClockSkewObservation {
-  sel_record_id: 1060,
-  sel_clock_rendering: "09/11/2026 06:13:51 PM UTC",
-  observer_instant: 1789164823167,
-  observer_artifact_path: "artifacts/bmc/mtcollins1-32dimm/10-ac-meta.txt",
-  controller_behind_observer_by: second(count: 14392),
 }
 
 // ── the collectors-before-actuation receipt, as a readiness fixture ────────────────────────────
@@ -415,7 +387,7 @@ fn mtcollins1_ac_cycle_readiness_as_required() -> CollectorsReadiness {
 
 fn mtcollins1_32dimm_verdict() -> PreOsBringupVerdict {
   pre_os_bringup_verdict(
-    window: sel_window_after_cursor(window: mtcollins1_sel_window, cursor_record_id: mtcollins1_sel_cursor_before_32dimm),
+    window: sel_window_after_cursor(window: mtcollins1_sel_window(), cursor_record_id: mtcollins1_sel_cursor_before_32dimm),
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   )
@@ -424,7 +396,7 @@ fn mtcollins1_32dimm_verdict() -> PreOsBringupVerdict {
 fn mtcollins1_last_16dimm_verdict() -> PreOsBringupVerdict {
   pre_os_bringup_verdict(
     window: filter(
-      xs: sel_window_after_cursor(window: mtcollins1_sel_window, cursor_record_id: mtcollins1_sel_cursor_before_last_16dimm_boot),
+      xs: sel_window_after_cursor(window: mtcollins1_sel_window(), cursor_record_id: mtcollins1_sel_cursor_before_last_16dimm_boot),
       f: e => e.record_id <= mtcollins1_sel_cursor_before_32dimm,
     ),
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
@@ -434,7 +406,7 @@ fn mtcollins1_last_16dimm_verdict() -> PreOsBringupVerdict {
 
 fn mtcollins1_oem_association() -> OemSelEmpiricalAssociation {
   oem_sel_empirical_association(
-    window: mtcollins1_sel_window,
+    window: mtcollins1_sel_window(),
     payload: mtcollins1_oem_payload_since_change,
     never_beside_candidates: mtcollins1_oem_pair_beside_completed_boots,
     profile: mtcollins1_pre_os_capabilities,
@@ -495,7 +467,7 @@ fn check_console_silence_is_not_a_terminal() -> ProcessExit {
     exit_failure(reason: "console-silence: a capture whose digest equals the session banner was read as host bytes")
   }
   let verdict = match pre_os_bringup_verdict(
-    window: sel_window_after_cursor(window: mtcollins1_sel_window, cursor_record_id: 1103),
+    window: sel_window_after_cursor(window: mtcollins1_sel_window(), cursor_record_id: 1103),
     console: mtcollins1_sol_reading(capture: mtcollins1_sol_idle_capture),
     profile: mtcollins1_pre_os_capabilities,
   ) {
