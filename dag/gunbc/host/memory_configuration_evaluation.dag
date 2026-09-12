@@ -228,8 +228,8 @@ fn memory_standing_facts(obligation: MemoryOperatingObligation, standing: HostMe
 }
 
 fn memory_qualification_facts(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence, obligation: MemoryOperatingObligation) -> MemoryCheckFacts {
+  let receipts = filter(evidence.qualifications, r => (configuration == r.configuration))
   fold(configuration.population, init: memory_empty_facts, f: (acc, dimm) => {
-    let receipts = filter(evidence.qualifications, r => (configuration == r.configuration))
     let matched = fold(receipts, init: false, f: (seen, r) => seen ||
       any(r.standings, s => s.host == configuration.platform.host && s.part_number == dimm.catalog.part_number
         && any(s.population, slot => slot == dimm.position.connector)))
