@@ -12,7 +12,14 @@ import std.measure { Second }
 // coexist with an unacknowledged session: that pair has no constructor. Local client banner
 // bytes (ipmitool tcgetattr / SOL Session operational) are not host payload. A window that
 // elapses while the client stays attached is not coverage complete; the deadline must
-// terminate the client.
+// terminate the client. The four-field product (NotAcknowledged × Complete × stdin-EOF ×
+// no payload) is unconstructible. No compiler fixture harness for an invalid product of
+// those fields is enrolled; that missing harness is the next-rung trigger for a typecheck
+// RED of the old record shape. The executing control is sol_host_fact_from_collector on
+// SolCollectorSessionNotAcknowledged, which cannot return SolHostProducedNoConsoleBytes.
+// Frontier after #11110 lands: ConsoleSessionHeldPastActivation derives from
+// SolCollectorSessionAcknowledged whose termination is not yet decided; SolBannerOnly /
+// SolHostBytesObserved derive from host_payload standing.
 
 type SolCollectorCoverageStanding
   = SolCoverageNeverEstablished
@@ -65,13 +72,3 @@ fn sol_host_fact_from_collector(obs: SolCollectorObservation) -> SolHostFactFrom
       }
   }
 }
-
-// The four-field product (NotAcknowledged × Complete × stdin-EOF × no payload) is unconstructible
-// here. No compiler fixture harness for an invalid product of those fields is enrolled; that
-// missing harness is the next-rung trigger for a typecheck RED of the old record shape. The
-// executing control is sol_host_fact_from_collector on SolCollectorSessionNotAcknowledged, which
-// cannot return SolHostProducedNoConsoleBytes.
-
-// Frontier after #11110 lands: ConsoleSessionHeldPastActivation derives from
-// SolCollectorSessionAcknowledged whose termination is not yet decided; SolBannerOnly /
-// SolHostBytesObserved derive from host_payload standing.
