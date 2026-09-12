@@ -1,0 +1,129 @@
+module gunbc.fabric_m0_job_ending
+
+import std.types { List }
+import std.content_hash { Sha256Digest }
+import std.scoped_authorization { AttemptIdentity }
+import product.fabric.work {
+  Work,
+}
+import extdeps.github.checks {
+  CheckConclusion,
+  Success,
+  Failure,
+  ActionRequired,
+}
+import gunbc.fabric_m0_completion {
+  ComputationOutcome,
+  CommittedOutput,
+  OriginObservation,
+  ManifestMember,
+  JobPublication,
+  PublishSuccess,
+  PublishComputationFailed,
+  PublishFinalizationFailed,
+  PublishPendingReconciliation,
+  PublishObligationsUnreadable,
+}
+import gunbc.fabric_m0_commit {
+  CommitNamespace,
+  CommitTransportOutcome,
+  ManifestReadbackObservation,
+}
+import gunbc.fabric_m0_publication { publish_work }
+
+// THE PRODUCTION CONSUMER NAMED ON gunbc.fabric_m0_commit publish_after_commit.
+//
+// That trigger is a CAPABILITY: a job-ending that already holds the run's Work, the attempt's
+// commit transport, and an independent origin readback of the commit manifest, and that decides
+// the process or check conclusion from the JobPublication publish_work returns. This module is
+// that ending as a fold. It does not select an origin, mint an OriginReading, or invent a
+// CommitTransportOutcome. Those stay received.
+//
+// WHAT IT DOES NOT YET CLOSE. Wiring this fold into claim_executor --required-ci would replace
+// gunbc.merge_admission_produce floor_exit_to_check_conclusion, which maps process exit 0/1 onto
+// Success/Failure and never constructs CommitTransportOutcome or ManifestReadbackObservation. That
+// wire is the remaining executing route. Doing it before an independent origin read can be
+// constructed on the run path has two forbidden arms: fabricating a confirming readback, or
+// refusing every green job (every missing observation is ReadbackUnknown / pending). The origin
+// PUT and the self-staging GET are a sibling conjunct; this fold is ready for them and does not
+// impersonate them.
+//
+// CONSUMERS (DESIGN 3c): test.claim.fabric_m0_job_ending_witness exercises the publication
+// arms this fold can inhabit — Success, ComputationFailed, FinalizationFailed, Pending —
+// through end_required_job. PublishObligationsUnreadable is matched for exhaustiveness and is
+// not reached through the ending: publish_work always resolve_output_obligations with
+// work.id.key, and work_for derives that key from the same contract and requirements, so
+// WorkKeyDoesNotMatchContract has no producer on this path; the mapping over that arm is
+// witnessed on the value directly (Failure, not ActionRequired). Every hermetic arm runs under a
+// mock that digests every path to one constant, so tools.fabric_m0_origin_readback_probe drives
+// end_required_job over real bytes with a mutation control -- the same record read from the wrong
+// fixture file concludes Failure -- which is the half the mock cannot show.
+// stamp_floor_receipt_with_conclusion can take the CheckConclusion this fold returns; it is not
+// called here because this module is the decision, not the GitHub report. The required-CI ending
+// is the named later consumer.
+
+// WHY PENDING IS ActionRequired AND NEVER Neutral OR Success.
+//
+// GitHub's check API treats Neutral (and Skipped) as success for required status checks. Mapping
+// PublishPendingReconciliation there would publish green over bytes nobody confirmed — the
+// absorbing fallback DESIGN 5 forbids. gunbc.merge_admission check_conclusion_is_success already
+// treats only Success as success, so Neutral would fail THIS repository's admission fold, but
+// the check conclusion is also a GitHub fact and must not pass there either. ActionRequired is
+// the arm that completes the check, does not pass a required check, and names that a human or a
+// later reconciliation must act. Failure is reserved for decided computation or finalization
+// defects; pending is not decided absence.
+fn check_conclusion_of_publication(publication: JobPublication) -> CheckConclusion {
+  match publication {
+    PublishSuccess { attempt: _, manifest_digest: _ } => Success
+    PublishComputationFailed { attempt: _, cause: _, unresolved: _ } => Failure
+    PublishFinalizationFailed { attempt: _, subject: _, cause: _, unresolved: _ } => Failure
+    PublishObligationsUnreadable { attempt: _, subject: _, cause: _, unresolved: _ } => Failure
+    PublishPendingReconciliation { attempt: _, subject: _, cause: _, unresolved: _ } => ActionRequired
+  }
+}
+
+// Sealed because the pair is one fact: conclusion is derived from publication inside
+// end_required_job. An open record lets any module write JobEnding { publication: pending,
+// conclusion: Success }, which is the guarantee the comment used to claim and did not hold
+// (DESIGN 4b(1)). sole_constructor on this RECORD (not on JobPublication — coproduct seals do
+// not refuse cross-module variants) makes that literal a compile refusal outside this module.
+// Evidence: test.claim.fabric_m0_job_ending_seal. Path-scoped: the emitted Rust mirror is a
+// public struct; this fold has no Rust consumer.
+type JobEnding sole_constructor {
+  publication: JobPublication
+  conclusion: CheckConclusion
+}
+
+// THE ENDING. One call from a run that already holds Work, transport, and an independent
+// origin observation to the pair a process or check can report. The conclusion is DERIVED
+// from the publication. The seal is what makes stamping Success beside a pending publication
+// unwritable on the source-to-dag path; the mapping below is what chooses the conclusion.
+fn end_required_job<P>(
+  work: Work<P>,
+  attempt: AttemptIdentity,
+  computation: ComputationOutcome,
+  committed: List<CommittedOutput>,
+  observations: List<OriginObservation>,
+  namespace: CommitNamespace,
+  manifest_digest: Sha256Digest,
+  members: List<ManifestMember>,
+  transport: CommitTransportOutcome,
+  observed: ManifestReadbackObservation
+) -> JobEnding {
+  let publication = publish_work(
+    work: work,
+    attempt: attempt,
+    computation: computation,
+    committed: committed,
+    observations: observations,
+    namespace: namespace,
+    manifest_digest: manifest_digest,
+    members: members,
+    transport: transport,
+    observed: observed
+  )
+  JobEnding {
+    publication: publication,
+    conclusion: check_conclusion_of_publication(publication: publication),
+  }
+}

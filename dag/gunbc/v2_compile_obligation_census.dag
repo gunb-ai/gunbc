@@ -26,9 +26,12 @@ import gunbc.witness_v2_native_route { native_route_universe_member }
 // WHAT THE ROSTER IS, AND WHAT IT IS NOT: IT IS NOT PROVEN COMPLETE. The rows were enumerated by
 // hand from v2.compiler.compile's two enrolled lens rosters, std.primitive_identity's declared
 // traversal facts, and two classes surfaced by measurement — and nothing here joins that set to
-// those authorities at identity grain, because the enrolled rosters are the CONTENTS of two list
-// literals and no reader available to this module can walk them. So a lens de-enrolled from
-// always_required_root_lenses, or one added to it, leaves this roster stale and silent.
+// those authorities at identity grain, because the enrolled roster is the CONTENTS of a list
+// literal and no reader available to this module can walk it. So a lens de-enrolled from
+// required_compile_lens_roster, or one added to it, leaves this roster stale and silent. (Since
+// gunbc#11004 that is ONE roster carrying a grain per row, where it was two grain-specific lists
+// when this was written; the staleness argument is unchanged and the count of lists is not what it
+// turned on.)
 //
 // THE CENSUS THEREFORE CLAIMS COVERAGE OF ITS OWN ROWS AND NOT OF v2's OBLIGATIONS AS A WHOLE, and
 // every count below is denominated in obligations_claimed rather than in a population anyone has
@@ -454,6 +457,23 @@ fn witness_subject(entry: String, function: String, module_path: String) -> Witn
     module_path: module_path as NonEmptyStr
   }
 }
+// THE CLAIMED RUNG IS DOWNGRADED, AND THE EVIDENCE IS THE REASON (gunbc#11004, 2026-09-12). This
+// row claimed MechanicallyPreventable on the strength of the discriminating red named below,
+// `gate_red_quadratic_rejects`. That witness lives in `test/claim/long/`, a
+// `gunbc.ci_layer_roots witness_exclusion_frontier` pattern, so no required run had ever planned
+// it and no verdict existed. gunbc#11073's long-home arm ran it for the first time and it FAILED:
+// measured with a three-way discriminator, the specimen normalizes and the gate ACCEPTS it,
+// because `accumulator_copy_findings` returns no suspect for the fold-append accumulator shape the
+// lens exists to refuse. Confirmed latent rather than regressed -- one binary, FAIL against
+// origin/main and against the head, both sibling controls PASS on both.
+//
+// So the executed evidence establishes that the invalid state is NOT prevented, and DESIGN section
+// 4b(1) admits only the rung executed evidence supports. `Mitigatable` is the honest arm: the gate
+// is total and returns a typed outcome on every tree, so harm is contained, and nothing above that
+// is established while the analyzer misses its own specimen. The class is
+// `gunbc.recurring_failure_mode required_lens_red_control_never_executes_from_its_home`, the red is
+// admitted in `gunbc.explicit_witness_admission` with a trigger naming the analyzer capability, and
+// the RESTORATION of this rung is that same trigger -- not the witness greening by any other route.
 data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
   identity: "accumulator_copy_root_lens" as NonEmptyStr,
   kind: RequiredRootLens,
@@ -461,7 +481,7 @@ data accumulator_copy_obligation: V2CompileObligation = V2CompileObligation {
     module_path: "v2.lens.complexity_accumulator_copy.compile_gate",
     decl_name: "accumulator_copy_compile_gate"
   ) },
-  claimed_rung: MechanicallyPreventable,
+  claimed_rung: Mitigatable,
   discriminating_red: "a rooted tree threading a copied accumulator through a fold, which the gate must reject with a located diagnostic rather than a widened pass" as NonEmptyStr,
   positive_control: "the resolved add fixture, which threads no copy and must pass the root-required roster unchanged (src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag)" as NonEmptyStr,
   witnesses: [
@@ -619,7 +639,8 @@ data undecidable_verdict_collapse_obligation: V2CompileObligation = V2CompileObl
 
 // MEASURED, NOT READ. hollow_alias_blocked_via_always_required_lenses_holds was executed directly
 // against this tree and returned true — the hollow-alias tree is rejected with reason
-// fact_density_hollow_alias_locus through the always_required_lenses roster. That establishes the
+// fact_density_hollow_alias_locus through the subtree-grain partition of
+// required_compile_lens_roster. That establishes the
 // assertion HOLDS. It establishes nothing about coverage, and the interpreted column below is why.
 data fact_density_obligation: V2CompileObligation = V2CompileObligation {
   identity: "fact_density_subtree_lens" as NonEmptyStr,
@@ -877,15 +898,15 @@ data realization_cost_fidelity_obligation: V2CompileObligation = V2CompileObliga
   identity: "realization_preserves_modeled_cost_shape" as NonEmptyStr,
   kind: RealizationCostFidelity,
   home: NoHomeExists {
-    nearest: decl_ref(module_path: "std.algebra", decl_name: "CostShape"),
-    why_it_is_not_the_home: "CostShape declares what an operation's cost shape IS on the algebra template; nothing declares that a realization must preserve it, and no consumer compares an authority's declared shape to the shape of the code emitted for it. The nearest authority models one side of a comparison that has no second side" as NonEmptyStr
+    nearest: decl_ref(module_path: "std.realization_cost_fidelity", decl_name: "cost_fidelity_of"),
+    why_it_is_not_the_home: "cost_fidelity_of is the JOIN and it is now authored: given a modeled CostBound and a realized CostBound it decides preservation, divergence, and the two kinds of ignorance. What it is not is the OBSERVER. Nothing in the corpus reads a cost bound off an emitted realization, so the join has no realized operand to be given, and a comparison authority nobody can feed is not the home of an obligation about what realizations do. The home is wherever a target realization is SELECTED, which is where both operands exist at once" as NonEmptyStr
   },
   claimed_rung: OutsideTheLadder,
   discriminating_red: "a declaration whose authority declares one cost shape and whose emitted realization has another — v2.std.algebra list_append, O(n) declared and O(n^2) emitted, is the measured specimen — which some consumer must refuse" as NonEmptyStr,
   positive_control: "a declaration whose emitted realization matches its declared shape, which must be accepted; and the second specimen, list_snoc_item, whose realization is FASTER than its authority, must also be reported rather than silently passed, or the check is a one-sided ratchet rather than a fidelity comparison" as NonEmptyStr,
   witnesses: [],
   ceiling: StructurallyGuaranteed,
-  next_trigger: climbs_when(capability: "a declaration is authored that joins an authority's declared CostShape to the cost shape of the realization emitted for it, at which point this row gets a home and stops being a modeling obligation"),
+  next_trigger: climbs_when(capability: "the emitted realization of a declaration is read back as a CostBound by an executing route, so that std.realization_cost_fidelity cost_fidelity_of can be given both operands at the point a target realization is selected, and a consumer there refuses on the divergent arms. The join landed without that observer; authoring it is what moves this row from a modeling obligation to a home"),
   seed_escape: SeedEscapeOpen {
     what_the_seed_does: "the escape IS the seed's own intercept table — v1.05_emit_rust emit_typed_call builtins — which substitutes a host realization for the modeled one at emission time. That substitution is where both divergences are introduced, and it is the one place no lens reads" as NonEmptyStr
   },

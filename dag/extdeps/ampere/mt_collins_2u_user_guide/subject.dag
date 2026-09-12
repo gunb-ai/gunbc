@@ -1,0 +1,68 @@
+module extdeps.ampere.mt_collins_2u_user_guide.subject
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.publication { SpecificationDocumentDate, DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https,
+  locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=new-private-files/94/tech/Mt._Collins_2U_Users_Guide_v1.00_20220330.pdf&type=technical-document&doc_id=649",
+} }
+
+// Operator-supplied THIRD-PARTY MIRROR. Ampere authors the document, not this host.
+// The fetch and byte comparison live in gunbc, separately from document identity.
+data doslab_mirror_authority: ExternalAuthority = ExternalAuthority { uri: Uri {
+  scheme: Https,
+  locator: "repo.doslabelectronics.com/misc/Mt-Collins-2U-Users-Guide-v1-00-20220330.pdf",
+} }
+
+type MtCollins2uUserGuide {
+  title: NonEmptyStr
+  issue: NonEmptyStr
+  published: SpecificationDocumentDate
+  content_digest: NonEmptyStr
+  publication_status: DocumentPublicationStatus
+}
+
+data mt_collins_2u_user_guide: MtCollins2uUserGuide = MtCollins2uUserGuide {
+  title: "Mt. Collins 2U User Guide and Hardware Maintenance Manual",
+  issue: "1.00",
+  published: SpecificationDocumentDate { year: 2022, month: 3, day: 30 },
+  content_digest: "sha256 a8102a2a661fca508c079ba460da2f701360216517ee090a036e533bbf078bbf",
+  publication_status: PubliclyPublishedWithRestrictiveMarking { marking: "Ampere Computing Proprietary and Confidential" },
+}
+
+type MtCollins2uMemoryTopologyCitation {
+  document: MtCollins2uUserGuide
+  section: NonEmptyStr
+  figure: Nat
+  page: Nat
+  attested_facts: List<DeclarationRef>
+}
+
+// Figure 19 independently attests the slot-role legend carried from GSG Figure 8.
+// It supplies neither chassis orientation nor a physical connector colour legend.
+// Named consumer: population_diagram_identity carries this citation to the later rack UI.
+data memory_topology_citation: MtCollins2uMemoryTopologyCitation = MtCollins2uMemoryTopologyCitation {
+  document: mt_collins_2u_user_guide,
+  section: "4.2.7 Memory Module Replacement",
+  figure: 19,
+  page: 52,
+  attested_facts: [
+    DeclarationRef { module_path: "extdeps.ampere.mt_collins_getting_started_guide.dimm_layout", decl_name: "one_dpc_diagram_legend", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.ampere.mt_collins_getting_started_guide.dimm_layout", decl_name: "additional_two_dpc_diagram_legend", field: WholeDeclaration },
+  ],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.ampere.mt_collins_2u_user_guide.subject",
+    decl_name: "mt_collins_2u_user_guide",
+    field: WholeDeclaration,
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [doslab_mirror_authority],
+}

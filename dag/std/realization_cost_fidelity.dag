@@ -1,0 +1,608 @@
+module std.realization_cost_fidelity
+
+import std.algebra { CostShape, Equal, Greater, Less, Ordering }
+import std.induction {
+  CostBound,
+  GrowthRank,
+  GrowthNotOrderable,
+  OrderableGrowth,
+  cost_bound_growth_in_param,
+  cost_bound_params,
+  cost_bound_to_shape,
+  param_growth_order,
+}
+import std.pareto {
+  AxisComparison,
+  DominanceUndecided,
+  Dominated,
+  Dominates,
+  Equivalent,
+  Incomparable,
+  LowerIsBetter,
+  Same,
+  UndecidedOnEvidence,
+  axis_comparison,
+  dominance_of_comparisons,
+}
+import std.primitive_identity {
+  CoarseCostOnly,
+  PrimitiveCostFact,
+  RealizationTarget,
+  StructuredCost,
+  primitive_identity_eq,
+}
+import std.primitive_projection { PrimitiveIdentity }
+import std.types { Int, List, String }
+import std.logic { Bool }
+
+// THE MODELED COST AND THE REALIZED COST ARE TWO FACTS, AND NOTHING JOINED THEM.
+//
+// std.algebra carries what the MODEL claims an operation costs. The place a realization is chosen
+// is std.primitive_identity PrimitiveRealization -- primitive, target, handler. Between them sat
+// nothing, so a declared cost could be realized slower, or faster, and neither direction had a
+// carrier able to state it. That gap is the compile-obligation census's one row WITHOUT A HOME.
+//
+// WHY IT IS NOT IN THE LENS. A lens reads a tree and judges the SOURCE. Whether a realization
+// preserves the cost its model declares is a fact about the realization, joined at the identity the
+// realization was selected under; putting it in the complexity lens would make the lens the
+// authority on a fact it cannot see (DESIGN sections 3, 3b) -- and the failure mode
+// gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization is
+// exactly what happens when the two are conflated.
+//
+// WHO CONSUMES THIS, AND WHEN — A DECLARED FRONTIER, STATED HERE AND NOT ONLY IN A PULL REQUEST
+// (DESIGN section 3c). As landed, the only executing consumer of this module is its own witness,
+// `test.claim.realization_cost_fidelity_witness`, which exercises every arm of the join over
+// authored costs. That is deliberately NOT enough on its own, and the honest classification is the
+// middle one: a named consumer landing in a named later change.
+//
+// THE CONSUMER: the compile-obligation census's realization-cost-fidelity row — the row the census
+// currently reports as having no home — joined per (primitive, target) through
+// `realization_cost_fidelity_rows`, with `count_cost_fidelity_findings`,
+// `count_cost_fidelity_unmeasured`, `count_cost_model_unmigrated` `count_cost_body_dependent` and
+// `count_cost_not_orderable` and `count_cost_facts_contradicted` as its reported populations. THE ROUTE: the census entry point folds
+// `std.primitive_identity`'s modeled costs against `RealizationCostFact` rows measured from the
+// emitted compiler, and reports the rows.
+//
+// THE TRIGGER, and it is a capability rather than an artifact: the emitted compiler being
+// measurable per primitive, so a realized cost is an OBSERVATION rather than an assertion. Until
+// that holds there are deliberately no `RealizationCostFact` rows in the tree, because authoring a
+// realized cost by hand is exactly the fabricated fact this authority exists to catch — the model
+// and the realization would then agree by construction, which is the failure this join is built to
+// make impossible. A second, smaller trigger retires `ModeledCostNotStructured` independently, and
+// it is stated at the grain of what this module actually duplicates rather than at the grain that
+// sounded adjacent: `std.primitive_identity` `PrimitiveCostFact` already keyed a modeled cost on
+// `PrimitiveIdentity` and stored it as a `CostShape`, while this module carried a second
+// `ModeledCostBoundFact` of the same key at the structured grain. THAT FORK IS CLOSED: the coarse
+// field became `PrimitiveModeledCost`, this module's duplicate carrier was deleted, and the join
+// below reads `PrimitiveCostFact` directly, so one carrier answers at both grains. What remains is
+// the realized side, which is the frontier the paragraph above states.
+//
+// WHY THE CUT WAS NOT MECHANICAL, AND WHAT PERFORMING IT ESTABLISHED. This paragraph used to defer
+// the migration, saying it was named here and sequenced separately; it has since been PERFORMED, so
+// what remains is the finding rather than the plan. The obvious repair looked like a substitution
+// and was not one: every `CostBound` constructor needs a parameter, `param_axis_comparison` keys on
+// it and `param_union` matches it across the modeled and realized sides, so an invented name
+// produces a spurious axis and a fabricated verdict -- the exact fact this authority exists to
+// catch, authored into its own inputs.
+//
+// TWO THINGS THE MIGRATION FOUND THAT THE DEFERRAL HAD ASSUMED. There are FIVE populated rows, not
+// the six this note claimed: the sixth was the `type PrimitiveCostFact` declaration, counted by a
+// grep. And NO row's parameter is recoverable from its signature -- three are `SignatureUngrounded`
+// and each states that authoring one would fabricate it, while the two grounded rows use
+// `FinitelySupportedFunctionProfile`, which supplies type params and a `FiniteSupport`
+// classification but NO cardinality variable. The axis for those two is therefore DERIVED from the
+// carrier's declared support by a single producer, and the other three carry their coarse fact with
+// a typed cause. `std.primitive_identity` owns that derivation and states its own next rung, which
+// is a parameter identity replacing the bare `String` in `AtomicCost`.
+//
+// WHAT THAT MEANS FOR A READER OF A GREEN RUN TODAY: this module can state a divergence and has
+// never been asked about a real one. Its arms are proven against authored costs, and the population
+// it will judge does not exist yet.
+
+// WHY IT COMPARES PER OPERAND. The motivating divergence is not a rank regression: a contract
+// declaring work over both operands against a realization charging one of them is two costs of the
+// SAME rank that disagree about WHICH operand they read. A comparison that reduced each side to a
+// rank first would return "preserved" on the specimen this authority exists for.
+
+// THE DOMINANCE ALGEBRA IS std.pareto's AND IS NOT RESTATED HERE (DESIGN section 3d: growing a
+// second decision algebra beside Pareto is the fork that law exists to prevent). One axis per
+// operand, LowerIsBetter on cost rank, and std.pareto folds the axis comparisons into a verdict --
+// including its separation of Incomparable from DominanceUndecided, which is precisely the
+// distinction a cost report must not lose.
+// THE SUCCESS ARM NAMES THE COST, NOT A SHAPE, and the earlier name was a meaning fork (DESIGN
+// section 3): it said CostShapePreserved while this join compares CostBounds through std.pareto and
+// never asks for a CostShape at all. The module's own witnesses proved it in opposite directions --
+// the_rank_only_reading_cannot_see_the_concat_divergence asserts that the concat specimen has NO
+// shape, and identical_costs_are_preserved compares that same bound against itself and got a
+// "shape preserved" verdict. A name that claims a fact the comparison never established is exactly
+// the fork the section exists to prevent, and it is worse here than elsewhere because the shape
+// projection is a REAL neighbouring concept in this module: cost_bound_to_shape exists, is partial,
+// and is carried on every row as projected_shape. Two adjacent facts, one name.
+type CostFidelity
+  = ModeledCostPreserved
+  | RealizationSlowerThanModeled
+  | RealizationFasterThanModeled
+  | RealizationDivergesByOperand
+  | RealizationCostBodyDependent
+  | CostGrowthNotOrderable
+  | RealizationCostUnknown
+  | RealizationCostFactsContradict { count: Int }
+  | ModeledCostNotStructured
+
+// EVERY ARM BEYOND THE OBVIOUS TWO EXISTS TO KEEP AN HONEST ANSWER FROM BEING REPORTED AS ONE OF
+// THE OTHERS, and the roster is the declaration above rather than a count in this sentence -- a
+// counted annotation goes stale the moment an arm lands, which is what happened to the number that
+// used to open this paragraph (DESIGN section 4c: an annotation must not restate what the
+// declaration structurally says). RealizationCostBodyDependent is the newest: when two
+// costs agree on growth in every operand and differ in whether a caller-supplied body runs per
+// element, neither is known to be worse -- the body may be O(1) -- so the comparison is UNDECIDED
+// on evidence, which std.pareto already separates from Incomparable. Answering preserved there
+// would hide a real difference and answering slower would invent one. RealizationDivergesByOperand is a PROVEN TRADE-OFF -- cheaper in one operand,
+// dearer in another -- which is a finding, not an absence, and collapsing it into Unknown would be
+// the absorbing fallback (DESIGN section 5): it would read as "measured, nothing to report" while
+// meaning "measured, and the two disagree". ModeledCostNotStructured is the migration frontier: a
+// contract that has not yet stated its cost in the structured form cannot be compared at all, and
+// that is a COUNTED coverage obligation rather than a pass. RealizationCostUnknown stays reachable
+// only from a MISSING realization fact -- never as the answer to a comparison.
+
+type RealizationCostFact {
+  primitive: PrimitiveIdentity
+  target: RealizationTarget
+  cost: CostBound
+}
+
+// EQUALITY ON A CLOSED COPRODUCT IS A MATCH, NOT A STRING COMPARE. An earlier revision minted a
+// slug per arm and compared the slugs, which is a second naming scheme for arms the type already
+// names (DESIGN section 3) — and it fails silently in the direction that matters: add a fourth
+// target and the match below stops compiling, while a slug table would have answered "not equal"
+// for the new arm against itself the moment someone forgot a row.
+fn realization_target_eq(left: RealizationTarget, right: RealizationTarget) -> Bool {
+  match left {
+    InterpreterHost =>
+      match right {
+        InterpreterHost => true
+        EmitRust => false
+        EmitTypeScript => false
+      }
+    EmitRust =>
+      match right {
+        InterpreterHost => false
+        EmitRust => true
+        EmitTypeScript => false
+      }
+    EmitTypeScript =>
+      match right {
+        InterpreterHost => false
+        EmitRust => false
+        EmitTypeScript => true
+      }
+  }
+}
+
+fn param_union(modeled: CostBound, realized: CostBound) -> List<String> {
+  let seeded = cost_bound_params(b: modeled) |> fold(init: [], f: fn(acc, o) {
+    concat([o], acc)
+  })
+  reverse(cost_bound_params(b: realized) |> fold(init: seeded, f: fn(acc, o) {
+    if acc |> fold(init: false, f: fn(seen, x) { seen || x == o }) {
+      acc
+    } else {
+      concat([o], acc)
+    }
+  }))
+}
+
+// An operand named by only one side is not skipped: its rank on the other side is 0, which is the
+// TRUE statement that the cost does not grow in it. That is what makes "declares work in both
+// operands, realizes work in one" come out as a difference rather than as a missing axis.
+// THE AXIS LIST IS OPTIONAL BECAUSE AN AXIS CAN BE ABSENT, not because it can be empty. A parameter
+// whose growth std.induction cannot place on the (degree, logs) lattice yields no comparison at all,
+// and the honest fold is absorbing: one unplaceable axis makes the whole comparison unavailable,
+// because a dominance computed over the axes that happened to be placeable is a claim about a subset
+// nobody declared. It is deliberately NOT rendered as UndecidedOnEvidence, which means the costs are
+// known and their order turns on an unmodeled body — a different ignorance with a different repair.
+// A BOUND WITH NO PARAMETERS STILL HAS TO ANSWER FOR ITSELF, and this is where that happens rather
+// than in a parallel recursion. Every unorderable bound the axis fold CAN see arrives as an
+// unplaceable growth on some parameter; the one it cannot see has no parameters at all, which is
+// exactly ForeverBound and ErrorBound (and a sum containing them). With no axes, the dominance fold
+// would answer Equivalent over an empty comparison list and report an unbounded cost as PRESERVED
+// against a constant.
+//
+// THE QUESTION IS PUT TO THE CANONICAL FOLD, not to a second walk of the storage shape. Asking
+// cost_bound_growth_in_param about a parameter the bound does not carry is precisely the right
+// question: a structured bound answers zero growth in a parameter it never mentions, while
+// ForeverBound and ErrorBound answer NOT ORDERABLE whatever they are asked, and a SumBound recurses
+// to its terms through the same fold. That deleted cost_bound_is_orderable,
+// atomic_cost_is_orderable and atomic_factors_are_orderable -- three predicates that re-walked
+// CostBound's arms in parallel with the fold that already owns them (DESIGN section 5: prefer the
+// single authority the realization derives from over a check that re-states it).
+fn no_parameter_probe() -> String {
+  ""
+}
+
+fn bound_answers_for_itself_without_parameters(b: CostBound) -> Bool {
+  match cost_bound_growth_in_param(b: b, param: no_parameter_probe()) {
+    OrderableGrowth { rank: _ } => true
+    GrowthNotOrderable => false
+  }
+}
+
+fn param_axis_comparisons(
+  modeled: CostBound,
+  realized: CostBound,
+) -> List<AxisComparison>? {
+  let params = param_union(modeled: modeled, realized: realized)
+  if params.length() == 0 {
+    if bound_answers_for_itself_without_parameters(b: modeled)
+      && bound_answers_for_itself_without_parameters(b: realized) {
+      Present { value: [] }
+    } else {
+      none
+    }
+  } else {
+    params |> fold(init: Present { value: [] }, f: fn(acc, o) {
+      match acc {
+        Absent => none
+        Present { value: so_far } =>
+          match param_axis_comparison(modeled: modeled, realized: realized, param: o) {
+            Absent => none
+            Present { value: c } => Present { value: concat([c], so_far) }
+          }
+      }
+    })
+  }
+}
+
+// AN AXIS WHOSE GROWTHS AGREE AND WHOSE BODIES DO NOT IS UNDECIDED ON EVIDENCE, not Same. The
+// missing evidence is the caller's body cost, which no cost in this vocabulary carries, so the axis
+// says so in std.pareto's own word for it rather than being silently called equal.
+fn param_axis_comparison(
+  modeled: CostBound,
+  realized: CostBound,
+  param: String,
+) -> AxisComparison? {
+  match cost_bound_growth_in_param(b: modeled, param: param) {
+    GrowthNotOrderable => none
+    OrderableGrowth { rank: modeled_rank } =>
+      match cost_bound_growth_in_param(b: realized, param: param) {
+        GrowthNotOrderable => none
+        OrderableGrowth { rank: realized_rank } =>
+          Present { value: rank_axis_comparison(realized: realized_rank, modeled: modeled_rank) }
+      }
+  }
+}
+
+// THE BODY IS HELD OUT OF THE ORDER, SO IT HAS TO BE CONSULTED BESIDE IT. param_growth_order ranks
+// on (degree, logs) alone, deliberately -- a caller-supplied body is real work this carrier cannot
+// bound, so it has no position on that lattice. What follows from that is not "ignore it": a body
+// delta that OPPOSES the growth delta can outweigh it by any amount, because the body is unbounded.
+// Reporting the growth winner there answers with confidence in a direction the evidence does not
+// support -- n x body(n) against n log n is SLOWER only if the body is below logarithmic, and
+// nothing here knows that.
+//
+// So the axis is decided exactly when the two deltas agree or the body delta is zero, and is
+// UndecidedOnEvidence when they oppose. That subsumes the equal-growth case rather than sitting
+// beside it: growths equal with bodies differing is the opposition rule at a growth delta of zero,
+// which is why this is one rule and not two. The ignorance is std.pareto's own word for it, and it
+// reaches CostFidelity as RealizationCostBodyDependent -- a repair that names the body as the thing
+// nobody modeled, which is the true finding.
+fn body_order(realized: GrowthRank, modeled: GrowthRank) -> Ordering {
+  if realized.bodies < modeled.bodies {
+    Less
+  } else {
+    if realized.bodies > modeled.bodies { Greater } else { Equal }
+  }
+}
+
+fn decided_axis(growth: Ordering) -> AxisComparison {
+  match growth {
+    Equal => Same
+    Less => axis_comparison(goal: LowerIsBetter, value_order: Less)
+    Greater => axis_comparison(goal: LowerIsBetter, value_order: Greater)
+  }
+}
+
+fn rank_axis_comparison(realized: GrowthRank, modeled: GrowthRank) -> AxisComparison {
+  let growth = param_growth_order(a: realized, b: modeled)
+  match body_order(realized: realized, modeled: modeled) {
+    Equal => decided_axis(growth: growth)
+    Less =>
+      match growth {
+        Less => decided_axis(growth: Less)
+        Equal => UndecidedOnEvidence
+        Greater => UndecidedOnEvidence
+      }
+    Greater =>
+      match growth {
+        Greater => decided_axis(growth: Greater)
+        Equal => UndecidedOnEvidence
+        Less => UndecidedOnEvidence
+      }
+  }
+}
+
+// ORDERABILITY IS ASKED FIRST, BEFORE ANY AXIS EXISTS. A bound this reading cannot place on the
+// (degree, logs) lattice -- a fractional or log-based exponent, an unbounded bound, a malformed one
+// -- has no position to compare, and comparing it anyway produced the two fabrications this arm
+// exists to stop: sqrt(n) ordered as cheaper than n, and ForeverBound ordered as equal to a
+// constant. It is deliberately NOT folded into RealizationCostBodyDependent: that arm means both
+// costs are fully known and their ORDER turns on a body cost nobody modeled, which is a different
+// ignorance with a different repair (model the body, versus extend this reading to the exponent
+// forms std.induction already carries).
+fn cost_fidelity_of(modeled: CostBound, realized: CostBound) -> CostFidelity {
+  cost_fidelity_of_orderable(modeled: modeled, realized: realized)
+}
+
+fn cost_fidelity_of_orderable(modeled: CostBound, realized: CostBound) -> CostFidelity {
+  match param_axis_comparisons(modeled: modeled, realized: realized) {
+    Absent => CostGrowthNotOrderable
+    Present { value: comparisons } => fidelity_of_comparisons(comparisons: comparisons)
+  }
+}
+
+fn fidelity_of_comparisons(comparisons: List<AxisComparison>) -> CostFidelity {
+  match dominance_of_comparisons(comparisons: comparisons) {
+    Dominates => RealizationFasterThanModeled
+    Dominated => RealizationSlowerThanModeled
+    Equivalent => ModeledCostPreserved
+    Incomparable => RealizationDivergesByOperand
+    DominanceUndecided => RealizationCostBodyDependent
+  }
+}
+
+type RealizationCostFidelityRow {
+  primitive: PrimitiveIdentity
+  target: RealizationTarget
+  modeled: CostBound?
+  realized: CostBound?
+  fidelity: CostFidelity
+  projected_shape: CostShape?
+}
+
+// A KEY WITH TWO FACTS IS A CONTRADICTED KEY, NOT A FIRST ONE. The earlier fold stopped at the
+// first match, so [linear, quadratic] and [quadratic, linear] over one (primitive, target) answered
+// DIFFERENTLY -- the verdict was decided by list order, which is a property of the caller's
+// accumulator rather than of the realization. That is the fabricated plausible output DESIGN
+// section 5 forbids, and it is worse than a refusal because the wrong answer is well-formed.
+//
+// The three arms are the three facts a lookup can establish, and the fold reaches Duplicated from
+// EITHER order, which is what makes the answer independent of how the caller built its list.
+type RealizationCostLookup
+  = RealizationCostFactAbsent
+  | RealizationCostFactSingleton { cost: CostBound }
+  | RealizationCostFactsDuplicated { count: Int }
+
+fn realization_cost_for(
+  facts: List<RealizationCostFact>,
+  primitive: PrimitiveIdentity,
+  target: RealizationTarget,
+) -> RealizationCostLookup {
+  facts |> fold(init: RealizationCostFactAbsent, f: fn(acc, fact) {
+    if primitive_identity_eq(left: fact.primitive, right: primitive)
+      && realization_target_eq(left: fact.target, right: target) {
+      match acc {
+        RealizationCostFactAbsent => RealizationCostFactSingleton { cost: fact.cost }
+        RealizationCostFactSingleton { cost: _ } => RealizationCostFactsDuplicated { count: 2 }
+        RealizationCostFactsDuplicated { count: n } => RealizationCostFactsDuplicated { count: n + 1 }
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn realization_cost_fidelity_row(
+  modeled: PrimitiveCostFact,
+  bound: CostBound,
+  target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+) -> RealizationCostFidelityRow {
+  let lookup = realization_cost_for(facts: facts, primitive: modeled.primitive, target: target)
+  RealizationCostFidelityRow {
+    primitive: modeled.primitive,
+    target: target,
+    modeled: Present { value: bound },
+    realized: match lookup {
+      RealizationCostFactSingleton { cost: c } => Present { value: c }
+      RealizationCostFactAbsent => none
+      RealizationCostFactsDuplicated { count: _ } => none
+    },
+    fidelity: match lookup {
+      RealizationCostFactAbsent => RealizationCostUnknown
+      RealizationCostFactSingleton { cost: r } => cost_fidelity_of(modeled: bound, realized: r)
+      RealizationCostFactsDuplicated { count: n } => RealizationCostFactsContradict { count: n }
+    },
+    projected_shape: cost_bound_to_shape(b: bound),
+  }
+}
+
+// A primitive whose model has not yet been restated in the structured form gets a row too, with the
+// frontier arm. Omitting it would shrink the denominator by exactly the population that has not
+// been migrated, which is the population the frontier is about.
+fn unstructured_modeled_row(
+  primitive: PrimitiveIdentity,
+  target: RealizationTarget,
+) -> RealizationCostFidelityRow {
+  RealizationCostFidelityRow {
+    primitive: primitive,
+    target: target,
+    modeled: none,
+    realized: none,
+    fidelity: ModeledCostNotStructured,
+    projected_shape: none,
+  }
+}
+
+// THE TWO INPUT LISTS ARE A PARTITION, AND NOTHING ENFORCED IT. `modeled` says "this primitive has
+// stated its cost in the structured form" and `unstructured` says "this one has not". They are the
+// two halves of one question, so a primitive in BOTH is a contradiction about the same key -- and
+// the fold below would have answered it twice, once with a real fidelity and once with
+// ModeledCostNotStructured, leaving a reader to pick. A duplicate within either list is the same
+// defect at a shorter range. None of it is a per-row fact: it is the input's SHAPE that is wrong,
+// so the whole report refuses rather than emitting rows derived from a premise that does not hold
+// (DESIGN section 5: a failure arm refuses, it never widens).
+// THE PARTITION REFUSAL LOST TWO OF ITS THREE ARMS TO CONSTRUCTION, WHICH IS A CLIMB AND NOT A
+// DELETION. This join used to take two lists -- `modeled` and `unstructured` -- and a primitive
+// appearing in BOTH was a contradiction about one key that only a check could catch, so
+// `PrimitiveIsBothStructuredAndUnstructured` and `UnstructuredPrimitiveDuplicated` existed to catch
+// it. It now takes ONE list of `PrimitiveCostFact`, whose `cost` is a coproduct: a row is
+// structured or coarse-only, never both, because there is no way to write both. DESIGN section 5
+// prefers a single authority the realization is derived from over a check that flags the bad state
+// afterwards, and section 4b calls this the climb from mechanically preventable to structurally
+// impossible. The surviving arm is the one that is still writable: the same primitive on two rows.
+//
+// AND IT IS RENAMED, because the old name stopped being true. `StructuredPrimitiveDuplicated` said
+// "structured" when there were two lists; the single list holds structured and coarse-only rows
+// alike, so the arm now fires for a duplicate of either kind. Keeping the old spelling would leave
+// one name covering two materially different populations -- the DESIGN section 3 meaning fork this
+// PR is closing one layer up.
+type FidelityInputRefusal
+  = PrimitiveDuplicatedInSubjects { primitive: PrimitiveIdentity }
+
+type RealizationCostFidelityReport
+  = FidelityInputRefused { cause: FidelityInputRefusal }
+  | FidelityRows { rows: List<RealizationCostFidelityRow> }
+
+fn primitive_occurrences(ps: List<PrimitiveIdentity>, p: PrimitiveIdentity) -> Int {
+  ps |> fold(init: 0, f: fn(acc, q) {
+    if primitive_identity_eq(left: q, right: p) { acc + 1 } else { acc }
+  })
+}
+
+fn modeled_primitives(modeled: List<PrimitiveCostFact>) -> List<PrimitiveIdentity> {
+  reverse(modeled |> fold(init: [], f: fn(acc, m) { concat([m.primitive], acc) }))
+}
+
+// ONE LIST, ONE PASS, ONE WRITABLE CONTRADICTION. Two of the three former arms are gone because the
+// states they compared cannot both be written of one row any more; what remains is a primitive
+// appearing on two rows of the SAME list, which no coproduct can prevent.
+fn fidelity_input_refusal(modeled: List<PrimitiveCostFact>) -> FidelityInputRefusal? {
+  let subjects = modeled_primitives(modeled: modeled)
+  subjects |> fold(init: none, f: fn(acc, p) {
+    match acc {
+      Present { value: c } => Present { value: c }
+      Absent =>
+        if primitive_occurrences(ps: subjects, p: p) > 1 {
+          Present { value: PrimitiveDuplicatedInSubjects { primitive: p } }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+// THE DENOMINATOR IS THE WHOLE SUBJECT UNIVERSE, AND IT IS NOW ONE FOLD. Every row of the input
+// produces exactly one report row: a structured cost is compared, a coarse-only cost reports the
+// frontier arm. The population that has not been migrated stays IN the denominator, which is what
+// the two-list form was for and what the coproduct now gives for free.
+fn realization_cost_fidelity_rows(
+  modeled: List<PrimitiveCostFact>,
+  target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+) -> RealizationCostFidelityReport {
+  match fidelity_input_refusal(modeled: modeled) {
+    Present { value: cause } => FidelityInputRefused { cause: cause }
+    Absent =>
+      FidelityRows { rows: reverse(modeled |> fold(init: [], f: fn(acc, m) {
+        concat([match m.cost {
+          StructuredCost { bound: b } =>
+            realization_cost_fidelity_row(modeled: m, bound: b, target: target, facts: facts)
+          CoarseCostOnly { shape: _, cause: _ } =>
+            unstructured_modeled_row(primitive: m.primitive, target: target)
+        }], acc)
+      })) }
+  }
+}
+
+// ONE MAPPING FROM ARM TO REPORTED POPULATION, AND EVERY COUNT READS IT. This replaced six
+// near-identical nine-arm matches that differed only in which arm incremented -- six independent
+// sources for one fact ("which reported population does this row belong to"), so a seventh arm had
+// to be classified correctly six times by hand. I know the cost of that shape exactly, because I
+// added the seventh arm and the substrate made me touch four folds here and twelve matches in the
+// witnesses; the exhaustiveness check caught every one, which is what kept it correct and is NOT
+// the same as it being right (DESIGN section 2: net concepts must not grow by re-invention).
+//
+// THE PARTITION IS NOW TOTAL BY CONSTRUCTION rather than by six coincidences: every arm maps to
+// exactly one population, so the counts cannot overlap and cannot leave an arm uncounted. Nothing
+// established that before -- the previous folds could each have skipped the same arm and no
+// assertion would have noticed, which is why the witness now asserts the counts sum to the row
+// count rather than checking each in isolation.
+type CostFidelityPopulation
+  = PopulationPreserved
+  | PopulationFinding
+  | PopulationBodyDependent
+  | PopulationNotOrderable
+  | PopulationContradicted
+  | PopulationUnmeasured
+  | PopulationUnmigrated
+
+fn cost_fidelity_population(fidelity: CostFidelity) -> CostFidelityPopulation {
+  match fidelity {
+    ModeledCostPreserved => PopulationPreserved
+    RealizationSlowerThanModeled => PopulationFinding
+    RealizationFasterThanModeled => PopulationFinding
+    RealizationDivergesByOperand => PopulationFinding
+    RealizationCostBodyDependent => PopulationBodyDependent
+    CostGrowthNotOrderable => PopulationNotOrderable
+    RealizationCostFactsContradict { count: _ } => PopulationContradicted
+    RealizationCostUnknown => PopulationUnmeasured
+    ModeledCostNotStructured => PopulationUnmigrated
+  }
+}
+
+type CostFidelityCounts {
+  preserved: Int
+  findings: Int
+  body_dependent: Int
+  not_orderable: Int
+  contradicted: Int
+  unmeasured: Int
+  unmigrated: Int
+}
+
+fn cost_fidelity_counts(rows: List<RealizationCostFidelityRow>) -> CostFidelityCounts {
+  rows |> fold(init: CostFidelityCounts {
+    preserved: 0, findings: 0, body_dependent: 0,
+    not_orderable: 0, contradicted: 0, unmeasured: 0, unmigrated: 0,
+  }, f: fn(acc, row) {
+    match cost_fidelity_population(fidelity: row.fidelity) {
+      PopulationPreserved => CostFidelityCounts { preserved: acc.preserved + 1, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationFinding => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings + 1, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationBodyDependent => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent + 1, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationNotOrderable => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable + 1, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationContradicted => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted + 1, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated }
+      PopulationUnmeasured => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured + 1, unmigrated: acc.unmigrated }
+      PopulationUnmigrated => CostFidelityCounts { preserved: acc.preserved, findings: acc.findings, body_dependent: acc.body_dependent, not_orderable: acc.not_orderable, contradicted: acc.contradicted, unmeasured: acc.unmeasured, unmigrated: acc.unmigrated + 1 }
+    }
+  })
+}
+
+// THE NAMED COUNTS STAY AS THE CONSUMER SURFACE, derived from the one fold rather than re-spelling
+// the mapping. The census reads them by name, and a caller that wants the whole partition in one
+// pass reads cost_fidelity_counts directly.
+fn count_cost_fidelity_findings(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).findings
+}
+
+fn count_cost_fidelity_unmeasured(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).unmeasured
+}
+
+fn count_cost_body_dependent(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).body_dependent
+}
+
+fn count_cost_facts_contradicted(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).contradicted
+}
+
+fn count_cost_not_orderable(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).not_orderable
+}
+
+fn count_cost_model_unmigrated(rows: List<RealizationCostFidelityRow>) -> Int {
+  cost_fidelity_counts(rows: rows).unmigrated
+}
+
+
+

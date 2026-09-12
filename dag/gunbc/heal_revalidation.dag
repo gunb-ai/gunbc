@@ -18,6 +18,17 @@ type HealOutcome
       head: CommitSha,
       author_commit_paths: List<String>
     }
+  | HealPushRefused {
+      prior_head: CommitSha,
+      healed_head: CommitSha,
+      remote_head: CommitSha
+    }
+  | HealSupersededByAuthorHead {
+      prior_head: CommitSha,
+      healed_head: CommitSha,
+      remote_head: CommitSha,
+      changed_artifacts: List<String>
+    }
 
 type HealDispatchOutcome
   = HealDispatchPending { healed_head: CommitSha }
@@ -35,6 +46,10 @@ type PriorRunDisposition
   | SupersededByHealedHead {
       prior_head: CommitSha,
       healed_head: CommitSha
+    }
+  | SupersededByAuthorHead {
+      prior_head: CommitSha,
+      remote_head: CommitSha
     }
 
 type HealRevalidationState
@@ -84,6 +99,10 @@ fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
     HealNoChange { head } => HealRevalidationNotRequired { head: head }
     HealAuthorCommitRequired { head, author_commit_paths: _ } =>
       HealRevalidationNotRequired { head: head }
+    HealPushRefused { prior_head, healed_head: _, remote_head: _ } =>
+      HealRevalidationNotRequired { head: prior_head }
+    HealSupersededByAuthorHead { prior_head, healed_head: _, remote_head: _, changed_artifacts: _ } =>
+      HealRevalidationNotRequired { head: prior_head }
     HealProduced { prior_head, healed_head, changed_artifacts } =>
       HealRevalidationRequired {
         prior_head: prior_head,
@@ -94,11 +113,31 @@ fn heal_revalidation_initial(outcome: HealOutcome) -> HealRevalidationState {
   }
 }
 
+// THE AUTHOR-PRODUCED SUPERSEDE IS THE MIRROR OF THE HEAL-PRODUCED ONE, AND IT EXITS ZERO WHERE
+// THAT ONE EXITS NONZERO. Both arms say the same thing about standing: the head this run judged is
+// no longer the branch tip, so this run has no standing to report a verdict. They differ in what
+// they leave behind. SupersededByHealedHead follows a PUBLISHED head -- heal pushed H1, nothing has
+// judged it, and the nonzero exit is what keeps an unjudged tree from standing as green.
+// SupersededByAuthorHead publishes NOTHING: the push was refused non-fast-forward, the healed
+// commit stays on the runner, and the branch is at an author head that carries its own run. There
+// is no unjudged tree created here and no repair withheld -- the successor run regenerates from
+// the successor tree, which is the only tree that matters. Exiting nonzero would render a red
+// square beside a pull request for a scheduling outcome about a revision that no longer exists,
+// which is the misattribution gunbc.recurring_failure_mode
+// repair_job_red_is_attributed_to_the_content_it_repaired exists to record. That row, and not this
+// annotation, carries what its arms now stand at; nothing can read a line of prose, so a status
+// asserted here would be a second and unreadable copy of a fact the row owns. The outcome stays
+// loud and countable as a typed, named line carrying all three revisions; it does not stay loud by
+// borrowing the channel that means "the content under review is wrong".
 fn prior_run_disposition(outcome: HealOutcome) -> PriorRunDisposition {
   match outcome {
     HealNoChange { head } => PriorRunStillCurrent { head: head }
     HealAuthorCommitRequired { head, author_commit_paths: _ } =>
       PriorRunStillCurrent { head: head }
+    HealPushRefused { prior_head, healed_head: _, remote_head: _ } =>
+      PriorRunStillCurrent { head: prior_head }
+    HealSupersededByAuthorHead { prior_head, healed_head: _, remote_head, changed_artifacts: _ } =>
+      SupersededByAuthorHead { prior_head: prior_head, remote_head: remote_head }
     HealProduced { prior_head, healed_head, changed_artifacts: _ } =>
       SupersededByHealedHead { prior_head: prior_head, healed_head: healed_head }
   }
@@ -180,3 +219,82 @@ fn heal_revalidation_admits(
     HealRevalidationDeniedCoverage { healed_head: _, coverage: _ } => false
   }
 }
+
+data heal_token_arm_probe: CommitSha = "0000000000000000000000000000000000000000"
+
+// ONE AUTHORITY FOR EVERY HealOutcome AND PriorRunDisposition ARM THE JOB PRINTS, which is not the
+// same as every word it prints: HealRepairDeclarationMissing names a step-integrity refusal that
+// belongs to the emitter's own protocol and has no arm here, and it is left alone deliberately
+// rather than dragged into this coproduct to make a tidier sentence. gunbc.ci_spec emits these names into shell,
+// and the first draft of this module claimed an arm could not be applied there because its
+// revisions exist only as shell variables. That was wrong in the same function it was written
+// against: gunbc.ci_spec already splices gunbc.heal_push_plan live_heal_push_refusal_cause_token
+// into an emitted line, so construction was available and this landed as a check beside it. The
+// tokens below are the construction -- the emitter splices these, so the name in the log is
+// PRODUCED BY the match over the arms rather than re-typed next to them, and a second name for an
+// arm is not writable in the emitter at all.
+//
+// BOTH SUPERSEDE WORDS THE JOB PRINTS COME FROM PriorRunDisposition, WHICH IS THE QUESTION THEY
+// ANSWER. A supersede line says what STANDING the prior head now has, not what the heal produced,
+// and SupersededByHealedHead was already emitted from that fold; sourcing its author-side twin
+// from HealOutcome instead bought a shorter name at the price of one log word naming two arms in
+// two coproducts. Each fold now maps every arm to its own spelling character for character, so a
+// token is recoverable to exactly one arm and the payload each line carries -- healed_head on a
+// disposition word, as the sibling already does -- is the emitter composing outcome data beside
+// the standing it reports.
+//
+// THE PROBE REVISION IS NOT A CLAIM ABOUT ANY RUN. A token names an ARM, and every fold below
+// discards its payload, so the value handed in exists only to select the arm. It is one shared
+// zero sha rather than a plausible-looking one precisely so that a reader who finds it in a log
+// line would know the emitter, not a run, put it there -- but no fold can carry it into output.
+fn heal_outcome_token(outcome: HealOutcome) -> String {
+  match outcome {
+    HealNoChange { head: _ } => "HealNoChange"
+    HealProduced { prior_head: _, healed_head: _, changed_artifacts: _ } => "HealProduced"
+    HealAuthorCommitRequired { head: _, author_commit_paths: _ } => "HealAuthorCommitRequired"
+    HealPushRefused { prior_head: _, healed_head: _, remote_head: _ } => "HealPushRefused"
+    HealSupersededByAuthorHead { prior_head: _, healed_head: _, remote_head: _, changed_artifacts: _ } =>
+      "HealSupersededByAuthorHead"
+  }
+}
+
+fn prior_run_disposition_token(disposition: PriorRunDisposition) -> String {
+  match disposition {
+    PriorRunStillCurrent { head: _ } => "PriorRunStillCurrent"
+    SupersededByHealedHead { prior_head: _, healed_head: _ } => "SupersededByHealedHead"
+    SupersededByAuthorHead { prior_head: _, remote_head: _ } => "SupersededByAuthorHead"
+  }
+}
+
+data heal_no_change_token: String = heal_outcome_token(outcome: HealNoChange { head: heal_token_arm_probe })
+
+data heal_produced_token: String = heal_outcome_token(outcome: HealProduced {
+    prior_head: heal_token_arm_probe,
+    healed_head: heal_token_arm_probe,
+    changed_artifacts: []
+  })
+
+data heal_author_commit_required_token: String = heal_outcome_token(outcome: HealAuthorCommitRequired {
+    head: heal_token_arm_probe,
+    author_commit_paths: []
+  })
+
+data heal_push_refused_token: String = heal_outcome_token(outcome: HealPushRefused {
+    prior_head: heal_token_arm_probe,
+    healed_head: heal_token_arm_probe,
+    remote_head: heal_token_arm_probe
+  })
+
+data prior_run_still_current_token: String = prior_run_disposition_token(disposition: PriorRunStillCurrent {
+    head: heal_token_arm_probe
+  })
+
+data superseded_by_healed_head_token: String = prior_run_disposition_token(disposition: SupersededByHealedHead {
+    prior_head: heal_token_arm_probe,
+    healed_head: heal_token_arm_probe
+  })
+
+data superseded_by_author_head_token: String = prior_run_disposition_token(disposition: SupersededByAuthorHead {
+    prior_head: heal_token_arm_probe,
+    remote_head: heal_token_arm_probe
+  })

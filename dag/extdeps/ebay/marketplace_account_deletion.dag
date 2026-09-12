@@ -1,0 +1,125 @@
+module extdeps.ebay.marketplace_account_deletion
+
+import std.types { NonEmptyStr, String, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// eBay MARKETPLACE ACCOUNT DELETION, the compliance condition on every keyset of the eBay subject.
+// "All new third-party developers coming to the platform must subscribe to or opt out of eBay
+// marketplace account deletion/closure notifications before they make their first API call. Once
+// the new developer's application is subscribed ... or they have successfully opted out ..., the
+// keyset/App ID is activated." Until then the portal shows the keyset as Non Compliant and
+// disabled. Read from a web.archive.org capture of the cited page (2025-07-12), because
+// developer.ebay.com answers 403 to this repository's fetches.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/marketplace-account-deletion"
+  }
+}
+
+// The two ways a keyset becomes compliant. Subscribing obliges a public HTTPS endpoint that answers
+// eBay's challenge and acknowledges and acts on every notification; the exemption is a statement
+// about the application's own conduct, and "failure to provide correct information may result in
+// penalties or having your account disabled".
+type EbayAccountDeletionCompliance
+  = SubscribedToAccountDeletionNotifications
+  | ExemptedFromAccountDeletionNotifications { reason: EbayAccountDeletionExemptionReason }
+
+// THE PORTAL'S EXEMPTION REASONS, VERBATIM, and there are exactly two. The labels were read from the
+// portal's Marketplace Account Deletion page by the operator on 2026-09-11; the documentation shows
+// them only as images.
+type EbayAccountDeletionExemptionReason
+  = DoesNotPersistEbayData
+  | EbayVendorUnderAgreement
+
+fn account_deletion_exemption_reason_label(r: EbayAccountDeletionExemptionReason) -> NonEmptyStr {
+  match r {
+    DoesNotPersistEbayData => "I do not persist eBay data"
+    EbayVendorUnderAgreement => "I am an eBay vendor and handle data as per my contractual/legal agreement with eBay"
+  }
+}
+
+// THE LABELS' STANDING, IN THE TYPE AND NOT ONLY IN PROSE: they are the operator's transcription of
+// the portal, with no first-party text behind them.
+data account_deletion_exemption_reason_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a first-party eBay text of the Marketplace Account Deletion exemption-reason options (the documentation shows them only as images); the labels here were transcribed from the developer portal by the operator on 2026-09-11",
+}
+
+// THE PAGE WAS READ FROM AN ARCHIVE CAPTURE, and the standing cites that capture rather than the live
+// URL the anchor names, because the live page answers 403 to this repository's fetches.
+data account_deletion_page_read_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "web.archive.org/web/20250712193352/https://developer.ebay.com/marketplace-account-deletion"
+    }
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ebay.marketplace_account_deletion",
+      decl_name: "EbayAccountDeletionCompliance",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// HOW A DELETION NOTIFICATION IDENTIFIES ITS SUBJECT, AND NOTHING MORE. Its data object carries
+// exactly these fields: "username -- the publicly known eBay user ID", "userId -- the immutable
+// identifier of the eBay user", "eiasToken -- another identifier used for an eBay user". They name
+// WHICH user is to be deleted, so a consumer parsing a notification resolves its subject through
+// them.
+//
+// THEY DO NOT DELIMIT THE OBLIGATION, and reading them that way would be a classifier that renaming
+// defeats: data stored as "seller_account" carries the same meaning under a different name, and
+// contact or transaction records about the identified user contain none of these three names at
+// all. The obligation is over data ASSOCIATED WITH the identified user. Deciding which persisted
+// data that covers is a semantic question this module deliberately leaves unresolved.
+data account_deletion_user_identifier_fields: List<NonEmptyStr> = ["username", "userId", "eiasToken"]
+
+data ebay_account_deletion_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "EbayAccountDeletionCompliance"),
+    reason: "the compliance arms are read by a buyer pipeline's persisted-data admission, which may not be named from this tree; no public entry executes it",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry decides whether an eBay keyset's declared compliance arm is admissible against the data that application persists; a witness that the type exists does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_exemption_reason_label"),
+    reason: "the verbatim portal label is rendered by the consumer that records which exemption reason was filed, outside the public closure",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry renders the filed exemption reason through account_deletion_exemption_reason_label into a record or refusal an operator reads; a witness comparing the string does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_exemption_reason_standing"),
+    reason: "the labels' transcribed standing is read by the consumer that records the filed exemption reason, outside the public closure",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry carries account_deletion_exemption_reason_standing beside the filed exemption reason it records, so a reader sees the label is transcribed; or when a first-party eBay text of the options is read and the standing becomes CitedToAuthority"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_page_read_standing"),
+    reason: "the archive-capture standing of the page read is consumed alongside the compliance facts by a consumer outside the public closure",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry reports account_deletion_page_read_standing with any compliance decision it derives from this module; or when the live page is read and the standing cites it directly"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.ebay.marketplace_account_deletion", decl_name: "account_deletion_user_identifier_fields"),
+    reason: "no public entry parses a deletion notification; the subject-identifier names are read by a consumer outside this closure",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an executing gunbc entry parses a marketplace account deletion notification and resolves its subject through these fields; a witness that the list exists does not fire this, and neither does a field-name intersection used as a compliance classifier, which this list does not support"
+    )
+  ),
+]

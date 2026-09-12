@@ -2,7 +2,8 @@ module v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.compile {
-  always_required_lenses,
+  CompileLensSubtree,
+  required_lenses_at_grain,
   run_required_lens_gates
 }
 import v2.compiler.infer { InferredTree }
@@ -38,7 +39,7 @@ fn hollow_alias_ar_tree() -> InferredTree {
 test fn hollow_alias_blocked_via_always_required_lenses_holds() -> Bool {
   match run_required_lens_gates(
     inferred: hollow_alias_ar_tree(),
-    lenses: always_required_lenses()
+    lenses: required_lenses_at_grain(grain: CompileLensSubtree)
   ) {
     Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
