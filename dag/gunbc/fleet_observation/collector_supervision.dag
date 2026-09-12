@@ -74,6 +74,25 @@ type SupervisionDisposition
   | CleanupFailed { detail: NonEmptyStr }
   | SupervisionUndecidable { deadline_domain: ClockDomain, observed_domain: ClockDomain }
 
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CleanupFailed has NO PRODUCER in this
+// slice: reaping, closing a pipe and releasing a PTY are acts only a bound realization performs, and
+// a pure fold cannot observe one failing. It is declared because a cleanup failure that has no arm
+// gets reported as the disposition that preceded it -- so a leaked PTY would read as a clean closure.
+// CONSUMER THAT WILL CLOSE IT: the bound realization's reap-and-release step.
+//
+// TRIGGER, STATED AS THE CAPABILITY AND NOT AS AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: a
+// realization bound to a REAL PROCESS, with a failed execve, a premature EOF and a failed teardown
+// DRIVEN THROUGH IT, each landing on the arm this module predicts -- NeverSpawned,
+// InterruptedBeforeDeadline and CleanupFailed respectively. The grain matters: the loss is a whole
+// ROUTE, so a trigger naming one admitted transport call would be satisfiable while nothing was ever
+// injected, and the frontier would be retired by a caller that proves nothing. Any such caller named
+// in a follow-up must be SUFFICIENT FOR driving those three real failures onto those three arms.
+//
+// WHAT IS ALREADY PROVEN AND WHAT IS NOT, so the two are not confused: the FOLDS are proven to
+// discriminate by mutation -- trusting a zero exit as a closure, and counting an unwatched pipe as
+// coverage, each turn exactly one witness red. That is evidence about this module. It is NOT evidence
+// about execve, and nothing here has yet been driven by a real one.
+
 // THE FOLD. Note what it does NOT take: a Bool saying whether the deadline was reached. That would
 // be a caller assertion standing where an observation belongs -- the same defect, one level up,
 // that this lane exists to end -- so the ordering is DERIVED by comparing two instants through

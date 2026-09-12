@@ -82,6 +82,7 @@ type OwnershipRefusal
   = ForeignInteractiveSessionNotStolen { observed: HeldLeaseObservedState }
   | OwnershipLeaseInaccessible
   | OwnershipGenerationWentBackwards { observed: Int, requested: Int }
+  | ReleaseWithoutHoldingTheLease { observed: HeldLeaseObservedState }
 
 type OwnershipOutcome
   = OwnershipChanged { transition: OwnershipTransition }
@@ -130,6 +131,35 @@ fn acquire_ownership(
         }
       } else {
         OwnershipRefused { cause: OwnershipGenerationWentBackwards { observed: observed_generation, requested: requested_generation } }
+      }
+  }
+}
+
+// RELEASE IS AN OBSERVED ACT, NOT A DEPARTURE. A collector that simply stops is indistinguishable
+// from one that died, which is how a stale process kept a session nobody knew it held -- so handing
+// the endpoint back is its own transition with its own evidence, and it REFUSES when the releaser is
+// not the current holder.
+//
+// Releasing a lease you do not hold is the mirror of stealing one: it would retire a generation
+// somebody else is recording under. LeaseAbsent and LeaseRunningStale both mean this session is not
+// the current holder, and a generation disagreement means the releaser is addressing a different
+// epoch than the one in force.
+fn release_ownership(
+  session: CollectorSessionId,
+  observed: HeldLeaseObservedState,
+  observed_generation: Int,
+  held_generation: Int,
+) -> OwnershipOutcome {
+  match observed {
+    LeasePortForeign => OwnershipRefused { cause: ForeignInteractiveSessionNotStolen { observed: observed } }
+    LeaseInaccessible => OwnershipRefused { cause: OwnershipLeaseInaccessible }
+    LeaseAbsent => OwnershipRefused { cause: ReleaseWithoutHoldingTheLease { observed: observed } }
+    LeaseRunningStale => OwnershipRefused { cause: ReleaseWithoutHoldingTheLease { observed: observed } }
+    LeaseRunningExpected =>
+      if held_generation == observed_generation {
+        OwnershipChanged { transition: OwnershipReleased { session: session, generation: held_generation } }
+      } else {
+        OwnershipRefused { cause: OwnershipGenerationWentBackwards { observed: observed_generation, requested: held_generation } }
       }
   }
 }

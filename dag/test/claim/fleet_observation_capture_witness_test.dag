@@ -39,12 +39,14 @@ import gunbc.fleet_observation_collector_ownership {
   ForeignInteractiveSessionNotStolen,
   OwnershipLeaseInaccessible,
   OwnershipGenerationWentBackwards,
+  ReleaseWithoutHoldingTheLease,
   OwnershipTransition,
   OwnershipAcquired,
   OwnershipRenewed,
   OwnershipTakenOver,
   OwnershipReleased,
   acquire_ownership,
+  release_ownership,
   may_record,
   exclusivity_is_enforced,
 }
@@ -408,6 +410,44 @@ test fn w_ownership_transitions_are_distinguished() -> Bool {
   && refuses_backwards(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 9, requested_generation: 2))
 }
 
+// RELEASE IS OBSERVED, AND ONLY THE HOLDER MAY RELEASE. A collector that simply stops is
+// indistinguishable from one that died -- the stale-process case -- so handing the endpoint back is
+// its own transition. Releasing a lease this session does not hold refuses, because it would retire a
+// generation somebody else is recording under.
+test fn w_release_is_observed_and_only_by_the_holder() -> Bool {
+  released(outcome: release_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, held_generation: 4))
+  && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, held_generation: 4))
+  && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, held_generation: 4))
+  && refuses_foreign(outcome: release_ownership(session: t_session, observed: LeasePortForeign, observed_generation: 4, held_generation: 4))
+  && refuses_backwards(outcome: release_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 9, held_generation: 4))
+}
+
+fn released(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipChanged { transition: transition } =>
+      match transition {
+        OwnershipReleased { session: _, generation: _ } => true
+        OwnershipAcquired { session: _, generation: _ } => false
+        OwnershipRenewed { session: _, generation: _ } => false
+        OwnershipTakenOver { session: _, from_generation: _, to_generation: _ } => false
+      }
+    OwnershipRefused { cause: _ } => false
+  }
+}
+
+fn refuses_unheld_release(outcome: OwnershipOutcome) -> Bool {
+  match outcome {
+    OwnershipRefused { cause: cause } =>
+      match cause {
+        ReleaseWithoutHoldingTheLease { observed: _ } => true
+        OwnershipGenerationWentBackwards { observed: _, requested: _ } => false
+        OwnershipLeaseInaccessible => false
+        ForeignInteractiveSessionNotStolen { observed: _ } => false
+      }
+    OwnershipChanged { transition: _ } => false
+  }
+}
+
 // ── EXCLUSIVITY IS CARRIED HONESTLY ────────────────────────────────────────────────────────────
 
 // AN OWNER OVER AN UNFENCED ENDPOINT RECORDS BUT DOES NOT CLAIM STRUCTURAL EXCLUSIVITY. If
@@ -703,6 +743,7 @@ fn refuses_foreign(outcome: OwnershipOutcome) -> Bool {
         ForeignInteractiveSessionNotStolen { observed: _ } => true
         OwnershipLeaseInaccessible => false
         OwnershipGenerationWentBackwards { observed: _, requested: _ } => false
+        ReleaseWithoutHoldingTheLease { observed: _ } => false
       }
     OwnershipChanged { transition: _ } => false
   }
@@ -715,6 +756,7 @@ fn refuses_inaccessible(outcome: OwnershipOutcome) -> Bool {
         OwnershipLeaseInaccessible => true
         ForeignInteractiveSessionNotStolen { observed: _ } => false
         OwnershipGenerationWentBackwards { observed: _, requested: _ } => false
+        ReleaseWithoutHoldingTheLease { observed: _ } => false
       }
     OwnershipChanged { transition: _ } => false
   }
@@ -727,6 +769,7 @@ fn refuses_backwards(outcome: OwnershipOutcome) -> Bool {
         OwnershipGenerationWentBackwards { observed: _, requested: _ } => true
         OwnershipLeaseInaccessible => false
         ForeignInteractiveSessionNotStolen { observed: _ } => false
+        ReleaseWithoutHoldingTheLease { observed: _ } => false
       }
     OwnershipChanged { transition: _ } => false
   }

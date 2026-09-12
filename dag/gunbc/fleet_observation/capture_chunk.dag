@@ -99,6 +99,28 @@ fn relate_chunks(left: CaptureChunk, right: CaptureChunk) -> ChunkRelation {
 // WHY A CHUNK COULD NOT BE DURABLY KEPT, each an explicit typed outcome with its own remedy. None
 // of these may silently change an observation's semantic result: a collector that cannot keep its
 // bytes reports a coverage gap, it does not report the source as quiet.
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). Three of these five arms have NO PRODUCER
+// IN THIS SLICE and that is stated here rather than left to be discovered: SpoolDiskExhausted,
+// ChunkCorruptOnReadBack and ChunkRetentionExpired are minted by the STORAGE REALIZATION -- a real
+// spool answering ENOSPC, a real read-back disagreeing with its digest, a real retention window
+// elapsing -- none of which a pure fold can observe. local_commit_from_cas produces the other two
+// from the compare-and-set authority it consumes.
+//
+// CONSUMER THAT WILL CLOSE IT: the bound collector realization's storage sink.
+//
+// TRIGGER, STATED AS THE CAPABILITY AND NOT AS AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: a
+// realization bound to a REAL STORE, with disk exhaustion, a corrupt read-back and sink refusal
+// DRIVEN THROUGH IT, each one landing on the arm this module predicts. The grain matters: what is
+// missing here is a ROUTE, so a trigger naming a single call would be satisfiable in full while the
+// capability stayed dead -- the arms would still be authored, just authored by a caller. If a
+// follow-up names an admitted transport caller at all, that caller must be SUFFICIENT FOR driving
+// those three real failures onto these three arms; a caller that injects nothing does not retire
+// this frontier.
+//
+// WHY THEY ARE DECLARED NOW RATHER THAN WITH THEIR PRODUCER: a persistence failure that has no arm
+// gets rendered as the nearest arm that exists, and the nearest arm here is "committed". These exist
+// so the realization has somewhere honest to land, and an arm without a producer is a visible
+// frontier, whereas a missing arm is a silent widen.
 type CapturePersistenceRefusal
   = SpoolDiskExhausted { attempted: ByteSize }
   | ChunkCorruptOnReadBack { expected: ContentHash, observed: ContentHash }
