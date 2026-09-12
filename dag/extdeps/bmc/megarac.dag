@@ -1,10 +1,11 @@
 module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { NonEmptyStr, List, Unit }
+import std.types { Bool, Int, NonEmptyStr, List, Unit }
 import std.string_type { String }
 import std.credentials { FactoryLogin }
-import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
@@ -116,6 +117,48 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
   contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
 }
 
+data megarac_op_media_instance: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/media/instance",
+  contract_note: "cd_active_sessions is a FLAG BYTE, not a session count: 128 is 0x80 and 129 is 0x81. Neighbouring cd_port 0x80000050 is port 80 with bit 31 set. Reading the field as a count is unrepresentable (megarac_cd_active_sessions_session_count).",
+}
+
+data megarac_op_video_triggers: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/video/triggers",
+  contract_note: "framebuffer recorder arming object; field chassis_power_on_events_enable (correct spelling). Survives host and BMC resets; a live SOL activate session does not.",
+}
+
+data megarac_op_sol_triggers: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/video/sol-triggers",
+  contract_note: "SOL-stream recorder arming object; upstream spells the power-on field chasis_power_on_events_enable (missing second s). Records the SOL stream, which is a different subject from video/triggers.",
+}
+
+data megarac_op_video_pre_event: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/video/pre-event",
+  contract_note: "pre-event framebuffer buffer (enable, fps, duration).",
+}
+
+data megarac_op_video_data: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/logs/video-data",
+  contract_note: "retrieves captured framebuffer recordings.",
+}
+
+data megarac_op_sol_recorded_video: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/sol-recorded-video",
+  contract_note: "retrieves captured SOL-stream recordings.",
+}
+
+data megarac_op_event_log: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/logs/event",
+  contract_note: "OEM records arrive with sel_data empty and advanced_event_description 'unknown'. Payload bytes are not on this route; ipmitool sel elist is the route that preserves them.",
+}
+
 // THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
 // ISO directory over NFS to the BMC address; PUT media config; wait for the daemon's own retry
 // interval while the images listing goes from refusing to listing the image; POST start-media WITH
@@ -138,6 +181,13 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_media_start,
   megarac_op_media_stop,
   megarac_op_media_status,
+  megarac_op_media_instance,
+  megarac_op_video_triggers,
+  megarac_op_sol_triggers,
+  megarac_op_video_pre_event,
+  megarac_op_video_data,
+  megarac_op_sol_recorded_video,
+  megarac_op_event_log,
 ]
 
 // THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
@@ -155,6 +205,282 @@ type MegaRacImageRedirectionRequired
 fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmptyStr {
   match r {
     MegaRacImageRedirectionOn => "1"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// SERVED SP-X UI SURFACE CATALOG, keyed to firmware identity 0.32. The 255 api/ paths were
+// extracted from source.min.js (6,597,873 bytes, sha256
+// 8b5ef64f5bf1df88a0f497887540d198a677e7a6f63f1bc8fc9bbc79e4f54fcd) as served at
+// https://192.168.1.228/source.min.js on 2026-09-12, and committed as
+// artifacts/bmc/mtcollins1-megarac-api-surface.txt (sha256
+// 4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd). This is the citation a
+// redirection_status decoder previously lacked. The catalog is a FACT ABOUT THIS FIRMWARE'S
+// SERVED UI, not a unit observation and not a family-wide MegaRAC claim: AMI advertises Redfish
+// on other builds; this surface does not carry it.
+// ---------------------------------------------------------------------------------------------
+
+data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
+  family: AmiMegaRac,
+  wire: "0.32",
+)
+
+data megarac_spx_ui_surface_path: NonEmptyStr = "artifacts/bmc/mtcollins1-megarac-api-surface.txt" as NonEmptyStr
+
+data megarac_spx_ui_surface_sha256: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd" as NonEmptyStr
+
+data megarac_spx_ui_source_min_js_sha256: NonEmptyStr = "8b5ef64f5bf1df88a0f497887540d198a677e7a6f63f1bc8fc9bbc79e4f54fcd" as NonEmptyStr
+
+data megarac_spx_ui_endpoint_count: Int = 255
+
+// THE BMC IS THE NFS CLIENT. settings/media/general carries the NFS server, source path and
+// share type; the host sees a virtual CD. PXE is not a term of this route.
+type MegaRacRemoteMediaRole
+  = | MegaRacBmcIsNfsClientHostSeesVirtualCd
+
+data megarac_remote_media_role: MegaRacRemoteMediaRole = MegaRacBmcIsNfsClientHostSeesVirtualCd
+
+// cd_active_sessions: FLAG BYTE, NOT A COUNT. There is no constructor that yields a session
+// count from this field.
+type MegaRacCdActiveSessionsField
+  = CdActiveSessionsFlagByte { wire: Int }
+
+type MegaRacCdActiveSessionsIsNotACount
+  = CdActiveSessionsFlagByteIsNotACount { field: MegaRacCdActiveSessionsField }
+
+fn megarac_cd_active_sessions_session_count(field: MegaRacCdActiveSessionsField) -> MegaRacCdActiveSessionsIsNotACount {
+  CdActiveSessionsFlagByteIsNotACount { field: field }
+}
+
+fn megarac_cd_active_sessions_flag_byte(wire: Int) -> MegaRacCdActiveSessionsField {
+  CdActiveSessionsFlagByte { wire: wire }
+}
+
+// REDIRECTION_STATUS, recovered from the served UI at firmware 0.32. Codes 0, 1, 100 are the
+// rendered trio; 2–5 are the named refusal suffixes in the same bundle; any other numeric code
+// is vendor-rendered Stopped — neither connecting nor started. A firmware identity this row
+// does not catalog refuses rather than inheriting 0.32's numbers.
+type MegaRacRedirectionStatus
+  = RedirectionStopped
+  | RedirectionStartedConnectionAccepted
+  | RedirectionConnecting
+  | RedirectionConnectionDenied
+  | RedirectionLoginFailed
+  | RedirectionMaxSessionReached
+  | RedirectionPermissionDenied
+  | RedirectionVendorRenderedStopped { wire: Int }
+
+type MegaRacRedirectionStatusLookup
+  = RedirectionStatusKnown { firmware: BmcFirmwareReleaseIdentity, status: MegaRacRedirectionStatus }
+  | RedirectionStatusFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity, wire: Int }
+
+fn megarac_redirection_status_of_wire(
+  firmware: BmcFirmwareReleaseIdentity,
+  wire: Int,
+) -> MegaRacRedirectionStatusLookup {
+  if firmware.family == AmiMegaRac && firmware.raw_version == "0.32" {
+    let status = if wire == 0 {
+      RedirectionStopped
+    } else if wire == 1 {
+      RedirectionStartedConnectionAccepted
+    } else if wire == 100 {
+      RedirectionConnecting
+    } else if wire == 2 {
+      RedirectionConnectionDenied
+    } else if wire == 3 {
+      RedirectionLoginFailed
+    } else if wire == 4 {
+      RedirectionMaxSessionReached
+    } else if wire == 5 {
+      RedirectionPermissionDenied
+    } else {
+      RedirectionVendorRenderedStopped { wire: wire }
+    }
+    RedirectionStatusKnown { firmware: firmware, status: status }
+  } else {
+    RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
+  }
+}
+
+fn megarac_redirection_is_started(status: MegaRacRedirectionStatus) -> Bool {
+  match status {
+    RedirectionStartedConnectionAccepted => true
+    _ => false
+  }
+}
+
+fn megarac_redirection_is_connecting(status: MegaRacRedirectionStatus) -> Bool {
+  match status {
+    RedirectionConnecting => true
+    _ => false
+  }
+}
+
+// CONSOLE RECORDERS. Two recorders, two subjects. video/* records the framebuffer the KVM
+// renders; sol-triggers records the SOL stream. Both persist across resets. The SOL object's
+// chassis-power-on field is spelled chasis_power_on_events_enable (upstream typo); the video
+// object spells chassis_power_on_events_enable. Model what upstream sends.
+type MegaRacConsoleRecorderSubject
+  = FramebufferRecorder
+  | SolStreamRecorder
+
+type MegaRacVideoTriggerPowerOnFieldName
+  = | ChassisPowerOnEventsEnable
+
+type MegaRacSolTriggerPowerOnFieldName
+  = | ChasisPowerOnEventsEnable
+
+data megarac_video_trigger_power_on_field: MegaRacVideoTriggerPowerOnFieldName = ChassisPowerOnEventsEnable
+
+data megarac_sol_trigger_power_on_field: MegaRacSolTriggerPowerOnFieldName = ChasisPowerOnEventsEnable
+
+fn megarac_video_trigger_power_on_field_wire() -> NonEmptyStr {
+  "chassis_power_on_events_enable" as NonEmptyStr
+}
+
+fn megarac_sol_trigger_power_on_field_wire() -> NonEmptyStr {
+  "chasis_power_on_events_enable" as NonEmptyStr
+}
+
+fn megarac_remote_media_uses_pxe() -> Bool {
+  false
+}
+
+fn megarac_recorder_survives_reset(subject: MegaRacConsoleRecorderSubject) -> Bool {
+  match subject {
+    FramebufferRecorder => true
+    SolStreamRecorder => true
+  }
+}
+
+fn megarac_live_sol_activate_survives_reset() -> Bool {
+  false
+}
+
+// WHAT THIS SERVED UI CANNOT DO. Absences are first-class, keyed to the 0.32 catalog. They are
+// not omissions and not unit telemetry.
+type MegaRacServedUiAbsence
+  = RedfishServiceAbsentFromServedUi
+  | BiosUefiSettingsSurfaceAbsent
+  | PerDimmFruAndTelemetryAbsentFromServedUi
+  | OemSelDecodeAbsentFromControllerRenderer
+
+data megarac_served_ui_absences_at_0_32: List<MegaRacServedUiAbsence> = [
+  RedfishServiceAbsentFromServedUi,
+  BiosUefiSettingsSurfaceAbsent,
+  PerDimmFruAndTelemetryAbsentFromServedUi,
+  OemSelDecodeAbsentFromControllerRenderer,
+]
+
+data megarac_bios_adjacent_paths_at_0_32: List<NonEmptyStr> = [
+  "/api/maintenance/firmware/upgrade" as NonEmptyStr,
+  "/api/maintenance/hpm/getbiosversions" as NonEmptyStr,
+  "/api/maintenance/ValidBootfwSignImage" as NonEmptyStr,
+]
+
+type MegaRacServedUiFactLookup
+  = ServedUiFactKnown { firmware: BmcFirmwareReleaseIdentity, holds: Bool }
+  | ServedUiFactFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+
+fn megarac_served_ui_fact(
+  firmware: BmcFirmwareReleaseIdentity,
+  holds_at_0_32: Bool,
+) -> MegaRacServedUiFactLookup {
+  if firmware.family == AmiMegaRac && firmware.raw_version == "0.32" {
+    ServedUiFactKnown { firmware: firmware, holds: holds_at_0_32 }
+  } else {
+    ServedUiFactFirmwareUncatalogued { firmware: firmware }
+  }
+}
+
+fn megarac_served_ui_has_redfish(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
+  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
+}
+
+fn megarac_served_ui_has_bios_settings_surface(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
+  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
+}
+
+fn megarac_served_ui_has_per_dimm_fru(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
+  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
+}
+
+fn megarac_controller_decodes_oem_sel(firmware: BmcFirmwareReleaseIdentity) -> MegaRacServedUiFactLookup {
+  megarac_served_ui_fact(firmware: firmware, holds_at_0_32: false)
+}
+
+// EVENT LOG SHAPE. The web log and ipmitool are two layouts. GenID1/GenID2 on the standard-event
+// template are manufacturer bytes; they have no Sender constructor.
+type MegaRacEventLogLayout
+  = MegaRacWebEventLogOemEmptySelData
+  | MegaRacIpmiSelPayloadPreserved
+
+type MegaRacGenIdBytes {
+  gen_id1: Int
+  gen_id2: Int
+}
+
+type MegaRacGenIdStanding
+  = ManufacturerBytesRenderedThroughStandardEventTemplate { bytes: MegaRacGenIdBytes }
+
+type MegaRacGenIdIsNotASender
+  = GenIdDoesNotIdentifyASender { standing: MegaRacGenIdStanding }
+
+fn megarac_gen_id_standing(gen_id1: Int, gen_id2: Int) -> MegaRacGenIdStanding {
+  ManufacturerBytesRenderedThroughStandardEventTemplate {
+    bytes: MegaRacGenIdBytes { gen_id1: gen_id1, gen_id2: gen_id2 },
+  }
+}
+
+fn megarac_gen_id_as_sender(standing: MegaRacGenIdStanding) -> MegaRacGenIdIsNotASender {
+  GenIdDoesNotIdentifyASender { standing: standing }
+}
+
+fn megarac_web_event_log_preserves_oem_payload() -> Bool {
+  false
+}
+
+fn megarac_ipmi_sel_preserves_oem_payload() -> Bool {
+  true
+}
+
+// CHANNEL PRESENCE VERSUS DELIVERY. A channel listed on the served UI is PRESENT. Whether it
+// delivers host bytes is a separate standing. Per-platform inhabitance of that standing lives in
+// gunbc.machine_intake_pre_os_observation_capabilities (ConsoleObservationCapability); this module
+// owns the MegaRAC channel identities and the refusal that forbids reading a silent present
+// channel as a fact about the host.
+type MegaRacObservationChannel
+  = MegaRacSolSessionChannel
+  | MegaRacKvmFramebufferChannel
+  | MegaRacFramebufferRecorderChannel
+  | MegaRacSolRecorderChannel
+
+type MegaRacChannelDelivery
+  = ChannelAbsentFromServedUi
+  | ChannelPresentNotDelivering
+  | ChannelPresentDelivering
+
+type MegaRacHostObservationFromChannel
+  = HostBytesAdmittedFromChannel { channel: MegaRacObservationChannel }
+  | SilentChannelRefusedAsHostFact { channel: MegaRacObservationChannel }
+  | ChannelUnavailableForHostObservation { channel: MegaRacObservationChannel }
+
+fn megarac_host_observation_from_channel(
+  channel: MegaRacObservationChannel,
+  delivery: MegaRacChannelDelivery,
+) -> MegaRacHostObservationFromChannel {
+  match delivery {
+    ChannelAbsentFromServedUi => ChannelUnavailableForHostObservation { channel: channel }
+    ChannelPresentNotDelivering => SilentChannelRefusedAsHostFact { channel: channel }
+    ChannelPresentDelivering => HostBytesAdmittedFromChannel { channel: channel }
+  }
+}
+
+fn megarac_silent_sol_is_host_fact(delivery: MegaRacChannelDelivery) -> Bool {
+  match megarac_host_observation_from_channel(channel: MegaRacSolSessionChannel, delivery: delivery) {
+    HostBytesAdmittedFromChannel { channel: _ } => true
+    SilentChannelRefusedAsHostFact { channel: _ } => false
+    ChannelUnavailableForHostObservation { channel: _ } => false
   }
 }
 
@@ -247,6 +573,19 @@ service megarac.Media {
     }
   }
 
+  operation GetMediaInstance {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/instance"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac media instance GET failed"
+    }
+  }
+
   operation StartMedia {
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -280,6 +619,45 @@ service megarac.Media {
     exit {
       0 => Unit
       nonzero => String "megarac session DELETE failed"
+    }
+  }
+
+  operation GetEventLog {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/logs/event"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac event log GET failed"
+    }
+  }
+
+  operation GetVideoTriggers {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/video/triggers"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac video triggers GET failed"
+    }
+  }
+
+  operation GetSolTriggers {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/video/sol-triggers"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac sol-triggers GET failed"
     }
   }
 }
