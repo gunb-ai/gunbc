@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.a_capability_established_upstream_but_not_obtainable
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_capability_established_upstream_but_not_obtainable: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_capability_established_upstream_but_not_obtainable" as NonEmptyStr,
+
+  receipts: [
+    "**a capability established upstream but not obtainable** (a dependency requirement is derived by reading upstream SOURCE, recorded as a version or revision, and planned against -- without establishing that the named artifact can be acquired for the target platform. The reading is correct and the requirement is unbuildable, so the plan looks funded and its first executable step is impossible. ",
+
+    "THE INSTANCE (2026-09-12). Serving GLM-5.3-Flash natively on GB10 needs FlashInfer's SM120 NoPE sparse-MLA kernel. That kernel was located precisely: `_MODEL_TYPE_GLM53_NOPE` with `_BPT_GLM53_NOPE` 528 in the SM120 plan module, a `glm53_nope` branch beside `rope_v32` in the SM120 shape check, the requirement corroborated by an EXECUTED refusal on the fleet's own image at the pinned version. The requirement was then recorded as `0.7.0 or later`, read from `version.txt` at the repository's HEAD. ",
+
+    "`version.txt` IN GIT IS NOT A VERSION ANYONE CAN INSTALL. flashinfer-python's latest release is 0.6.18.post1 and flashinfer-cubin's is 0.6.13; PyPI carries NO 0.7.x at any pre-release, and flashinfer.ai/whl/cu130 publishes only flashinfer-jit-cache. The capability exists in a tagged release candidate (v0.7.0rc1) for which no wheel is published on any CUDA version or architecture. Everything about the requirement was right except that it could be had. ",
+
+    "WHAT THE ERROR COST AND WOULD HAVE COST. It was caught before a build, so the realized cost was one corrected declaration. Unchecked it would have spent a cold ~75-minute image build on a host taken out of service, and failed at the dependency-resolution step -- the cheapest possible failure to have predicted and an expensive one to discover. The declaration it corrupted had already been corrected once in the same hour, from an inference about release DATES to a reading of SOURCE, so the second correction is the tell: two rounds of increasingly careful reading of the same artifact, neither of which asked the acquisition question. ",
+
+    "WHY READING SOURCE FEELS LIKE ENOUGH, which is the generalisable part. Reading upstream source is the move DESIGN section 3 asks for -- cite the real spec, keep its names, model what the API actually returns -- and it answers the question `does this capability exist and what is its shape`. Acquisition is a DIFFERENT question with a different authority (a package index, a release feed, a registry), and the satisfaction of having read the authoritative source substitutes for asking it. The stronger the source reading, the more complete the requirement feels. ",
+
+    "AND IT IS THE SAME SHAPE AS AN OBSERVATION STANDING IN FOR A CONVERGENCE. `a capability exists` and `a capability is realizable here` are two standings, and this class collapses them exactly as this repository's realization work separates them: existence upstream is an external fact, obtainability for a platform is a second external fact, and a handle to a built artifact is a third. A requirement citing only the first is a dangling declaration that reads as a plan. ",
+
+    "RECOGNITION RULE: FOR EVERY UPSTREAM VERSION OR REVISION A PLAN DEPENDS ON, NAME THE ARTIFACT THAT WOULD BE ACQUIRED AND THE INDEX IT COMES FROM, FOR THIS PLATFORM. A version read from a source tree, a tag, a changelog or a merged pull request is evidence about existence and none about acquisition. Where the artifact must be BUILT rather than fetched, that build is part of the plan's scope and its absence from the scope is the defect -- not a detail of execution. ",
+
+    "RUNG FOUND AT: mitigatable. It was caught by asking a package index a question, after the requirement had already been recorded twice. Nothing in the corpus refused it, and the modelled recipe field it would have populated -- a version string -- cannot express the difference between a released version and a tag. ",
+
+    "ATTAINABLE CEILING: structurally guaranteed, and the gap is a modelling one rather than an undecidable one. A dependency pin is currently a NonEmptyStr, which is exactly the anemic leaf DESIGN section 2 names: it cannot distinguish a published release from a git tag from a branch, so no check can demand the acquisition route. Pinned as a coproduct over acquisition routes -- a published release naming its index, a source revision naming its build -- a pin that names a revision would be UNABLE to be spelled as though it were installable, and the build recipe would carry the source build as a field rather than as an unstated assumption. That is construction rather than validation, so it does not stop at mechanically preventable. ",
+
+    "NEXT TRIGGER: a coproduct-valued dependency pin in the extdeps container-build authority, replacing the bare version strings that authority carries for flashinfer and torch, with the published-release arm carrying the index it resolves against. That authority is not in this branch's closure yet, which is why this row cites only the requirement it corrupted and names the recipe in prose -- a DeclarationRef that does not resolve is the citation defect DESIGN section 3 forbids, and filing one inside a failure-mode row would be this ledger committing the class it records. Until that lands this row is review diligence, and the recognition rule above is the whole of it.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.spark.serving_compatibility", decl_name: "glm53_nope_repair_candidate", field: WholeDeclaration },
+  ],
+}

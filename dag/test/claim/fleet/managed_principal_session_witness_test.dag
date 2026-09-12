@@ -5,6 +5,8 @@ import std.nat { Nat }
 import extdeps.ssh { SshPublicKey, ssh_public_key_line }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_posix_accounts { PosixAccountOccurrence, FleetAccountAutomation }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.realization_dependency {
   RealizationLocus, LocalRunner, ManagedPrincipalOnHost,
@@ -60,7 +62,10 @@ fn w_account_readback(principal: String, home: String) -> PosixAccountReadback {
 }
 
 fn w_account(principal: String, home: String) -> ManagedPosixAccountAdmission {
-  admit_managed_posix_account(host: w_host, expected_principal: w_principal, readback: w_account_readback(principal: principal, home: home))
+  admit_managed_posix_account(
+    occurrence: PosixAccountOccurrence { host: w_host as HostIdentity, principal: FleetAccountAutomation },
+    expected_local_name: w_principal,
+    readback: w_account_readback(principal: principal, home: home))
 }
 
 fn w_account_ready() -> ManagedPosixAccountReady? {
@@ -72,7 +77,7 @@ fn w_account_ready() -> ManagedPosixAccountReady? {
 
 test fn an_account_the_host_reports_with_a_home_is_admitted() -> Bool {
   match w_account(principal: "gunbc-automation", home: "/home/gunbc-automation") {
-    ManagedPosixAccountAdmitted { ready: r } => (r.principal as String) == "gunbc-automation"
+    ManagedPosixAccountAdmitted { ready: r } => (r.observed_local_name as String) == "gunbc-automation"
     ManagedPosixAccountRefused { expected: _, cause: _ } => false
   }
 }

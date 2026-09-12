@@ -11,8 +11,12 @@ import std.realization_dependency {
   RequirementWithoutProvider, RequirementWithMultipleProviders, DependencyCycle,
   ProviderExecutionStanding, ProviderScheduleExecutable, ProviderHandlerMissing, admit_provider_schedule,
 }
+import gunbc.fleet_posix_accounts { PosixAccountOccurrence, FleetAccountAutomation }
 import gunbc.managed_principal_session {
   FleetCredentialIdentity,
+  bootstrap_session_provider_identity, fleet_private_key_provider_identity,
+  managed_account_provider_identity, managed_authorized_key_provider_identity,
+  managed_membership_provider_identity, managed_session_provider_identity,
   PosixAccountReadback, AuthorizedKeyReadback,
   ManagedPrincipalAuthenticationReceipt,
   ManagedPosixAccountReady, ManagedPosixAccountAdmission, ManagedPosixAccountAdmitted, ManagedPosixAccountRefused,
@@ -75,31 +79,215 @@ fn managed_provider_has_handler(k: ManagedProviderKind) -> Bool {
   }
 }
 
-// THE PROVIDER ROW'S IDENTITY CARRIES ITS KIND AS A PREFIX, which is how a resolved binding is mapped back to
-// a handler. A parallel roster keyed by requirement would be a second authority for the same mapping, so the
-// identity the graph already carries is what gets read.
-fn managed_provider_kind_of(provider_identity: NonEmptyStr) -> ManagedProviderKind? {
-  if string_contains(s: provider_identity as String, pattern: "bootstrap-administrator-session") { Present { value: BootstrapAdministratorSessionProvider } }
-  else { if string_contains(s: provider_identity as String, pattern: "fleet-private-key-binding") { Present { value: FleetPrivateKeyBindingProvider } }
-  else { if string_contains(s: provider_identity as String, pattern: "managed-posix-account-upsert") { Present { value: ManagedAccountProvider } }
-  else { if string_contains(s: provider_identity as String, pattern: "authorized-keys-reconcile") { Present { value: ManagedAuthorizedKeyProvider } }
-  else { if string_contains(s: provider_identity as String, pattern: "managed-membership-upsert") { Present { value: ManagedMembershipProvider } }
-  else { if string_contains(s: provider_identity as String, pattern: "key-only-authentication-probe") { Present { value: ManagedPrincipalSessionProvider } }
-  else { none } } } } } }
+// ── THE KIND IS CARRIED, NOT PARSED OUT OF A DISPLAY NAME ─────────────────────────────────────
+//
+// A FIRST REVISION RECOVERED THE KIND BY SEARCHING THE PROVIDER IDENTITY FOR SUBSTRINGS, and a review named the
+// consequence exactly: changing a display identity would change which operation executes. The identity exists
+// to be READ BY A HUMAN in a receipt, so it is the worst possible place to put a dispatch key -- renaming
+// "managed-posix-account-upsert@srv9/gunbc-automation" for clarity would have silently un-handled the account
+// provider, and the fail-closed arm would have reported the graph as unexecutable for a reason no diff explains.
+//
+// SO THE BINDING IS A TYPED ROW: one entry per provider the domain declares, pairing the kind with the identity
+// its provider row carries. The identity is still the join, because the graph carries identities and a second
+// roster keyed by requirement would be a second authority for the same mapping -- but the comparison is now
+// EXACT EQUALITY against a declared row rather than a substring search, so a rename breaks the row it belongs
+// to instead of silently changing behaviour.
+//
+// NEXT-RUNG TRIGGER: `CapabilityProvider` in std.realization_dependency carrying a caller-supplied opaque tag
+// alongside its identity, at which point the kind rides on the row itself and this table dissolves. It is not
+// built here because the tag's type would have to be generic over every domain's provider vocabulary, which is
+// the parameterisation that made the earlier `CapabilityRequirement<C>` awkward enough to remove.
+type ManagedProviderBinding sole_constructor {
+  kind: ManagedProviderKind
+  provider_identity: NonEmptyStr
 }
 
-// AN UNRECOGNISED PROVIDER IDENTITY HAS NO HANDLER RATHER THAN A DEFAULT ONE, which keeps the wall fail-closed
-// against a row this module has never seen: a provider authored elsewhere cannot borrow executability from the
-// fact that its name is unfamiliar.
-fn provider_row_has_handler(p: CapabilityProvider) -> Bool {
-  match managed_provider_kind_of(provider_identity: p.identity) {
+data managed_provider_kinds: List<ManagedProviderKind> = [
+  BootstrapAdministratorSessionProvider,
+  FleetPrivateKeyBindingProvider,
+  ManagedAccountProvider,
+  ManagedAuthorizedKeyProvider,
+  ManagedMembershipProvider,
+  ManagedPrincipalSessionProvider,
+]
+
+// THE IDENTITY IS COMPARED WHOLE, NEVER DECODED. A second revision split the identity on "@" and compared the
+// head, which is better than an unrestricted substring search and still wrong in the way that matters: a
+// provider NAME remained an execution input, so the text of a display identity decided which handler ran. The
+// provider identities the graph carries are built per host and principal, so the comparison is against the
+// SUBJECT-FREE identity the binding declares plus the subject the caller supplied -- assembled, not parsed.
+//
+// AND THE CLAIM THAT A TYPED BINDING WAS UNREACHABLE WAS TOO STRONG -- a correction to this module's own earlier
+// annotation. Putting a domain enum INTO `std` would parameterise `CapabilityProvider` over every domain's
+// vocabulary, which is what is unreachable; a DOMAIN-OWNED WRAPPER pairing the provider value with its kind is
+// perfectly representable, and the generic resolver simply operates on the `provider` projection. That is an
+// adapter, not a competing provider authority.
+//
+// SO THE SHAPE BELOW CARRIES AN IDENTITY RATHER THAN THE PROVIDER VALUE ONLY BECAUSE THE RESOLVED GRAPH HANDS
+// BACK `RequirementProviderBinding`, whose provider is a std value the domain must re-join to. The join is one
+// EXACT match against an identity this module constructed -- and the arms below make a duplicate an explicit
+// refusal rather than a silent pick.
+// NEXT-RUNG TRIGGER: an opaque caller-supplied tag on CapabilityProvider, at which point the join disappears and
+// dispatch matches `kind` with no identity comparison at all.
+// THIS NO LONGER SPELLS ANY IDENTITY, and that is the repair. It used to re-derive all six from a `match`, which
+// made it a SECOND authority beside the one that builds the provider list -- and the two had already drifted on
+// the two identities that are not determined by a host and a principal. gunbc.managed_principal_session owns the
+// construction now; this function is dispatch over the kind coproduct and nothing else.
+//
+// AND TWO KINDS CANNOT BE ANSWERED FROM THIS SUBJECT AT ALL, which is why the result is optional rather than a
+// string. The runner's key binding is keyed by CREDENTIAL and a membership by GROUP; neither is recoverable from
+// a host and a principal, so the previous version answered with a prefix of the real identity -- a value that
+// matches nothing, silently. An absent answer is the honest one: the caller holding the credential or the group
+// asks the constructor directly, and a caller that does not hold them learns that it cannot ask.
+fn managed_provider_identity_for(kind: ManagedProviderKind, host: NonEmptyStr, principal: NonEmptyStr) -> NonEmptyStr? {
+  match kind {
+    BootstrapAdministratorSessionProvider => Present { value: bootstrap_session_provider_identity(host: host) }
+    ManagedAccountProvider => Present { value: managed_account_provider_identity(host: host, principal: principal) }
+    ManagedAuthorizedKeyProvider => Present { value: managed_authorized_key_provider_identity(host: host, principal: principal) }
+    ManagedPrincipalSessionProvider => Present { value: managed_session_provider_identity(host: host, principal: principal) }
+    FleetPrivateKeyBindingProvider => none
+    ManagedMembershipProvider => none
+  }
+}
+
+// THE BINDINGS ARE BUILT FOR A SUBJECT AND COMPARED BY EXACT EQUALITY. This is the distinction that matters: the
+// domain CONSTRUCTS each provider identity from a kind plus a host and principal, so recovering the kind is a
+// lookup against values it built, not an attempt to read meaning out of a name. Substring search and
+// prefix-splitting were both tried here and both made a display identity an execution input.
+// THE BINDINGS ARE BUILT FOR A SUBJECT, AND THE SUBJECT NOW INCLUDES WHAT THE IDENTITIES ACTUALLY DEPEND ON.
+// A roster built from a host and a principal alone could not bind the key provider or the memberships, so it
+// bound prefixes that matched no provider in any graph -- which read as "this capability has no handler" for two
+// capabilities whose handlers exist. The groups are a list because a membership is per group: binding one row
+// for "membership" would make two required groups one capability.
+fn managed_provider_bindings_for(
+  host: NonEmptyStr,
+  principal: NonEmptyStr,
+  credential: FleetCredentialIdentity,
+  groups: List<NonEmptyStr>,
+) -> List<ManagedProviderBinding> {
+  concat(
+    fold(managed_provider_kinds, init: [], f: (acc, k) =>
+      match managed_provider_identity_for(kind: k, host: host, principal: principal) {
+        Present { value: id } => concat(acc, [ManagedProviderBinding { kind: k, provider_identity: id }])
+        Absent => acc
+      }),
+    concat(
+      [ManagedProviderBinding {
+        kind: FleetPrivateKeyBindingProvider,
+        provider_identity: fleet_private_key_provider_identity(credential: credential),
+      }],
+      map(groups, g => ManagedProviderBinding {
+        kind: ManagedMembershipProvider,
+        provider_identity: managed_membership_provider_identity(host: host, principal: principal, group: g),
+      }),
+    ),
+  )
+}
+
+// ── THE LOOKUP PRESERVES BINDING CARDINALITY, BECAUSE `first()` ERASES ONE FROM MANY ───────────
+//
+// A PREVIOUS REVISION TOOK `.first()` OF THE MATCHES, which answers the same way for one binding and for three.
+// That is the identical defect this module's own closure authority refuses at the graph level: zero providers is
+// an unbound capability, many is a POLICY gap, and a resolution that breaks the tie by position is a resolution
+// that looks like a decision. A handler lookup that silently dispatched the first of two duplicate bindings
+// would run one of two operations for reasons no diff explains.
+//
+// THREE ARMS, ONE PER CARDINALITY. Zero is fail-closed: an unrecognised identity has no handler, so a provider
+// row authored elsewhere cannot borrow executability from being unfamiliar.
+//
+// AND AMBIGUITY IS ABOUT DISTINCT KINDS, NOT ABOUT DUPLICATE ROWS -- a correction with a live consequence, found
+// when the substrate refused a witness that hand-assembled two colliding bindings. THE COLLISION IS REACHABLE
+// THROUGH THE REAL PRODUCER, which is why it is not a fixture problem: `managed_provider_identity_for` derives
+// FleetPrivateKeyBindingProvider's identity as `fleet-private-key-binding@runner` with NO host in it, correctly,
+// because the runner's key is one fact for the whole fleet rather than one per host. So a caller holding
+// `managed_provider_bindings_for` for TWO hosts has that identity twice.
+//
+// COUNTING MATCHES MADE THAT AMBIGUOUS, and the consequence ran all the way to a refusal: ambiguous yields no
+// kind, no kind yields no handler, and `provider_row_has_handler_for` then reports the fleet key provider as
+// unexecutable -- so asking about two hosts at once refused a capability that asking about either alone admits.
+// Fail-closed, and wrong: the line stopped for a reason that was not a deficit.
+//
+// TWO ROWS NAMING ONE KIND ARE ONE FACT STATED TWICE, which is DESIGN section 2's redundancy and not a question
+// about which handler to run. Ambiguity is now exactly what it says: more than one DISTINCT kind claiming one
+// identity, which no producer in this module can emit and which a caller merging foreign rows could.
+type ManagedProviderKindLookup
+  = ProviderKindUnique { kind: ManagedProviderKind }
+  | ProviderKindUnbound
+  | ProviderKindAmbiguous { kinds: List<ManagedProviderKind> }
+
+// KIND EQUALITY IS DERIVED FROM THE LABEL, AND THAT CARRIES ONE OBLIGATION THIS ROW WILL NOT HIDE. The label is
+// produced by an exhaustive match, so a NEW variant cannot slip past -- `managed_provider_kind_label` fails to
+// compile until it is handled. What the exhaustiveness does NOT establish is that two variants never render the
+// same string, and if two did, this function would call them equal and the ambiguity arm would stop firing for
+// the one case it exists to catch.
+// THAT IS WHY INJECTIVITY IS AN EXECUTED CONTROL RATHER THAN AN ASSUMPTION: the witness suite compares the
+// labels of every kind in the roster pairwise, so a colliding label is a red rather than a silent widening.
+// The substrate has no derived equality for a coproduct today; when it does, this function dissolves into it.
+fn managed_provider_kind_eq(a: ManagedProviderKind, b: ManagedProviderKind) -> Bool {
+  (managed_provider_kind_label(k: a) as String) == (managed_provider_kind_label(k: b) as String)
+}
+
+fn distinct_provider_kinds(kinds: List<ManagedProviderKind>) -> List<ManagedProviderKind> {
+  fold(kinds, init: [], f: (acc, k) =>
+    if any(acc, seen => managed_provider_kind_eq(a: seen, b: k)) { acc } else { concat(acc, [k]) })
+}
+
+fn managed_provider_kind_lookup(bindings: List<ManagedProviderBinding>, provider_identity: NonEmptyStr) -> ManagedProviderKindLookup {
+  let matches = filter(bindings, b => (b.provider_identity as String) == (provider_identity as String))
+  let kinds = distinct_provider_kinds(kinds: map(matches, m => m.kind))
+  if count(matches) == 0 { ProviderKindUnbound }
+  else { if count(kinds) > 1 { ProviderKindAmbiguous { kinds: kinds } }
+  else {
+    match kinds.first() {
+      Present { value: k } => ProviderKindUnique { kind: k }
+      Absent => ProviderKindUnbound
+    }
+  } }
+}
+
+// AND AMBIGUITY IS NOT A HANDLER. A caller asking only "is there a handler" gets false for both unbound and
+// ambiguous, which is correct -- but the two are different work, so the lookup above keeps them apart for any
+// caller that reports rather than merely decides.
+fn managed_provider_kind_at(bindings: List<ManagedProviderBinding>, provider_identity: NonEmptyStr) -> ManagedProviderKind? {
+  match managed_provider_kind_lookup(bindings: bindings, provider_identity: provider_identity) {
+    ProviderKindUnique { kind: k } => Present { value: k }
+    ProviderKindUnbound => none
+    ProviderKindAmbiguous { kinds: _ } => none
+  }
+}
+
+// AN UNRECOGNISED IDENTITY HAS NO KIND AND THEREFORE NO HANDLER, which keeps the wall fail-closed against a
+// provider row authored elsewhere: it cannot borrow executability from being unfamiliar.
+fn provider_row_has_handler_for(bindings: List<ManagedProviderBinding>, p: CapabilityProvider) -> Bool {
+  match managed_provider_kind_at(bindings: bindings, provider_identity: p.identity) {
     Absent => false
     Present { value: k } => managed_provider_has_handler(k: k)
   }
 }
 
-fn admit_managed_schedule(standing: DependencyClosureStanding) -> ProviderExecutionStanding? {
-  admit_provider_schedule(standing: standing, has_handler: provider_row_has_handler)
+// AND EVERY KIND MUST APPEAR IN THE ROSTER, which is the wall that keeps it from drifting behind the coproduct.
+// A kind absent from `managed_provider_kinds` gets no binding, so its provider resolves to no handler and the
+// graph is refused as unexecutable -- safe, but for the wrong reason and with no diagnostic naming the omission.
+// `managed_provider_identity_for` is an exhaustive match, so a new arm cannot compile without an identity; this
+// roster is the second half, and its witness asserts the count.
+fn managed_provider_roster_is_total() -> Bool {
+  count(managed_provider_kinds) == 6
+}
+
+// AN UNRECOGNISED PROVIDER IDENTITY HAS NO HANDLER RATHER THAN A DEFAULT ONE, which keeps the wall fail-closed
+// against a row this module has never seen: a provider authored elsewhere cannot borrow executability from the
+// fact that its name is unfamiliar.
+// THE SCHEDULE ADMISSION TAKES THE SUBJECT'S BINDINGS, so the handler question is answered against the providers
+// this subject actually declared rather than against a global table that might not describe them.
+fn admit_managed_schedule_for(
+  standing: DependencyClosureStanding,
+  host: NonEmptyStr,
+  principal: NonEmptyStr,
+  credential: FleetCredentialIdentity,
+  groups: List<NonEmptyStr>,
+) -> ProviderExecutionStanding? {
+  let bindings = managed_provider_bindings_for(host: host, principal: principal, credential: credential, groups: groups)
+  admit_provider_schedule(standing: standing, has_handler: p => provider_row_has_handler_for(bindings: bindings, p: p))
 }
 
 // ── WHAT EACH PROVIDER PRODUCES, AS ONE TERMINAL STANDING PER NODE ─────────────────────────────
@@ -153,8 +341,8 @@ type AccountProviderTerminal sole_constructor {
 // first fact would be the "exit status is the capability" mistake, and the admission it delegates to refuses a
 // missing home for exactly that reason.
 fn realize_managed_account(
-  host: NonEmptyStr,
-  principal: NonEmptyStr,
+  occurrence: PosixAccountOccurrence,
+  expected_local_name: NonEmptyStr,
   bootstrap_realized: Bool,
   apply_succeeded: Bool,
   apply_detail: NonEmptyStr,
@@ -172,7 +360,7 @@ fn realize_managed_account(
         ready: none,
       }
     } else {
-      match admit_managed_posix_account(host: host, expected_principal: principal, readback: readback) {
+      match admit_managed_posix_account(occurrence: occurrence, expected_local_name: expected_local_name, readback: readback) {
         ManagedPosixAccountRefused { expected: e, cause: c } =>
           AccountProviderTerminal {
             outcome: ProviderRefused {
@@ -185,7 +373,7 @@ fn realize_managed_account(
           AccountProviderTerminal {
             outcome: ProviderRealized {
               kind: ManagedAccountProvider,
-              detail: join(["the host reports ", r.principal as String, " with home ", r.home as String], "") as NonEmptyStr,
+              detail: join(["the host reports ", r.observed_local_name as String, " with home ", r.home as String], "") as NonEmptyStr,
             },
             ready: Present { value: r },
           }
@@ -337,6 +525,35 @@ fn realize_managed_principal_session(
               }
           }
       }
+  }
+}
+
+// ── THE TWO TERMINALS A CALLER LEGITIMATELY NEEDS, NAMED HERE RATHER THAN SPELLED THERE ────────
+//
+// THE SEAL ON SessionProviderTerminal HELD AND THE CALL SITE WAS WRONG, which is the right way round. A product
+// module wiring the live route needed to report "the session was not attempted because its prerequisite did
+// not realize" and "the local credential binding was refused, so no probe ran" -- both legitimate terminals,
+// neither of them a handle. It reached for the record literal and the compiler refused it.
+//
+// UNSEALING THE PAIRING WOULD HAVE BEEN THE WRONG REPAIR. The pairing is what joins an outcome to the handle it
+// produced, and a caller that can build one can claim a realized outcome beside an absent handle -- exactly the
+// disagreement the single value exists to prevent. So the two shapes are named here, where the type lives, and
+// neither of them can carry a handle: both are `ready: none` by construction.
+//
+// THE THIRD SHAPE IS NOT PROVIDED, deliberately: there is no mint for a REALIZED session terminal, because the
+// only route to one is realize_managed_principal_session consuming an admission that compared a probe's reading
+// against the declared principal, the installed credential and the required memberships.
+fn session_terminal_unattempted(blocked_by: ManagedProviderKind) -> SessionProviderTerminal {
+  SessionProviderTerminal {
+    outcome: ProviderUnattempted { kind: ManagedPrincipalSessionProvider, blocked_by: blocked_by },
+    ready: none,
+  }
+}
+
+fn session_terminal_refused(cause: NonEmptyStr) -> SessionProviderTerminal {
+  SessionProviderTerminal {
+    outcome: ProviderRefused { kind: ManagedPrincipalSessionProvider, cause: cause },
+    ready: none,
   }
 }
 

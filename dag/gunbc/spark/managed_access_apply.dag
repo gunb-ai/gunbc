@@ -30,6 +30,7 @@ import gunbc.fleet_known_hosts_anchor {
   shape_fleet_ssh_password_exec,
 }
 import gunbc.spark.managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.fleet_posix_accounts { PosixAccountOccurrence, FleetAccountAutomation }
 import std.nat { Nat }
 import extdeps.ssh { SshPublicKey }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
@@ -37,13 +38,21 @@ import gunbc.managed_principal_session {
   FleetCredentialIdentity, fleet_declared_credential_identity,
   PosixAccountReadback, AuthorizedKeyReadback,
   ManagedPosixAccountReady, ManagedAuthorizedKeyReady,
+  FleetPrivateKeyBindingAdmission, FleetPrivateKeyBindingAdmitted, FleetPrivateKeyBindingRefused,
+  ManagedPrincipalSessionReady,
 }
 import gunbc.managed_principal_provider {
   ManagedProviderKind, ManagedProviderOutcome,
   ProviderRealized, ProviderRefused, ProviderUnattempted,
+  ManagedAccountProvider, ManagedAuthorizedKeyProvider, ManagedPrincipalSessionProvider,
   managed_provider_kind_label, provider_outcome_realized,
   AccountProviderTerminal, realize_managed_account,
   KeyProviderTerminal, realize_managed_authorized_key,
+  SessionProviderTerminal, realize_managed_principal_session,
+  session_terminal_unattempted, session_terminal_refused,
+}
+import gunbc.managed_principal_probe {
+  bind_fleet_private_key, realize_session_by_probing,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet_multi_principal_probe {
@@ -129,6 +138,63 @@ data inference_identity_depends_on_the_account_not_the_key: NonEmptyStr = "gunbc
 // the read failed.
 data readback_unread_sentinel: NonEmptyStr = "<unread>" as NonEmptyStr
 
+// THE THREE MARKERS A READBACK CAN CARRY, and they are three because they license three different next steps:
+// `<unread>` means this leg produced no parseable output at all; `<no-match>` means the file was read and our
+// line is not in it, which is an install; `<unreadable>` means the file could not be read, which must withhold
+// mutation rather than invite an append over content nobody observed.
+data readback_no_match_marker: NonEmptyStr = "<no-match>" as NonEmptyStr
+data readback_unreadable_marker: NonEmptyStr = "<unreadable>" as NonEmptyStr
+data readback_file_absent_marker: NonEmptyStr = "<file-absent>" as NonEmptyStr
+data readback_search_error_marker: NonEmptyStr = "<search-error>" as NonEmptyStr
+
+// ── THE WIRE MARKERS DECODE INTO A TYPED OUTCOME, AND DOWNSTREAM READS THE TYPE ────────────────
+//
+// THE MARKERS ARE AN ENCODING, NOT A DOMAIN FACT. A consumer that compared strings would be inventing resource
+// state from text; this fold is the one boundary where the text becomes a typed answer, and every arm below is
+// reached by matching that type rather than by another string comparison.
+//
+// FIVE ARMS AND NOT A BOOL, because the question "may this leg install the key" has five different answers and
+// three of them are not about the key at all: whether an observation was obtained, whether the resource exists,
+// whether its content was read, and only then whether our line is among what was read.
+type AuthorizedKeyLineOutcome
+  = KeyLineObserved { line: NonEmptyStr }
+  | KeyLineNoMatchInReadFile
+  | KeyLineFileEstablishedAbsent
+  | KeyLineContentUnreadable
+  | KeyLineOutcomeUnobtained
+
+fn decode_authorized_key_line(line: NonEmptyStr) -> AuthorizedKeyLineOutcome {
+  if (line as String) == (readback_file_absent_marker as String) { KeyLineFileEstablishedAbsent }
+  else { if (line as String) == (readback_unreadable_marker as String) { KeyLineContentUnreadable }
+  else { if (line as String) == (readback_search_error_marker as String) { KeyLineContentUnreadable }
+  else { if (line as String) == (readback_no_match_marker as String) { KeyLineNoMatchInReadFile }
+  else { if (line as String) == (readback_unread_sentinel as String) { KeyLineOutcomeUnobtained }
+  else { KeyLineObserved { line: line } } } } } }
+}
+
+// AN ABSENT FILE IS ELIGIBLE FOR CREATION; AN UNREAD ONE IS NOT. This is the predicate that the `-r` mistake
+// made wrong in the dangerous direction, and it is stated as its own function so the distinction has a name a
+// caller can be wrong about visibly.
+fn key_line_permits_install(o: AuthorizedKeyLineOutcome) -> Bool {
+  match o {
+    KeyLineFileEstablishedAbsent => true
+    KeyLineNoMatchInReadFile => true
+    KeyLineObserved { line: _ } => false
+    KeyLineContentUnreadable => false
+    KeyLineOutcomeUnobtained => false
+  }
+}
+
+fn key_line_outcome_text(o: AuthorizedKeyLineOutcome) -> String {
+  match o {
+    KeyLineObserved { line: l } => join(["the declared line is present: ", l as String], "")
+    KeyLineNoMatchInReadFile => "the file was read and does not contain the declared line, so the key is not installed -- which says nothing about what else the file holds"
+    KeyLineFileEstablishedAbsent => "authorized_keys does not exist, which is the ordinary first-install state and is established absence rather than a failed read"
+    KeyLineContentUnreadable => "the file exists and its content could not be read, or the search itself failed: mutation is WITHHELD because appending over unseen content may duplicate or clobber it"
+    KeyLineOutcomeUnobtained => "this leg produced no parseable readback at all, so nothing is established about the file in either direction"
+  }
+}
+
 fn triple_or_unread(outcome: SparkApplyOutcome) -> List<String> {
   match outcome {
     ApplyConverged { detail: d } =>
@@ -179,6 +245,62 @@ fn provider_outcome_as_apply(o: ManagedProviderOutcome) -> SparkApplyOutcome {
     ProviderRealized { kind: _, detail: d } => ApplyConverged { detail: d as String }
     ProviderRefused { kind: _, cause: c } => ApplyRefused { cause: c as String }
     ProviderUnattempted { kind: _, blocked_by: b } => ApplyUnattempted { blocked_by: managed_provider_kind_label(k: b) as String }
+  }
+}
+
+// ── THE SESSION PROVIDER'S LIVE FORM, WHICH IS WHERE THE CAPABILITY IS ACTUALLY MINTED ────────
+//
+// THE PROOF LEG USED TO BE A BARE `id` OVER THE MANAGED PRINCIPAL whose outcome went into the receipt and
+// nowhere else. It proved the right thing and then threw the proof away: nothing downstream was typed against
+// it, so the fact that a key-only session worked could not make any command require one.
+//
+// NOW THE PROBE PRODUCES AN OBSERVATION AND THE ADMISSION DECIDES. gunbc.managed_principal_probe opens a fresh
+// key-only connection under the exact-credential posture and reads `id` once, so the principal and its groups
+// come from one moment; admit_managed_principal_session then compares the reported principal against the
+// account, the installed credential against the bound one, and the observed groups against what was required.
+// Only that comparison mints ManagedPrincipalSessionReady.
+//
+// AND THE BINDING IS ADMITTED RATHER THAN ASSUMED. A context exists only where its credential was verified
+// against the declared fingerprint, but the JOIN -- that the key we hold is the key that was installed -- is a
+// separate comparison, and a refused binding leaves the session unattempted rather than probing with a key the
+// model does not recognise.
+fn realize_session_from_admission(
+  account_ready: ManagedPosixAccountReady?,
+  key_ready: ManagedAuthorizedKeyReady?,
+  binding_admission: FleetPrivateKeyBindingAdmission,
+  host: String,
+) -> SessionProviderTerminal {
+  match binding_admission {
+    FleetPrivateKeyBindingRefused { expected: e, derived: d } =>
+      session_terminal_refused(
+        cause: join([
+          "the local credential binding was refused, so no probe ran: expected ", e as String,
+          " and derived ", d as String,
+        ], "") as NonEmptyStr)
+    FleetPrivateKeyBindingAdmitted { ready: binding } =>
+      match account_ready {
+        Absent => session_terminal_unattempted(blocked_by: ManagedAccountProvider)
+        Present { value: account } =>
+          match key_ready {
+            Absent => session_terminal_unattempted(blocked_by: ManagedAuthorizedKeyProvider)
+            Present { value: key } =>
+              realize_managed_principal_session(
+                account_ready: account_ready,
+                key_ready: key_ready,
+                binding: binding,
+                admission: realize_session_by_probing(
+                  account: account,
+                  key: key,
+                  binding: binding,
+                  required_groups: [],
+                  target: SshTarget {
+                    endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+                    principal: spark_managed_login as NonEmptyStr,
+                  },
+                ),
+              )
+          }
+      }
   }
 }
 
@@ -380,12 +502,57 @@ fn create_managed_account_script(admitted: PortableRemoteWord) -> String {
 // AND THE KEY SCRIPT EMITS LINE, OWNER AND MODE, which is what distinguishes an installed key from one sshd
 // will honour. `grep -c .` counted lines, which cannot say whether OUR line is among them, who owns the file,
 // or whether its mode leaves it ignored.
-fn install_authorized_key_readback_script(admitted: PortableRemoteWord) -> String {
+//
+// IT MATCHES ON THE KEY MATERIAL, NOT ON THE FIRST LINE THAT LOOKS LIKE A KEY. A first revision read
+// `grep -m1 -F 'ssh-'`, which returns the FIRST key in the file -- so any pre-existing key ahead of the fleet
+// line makes a perfectly successful install read back as the wrong key and refuse. That is not hypothetical on
+// this fleet: ubuntu@srv3 carried node-orch@srv2 and briansrls@srv1 before fleet-automation was added, so the
+// first revision would have refused srv3 every time while the key it installed was present and working.
+//
+// FOUR OUTCOMES, BECAUSE FOUR NEXT ACTIONS -- and getting to four took two wrong answers.
+//
+// THE FIRST WRONG ANSWER printed one `<absent>` marker for every failure, so an unreadable file read as an empty
+// key set: ignorance rendered as an answer, which is the absorbing fallback DESIGN section 5 forbids.
+//
+// THE SECOND WRONG ANSWER split it into readable-versus-not with `[ ! -r "$F" ]`, and `-r` IS TRUE FOR A MISSING
+// FILE. So a fresh account -- whose authorized_keys does not exist yet, which is the ordinary first-install state
+// -- routed into the UNREADABLE arm, and unreadable withholds mutation. First installation would have withheld
+// forever, and the refusal would have read as a permissions problem on a file that was simply not there.
+//
+// SO PRESENCE AND READABILITY ARE ASKED SEPARATELY, and the search's own exit status is decoded rather than
+// inferred from whether stdout was empty: grep exits 1 for "no lines selected" and greater than 1 for an ERROR,
+// and collapsing those would let a genuine read failure license an append. The four markers and what each
+// licenses:
+//
+//   <file-absent>   established absence   -> eligible to plan creation under the applicable policy
+//   <unreadable>    content exists, unread -> WITHHOLD mutation; appending over unseen content may duplicate
+//   <search-error>  the search itself failed -> WITHHOLD; this is not a negative result
+//   <no-match>      a COMPLETED search found nothing -> the key is not installed, which is ordinary work
+//
+// AND `<no-match>` IS A CARDINALITY STATEMENT ABOUT A SELECTION, not about the file. A file holding five
+// unrelated keys and a genuinely empty file both yield no match for ours. That answers "is this key present";
+// it does not reconstruct the file, prove nothing else exists, or authorize replacing anything.
+//
+// AND EVERY MARKER IS PRINTED RATHER THAN LEFT TO AN EXIT CODE, because under `set -e` a non-matching grep
+// aborts the script before the owner and mode lines ever run.
+//
+// THE READBACK IS STILL NOT THE POPULATION, and that is a declared gap rather than a silent one: it answers
+// "is OUR line present, owned and moded correctly", not "what is the whole desired-versus-observed difference".
+// NEXT-RUNG TRIGGER: the key provider consuming gunbc.host_authorized_keys_reconcile's MembershipPlan with a
+// live observed side read through extdeps.ssh.parse_ssh_authorized_keys -- at which point this script reads the
+// file rather than one line, and foreign keys become visible to the ownership wall instead of invisible to it.
+fn install_authorized_key_readback_script(admitted: PortableRemoteWord, key_material: String) -> String {
   let login = admitted.value as String
+  let quoted_material = shell_quote(arg: key_material)
   join([
     "set -e\n",
     "H=$(getent passwd ", login, " | cut -d: -f6)\n",
-    "grep -m1 -F 'ssh-' \"$H/.ssh/authorized_keys\"\n",
+    "F=\"$H/.ssh/authorized_keys\"\n",
+    "if [ ! -e \"$F\" ]; then echo '<file-absent>'; ",
+    "elif [ ! -r \"$F\" ]; then echo '<unreadable>'; ",
+    "else grep -m1 -F ", quoted_material, " \"$F\"; g=$?; ",
+    "if [ \"$g\" -eq 1 ]; then echo '<no-match>'; ",
+    "elif [ \"$g\" -gt 1 ]; then echo '<search-error>'; fi; fi\n",
     "stat -c %U \"$H/.ssh/authorized_keys\"\n",
     "stat -c %a \"$H/.ssh/authorized_keys\"\n",
   ], "")
@@ -589,8 +756,8 @@ fn spark_managed_access_apply_with_resolved_credentials(
             script: create_managed_account_script(admitted: managed_word),
           )
           let account = realize_managed_account(
-            host: host as NonEmptyStr,
-            principal: spark_managed_login as NonEmptyStr,
+            occurrence: PosixAccountOccurrence { host: host as HostIdentity, principal: FleetAccountAutomation },
+            expected_local_name: spark_managed_login as NonEmptyStr,
             bootstrap_realized: true,
             apply_succeeded: apply_converged(o: create_run),
             apply_detail: apply_outcome_label(outcome: create_run) as NonEmptyStr,
@@ -604,7 +771,7 @@ fn spark_managed_access_apply_with_resolved_credentials(
               admin_credential: admin_credential, admin_credential_file: admin_credential_file,
               script: join([
                 install_authorized_key_script(admitted: managed_word, key_line: fleet_authorized_key_line()),
-                install_authorized_key_readback_script(admitted: managed_word),
+                install_authorized_key_readback_script(admitted: managed_word, key_material: fleet_automation_ssh_key.material as String),
               ], ""),
             )
           }
@@ -625,19 +792,19 @@ fn spark_managed_access_apply_with_resolved_credentials(
               script: create_inference_identity_script(admitted: inference_word),
             )
           }
-          let proof_run = if !provider_outcome_realized(o: key.outcome) {
-            ApplyUnattempted { blocked_by: "authorized-keys-reconcile" }
-          } else {
-            managed_principal_leg(
-              context: context, host: host, managed_principal: spark_managed_login, raw_words: ["id"],
-            )
-          }
+          let binding_admission = bind_fleet_private_key(context: context)
+          let session = realize_session_from_admission(
+            account_ready: account.ready,
+            key_ready: key.ready,
+            binding_admission: binding_admission,
+            host: host,
+          )
           ApplyAttempted {
             first: SparkApplyStep { effect_label: "create-managed-account", outcome: provider_outcome_as_apply(o: account.outcome) },
             more: [
               SparkApplyStep { effect_label: "install-fleet-authorized-key", outcome: provider_outcome_as_apply(o: key.outcome) },
               SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
-              SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: proof_run },
+              SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: provider_outcome_as_apply(o: session.outcome) },
             ],
           }
             },

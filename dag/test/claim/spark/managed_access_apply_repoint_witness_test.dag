@@ -11,6 +11,11 @@ import gunbc.spark.managed_access_apply {
   apply_converged, apply_outcome_label,
   third_line_triple, account_readback_of, key_readback_of,
   provider_outcome_as_apply, readback_unread_sentinel,
+  readback_no_match_marker, readback_unreadable_marker,
+  readback_file_absent_marker, readback_search_error_marker,
+  AuthorizedKeyLineOutcome, KeyLineObserved, KeyLineNoMatchInReadFile,
+  KeyLineFileEstablishedAbsent, KeyLineContentUnreadable, KeyLineOutcomeUnobtained,
+  decode_authorized_key_line, key_line_permits_install, key_line_outcome_text,
 }
 import gunbc.managed_principal_session { PosixAccountReadback, AuthorizedKeyReadback }
 
@@ -134,4 +139,99 @@ test fn the_receipt_label_distinguishes_unattempted_from_refused() -> Bool {
   string_contains(s: label, pattern: "unattempted")
     && string_contains(s: label, pattern: "create-managed-account")
     && !string_contains(s: label, pattern: "REFUSED")
+}
+
+// ── CARDINALITY AND PRESENCE PRESERVATION, AT THE DECISION RATHER THAN AT THE DECODER ──────────
+//
+// EVERY ROW BELOW ASSERTS THE NEXT ACTION, not that a decoder returned a named arm. A mutation that collapsed
+// unreadable into empty must make the INSTALL DECISION wrong and turn a row red; and the legitimate empty and
+// absent cases must stay usable, so a blanket refusal cannot satisfy the set.
+//
+// THE RULE THESE INHABIT: zero members inside an existing thing is not zero occurrences of that thing, and
+// neither is "we do not know". Its conformance row is `conformance-cardinality` in gunbc.design_argument.
+
+// ── PAIR 1: OBSERVATION AVAILABILITY ──────────────────────────────────────────────────────────
+//
+// No usable read versus a completed search that found nothing. The first establishes nothing in either
+// direction; the second is ordinary work. An install decision that treated them alike would append to a file it
+// never read.
+test fn an_unobtained_readback_does_not_permit_an_install() -> Bool {
+  !key_line_permits_install(o: decode_authorized_key_line(line: readback_unread_sentinel))
+}
+
+test fn a_completed_search_finding_nothing_does_permit_an_install() -> Bool {
+  key_line_permits_install(o: decode_authorized_key_line(line: readback_no_match_marker))
+}
+
+// ── PAIR 2: RESOURCE PRESENCE ─────────────────────────────────────────────────────────────────
+//
+// AN ESTABLISHED MISSING FILE VERSUS AN EXISTING FILE WE COULD NOT READ, and this is the pair a `[ ! -r ]`
+// precheck got wrong in the dangerous direction: `-r` is false for a missing file too, so a fresh account's
+// absent authorized_keys routed into the unreadable arm and WITHHELD -- meaning first installation could never
+// proceed. Absence is an ordinary materialization requirement; unread content is not.
+test fn an_established_absent_file_permits_creation() -> Bool {
+  key_line_permits_install(o: decode_authorized_key_line(line: readback_file_absent_marker))
+}
+
+test fn an_existing_unreadable_file_withholds_mutation() -> Bool {
+  !key_line_permits_install(o: decode_authorized_key_line(line: readback_unreadable_marker))
+}
+
+// AND THE TWO DECODE TO DIFFERENT ARMS, so the shared install verdict in pair 1 is not what makes them
+// distinguishable -- a reader deciding whether to investigate permissions needs to know which one happened.
+test fn absence_and_unreadability_are_different_outcomes() -> Bool {
+  match decode_authorized_key_line(line: readback_file_absent_marker) {
+    KeyLineFileEstablishedAbsent =>
+      match decode_authorized_key_line(line: readback_unreadable_marker) {
+        KeyLineContentUnreadable => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// ── PAIR 3: FAILURE VERSUS NEGATIVE RESULT ────────────────────────────────────────────────────
+//
+// A SEARCH THAT ERRORED IS NOT A SEARCH THAT FOUND NOTHING. grep exits 1 for "no lines selected" and greater
+// than 1 for an error; inferring a negative result from empty stdout would let a genuine read failure license an
+// append. The script decodes the exit status, and this row asserts the consequence.
+test fn a_failed_search_withholds_while_a_negative_search_proceeds() -> Bool {
+  !key_line_permits_install(o: decode_authorized_key_line(line: readback_search_error_marker))
+    && key_line_permits_install(o: decode_authorized_key_line(line: readback_no_match_marker))
+}
+
+// ── PAIR 4: MEMBERSHIP ────────────────────────────────────────────────────────────────────────
+//
+// AN OBSERVED LINE IS NOT AN INSTALL OPPORTUNITY. The key is already there, so proceeding would append a
+// duplicate -- which `grep -qxF ||` happens to prevent today and which the DECISION must prevent regardless of
+// what the script's idempotence buys.
+test fn an_observed_line_does_not_permit_another_install() -> Bool {
+  !key_line_permits_install(o: decode_authorized_key_line(line: "ssh-ed25519 AAAAREALKEYMATERIAL fleet-automation" as NonEmptyStr))
+}
+
+// ── PAIR 5: WHAT A NO-MATCH DOES AND DOES NOT CLAIM ───────────────────────────────────────────
+//
+// THE LIMITATION IS ASSERTED RATHER THAN PAPERED OVER. A file holding five unrelated keys and a genuinely empty
+// file both yield no match for ours, so this readback CANNOT distinguish full-population cardinality -- and the
+// honest control is one that says so, because the alternative is a row implying coverage the instrument does not
+// have. The outcome text carries the disclaimer, and a future revision that starts claiming population
+// knowledge must change this row deliberately.
+test fn a_no_match_says_nothing_about_the_rest_of_the_file() -> Bool {
+  string_contains(
+    s: key_line_outcome_text(o: decode_authorized_key_line(line: readback_no_match_marker)),
+    pattern: "says nothing about what else the file holds")
+}
+
+// AND THE MARKERS ARE DECODED AT ONE BOUNDARY, so no consumer compares sentinel text as a domain fact. This
+// asserts the decoder is total over the markers it declares: a marker that fell through to KeyLineObserved would
+// be read as a real key line, which is the sentinel-as-fact tell named in the conformance row.
+test fn every_declared_marker_decodes_to_a_non_observed_outcome() -> Bool {
+  let markers = [readback_unread_sentinel, readback_no_match_marker, readback_unreadable_marker, readback_file_absent_marker, readback_search_error_marker]
+  all(markers, m => match decode_authorized_key_line(line: m) {
+    KeyLineObserved { line: _ } => false
+    KeyLineNoMatchInReadFile => true
+    KeyLineFileEstablishedAbsent => true
+    KeyLineContentUnreadable => true
+    KeyLineOutcomeUnobtained => true
+  })
 }

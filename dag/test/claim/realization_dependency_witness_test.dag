@@ -331,3 +331,47 @@ test fn a_handle_realized_for_another_host_does_not_admit_the_dependent() -> Boo
     DependentRunnable => false
   }
 }
+
+// ── PAIR 7: COVERAGE IS A RELATION, NOT A QUANTIFIER OVER WHAT WAS OBSERVED ────────────────────
+//
+// THE TELL THIS ROW EXISTS FOR: using "every observed member passed" as though it established "every required
+// member was observed and passed". `all([])` is not the defect -- the quantifier is correct -- and a four-rank
+// launch with three successful observations and one MISSING observation cannot become healthy by filtering the
+// missing rank away. Coverage needs the expected population as well as the observed one.
+//
+// `admit_dependent` is the corpus's smallest instance of that relation: it compares the REQUIRED requirements
+// against the realized ones and names what is unmet, rather than folding over the realized ones and reporting
+// that they were all fine.
+data w_two_host_requirement: List<CapabilityRequirement> = [
+  r_session(host: w_host, principal: w_principal),
+  r_session(host: w_other_host, principal: w_principal),
+]
+
+test fn one_realized_of_two_required_is_unattempted_and_names_the_missing_one() -> Bool {
+  match admit_dependent(required: w_two_host_requirement, realized: w_realized_session) {
+    DependentUnattempted { unmet_keys: ks } =>
+      count(ks) == 1 && any(ks, k => string_contains(s: k as String, pattern: w_other_host as String))
+    DependentRunnable => false
+  }
+}
+
+// AND AN EMPTY REQUIREMENT SET IS RUNNABLE, which is the legitimate empty this rule must not break: an operation
+// that requires no capabilities is not blocked, and a suite that refused every empty population would be a
+// blanket refusal rather than a coverage check.
+data w_no_requirements: List<CapabilityRequirement> = []
+
+test fn requiring_nothing_is_runnable_rather_than_refused() -> Bool {
+  match admit_dependent(required: w_no_requirements, realized: w_no_realized) {
+    DependentRunnable => true
+    DependentUnattempted { unmet_keys: _ } => false
+  }
+}
+
+// AND A REALIZED CAPABILITY NOBODY REQUIRED DOES NOT SATISFY A REQUIREMENT THAT WAS, which is the asymmetry a
+// fold over the realized side would lose: having one handle in hand says nothing about the other host.
+test fn a_realized_capability_for_the_wrong_subject_does_not_cover_the_right_one() -> Bool {
+  match admit_dependent(required: [r_session(host: w_other_host, principal: w_principal)], realized: w_realized_session) {
+    DependentUnattempted { unmet_keys: ks } => count(ks) == 1
+    DependentRunnable => false
+  }
+}

@@ -1,0 +1,208 @@
+module gunbc.managed_principal_probe
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.resources { Network }
+import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
+import gunbc.fleet_known_hosts_anchor {
+  SshTarget, FleetSshExecutionContext, FleetSshCredentialBinding,
+  FleetSshIdentityFileHeld, FleetSshAgentHeld,
+  portable_remote_words, shape_fleet_ssh_exec,
+}
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import gunbc.managed_principal_session {
+  FleetCredentialIdentity, fleet_declared_credential_identity,
+  ManagedPosixAccountReady, ManagedAuthorizedKeyReady,
+  FleetPrivateKeyBindingReady, FleetPrivateKeyBindingAdmission,
+  FleetPrivateKeyBindingAdmitted, FleetPrivateKeyBindingRefused, admit_fleet_private_key_binding,
+  ManagedPrincipalAuthenticationReceipt, observe_managed_principal_authentication,
+  ManagedPrincipalSessionAdmission, admit_managed_principal_session,
+}
+
+// ── THE FRESH KEY-ONLY CONNECTION, WHICH IS THE ONLY THING THAT PRODUCES THE CAPABILITY ────────
+//
+// THIS IS THE LIVE HALF. Everything else in the vertical decides and records; this opens a NEW connection as
+// the managed principal and reads back who it became. It deliberately does not reuse the privileged bootstrap
+// session: a privileged session can read /etc/passwd and conclude the account exists, which is a different
+// claim from the account accepting an authentication.
+//
+// WHICH CREDENTIAL AUTHENTICATED IS A MODELLED FACT HERE, NOT AN ASSUMPTION, and that is worth stating exactly
+// because the alternative was to trust prose. extdeps.ssh.client_options.openssh_exact_credential_options --
+// which gunbc.fleet_known_hosts_anchor.shape_fleet_ssh_exec applies for an identity-file binding -- sets
+// IdentitiesOnly, IdentityAgent=none, PreferredAuthentications=publickey, and disables password and
+// keyboard-interactive. Under that posture a session that succeeds succeeded THROUGH THE NAMED FILE: an agent
+// key cannot have been offered first, an ambient IdentityFile cannot have applied, and a password fallback
+// cannot have carried it.
+//
+// SO THE RECEIPT'S used_credential IS THE BINDING'S, JUSTIFIED BY THE POSTURE RATHER THAN BY A WIRE READ. The
+// stronger form parses `ssh -v`'s "Server accepts key" line, which names the offered key's fingerprint
+// directly; that is a real instrument and it is not built here.
+// NEXT-RUNG TRIGGER: an `ssh -v` transcript reader, at which point the used credential is observed from the
+// authentication exchange and the admission's credential-used comparison stops being satisfied by construction
+// on this path. It remains discriminating for any caller supplying a receipt from an agent-held binding, where
+// several identities really can be offered.
+data used_credential_basis: NonEmptyStr = "the exact-credential client posture: IdentitiesOnly, IdentityAgent=none and publickey-only, so a success is attributable to the named identity file and to nothing else" as NonEmptyStr
+
+// ── READING `id` ONCE, FOR THE PRINCIPAL AND ITS GROUPS TOGETHER ───────────────────────────────
+//
+// ONE CONNECTION AND ONE COMMAND, because the properties downstream work relies on must be observed together.
+// Two reads -- `id -un` then `id -Gn` -- would be two connections and two moments, and a membership change
+// between them would produce a receipt describing a principal that never existed in that state.
+//
+// `id` PRINTS uid=N(name) gid=N(name) groups=N(name),N(name), and the names inside the parentheses are what
+// this reads: a numeric gid is not what a sudoers or docker-group requirement names, and the numeric form
+// differs per host for the same logical group.
+data managed_principal_probe_words: List<String> = ["id"]
+
+fn text_after(s: String, marker: String) -> String? {
+  let parts = split(s: s, delimiter: marker)
+  if count(parts) < 2 { none } else { parts.skip(n: 1).first() }
+}
+
+fn parenthesised_name(field: String) -> NonEmptyStr? {
+  match text_after(s: field, marker: "(") {
+    Absent => none
+    Present { value: rest } => {
+      let inner = (split(s: rest, delimiter: ")")).first()
+      match inner {
+        Absent => none
+        Present { value: v } => if trim(s: v) == "" { none } else { Present { value: trim(s: v) as NonEmptyStr } }
+      }
+    }
+  }
+}
+
+// THE PRINCIPAL COMES FROM uid=, NOT FROM THE FIRST PARENTHESES IN THE LINE, because a line whose uid field is
+// missing would otherwise silently yield the gid's name -- a plausible-looking wrong answer rather than a
+// refusal.
+fn observed_principal_of(id_stdout: String) -> NonEmptyStr? {
+  match text_after(s: trim(s: id_stdout), marker: "uid=") {
+    Absent => none
+    Present { value: rest } => parenthesised_name(field: rest)
+  }
+}
+
+// AND THE GROUPS COME FROM groups=, WHICH IS THE LAST FIELD, so the remainder is split on commas and each
+// element's parenthesised name taken. A field with no name is DROPPED rather than contributing an empty group,
+// because an empty group name would compare unequal to every required group and read as a missing membership
+// when the truth is an unparsed field.
+fn observed_groups_of(id_stdout: String) -> List<NonEmptyStr> {
+  match text_after(s: trim(s: id_stdout), marker: "groups=") {
+    Absent => []
+    Present { value: rest } =>
+      fold(split(s: rest, delimiter: ","), init: [], f: (acc, field) =>
+        match parenthesised_name(field: field) {
+          Absent => acc
+          Present { value: g } => concat(acc, [g])
+        })
+  }
+}
+
+// ── THE BINDING, WHOSE CREDENTIAL IS THE ONE THE POSTURE WILL USE ─────────────────────────────
+//
+// THE LOCAL HALF OF THE CREDENTIAL JOIN. gunbc.fleet_ssh_credential_verify already derives the public half
+// from the private material and compares it to the declared fingerprint; that verification is what a context's
+// credential binding carries, so a context that exists is a context whose key was checked. What this adds is
+// the JOIN: the same identity must appear on the installed key, which is what admit_managed_principal_session
+// compares.
+fn bind_fleet_private_key(context: FleetSshExecutionContext) -> FleetPrivateKeyBindingAdmission {
+  admit_fleet_private_key_binding(derived_credential: fleet_declared_credential_identity(), context: context)
+}
+
+// ── THE PROBE ─────────────────────────────────────────────────────────────────────────────────
+//
+// IT RETURNS THE ADMISSION AND NOT A HANDLE, because minting the handle is the admission's privilege and this
+// function's job is to produce the OBSERVATION it needs. A probe that returned a ready handle would be the
+// seal in the wrong place for the third time in this session.
+type ManagedPrincipalProbeReading
+  = ProbeAnswered { receipt: ManagedPrincipalAuthenticationReceipt }
+  | ProbeUnreadable { cause: NonEmptyStr }
+  | ProbeUnreachable { cause: NonEmptyStr }
+
+fn probe_managed_principal(
+  binding: FleetPrivateKeyBindingReady,
+  target: SshTarget,
+) -> ManagedPrincipalProbeReading
+{
+  match portable_remote_words(raws: managed_principal_probe_words) {
+    Absent => ProbeUnreadable { cause: "the probe words are not portable, which is a defect in this module rather than a fact about the host" as NonEmptyStr }
+    Present { value: words } => {
+      let r = ssh_session_exec_portable_words_with_stdin(
+        client_args: shape_fleet_ssh_exec(context: binding.context, target: target, words: words),
+        stdin_payload: "",
+      )
+      if !r.success {
+        ProbeUnreachable {
+          cause: join(["no key-only session was established as ", target.principal as String, ": exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") as NonEmptyStr,
+        }
+      } else {
+        match observed_principal_of(id_stdout: r.stdout) {
+          Absent => ProbeUnreadable {
+            cause: join(["the session answered and `id` was not parseable, so who it became is unknown: ", trim(s: r.stdout)], "") as NonEmptyStr,
+          }
+          Present { value: principal } => ProbeAnswered {
+            receipt: observe_managed_principal_authentication(
+              observed_principal: principal,
+              observed_groups: observed_groups_of(id_stdout: r.stdout),
+              used_credential: binding.credential,
+              attempt: (binding.context).attempt,
+              probe_detail: join(["a fresh key-only session running `id` under ", used_credential_basis as String], "") as NonEmptyStr,
+            ),
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── AND THE SESSION PROVIDER'S LIVE FORM ──────────────────────────────────────────────────────
+//
+// THE PROBE, THE BINDING AND THE TWO UPSTREAM HANDLES MEET HERE, and the admission decides. An unreachable or
+// unparseable probe is passed through as a refusal with its own cause rather than being turned into a
+// reachable-but-wrong reading: a session nobody established says nothing about the principal.
+fn realize_session_by_probing(
+  account: ManagedPosixAccountReady,
+  key: ManagedAuthorizedKeyReady,
+  binding: FleetPrivateKeyBindingReady,
+  required_groups: List<NonEmptyStr>,
+  target: SshTarget,
+) -> ManagedPrincipalSessionAdmission
+{
+  match probe_managed_principal(binding: binding, target: target) {
+    ProbeUnreachable { cause: c } =>
+      admit_managed_principal_session(
+        account: account, key: key, binding: binding, required_groups: required_groups,
+        target: target,
+        receipt: observe_managed_principal_authentication(
+          observed_principal: "<no-session>" as NonEmptyStr,
+          observed_groups: [],
+          used_credential: binding.credential,
+          attempt: (binding.context).attempt,
+          probe_detail: c,
+        ),
+        reachable: false,
+        unreachable_cause: c,
+      )
+    ProbeUnreadable { cause: c } =>
+      admit_managed_principal_session(
+        account: account, key: key, binding: binding, required_groups: required_groups,
+        target: target,
+        receipt: observe_managed_principal_authentication(
+          observed_principal: "<unparsed>" as NonEmptyStr,
+          observed_groups: [],
+          used_credential: binding.credential,
+          attempt: (binding.context).attempt,
+          probe_detail: c,
+        ),
+        reachable: true,
+        unreachable_cause: c,
+      )
+    ProbeAnswered { receipt: receipt } =>
+      admit_managed_principal_session(
+        account: account, key: key, binding: binding, required_groups: required_groups,
+        target: target, receipt: receipt, reachable: true,
+        unreachable_cause: "unused: the probe answered" as NonEmptyStr,
+      )
+  }
+}

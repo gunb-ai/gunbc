@@ -122,6 +122,32 @@ data conformance_domains: List<ConformanceDomain> = [
     narrative: "caching and execution are one concept keyed by content hash, and realization precedes use: a capability is consumed through a grounded handle its converger produced, never through ambient state or statement order",
   },
   ConformanceDomain {
+    key: "conformance-cardinality",
+    label: "cardinality / presence preservation",
+    question: "Does the change preserve occurrence and cardinality at each nested boundary, and obtain presence or absence from the authority capable of establishing it? An absent binding, a present empty collection, an absent element, a null in a foreign format, an unobserved resource, a failed observation, and a readable population with no matching member are not interchangeable. Where the change defaults, filters, flattens, selects a first element, or aggregates, does it preserve every distinction the downstream decision needs -- or explicitly limit the resulting claim; and where it departs, does it say why?",
+    homes: ConformanceHomes {
+      first: decl_ref(module_path: "std.constructors", decl_name: "Cardinality"),
+      rest: [
+        decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "FilesystemReadOutcome"),
+        decl_ref(module_path: "std.goal_assessment", decl_name: "ObservationAttempt"),
+        decl_ref(module_path: "std.upsert_decision", decl_name: "ObservationVerdict"),
+        decl_ref(module_path: "gunbc.membership_reconcile", decl_name: "MembershipPlan"),
+        decl_ref(module_path: "std.realization_dependency", decl_name: "DependencyClosureStanding"),
+      ],
+    },
+    tells: [
+      "an unread or failed observation defaulted to an empty population, so nothing appears to be missing",
+      "an optional population given an unconditional empty default, erasing the difference between absent and present-but-empty",
+      "a list of per-subject outcomes filtered to its successes and then treated as complete coverage",
+      "a first match taken where the population's uniqueness was never established",
+      "empty findings reported as a successful observation",
+      "sentinel text compared as a domain fact with no typed decoding boundary",
+      "a flattened collection used as evidence that no parent collections were observed",
+      "a quantifier over observed members standing in for a coverage relation between expected and observed"
+    ],
+    narrative: "zero members inside an existing thing is not zero occurrences of that thing, and neither is \"we do not know\"",
+  },
+  ConformanceDomain {
     key: "conformance-leasing",
     label: "leasing / locking / grants",
     question: "Does the change take exclusive or bounded use of something -- a slot, a head, a host, a file, a budget -- without inhabiting the corpus's lease and grant model, and if it departs from that model, does it say why?",

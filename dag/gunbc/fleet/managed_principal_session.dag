@@ -9,6 +9,10 @@ import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext, SshTarget, FleetSshAttemptIdentity,
 }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
+import gunbc.fleet_posix_accounts {
+  FleetPosixAccountKey, FleetAccountAutomation, FleetAccountInferenceService,
+  PosixAccountOccurrence,
+}
 import std.realization_dependency {
   RealizationLocus, LocalRunner, RemoteHost, ContainerImage, ManagedPrincipalOnHost,
   CapabilityRequirement, capability_requirement, requirement_key,
@@ -164,24 +168,83 @@ type ManagedPrincipalAuthenticationReceipt {
   probe_detail: NonEmptyStr
 }
 
+// THE MINT IS NAMED FOR WHAT IT IS: a reading taken from a session, not a verdict about one. The `observe_`
+// prefix is deliberate so a call site cannot read as an assertion that the session was good -- the verdict is
+// admit_managed_principal_session's, and it compares this reading against the declared principal, the installed
+// credential and the required memberships before anything is minted.
+//
+// AND IT IS UNSEALED WHILE THE HANDLES BELOW ARE SEALED, which is the rule the compiler taught this work twice:
+// SEAL THE CONCLUSION, NOT THE READING. A seal here made the wrong-principal control unwritable -- the very
+// case this module exists to refuse -- and bought nothing, because a forged reading still has to survive the
+// comparison.
+fn observe_managed_principal_authentication(
+  observed_principal: NonEmptyStr,
+  observed_groups: List<NonEmptyStr>,
+  used_credential: FleetCredentialIdentity,
+  attempt: FleetSshAttemptIdentity,
+  probe_detail: NonEmptyStr,
+) -> ManagedPrincipalAuthenticationReceipt {
+  ManagedPrincipalAuthenticationReceipt {
+    observed_principal: observed_principal,
+    observed_groups: observed_groups,
+    used_credential: used_credential,
+    attempt: attempt,
+    probe_detail: probe_detail,
+  }
+}
+
 // ── THE SEALED READY HANDLES ──────────────────────────────────────────────────────────────────
 //
 // SEALED, AND THIS IS WHERE SEALING BELONGS. std.realization_dependency carries handles and never mints them;
 // the wall is HERE, on the domain carriers, each admitted to the one admission that performed and observed the
 // convergence.
+// ── THE SUBJECT IS THE AUTHORITY'S OWN, NOT TWO STRINGS ───────────────────────────────────────
+//
+// THIS HANDLE CARRIED `host: NonEmptyStr` AND `principal: NonEmptyStr`, and that was account identity rebuilt
+// one layer below an authority that already models it. gunbc.fleet_posix_accounts separates the semantic
+// principal (`FleetPosixAccountKey`), the host-and-principal subject (`PosixAccountOccurrence`), the host-local
+// allocation (`PosixAccountAllocation`: local name, uid, gid), and the observation that grounds them --
+// and it states outright that an ssh key comment is not a username.
+//
+// SO THE OCCURRENCE IS THE SUBJECT. A handle keyed on two free strings can be built for srv9 and consumed as
+// srv10's answer with nothing to detect the swap, which is the copied-standing failure the occurrence type was
+// introduced to prevent; and `FleetAccountAutomation` as an enum arm cannot be misspelled the way a login string
+// can.
+//
+// THE LOCAL NAME IS STILL CARRIED AND IS STILL A STATED DIVERGENCE. `automation_name_requirements` declares
+// `ExplicitAllocation` with `IndependentPerOccurrence`, so the local name is allocated PER HOST and there is no
+// single modelled name to derive -- while the Spark path uses one global `gunbc-automation`. That divergence is
+// the operator's allocation to make, so it is named here rather than silently derived: the field is
+// `observed_local_name` and it is what the HOST reported, never what the model wished for.
+//
+// NEXT-RUNG TRIGGER: an adoption fold in gunbc.fleet_posix_accounts taking an unallocated occurrence plus an
+// observation to an allocation. `ground_posix_principal` today answers `PrincipalUnallocated` for an
+// unallocated standing REGARDLESS of the observation supplied, so a first deploy's observed name and
+// host-assigned uid are discarded and the account cannot become grounded by the ordinary route. Until that fold
+// exists this handle carries the observation and cannot carry a `GroundedPosixPrincipal`.
 type ManagedPosixAccountReady sole_constructor {
-  host: NonEmptyStr
-  principal: NonEmptyStr
+  occurrence: PosixAccountOccurrence
+  observed_local_name: NonEmptyStr
   home: NonEmptyStr
   readback: PosixAccountReadback
 }
 
-fn managed_posix_account_seal(host: NonEmptyStr, principal: NonEmptyStr, home: NonEmptyStr, readback: PosixAccountReadback) -> ManagedPosixAccountReady
+fn managed_posix_account_seal(occurrence: PosixAccountOccurrence, observed_local_name: NonEmptyStr, home: NonEmptyStr, readback: PosixAccountReadback) -> ManagedPosixAccountReady
   admit_callers: [
     decl_ref(module_path: "gunbc.managed_principal_session", decl_name: "admit_managed_posix_account"),
   ]
 {
-  ManagedPosixAccountReady { host: host, principal: principal, home: home, readback: readback }
+  ManagedPosixAccountReady { occurrence: occurrence, observed_local_name: observed_local_name, home: home, readback: readback }
+}
+
+// THE HOST AND THE LOCAL NAME ARE PROJECTED RATHER THAN STORED TWICE, so a consumer that needs an endpoint or a
+// login reads them from the occurrence and the observation instead of from fields that could drift apart.
+fn account_host(a: ManagedPosixAccountReady) -> NonEmptyStr {
+  a.occurrence.host as NonEmptyStr
+}
+
+fn account_local_name(a: ManagedPosixAccountReady) -> NonEmptyStr {
+  a.observed_local_name
 }
 
 type ManagedAuthorizedKeyReady sole_constructor {
@@ -275,24 +338,28 @@ type ManagedPosixAccountAdmission
 // reports having, because an account created with no home directory is a principal sshd will authenticate and
 // then fail to place an authorized_keys file for.
 fn admit_managed_posix_account(
-  host: NonEmptyStr,
-  expected_principal: NonEmptyStr,
+  occurrence: PosixAccountOccurrence,
+  expected_local_name: NonEmptyStr,
   readback: PosixAccountReadback,
 ) -> ManagedPosixAccountAdmission {
-  if (trim(s: readback.observed_principal as String)) != (expected_principal as String) {
+  if (trim(s: readback.observed_principal as String)) != (expected_local_name as String) {
     ManagedPosixAccountRefused {
-      expected: expected_principal,
-      cause: join(["the host reports the account as ", readback.observed_principal as String, ", which is a different principal"], "") as NonEmptyStr,
+      expected: expected_local_name,
+      cause: join(["the host reports the account as ", readback.observed_principal as String, ", which is a different local name"], "") as NonEmptyStr,
     }
   } else {
     if (trim(s: readback.observed_home as String)) == "" {
       ManagedPosixAccountRefused {
-        expected: expected_principal,
+        expected: expected_local_name,
         cause: "the account exists and the host reports no home directory, so there is nowhere to place authorized_keys" as NonEmptyStr,
       }
     } else {
       ManagedPosixAccountAdmitted {
-        ready: managed_posix_account_seal(host: host, principal: expected_principal, home: readback.observed_home, readback: readback),
+        ready: managed_posix_account_seal(
+          occurrence: occurrence,
+          observed_local_name: trim(s: readback.observed_principal as String) as NonEmptyStr,
+          home: readback.observed_home,
+          readback: readback),
       }
     }
   }
@@ -323,16 +390,16 @@ fn admit_managed_authorized_key(
       observed_line: readback.observed_line,
     }
   } else {
-    if (trim(s: readback.observed_owner as String)) != (account.principal as String)
+    if (trim(s: readback.observed_owner as String)) != (account.observed_local_name as String)
       || (trim(s: readback.observed_mode as String)) != (authorized_keys_required_mode as String) {
       ManagedAuthorizedKeyRefusedOwnership {
-        expected_owner: account.principal,
+        expected_owner: account.observed_local_name,
         observed_owner: readback.observed_owner,
         observed_mode: readback.observed_mode,
       }
     } else {
       ManagedAuthorizedKeyAdmitted {
-        ready: managed_authorized_key_seal(host: account.host, principal: account.principal, credential: credential, readback: readback),
+        ready: managed_authorized_key_seal(host: account_host(a: account), principal: account.observed_local_name, credential: credential, readback: readback),
       }
     }
   }
@@ -409,8 +476,8 @@ fn admit_managed_principal_session(
           used: receipt.used_credential.fingerprint,
         }
       } else {
-        if (trim(s: receipt.observed_principal as String)) != (account.principal as String) {
-          ManagedPrincipalSessionRefusedPrincipal { expected: account.principal, observed: receipt.observed_principal }
+        if (trim(s: receipt.observed_principal as String)) != (account.observed_local_name as String) {
+          ManagedPrincipalSessionRefusedPrincipal { expected: account.observed_local_name, observed: receipt.observed_principal }
         } else {
           match first_missing_group(required: required_groups, observed: receipt.observed_groups) {
             Present { value: missing } =>
@@ -418,8 +485,8 @@ fn admit_managed_principal_session(
             Absent =>
               ManagedPrincipalSessionAdmitted {
                 ready: managed_principal_session_seal(
-                  host: account.host,
-                  principal: account.principal,
+                  host: account_host(a: account),
+                  principal: account.observed_local_name,
                   credential: binding.credential,
                   observed_groups: receipt.observed_groups,
                   target: target,
@@ -514,6 +581,53 @@ fn invoke_privileged(ready: ManagedPrivilegedPrincipalReady, command: NonEmptySt
 // AND THE MEMBERSHIP PROVIDER IS INCLUDED ONLY WHEN A GROUP IS REQUIRED. An empty group list produces no
 // membership node, so a caller that needs no membership does not acquire a dependency on one -- which is the
 // same discipline that keeps the privileged capability out of the ordinary session.
+// ── PROVIDER IDENTITY IS CONSTRUCTED ONCE, HERE ───────────────────────────────────────────────
+//
+// THESE EXIST BECAUSE THE SAME SIX IDENTITIES WERE BEING SPELLED IN TWO PLACES, and the two spellings had
+// already drifted. `managed_principal_providers` built `fleet-private-key-binding@runner/<fingerprint>` and
+// `managed-membership-upsert@<host>/<principal>/<group>`, while gunbc.managed_principal_provider's
+// `managed_provider_identity_for` built the same two WITHOUT the fingerprint and WITHOUT the group. One concept,
+// two names -- the nicknaming DESIGN section 3 forbids -- and the exact-equality lookup that replaced substring
+// matching is what made it visible: an identity that does not match its binding is Unbound, Unbound is no kind,
+// no kind is no handler, so both capabilities were reported unexecutable while their handlers existed.
+//
+// THE DRIFT IS THE ARGUMENT FOR THE MOVE. Two of the six identities are NOT determined by host and principal
+// alone: the runner's key binding is per-credential and a membership is per-group. The second speller had only
+// host and principal, so it could not have spelled them correctly even in principle, and a reader comparing the
+// two would have to notice an absence rather than a difference. Making the parameters explicit here makes the
+// under-determination a type error at the other end rather than a silent prefix.
+//
+// THEY LIVE IN THIS MODULE AND NOT THE PROVIDER MODULE BECAUSE THE IMPORT GRAPH SAYS SO: provider imports
+// session, so session is where a fact both need can live without a cycle.
+fn bootstrap_session_provider_identity(host: NonEmptyStr) -> NonEmptyStr {
+  join(["bootstrap-administrator-session@", host as String], "") as NonEmptyStr
+}
+
+// THE FINGERPRINT IS PART OF THIS IDENTITY, because two different credentials are two different bindings and a
+// graph holding both must not collapse them. It carries no host: the runner's private key is one fact for the
+// whole fleet, which is also why merging two hosts' rosters legitimately repeats this row.
+fn fleet_private_key_provider_identity(credential: FleetCredentialIdentity) -> NonEmptyStr {
+  join(["fleet-private-key-binding@runner/", credential.fingerprint as String], "") as NonEmptyStr
+}
+
+fn managed_account_provider_identity(host: NonEmptyStr, principal: NonEmptyStr) -> NonEmptyStr {
+  join(["managed-posix-account-upsert@", host as String, "/", principal as String], "") as NonEmptyStr
+}
+
+fn managed_authorized_key_provider_identity(host: NonEmptyStr, principal: NonEmptyStr) -> NonEmptyStr {
+  join(["authorized-keys-reconcile@", host as String, "/", principal as String], "") as NonEmptyStr
+}
+
+// A MEMBERSHIP IS PER GROUP AND ITS IDENTITY SAYS SO. Dropping the group would make every group's membership
+// one capability, so a graph requiring two groups would resolve to one provider and silently converge one.
+fn managed_membership_provider_identity(host: NonEmptyStr, principal: NonEmptyStr, group: NonEmptyStr) -> NonEmptyStr {
+  join(["managed-membership-upsert@", host as String, "/", principal as String, "/", group as String], "") as NonEmptyStr
+}
+
+fn managed_session_provider_identity(host: NonEmptyStr, principal: NonEmptyStr) -> NonEmptyStr {
+  join(["key-only-authentication-probe@", host as String, "/", principal as String], "") as NonEmptyStr
+}
+
 fn managed_principal_providers(
   host: NonEmptyStr,
   principal: NonEmptyStr,
@@ -524,22 +638,22 @@ fn managed_principal_providers(
   concat(
     [
       capability_provider(
-        identity: join(["bootstrap-administrator-session@", host as String], "") as NonEmptyStr,
+        identity: bootstrap_session_provider_identity(host: host),
         provides: bootstrap_session_requirement(host: host, admin_principal: admin_principal),
         prerequisites: [],
       ),
       capability_provider(
-        identity: join(["fleet-private-key-binding@runner/", credential.fingerprint as String], "") as NonEmptyStr,
+        identity: fleet_private_key_provider_identity(credential: credential),
         provides: private_key_binding_requirement(credential: credential),
         prerequisites: [],
       ),
       capability_provider(
-        identity: join(["managed-posix-account-upsert@", host as String, "/", principal as String], "") as NonEmptyStr,
+        identity: managed_account_provider_identity(host: host, principal: principal),
         provides: posix_account_requirement(host: host, principal: principal),
         prerequisites: [bootstrap_session_requirement(host: host, admin_principal: admin_principal)],
       ),
       capability_provider(
-        identity: join(["authorized-keys-reconcile@", host as String, "/", principal as String], "") as NonEmptyStr,
+        identity: managed_authorized_key_provider_identity(host: host, principal: principal),
         provides: authorized_key_requirement(host: host, principal: principal, credential: credential),
         prerequisites: [
           posix_account_requirement(host: host, principal: principal),
@@ -549,7 +663,7 @@ fn managed_principal_providers(
     ],
     concat(
       map(required_groups, g => capability_provider(
-        identity: join(["managed-membership-upsert@", host as String, "/", principal as String, "/", g as String], "") as NonEmptyStr,
+        identity: managed_membership_provider_identity(host: host, principal: principal, group: g),
         provides: membership_requirement(host: host, principal: principal, group: g),
         prerequisites: [
           posix_account_requirement(host: host, principal: principal),
@@ -558,7 +672,7 @@ fn managed_principal_providers(
       )),
       [
         capability_provider(
-          identity: join(["key-only-authentication-probe@", host as String, "/", principal as String], "") as NonEmptyStr,
+          identity: managed_session_provider_identity(host: host, principal: principal),
           provides: principal_session_requirement(host: host, principal: principal, credential: credential),
           prerequisites: concat(
             [
@@ -593,7 +707,7 @@ fn realized_principal_session(
 ) -> RealizedCapability<ManagedPrincipalSessionReady> {
   realized_capability(
     requirement: principal_session_requirement(host: host, principal: principal, credential: credential),
-    provider_identity: join(["key-only-authentication-probe@", host as String, "/", principal as String], "") as NonEmptyStr,
+    provider_identity: managed_session_provider_identity(host: host, principal: principal),
     handle: ready,
   )
 }

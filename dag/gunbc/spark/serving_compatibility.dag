@@ -534,15 +534,55 @@ type RuntimeRepairCandidate sole_constructor {
   why_not_sufficient: NonEmptyStr
 }
 
+// CORRECTED 2026-09-12 BY EXECUTION, AND THE CORRECTION IS THE VALUABLE PART.
+//
+// THE TWO BACKPORTED COMMITS WERE NEVER TWO. `refs/pull/55277/head` IS 8d09804, and 0fa2b33 is its parent on
+// the same PR branch -- so the candidate is ONE revision pin, not a base plus a patch set to apply at build
+// time. Cherry-picking was work invented by reading the PR as a list of commits instead of asking the remote
+// what its head was; base_vllm_revision now carries that head, and `backported_commits` records what the head
+// CONTAINS rather than what a builder must apply.
+//
+// AND THE FLASHINFER HALF WAS NAMED BY INFERENCE AND IS NOW NAMED BY A REFUSAL. The previous row reasoned from
+// release DATES -- 0.6.18 was tagged before the two PRs, therefore it lacks them. That inference was
+// directionally right and specifically wrong, and the difference is what matters: 0.6.18.post1 DOES carry a
+// native NoPE MLA path (`nope_mla_dimensions` is qk_rope_head_dim 0, kv_lora_rank 512), so a reader checking
+// for NoPE support in general finds it and concludes the image is fine. What it lacks is NoPE FOR SM120, the
+// only path a GB10 takes: FlashInferMLASparseSM120Backend.supports_compute_capability is `capability.major ==
+// 12`, and sm_121 is major 12.
+//
+// WHAT WAS EXECUTED, against the fleet's own built image (gunbc-vllm-dsv41-gb10:07b75534-sm121, image id
+// sha256:b8b4ef35b17c2dd10c73f323819996f8928f0e5bd52f8980eedd9c634162461f) on a GB10:
+//   - the writer probe refused at cache_kernels.cu:928 with `pe_dim must be 64 for fp8_ds_mla` -- the modelled
+//     prediction reproduced on real bytes rather than read off a neighbouring report;
+//   - `has_flashinfer_sparse_mla_sm120()` returned TRUE on that same image. THAT IS WHY A PRESENCE PROBE IS
+//     WORTHLESS HERE: vLLM's own capability predicate reports the sparse SM120 API available on an image whose
+//     writer kernel refuses this geometry, so any probe built on an import or that predicate passes it;
+//   - the decode entry called with kv_lora_rank 512 and qk_rope_head_dim 0 refused twice -- without the
+//     per-token lens, `Native qk_rope_head_dim=0 TRTLLM-GEN MLA requires sparse_mla_top_k_lens`; with it,
+//     `SM120 sparse MLA v32/GLM expects kv_lora_rank=512, qk_rope_head_dim=64, and query head dim 576`. The
+//     second refusal is the load-bearing one: at 0.6.18.post1 the SM120 kernel has no NoPE variant at all, and
+//     no vLLM patch can supply one.
+//
+// THE VERSION THAT SUPPLIES IT IS 0.7.0, read from flashinfer at 715c3c9f15af2ffbf14068fabcb1f39af19c47dd:
+// `_MODEL_TYPE_GLM53_NOPE` with `_BPT_GLM53_NOPE = 528` -- the same 528-byte payload the vLLM commit describes
+// as leaving bytes 528:656 reserved -- and a `glm53_nope` branch beside `rope_v32` in the SM120 shape check.
+//
+// AND THE TWO SIDES FIT DELIBERATELY, which is what makes this a candidate rather than a hope. vLLM's SM120
+// sparse backend passes `sparse_mla_top_k` and NO lens while the generic backend passes the lens; at
+// 0.6.18.post1 that reads as a vLLM defect. At 0.7.0 the requirement is guarded `if is_nope_mla and backend !=
+// "sparse"`, annotated "the SM120 sparse backend bounds each row by its -1 entries instead and does not consume
+// sparse_mla_top_k_lens", and passing a lens on that backend is itself an error. The vLLM caller and this
+// FlashInfer version are built for each other; the PAIRING is the candidate, and either half alone is a
+// refusal this module has now executed.
 data glm53_nope_repair_candidate: RuntimeRepairCandidate = RuntimeRepairCandidate {
-  base_vllm_revision: "385dce36bcee42309924a5ece951a96db3dce7f2" as NonEmptyStr,
+  base_vllm_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
   backported_commits: [
-    "0fa2b3308c2292b9e4d07a8f7bca17f0b2e6067d -- vllm#55277, NoPE cache writer: concat_and_cache_mla natively accepts pe_dim=0 and zeroes the reserved tail" as NonEmptyStr,
-    "8d09804c877c48165c6ba69bc9dc02d09bae0b83 -- vllm#55277, actual top-k capacity: widens the page-table population for the kpool-widened index" as NonEmptyStr,
+    "0fa2b3308c2292b9e4d07a8f7bca17f0b2e6067d -- vllm#55277, NoPE cache writer: concat_and_cache_mla natively accepts pe_dim=0 and zeroes reserved bytes 528:656. CONTAINED IN the pinned head, not applied to it" as NonEmptyStr,
+    "8d09804c877c48165c6ba69bc9dc02d09bae0b83 -- vllm#55277 HEAD, actual top-k capacity: sizes the page table by the converted buffer width, which kpool widens past index_topk 2048" as NonEmptyStr,
   ],
-  flashinfer_requirement: "a source revision containing BOTH flashinfer#4802 (native GLM53_NOPE) and flashinfer#4947 (sparse-backend NoPE validation: the TP4 sparse path serves NoPE without the per-token sparse_mla_top_k_lens requirement that belongs to the other backends). Release 0.6.18, which the official image pins, was tagged 2026-08-28 and predates both" as NonEmptyStr,
+  flashinfer_requirement: "the tagged revision v0.7.0rc1, BUILT FROM SOURCE -- and this is the binding constraint on the whole program rather than a version field. NOT 0.6.18.post1, which the official image, the fleet's own built image and vllm#55277's OWN requirements/cuda.txt all pin: executed on a GB10 against that image, the SM120 sparse MLA kernel refuses qk_rope_head_dim=0 outright, because at 0.6.18.post1 the native NoPE path exists only for the non-SM120 backends. v0.7.0rc1 carries it -- _MODEL_TYPE_GLM53_NOPE with _BPT_GLM53_NOPE 528 in the SM120 plan, and a glm53_nope branch beside rope_v32 in the SM120 shape check that additionally requires kv_scale_format arbitrary_fp32. NO PUBLISHED ARTIFACT CARRIES IT: flashinfer-python and flashinfer-cubin top out at 0.6.18.post1 and 0.6.13 on PyPI with no 0.7.x at any pre-release, and flashinfer.ai/whl/cu130 publishes only flashinfer-jit-cache. So the kernel this checkpoint needs exists in a tag nobody has released a wheel for, on any CUDA or architecture" as NonEmptyStr,
   upstream_evidence: "vllm#55277 carries a NoPE regression test and was exercised at TP4 on four SM120 GPUs including CUDA graph capture and generation" as NonEmptyStr,
-  why_not_sufficient: "that run was NVFP4 on RTX PRO 6000 / SM120. This subject is native FP8 on four GB10 / SM121 at a 262,144-token window. The accelerator and the checkpoint encoding both differ, so it establishes that the approach is sound and nothing about this tuple" as NonEmptyStr,
+  why_not_sufficient: "that run was NVFP4 on RTX PRO 6000 / SM120, which is the rope_v32 path: 512+64 with a RoPE tail. It therefore never exercised the NoPE kernel at all, which is why it could pass while pinning a FlashInfer whose SM120 path refuses qk_rope_head_dim=0 -- the PR's own evidence and the PR's own pin are consistent with each other and neither reaches this subject. Ours is native FP8 on four GB10 / SM121 at a 262,144-token window: different accelerator, different checkpoint encoding, and a different kernel. It establishes that the vLLM-side approach is sound and nothing about this tuple" as NonEmptyStr,
 }
 
 // ── THE CHEAP PROBES THAT RUN BEFORE 524 SECONDS OF WEIGHT LOADING ────────────────────────────

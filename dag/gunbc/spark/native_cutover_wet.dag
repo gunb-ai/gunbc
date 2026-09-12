@@ -52,7 +52,8 @@ import gunbc.spark.native_deployment_readback {
   inspect_native_deployment, accept_deployment,
 }
 import gunbc.spark.nope_conformance_probe {
-  NopeConformanceStanding, NopeConformanceHeld, NopeConformanceRefused, NopeConformanceUnestablished,
+  NopeConformanceStanding, NopeConformanceHeld, NopeConformancePartial, NopeConformanceRefused,
+  NopeConformanceUnestablished,
   run_nope_conformance,
 }
 import gunbc.spark.serving_arm { RuntimeArtifactIdentity, vllm_openai_glm53_flash_row }
@@ -739,14 +740,13 @@ func glm53_nope_conformance_wet(artifact: RuntimeArtifactIdentity) -> ProcessExi
                     MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
                     MaterializedSshKeyFileBracketCompleted { value: standing } =>
                       match standing {
-                        NopeConformanceHeld { image_key: k, passed: p, unrun: u } =>
-                          if u == 0 { ExitSuccess } else {
-                            exit_failure(reason: join([
-                              "PROBES PASSED BUT COVERAGE IS INCOMPLETE, so this is not a green: ", to_string(p),
-                              " passed and ", to_string(u), " could not be executed against ", k,
-                              ". The unexecutable probe is the widened page-table capacity, which only the expensive native run reaches",
-                            ], ""))
-                          }
+                        NopeConformanceHeld { image_key: _, passed: _ } => ExitSuccess
+                        NopeConformancePartial { image_key: k, passed: p, unrun: u, obligations: obs } =>
+                          exit_failure(reason: join([
+                            "MANDATORY PROBES PASSED BUT COVERAGE IS INCOMPLETE, so this is not a green: ", to_string(p),
+                            " passed and ", to_string(u), " could not be executed against ", k,
+                            ". Remaining for the engine run: ", join(map(obs, o => o as String), " | "),
+                          ], ""))
                         NopeConformanceRefused { image_key: k, first_refusal: r } =>
                           exit_failure(reason: join(["REFUSED against ", k, ": ", r], ""))
                         NopeConformanceUnestablished { cause: c } =>

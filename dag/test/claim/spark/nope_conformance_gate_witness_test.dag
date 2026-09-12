@@ -1,0 +1,160 @@
+module test.claim.spark.nope_conformance_gate_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import gunbc.spark.serving_arm {
+  RuntimeArtifactIdentity, RuntimeArtifactPin, PinnedByDigest, runtime_artifact_identity,
+}
+import gunbc.spark.nope_conformance_probe {
+  ProbeOutcome, ProbePassed, ProbeRefused, ProbeUnrun,
+  ProbeInvocation, ProbeArgv, ProbeNotYetExecutable, probe_invocation_for,
+  NopeConformanceStanding, NopeConformanceHeld, NopeConformancePartial,
+  NopeConformanceRefused, NopeConformanceUnestablished,
+  assess_nope_conformance, every_mandatory_probe_passed, nope_mandatory_probe_ordinals,
+  nope_engine_run_obligations, probe_pass_token, nope_writer_pass_token,
+  nope_reader_pass_token, probe_token_absent_sentinel,
+}
+
+// ── THE GATE THE EXPENSIVE RUN SITS BEHIND, EXERCISED RATHER THAN ASSERTED TO EXIST ────────────
+//
+// THIS SUITE EXISTS BECAUSE THE GATE HAD NONE. `assess_nope_conformance` decides whether a weight load is
+// worth spending, and until this file the only executing evidence about it was that the roster it reads has
+// three rows -- the exact shape DESIGN section 3c calls out, a witness asserting a declaration exists rather
+// than exercising it.
+//
+// THE DISCRIMINATING RED IS THE CASE THE PREVIOUS RULE ADMITTED: one probe passing while another never ran.
+// Under "at least one passed and nothing refused" that minted a positive standing. It must now be
+// Unestablished, and this row goes red if that weakening ever returns.
+data w_artifact: RuntimeArtifactIdentity = runtime_artifact_identity(
+  pin: PinnedByDigest { reference: "gunbc-vllm-dsv41-gb10@sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr },
+  source_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
+  patch_set: [],
+  provenance: "witness fixture, not a built image. The revision is vllm#55277's HEAD and the patch set is EMPTY on purpose: the head already contains 0fa2b33, so a fixture listing it as a patch would model a cherry-pick nobody performs" as NonEmptyStr,
+)
+
+data w_key: String = "probe-fixture"
+
+data w_writer_passed: ProbeOutcome = ProbePassed { ordinal: 1, image_key: w_key, output: "WRITER_ACCEPTED_PE_DIM_ZERO" }
+data w_writer_refused: ProbeOutcome = ProbeRefused { ordinal: 1, image_key: w_key, output: "pe_dim must be 64 for fp8_ds_mla" }
+data w_writer_unrun: ProbeOutcome = ProbeUnrun { ordinal: 1, cause: "host unreachable" as NonEmptyStr }
+data w_second_passed: ProbeOutcome = ProbePassed { ordinal: 2, image_key: w_key, output: "SM120_SPARSE_ACCEPTED_NOPE" }
+data w_third_unrun: ProbeOutcome = ProbeUnrun { ordinal: 3, cause: "not executable by any callable this module has" as NonEmptyStr }
+
+// THE RED. A pass beside an unrun mandatory probe establishes nothing, whichever one ran.
+test fn a_passing_probe_does_not_cover_an_unrun_mandatory_one() -> Bool {
+  match assess_nope_conformance(artifact: w_artifact, outcomes: [w_writer_unrun, w_second_passed, w_third_unrun]) {
+    NopeConformanceUnestablished { cause: _ } => true
+    NopeConformanceHeld { image_key: _, passed: _ } => false
+    NopeConformancePartial { image_key: _, passed: _, unrun: _, obligations: _ } => false
+    NopeConformanceRefused { image_key: _, first_refusal: _ } => false
+  }
+}
+
+// AND THE MANDATORY PROBE PASSING WITH COVERAGE OUTSTANDING IS PARTIAL, NOT HELD -- which is the true state
+// of any image this repository can assess today, and is not clearance to spend a weight load.
+test fn the_mandatory_probe_passing_with_unrun_coverage_is_partial_and_names_its_obligations() -> Bool {
+  match assess_nope_conformance(artifact: w_artifact, outcomes: [w_writer_passed, w_second_passed, w_third_unrun]) {
+    NopeConformancePartial { image_key: _, passed: p, unrun: u, obligations: obs } =>
+      p == 2 && u == 1 && count(obs) == count(nope_engine_run_obligations)
+    NopeConformanceHeld { image_key: _, passed: _ } => false
+    NopeConformanceRefused { image_key: _, first_refusal: _ } => false
+    NopeConformanceUnestablished { cause: _ } => false
+  }
+}
+
+// HELD IS REACHABLE, because a gate whose positive arm cannot be reached is a blanket refusal wearing a
+// conformance name. It needs every mandatory probe passed AND nothing unrun.
+test fn every_probe_passing_reaches_the_positive_arm() -> Bool {
+  match assess_nope_conformance(artifact: w_artifact, outcomes: [w_writer_passed, w_second_passed]) {
+    NopeConformanceHeld { image_key: _, passed: p } => p == 2
+    NopeConformancePartial { image_key: _, passed: _, unrun: _, obligations: _ } => false
+    NopeConformanceRefused { image_key: _, first_refusal: _ } => false
+    NopeConformanceUnestablished { cause: _ } => false
+  }
+}
+
+// A REFUSAL OUTRANKS EVERYTHING, including a mandatory pass beside it: evidence about the image beats a count.
+test fn a_refusal_outranks_a_pass() -> Bool {
+  match assess_nope_conformance(artifact: w_artifact, outcomes: [w_writer_refused, w_second_passed]) {
+    NopeConformanceRefused { image_key: _, first_refusal: _ } => true
+    NopeConformanceHeld { image_key: _, passed: _ } => false
+    NopeConformancePartial { image_key: _, passed: _, unrun: _, obligations: _ } => false
+    NopeConformanceUnestablished { cause: _ } => false
+  }
+}
+
+// AND AN EMPTY OUTCOME LIST IS UNESTABLISHED, NOT VACUOUSLY HELD. Nothing refused and nothing ran is the
+// unreachable-host case, and it is the emptiness that must not read as health.
+test fn no_outcomes_at_all_establishes_nothing() -> Bool {
+  match assess_nope_conformance(artifact: w_artifact, outcomes: []) {
+    NopeConformanceUnestablished { cause: _ } => true
+    NopeConformanceHeld { image_key: _, passed: _ } => false
+    NopeConformancePartial { image_key: _, passed: _, unrun: _, obligations: _ } => false
+    NopeConformanceRefused { image_key: _, first_refusal: _ } => false
+  }
+}
+
+// ── THE READER PROBE CALLS THE BACKEND, AND THE SUITE HOLDS IT TO THAT ────────────────────────
+//
+// A PREVIOUS REVISION GAVE ORDINAL 2 AN ARGV THAT IMPORTED `flashinfer.sparse` AND PRINTED A TOKEN -- which
+// passes on an image whose SM120 kernel has no NoPE variant, the very image the probe exists to reject. This
+// row is the wall against that regression, and it is specific on purpose: the argv must name the decode entry
+// and must fix qk_rope_head_dim at 0, because those two together are the question. An argv that merely
+// mentions flashinfer would satisfy a laxer check and would be the import probe again under a new spelling.
+test fn the_reader_ordinal_calls_the_decode_entry_at_nope_geometry() -> Bool {
+  match probe_invocation_for(ordinal: 2, image: "img" as NonEmptyStr) {
+    ProbeArgv { argv: a } =>
+      any(a, w => string_contains(s: w, pattern: "trtllm_batch_decode_with_kv_cache_mla"))
+        && any(a, w => string_contains(s: w, pattern: "qk_rope_head_dim=0"))
+        && !any(a, w => string_contains(s: w, pattern: "SPARSE_MODULE_PRESENT"))
+    ProbeNotYetExecutable { needs: _ } => false
+  }
+}
+
+// AND IT PASSES NO sparse_mla_top_k_lens, because the backend it stands in for passes none. FlashInfer 0.7.0
+// makes that an ERROR on the SM120 sparse backend, so a probe that helpfully added one would refuse on bytes
+// that serve -- a false red on the repaired runtime, which is the expensive direction to be wrong in.
+test fn the_reader_probe_passes_no_per_token_lens() -> Bool {
+  match probe_invocation_for(ordinal: 2, image: "img" as NonEmptyStr) {
+    ProbeArgv { argv: a } => !any(a, w => string_contains(s: w, pattern: "sparse_mla_top_k_lens"))
+    ProbeNotYetExecutable { needs: _ } => false
+  }
+}
+
+test fn the_writer_ordinal_still_carries_an_argv_that_names_the_kernel_entry_point() -> Bool {
+  match probe_invocation_for(ordinal: 1, image: "img" as NonEmptyStr) {
+    ProbeArgv { argv: a } => any(a, w => string_contains(s: w, pattern: "concat_and_cache_mla"))
+    ProbeNotYetExecutable { needs: _ } => false
+  }
+}
+
+// AN ORDINAL WITH NO DECLARED TOKEN DOES NOT BORROW A NEIGHBOUR'S. Deleting the reader token left
+// `probe_pass_token` total, and totality must not become a dispatch accident that mints a pass.
+test fn an_undeclared_ordinal_gets_a_sentinel_no_output_can_contain() -> Bool {
+  probe_pass_token(ordinal: 1) == nope_writer_pass_token
+    && probe_pass_token(ordinal: 2) == nope_reader_pass_token
+    && probe_pass_token(ordinal: 1) != probe_pass_token(ordinal: 2)
+    && probe_pass_token(ordinal: 7) == probe_token_absent_sentinel
+}
+
+// AND THE MANDATORY POPULATION IS NAMED RATHER THAN COUNTED, which is what lets one edit tighten every
+// caller: the relation is over the declared ordinals, not over however many outcomes arrived.
+test fn the_mandatory_population_is_non_empty_and_relational() -> Bool {
+  count(nope_mandatory_probe_ordinals) == 2
+    && every_mandatory_probe_passed(outcomes: [w_writer_passed, w_second_passed])
+    && !every_mandatory_probe_passed(outcomes: [w_writer_passed])
+    && !every_mandatory_probe_passed(outcomes: [w_second_passed, w_third_unrun])
+    && !every_mandatory_probe_passed(outcomes: [])
+}
+
+// AND THE WRITER PASSING ALONE NO LONGER CLEARS THE GATE, which is the whole content of the correction: the
+// two kernels are independent walls, and the repair candidate as first declared would have cleared the writer
+// and refused every decode.
+test fn clearing_the_writer_alone_does_not_establish_conformance() -> Bool {
+  match assess_nope_conformance(artifact: w_artifact, outcomes: [w_writer_passed, w_third_unrun]) {
+    NopeConformanceUnestablished { cause: _ } => true
+    NopeConformancePartial { image_key: _, passed: _, unrun: _, obligations: _ } => false
+    NopeConformanceHeld { image_key: _, passed: _ } => false
+    NopeConformanceRefused { image_key: _, first_refusal: _ } => false
+  }
+}
