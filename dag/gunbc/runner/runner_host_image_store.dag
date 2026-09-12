@@ -73,27 +73,53 @@ data first_reap: List<NonEmptyStr> = [
 // ── the store itself, and the part of the ask that is NOT yet answered ─────────────────────────
 
 // THE EXPORT IS KNOWN AND IT IS NOT RESILIENT, and those are separate properties that a single
-// phrase would blur. /srv/bmc on srv1 is a known location: the BMC's redirection configuration
-// names that host and that path, so anyone can find an image. It is one machine's local filesystem
-// with no replication and no backup, so a disk failure loses every image a receipt cites -- and with
-// them the ability to check any claim those receipts make about what booted.
+// phrase would blur. KNOWN means the BMC's redirection configuration names the serving host and the
+// path, so anyone who asks it can find an image -- it does NOT mean this module knows the answer,
+// and an earlier revision spelled a host here and was wrong about it for weeks. RESILIENT is the
+// separate question: it is one machine's local filesystem with no replication and no backup, so a
+// disk failure loses every image a receipt cites -- and with them the ability to check any claim
+// those receipts make about what booted.
 //
 // THE RECEIPTS SURVIVE THAT LOSS AND THE VERIFIABILITY DOES NOT. A digest in a committed .dag file
 // is durable; the bytes it identifies are not. That asymmetry is the actual gap, and calling the
 // export "known/resilient" as one property would hide it.
+// THE LOCATION FIELD IS GONE, AND ITS DELETION IS THE CENSUS.
+//
+// It carried "/srv/bmc on srv1" as an ordinary string. That was FALSE: there is no /srv/bmc on
+// srv1. The export is on srv2, read-only to the Mt. Collins controller, and the images were intact
+// there the whole time -- measured 2026-09-10, after an operator reported the srv1 path empty and a
+// downstream analysis had already repeated the claim as a corpus fact.
+//
+// THE DEFECT IS NOT THE WRONG HOSTNAME, IT IS THAT A HOSTNAME WAS SPELLED HERE AT ALL. This
+// module's own attachment_authority names the BMC's redirection configuration as the authority for
+// which image is presented, and that same configuration is what names WHERE it is read from. A
+// literal beside it is a second answer to a question this module already routes elsewhere (DESIGN
+// §3), and a positional one at that: nothing edits this string when an export moves, so it decays
+// silently while every reader keeps trusting it.
+//
+// CORRECTING THE STRING WAS THE TEMPTING MOVE AND IT IS THE WRONG ONE -- a freshly-true literal
+// rots exactly as the last one did, and restores the false confidence that made this defect
+// expensive. So the field is deleted rather than fixed (§3 delete-first: uproot the root, then fix
+// forward), and what remains are the two properties that are genuinely facts ABOUT THE STORE
+// rather than about where it happens to sit.
 type StoreStanding {
-  location: NonEmptyStr
   known: Bool
   resilient: Bool
   what_loss_costs: NonEmptyStr
 }
 
 data host_image_store: StoreStanding = StoreStanding {
-  location: "/srv/bmc on srv1, exported over NFS and named by the BMC's own redirection configuration",
   known: true,
   resilient: false,
   what_loss_costs: "every receipt that cites an ISO digest becomes uncheckable: the claim survives in git and the bytes it names do not",
 }
+
+// WHAT IT TAKES TO ANSWER "WHERE" AGAIN, stated as the capability and not as an artifact that would
+// contribute to one: a modeled read of the BMC's remote/configurations that yields the serving host
+// and export path as an OBSERVATION with its read time, so the location is derived at the moment it
+// is asked rather than asserted once and trusted forever. Nothing short of that restores the field.
+// Until then this module answers WHAT the store guarantees and refuses to answer WHERE, which is
+// the honest pair: it never knew where, it only recorded where someone believed it was.
 
 // ── the deeper defect the reap does not fix ────────────────────────────────────────────────────
 

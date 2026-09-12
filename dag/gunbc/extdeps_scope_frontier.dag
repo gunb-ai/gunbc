@@ -276,6 +276,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/automation/playwright.dag",
   "dag/extdeps/package.dag",
   "dag/extdeps/npm.dag",
+  "dag/extdeps/needrestart/needrestart.dag",
   "dag/extdeps/browser/chromium.dag",
   "dag/extdeps/container/oci/digest.dag",
   "dag/extdeps/git/publication_transport.dag",
@@ -325,6 +326,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/github/push_event.dag",
   "dag/extdeps/instrument/pip_boy_3000.dag",
   "dag/extdeps/instrument/pip_boy_3000_mk_v.dag",
+  "dag/extdeps/linux/edac.dag",
+  "dag/extdeps/linux/kernel.dag",
   "dag/extdeps/linux/proc_self_cgroup.dag",
   "dag/extdeps/os/debian.dag",
   "dag/extdeps/physics/bach_et_al_2013_double_slit.dag",
@@ -339,6 +342,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/network/switch_types.dag",
   "dag/extdeps/network/tp_link.dag",
   "dag/extdeps/network/mikrotik_crs812.dag",
+  "dag/extdeps/transceiver/sff_8636.dag",
+  "dag/extdeps/transceiver/fs_145681.dag",
   "dag/extdeps/network/arista_7050s_52.dag",
   "dag/extdeps/rack/navepoint.dag",
   "dag/extdeps/rack/types.dag",
@@ -406,6 +411,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/llm/cursor_stream.dag",
   "dag/extdeps/probes/provider_interface_acquisition.dag",
   "dag/extdeps/memory/samsung.dag",
+  "dag/extdeps/memory/sk_hynix.dag",
   "dag/extdeps/accounting/encumbrance.dag",
   "dag/extdeps/ampere/mt_collins_product_brief/platform.dag",
   "dag/extdeps/boards/supermicro.dag",
@@ -485,7 +491,14 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/vendor/cloudflare.dag",
   "dag/extdeps/cloudflare/client_v4.dag",
   "dag/extdeps/cloudflare/account_api_tokens.dag",
-  "dag/extdeps/cloudflare/r2.dag"
+  "dag/extdeps/cloudflare/r2.dag",
+  "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
+  "dag/extdeps/docker/images/gitcommit90_glm_53_one_spark.dag",
+  "dag/extdeps/docker/images/timothystewart6_vllm_gb10.dag",
+  "dag/extdeps/docker/images/xomoxcc_dgx_spark_sglang.dag",
+  "dag/extdeps/vllm/recipe_deepseek_v4_1_flash.dag",
+  "dag/extdeps/ebay/browse.dag",
+  "dag/extdeps/ebay/marketplace_account_deletion.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [

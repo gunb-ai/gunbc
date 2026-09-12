@@ -7,59 +7,59 @@ data admitted_module_without_judged_standing: RecurringFailureMode = RecurringFa
   identity: "admitted_module_without_judged_standing" as NonEmptyStr,
 
   receipts: [
-    "**a source-ingested module has no judged standing** (the required gates adjudicate entry-derived closures, while source-root ingest admits a larger identity population; a module outside every required closure can carry a structurally checkable defect while every gate stays green. ",
+    "**a source-ingested module has no judged standing** (the required gates adjudicate entry-derived closures, while source-root ingest admits a larger identity population; a module outside every required closure can carry a structurally checkable defect while every gate stays green.",
 
-    "This is NOT an import-edge class: globally unique names can resolve without a direct import, so authored inbound imports neither prove nor disprove judgment. ",
+    "This is NOT an import-edge class: globally unique names can resolve without a direct import, so authored inbound imports neither prove nor disprove judgment.",
 
-    "It is also NOT a claim that every identity outside the closures is defective or should be gated. ",
+    "It is also NOT a claim that every identity outside the closures is defective or should be gated.",
 
-    "The severity is unknown, and that unknowability is the finding. ",
+    "The severity is unknown, and that unknowability is the finding.",
 
-    "**SPECIMEN AND DISCRIMINATING CONTROL** (node://adhoc-2d3c27b7-660, PR #9899): gunbc.annotation_parse_instrument_agreement constructed Terminal { reason, authority } although Terminal declares only reason; a clean required run left both build and witnesses green and both in-run judgment receipts omitted the module. ",
+    "**SPECIMEN AND DISCRIMINATING CONTROL** (node://adhoc-2d3c27b7-660, PR #9899): gunbc.annotation_parse_instrument_agreement constructed Terminal { reason, authority } although Terminal declares only reason; a clean required run left both build and witnesses green and both in-run judgment receipts omitted the module.",
 
-    "The matched visible control placed the same undeclared-field construction in ordinary production module gunbc.clock_read: both required lanes refused with `field 'authority' not found in type 'LaneVisibilityControl'`; removing only the plant returned both lanes to green. ",
+    "The matched visible control placed the same undeclared-field construction in ordinary production module gunbc.clock_read: both required lanes refused with `field 'authority' not found in type 'LaneVisibilityControl'`; removing only the plant returned both lanes to green.",
 
-    "Thus visibility, with defect class held constant, discriminates the arms. ",
+    "Thus visibility, with defect class held constant, discriminates the arms.",
 
-    "The witnesses prediction was weaker than its result: only submitted-closure membership was known beforehand, yet execution established strict judgment by refusing. ",
+    "The witnesses prediction was weaker than its result: only submitted-closure membership was known beforehand, yet execution established strict judgment by refusing.",
 
-    "**MEASUREMENT, EXPLICITLY NOT COVERAGE OR ENFORCEMENT:** the producer joins every first-party identity admitted by the exact source-root ingest against the union of module identities for which build or witnesses produced a strict typecheck verdict. ",
+    "**MEASUREMENT, EXPLICITLY NOT COVERAGE OR ENFORCEMENT:** the producer joins every first-party identity admitted by the exact source-root ingest against the union of module identities for which build or witnesses produced a strict typecheck verdict.",
 
-    "On clean run 33484666539 it derived 4,419 admitted, 947 build-judged, 2,158 witnesses-judged, 2,319 in the judgment union, and 2,100 with no required-lane judgment. ",
+    "On clean run 33484666539 it derived 4,419 admitted, 947 build-judged, 2,158 witnesses-judged, 2,319 in the judgment union, and 2,100 with no required-lane judgment.",
 
-    "Build contributes only 161 identities beyond witnesses, so the two required closures are far from independent and their union remains close to one lane's reach. ",
+    "Build contributes only 161 identities beyond witnesses, so the two required closures are far from independent and their union remains close to one lane's reach.",
 
-    "Exactly one of the 2,100 is confirmed orphaned by the executed control; the other 2,099 are Undecided because no typed authority currently says whether each is an executing standalone entry, fixture/generated/excluded, retired, or orphaned. ",
+    "Exactly one of the 2,100 is confirmed orphaned by the executed control; the other 2,099 are Undecided because no typed authority currently says whether each is an executing standalone entry, fixture/generated/excluded, retired, or orphaned.",
 
-    "Those identities are deliberately re-derived and NOT committed as a baseline or roster: a hand-carried 2,099-row exemption set would be a ratchet wearing a wall's name. ",
+    "Those identities are deliberately re-derived and NOT committed as a baseline or roster: a hand-carried 2,099-row exemption set would be a ratchet wearing a wall's name.",
 
-    "The instrument reports; it does not refuse, and citing it as a gate is rung inflation. ",
+    "The instrument reports; it does not refuse, and citing it as a gate is rung inflation.",
 
-    "**PROVENANCE LIMIT:** in-run strict judgments and cross-process content-addressed cache judgments are separate columns. ",
+    "**PROVENANCE LIMIT:** in-run strict judgments and cross-process content-addressed cache judgments are separate columns.",
 
-    "Required CI does not arm GUNBC_RESOLVED_GRAPH_CACHE_DIR, so the cross-process column was empty beside nonempty in-run columns in both planted and reverted runs. ",
+    "Required CI does not arm GUNBC_RESOLVED_GRAPH_CACHE_DIR, so the cross-process column was empty beside nonempty in-run columns in both planted and reverted runs.",
 
-    "That empty column is a control for the unarmed premise, NOT evidence that the provenance split is exercised by required CI. ",
+    "That empty column is a control for the unarmed premise, NOT evidence that the provenance split is exercised by required CI.",
 
-    "**A SECOND CONFIRMED MEMBER, AND UNLIKE THE FIRST IT WAS NOT PLANTED** (2026-09-05, jolly-badger-374; REPAIRED ON MAIN by gunbc#10608, so the state described here is PAST and a reader reproducing against current main will not find it). The specimen above is a deliberately constructed undeclared field; A ROW WHOSE ONLY CONFIRMED MEMBER IS AUTHORED IS SAMPLING ITS AUTHOR, which is why a naturally-occurring member is a categorically different receipt rather than one more of the same. ",
+    "**A SECOND CONFIRMED MEMBER, AND UNLIKE THE FIRST IT WAS NOT PLANTED** (2026-09-05, jolly-badger-374; REPAIRED ON MAIN by gunbc#10608, so the state described here is PAST and a reader reproducing against current main will not find it). The specimen above is a deliberately constructed undeclared field; A ROW WHOSE ONLY CONFIRMED MEMBER IS AUTHORED IS SAMPLING ITS AUTHOR, which is why a naturally-occurring member is a categorically different receipt rather than one more of the same.",
 
-    "WHAT WAS TRUE, so the claim can be evaluated after the repair: `gunbc.guarantee_stall.floor_cost_basis_boundedness_stall` spelled `next_rung_trigger` as a bare `String` while 31 of the 33 rows in its directory used the `climbs_when(capability: ...)` product constructor the carrier requires, and the closure enumerating them refused with `type mismatch: expected 'Product(NextRungTrigger)', got 'Primitive(String)'`. ",
+    "WHAT WAS TRUE, so the claim can be evaluated after the repair: `gunbc.guarantee_stall.floor_cost_basis_boundedness_stall` spelled `next_rung_trigger` as a bare `String` while 31 of the 33 rows in its directory used the `climbs_when(capability: ...)` product constructor the carrier requires, and the closure enumerating them refused with `type mismatch: expected 'Product(NextRungTrigger)', got 'Primitive(String)'`.",
 
-    "WHEN: the carrier landed FIRST, 86be37f355 (gunbc#10582) at 17:21:02; the old-format row landed 45074b4e9c (gunbc#10281) at 18:35:47, SEVENTY-FOUR MINUTES LATER, and `git merge-base --is-ancestor` answers YES carrier-before-row and NO the other way. It then sat on main undetected until 2026-09-05. ",
+    "WHEN: the carrier landed FIRST, 86be37f355 (gunbc#10582) at 17:21:02; the old-format row landed 45074b4e9c (gunbc#10281) at 18:35:47, SEVENTY-FOUR MINUTES LATER, and `git merge-base --is-ancestor` answers YES carrier-before-row and NO the other way. It then sat on main undetected until 2026-09-05.",
 
-    "THE COST, which is what distinguishes this member from an Undecided one: every branch merging main paid for it, two were blocked outright, and it was found by a session doing unrelated work rather than by any mechanism. ",
+    "THE COST, which is what distinguishes this member from an Undecided one: every branch merging main paid for it, two were blocked outright, and it was found by a session doing unrelated work rather than by any mechanism.",
 
-    "**IT WAS INVISIBLE TO THE REQUIRED LANES IN EXACTLY THIS ROW'S WAY, established by the refusal that did not happen rather than by a list.** The error was LIVE ON MAIN while all required lanes were GREEN -- `required-witnesses-build` at 2f8819b891 reported success with it present. Any lane that had content-judged that initializer would have REFUSED, because the roster closure does not resolve; therefore no lane judged it. The build lane's own census agrees: `gunbc.guarantee_stall`, the TYPE CARRIER, is in `judged-module-identities`, while the CHANGED INITIALIZER and `gunbc.guarantee_stall.roster` are absent. Compiling the DECLARATION of a type does not establish that an INITIALIZER using it was checked. ",
+    "**IT WAS INVISIBLE TO THE REQUIRED LANES IN EXACTLY THIS ROW'S WAY, established by the refusal that did not happen rather than by a list.** The error was LIVE ON MAIN while all required lanes were GREEN -- `required-witnesses-build` at 2f8819b891 reported success with it present. Any lane that had content-judged that initializer would have REFUSED, because the roster closure does not resolve; therefore no lane judged it. The build lane's own census agrees: `gunbc.guarantee_stall`, the TYPE CARRIER, is in `judged-module-identities`, while the CHANGED INITIALIZER and `gunbc.guarantee_stall.roster` are absent. Compiling the DECLARATION of a type does not establish that an INITIALIZER using it was checked.",
 
-    "This is the row's stated mechanism seen up close and is NOT a finer narrowing: a module sitting one import edge from a judged module is what `outside every required closure` looks like at close range, and this row already records that inbound imports neither prove nor disprove judgment. ",
+    "This is the row's stated mechanism seen up close and is NOT a finer narrowing: a module sitting one import edge from a judged module is what `outside every required closure` looks like at close range, and this row already records that inbound imports neither prove nor disprove judgment.",
 
-    "The repair was established by a paired local receipt at the real subject -- a compiler built from the candidate source, the same argv on both arms, an entry folding `all_guarantee_stalls` so it reached the actual roster closure -- with the bad construction refused at file, line and column and the repaired one resolving. THE GREEN REQUIRED LANES WERE CONSISTENT WITH THE REPAIR RATHER THAN EVIDENCE FOR IT, which is this row's whole point restated from the fixing end. ",
+    "The repair was established by a paired local receipt at the real subject -- a compiler built from the candidate source, the same argv on both arms, an entry folding `all_guarantee_stalls` so it reached the actual roster closure -- with the bad construction refused at file, line and column and the repaired one resolving. THE GREEN REQUIRED LANES WERE CONSISTENT WITH THE REPAIR RATHER THAN EVIDENCE FOR IT, which is this row's whole point restated from the fixing end.",
 
-    "**RECURRENCE, SAME CARRIER, THREE ROWS STILL ON MAIN** (2026-09-07, gunbc#10771): `gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall`, `self_host_hand_authorized_driver_source_stall` and `self_host_spelling_search_stall` spelled `next_rung_trigger` as a bare `String` against `NextRungTrigger`, so `gunbc.guarantee_stall.roster` refused while required lanes stayed green -- the enrollment gap this row already names, unaddressed, which is why the class recurred. ",
+    "**RECURRENCE, SAME CARRIER, THREE ROWS STILL ON MAIN** (2026-09-07, gunbc#10771): `gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall`, `self_host_hand_authorized_driver_source_stall` and `self_host_spelling_search_stall` spelled `next_rung_trigger` as a bare `String` against `NextRungTrigger`, so `gunbc.guarantee_stall.roster` refused while required lanes stayed green -- the enrollment gap this row already names, unaddressed, which is why the class recurred.",
 
-    "**CEILING: decidable but waiting on a single standing authority.** A wall now would either false-red legitimate importer-free subjects or grandfather opaque debt. ",
+    "**CEILING: decidable but waiting on a single standing authority.** A wall now would either false-red legitimate importer-free subjects or grandfather opaque debt.",
 
-    "The next rung requires four capabilities together: (1) one typed standing registry exhaustively binds every first-party ingest identity to required judgment, a verified executing consumer, typed fixture/generated/exclusion, retirement, or orphan standing; (2) each executing-consumer binding is checked against the named consumer's actual roster and execution receipt, so a hollow alias cannot admit it; (3) a changed retained identity resolves only through its named consumer from materialized facts within the required floor's 8-second wall and 500-millisecond CPU envelopes, never by whole-corpus compilation; and (4) the two-direction matched undeclared-field control remains executable. ",
+    "The next rung requires four capabilities together: (1) one typed standing registry exhaustively binds every first-party ingest identity to required judgment, a verified executing consumer, typed fixture/generated/exclusion, retirement, or orphan standing; (2) each executing-consumer binding is checked against the named consumer's actual roster and execution receipt, so a hollow alias cannot admit it; (3) a changed retained identity resolves only through its named consumer from materialized facts within the required floor's 8-second wall and 500-millisecond CPU envelopes, never by whole-corpus compilation; and (4) the two-direction matched undeclared-field control remains executable.",
 
     "At that rung admission makes the invalid state unwritable; until then this remains measurement and an Undecided population, not a defect backlog.)",
   ],

@@ -18,6 +18,7 @@ import gunbc.guarantee_measurement {
   join_receipt_to_path,
   guarantee_class_ids_unique, guarantee_path_ids_unique,
   probe_set_digest,
+  MeasurementAnchor,
 }
 
 // SYNTHETIC ROWS ONLY, by the Stage 0 charter: these witnesses prove the protocol - construction,
@@ -59,12 +60,14 @@ fn synth_phase_path(id: String, boundary: AcceptanceBoundary) -> GuaranteePath {
 
 fn synth_receipt(path_id: String) -> GuaranteeMeasurementReceipt {
   GuaranteeMeasurementReceipt {
-    class: "call-shape" as GuaranteeClassId,
-    path: path_id as GuaranteePathId,
+    anchor: MeasurementAnchor {
+      class: "call-shape" as GuaranteeClassId,
+      path: path_id as GuaranteePathId,
+      subject_revision: GitRevision { commit: "0000000000000000000000000000000000000000" as CommitSha },
+      harness_revision: GitRevision { commit: "1111111111111111111111111111111111111111" as CommitSha },
+      probe_set_digest: probe_set_digest(probe_ids: ["call-shape-mislabel-red" as GuaranteeProbeId]),
+    },
     probe: "call-shape-mislabel-red" as GuaranteeProbeId,
-    subject_revision: GitRevision { commit: "0000000000000000000000000000000000000000" as CommitSha },
-    harness_revision: GitRevision { commit: "1111111111111111111111111111111111111111" as CommitSha },
-    probe_set_digest: probe_set_digest(probe_ids: ["call-shape-mislabel-red" as GuaranteeProbeId]),
     observed: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 1 },
   }
 }

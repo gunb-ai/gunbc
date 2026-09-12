@@ -3,10 +3,12 @@ module gunbc.specification_citation_read_provenance
 import std.integer { Int }
 import std.measure { ByteSize, byte_size }
 import std.types { NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_authority }
+import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority }
+import extdeps.ampere.mt_collins_2u_user_guide.subject { doslab_mirror_authority }
 
 // OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN
 // section 3). Each receipt names the upstream declaration it is about and records what gunbc did on
@@ -36,6 +38,14 @@ type SpecificationCitationReadProvenance
     }
   | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
   | DocumentLocatorFetchedAndTextIngested {
+      http_status: Int,
+      byte_count: ByteSize,
+      content_digest: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+  | DocumentMirrorLocatorFetchedAndTextIngested {
+      mirror: ExternalAuthority,
+      observed_on: SpecificationDocumentDate,
       http_status: Int,
       byte_count: ByteSize,
       content_digest: NonEmptyStr,
@@ -89,6 +99,29 @@ data mt_jade_publisher_citation_read_receipt: SpecificationCitationReadReceipt =
 data mt_jade_ingested_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
   subject: mt_jade_reference_platform_subject_ref,
   provenance: OperatorSuppliedDocumentText {},
+}
+
+// A SECOND, INDEPENDENT READ OF THE SAME DOCUMENT, ADDED RATHER THAN REPLACING THE OPERATOR
+// HAND-OFF ABOVE. The receipts answer different questions - one says how the platform rows got
+// their text, the other says how the Table 3 rows got theirs - and collapsing them would erase the
+// only cross-check either one has. THE CROSS-CHECK IS WHAT MAKES THIS WORTH RECORDING: the capture
+// reproduces the facts the operator-supplied read already grounded (the 428 by 479.36 mm outline,
+// the ILM4926 designation, the 9FGV1006B and AST2500 part numbers), so the two artifacts are the
+// same document and not two revisions wearing one locator.
+data mt_jade_mirror_capture_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2022,
+  month: 6,
+  day: 3,
+}
+
+data mt_jade_mirror_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_jade_reference_platform_subject_ref,
+  provenance: DatedPublisherLocatorMirrorTextIngested {
+    mirror: internet_archive_mt_jade_capture_authority,
+    capture_date: mt_jade_mirror_capture_date,
+    peer_session: "silent-koi-898",
+    detail: "the publisher locator still answers 403 unauthenticated, so session silent-koi-898 fetched the dated Internet Archive capture of it - 3493299 bytes, sha256 1ca9adc18543ef4686537aaafa386fa09075f75612dd3ea57c03b7d8d438f6ae, 58 pages - and decoded its full text by zlib content-stream decompression, reading section 7.4 Table 3 from the rendered text positions rather than the flattened stream order. This is a second artifact from the publisher copy and may not match what the publisher serves today.",
+  },
 }
 
 data mt_mitchell_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
@@ -147,3 +180,83 @@ data mt_collins_getting_started_guide_citation_read_receipt: SpecificationCitati
     detail: "the guide's locator was fetched by this session with NO credentials - no Customer Connect session and no cookie - returning application/pdf whose digest equals the identity recorded on the document module. That is the observation the public-availability axis turns on; the resulting status is an upstream fact and lives on the document module, not here.",
   },
 }
+
+// A live third-party mirror has a read date, not an archival capture date. Neither
+// publisher-locator provenance nor DatedPublisherLocatorMirrorTextIngested describes
+// that event: the former names the wrong host role, the latter would invent the
+// date on which Doslab copied the document. These are independent reads; agreement
+// is derived below, never an authored true beside the DIMM projection.
+data mt_collins_2u_user_guide_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ampere.mt_collins_2u_user_guide.subject",
+  decl_name: "mt_collins_2u_user_guide",
+  field: WholeDeclaration,
+}
+
+data mt_collins_2u_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_collins_2u_user_guide_subject_ref,
+  provenance: DocumentLocatorFetchedAndTextIngested {
+    http_status: 200,
+    byte_count: byte_size(count: 16148131),
+    content_digest: "sha256 a8102a2a661fca508c079ba460da2f701360216517ee090a036e533bbf078bbf",
+    detail: "Fetched without credentials from the Ampere publisher locator on 2026-09-11; full text decoded, Figures 19-20 and 42-43 visually inspected. This read is independent of the operator-supplied Doslab mirror locator.",
+  },
+}
+
+data mt_collins_2u_mirror_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_collins_2u_user_guide_subject_ref,
+  provenance: DocumentMirrorLocatorFetchedAndTextIngested {
+    mirror: doslab_mirror_authority,
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 11 },
+    http_status: 200,
+    byte_count: byte_size(count: 16148131),
+    content_digest: "sha256 a8102a2a661fca508c079ba460da2f701360216517ee090a036e533bbf078bbf",
+    detail: "Fetched with curl from the operator-supplied third-party mirror, then compared with the separately fetched publisher PDF using cmp and SHA-256. Matching bytes permit the publisher-copy text decode and figure inspection to describe this artifact too. No date of the mirror operator's original capture is known.",
+  },
+}
+
+type SpecificationCitationReadByteStanding
+  = RecordedReadBytesAgree
+  | RecordedReadBytesDiffer
+  | ReadBytesNotComparable
+
+type SpecificationCitationReadByteComparison {
+  publisher_read: SpecificationCitationReadReceipt
+  mirror_read: SpecificationCitationReadReceipt
+  standing: SpecificationCitationReadByteStanding
+}
+
+// Comparison of RECORDED metadata, not a fresh fetch or proof that a mirror is a
+// publisher. Unread, archived-without-digest, different-subject and failed reads
+// remain incomparable. No missing observation can yield agreement.
+fn specification_citation_read_byte_standing(publisher: SpecificationCitationReadReceipt, mirror: SpecificationCitationReadReceipt) -> SpecificationCitationReadByteStanding {
+  if declaration_ref_eq(a: publisher.subject, b: mirror.subject) == false {
+    ReadBytesNotComparable
+  } else {
+    match publisher.provenance {
+      DocumentLocatorFetchedAndTextIngested { http_status: ps, byte_count: pb, content_digest: pd, detail: _ } =>
+        match mirror.provenance {
+          DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: ms, byte_count: mb, content_digest: md, detail: _ } =>
+            if ps != 200 || ms != 200 {
+              ReadBytesNotComparable
+            } else { if pb == mb && pd == md { RecordedReadBytesAgree } else { RecordedReadBytesDiffer } }
+          _ => ReadBytesNotComparable
+        }
+      _ => ReadBytesNotComparable
+    }
+  }
+}
+
+fn specification_citation_compare_read_bytes(publisher: SpecificationCitationReadReceipt, mirror: SpecificationCitationReadReceipt) -> SpecificationCitationReadByteComparison {
+  SpecificationCitationReadByteComparison {
+    publisher_read: publisher,
+    mirror_read: mirror,
+    standing: specification_citation_read_byte_standing(publisher: publisher, mirror: mirror),
+  }
+}
+
+// Consumer: gunbc.mt_collins_dimm_physical_identity.population_diagram_identity
+// carries both reads and their comparison to its declared operator projection.
+data mt_collins_2u_citation_read_comparison: SpecificationCitationReadByteComparison = specification_citation_compare_read_bytes(
+  publisher: mt_collins_2u_publisher_citation_read_receipt,
+  mirror: mt_collins_2u_mirror_citation_read_receipt,
+)

@@ -18,14 +18,13 @@ import extdeps.browser.chromium {
   ChromiumWebDataErrorUrl,
   chromium_151_0_7922_34,
 }
+import extdeps.linux.kernel { LinuxKernelRelease }
 import extdeps.automation.playwright {
   PlaywrightBuild,
   PlaywrightBrowserBinaryProvenance,
   PlaywrightManagedChromiumDownload,
   playwright_1_62_1,
 }
-
-type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
 
 type ContainerVisibleHostKernel {
   visible_release: LinuxKernelRelease

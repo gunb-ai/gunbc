@@ -244,6 +244,21 @@ fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q,
   Measure { count: a.count + b.count }
 }
 
+// Truncated subtraction is not the default. Naturals are not closed under subtraction; the
+// Peano form is v2.std.nat nat_sub (NatDifference | NatSubtrahendExceedsMinuend). A floor at
+// zero would fabricate a difference of equal measures.
+type MeasureSubtraction<Q, S>
+  = MeasureDifference { value: Measure<Q, S, Nat> }
+  | MeasureSubtrahendExceedsMinuend
+
+fn measure_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> MeasureSubtraction<Q, S> {
+  if a.count < b.count {
+    MeasureSubtrahendExceedsMinuend
+  } else {
+    MeasureDifference { value: Measure { count: a.count - b.count } }
+  }
+}
+
 fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }
@@ -360,6 +375,13 @@ type MergeQueueEntryCount = Measure<Count, One, Nat>
 // module (extdeps.network.mikrotik_crs812) consumes it rather than re-minting a local alias for the
 // same axis. Added 2026-09-04.
 type PowerCordCount = Measure<Count, One, Nat>
+
+// A count of memory controllers an EDAC driver has registered. Same axis, same reason as its
+// siblings above: extdeps.linux.edac counts controllers, and a module whose whole point is that ONE
+// controller beside sixteen DIMMs means something specific is exactly where a bare Nat stops
+// distinguishing a controller count from a DIMM count, a channel count or a slot number. Added
+// 2026-09-11.
+type MemoryControllerCount = Measure<Count, One, Nat>
 
 type Millicore = Measure<Count, Milli, Nat>
 
@@ -1080,6 +1102,15 @@ fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
 }
 
+// Remaining room in a token window after some of it is already used. Saturates at zero: an input
+// that fills or exceeds the window leaves no output budget. This is window arithmetic over
+// TokenCount, not an upstream-model fact.
+fn token_count_remaining_in_window(window: TokenCount, used: TokenCount) -> TokenCount {
+  let w = token_count_value(t: window)
+  let u = token_count_value(t: used)
+  if u >= w { token_count(count: 0) } else { token_count(count: w - u) }
+}
+
 fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
   Measure { count: count }
 }
@@ -1121,6 +1152,14 @@ fn power_cord_count(count: Nat) -> PowerCordCount {
 }
 
 fn power_cord_count_value(c: PowerCordCount) -> Nat {
+  measure_count(c)
+}
+
+fn memory_controller_count(count: Nat) -> MemoryControllerCount {
+  Measure { count: count }
+}
+
+fn memory_controller_count_value(c: MemoryControllerCount) -> Nat {
   measure_count(c)
 }
 

@@ -105,18 +105,17 @@ test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
   w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
 }
 
-// THE LIVE COUNT IS A MEASUREMENT IN ITS OWN SCENARIO, WHICH IS THE RULE RATHER THAN AN EXCEPTION TO
-// IT. The defect this branch set out to remove was carrying 32 ACROSS MODELS -- one DeepSeek launch,
-// one quantisation, one KV layout, at tensor-parallel 2, handed to every model thereafter. Used for
-// the model and layout it was actually taken on, it is exactly what a measured capacity should be,
-// and the basis names that scenario so it cannot travel silently.
-test fn the_live_sequence_count_is_measured_in_the_scenario_it_serves() -> Bool {
+// THE LIVE COUNT IS A CHOSEN LAUNCH ARGUMENT. Dressing `--max-num-seqs` as SeqCapacityMeasured would
+// make an argv flag look like pool evidence, which is how 32 travelled across models. The arm must
+// stay SeqCapacityByOperatorPolicy, the number 32, and the basis must still bar travel.
+test fn the_live_sequence_count_is_an_operator_launch_argument() -> Bool {
   match spark_pair_serving_seq_capacity {
     SeqCapacityUnmeasured => false
-    SeqCapacityByOperatorPolicy { max_num_seqs: _, basis: _ } => false
-    SeqCapacityMeasured { max_num_seqs: n, basis: b } =>
+    SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
+    SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: b } =>
       n == 32
-        && string_contains(s: b as String, pattern: "fp8_ds_mla")
+        && string_contains(s: b as String, pattern: "launch argument")
+        && string_contains(s: b as String, pattern: "not a measurement")
         && string_contains(s: b as String, pattern: "may not travel")
   }
 }

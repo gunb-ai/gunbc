@@ -4054,6 +4054,7 @@ fn render_round_cost_receipt(
     changed_paths: &[String],
     convergence_stage_receipt_ids: &[String],
     installed_mirrors: &[String],
+    host_shell_modules: &[String],
     rebuild_packages: &[String],
     executable_digest: &str,
     second_generation_candidate_digest: &str,
@@ -4161,6 +4162,10 @@ fn render_round_cost_receipt(
                 Value::List(Rc::new(installed_values.into())),
             ),
             (
+                ctx.sym("host_shell_modules"),
+                model_string_list(host_shell_modules),
+            ),
+            (
                 ctx.sym("rebuild_packages"),
                 Value::List(Rc::new(
                     rebuild_packages
@@ -4233,6 +4238,7 @@ fn model_value_to_string_list(value: &ModelValue, what: &str) -> Result<Vec<Stri
 fn partition_rebuild_actuation(
     source_roots: &[String],
     installed_mirrors: &[String],
+    host_shell_modules: &[String],
 ) -> Result<PartitionRebuildActuation, String> {
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
@@ -4249,6 +4255,10 @@ fn partition_rebuild_actuation(
                 model_string_list(installed_mirrors),
             ),
             (Some("unlocatable".to_string()), model_string_list(&[])),
+            (
+                Some("host_shell_modules".to_string()),
+                model_string_list(host_shell_modules),
+            ),
         ];
         v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
@@ -4991,7 +5001,12 @@ fn install_convergence_stage(
     dependency_closure_id: &str,
 ) -> Result<RegenConvergenceStageReceipt, String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
-    let actuation = partition_rebuild_actuation(source_roots, basenames)?;
+    // The generated shell declares the emitted modules not owned by a partition.
+    // Read the same declaration surface convergence_surface_roles uses for seed
+    // membership; missing partition ownership alone must never imply shell ownership.
+    let host_shell_modules =
+        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
+    let actuation = partition_rebuild_actuation(source_roots, basenames, &host_shell_modules)?;
     install_convergence_stage_with_backend(
         model,
         workspace,
@@ -5973,6 +5988,8 @@ pub fn run_regen_round_cost(
         .iter()
         .cloned()
         .collect();
+    let host_shell_modules =
+        super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,
@@ -5985,6 +6002,7 @@ pub fn run_regen_round_cost(
         &changed_paths,
         &convergence_stage_receipt_ids,
         &installed_mirrors,
+        &host_shell_modules,
         &rebuild_packages,
         &executable_digest,
         &second_generation_candidate_digest,
@@ -6023,6 +6041,93 @@ mod regen_round_cost_tests {
         assert!(assembled.contains("v1_compiler_infer_service"));
     }
 
+    /// Identity join over the independently observed emitted module population
+    /// and the package map. Aggregate products have their separate modeled owners. A whole-build input cannot mask a different unowned mirror:
+    /// each identity is asked separately. Removing the shell declaration then
+    /// exercises the real host-to-model boundary's named refusal.
+    #[test]
+    fn live_module_mirrors_have_owners_and_removed_shell_owner_refuses() {
+        use crate::v1_interpreter::{self, ExecutionMode, Value};
+        let workspace = workspace_root();
+        let stage0 = workspace.join("src/v1/stage0/src");
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace.join(r).to_string_lossy().into_owned())
+            .collect();
+        let shell =
+            super::super::emitted_closure_compile_host::closure_modules(&stage0.join("lib.rs"))
+                .expect("generated shell declarations are readable");
+        let emitted = HashMap::from([(
+            format!("src/{}", emitted_population_manifest_basename()),
+            fs::read_to_string(stage0.join(emitted_population_manifest_basename())).unwrap(),
+        )]);
+        let mirrors = generated_basenames_from_emit(&emitted).unwrap();
+        // Classify non-module products through the independent emitter authority,
+        // never by whether the ownership map happens to contain the mirror. A missing
+        // owner must leave the obligation present, not shrink this test's population.
+        let (_, _, _, products, _) = regen_generation_role_population(&roots, &[]).unwrap();
+        let module_mirrors: Vec<String> = mirrors
+            .into_iter()
+            .filter(|mirror| !products.contains_key(mirror))
+            .collect();
+        assert!(
+            !module_mirrors.is_empty(),
+            "no emitted module population observed"
+        );
+        let entry = round_cost_entry(&roots).unwrap();
+        let index = super::super::process_shared_index(&roots);
+        let (graph, indices) =
+            super::super::resolve_entry_with_index_for_discovery_corpus(&index, &entry).unwrap();
+        let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let decision_line = |mirror: &str, shell: &[String]| {
+            let args = vec![
+                (
+                    Some("changed_mirrors".to_string()),
+                    model_string_list(&[mirror.to_string()]),
+                ),
+                (Some("unlocatable".to_string()), model_string_list(&[])),
+                (
+                    Some("host_shell_modules".to_string()),
+                    model_string_list(shell),
+                ),
+            ];
+            let value = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "stage0_partition_rebuild_decision_line_today",
+                    &args,
+                    false,
+                )
+            })
+            .unwrap();
+            let Value::Str(line) = value else {
+                panic!("decision was not a String")
+            };
+            line.to_string()
+        };
+        for mirror in &module_mirrors {
+            let line = decision_line(mirror, &shell);
+            assert!(!line.contains("RebuildScopeRefused"), "{mirror}: {line}");
+        }
+        let subject = "v1_compiler_compile.rs";
+        assert!(module_mirrors.iter().any(|m| m == subject));
+        let green = decision_line(subject, &shell);
+        assert!(
+            green.contains("owning_packages=[v1-compiler] package_closure=[v1-compiler]"),
+            "{green}"
+        );
+        let removed: Vec<String> = shell
+            .into_iter()
+            .filter(|m| m != "v1_compiler_compile")
+            .collect();
+        let red = decision_line(subject, &removed);
+        assert_eq!(red, "partition-rebuild: RebuildScopeRefused MirrorHasNoOwningPackage mirror=v1_compiler_compile.rs");
+        eprintln!(
+            "ownership identity join: {} emitted module mirrors; {green}; mutation: {red}",
+            module_mirrors.len()
+        );
+    }
+
     /// THE SEED-TO-MODEL LOCKSTEP the .dag witness says it cannot hold: the host builds the
     /// receipt Value with these field and variant names, and the model's renderer either
     /// accepts them or refuses. A renamed field on either side reds here, not in a
@@ -6059,6 +6164,7 @@ mod regen_round_cost_tests {
             &["v1_rt.rs".to_string()],
             &["stage-1".to_string()],
             &["v1_rt.rs".to_string()],
+            &[],
             &["v1-stage0-runtime".to_string()],
             "sha256:claim-executor",
             "sha256:g1-candidate-tree",
@@ -8320,5 +8426,277 @@ mod seed_executable_digest_spelling_tests {
         // The rendering is the prefixed one, so a digest read back from a receipt is
         // self-describing rather than a bare integer whose family must be guessed.
         assert!(current_exe_digest().unwrap().starts_with("fnv1a64:"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// THE EMITTED `dag-artifact.json`'S OWN IDENTITY, ASKED THE ONLY WAY THAT ANSWERS IT.
+//
+// WHY IT LIVES BESIDE THE REGEN FIXED POINT AND NOT IN A PHASE OF ITS OWN. The question here is
+// the fixed point's question one artifact over: does re-running the producer over an unchanged
+// tree produce the same bytes? The regen fixed point asks it of the stage0 Rust surface; nothing
+// asked it of `dag-artifact.json`, and the answer on main was no. It is a RIDER on an existing
+// required phase rather than a sixth phase because the roster of required jobs is closed to
+// growth (`gunbc.witness_floor_workflow` `witness_floor_lane_jobs`), and this check belongs to a
+// phase that already exists.
+//
+// WHAT THE DEFECT WAS, so the control's shape is legible. `v1.compile` `serialize_typed_module`
+// and `emit_dag_artifact` fed `map_keys` of an item registry -- a host-ordered `HashMap` --
+// straight into the artifact. Two runs of one binary over one tree emitted the identical graph
+// with `item_registry_keys` in two orders, which is a byte difference with no semantic
+// difference, and therefore a difference every byte-equality oracle downstream reports as
+// "changed". Both sites now read `sorted_map_keys`, whose `PrimitiveTraversalOrderFact` is
+// `CanonicalOrder` (`std.primitive_identity`). THE FIX IS AT THE KEY, NOT AT THE TEXT: nothing
+// here sorts emitted output.
+//
+// WHY TWO IN-PROCESS EMISSIONS DISCRIMINATE, and it is not obvious. `im::HashMap`'s default
+// `RandomState` is seeded PER INSTANCE from a thread-local counter, not once per process, so two
+// independently built registries in one process already disagree on iteration order. The control
+// therefore does not need two subprocesses to see the class -- and the class it sees is the same
+// one two subprocesses saw (gunbc#11072).
+//
+// THE TWO HALVES ARE BOTH REQUIRED. Equality alone is satisfied by an emitter that emits the same
+// bytes for every input, so the perturbed arm asserts that ONE added declaration still changes the
+// artifact. And both are refused rather than passed when the fixture stops carrying the subject:
+// a specimen whose artifact holds fewer than two registry keys cannot distinguish an ordered
+// emitter from an unordered one, and a control that cannot go red is worse than absent.
+
+pub const DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT: &str = "fixtures/dag_artifact_identity/subject";
+pub const DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT: &str = "fixtures/dag_artifact_identity/perturbed";
+pub const DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME: &str = "registry_order_specimen.dag";
+/// The declaration the perturbed arm adds and the subject does not have. The positive control
+/// asserts THIS KEY's presence and absence, rather than inferring the added declaration from the
+/// two artifacts merely differing.
+pub const DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION: &str = "item_quebec";
+pub const DAG_ARTIFACT_BASENAME: &str = "dag-artifact.json";
+
+/// The minimum number of registry keys the subject artifact must carry for the equality half to
+/// mean anything. Two keys agree by chance half the time; the committed specimen carries
+/// sixteen, and this floor exists so a specimen edited down to nothing refuses instead of
+/// greening.
+pub const DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS: usize = 8;
+
+#[derive(Debug, Clone)]
+pub struct DagArtifactIdentityOutcome {
+    pub subject_root: String,
+    pub perturbed_root: String,
+    pub first_digest: String,
+    pub second_digest: String,
+    pub perturbed_digest: String,
+    pub registry_keys_observed: usize,
+    pub findings: Vec<String>,
+}
+
+impl DagArtifactIdentityOutcome {
+    pub fn passed(&self) -> bool {
+        self.findings.is_empty()
+    }
+
+    /// A green NAMES ITS DENOMINATOR: the key count the equality was taken over, so a subject
+    /// that narrowed is legible from the log rather than only from the verdict.
+    pub fn summary(&self) -> String {
+        format!(
+            "registry_keys={} first={} second={} perturbed={} findings={}",
+            self.registry_keys_observed,
+            self.first_digest,
+            self.second_digest,
+            self.perturbed_digest,
+            self.findings.len()
+        )
+    }
+}
+
+/// One emission of one fixture root, returning the `dag-artifact.json` TEXT.
+///
+/// It goes through `cli_run::compile_emission` -- the same transaction `gunbc compile` runs --
+/// rather than reaching `emit_dag_artifact` directly, because the subject is what the CLI
+/// produces. Nothing is written to disk: the bytes compared are the bytes the writer would have
+/// written, so no filesystem state can make two unequal emissions look equal.
+///
+/// THE SUBJECT IS AN `Entry`, NOT A `PrimaryRoot`, AND THAT IS NOT A SPELLING PREFERENCE. A
+/// primary-root subject is a WHOLE-CORPUS compile and is asked `whole_corpus_compile_admission`
+/// before anything is indexed; on a host exposing no cgroup memory limit that arm refuses with
+/// `WholeCorpusCompileBudgetUnreadable` — correctly, since an unbounded resolve on an unbounded
+/// host is the SIGKILL it exists to prevent. Measured on a BuildBuddy runner: the root form
+/// refused four runs out of four and emitted nothing. This control's subject is one specimen
+/// file, so `Entry` is also what it actually MEANS; borrowing the corpus subject would have made
+/// the control's availability a fact about the host's cgroup rather than about the emitter.
+fn emit_dag_artifact_text(root_rel: &str) -> Result<String, String> {
+    // ANCHORED ON `workspace_root()`, NOT LEFT RELATIVE. A relative subject is resolved against
+    // the PROCESS's workspace root, which is not the same path under every consumer: the same
+    // spelling that `gunbc compile` resolved refused under the test harness with
+    // `entry file does not exist or is not a file`. The fixture's location is a fact about the
+    // repository, so it is addressed as one.
+    let root = workspace_root().join(root_rel);
+    let entry = root.join(DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME);
+    let run = super::compile_emission(&super::CompileRequest {
+        subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
+        source_roots: vec![root.to_string_lossy().to_string()],
+        primary_precedence: false,
+        render_targets: vec![RenderTarget::Dag],
+    });
+    match &run.disposition {
+        super::CompileDisposition::Completed { .. } => {}
+        super::CompileDisposition::Refused { phase, cause } => {
+            return Err(format!("{root_rel}: compile refused at {phase}: {cause}"));
+        }
+        super::CompileDisposition::NotExecuted {
+            earlier_phase,
+            cause,
+        } => {
+            return Err(format!(
+                "{root_rel}: compile not executed at {earlier_phase}: {cause}"
+            ));
+        }
+    }
+    for emission in &run.emissions {
+        for file in emission.result.files.iter() {
+            if file.path.as_str().ends_with(DAG_ARTIFACT_BASENAME) {
+                return Ok(file.content.clone());
+            }
+        }
+    }
+    Err(format!(
+        "{root_rel}: the dag emission carries no {DAG_ARTIFACT_BASENAME} -- the control's subject \
+         is absent, which is a refusal and not a passing comparison over nothing"
+    ))
+}
+
+/// How many `item_registry_keys` entries the artifact actually carries, summed over every list it
+/// holds. This is the control's DENOMINATOR, and it is measured rather than assumed: the fixture
+/// could be edited, the field could be renamed, and either would leave an equality that holds
+/// trivially.
+fn registry_keys_in_artifact(artifact: &str) -> usize {
+    let marker = "\"item_registry_keys\": [";
+    let mut total = 0usize;
+    let mut rest = artifact;
+    while let Some(at) = rest.find(marker) {
+        rest = &rest[at + marker.len()..];
+        match rest.find(']') {
+            Some(end) => {
+                let body = &rest[..end];
+                if !body.trim().is_empty() {
+                    total += body.matches(',').count() + 1;
+                }
+                rest = &rest[end..];
+            }
+            None => break,
+        }
+    }
+    total
+}
+
+/// The two-run byte-equality control over `dag-artifact.json`, with its positive control.
+pub fn run_dag_artifact_identity() -> Result<DagArtifactIdentityOutcome, String> {
+    let first = emit_dag_artifact_text(DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT)?;
+    let second = emit_dag_artifact_text(DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT)?;
+    let perturbed = emit_dag_artifact_text(DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT)?;
+
+    let registry_keys_observed = registry_keys_in_artifact(&first);
+    let mut findings = Vec::new();
+
+    if registry_keys_observed < DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS {
+        findings.push(format!(
+            "the subject artifact carries {registry_keys_observed} item_registry_keys entries, \
+             below the {DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS} this control needs to \
+             distinguish an ordered emitter from an unordered one -- the specimen at {} no \
+             longer carries the subject",
+            DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT
+        ));
+    }
+
+    if first != second {
+        let at = first
+            .char_indices()
+            .zip(second.char_indices())
+            .find(|((_, a), (_, b))| a != b)
+            .map(|((i, _), _)| i);
+        findings.push(format!(
+            "two emissions of {} over one unchanged tree produced different \
+             {DAG_ARTIFACT_BASENAME} bytes (first differing char offset {}) -- the emitted \
+             artifact's identity is unstable, so every byte-equality oracle over it reports \
+             reordering as change",
+            DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT,
+            at.map(|i| i.to_string())
+                .unwrap_or_else(|| "n/a (length differs)".to_string()),
+        ));
+    }
+
+    if first == perturbed {
+        findings.push(format!(
+            "the perturbed specimen at {} emitted the SAME {DAG_ARTIFACT_BASENAME} bytes as the \
+             subject -- the equality half above is then satisfied by an emitter blind to its \
+             input, which is a control that cannot go red",
+            DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT
+        ));
+    }
+
+    // THE ADDED DECLARATION IS ASSERTED, NOT INFERRED FROM THE BYTES DIFFERING. The two arms are
+    // two files, so they differ in their module name as well as in the declaration, and
+    // `serialize_node_record` emits names and spans -- which means byte inequality alone would
+    // hold even if `item_quebec` never reached the artifact at all, and the control would claim a
+    // sensitivity it had not established (review 64007, gunbc#11084, and the objection is
+    // correct). These two arms name the declaration and check both directions of its membership,
+    // so the positive control is discriminating for the thing it claims to protect rather than
+    // for any difference whatsoever.
+    if !perturbed.contains(DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION) {
+        findings.push(format!(
+            "the perturbed artifact does not carry `{DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION}` -- \
+             the declaration the perturbed arm adds never reached the emitted bytes, so the two \
+             artifacts differing says nothing about the emitter's sensitivity to a real change"
+        ));
+    }
+    if first.contains(DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION) {
+        findings.push(format!(
+            "the SUBJECT artifact already carries `{DAG_ARTIFACT_IDENTITY_ADDED_DECLARATION}` -- \
+             the two arms are then not one declaration apart, and the positive control's subject \
+             is not what it says it is"
+        ));
+    }
+
+    Ok(DagArtifactIdentityOutcome {
+        subject_root: DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT.to_string(),
+        perturbed_root: DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT.to_string(),
+        first_digest: bytes_digest(first.as_bytes()),
+        second_digest: bytes_digest(second.as_bytes()),
+        perturbed_digest: bytes_digest(perturbed.as_bytes()),
+        registry_keys_observed,
+        findings,
+    })
+}
+
+#[cfg(test)]
+mod dag_artifact_identity_tests {
+    use super::{run_dag_artifact_identity, DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS};
+
+    /// THE LOCAL ARM OF THE REQUIRED RIDER, so the control can be run against a tree without
+    /// driving a whole required lane. It is not the enrolled consumer -- that is the
+    /// `dag-artifact-identity` rider inside `RequiredCiPhase::RegenFixedPoint`, which is what
+    /// executes on the merge path (`cargo test -p v1-compiler --lib` is off it, a declared drop).
+    ///
+    /// Measured on this control's own two arms: with `v1.compile` emitting `map_keys` of the item
+    /// registry it reports the two-emission finding, and with `sorted_map_keys` it is clean.
+    ///
+    /// THE TEST PATH IS `cli_run::required_regen_host::…`, NOT `required_regen_host::…`, because
+    /// this file is wired in by `#[path] mod` INSIDE `cli_run`. Recorded because the wrong
+    /// spelling does not error: `cargo test -- --exact <wrong path>` reports
+    /// `0 passed; 0 failed; 970 filtered out` and exits 0, which is a green from a test that never
+    /// ran -- measured, on this very test, before the spelling was corrected.
+    #[test]
+    #[ignore = "live-corpus: compiles a committed fixture source root off disk"]
+    fn dag_artifact_identity_control_holds() {
+        let outcome =
+            run_dag_artifact_identity().expect("the control's subject must be obtainable");
+        assert!(
+            outcome.registry_keys_observed >= DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS,
+            "the fixture stopped carrying the subject: {}",
+            outcome.summary()
+        );
+        assert!(
+            outcome.passed(),
+            "{}\n{}",
+            outcome.summary(),
+            outcome.findings.join("\n")
+        );
     }
 }

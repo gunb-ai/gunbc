@@ -17,7 +17,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: witness-floor-${{ github.event.pull_request.number || github.run_id }}
+  group: witness-floor-${{ github.event_name == 'merge_group' && format('mg-{0}', github.sha) || github.event_name == 'workflow_dispatch' && github.event.inputs.expected_healed_sha != '' && format('heal-{0}', github.event.inputs.expected_healed_sha) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && github.ref || format('run-{0}', github.run_id) }}
   cancel-in-progress: false
 env:
   CARGO_TERM_COLOR: always
@@ -31,17 +31,19 @@ jobs:
   required-witnesses-build:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
+    outputs:
+      floor_class: ${{ steps.attempt_receipt.outputs.floor_class }}
     steps:
       - name: Record runner filesystem at job start
         run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument when BOTH (1) every required public job selects a per-attempt microVM via gunbc.ci_runner_target selected_ci_runner_target / gunbc_ci_selected_runner_spec and every required private job selects one via strategy.private_witness_workflow witnesses_job() SelfHosted custom labels, not the empty-custom shared-FS fleet slot, AND (2) this row is eligible to bind because that selection makes the shared-filesystem eviction class impossible. Identifying a deleter on the shared slot is not a substitute for (1). Isolation does not dissolve typed BMC/host/JIT vs code classification.
           GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
           df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
           df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i mode=%a' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); if [ -x "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_EXEC=yes; else GUNBC_TOOLCHAIN_FS_EXEC=no; fi; echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes executable=$GUNBC_TOOLCHAIN_FS_EXEC $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no executable=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable mode=unavailable"; fi; done
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
       - name: Checkout
@@ -87,49 +89,129 @@ jobs:
       - name: Build the witness fold
         id: build_witness_fold
         run: |
-          cargo build --release -p v1-compiler --bins
-          cargo build --release -p v1-stage0-runtime -p v1-stage0-std-core -p v1-stage0-std-surface -p v1-stage0-extdeps-languages -p v1-stage0-v1-artifact -p v1-stage0-v1-infer -p v1-stage0-emit-core
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bins
+          cargo build --release -p v1-stage0-runtime -p v1-stage0-std-core -p v1-stage0-std-surface -p v1-stage0-extdeps-languages -p v1-stage0-v1-artifact -p v1-stage0-v1-infer -p v1-stage0-emit-core') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
       - name: Require isolated toolchain homes
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
         if: "!cancelled()"
       - name: "Required CI: build lane (phases named by the run, not by this label)"
         run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
-          'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'build'
+          '\''target/release/claim_executor'\'' '\''--required-ci'\'' '\''--source-root'\'' '\''dag'\'' '\''--source-root'\'' '\''src/v2'\'' '\''--required-lane'\'' '\''build'\''
+          ') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: clippy, all targets
         id: rust_clippy_all_targets
         run: |
           # dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.
-          cargo clippy --all-targets -- -D warnings
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'cargo clippy --all-targets -- -D warnings') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
+      - name: Publish the floor attempt receipt
+        id: attempt_receipt
+        run: |
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          if '[' '!' '-f' "$GUNBC_FLOOR_RECEIPT" ']'; then 'printf' 'class=%s\nsignature=\nexit=\n' 'unobserved' > "$GUNBC_FLOOR_RECEIPT"; fi
+          GUNBC_FLOOR_CLASS=$('sed' '-n' 's/^class=//p' "$GUNBC_FLOOR_RECEIPT" | 'head' '-n' '1')
+          GUNBC_FLOOR_SIGNATURE=$('sed' '-n' 's/^signature=//p' "$GUNBC_FLOOR_RECEIPT" | 'head' '-n' '1')
+          if '[' '-n' "$GITHUB_OUTPUT" ']'; then 'printf' '%s=%s\n' 'floor_class' "$GUNBC_FLOOR_CLASS" | 'tee' '-a' "$GITHUB_OUTPUT"; 'printf' 'floor_signature=%s\n' "$GUNBC_FLOOR_SIGNATURE" | 'tee' '-a' "$GITHUB_OUTPUT"; fi
+          'echo' 'GUNBC_FLOOR_ATTEMPT_RECEIPT class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' path='"$GUNBC_FLOOR_RECEIPT"
+        if: always()
+      - name: Upload the floor attempt receipt and command log
+        uses: actions/upload-artifact@v4
+        with:
+          name: gunbc-floor-outcome-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          path: |
+            gunbc-floor-outcome.txt
+            gunbc-floor-cmd.log
+          if-no-files-found: warn
+          retention-days: 14
+        if: always()
       - name: Record runner filesystem at job end
         run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument when BOTH (1) every required public job selects a per-attempt microVM via gunbc.ci_runner_target selected_ci_runner_target / gunbc_ci_selected_runner_spec and every required private job selects one via strategy.private_witness_workflow witnesses_job() SelfHosted custom labels, not the empty-custom shared-FS fleet slot, AND (2) this row is eligible to bind because that selection makes the shared-filesystem eviction class impossible. Identifying a deleter on the shared slot is not a substitute for (1). Isolation does not dissolve typed BMC/host/JIT vs code classification.
           GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
           df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
           df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i mode=%a' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); if [ -x "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_EXEC=yes; else GUNBC_TOOLCHAIN_FS_EXEC=no; fi; echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes executable=$GUNBC_TOOLCHAIN_FS_EXEC $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no executable=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable mode=unavailable"; fi; done
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
   required-witnesses-floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180
+    outputs:
+      floor_class: ${{ steps.attempt_receipt.outputs.floor_class }}
     steps:
       - name: Record runner filesystem at job start
         run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument when BOTH (1) every required public job selects a per-attempt microVM via gunbc.ci_runner_target selected_ci_runner_target / gunbc_ci_selected_runner_spec and every required private job selects one via strategy.private_witness_workflow witnesses_job() SelfHosted custom labels, not the empty-custom shared-FS fleet slot, AND (2) this row is eligible to bind because that selection makes the shared-filesystem eviction class impossible. Identifying a deleter on the shared slot is not a substitute for (1). Isolation does not dissolve typed BMC/host/JIT vs code classification.
           GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=start'
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
           df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
           df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i mode=%a' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); if [ -x "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_EXEC=yes; else GUNBC_TOOLCHAIN_FS_EXEC=no; fi; echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes executable=$GUNBC_TOOLCHAIN_FS_EXEC $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no executable=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable mode=unavailable"; fi; done
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
       - name: Checkout
@@ -175,7 +257,26 @@ jobs:
       - name: Build the witness fold
         id: build_witness_fold
         run: |
-          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
       - name: Require isolated toolchain homes
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
@@ -183,14 +284,54 @@ jobs:
       - name: "D0-MEASURE: witnesses lane"
         id: required_ci_measure
         run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
-          'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'witnesses' '--measurement-receipt' 'required_ci_measurement_receipt.json'
+          '\''target/release/claim_executor'\'' '\''--required-ci'\'' '\''--source-root'\'' '\''dag'\'' '\''--source-root'\'' '\''src/v2'\'' '\''--required-lane'\'' '\''witnesses'\'' '\''--measurement-receipt'\'' '\''required_ci_measurement_receipt.json'\''
+          ') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
         continue-on-error: true
       - name: "D0-MEASURE: seal an unreached receipt when the instrument did not return"
         run: |
-          if '[' '!' '-f' 'required_ci_measurement_receipt.json' ']'; then if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '=' 'success' ']'; then 'target/release/claim_executor' '--measurement-unreached-receipt' 'required_ci_measurement_receipt.json' '--measurement-unreached-cause' 'measurement process exited before producing a receipt'; fi; if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '!=' 'success' ']'; then 'printf' '%s\n' '{"version": 1, "receipt": {"standing": "measurement_unreached", "cause": "instrument could not be built"}}' > 'required_ci_measurement_receipt.json'; fi; fi
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'if '\''['\'' '\''!'\'' '\''-f'\'' '\''required_ci_measurement_receipt.json'\'' '\'']'\''; then if '\''['\'' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '\''='\'' '\''success'\'' '\'']'\''; then '\''target/release/claim_executor'\'' '\''--measurement-unreached-receipt'\'' '\''required_ci_measurement_receipt.json'\'' '\''--measurement-unreached-cause'\'' '\''measurement process exited before producing a receipt'\''; fi; if '\''['\'' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '\''!='\'' '\''success'\'' '\'']'\''; then '\''printf'\'' '\''%s\n'\'' '\''{"version": 1, "receipt": {"standing": "measurement_unreached", "cause": "instrument could not be built"}}'\'' > '\''required_ci_measurement_receipt.json'\''; fi; fi
+          ') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
         env:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
@@ -204,8 +345,28 @@ jobs:
         if: always() && !cancelled()
       - name: "D0-ADJUDICATE: consume the published measurement receipt"
         run: |
-          if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '=' 'success' ']'; then 'target/release/claim_executor' '--adjudicate-measurement-receipt' 'required_ci_measurement_receipt.json'; fi
-          if '[' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '!=' 'success' ']'; then 'echo' 'required-ci: adjudication REFUSED standing=measurement_unreached cause=instrument could not be built' >&2; exit 1; fi
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'if '\''['\'' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '\''='\'' '\''success'\'' '\'']'\''; then '\''target/release/claim_executor'\'' '\''--adjudicate-measurement-receipt'\'' '\''required_ci_measurement_receipt.json'\''; fi
+          if '\''['\'' "$REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME" '\''!='\'' '\''success'\'' '\'']'\''; then '\''echo'\'' '\''required-ci: adjudication REFUSED standing=measurement_unreached cause=instrument could not be built'\'' >&2; exit 1; fi
+          ') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
         env:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
@@ -249,16 +410,36 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Publish the floor attempt receipt
+        id: attempt_receipt
+        run: |
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          if '[' '!' '-f' "$GUNBC_FLOOR_RECEIPT" ']'; then 'printf' 'class=%s\nsignature=\nexit=\n' 'unobserved' > "$GUNBC_FLOOR_RECEIPT"; fi
+          GUNBC_FLOOR_CLASS=$('sed' '-n' 's/^class=//p' "$GUNBC_FLOOR_RECEIPT" | 'head' '-n' '1')
+          GUNBC_FLOOR_SIGNATURE=$('sed' '-n' 's/^signature=//p' "$GUNBC_FLOOR_RECEIPT" | 'head' '-n' '1')
+          if '[' '-n' "$GITHUB_OUTPUT" ']'; then 'printf' '%s=%s\n' 'floor_class' "$GUNBC_FLOOR_CLASS" | 'tee' '-a' "$GITHUB_OUTPUT"; 'printf' 'floor_signature=%s\n' "$GUNBC_FLOOR_SIGNATURE" | 'tee' '-a' "$GITHUB_OUTPUT"; fi
+          'echo' 'GUNBC_FLOOR_ATTEMPT_RECEIPT class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' path='"$GUNBC_FLOOR_RECEIPT"
+        if: always()
+      - name: Upload the floor attempt receipt and command log
+        uses: actions/upload-artifact@v4
+        with:
+          name: gunbc-floor-outcome-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          path: |
+            gunbc-floor-outcome.txt
+            gunbc-floor-cmd.log
+          if-no-files-found: warn
+          retention-days: 14
+        if: always()
       - name: Record runner filesystem at job end
         run: |
-          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument after its joined readings identify and the fleet fixes the toolchain deleter, OR after per-job runner microVMs make the shared filesystem eviction class impossible
+          # dissolve-on: toolchain_filesystem_probe -- delete the start/end runner-filesystem instrument when BOTH (1) every required public job selects a per-attempt microVM via gunbc.ci_runner_target selected_ci_runner_target / gunbc_ci_selected_runner_spec and every required private job selects one via strategy.private_witness_workflow witnesses_job() SelfHosted custom labels, not the empty-custom shared-FS fleet slot, AND (2) this row is eligible to bind because that selection makes the shared-filesystem eviction class impossible. Identifying a deleter on the shared slot is not a substitute for (1). Isolation does not dissolve typed BMC/host/JIT vs code classification.
           GUNBC_TOOLCHAIN_FS_PREFIX='GUNBC_TOOLCHAIN_FS phase=end'
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX runner_temp=${RUNNER_TEMP:-unset} rustup_home=${RUSTUP_HOME:-unset} cargo_home=${CARGO_HOME:-unset} uptime_seconds=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unavailable)"
           echo "$GUNBC_TOOLCHAIN_FS_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
           df -Pk "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_blocks=$GUNBC_TOOLCHAIN_FS_LINE"; done
           df -Pik "${RUNNER_TEMP:-/path-that-does-not-exist}" 2>&1 | while IFS= read -r GUNBC_TOOLCHAIN_FS_LINE; do echo "$GUNBC_TOOLCHAIN_FS_PREFIX df_inodes=$GUNBC_TOOLCHAIN_FS_LINE"; done
-          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
+          for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustc "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin/rustfmt "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin/cargo; do if [ -e "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'size=%s mtime_epoch=%Y mtime=%y inode=%i mode=%a' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); if [ -x "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_EXEC=yes; else GUNBC_TOOLCHAIN_FS_EXEC=no; fi; echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes executable=$GUNBC_TOOLCHAIN_FS_EXEC $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=file path=$GUNBC_TOOLCHAIN_FS_PATH exists=no executable=no size=unavailable mtime_epoch=unavailable mtime=unavailable inode=unavailable mode=unavailable"; fi; done
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
   heal-generated-artifacts:
@@ -296,7 +477,26 @@ jobs:
       - name: Build the regenerator this job runs against its own checkout
         id: build_witness_fold
         run: |
-          cargo build --release -p v1-compiler --bin gunbc
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
       - name: Declare which ledger rows this heal will repair
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -383,7 +583,16 @@ jobs:
             cat "target/heal-repair-declaration.txt" >> "$HEAL_MESSAGE_FILE"
             git commit --no-verify -F "$HEAL_MESSAGE_FILE"
             HEALED_HEAD=$(git rev-parse HEAD)
-            git -c core.hooksPath= push origin HEAD:${{ github.head_ref || github.ref_name }}
+            HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}"
+            if ! git -c core.hooksPath= push origin "HEAD:$HEAL_BRANCH_REF"; then
+              REMOTE_HEAD=$(git ls-remote origin "refs/heads/$HEAL_BRANCH_REF" | cut -f1)
+              if [ -n "$REMOTE_HEAD" ] && [ "$REMOTE_HEAD" != "$PRIOR_HEAD" ]; then
+                echo "::notice::SupersededByAuthorHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF author_commit_paths=$AUTHOR_COMMIT_DRIFT changed_artifacts=$CHANGED_ARTIFACTS; the branch moved under this run, nothing was published, and the repair for the current head belongs to its own run"
+                exit 0
+              fi
+              echo "::error::HealPushRefused prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF -- the push was refused while the branch still stood at the head this run judged, so this is not a lost race" >&2
+              exit 1
+            fi
             echo "HealProduced prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS"
             GUNBC_HEALED_HEAD="$HEALED_HEAD" GUNBC_HEAL_BRANCH_REF="${{ github.head_ref || github.ref_name }}" "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/ci_heal_dispatch.dag --function main
             echo "SupersededByHealedHead prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required"
@@ -417,14 +626,18 @@ jobs:
           VERDICT='stands-green'
           if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']'; then VERDICT='stands-unestablished'; fi
           if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']'; then VERDICT='stands-red'; fi
+          if '[' "$VERDICT" '=' 'stands-red' ']' && ('[' "$BUILD_CLASS" '=' 'infra' ']' || '[' "$FLOOR_CLASS" '=' 'infra' ']') && (! ('[' "$BUILD_CLASS" '=' 'structural' ']' || '[' "$FLOOR_CLASS" '=' 'structural' ']')); then VERDICT='stands-environment'; fi
           MECHANISM='unestablished'
           ATTRIBUTION='unestablished'
-          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
+          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' build_class='"$BUILD_CLASS"' floor_class='"$FLOOR_CLASS"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
           if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
-          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed (timeout-cancel is no verdict, not a red). Fetch the gunbc-floor-outcome artifact for this run id and attempt BEFORE re-running; a re-run reuses the run id and drops the failed attempt'\''s log (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          if '[' "$VERDICT" '=' 'stands-environment' ']'; then 'echo' '::error title=environment::a required lane refused for an environmental cause, not a defect in the diff. Fetch the gunbc-floor-outcome artifact for this run id and attempt BEFORE re-running (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
         env:
           BUILD: ${{ needs['required-witnesses-build'].result }}
           FLOOR: ${{ needs['required-witnesses-floor'].result }}
+          BUILD_CLASS: ${{ needs['required-witnesses-build'].outputs.floor_class }}
+          FLOOR_CLASS: ${{ needs['required-witnesses-floor'].outputs.floor_class }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           EVENT_NAME: ${{ github.event_name }}
           MEASURED_HEAD: ${{ github.event.pull_request.head.sha }}

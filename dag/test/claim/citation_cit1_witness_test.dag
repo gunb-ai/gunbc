@@ -6,7 +6,7 @@ import extdeps.standards.rfc_8118 {
   iso_32000_2_authority,
   rfc_8118_normative_relationship_note,
   citation_cit1_witness_split_note,
-  rfc_8118_model_scope,
+  extdeps_model_scope,
   PdfOpenPage,
   OpenPage,
   OpenZoom,
@@ -71,11 +71,11 @@ data witness_pdf_base_uri: Uri = Uri {
 }
 
 test fn rfc_8118_anchor_cites_current_standard_not_3778() -> Bool {
-  rfc_8118_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
+  extdeps_model_scope.first_citation.uri.locator == rfc_8118_section_3_locator && string_contains(s: rfc_8118_normative_relationship_note, pattern: "OBSOLETES RFC 3778") && string_contains(s: rfc_8118_normative_relationship_note, pattern: "gunbc.citation.pdf_safe_profile")
 }
 
 test fn iso_32000_2_is_further_citation() -> Bool {
-  rfc_8118_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
+  extdeps_model_scope.further_citations |> any(c => c.uri.locator == iso_32000_2_authority.uri.locator)
 }
 
 test fn rfc_pdf_open_page_admits_positive_one() -> Bool {

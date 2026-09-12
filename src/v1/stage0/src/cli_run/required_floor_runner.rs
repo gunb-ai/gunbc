@@ -809,6 +809,87 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
     }
 }
 
+/// Names of `test fn` / `test data` declarations at the resolved diff base, per path.
+/// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
+/// census is an observation failure and never becomes an empty map.
+pub(crate) fn floor_base_test_decl_census(
+    paths: &[String],
+) -> Result<std::collections::HashMap<String, HashSet<String>>, String> {
+    use v1_interpreter::Value;
+    if paths.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let comparison = floor_diff_comparison_readout()?;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let path_values: Vec<Value> = paths.iter().map(|p| str_value(p.clone())).collect();
+    let args = [
+        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("paths".to_string()), list_value_from_vec(path_values)),
+    ];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "floor_run_base_test_decl_census",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("floor_run_base_test_decl_census: {e}"))?;
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseTestDeclCensusRefused") => {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(r)) => Err(r.to_string()),
+                _ => Err("base test-declaration census refused (no reason)".to_string()),
+            }
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "BaseTestDeclCensus") => {
+            let rows = match ctx.field(fields, "rows") {
+                Some(Value::List(items)) => items,
+                _ => return Err("BaseTestDeclCensus missing `rows` list".to_string()),
+            };
+            let mut out = std::collections::HashMap::new();
+            for item in rows.iter() {
+                let Value::Record { type_name, fields } = item else {
+                    return Err(format!(
+                        "BaseTestDeclCensus row was not FloorBasePathTestDecls: {}",
+                        ctx.format_value(item)
+                    ));
+                };
+                if !ctx.sym_eq(*type_name, "FloorBasePathTestDecls") {
+                    return Err(format!(
+                        "BaseTestDeclCensus row type `{}`, expected FloorBasePathTestDecls",
+                        ctx.resolve(*type_name)
+                    ));
+                }
+                let path = match ctx.field(fields, "path") {
+                    Some(Value::Str(s)) => normalize_repo_path(s),
+                    _ => return Err("FloorBasePathTestDecls missing `path`".to_string()),
+                };
+                let names = match ctx.field(fields, "names") {
+                    Some(v) => string_list_from_value(v, "names")?,
+                    None => return Err("FloorBasePathTestDecls missing `names`".to_string()),
+                };
+                out.insert(path, names.into_iter().collect());
+            }
+            Ok(out)
+        }
+        other => Err(format!(
+            "floor_run_base_test_decl_census returned `{}`, expected FloorBaseTestDeclCensus",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 pub(crate) fn floor_diff_edits_from_diff_text(
     index: &MultiEntryIndex,
     diff_text: &str,
@@ -817,7 +898,39 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
-    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added)
+    // No census: `enrolled_test_fns` stays empty. Attribution tests read `edited_test_fns` /
+    // `touched_entry_files` / data items from this wrapper; enrolment is only answered when
+    // `floor_diff_edits_from_diff_text_with_base_names` (or production) supplies the census.
+    floor_diff_edits_from_line_ranges(
+        index,
+        &line_ranges,
+        &changed,
+        &departed,
+        &added,
+        None,
+        &std::collections::HashMap::new(),
+    )
+}
+
+pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+    base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
+) -> Result<FloorDiffEdits, String> {
+    let line_ranges = parse_unified_diff_line_ranges(diff_text);
+    let changed = parse_unified_diff_changed_new_lines(diff_text);
+    let departed = parse_unified_diff_departed_paths(diff_text);
+    let added = parse_unified_diff_added_paths(diff_text);
+    let rename_from = parse_unified_diff_rename_sources(diff_text);
+    floor_diff_edits_from_line_ranges(
+        index,
+        &line_ranges,
+        &changed,
+        &departed,
+        &added,
+        Some(base_test_decl_names),
+        &rename_from,
+    )
 }
 
 // Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
@@ -829,9 +942,12 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
+    base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
+    rename_from: &std::collections::HashMap<String, String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
+    let mut enrolled_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
     // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
     // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
@@ -996,6 +1112,24 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
             }
             if test_fn_names.contains(name) {
                 edited_test_fns.insert((file_norm.clone(), name.clone()));
+                // NEWLY ENROLLED = declared now and not declared at the resolved diff base.
+                // The census is path-keyed. A rename destination is absent at the NEW path, so
+                // looking up the dest would enrol every fn as new — the author's-only-moved
+                // case. Enrolment therefore reads the SOURCE path when `rename_from` names one.
+                // Without a census there is no enrolment answer: the added-path rule is the
+                // superseded rung and must not remain as a silent alternative (review 64246).
+                let newly_declared = match base_test_decl_names {
+                    Some(at_base) => {
+                        let census_path = rename_from.get(&file_norm).unwrap_or(&file_norm);
+                        !at_base
+                            .get(census_path)
+                            .is_some_and(|names| names.contains(name))
+                    }
+                    None => false,
+                };
+                if newly_declared {
+                    enrolled_test_fns.insert((file_norm.clone(), name.clone()));
+                }
             } else if *is_data {
                 overlapping_data_items.insert((file_norm.clone(), name.clone()));
             } else {
@@ -1011,6 +1145,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     Ok(FloorDiffEdits {
         overlapping_data_items,
         edited_test_fns,
+        enrolled_test_fns,
         touched_entry_files,
     })
 }
@@ -1047,20 +1182,32 @@ pub(crate) struct ChangedWitnessProjectionRow {
     pub cost: Option<ChangedWitnessCostObservation>,
 }
 
-/// THE CHANGED IDENTITIES, at the disposition receipt's own grain. The diff attribution is the
-/// floor's existing authority (`floor_diff_edits_from_line_ranges` over the resolved comparison
-/// baseline — the same observation every other diff consumer here makes), so "which test
-/// declarations did this change touch" has one producer; this function only spells the result
-/// as the qualified `module.function` identity the disposition receipt is keyed by. A wholly
-/// added `.dag` file contributes every test declaration it carries; a modified file contributes
-/// the declarations whose lines the diff reached. An observation or attribution failure
-/// REFUSES — it never widens to "no changed witnesses".
-pub(crate) fn changed_witness_identities(source_roots: &[String]) -> Result<Vec<String>, String> {
-    let index = process_shared_index(source_roots);
-    changed_witness_identities_with_index(&index)
-}
-
-fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<String>, String> {
+/// THE CHANGED IDENTITIES AND THE NEWLY ENROLLED SUBSET, at the disposition receipt's own grain,
+/// FROM ONE DIFF OBSERVATION.
+///
+/// The diff attribution is the floor's existing authority (`floor_diff_edits_from_line_ranges` over
+/// the resolved comparison baseline — the same observation every other diff consumer here makes),
+/// so "which test declarations did this change touch" has ONE producer; this function only spells
+/// the result as the qualified `module.function` identity the disposition receipt is keyed by. A
+/// wholly added `.dag` file contributes every test declaration it carries; a modified file
+/// contributes the declarations whose lines the diff reached. Newly enrolled identities are the
+/// subset whose names are absent from `floor_run_base_test_decl_census` at the resolved diff
+/// base. An observation or attribution failure REFUSES — it never widens to "no changed witnesses".
+///
+/// THE TWO PROJECTIONS COME BACK TOGETHER rather than from two calls. Each call re-runs
+/// `floor_observe_git_diff_unified_for_ci` — a wet observation over the whole diff — and two calls
+/// would let the two sets disagree about WHICH DIFF they describe, which is the join defect this
+/// floor keeps refusing elsewhere.
+///
+/// THIS FUNCTION EXTENDS THE ORIGINAL DERIVATION RATHER THAN STANDING BESIDE IT (review 64039).
+/// The enrolment gate first landed as a near-verbatim second copy of this body with one extra
+/// projection, which left two functions independently answering one question — the §3 fork that
+/// "always gets consolidated later", so a correctness concern rather than a style one. The copy and
+/// the `changed_witness_identities` wrapper above it (already callerless on `main`) are deleted
+/// here rather than left for that later consolidation.
+fn changed_and_enrolled_witness_identities_with_index(
+    index: &MultiEntryIndex,
+) -> Result<(Vec<String>, Vec<String>), String> {
     let diff_text = floor_git_diff_range()?;
     let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
     let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
@@ -1069,18 +1216,41 @@ fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
+    let rename_from = parse_unified_diff_rename_sources(&diff_text);
+    let mut dag_paths: std::collections::HashSet<String> = line_ranges_by_file
+        .keys()
+        .filter(|p| p.ends_with(".dag"))
+        .cloned()
+        .collect();
+    for (dest, src) in &rename_from {
+        if dest.ends_with(".dag") {
+            dag_paths.insert(src.clone());
+        }
+    }
+    let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
         &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
+        Some(&base_test_decl_names),
+        &rename_from,
     )?;
-    changed_witness_identities_from_edited_test_fns(
-        &process_workspace_root(),
+    let quarantined = quarantine_probe_admitted_pairs();
+    let root = process_workspace_root();
+    let changed = changed_witness_identities_from_edited_test_fns(
+        &root,
         &edits.edited_test_fns,
-        &quarantine_probe_admitted_pairs(),
-    )
+        &quarantined,
+    )?;
+    let enrolled = changed_witness_identities_from_edited_test_fns(
+        &root,
+        &edits.enrolled_test_fns,
+        &quarantined,
+    )?;
+    Ok((changed, enrolled))
 }
 
 /// The `(entry, function)` pairs whose admission says DO NOT SCHEDULE PER-PR, as a set at the grain
@@ -1115,6 +1285,245 @@ fn quarantine_probe_admitted_pairs() -> std::collections::HashSet<(String, Strin
 /// touched witness through by virtue of the lane it happens to sit in, which is precisely what the
 /// changed-witness override exists to prevent. A long-home witness with no quarantine admission is
 /// selected, executes, and reds the floor exactly as before.
+/// THE ENROLMENT MARGIN GATE, HOST SIDE. Modeled authority:
+/// `v2.workflow.floor_enrolment_margin` — `EnrolmentMarginStanding`, `enrolment_margin_standing`,
+/// `enrolment_margin_standing_blocks`, `enrolment_margin_blocking_cause`,
+/// `enrolment_margin_blockers`. This enum is the host's rendering of that coproduct and adds no
+/// arm; the budget is READ OUT of the model rather than restated here, exactly as the CPU and wall
+/// deadlines are, so the seed and the model cannot drift into disagreement about the figure.
+#[derive(Clone, Debug)]
+pub(crate) enum EnrolmentMarginStanding {
+    WithinMargin {
+        exact_cpu_ms: u64,
+        budget_ms: u64,
+    },
+    OverMargin {
+        exact_cpu_ms: u64,
+        budget_ms: u64,
+    },
+    /// The bound is NOT a cost and is never rendered into a cost field — the reason the modeled
+    /// type keeps this arm separate from `OverMargin` instead of reusing its `exact_cpu_ms`.
+    CeilingCensored {
+        cpu_lower_bound_ms: u64,
+        censoring_ceiling_ms: u64,
+    },
+    NotMeasured {
+        cause: String,
+    },
+    /// The runner itself withheld this identity, so no measurement was ever going to exist and no
+    /// edit to the witness could produce one. Does NOT block here — it defers to
+    /// `changed_witness_blocking`, which refuses it carrying the disposition's own name.
+    OutsideThisRunsExecution {
+        disposition: String,
+    },
+}
+
+impl EnrolmentMarginStanding {
+    /// Mirror of `enrolment_margin_standing_blocks`.
+    fn blocks(&self) -> bool {
+        match self {
+            EnrolmentMarginStanding::WithinMargin { .. } => false,
+            EnrolmentMarginStanding::OverMargin { .. } => true,
+            EnrolmentMarginStanding::CeilingCensored { .. } => true,
+            EnrolmentMarginStanding::NotMeasured { .. } => true,
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
+        }
+    }
+
+    /// Mirror of `enrolment_margin_blocking_cause`. The three blocking causes are three distinct
+    /// strings because they have three different remedies; one shared cause would offer only the
+    /// rerun, which discharges none of them.
+    fn cause(&self) -> &'static str {
+        match self {
+            EnrolmentMarginStanding::WithinMargin { .. } => "",
+            EnrolmentMarginStanding::OverMargin { .. } => "enrolment_measured_over_margin",
+            EnrolmentMarginStanding::CeilingCensored { .. } => "enrolment_censored_at_ceiling",
+            EnrolmentMarginStanding::NotMeasured { .. } => "enrolment_not_measured",
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
+        }
+    }
+
+    /// Mirror of `enrolment_margin_standing_name`. Every standing has a NAME; only the refusing
+    /// ones have a CAUSE. The projection line prints the name, because a blank field reads as a
+    /// missing value rather than as a verdict — and that line is the only per-identity evidence
+    /// that the gate LOOKED at a row.
+    fn name(&self) -> &'static str {
+        match self {
+            EnrolmentMarginStanding::WithinMargin { .. } => "admitted",
+            EnrolmentMarginStanding::OverMargin { .. } => "measured_over_margin",
+            EnrolmentMarginStanding::CeilingCensored { .. } => "censored_at_ceiling",
+            EnrolmentMarginStanding::NotMeasured { .. } => "not_measured",
+            EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
+                "outside_this_runs_execution"
+            }
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            EnrolmentMarginStanding::WithinMargin {
+                exact_cpu_ms,
+                budget_ms,
+            } => format!("observed_cpu_ms={exact_cpu_ms} budget_ms={budget_ms}"),
+            EnrolmentMarginStanding::OverMargin {
+                exact_cpu_ms,
+                budget_ms,
+            } => format!("observed_cpu_ms={exact_cpu_ms} budget_ms={budget_ms}"),
+            EnrolmentMarginStanding::CeilingCensored {
+                cpu_lower_bound_ms,
+                censoring_ceiling_ms,
+            } => format!(
+                "cost=UNMEASURED cpu_at_least_ms={cpu_lower_bound_ms} censoring_ceiling_ms={censoring_ceiling_ms}"
+            ),
+            EnrolmentMarginStanding::NotMeasured { cause } => {
+                format!("cost=UNMEASURED absence_cause={cause}")
+            }
+            EnrolmentMarginStanding::OutsideThisRunsExecution { disposition } => format!(
+                "not adjudicated here: this run withheld the identity (disposition={disposition}); \
+                 changed_witness_blocking owns it"
+            ),
+        }
+    }
+}
+
+/// THE MARGIN BUDGET, READ OUT OF THE MODEL. Not a Rust literal and not arithmetic repeated here:
+/// `v2.workflow.floor_enrolment_margin` `floor_enrolment_margin_budget_ms` derives it from the
+/// ceiling authority and the measured p90 runner envelope, and this reads that derivation's own
+/// answer. If the envelope is re-measured and the figure moves, the gate moves with it.
+///
+/// `v2.workflow.floor_enrolment_margin` is declared in `REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`,
+/// which is what makes evaluating it by name here legitimate rather than an undeclared reach.
+pub(crate) fn floor_enrolment_margin_budget_ms(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<u64, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let qualified = format!("{MODULE}.floor_enrolment_margin_budget_ms_count");
+    // STRICTLY POSITIVE AND STRICTLY BELOW THE CEILING. A zero or negative budget refuses every
+    // witness before it evaluates one; a budget at or above the ceiling is the decoration the
+    // model's own `the_enrolment_budget_is_strictly_below_the_ceiling` witness exists to forbid,
+    // permanently green by construction while still being reported as coverage.
+    let ceiling_ms = {
+        let policy_scope = claim_scope_for(prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
+        let policy_ctx = evaluation_frame(
+            &policy_scope,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        );
+        floor_required_int(&policy_ctx, "required_floor_claim_cpu_safety_limit_ms")?
+    };
+    match v1_interpreter::run_in_context(&ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < ceiling_ms => Ok(n as u64),
+        Ok(v1_interpreter::Value::Int(n)) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=EnrolmentMarginBudgetUngrounded {qualified} returned \
+             {n}ms against a {ceiling_ms}ms ceiling — a margin budget must be strictly positive \
+             and strictly below the ceiling it sits inside, or it gates nothing"
+        )),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a positive Int, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
+/// The per-claim cost population indexed by identity, built ONCE for the whole gate.
+///
+/// THE SCAN THIS REPLACES WAS A QUADRATIC FOLD, and it is fixed here rather than excused by the
+/// realized n. `find` over the cost rows inside the loop over newly enrolled identities is
+/// `enrolled x executed` string comparisons — 11 x 3,667 on the run that lands this gate, which is
+/// nothing, and that is exactly the argument DESIGN section 6's bare-minimum-cost rule refuses to
+/// accept: "n is small here" is not a time-stable fact, because the enrolled set is whatever a
+/// future change enrols and the executed set grows with the corpus.
+fn claim_cost_by_identity(
+    claim_cost: &[crate::cli_run::WitnessExecutionOccurrence],
+) -> HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> {
+    claim_cost
+        .iter()
+        .map(|row| (row.identity.as_str(), row))
+        .collect()
+}
+
+/// The standing of ONE newly enrolled identity, from the run's own per-claim cost population.
+///
+/// THE ABSENT CASE IS A LOOKUP MISS AND IS NOT A ZERO. An identity this run planned but never
+/// produced a cost row for has not been shown to be cheap; it has not been shown to be anything.
+/// Defaulting it to a zero cost would classify it `WithinMargin` and admit it silently, which is
+/// the absorbing fallback DESIGN section 5 forbids in its most ordinary costume.
+/// Whether THIS RUN undertook to execute one identity, from the disposition receipt that is the
+/// single authority on that question.
+///
+/// A MISSING ROW IS NOT PLANNED. `changed_witness_standing_blocks` already refuses a changed
+/// identity with no disposition row (`MissingDisposition`), so deferring here loses no refusal —
+/// and asserting "planned" about an identity the receipt never mentions would be the count-equality
+/// reasoning DESIGN section 5 refuses in favour of an identity join.
+fn enrolment_gate_execution_disposition<'a>(
+    identity: &str,
+    dispositions: &'a HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> Option<&'a crate::cli_run::RequiredFloorDisposition> {
+    dispositions.get(identity).copied()
+}
+
+pub(crate) fn enrolment_margin_standing_for(
+    identity: &str,
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+    budget_ms: u64,
+) -> EnrolmentMarginStanding {
+    // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
+    //
+    // The enrolled population is derived from the DIFF and is root-agnostic; the executed
+    // population is bounded by the discovery roots. Without this join a wholly-added test file
+    // homed outside those roots is enrolled, declined by the runner, absent from the cost
+    // population, and refused here as `not_measured` — demanding a measurement that no edit inside
+    // the offending PR could ever produce. That is the class the seed's own `undeclarable_changed`
+    // block exists to repair, and asking the cost population first rebuilds it one gate over.
+    match enrolment_gate_execution_disposition(identity, dispositions) {
+        Some(crate::cli_run::RequiredFloorDisposition::Planned)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        Some(other) => {
+            return EnrolmentMarginStanding::OutsideThisRunsExecution {
+                disposition: required_floor_disposition_label(other).to_string(),
+            };
+        }
+        None => {
+            return EnrolmentMarginStanding::OutsideThisRunsExecution {
+                disposition: "no_disposition_row".to_string(),
+            };
+        }
+    }
+    let Some(row) = claim_cost.get(identity) else {
+        return EnrolmentMarginStanding::NotMeasured {
+            cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
+        };
+    };
+    match &row.reading {
+        crate::cli_run::ClaimCostReading::Observed {
+            observed_cpu_ms, ..
+        } => {
+            if *observed_cpu_ms > budget_ms {
+                EnrolmentMarginStanding::OverMargin {
+                    exact_cpu_ms: *observed_cpu_ms,
+                    budget_ms,
+                }
+            } else {
+                EnrolmentMarginStanding::WithinMargin {
+                    exact_cpu_ms: *observed_cpu_ms,
+                    budget_ms,
+                }
+            }
+        }
+        crate::cli_run::ClaimCostReading::RightCensored(reading) => {
+            EnrolmentMarginStanding::CeilingCensored {
+                cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
+                censoring_ceiling_ms: reading.cpu_safety_limit_ms,
+            }
+        }
+    }
+}
+
 pub(crate) fn changed_witness_identities_from_edited_test_fns(
     base: &Path,
     edited_test_fns: &std::collections::HashSet<(String, String)>,
@@ -2924,7 +3333,12 @@ pub(crate) fn floor_prepared_inventory_digest() -> Option<String> {
     })
 }
 
-/// ONE RENDERING FOR ONE STATE, for every numeric field of the heartbeat sample. A reading that
+/// The one spelling of "this reading would not read" on the `[floor-phase]` key=value lines that
+/// still carry a sampled field. The heartbeat no longer uses it: its unreadable arms carry a cause
+/// through `render_heartbeat_line_mirror` (2026-09-11).
+const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+
+/// ONE RENDERING FOR ONE STATE, for every numeric field a `[floor-phase]` line samples. A reading that
 /// would not read is the sentinel; a reading that read is its number. There is no third answer,
 /// and no field renders itself, so "fabricate a zero for this one field" is a change to a line
 /// that names the field -- which is what makes it detectable rather than a silent substitution.
@@ -2950,14 +3364,34 @@ pub(crate) fn floor_statm_rss_kb() -> Option<u64> {
         .map(|pages| pages * KB_PER_PAGE)
 }
 
-pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
-    // ONE SENTINEL FOR ONE STATE. The cgroup and vmstat readers below answer `na` when their
-    // file will not read; these three answered a fabricated `0`, so `rss_kb=0` rendered
-    // identically whether the process held no resident pages -- which a live process cannot --
-    // or `/proc/self/statm` was unreadable. Those are different facts with opposite remedies,
-    // and this is the instrument that exists to settle a memory contradiction, so a zero it
-    // invented is worse here than anywhere else in the line. Same `na` convention now, and the
-    // cpu pair is all-or-nothing because a half-read stat cannot be summed.
+/// ONE BEAT'S READINGS, TYPED, EACH `None` MEANING "THIS SOURCE DID NOT READ" and never zero.
+/// Authority: `gunbc.observation_ci_render` `HeartbeatSample` -- this is the seed-side twin of
+/// that record, at the grain the seed reads its sources: one `/proc/self/stat` read feeds `cpu_ms`
+/// and `major_faults` together (a half-read stat cannot be summed, so the pair is all-or-nothing),
+/// `/proc/self/statm` feeds `rss_bytes`, `memory.current`, `memory.events` and
+/// `memory.events.local` are three files, and `/proc/vmstat` is one. The rendering is
+/// `render_heartbeat_line_mirror`; nothing here formats.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct FloorResourceSample {
+    pub cpu_ms: Option<u64>,
+    pub major_faults: Option<u64>,
+    pub rss_bytes: Option<u64>,
+    pub cgroup_charge_bytes: Option<u64>,
+    /// `(high, max)` from `memory.events`, read together because they are one file.
+    pub cgroup_events: Option<(u64, u64)>,
+    pub cgroup_local_high_events: Option<u64>,
+    /// `(pswpin, pgmajfault)` from `/proc/vmstat`, read together because they are one file.
+    pub host_vmstat: Option<(u64, u64)>,
+}
+
+pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> FloorResourceSample {
+    // ONE ABSENT ANSWER FOR ONE STATE. The cgroup and vmstat readers below answer `None` when
+    // their file will not read; an earlier shape of this sampler answered a fabricated `0` for
+    // three of these, so `rss_kb=0` rendered identically whether the process held no resident
+    // pages -- which a live process cannot -- or `/proc/self/statm` was unreadable. Those are
+    // different facts with opposite remedies, and this is the instrument that exists to settle a
+    // memory contradiction, so a zero it invented is worse here than anywhere else in the line.
+    // The cpu pair is all-or-nothing because a half-read stat cannot be summed.
     let stat = std::fs::read_to_string("/proc/self/stat").ok();
     let f: Vec<&str> = stat
         .as_deref()
@@ -2970,34 +3404,33 @@ pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
     let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok());
     let hz = 100u64;
-    let na = || FLOOR_SAMPLE_UNREADABLE.to_string();
-    let cpu_ms = floor_sampled_field(match (tick(11), tick(12)) {
-        (Some(utime), Some(stime)) => {
-            Some(((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms))
-        }
-        _ => None,
-    });
-    let majflt = floor_sampled_field(tick(9));
-    let rss_kb = floor_sampled_field(floor_statm_rss_kb());
+    let (cpu_ms, major_faults) = match (tick(11), tick(12), tick(9)) {
+        (Some(utime), Some(stime), Some(majflt)) => (
+            Some(((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms)),
+            Some(majflt),
+        ),
+        _ => (None, None),
+    };
+    let rss_bytes = floor_statm_rss_kb().map(|kb| kb * 1024);
     // THE CGROUP CHARGE AND THE THROTTLE EVENTS, on every beat, because the runs that most need
     // them are the ones that never reach an exit line. `floor_cgroup_envelope` reports the full
-    // picture at entry; these three carry the parts that CHANGE, so a killed run still leaves
-    // behind what its envelope was doing when it died.
+    // picture at entry; these carry the parts that CHANGE, so a killed run still leaves behind
+    // what its envelope was doing when it died.
     //
-    // rss_kb and cur_kb are DIFFERENT COUNTERS and are printed side by side so they are never
-    // silently substituted for one another: RSS is this process's resident anonymous + mapped
-    // pages, while memory.current is the cgroup's total charge including page cache and every
-    // other process in it. Comparing RSS against a cgroup limit is what produced the standing
-    // contradiction this instrument exists to settle — a CI run observed at 14.69 GiB RSS,
-    // above a declared 14.00 GiB max, that was not killed and ran 151 minutes more.
+    // rss and the cgroup charge are DIFFERENT COUNTERS and are printed side by side so they are
+    // never silently substituted for one another: RSS is this process's resident anonymous +
+    // mapped pages, while memory.current is the cgroup's total charge including page cache and
+    // every other process in it. Comparing RSS against a cgroup limit is what produced the
+    // standing contradiction this instrument exists to settle — a CI run observed at 14.69 GiB
+    // RSS, above a declared 14.00 GiB max, that was not killed and ran 151 minutes more.
     //
-    // ev_high/ev_max are the reclaim and kill counters for THIS level. Nonzero ev_high is
-    // throttling actually happening rather than inferred from a declared row; both zero beside
-    // a death means the ceiling that killed it was somewhere else.
+    // high/max are the reclaim and kill counters for THIS level. Nonzero high is throttling
+    // actually happening rather than inferred from a declared row; both zero beside a death
+    // means the ceiling that killed it was somewhere else.
     //
-    // READ THE LEAF, NOT THE ROOT. These three fields first shipped reading
-    // `/sys/fs/cgroup/{name}` directly, and on CI they printed `na` on every single beat for a
-    // four-hour run: the runner's leaf is
+    // READ THE LEAF, NOT THE ROOT. These fields first shipped reading `/sys/fs/cgroup/{name}`
+    // directly, and on CI they printed unreadable on every single beat for a four-hour run: the
+    // runner's leaf is
     // `/sys/fs/cgroup/system.slice/system-actions\x2drunner.slice/actions-runner@srv2-03.service`,
     // the root holds no `memory.current` this process may read, and the fallback fired every
     // time. The entry snapshot walked the path correctly while the sampler that runs
@@ -3008,31 +3441,27 @@ pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // are the same directory and the hardcoded path was accidentally correct. A degenerate
     // topology validated an instrument that had no chance of working anywhere else, which is why
     // the path is now taken from the same place `floor_cgroup_envelope` takes it.
-    let cg = |name: &str, idx: usize| -> String {
-        std::fs::read_to_string(format!("{}/{name}", floor_cgroup_dir()))
-            .ok()
-            .and_then(|s| {
-                if idx == usize::MAX {
-                    s.trim().parse::<u64>().ok().map(|v| (v / 1024).to_string())
-                } else {
-                    s.lines()
-                        .nth(idx)
-                        .and_then(|l| l.split_whitespace().nth(1).map(|v| v.to_string()))
-                }
-            })
-            .unwrap_or_else(na)
+    let cg_file =
+        |name: &str| std::fs::read_to_string(format!("{}/{name}", floor_cgroup_dir())).ok();
+    let cg_count = |name: &str| cg_file(name).and_then(|s| s.trim().parse::<u64>().ok());
+    let cg_event = |body: &str, idx: usize| {
+        body.lines()
+            .nth(idx)
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse::<u64>().ok())
     };
-    let cur_kb = cg("memory.current", usize::MAX);
-    let ev_high = cg("memory.events", 1);
-    let ev_max = cg("memory.events", 2);
+    let cgroup_charge_bytes = cg_count("memory.current");
+    let cgroup_events =
+        cg_file("memory.events").and_then(|body| Some((cg_event(&body, 1)?, cg_event(&body, 2)?)));
     // The LOCAL counter beside the hierarchical one, on every beat. `memory.events` at this
-    // level already includes everything its descendants generated, so `ev_high` rising says
-    // "something in this subtree was throttled" and cannot say it was us. `ev_local_high` is
+    // level already includes everything its descendants generated, so `high` rising says
+    // "something in this subtree was throttled" and cannot say it was us. `local high` is
     // the same event restricted to this exact cgroup, and the pair is the only way to separate
     // our own reclaim from a neighbour's. Carried per beat rather than only in the periodic
     // envelope because a killed run keeps only what was already printed, and this is the field
     // the neighbour-pressure hypothesis is decided on.
-    let ev_local_high = cg("memory.events.local", 1);
+    let cgroup_local_high_events =
+        cg_file("memory.events.local").and_then(|body| cg_event(&body, 1));
     // HOST-WIDE SWAP-IN, because the fault storm has no local cause and this is what decides
     // whether it has ANY cause belonging to this fold.
     //
@@ -3067,25 +3496,29 @@ pub(crate) fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     // host-level swap is precisely the thing a cgroup-scoped counter cannot see. That is also
     // why the leaf's PSI reading of 0.00% is not evidence of a quiet machine — it is this
     // cgroup's stall time, not the host's.
-    let vm = |key: &str| -> String {
-        std::fs::read_to_string("/proc/vmstat")
-            .ok()
-            .and_then(|s| {
-                s.lines().find_map(|l| {
-                    l.strip_prefix(key)
-                        .and_then(|r| r.strip_prefix(' '))
-                        .map(|v| v.trim().to_string())
-                })
+    let vmstat = std::fs::read_to_string("/proc/vmstat").ok();
+    let vm = |key: &str| -> Option<u64> {
+        vmstat.as_deref().and_then(|s| {
+            s.lines().find_map(|l| {
+                l.strip_prefix(key)
+                    .and_then(|r| r.strip_prefix(' '))
+                    .and_then(|v| v.trim().parse::<u64>().ok())
             })
-            .unwrap_or_else(na)
+        })
     };
-    let pswpin = vm("pswpin");
-    let pgmajfault = vm("pgmajfault");
-    format!(
-        "cpu_ms={cpu_ms} rss_kb={rss_kb} majflt={majflt} cur_kb={cur_kb} \
-         ev_high={ev_high} ev_max={ev_max} ev_local_high={ev_local_high} \
-         pswpin={pswpin} pgmajfault={pgmajfault}"
-    )
+    let host_vmstat = match (vm("pswpin"), vm("pgmajfault")) {
+        (Some(swap_in), Some(major)) => Some((swap_in, major)),
+        _ => None,
+    };
+    FloorResourceSample {
+        cpu_ms,
+        major_faults,
+        rss_bytes,
+        cgroup_charge_bytes,
+        cgroup_events,
+        cgroup_local_high_events,
+        host_vmstat,
+    }
 }
 
 /// THIS PROCESS'S OWN CGROUP DIRECTORY — the single answer both readers use.
@@ -3980,21 +4413,26 @@ pub fn run_required_floor(
     // the closure seeds that make these modules executable and the tail projection that judges
     // their terminal rows. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let changed_witnesses = match changed_witness_identities_with_index(&gate_entry_index) {
-        Ok(changed) => Some(changed),
-        Err(e) if commit != "local" && !commit.is_empty() => {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
+    let (changed_witnesses, newly_enrolled_witnesses) =
+        match changed_and_enrolled_witness_identities_with_index(&gate_entry_index) {
+            Ok((changed, enrolled)) => (Some(changed), Some(enrolled)),
+            Err(e) if commit != "local" && !commit.is_empty() => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
                  changed-witness execution sublane could not observe or attribute the CI diff"
-            ));
-        }
-        Err(e) => {
-            eprintln!(
+                ));
+            }
+            Err(e) => {
+                eprintln!(
                 "[changed-witness] EXECUTION SUBLANE NOT EVALUATED (no CI diff baseline on a local run): {e}"
             );
-            None
-        }
-    };
+                // BOTH PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
+                // `None` here is "this run could not look", which is a different fact from "this run
+                // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
+                // own not-measured arm turns on, so it may not be lost at its source.
+                (None, None)
+            }
+        };
     let changed_witness_set: HashSet<String> = changed_witnesses
         .iter()
         .flat_map(|rows| rows.iter().cloned())
@@ -5030,7 +5468,30 @@ pub fn run_required_floor(
                 // deadline stays armed. A changed identity the roster does not enroll takes the
                 // ordinary policy and still reds when it crosses that line, so this is one
                 // intersection rather than a widening of the floor.
-                let cost_policy = if cost_debt_roster.contains(&identity) {
+                // THE LONG HOME IS THE SAME DECLARATION AS A COST-DEBT ROW (operator ruling A,
+                // 2026-09-11). Both say this identity is not run on an ordinary floor because the
+                // CPU line cannot carry it -- the roster per identity after measuring, the long
+                // home per module structurally. Reading only the roster left a changed witness in
+                // a long module on the armed line: the floor's own per-claim cost receipt for
+                // gunbc#11004 at 6b153bf8 reports three such witnesses refused at the line before
+                // reaching a verdict, none of them planned on any ordinary floor. `long_home` above is the same
+                // authored-name prefix match `required_floor_site_disposition` folds to reach
+                // `DeclinedLongModule`, so this is one classification read twice, not a second one.
+                //
+                // TWO SETS, AND THEY ANSWER DIFFERENT QUESTIONS -- the distinction this arm got
+                // wrong on its first draft. `cost_debt_seen` is ROSTER ACCOUNTING: it feeds
+                // reconcile_withheld_against_dispositions, so only a rostered identity may enter
+                // it, and inserting a long-module witness there would make a row look exercised
+                // that no roster line names, which is how a stale roster line hides.
+                // `cost_debt_verdict_only` is the PROJECTION's policy source, read by
+                // changed_witness_projection_rows and by nothing else. Every identity whose claim
+                // executed under the override must enter it, or execution and standing disagree:
+                // the CPU gate stands down and the row then projects as an ordinary
+                // planned-and-passed, laundering the cost fact into a pass that never happened
+                // that way, and CostObservationMissingUnderVerdictOnly can never fire for it.
+                // v2.workflow.floor_changed_witness says it directly -- the override "keeps the
+                // COST FACT in the standing rather than laundering it into an ordinary pass".
+                let cost_policy = if cost_debt_roster.contains(&identity) || long_home {
                     cost_debt_verdict_only.insert(identity.clone());
                     ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
                 } else {
@@ -5980,6 +6441,7 @@ pub fn run_required_floor(
         long_home_storage_agreement: storage_agreement_rows,
         changed_witness_rows: 0,
         changed_witness_blocking: Vec::new(),
+        enrolment_margin_blocking: Vec::new(),
     };
     let mut receipted: HashSet<String> = HashSet::new();
 
@@ -6089,6 +6551,22 @@ pub fn run_required_floor(
     let mut scope_build_split = crate::cli_run::ScopeBuildSplit::default();
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
+    // THE DISTINCT POPULATION, which the summed total cannot express: `names_total` adds one
+    // scope's count to the next, so a name claimed in 300 scopes is counted 300 times. The set a
+    // rename campaign has to dissolve is this one — name to the claimants that spell it, unioned
+    // across every scope that reached them — plus how many scopes each name is ambiguous in,
+    // which is what ranks the offenders.
+    let mut ambiguous_claimants: BTreeMap<String, BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
+    let mut ambiguous_scope_count: BTreeMap<String, usize> = BTreeMap::new();
+    // AND THE READS: (name, referring module) sites, unioned across scopes. This is the
+    // population a refusal is affordable against — a declared name nothing reads bare is a
+    // convention, and the corpus carries whole families of those.
+    let mut ambiguous_read_sites: BTreeMap<(String, String), BTreeSet<(String, &'static str)>> =
+        BTreeMap::new();
+    // The positive half: (name, referring module) -> the module that answered it, for names that
+    // ARE ambiguous in the shared slot but are not read through it at this site.
+    let mut qualified_read_sites: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
     let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
@@ -6122,10 +6600,29 @@ pub fn run_required_floor(
             scope_build_split.accumulate(&built.build_split);
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
-            if built.ambiguous_bare_names > 0 {
+            if !built.ambiguous_bare_names.is_empty() {
                 scopes_with_ambiguity += 1;
-                ambiguous_total += built.ambiguous_bare_names;
-                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names);
+                ambiguous_total += built.ambiguous_bare_names.len();
+                ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names.len());
+                for (name, referring, resolved) in built.qualified_bare_reads.iter() {
+                    qualified_read_sites
+                        .entry((name.clone(), referring.clone()))
+                        .or_default()
+                        .insert(resolved.clone());
+                }
+                for row in built.ambiguous_bare_reads.iter() {
+                    ambiguous_read_sites
+                        .entry((row.name.clone(), row.referring_module.clone()))
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
+                for row in built.ambiguous_bare_names.iter() {
+                    *ambiguous_scope_count.entry(row.name.clone()).or_insert(0) += 1;
+                    ambiguous_claimants
+                        .entry(row.name.clone())
+                        .or_default()
+                        .extend(row.claimants.iter().cloned());
+                }
             }
             current_scope = Some((claim.module_path.clone(), built));
         }
@@ -6931,9 +7428,127 @@ pub fn run_required_floor(
     // reference closure never donates a colliding name and the flat registry is adequate in
     // practice; anything else sizes the terminal per-module-environment correction.
     eprintln!(
-        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={}",
-        scopes_with_ambiguity, scope_constructions, ambiguous_total, ambiguous_max
+        "[floor-bare-name-ambiguity] scopes_affected={} of {} names_total={} worst_scope={} \
+         names_distinct={}",
+        scopes_with_ambiguity,
+        scope_constructions,
+        ambiguous_total,
+        ambiguous_max,
+        ambiguous_claimants.len()
     );
+    let ambiguous_claimants_len = ambiguous_claimants.len();
+    // AND THE NAMES THEMSELVES. `names_total` sizes the population and names nothing in it, so
+    // it can size a campaign and cannot be the campaign's input. Layer 2 of this class is a
+    // refusal landed together with the rename or qualification of every site it would refuse;
+    // these lines ARE that site list, one per distinct name, carrying every claimant and the
+    // kinds they claim it as. Not truncated to a top-N: a census whose tail is elided is an
+    // allow-list with extra steps, and the refusal this feeds admits none.
+    {
+        let mut kind_histogram: BTreeMap<String, usize> = BTreeMap::new();
+        // The union is folded back into the SAME carrier the scope produced, so the census line
+        // and the per-scope rows answer about one type and the kind signature is read off it
+        // rather than recomputed here — the alternative was a second copy of that fold living in
+        // the reporter.
+        let mut ranked: Vec<crate::cli_run::AmbiguousBareName> = ambiguous_claimants
+            .into_iter()
+            .map(|(name, claimants)| crate::cli_run::AmbiguousBareName {
+                name,
+                claimants: claimants.into_iter().collect(),
+            })
+            .collect();
+        // Scope count descending, then the name, so the ordering is a function of the census and
+        // not of a map's iteration.
+        ranked.sort_by(|a, b| {
+            let a_scopes = ambiguous_scope_count.get(&a.name).copied().unwrap_or(0);
+            let b_scopes = ambiguous_scope_count.get(&b.name).copied().unwrap_or(0);
+            b_scopes.cmp(&a_scopes).then_with(|| a.name.cmp(&b.name))
+        });
+        for row in ranked.iter() {
+            let name = &row.name;
+            let claimants = &row.claimants;
+            let signature = row.kind_signature();
+            *kind_histogram.entry(signature.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-name] name={name} scopes={} kinds={signature} \
+                 claimants={sites}",
+                ambiguous_scope_count.get(name).copied().unwrap_or(0)
+            );
+        }
+        let mix = kind_histogram
+            .iter()
+            .map(|(signature, count)| format!("{signature}={count}"))
+            .collect::<Vec<String>>()
+            .join(" ");
+        // The kind mix, folded from the same rows rather than tallied beside them. A signature
+        // mixing `data` with `fn` is the dangerous shape — it crosses the evaluator's kind
+        // dispatch — and one that is `fn+fn` is the common shape that merely picks a body.
+        eprintln!("[floor-bare-name-ambiguity-kinds] {mix}");
+    }
+    // THE READS, WHICH ARE THE DEFECTS. Everything above is a DECLARATION census: it says which
+    // names two transitively-reached modules both spell. A name nothing references bare is
+    // harmless, and the corpus deliberately carries per-module convention rows that hundreds of
+    // modules each declare — so the population a refusal has to dissolve is not that one, it is
+    // the set of reference SITES that actually fall through to the ambiguous shared slot.
+    // Counted statically over each scope's whole closure, never over the lookups this fold
+    // happened to execute: a reference on a path no witness runs is exactly the site a later
+    // refusal would surprise. The grain is (name, referring module), which is the grain a fix is
+    // written at — `refs_by_module` publishes a module's free references deduped, so this is a
+    // count of referencing modules per name and NOT a count of occurrences.
+    {
+        let mut read_names: BTreeMap<String, usize> = BTreeMap::new();
+        for ((name, referring_module), claimants) in ambiguous_read_sites.iter() {
+            *read_names.entry(name.clone()).or_insert(0) += 1;
+            let sites = claimants
+                .iter()
+                .map(|(module, kind)| format!("{module}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",");
+            eprintln!(
+                "[floor-bare-name-ambiguity-read] name={name} referring_module={referring_module} \
+                 claimants={sites}"
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] read_name_module_pairs={} \
+             read_names_distinct={} declared_names_distinct={}",
+            ambiguous_read_sites.len(),
+            read_names.len(),
+            ambiguous_claimants_len
+        );
+        // THE ADJACENT CLASS THIS CENSUS DELIBERATELY DOES NOT COVER, named so that a zero here
+        // can never be read as "no ambiguity in the corpus". A value-position read is what the
+        // evaluator resolves through the shared slot; a TYPE whose spelling two modules share is
+        // a real ambiguity in a different channel, and the corpus carries a large deliberate
+        // instance of it -- String, Int, List, Bool, WireContract each declared by both `std.*`
+        // and its `v2.std.*` self-host copy. That double is owned by the v2 self-host
+        // replacement migration, which ends it by ending the double, and is not a rename this
+        // wall could ask for.
+        // WHAT THE QUALIFIED SITES RESOLVE TO. A site that has left the ambiguous list above
+        // has either been qualified or has stopped being read; these lines say which, and name
+        // the declaration the reference now reaches. Without them the only evidence a
+        // qualification worked is a row disappearing from a census this same process produces.
+        for ((name, referring_module), resolved) in qualified_read_sites.iter() {
+            eprintln!(
+                "[floor-bare-name-ambiguity-bound] name={name} referring_module={referring_module} \
+                 resolves_to={}",
+                resolved.iter().cloned().collect::<Vec<String>>().join(",")
+            );
+        }
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] qualified_name_module_pairs={}",
+            qualified_read_sites.len()
+        );
+        eprintln!(
+            "[floor-bare-name-ambiguity-reads] channel=value_position_only \
+             not_covered=type_position_name_collisions \
+             owner=v2_self_host_replacement_migration"
+        );
+    }
     // WHAT ONE SCOPE COSTS. `mean` divides only by constructions that measured a rise, so it is
     // the mean cost of a scope that cost anything; a scope whose modules were all resident from
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the
@@ -7752,6 +8367,74 @@ pub fn run_required_floor(
             })
             .collect();
     }
+    // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
+    // `v2.workflow.floor_enrolment_margin`.
+    //
+    // WHY IT RUNS HERE AND NOT BESIDE THE CEILING: the ceiling is a DEADLINE, enforced while a
+    // claim evaluates, and it stops the claim. The margin is a judgement about a COMPLETED
+    // measurement, so it can only be asked once the per-claim cost population exists — which is
+    // this point in the fold, the same point the changed-witness projection reads.
+    //
+    // ON A LOCAL RUN THE SET IS `None` AND THIS IS NOT EVALUATED, reported loudly rather than
+    // fabricated as empty, for the reason the changed-witness sublane states above: a run that
+    // could not observe the diff cannot say what the change enrols, and an empty set would be a
+    // silent claim that it enrols nothing.
+    if let Some(newly_enrolled) = newly_enrolled_witnesses {
+        let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
+        let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
+        let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
+            .required_floor_disposition
+            .iter()
+            .map(|row| (row.identity.as_str(), &row.disposition))
+            .collect();
+        let mut refused: Vec<ChangedWitnessBlocker> = Vec::new();
+        let mut deferred = 0usize;
+        for identity in &newly_enrolled {
+            let standing = enrolment_margin_standing_for(
+                identity,
+                &cost_by_identity,
+                &dispositions,
+                budget_ms,
+            );
+            eprintln!(
+                "[enrolment-margin] identity={identity} standing={} {}",
+                standing.name(),
+                standing.detail()
+            );
+            if matches!(
+                standing,
+                EnrolmentMarginStanding::OutsideThisRunsExecution { .. }
+            ) {
+                deferred += 1;
+            }
+            if standing.blocks() {
+                refused.push(ChangedWitnessBlocker {
+                    identity: identity.clone(),
+                    cause: standing.cause().to_string(),
+                });
+            }
+        }
+        // THE DEFERRED COUNT IS PRINTED, NEVER SILENTLY SUBTRACTED (DESIGN section 5: no silent
+        // caps). `adjudicated + deferred == newly_enrolled` is checkable on the line itself, so a
+        // gate that quietly stopped looking at most of its population cannot render as one that
+        // looked and found nothing.
+        eprintln!(
+            "required-floor: newly_enrolled={} adjudicated={} deferred_outside_execution={} \
+             enrolment_margin_blocking={} budget_ms={budget_ms} (p90 runner envelope over 12 runs \
+             / 3 hosts / 398 identities at identical eval_steps; authority \
+             v2.workflow.floor_enrolment_margin)",
+            newly_enrolled.len(),
+            newly_enrolled.len() - deferred,
+            deferred,
+            refused.len()
+        );
+        outcome.enrolment_margin_blocking = refused;
+    } else {
+        eprintln!(
+            "[enrolment-margin] GATE NOT EVALUATED (no CI diff baseline on a local run): the \
+             newly enrolled set is unobservable, so this run makes no claim about it"
+        );
+    }
     Ok(outcome)
 }
 
@@ -8093,6 +8776,10 @@ mod scope_fragment_memo_equivalence {
             assert_eq!(
                 memoized.ambiguous_bare_names, control.ambiguous_bare_names,
                 "{entry}: ambiguity population diverged"
+            );
+            assert_eq!(
+                memoized.ambiguous_bare_reads, control.ambiguous_bare_reads,
+                "{entry}: ambiguous READ sites diverged"
             );
             assert_eq!(
                 memoized.resolution_fingerprint(),
@@ -9334,22 +10021,27 @@ pub(crate) struct FloorStallWindow {
     pub self_user_cpu_ms: u64,
 }
 
-/// Pure renderer, separated from the `/proc` read so the treadmill case is authorable in a test.
-/// `None` for either counter renders the sentinel rather than a fabricated zero, on the same
-/// all-or-nothing rule as the cpu pair above: a share computed from half a reading is not a share.
-pub(crate) fn floor_stall_metric_fields(
+/// THE STALL WINDOW AS THE REFUSAL AUTHORITY'S OWN OBSERVATION, or `None` when either counter did
+/// not read. `None` renders the sentinel rather than a fabricated zero, on the same all-or-nothing
+/// rule as the cpu pair above: a share computed from half a reading is not a share, and a zero
+/// share is the most severe reading the line can carry, so fabricating one manufactures a stall.
+/// A zero-wall window is likewise `None`: a rate over no wall is not a rate. The rendering is
+/// `render_heartbeat_line_mirror`, which projects this through `memory_governor`'s stall mirrors
+/// -- the same two functions `memory_stall_verdict` consumes -- so the printed rate and share
+/// cannot drift from the refusal's.
+pub(crate) fn floor_stall_window_observation(
     window_wall_ms: u64,
     major_faults_in_window: Option<u64>,
     self_user_cpu_ms_in_window: Option<u64>,
-) -> String {
+) -> Option<crate::memory_governor::MemoryStallObservation> {
     let (Some(faults), Some(user_cpu_ms)) = (major_faults_in_window, self_user_cpu_ms_in_window)
     else {
-        return format!(
-            "stall_majflt_per_min={} stall_user_cpu_share_bp={}",
-            FLOOR_SAMPLE_UNREADABLE, FLOOR_SAMPLE_UNREADABLE
-        );
+        return None;
     };
-    let observation = crate::memory_governor::MemoryStallObservation {
+    if window_wall_ms == 0 {
+        return None;
+    }
+    Some(crate::memory_governor::MemoryStallObservation {
         window_wall_ms,
         major_faults_in_window: faults,
         self_user_cpu_ms_in_window: user_cpu_ms,
@@ -9358,12 +10050,7 @@ pub(crate) fn floor_stall_metric_fields(
         // a stand-in for an unread counter.
         cache_evictions_in_window: 0,
         cache_readmissions_in_window: 0,
-    };
-    format!(
-        "stall_majflt_per_min={} stall_user_cpu_share_bp={}",
-        crate::memory_governor::memory_stall_major_faults_per_minute(&observation),
-        crate::memory_governor::memory_stall_self_cpu_share_basis_points(&observation)
-    )
+    })
 }
 
 #[cfg(test)]
@@ -9387,14 +10074,28 @@ mod floor_stall_metric_tests {
         let utime_ms = 480u64; // 0.8% of 60s
         let stime_ms = 20_400u64; // 34% of 60s
 
-        let line = floor_stall_metric_fields(window_ms, Some(faults), Some(utime_ms));
-        assert!(
-            line.contains("stall_majflt_per_min=178795"),
-            "rate must come from the refusal's own mirror: {line}"
+        let stall = floor_stall_window_observation(window_ms, Some(faults), Some(utime_ms))
+            .expect("both counters read");
+        assert_eq!(
+            crate::memory_governor::memory_stall_major_faults_per_minute(&stall),
+            178_795,
+            "rate must come from the refusal's own mirror"
+        );
+        assert_eq!(
+            crate::memory_governor::memory_stall_self_cpu_share_basis_points(&stall),
+            80,
+            "0.8% of wall is 80 basis points"
+        );
+        let line = crate::cli_run::render_heartbeat_line_mirror(
+            window_ms,
+            "typecheck",
+            &FloorResourceSample::default(),
+            Some(&stall),
+            false,
         );
         assert!(
-            line.contains("stall_user_cpu_share_bp=80"),
-            "0.8% of wall is 80 basis points: {line}"
+            line.ends_with("stall 178795 faults/min at 0.8% user cpu"),
+            "the rendered clause is the refusal's two figures: {line}"
         );
 
         // WHAT THIS TEST DOES AND DOES NOT ESTABLISH, measured rather than asserted.
@@ -9402,7 +10103,7 @@ mod floor_stall_metric_tests {
         // It establishes the QUANTITY: 80 basis points is utime alone, and the control below
         // shows that the number the heartbeat used to print for the same window is 3480, on the
         // other side of the refusal's floor. That assertion has an authorable red -- feed this
-        // renderer utime+stime and it fails.
+        // producer utime+stime and it fails.
         //
         // IT DOES NOT ESTABLISH SINGLE AUTHORITY, AND TWO MUTATIONS PROVE IT CANNOT.
         // Replacing both mirror calls with an inline copy of their arithmetic left this test
@@ -9435,24 +10136,26 @@ mod floor_stall_metric_tests {
         );
     }
 
-    /// A window that reads only one of the two counters renders the sentinel for BOTH figures.
-    /// A share derived from half a reading is not a share, and a fabricated zero here would read
-    /// as the most severe possible stall -- the direction that manufactures a refusal.
+    /// A window that reads only one of the two counters, or has no wall, is no observation at
+    /// all, and renders its cause for BOTH figures. A share derived from half a reading is not a
+    /// share, and a fabricated zero here would read as the most severe possible stall -- the
+    /// direction that manufactures a refusal.
     #[test]
-    fn a_half_read_window_renders_the_sentinel_rather_than_a_share() {
-        let only_faults = floor_stall_metric_fields(60_000, Some(1), None);
-        let only_cpu = floor_stall_metric_fields(60_000, None, Some(1));
-        for line in [&only_faults, &only_cpu] {
-            assert!(
-                line.contains(&format!(
-                    "stall_user_cpu_share_bp={FLOOR_SAMPLE_UNREADABLE}"
-                )),
-                "{line}"
-            );
-            assert!(
-                line.contains(&format!("stall_majflt_per_min={FLOOR_SAMPLE_UNREADABLE}")),
-                "{line}"
-            );
-        }
+    fn a_half_read_window_renders_the_cause_rather_than_a_share() {
+        assert_eq!(floor_stall_window_observation(60_000, Some(1), None), None);
+        assert_eq!(floor_stall_window_observation(60_000, None, Some(1)), None);
+        assert_eq!(floor_stall_window_observation(0, Some(1), Some(1)), None);
+        let line = crate::cli_run::render_heartbeat_line_mirror(
+            60_000,
+            "",
+            &FloorResourceSample::default(),
+            None,
+            false,
+        );
+        assert!(
+            line.ends_with("stall unreadable (stall counters unreadable)"),
+            "{line}"
+        );
+        assert!(!line.contains("stall 0"), "{line}");
     }
 }

@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.a_probe_symbol_that_cannot_exist_records_a_false_absence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_probe_symbol_that_cannot_exist_records_a_false_absence: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_probe_symbol_that_cannot_exist_records_a_false_absence" as NonEmptyStr,
+
+  receipts: [
+    "**a probe symbol that cannot exist records a false absence** (an executed probe asks whether a named symbol is present, using a name that NO version of the subject ever defined. The probe runs, the subject answers honestly, and the recorded reading is `absent` -- for that subject and for every other subject on earth. The run is green, the row is well typed, the provenance is real, and the measurement is of the instrument rather than of the subject.",
+
+    "INVALID STATE: a present/absent reading whose absent arm is unreachable for every possible subject, recorded in a carrier that cannot distinguish `looked and did not find it` from `asked a question no subject could answer`.",
+
+    "WHY IT SURVIVES REVIEW, and this is what separates it from an ordinary typo: every quality signal a reviewer reaches for is PRESENT and CORRECT. The probe executed inside the exact digest. The host, the date and the instrument are recorded. The negative agrees with every other negative in the sweep, which is precisely what a blind instrument guarantees, and that agreement reads as corroboration. The conclusion it supports may also be TRUE for unrelated reasons -- here, no image did register the architecture -- so the sweep's headline survives while one of its five readings is vacuous.",
+
+    "SPECIMEN (PR #11016). Three FP4 KV-cache readings were recorded absent across three vLLM images, asked as `nvfp4_ds_mla_cache`, `concat_and_cache_ds_mla_nvfp4` and `indexer_k_quant_and_cache_fp4`. Read against vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397: the registered operators are concat_and_cache_mla and its _grouped and _rope_fused variants, indexer_k_quant_and_cache, cp_gather_and_upconvert_nvfp4_kv_cache and cp_gather_indexer_k_quant_cache. Two of the three asked names were never operators, and the third names a C++ header, which Python cannot ask for at all. The sibling capabilities in the same probe were grounded -- cutlass_scaled_fp4_mm and cutlass_scaled_mm_supports_fp4 ARE registered, and the deepseek_v4_1 module paths DO exist -- so the defect was per-symbol and invisible in aggregate. Found by a reader who had the upstream source open, NOT by the sweep, NOT by review, and NOT by the witnesses, one of which asserted a count over the vacuous reading and passed.",
+
+    "THE DISCRIMINATOR: it bites wherever a probe's vocabulary and the subject's vocabulary have different authors. An in-house predicate over an in-house type cannot exhibit it, because the name resolves or the program refuses. A probe reaching into a foreign runtime by string -- an operator name, an attribute, a module path, a JSON key, an SQL column, a CLI flag -- has no such refusal, and `not found` is the same answer for `absent` and for `never existed`.",
+
+    "RUNG: found BELOW the ladder. Not a rung at all: a wrong answer was recorded as a measurement, with no diagnostic anywhere, and it was then consumed by a verdict fold and asserted by a witness.",
+
+    "CEILING 4, structurally impossible, AND IT NEEDS ONE GROUNDING RATHER THAN A NEW CAPABILITY. The question a probe asks is a name in the subject's namespace, and that namespace is itself readable from the pinned upstream revision the probe already names. Once the roster of valid symbols is a modelled fact -- one home, read from upstream at a pinned revision -- a probe symbol is a MEMBER of that roster rather than a free string, and a name that cannot exist has no constructor. What stands in the way is not language capability but the missing roster.",
+
+    "NEXT-RUNG TRIGGER: the upstream symbol roster for the probed surface, modelled at the pinned revision, with probe symbols typed as membership in it rather than as strings. Until then the affordable intermediate is the one this specimen landed: a THIRD outcome arm that says the symbol was ungrounded, folds that count it as unprobed rather than missing, and a witness that goes red if anyone re-types it back to absent for a tidier count.",
+
+    "REVIEW TELL: a sweep in which one capability is absent EVERYWHERE, especially when its sibling capabilities discriminate between subjects. Ask what the absent arm would look like if the symbol were wrong, and whether anything in the sweep could tell the difference. A second tell is a symbol string assembled by the probe's author from prose, a changelog or a model card rather than copied from the subject's own declaration.",
+  ],
+
+  evidence: [],
+}

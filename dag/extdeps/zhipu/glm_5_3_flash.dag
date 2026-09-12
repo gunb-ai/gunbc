@@ -186,9 +186,3 @@ data glm_5_3_flash_recipe_declares_gpu_memory_utilization: Bool = false
 // under another is the failure that bricked a ledger partition on 2026-09-06. A measurement about a
 // serving unit belongs to that unit's observed row with its instrument named, never to the model.
 data glm_5_3_flash_carries_no_serving_measurements: Bool = true
-
-fn glm_5_3_flash_output_budget_for_input(window: TokenCount, input_tokens: TokenCount) -> TokenCount {
-  let w = token_count_value(t: window)
-  let i = token_count_value(t: input_tokens)
-  if i >= w { token_count(count: 0) } else { token_count(count: w - i) }
-}

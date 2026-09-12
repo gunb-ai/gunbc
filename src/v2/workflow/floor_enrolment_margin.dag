@@ -1,0 +1,310 @@
+module v2.workflow.floor_enrolment_margin
+
+import v2.workflow.required_floor { required_floor_claim_cpu_safety_limit_ms }
+import gunbc.floor_cost_distribution {
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
+  implied_clean_run_budget,
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import std.measure { Millisecond, millisecond, millisecond_count }
+
+// THE ENROLMENT MARGIN GATE: a newly enrolled witness must be SHOWN to reach a verdict with
+// headroom, and the headroom is derived from how much a RUNNER varies rather than from what our
+// claims happen to cost.
+//
+// WHAT THIS IS ON THE LADDER, STATED BEFORE ANYTHING ELSE SO NOTHING BELOW READS AS MORE.
+// This is a GATE REQUIRING EVIDENCE -- DESIGN section 4b rung 2, mechanically preventable. It is
+// NOT a wall and NOT a proof. Whether a witness completes inside a CPU envelope is not statically
+// decidable from its source; what is available at enrolment is a MEASUREMENT, and a measurement
+// can be absent, and the machine that produced it can be slower next time. The invalid state stays
+// writable and safety depends on this gate executing and staying enrolled. Calling it a wall would
+// be the rung inflation section 4b(1) names.
+//
+// THE INCIDENT SHAPE, AND IT IS A CLIFF RATHER THAN A TAIL. On 2026-09-10 and 2026-09-11 two
+// merged changes (gunbc#10882, gunbc#10946, with one row from gunbc#10961) left main refusing with
+// eleven witnesses INTERRUPTED-BEFORE-VERDICT. ALL FIFTEEN INTERRUPTS ACROSS THE TWO PR RUNS AND
+// THE MAIN RUN SIT BETWEEN 501ms AND 521ms AGAINST A 500ms LINE -- every observation within four
+// percent above the line and none far above it. That is the fact the whole gate turns on: these
+// claims are not decisively expensive, they FINISH JUST AFTER THE BELL, and which side of the line
+// they land on is decided by the host that dequeued the job. A cliff of that shape is recovered by
+// a small real margin and would be papered over by a bigger ceiling, which is why the remedy here
+// is a margin and not a raise. (Instrument for the interrupt figures: the required-witnesses-floor
+// job of the runs named above, INTERRUPTED-BEFORE-VERDICT lines; sample size FIFTEEN observations,
+// stated because fifteen is too few to support any percentile finer than the one this gate uses.)
+//
+// WHAT THIS GATE IS NOT, AND THE DISTINCTION IS LOAD-BEARING. The floor ALREADY refuses a newly
+// enrolled witness that crosses the 500ms ceiling: it is interrupted, it reaches no verdict, and
+// `required_floor_outcome_is_clean` refuses the run. That mechanism is real, it is rung 2, and it
+// FIRED ON BOTH INCIDENTS ON THE PRs THEMSELVES, naming the exact identities, before either
+// merged. This gate is therefore NOT a second detector for the same fact and does not claim to be
+// -- detection was never what failed. What it adds is the MARGIN: a row measured at 450ms clears
+// the ceiling on the run that measures it and is then a coin flip on every run after, and today
+// nothing refuses it. That is the state `gunbc.rung_drop`
+// `floor_cost_claim_qualification_unavailable` describes, and it is the state this gate closes for
+// NEWLY ENROLLED identities only.
+
+// THE GATED POPULATION.
+//
+// WHAT IS GATED: every newly enrolled test declaration — `declared now` minus `declared at the
+// resolved diff base`. The census (`floor_run_base_test_decl_census`) is path-keyed and
+// rename-blind: it answers names at a given path at the base, and a rename destination is
+// absent there. Enrolment JOINS that census to git's `rename from` so the subtracted names
+// are the SOURCE path's. A wholly added file has no source and no base names, so every
+// current name is new; a brand-new `test fn` in an existing file is present at the same path
+// and missing from the name set; a file that was only moved subtracts its source names and
+// enrols nothing it already declared. A modified sibling whose name WAS at the lookup path
+// is not enrolled, which is what keeps the conjunct from refusing a PR for a witness it did
+// not author. The census REFUSES rather than answering empty when the base cannot be listed
+// or a listed path cannot be shown, so ignorance cannot enrol (or exempt) anyone. It is also
+// joined to what the run actually PLANNED, so an identity the runner itself withheld is
+// deferred rather than refused here.
+
+// THE MARGIN'S INDEPENDENT REFERENT, WHICH IS WHAT SEPARATES IT FROM TWO REPUDIATED CEILINGS.
+//
+// DESIGN section 5 forbids a merge-blocking literal grounded in a measurement of the same current
+// tree: automate its update and the assertion collapses to measure() == measure(). Both ceiling
+// raises this module's neighbour records as authority failures (500 -> 1552, then 1552 -> 5000)
+// are that defect -- 1552 was "whatever the slowest row happened to cost", which is a change
+// detector and not a budget.
+//
+// THE INFLATION ENVELOPE IS NOT A MEASUREMENT OF OUR CORPUS. It is measured over rows whose
+// `eval_steps` were IDENTICAL across runs -- the same work, re-run on different machines -- so it
+// characterises the RUNNER and not the tree. It does not move when our claims get cheaper or
+// dearer, and deleting half the corpus would not shift it. `run_extreme_census` finding one host
+// holding the maximum for 279 of 398 rows is a fact about hosts. That is an independent referent
+// in exactly section 5's sense, and it is why a margin taken from "how much a runner varies on
+// identical work" is admissible where a ceiling taken from "what our claims currently cost" is
+// not. A reviewer who does not read this paragraph will file this gate as the third instance of
+// the failure it is constructed to avoid.
+//
+// THE PERCENTILE IS p90, BY OPERATOR RULING 2026-09-11, AND THE SAMPLE SIZE TRAVELS WITH IT
+// EVERYWHERE IT APPEARS. The envelope is 1.367x median, 1.653x p90, 2.280x worst, measured by
+// `tools.floor_cost_distribution_instrument` `floor_cost_envelope_report` over TWELVE green main
+// runs on twelve distinct runner registrations across THREE hosts, over 398 identities whose
+// eval_steps were identical in every run. p90 rather than worst: worst buys the last ten percent
+// of runs by narrowing admission for every author by a further twenty-eight percent, and this
+// sample cannot justify that. p99 is not available from this data at all -- quoting one would be
+// precision inflation, the numeric cousin of rung inflation.
+//
+// WHY THIS FIGURE IS A POLICY INPUT AND NOT A TRANSCRIBED MEASUREMENT. It is selected FROM the
+// instrument's output by an operator ruling, exactly as `required_floor_claim_cpu_safety_limit_ms`
+// carries 500. The instrument is named above so the figure can be re-derived rather than trusted;
+// what is fixed here is the CHOICE of percentile, which is a judgement and belongs in a declaration
+// with its provenance beside it.
+fn floor_enrolment_margin_envelope_permille() -> Int {
+  1653
+}
+
+// THE BUDGET IS DERIVED AND NEVER WRITTEN, WHICH IS THE PROPERTY THE TWO FAILED CEILINGS LACKED.
+//
+// 302ms appears nowhere in this module. It is `implied_clean_run_budget` applied to the ceiling
+// authority and the envelope above, so if the envelope is re-measured on more hosts and p90 moves,
+// THE GATE MOVES WITH IT -- it consumes the derivation rather than a copy of its output. This is
+// also that function's FIRST ADMISSION CONSUMER: until now `implied_clean_run_budget` had a
+// witness and a renderer and decided nothing, which is the dangling declaration DESIGN section 3c
+// exists to catch. Consuming it IS the payment; minting a second statistic beside it would be the
+// section 3 fork.
+fn floor_enrolment_margin_budget_ms() -> Millisecond {
+  implied_clean_run_budget(
+    ceiling_ms: millisecond(count: required_floor_claim_cpu_safety_limit_ms()),
+    inflation_permille: floor_enrolment_margin_envelope_permille(),
+  )
+}
+
+// WHY THIS MODULE DOES NOT IMPORT `v2.workflow.claim_cost_observation`, STATED BECAUSE THAT IS THE
+// MODULE A READER WILL EXPECT HERE (DESIGN section 3b: a divergence with its reason beside it).
+//
+// That module is the authority for the exact/censored cost distinction and would be the natural
+// import. It is not imported for a measured reason: `gunbc.recurring_failure_mode`
+// `binding_chosen_by_pool_membership_rather_than_by_the_declared_rule` records that module and
+// `gunbc.floor_cost_distribution` as its SPECIMEN -- a closure holding both binds `RightCensoredCost`
+// ambiently from the pool, and a 45-module closure adding the second reproduces the required-floor
+// refusal character for character. This gate needs `implied_clean_run_budget` from the second, so
+// importing the first is the documented collision, verified here: an oracle compile of
+// `v2.workflow.claim_cost_observation` as entry refuses today with one blocking error at its own
+// `exact_completion_population`, on main, untouched by this change.
+//
+// So the reading consumed here is `gunbc.floor_cost_distribution` `ClaimCostReading`, which is
+// ALSO the type the seed's required-floor runner already mirrors per claim. That makes this gate a
+// consumer of the authority the producer already speaks, rather than a third spelling of one
+// concept. The latent refusal in the neighbouring module is NOT repaired here: it is a different
+// class with a different subject, and folding it into this lane would widen a class's repair to a
+// second class, which DESIGN section 6 prices as redundant work.
+
+// WHETHER THE RUN HAS A COST READING FOR ONE NEWLY ENROLLED IDENTITY AT ALL.
+//
+// ABSENCE IS AN ARM AND NEVER A ZERO, AND THIS IS THE HALF OF THE RULING THAT IS EASIEST TO LOSE:
+// a witness NOBODY TIMED and a witness TIMED OVER are different states with different remedies,
+// and collapsing them is the absorbing fallback DESIGN section 5 forbids wearing a new costume.
+// Absence of a measurement is not evidence of fitness. gunbc#10946 is a live specimen of the
+// first rather than a hypothetical: its v2-native job was CANCELLED, so those identities carried
+// no measurement at all -- not a fast one, not a slow one, none -- and a gate that read that
+// silence as fitness would have admitted exactly the change that refused main.
+//
+// THE SHAPE IS `v2.workflow.floor_changed_witness` `ChangedWitnessCostReading`'S, deliberately.
+// That type makes the same split over a different payload, and stating the parallel is how a
+// reader knows this is the established shape for "the run may have no reading" rather than a new
+// idea. It carries the absence CAUSE so the refusal can say why nothing was measured instead of
+// only that nothing was.
+// THE THIRD ARM IS NOT A THIRD KIND OF ABSENCE, AND CONFLATING IT WITH THE SECOND IS THE DEFECT
+// THIS TYPE WAS REWORKED TO CLOSE (review 64022).
+//
+// `EnrolmentCostAbsent` means THE RUN UNDERTOOK TO EXECUTE THIS IDENTITY AND NO MEASUREMENT CAME
+// BACK -- the remedy is to produce one, and it blocks. `EnrolmentNotPlanned` means THE RUNNER
+// ITSELF WITHHELD THE IDENTITY: it was declined, so no measurement was ever going to exist, and
+// no edit to the witness can produce one.
+//
+// THE SELECTOR AND THE ENUMERATOR RANGE OVER DIFFERENT UNIVERSES, which is why this arm is
+// reachable at all. Changed-witness selection ranges over the whole DIFF; the declared population
+// ranges over the DISCOVERY ROOTS. A wholly-added `.dag` test file homed outside those roots is
+// therefore selectable and undeclarable, and the seed already gives it a typed decline
+// (`DeclinedChangedWitnessOutsideDiscovery`). Treating that as "not measured" would refuse the run
+// for a state NO EDIT INSIDE THE OFFENDING PR COULD EVER SATISFY -- the exact class the seed's own
+// `undeclarable_changed` block was written to repair, rebuilt one gate over.
+type EnrolmentCostReading =
+    EnrolmentCostMeasured { reading: ClaimCostReading }
+  | EnrolmentCostAbsent { witness_identity: String, cause: String }
+  | EnrolmentNotPlanned { witness_identity: String, disposition: String }
+
+// THE HOST READ POINT. The seed evaluates its policy figures out of the model rather than
+// mirroring them as Rust literals -- `floor_required_int` does exactly this for the CPU and wall
+// deadlines -- so the budget crosses the boundary as the wire scalar the interpreter returns.
+// This is a PROJECTION of the function above and not a second home for the figure: it has no
+// arithmetic of its own, and a reader who changes the margin changes the envelope, never this.
+fn floor_enrolment_margin_budget_ms_count() -> Int {
+  millisecond_count(m: floor_enrolment_margin_budget_ms())
+}
+
+// THE STANDING OF ONE NEWLY ENROLLED IDENTITY AGAINST THE MARGIN.
+//
+// `EnrolmentCeilingCensored` IS A SEPARATE ARM FROM `EnrolmentOverMargin` AND MAY NOT BE MERGED
+// INTO IT. A right-censored row carries a LOWER BOUND, not a cost, and its magnitude is a property
+// of the ceiling that stopped it rather than of the row -- `gunbc.floor_cost_distribution` carries
+// its own `observed_cpu_ms` accessor precisely so a bound cannot reach a site that treats it as an
+// exact cost. Folding it into an arm with an `exact_cpu_ms` field would write a bound into a slot
+// named for a cost, reintroducing that invalid state inside the gate built to respect it. Both
+// arms block; they are told apart so the remedy and the reported figure stay honest.
+type EnrolmentMarginStanding =
+    EnrolmentWithinMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
+  | EnrolmentOverMargin { exact_cpu_ms: Millisecond, budget_ms: Millisecond }
+  | EnrolmentCeilingCensored { cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond }
+  | EnrolmentNotMeasured { witness_identity: String, cause: String }
+  | EnrolmentOutsideThisRunsExecution { witness_identity: String, disposition: String }
+
+// THE CLASSIFICATION. Total over both coproducts, so neither a new reading arm nor a new absence
+// can be absorbed into a neighbour.
+fn enrolment_margin_standing(
+  reading: EnrolmentCostReading,
+  budget_ms: Millisecond,
+) -> EnrolmentMarginStanding {
+  match reading {
+    EnrolmentCostAbsent { witness_identity: i, cause: k } =>
+      EnrolmentNotMeasured { witness_identity: i, cause: k }
+    EnrolmentNotPlanned { witness_identity: i, disposition: d } =>
+      EnrolmentOutsideThisRunsExecution { witness_identity: i, disposition: d }
+    EnrolmentCostMeasured { reading: r } =>
+      match r {
+        ObservedCpuReading { cpu_ms: c } =>
+          if millisecond_count(m: c) > millisecond_count(m: budget_ms) {
+            EnrolmentOverMargin { exact_cpu_ms: c, budget_ms: budget_ms }
+          } else {
+            EnrolmentWithinMargin { exact_cpu_ms: c, budget_ms: budget_ms }
+          }
+        RightCensoredCpuReading { cpu_lower_bound_ms: b, censoring_ceiling_ms: ceiling } =>
+          EnrolmentCeilingCensored {
+            cpu_lower_bound_ms: b,
+            censoring_ceiling_ms: ceiling,
+          }
+      }
+  }
+}
+
+// THE REFUSING POLARITY, STATED ONCE. Only a row MEASURED and measured INSIDE the margin is
+// admitted by this gate. The two over arms block because the row is over; the not-measured arm
+// blocks because nothing established that it is not.
+//
+// `EnrolmentOutsideThisRunsExecution` DOES NOT BLOCK HERE, AND THAT IS A DEFERRAL TO A GATE THAT
+// DOES -- never an exemption, which would be this section's own absorbing fallback. A newly
+// enrolled identity is by construction a CHANGED identity, so an identity the runner declined
+// reaches `v2.workflow.floor_changed_witness` `changed_witness_standing_blocks` through its
+// `Declined` arm and refuses the run there, carrying the disposition's own wire name as its cause.
+// The run still stops; it stops with the remedy the author can act on ("this file is outside the
+// discovery roots") instead of one they cannot ("produce a measurement"). Two gates refusing one
+// row with two causes, one of them wrong, is worse than one gate refusing it with the right one.
+fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
+  match standing {
+    EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => false
+    EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => true
+    EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => true
+    EnrolmentNotMeasured { witness_identity: _, cause: _ } => true
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => false
+  }
+}
+
+// THE CAUSE OF ONE BLOCKING STANDING, total over the same coproduct the predicate matches, so a
+// fifth arm must be given a cause here and cannot be absorbed into a neighbour's. The green arm
+// is spelled and answers with the empty string: it is never read, and returning a plausible cause
+// for a row that does not block would be a fabricated diagnostic waiting to be printed.
+//
+// THE THREE CAUSES ARE DISTINCT STRINGS BECAUSE THEY HAVE THREE DIFFERENT REMEDIES: reduce the
+// cost; reduce the cost or declare a lane with its own ceiling; produce a measurement at all.
+// One shared cause would offer the rerun that discharges none of them.
+fn enrolment_margin_blocking_cause(standing: EnrolmentMarginStanding) -> String {
+  match standing {
+    EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => ""
+    EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "enrolment_measured_over_margin"
+    EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "enrolment_censored_at_ceiling"
+    EnrolmentNotMeasured { witness_identity: _, cause: _ } => "enrolment_not_measured"
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => ""
+  }
+}
+
+// THE WIRE NAME OF ONE STANDING, homed with the coproduct it names so the projection line and any
+// later reader cannot spell the same standing two ways. Distinct from the blocking cause: every
+// standing has a name, only the refusing ones have a cause.
+fn enrolment_margin_standing_name(standing: EnrolmentMarginStanding) -> String {
+  match standing {
+    EnrolmentWithinMargin { exact_cpu_ms: _, budget_ms: _ } => "admitted"
+    EnrolmentOverMargin { exact_cpu_ms: _, budget_ms: _ } => "measured_over_margin"
+    EnrolmentCeilingCensored { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => "censored_at_ceiling"
+    EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not_measured"
+    EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside_this_runs_execution"
+  }
+}
+
+// One row as its consumer receives it: the identity, and the CAUSE that made it block. Same shape
+// as `v2.workflow.floor_changed_witness` `ChangedWitnessBlocker`, and for the same reason recorded
+// there -- a blocking population arriving as a bare identity list under one constant cause throws
+// away a distinction that was computed one line earlier.
+type EnrolmentMarginBlocker {
+  identity: String
+  cause: String
+}
+
+type EnrolmentMarginRow {
+  identity: String
+  standing: EnrolmentMarginStanding
+}
+
+// THE ONE FOLD OVER THE NEWLY ENROLLED SET, in input order. Zero newly enrolled identities is the
+// positive control -- an empty list in, an empty list out, and the required context stays green.
+// That is the ordinary case for the overwhelming majority of changes, and it is why this gate
+// cannot red a PR for debt it did not author: the population is the identities THIS change
+// enrols, never the standing corpus.
+fn enrolment_margin_blockers(rows: List<EnrolmentMarginRow>) -> List<EnrolmentMarginBlocker> {
+  reverse(fold(rows, init: [], f: fn(acc, row) {
+    if enrolment_margin_standing_blocks(standing: row.standing) {
+      concat(
+        [EnrolmentMarginBlocker {
+          identity: row.identity,
+          cause: enrolment_margin_blocking_cause(standing: row.standing),
+        }],
+        acc
+      )
+    } else {
+      acc
+    }
+  }))
+}

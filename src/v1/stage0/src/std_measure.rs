@@ -5,6 +5,7 @@ use self::ClockBasis::*;
 use self::ClockDomain::*;
 use self::FiniteByteSizeBuild::*;
 use self::InstantOrder::*;
+use self::MeasureSubtraction::*;
 use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
@@ -301,6 +302,39 @@ pub fn measure_add<Q, S>(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MeasureSubtraction<Q, S> {
+    MeasureDifference { value: Rc<Measure<Q, S, i64>> },
+    MeasureSubtrahendExceedsMinuend,
+}
+impl<Q: Clone, S: Clone> MeasureSubtraction<Q, S> {
+    pub fn value(&self) -> Rc<Measure<Q, S, i64>> {
+        match self {
+            MeasureSubtraction::MeasureDifference { value: __val, .. } => __val.clone(),
+            MeasureSubtraction::MeasureSubtrahendExceedsMinuend => {
+                panic!("no value on unit variant")
+            }
+        }
+    }
+}
+
+pub fn measure_sub<Q, S>(
+    a: Rc<Measure<Q, S, i64>>,
+    b: Rc<Measure<Q, S, i64>>,
+) -> Rc<MeasureSubtraction<Q, S>> {
+    if (a.count.clone() < b.count.clone()) {
+        Rc::new(MeasureSubtraction::MeasureSubtrahendExceedsMinuend)
+    } else {
+        Rc::new(MeasureSubtraction::MeasureDifference {
+            value: Rc::new(Measure {
+                count: (a.count.clone() - b.count.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+        })
+    }
+}
+
 pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, i64>>, b: Rc<Measure<Q, S, i64>>) -> bool {
     (a.count.clone() <= b.count.clone())
 }
@@ -405,6 +439,8 @@ pub type CpuCoreCount = Rc<Measure<Count, One, i64>>;
 pub type MergeQueueEntryCount = Rc<Measure<Count, One, i64>>;
 
 pub type PowerCordCount = Rc<Measure<Count, One, i64>>;
+
+pub type MemoryControllerCount = Rc<Measure<Count, One, i64>>;
 
 pub type Millicore = Rc<Measure<Count, Milli, i64>>;
 
@@ -1112,6 +1148,18 @@ pub fn token_count_value(t: TokenCount) -> Nat {
     measure_count(t.clone())
 }
 
+pub fn token_count_remaining_in_window(window: TokenCount, used: TokenCount) -> TokenCount {
+    {
+        let w = token_count_value(window.clone());
+        let u = token_count_value(used.clone());
+        if (u.clone() >= w.clone()) {
+            token_count(0)
+        } else {
+            token_count((w.clone() - u.clone()))
+        }
+    }
+}
+
 pub fn allocator_block_count(count: Nat) -> AllocatorBlockCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1164,6 +1212,17 @@ pub fn power_cord_count(count: Nat) -> PowerCordCount {
 }
 
 pub fn power_cord_count_value(c: PowerCordCount) -> Nat {
+    measure_count(c.clone())
+}
+
+pub fn memory_controller_count(count: Nat) -> MemoryControllerCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn memory_controller_count_value(c: MemoryControllerCount) -> Nat {
     measure_count(c.clone())
 }
 

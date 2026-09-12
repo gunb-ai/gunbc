@@ -2,10 +2,11 @@ module test.claim.fabric_m0_origin_readback_seal
 
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
-  census_rows_of_class,
-  census_total_count
+  census_count_at_key,
+  censuses_differ_by_exactly_the_target_key
 }
 import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -15,96 +16,202 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE DISCRIMINATING RED FOR THE ORIGIN-READBACK CONSTRUCTION.
 //
 // gunbc.fabric_m0_origin_readback claims that a confirming origin readback cannot be authored: the
-// digest and the file it was taken from are one sealed value, minted only by the operation that
-// takes it. A claim of that shape is established by a REFUSAL THAT EXECUTES on the real acceptance
-// path, never by the presence of the keyword -- so each probe below hands the compiler source that
-// TRIES to build the forbidden state and asserts the diagnostic, with a green control on the
-// sanctioned route beside it so a permanently-red harness cannot pass for a wall.
+// digest and the file it was taken from are one sealed value, and read_origin_staged_file is the
+// only constructor in the corpus. A claim of that shape is established by a REFUSAL THAT EXECUTES
+// on the real acceptance path, never by the presence of the keyword -- so each probe below hands
+// the compiler source that TRIES to build the forbidden state and asserts the diagnostic, with a
+// green control on the sanctioned route beside it.
 //
-// WHY TWO WALLS AND NOT ONE. sole_constructor confines who may write the record LITERAL;
-// admit_callers confines who may call the fixture MINT. They are independent, and covering one
-// leaves the other free to be absent -- which is how an enumerated admission list would quietly
-// become an open door.
+// COUNTS ARE KEYED (class, subject_name, blocking), NEVER BY CLASS ALONE, and that is not caution:
+// gunbc.compile_diagnostic_census says so in its own words -- CensusObserved carries every
+// diagnostic the compile produced, THE IMPORTED CLOSURE INCLUDED, so a class-only count over a
+// fixture that imports production modules can be satisfied by an unrelated row somewhere else in
+// the closure, and a class-only `== 0` is a property of the corpus rather than of the probe. An
+// earlier revision of this file counted by class alone and accepted `>= 1`; that made every RED
+// here attributable to the wrong subject. The keyed form is the one that module names as exact,
+// and the receipt it points at is test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test.
 //
 // WHY THE SEAL IS ON A RECORD. sole_constructor on a COPRODUCT does not refuse cross-module variant
-// construction: that is the declared hole measured by
+// construction: the declared hole measured by
 // test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is
 // red. Sealing ManifestReadbackObservation or OriginReadback directly would have been permanently
 // green by construction. The record OriginReading, carried by both confirming variants, is the form
-// the wall does refuse -- and f1_probe below is what says so by execution rather than by citation.
+// the wall does refuse -- and the probes below are what say so by execution.
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
-fn violation_count(source: String, wanted: String) -> Int {
+// EXACT: this class, this subject, blocking only. Anything else in the closure is not this claim.
+fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
   match census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 
+// THE ROWS OF A COMPILE, or the NotRunnable sentinel made VISIBLE rather than silently empty.
+// Returning [] on the unrunnable arm would make could-not-measure and observed-nothing the same
+// value, which is the fail-open the census module's own API was reshaped to prevent.
+fn census_rows_or_refuse(source: String) -> List<CompileDiagnosticCensusRow> {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => rows
+    CensusNotRunnable { cause: _ } => [unrunnable_sentinel_row()]
+  }
+}
+
+fn unrunnable_sentinel_row() -> CompileDiagnosticCensusRow {
+  CompileDiagnosticCensusRow {
+    diagnostic_class: "CENSUS-NOT-RUNNABLE",
+    subject_name: "census",
+    blocking: true,
+    count: 1,
+  }
+}
+
+fn sole_constructor_on_origin_reading(source: String) -> Int {
+  keyed_count(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "OriginReading")
+}
+
+// THE ONE-AXIS PRODUCER, AND THE AXIS IS NOW GENUINELY ONE. Both arms come from this function, so
+// module header, import block, signature AND RETURN TYPE are byte-identical; the only thing that
+// differs is the expression that produces the reading.
+//
+// AN EARLIER REVISION VARIED TWO AXES and called it one, which is the same overclaim class this PR
+// exists to repair. Its arms returned OriginReading and OriginReadingOutcome respectively, because
+// the sanctioned route yields an Outcome by construction, so a delta attributable to the RETURN TYPE
+// alone was not excluded by the comparison. The fix is not a disclosure: both arms return
+// OriginReadingOutcome. That is authorable because OriginReadingOutcome is an ordinary coproduct
+// whose OriginReadingTaken variant CARRIES the sealed record -- so the forged arm still has to write
+// the forbidden literal, and still refuses on it, while the shapes on either side match exactly.
+//
+// Worth stating because it is the wall itself: a same-return-type pair around the BARE OriginReading
+// is NOT authorable, and cannot be. A green arm returning a bare reading would have to unwrap the
+// Outcome, whose unavailable branch would then need to produce an OriginReading from nothing -- which
+// is precisely what has no constructor. The seal is what makes that pair unwritable.
+fn origin_reading_probe_source(body: String) -> String {
+  "module probe_fabric_m0_axis\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReading, OriginReadingOutcome, OriginReadingTaken, read_origin_staged_file }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn subject(p: NonEmptyStr) -> OriginReadingOutcome {\n  "
+    + body + "\n}\n"
+}
+
 // RED 1: an ordinary module pairs a digest with a file it never read. This is the laundering in its
 // exact production shape -- a real 64-hex SHA-256 stamped onto a path of the author's choosing.
-data forged_reading_source: String = "module probe_fabric_m0_forged_reading\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReading {\n  OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } }\n}\n"
+data forged_reading_source: String = "OriginReadingTaken { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }"
 
+// The GREEN arm of the same producer: the sanctioned route, identical in every respect above.
+data sanctioned_body: String = "read_origin_staged_file(staged_path: p)"
+
+// EXACTLY ONE refusal is the proposition, so the assertion says one. `>= 1` would hide a second,
+// unintended refusal on the same key.
 test fn a_forged_origin_reading_is_refused_at_compile() -> Bool {
-  violation_count(source: forged_reading_source, wanted: "SoleConstructorViolation") >= 1
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: forged_reading_source)) == 1
 }
 
 // RED 2: the same forgery reached through the CARRIER a caller actually holds. The commit
 // boundary's ManifestRead is an ordinary coproduct variant, so nothing refuses it directly; the
-// refusal has to come from the reading it must carry. This probe is what distinguishes "the record
-// is sealed" from "the state a caller can reach is unwritable".
+// refusal has to come from the reading it must carry. This is what distinguishes "the record is
+// sealed" from "the state a caller can reach is unwritable".
 data forged_manifest_read_source: String = "module probe_fabric_m0_forged_manifest_read\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_commit { ManifestReadbackObservation, ManifestRead }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> ManifestReadbackObservation {\n  ManifestRead { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
 
 test fn a_forged_manifest_read_is_refused_at_compile() -> Bool {
-  violation_count(source: forged_manifest_read_source, wanted: "SoleConstructorViolation") >= 1
+  sole_constructor_on_origin_reading(source: forged_manifest_read_source) == 1
 }
 
 // RED 3: the completion authority's own confirming arm, for the same reason. The manifest is one
-// subject among several and a repair that closed only the manifest would leave every required
+// subject among several, and a repair that closed only the manifest would leave every required
 // object's readback authorable -- the half-repair the rostered class warns about.
 data forged_readback_confirmed_source: String = "module probe_fabric_m0_forged_confirmed\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReadback {\n  ReadbackConfirmed { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
 
 test fn a_forged_confirmed_readback_is_refused_at_compile() -> Bool {
-  violation_count(source: forged_readback_confirmed_source, wanted: "SoleConstructorViolation") >= 1
+  sole_constructor_on_origin_reading(source: forged_readback_confirmed_source) == 1
 }
 
-// RED 4: the fixture mint called from a module it does not admit. This is the wall that keeps the
-// enumerated admission list from being a door -- without it, sealing the literal would only have
-// moved the forgery one call along.
-data unadmitted_mint_source: String = "module probe_fabric_m0_unadmitted_mint\nimport gunbc.fabric_m0_origin_readback { OriginReading, witness_origin_reading }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReading {\n  witness_origin_reading(staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex })\n}\n"
+// RED 4: THE ESCAPE THAT WAS ACTUALLY OPEN, kept as a permanent regression control (DESIGN 4b(4)).
+// An earlier revision of this lane exported a fixture mint under admit_callers, and the witness
+// wrappers admitted to call it were themselves exported unrestricted constructors -- .dag has no
+// module-private, so a foreign module imported a wrapper, passed any digest it liked, and reached
+// ManifestRead with 0 blocking errors. The repair deleted the fixture route rather than fencing it.
+// This probe is that exact source: it must now refuse because the wrapper it names does not exist,
+// and it will refuse again for the original reason if anyone reintroduces a fixture mint whose
+// admitted caller returns a reading. Attribution is by ABSENCE of the sanctioned-route diagnostic,
+// so the assertion is on the unresolved-reference class rather than on sole_constructor.
+data wrapper_proxy_source: String = "module probe_fabric_m0_wrapper_proxy\nimport test.claim.fabric_m0_commit_witness { witness_reading }\nimport gunbc.fabric_m0_commit { ManifestReadbackObservation, ManifestRead }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> ManifestReadbackObservation {\n  ManifestRead { reading: witness_reading(d: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex }) }\n}\n"
 
-test fn an_unadmitted_call_to_the_fixture_mint_is_refused_at_compile() -> Bool {
-  violation_count(source: unadmitted_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+// KEYED ON THE MEASURED SUBJECT, and the previous form of this control is why that matters. It read
+// `any blocking diagnostic anywhere >= 1`, and this probe's closure carries FORTY-FIVE of them --
+// UnresolvedType on Time, Memory, Frequency and thirty more, plus an InternalError cascade. So the
+// control was satisfied by closure noise: if the wrapper came back AND any unrelated blocking row
+// existed, it would stay green and report the escape as still closed. That is the exact
+// stale-evidence shape this PR exists to close, sitting in the probe meant to prevent it.
+//
+// The proposition is `the wrapper symbol is gone`, the row that says so is MissingExport on
+// witness_reading, and there is exactly one of it -- measured by dumping the blocking key set, not
+// guessed. If the wrapper is reintroduced this count goes to 0 and the control reds, whatever else
+// is in the closure.
+fn missing_export_of_wrapper(source: String) -> Int {
+  keyed_count(source: source, wanted_class: "MissingExport", wanted_subject: "witness_reading")
 }
 
-// GREEN CONTROL: the sanctioned route -- the real read -- compiles clean. Without this, every red
-// above is satisfied by a harness that refuses everything, and the battery would establish nothing
-// about the wall's discrimination.
-data sanctioned_route_source: String = "module probe_fabric_m0_sanctioned\nimport std.types { NonEmptyStr }\nimport gunbc.fabric_m0_origin_readback { OriginReadingOutcome, read_origin_staged_file }\nfn taken(p: NonEmptyStr) -> OriginReadingOutcome { read_origin_staged_file(staged_path: p) }\n"
-
-test fn the_sanctioned_read_route_compiles_clean() -> Bool {
-  violation_count(source: sanctioned_route_source, wanted: "SoleConstructorViolation") == 0
-    && violation_count(source: sanctioned_route_source, wanted: "ConstructorCallAdmissionRefused") == 0
+test fn the_deleted_wrapper_proxy_route_no_longer_compiles() -> Bool {
+  missing_export_of_wrapper(source: wrapper_proxy_source) == 1
 }
 
-// CALIBRATION: the green control's module really compiled, rather than the census failing to run
-// and every `== 0` above reading a -1 sentinel as agreement. A zero that came from a harness that
-// never ran is the decoration this file exists to avoid producing.
-test fn the_green_control_module_actually_compiled() -> Bool {
-  match census_of(source: sanctioned_route_source) {
-    CensusObserved { rows: _ } => true
-    CensusNotRunnable { cause: _ } => false
-  }
+// GREEN CONTROL, KEYED: the sanctioned route -- the real read -- draws no violation ON THIS
+// SUBJECT. Without it every red above is satisfied by a harness that refuses everything.
+test fn the_sanctioned_read_route_draws_no_violation() -> Bool {
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: sanctioned_body)) == 0
 }
 
-// Printed diagnostics: the integer behind each verdict, so a wrong count is distinguishable from
-// CensusNotRunnable (-1) without re-deriving the battery.
+// THE DIFFERENTIAL, AND IT IS A REAL ONE NOW. Both sources come from origin_reading_probe_source and differ on
+// exactly one axis -- the expression that produces the reading. The comparison is over the COMPLETE
+// blocking key set of each compile, not over a chosen target key: every row that appears on both
+// sides cancels, and what survives on the RED side must be exactly the one key this wall is about,
+// with nothing surviving on the GREEN side at all. An earlier revision compared two hand-written
+// sources whose IMPORTS DIFFERED and called the target-key comparison a differential; the shared
+// closure was assumed to cancel rather than shown to. This form rejects every other delta.
+// THE COMPARATOR IS CONSUMED, NOT RE-MINTED. An earlier revision of this file hand-rolled a
+// key-delta comparison over "class|subject" STRINGS, which forked a fact that already had an
+// implementation -- and the copy was weaker in exactly the way the original was right: it counted
+// ROW ENTRIES instead of summing r.count, so a red row with count 2 and a green row with count 1 at
+// one key cancelled, leaving the multiplicity blindness the keyed form exists to remove. Two
+// implementations of one fact drifted on their second instance (DESIGN 3). The comparator now lives
+// in gunbc.compile_diagnostic_census, which is the module that owns the rule, and both this battery
+// and test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test consume it.
+test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
+  censuses_differ_by_exactly_the_target_key(
+    red: census_rows_or_refuse(source: origin_reading_probe_source(body: forged_reading_source)),
+    green: census_rows_or_refuse(source: origin_reading_probe_source(body: sanctioned_body)),
+    target_class: "SoleConstructorViolation",
+    target_subject: "OriginReading",
+  )
+}
+
+// CALIBRATION: the census actually RAN for both arms. Without this, a CensusNotRunnable on both
+// sides would cancel in the differential above and read as agreement -- the sentinel key is carried
+// into the key set precisely so it cannot hide there, and this arm names it.
+test fn both_arms_of_the_differential_actually_compiled() -> Bool {
+  (census_count_at_key(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: forged_reading_source)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+    && (census_count_at_key(rows: census_rows_or_refuse(source: origin_reading_probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
+}
+
+// PRINTED DIAGNOSTICS, and their consumer is named rather than left to be inferred (DESIGN 3c).
+// They are not test arms and no fold reads them; they are entry points a person runs when an arm
+// above goes red, so a wrong count is distinguishable from the CensusNotRunnable sentinel (-1)
+// without re-deriving the battery:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/fabric_m0_origin_readback_seal_test.dag --function diag_forged_reading_count
+//
+// Same shape and same purpose as the f10_diag_* / f13_diag_* entries in
+// test.claim.sole_constructor_completeness_audit_probe, which is the precedent this follows.
 fn diag_forged_reading_count() -> Int {
-  violation_count(source: forged_reading_source, wanted: "SoleConstructorViolation")
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: forged_reading_source))
 }
 
-fn diag_unadmitted_mint_count() -> Int {
-  violation_count(source: unadmitted_mint_source, wanted: "ConstructorCallAdmissionRefused")
+fn diag_sanctioned_count() -> Int {
+  sole_constructor_on_origin_reading(source: origin_reading_probe_source(body: sanctioned_body))
+}
+
+fn diag_wrapper_missing_export_count() -> Int {
+  missing_export_of_wrapper(source: wrapper_proxy_source)
 }

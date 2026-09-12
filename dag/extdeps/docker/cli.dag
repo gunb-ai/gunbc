@@ -1,11 +1,18 @@
 module extdeps.docker.cli
 
-import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  json_string_value_or_empty,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -141,6 +148,185 @@ fn docker_exec_command(name: NonEmptyStr, env: List<DockerEnvAssignment>, argv: 
 
 fn docker_build_command(tag: NonEmptyStr, context_dir: FilePath) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["build", "--tag", tag as String, context_dir as String])
+}
+
+// A BUILD IS NOT ALWAYS A TAG AND A DIRECTORY. docker_build_command above is the whole invocation for
+// a context whose Dockerfile takes no arguments -- which is what the Spark pair runtime is, one FROM
+// and one RUN. An upstream Dockerfile that publishes ARGs answers differently depending on what it
+// is told, and a build that cannot say --build-arg, --target, --platform or --file cannot reach any
+// of those answers: it gets the defaults, whatever they happen to be at that revision.
+//
+// THE TWO ARE ONE OPERATION AT DIFFERENT WIDTHS, NOT TWO OPERATIONS, so this spec carries the same
+// tag-and-context pair and adds the fields the flags name. It is spelled as a record rather than as
+// more positional parameters for the reason DockerCreateSpec is: a desired build and a rendered
+// invocation stay comparable field by field, and a caller cannot silently omit one by miscounting
+// arguments.
+type DockerBuildArg {
+  name: NonEmptyStr
+  value: String
+}
+
+type DockerBuildSpec {
+  tag: NonEmptyStr
+  context_dir: FilePath
+  dockerfile: NonEmptyStr
+  target: NonEmptyStr
+  platform: NonEmptyStr
+  build_args: List<DockerBuildArg>
+}
+
+// `--build-arg NAME=VALUE` is ONE argv element carrying an equals sign, exactly as `--env` is for
+// docker_create_arguments, and splitting it into two would be a different command line that the
+// engine reads differently. The context directory is last, after every flag, which is where the CLI
+// requires it.
+fn docker_build_arg_flag(a: DockerBuildArg) -> List<String> {
+  ["--build-arg", join([a.name as String, "=", a.value], "")]
+}
+
+fn docker_build_spec_arguments(spec: DockerBuildSpec) -> List<String> {
+  concat(
+    concat(
+      [
+        "build",
+        "--file", spec.dockerfile as String,
+        "--target", spec.target as String,
+        "--platform", spec.platform as String,
+        "--tag", spec.tag as String,
+      ],
+      flat_map(spec.build_args, a => docker_build_arg_flag(a: a)),
+    ),
+    [spec.context_dir as String],
+  )
+}
+
+fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: docker_build_spec_arguments(spec: spec))
+}
+
+// THE TWO QUESTIONS A CONVERGENT BUILD ASKS ARE ONE QUESTION. Does this exact tag already name an
+// image, and what digest does that image carry, are answered by the same listing: `docker images
+// --no-trunc --quiet <ref>` prints the image's `sha256:<hex>` config digest, or prints NOTHING and
+// exits zero when the reference names no image. So absence is an empty answer rather than a failure,
+// which is what lets a caller keep "no such image" apart from "the query did not run".
+//
+// THIS COMMAND MATCHES REPOSITORY[:TAG] ONLY. A digest-pinned pull is invisible here — measured
+// empty by fleet-converge 34642398773 with `--filter=reference=` as well. The digest-pinned
+// identity readback is docker_image_inspect_command, a different symbol with a different
+// absence contract (inspect exits non-zero when the object is missing).
+fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
+}
+
+// DIGEST-PINNED IDENTITY. `docker image inspect <ref>` names repo@sha256:... and prints a JSON
+// array of image objects. The local config id is the unique `Id` member of the single element,
+// read by docker_image_inspect_id_from_stdout (extdeps.languages.json.parse). No --format: a Go
+// template's braces sit outside typed_argv_exec's portable-word allowlist, and
+// `--filter=reference=` was measured empty on srv9 after a successful pull (fleet-converge
+// 34642398773). inspect without a template stays inside that allowlist. fleet-converge
+// 34646650317 on srv9 parsed Id sha256:714a937591e162044e9142b0ba2ed18bd21734edcffb59f651db6ced941a2040
+// from that JSON and the probe advanced past image-digest.
+//
+// ABSENCE IS A NON-ZERO EXIT. Docker prints `Error: No such image: <ref>` and exits 1. That is
+// docker_image_inspect_names_no_such_image, a typed refusal, not empty stdout. Callers that need
+// empty-means-absent stay on docker_image_digest_command.
+fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["image", "inspect", image as String])
+}
+
+fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "No such image")
+}
+
+type DockerImageInspectIdRead
+  = DockerImageInspectId { id: NonEmptyStr }
+  | DockerImageInspectIdUnreadable { cause: String }
+
+fn docker_inspect_json_first_of_one(v: JsonValue) -> JsonValue? {
+  match v {
+    JsonArray { elements: es } =>
+      if count(es) != 1 {
+        none
+      } else {
+        fold(es, init: none, f: (acc, x) => match acc {
+          Present { value: _ } => acc
+          Absent => Present { value: x }
+        })
+      }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn docker_image_inspect_id_from_stdout(stdout: String) -> DockerImageInspectIdRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerImageInspectIdUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerImageInspectIdUnreadable { cause: "docker image inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Id") {
+            JsonMemberAbsent => DockerImageInspectIdUnreadable { cause: "docker image inspect JSON names no Id" }
+            JsonMemberNotAnObject => DockerImageInspectIdUnreadable { cause: "docker image inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerImageInspectIdUnreadable { cause: join(["docker image inspect JSON names Id ", to_string(n), " times"], "") }
+            JsonMemberFound { value: idv } => {
+              let id = json_string_value_or_empty(v: idv)
+              if id == "" {
+                DockerImageInspectIdUnreadable { cause: "docker image inspect JSON Id is not a nonempty string" }
+              } else {
+                DockerImageInspectId { id: id as NonEmptyStr }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE SHORT MOUNT SPELLING, AND THE ONE REASON IT EXISTS BESIDE docker_mount_flag. `--mount` takes
+// its fields as a COMMA-separated list, and a comma is not in the portable-word allowlist
+// gunbc.typed_argv_exec enforces at the ssh seam, so a `--mount` argument cannot cross that seam at
+// all -- it is refused before it reaches a host. `-v src:dst[:ro]` and `--tmpfs dst` are the CLI's
+// own documented short forms of the same three mount kinds, spelled with colons and equals signs
+// that the allowlist admits. This is one fact with two renderings chosen by what the transport can
+// carry, not two answers to what a mount is: both fold the same DockerMount coproduct, exhaustively.
+fn docker_short_mount_flag(m: DockerMount) -> List<String> {
+  match m {
+    BindMount { host_path: h, container_path: c, readonly: ro } =>
+      ["-v", join([h as String, ":", c as String, if ro { ":ro" } else { "" }], "")]
+    VolumeMount { volume: v, container_path: c, readonly: ro } =>
+      ["-v", join([v as String, ":", c as String, if ro { ":ro" } else { "" }], "")]
+    TmpfsMount { container_path: c, size_bytes: n } =>
+      ["--tmpfs", join([c as String, ":size=", to_string(n)], "")]
+  }
+}
+
+// `docker run --rm` executes argv in a throwaway container from an image, which is how a question
+// about what an image CONTAINS is asked inside it rather than inferred from its provenance. The
+// container is removed on exit, so asking twice asks the same question of the same bytes.
+// THE ENTRYPOINT MUST BE NAMED, NOT INHERITED, AND A REFUSAL TAUGHT THIS. An image built to serve a
+// model carries a serving entrypoint, so `docker run <image> python3 script.py` does not run python --
+// it passes those words to the server as arguments, which answered `unrecognized arguments:
+// .../v41_capability_probe.py`. A question about what an image CONTAINS is not a question its
+// entrypoint is equipped to answer, so the caller supplies the program and the image supplies only
+// the filesystem.
+fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
+  argv_command(
+    program: docker_binary_path,
+    arguments: concat(
+      concat(
+        concat(
+          concat(["run", "--rm"], if gpus_all { ["--gpus", "all"] } else { [] }),
+          flat_map(mounts, m => docker_short_mount_flag(m: m)),
+        ),
+        ["--entrypoint", entrypoint as String],
+      ),
+      concat([image as String], argv),
+    ),
+  )
 }
 
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {

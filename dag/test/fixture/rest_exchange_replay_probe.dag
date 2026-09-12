@@ -1,6 +1,16 @@
 module test.fixture.rest_exchange_replay_probe
 
+import std.types { Bool, Int, List, String }
 import extdeps.transports.rest { RestOutcome }
+
+type WireFileShape {
+  encoding: String
+  content: String
+}
+
+type WirePageShape {
+  incomplete_results: Bool
+}
 
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
@@ -14,9 +24,49 @@ service test.RestReplay {
     transport rest { method: GET, path: "/answer" }
   }
 
+  operation RootArray {
+    output {
+      pulls: List<Int>
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => List<Int> }
+  }
+
+  operation RootFile {
+    output {
+      file: WireFileShape
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => WireFileShape }
+  }
+
+  operation RootPage {
+    output {
+      page: WirePageShape
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => WirePageShape }
+  }
+
   operation Sibling {
     output {
       message: String from "message"
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+  }
+
+  operation OptionalObserve {
+    output {
+      message: String from "message"
+      expires_on: String? from "expires_on"
       observed: RestOutcome
     }
     readonly

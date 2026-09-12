@@ -11989,7 +11989,7 @@ fn next_index_generation() -> u64 {
 
 /// Parse-grade pool snapshot: every indexed module's declaration heads plus the
 /// pool-wide newline indexes, in deterministic (sorted module path) order.
-/// Function bodies are stripped (shared marker only) — census consumers read
+/// Function bodies are stripped (refusing marker only) — census consumers read
 /// `module_items` / `local_binding_for_item`, never bodies.
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
@@ -11997,55 +11997,21 @@ struct PoolParse {
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-// Shared per-thread stand-in so stripped fn decls keep `body.is_some()` for
-// `local_binding_for_item`'s fn discriminator. Loud-on-inference only:
-// `ExprErrorKind::CensusHeadsBodyStripped` raises a hard diagnostic in `infer_expr`;
-// it is NOT a complete guard against non-inference body-content reads (direct
-// ExprData traversal, emit, node-count, etc.). `is_census_heads_fn_stand_in` and
-// `census_heads_body_traversal_refusal` are dev-convenience query helpers, not the
-// safety mechanism.
+// The declaration-head projection and its refusing marker are modeled in
+// v1.compiler.compile and v1.compiler.parse. This query is a convenience;
+// inference's CensusHeadsBodyStripped diagnostic remains the refusal mechanism.
+// It does not guard direct body traversal.
 // 🟡 dissolve-on (B): `pool_nodes_by_file_consumers_must_not_descend_into_body` —
-// standing test forbidding any `pool.nodes_by_file` consumer from non-inference body
-// descent; lands the construction wall and retires `CensusHeadsBodyStripped` as a
-// validation-only backstop.
-const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
-
-thread_local! {
-    static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
-        occurrence_identity: Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: CENSUS_HEADS_FN_STAND_IN_NAME.to_string(),
-        span: no_span(),
-        ident_span: None,
-        children: empty_node_list(),
-        connective: Connective::NoConnective,
-        params: empty_node_list(),
-        inferred: None,
-        return_cardinality: Cardinality::Required,
-        uses: empty_node_list(),
-        body: None,
-        transport: None,
-        properties: empty_node_list(),
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-        expr_data: Rc::new(ExprData::ExprError {
-            kind: ExprErrorKind::CensusHeadsBodyStripped,
-            message: "pool census heads-only: declaration body/value stripped — refuse to interpret"
-                .to_string(),
-        }),
-        ident: None,
-    });
-}
-
-fn stripped_fn_body_marker() -> Rc<Node> {
-    STRIPPED_FN_BODY_MARKER.with(Rc::clone)
-}
-
+// a construction wall must still prevent census consumers from reading bodies;
+// the inference refusal is only a validation backstop.
 pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
-    node.name == CENSUS_HEADS_FN_STAND_IN_NAME
-        || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
+    matches!(
+        &*node.expr_data,
+        ExprData::ExprError {
+            kind: ExprErrorKind::CensusHeadsBodyStripped,
+            ..
+        }
+    )
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -15495,7 +15461,7 @@ fn parse_module_heads_for_pool_census(
     // The HEADS reading of the grammar, not the full one. Every declaration head is
     // parsed by the same productions; brace-delimited fn bodies and data initializer
     // values are skipped at token grain instead of being built, because
-    // `census_heads_module_node` below replaces every body with the shared stand-in
+    // `census_heads_module_node` below replaces every function body with the refusing stand-in
     // anyway. Building thousands of modules' bodies for a consumer that discards them
     // was the largest single term
     // in `pool_parse` (7.15s of 14.24s, `docs/probes/edge_index_tree_census_attribution_2026-08-24.md`)
@@ -23516,6 +23482,8 @@ pub fn measure_selected_entry_closure_overlap(
         &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
+        None,
+        &std::collections::HashMap::new(),
     )?;
     let declared_paths = index.module_graph_facts.declared_repo_paths();
 
@@ -24333,6 +24301,14 @@ fn collect_sorted_decl_lines_for_file(
 pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
     edited_test_fns: HashSet<(String, String)>,
+    /// Test fns declared now and not declared at the resolved diff base — the NEWLY ENROLLED
+    /// set the enrolment margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
+    /// Names at the base come from `v2.workflow.floor_diff_observe`
+    /// `floor_run_base_test_decl_census`, path-keyed. Enrolment subtracts names at the
+    /// `rename from` path when git detected a rename, so a move does not enrol every fn.
+    /// A wholly added file and a brand-new `test fn` in an existing file are new; a
+    /// modified sibling whose name was already at the lookup path is not.
+    enrolled_test_fns: HashSet<(String, String)>,
     /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
     touched_entry_files: HashSet<String>,
 }
@@ -25289,6 +25265,26 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     added
 }
 
+/// Dest → source for git-detected renames (`rename from` / `rename to`). The base-declaration
+/// census is path-keyed and rename-blind: names at the NEW path are absent at the base by
+/// construction. Enrolment looks up the SOURCE path so a move does not enrol every fn as new.
+fn parse_unified_diff_rename_sources(diff_text: &str) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    let mut from: Option<String> = None;
+    for line in diff_text.lines() {
+        if line.starts_with("diff --git ") {
+            from = None;
+        } else if let Some(rest) = line.strip_prefix("rename from ") {
+            from = Some(normalize_repo_path(rest.trim()));
+        } else if let Some(rest) = line.strip_prefix("rename to ") {
+            if let Some(src) = from.take() {
+                out.insert(normalize_repo_path(rest.trim()), src);
+            }
+        }
+    }
+    out
+}
+
 /// True when `name` is declared as a `data` item at `file_norm`, verified against the entry's
 /// own resolved import closure (`ctx.modules`) rather than by bare name — `item_registry` is
 /// flat-namespace-keyed (name only, no origin file), so a homonym declared in some unrelated
@@ -25910,9 +25906,10 @@ impl ShardStyle {
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        list_value_from_vec, parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
-        parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, scan_test_decl_lines,
-        FileLineRange,
+        floor_diff_edits_from_diff_text_with_base_names, list_value_from_vec,
+        parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
+        parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
@@ -26164,6 +26161,175 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             enrolled,
             HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
             "an in-place edit inside one declaration enrolls that declaration and no sibling"
+        );
+    }
+
+    fn machine_shape_in_place_green_diff() -> (String, String) {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the renamed wall entry is in the tree");
+        let green_line = content
+            .lines()
+            .position(|l| l.starts_with("test fn gate_green_synthetic_shape_from_catalog_call"))
+            .expect("green sibling declared")
+            + 1;
+        (
+            dest.to_string(),
+            unified_diff_for_line(dest, green_line as i64 + 1),
+        )
+    }
+
+    // THE WIDENING: a test fn whose name is absent from the base census is newly enrolled
+    // even in a modified file. Without the census this was indistinguishable from a
+    // touched sibling and was not gated.
+    #[test]
+    fn new_test_fn_in_existing_file_is_enrolled_when_absent_from_base() {
+        let (dest, diff) = machine_shape_in_place_green_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            dest.clone(),
+            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("in-place modify with a base census must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == &dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled,
+            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
+            "a name the base census does not carry is newly enrolled"
+        );
+    }
+
+    // THE OTHER DIRECTION, so the widening cannot be satisfied by enrolling every edited
+    // test fn. The touched name WAS at the base, so it is a modified sibling and must
+    // not enter the margin gate's population.
+    #[test]
+    fn modified_test_fn_in_existing_file_is_not_enrolled_when_present_at_base() {
+        let (dest, diff) = machine_shape_in_place_green_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            dest.clone(),
+            HashSet::from([
+                "gate_green_synthetic_shape_from_catalog_call".to_string(),
+                "gate_red_synthetic_machine_shape_call".to_string(),
+            ]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("in-place modify with a base census must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == &dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert!(
+            enrolled.is_empty(),
+            "a name the base census already carries is a modified sibling, not a new enrolment; got {enrolled:?}"
+        );
+    }
+
+    fn machine_shape_rename_diff() -> (&'static str, &'static str, String) {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let src = "dag/test/claim/machine_shape_construction_wall_test.dag";
+        let diff = "\
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+similarity index 97%
+rename from dag/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+--- a/dag/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+@@ -1 +1 @@
+-module test.claim.machine_shape_construction_wall
++module v2.test.claim.machine_shape_construction_wall
+@@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
+-
+";
+        (src, dest, diff.to_string())
+    }
+
+    // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
+    // SOURCE path or every moved fn is gated as new.
+    #[test]
+    fn rename_does_not_enrol_names_already_declared_at_source() {
+        let (src, dest, diff) = machine_shape_rename_diff();
+        assert_eq!(
+            parse_unified_diff_rename_sources(&diff).get(dest),
+            Some(&src.to_string()),
+            "fixture must carry git's rename-from so this control can fail the dest-only lookup"
+        );
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            src.to_string(),
+            HashSet::from([
+                "gate_green_synthetic_shape_from_catalog_call".to_string(),
+                "gate_red_synthetic_machine_shape_call".to_string(),
+            ]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("a rename-destination diff must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert!(
+            enrolled.is_empty(),
+            "names declared at the rename source are a move, not a new enrolment; got {enrolled:?}"
+        );
+    }
+
+    // THE OTHER DIRECTION: following rename-from must not swallow a name the source
+    // never declared.
+    #[test]
+    fn rename_still_enrols_a_name_absent_from_the_source() {
+        let (src, dest, diff) = machine_shape_rename_diff();
+        let mut at_base = std::collections::HashMap::new();
+        at_base.insert(
+            src.to_string(),
+            HashSet::from(["gate_red_synthetic_machine_shape_call".to_string()]),
+        );
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names(&index, &diff, &at_base)
+            .expect("a rename-destination diff must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .enrolled_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled,
+            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
+            "a name the source census does not carry is newly enrolled even across a rename"
+        );
+    }
+
+    // THE SUPERSEDED RUNG MUST NOT ANSWER ENROLMENT. A rename destination is an added path;
+    // the old production rule would enrol every test fn from that fact alone. Without a
+    // census, `enrolled_test_fns` is empty — attribution still sees them as edited.
+    #[test]
+    fn floor_diff_edits_from_diff_text_does_not_enrol_without_a_census() {
+        let (_src, dest, diff) = machine_shape_rename_diff();
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("a rename-destination diff must attribute, not refuse");
+        assert!(
+            edits.enrolled_test_fns.is_empty(),
+            "no census means no enrolment answer, including for added/rename paths; got {:?}",
+            edits.enrolled_test_fns
+        );
+        assert!(
+            edits.edited_test_fns.iter().any(|(file, _)| file == dest),
+            "attribution of edited test fns must still run without a census"
         );
     }
 
@@ -31081,6 +31247,22 @@ struct ExprVarClassification<'a> {
     /// reconciliation identity is over the same population as the tally; walking per-module with
     /// per-module counters against a shared tally would compare two different denominators.
     module: String,
+    /// THE VALUE-POSITION SUBSET OF THIS MODULE'S FREE REFERENCES, accumulated for the module
+    /// currently being walked and drained by the caller at its end.
+    ///
+    /// `bare` — the collector's other output — is deliberately a UNION over several question
+    /// kinds, because its consumer asks only "which modules must this scope reach": a type
+    /// annotation's `String`, a record literal's type name, a variant pattern's constructor and
+    /// an expression's callee all widen the closure equally, and over-approximating there is
+    /// harmless.
+    ///
+    /// It is NOT harmless as a refusal's population. A wall keyed on the union would refuse a
+    /// TYPE whose spelling two modules share, and would refuse it at a site where the evaluator's
+    /// shared value slot is never consulted at all. So the value positions — a free `ExprVar` and
+    /// a call's callee, the two forms the interpreter resolves through that slot — are collected
+    /// separately here rather than filtered back out of the union afterwards, which could only
+    /// ever be an approximation of the walk that already knows the answer.
+    value_refs: std::collections::BTreeSet<String>,
 }
 
 impl ExprVarClassification<'_> {
@@ -31304,12 +31486,27 @@ fn collect_node_refs_inner(
                         .map(|(_, class)| *class);
                     if classify.classify(&node.name, bound_as, chain_receiver) {
                         bare.insert(node.name.clone());
+                        // A free `ExprVar` IS a value-position read: nothing binds it here, so
+                        // the interpreter resolves it through the file's declarations, then the
+                        // author's imports, then the shared slot.
+                        classify.value_refs.insert(node.name.clone());
                     }
                 }
             }
             ExprData::ExprCall { .. } => {
                 if !node.name.is_empty() {
                     bare.insert(node.name.clone());
+                    // The callee of a call is resolved through the same tiers as a free variable
+                    // — `lookup_fn_from` — so it is a value-position read too, UNLESS an
+                    // enclosing binder holds the spelling. `fn f(observe: fn(..) -> ..) { match
+                    // observe(x) { .. } }` calls its own parameter, and `let observe =
+                    // handler.observe` calls its own local; neither reaches the shared slot, and
+                    // both were reported as ambiguous reads until the binder stack was consulted
+                    // here as it already is for `ExprVar` one arm above.
+                    let bound_as = bound.iter().rev().find(|(n, _)| n == &node.name);
+                    if bound_as.is_none() {
+                        classify.value_refs.insert(node.name.clone());
+                    }
                 }
             }
             ExprData::ExprRecordLit { .. } => {
@@ -39708,6 +39905,83 @@ impl ScopeBuildSplit {
     }
 }
 
+/// ONE AMBIGUOUS BARE NAME AND THE DECLARATIONS THAT CLAIM IT, carried rather than counted.
+///
+/// The count alone sizes the population; it cannot name a single site, so it cannot be acted on.
+/// Layer 2 of this class is a REFUSAL landed together with the rename or qualification of every
+/// site it would refuse, and that set is exactly this list — the count answers "how many", the
+/// list answers "which", and only the second is a census a deletion can be planned from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbiguousBareName {
+    pub name: String,
+    /// Every module OUTSIDE the authored region that declares this bare name, with the kind it
+    /// declares it as, sorted and deduped. The kind is carried because the two failure shapes
+    /// are not equally dangerous: a `data`/`fn` homonym crosses the evaluator's kind dispatch,
+    /// while `fn`/`fn` across two modules merely picks the wrong body.
+    pub claimants: Vec<(String, &'static str)>,
+}
+
+impl AmbiguousBareName {
+    /// The distinct kinds claiming this name, sorted and joined with `+` — the grouping key the
+    /// floor's kind histogram folds over, derived from the claimants rather than authored beside
+    /// them.
+    pub fn kind_signature(&self) -> String {
+        let mut kinds: Vec<&'static str> = self.claimants.iter().map(|(_, k)| *k).collect();
+        kinds.sort_unstable();
+        kinds.dedup();
+        kinds.join("+")
+    }
+}
+
+/// The stable spelling of an item kind for the ambiguity census. `Debug` would do as bytes and
+/// would silently re-spell every census line if a variant were renamed, so the projection is
+/// written once here.
+pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -> &'static str {
+    use crate::v1_compiler_infer_items::ItemKind;
+    match kind {
+        ItemKind::FnItem => "fn",
+        ItemKind::FuncItem => "func",
+        ItemKind::TypeItem => "type",
+        ItemKind::DataItem => "data",
+        ItemKind::ServiceItem => "service",
+        ItemKind::OtherItem => "other",
+    }
+}
+
+/// ONE BARE-NAME REFERENCE SITE THAT RESOLVES THROUGH THE AMBIGUOUS SHARED SLOT.
+///
+/// The declaration census ([`AmbiguousBareName`]) says which names two transitively-reached
+/// modules both spell; it does NOT say that anything reads one. A name nothing references bare
+/// harms nothing, and the corpus deliberately carries whole families of per-module convention
+/// rows that every extdeps module declares — so a refusal keyed on the DECLARATION population
+/// would refuse a convention rather than a defect.
+///
+/// The refusal's real population is the READ. This row is one of them: a module in the scope
+/// that references `name` in value position where `lookup_fn_from`'s own first two tiers — the
+/// site file's module's own declaration, then the module that file explicitly imported the name
+/// FROM — both decline, so the reference falls through to the shared slot and the slot holds one
+/// of several declarations that nothing the author wrote ranks.
+///
+/// COUNTED STATICALLY, over the scope's whole closure rather than over the lookups a fold
+/// happens to EXECUTE. An execution-keyed census omits a reference on a path no witness runs,
+/// which is precisely the site that would be refused later — or, if the wall were placed at
+/// runtime lookup, never refused at all.
+///
+/// THE GRAIN IS (name, referring module), NOT the occurrence. `refs_by_module` publishes a
+/// module's free references as a deduped set, so three references to one name from one module
+/// are one row here. That is the grain a rename is written at — a module either resolves the
+/// name through the shared slot or it does not, and fixing it fixes every occurrence in it — but
+/// it is not an occurrence count and must not be reported as one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbiguousBareRead {
+    pub name: String,
+    /// The module whose body carries the reference(s) — where a qualification would be written,
+    /// or whose declaring side has to move.
+    pub referring_module: String,
+    /// The out-of-region declarations the shared slot is choosing between for this read.
+    pub claimants: Vec<(String, &'static str)>,
+}
+
 pub struct PreparedClaimScope {
     /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
     /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
@@ -39746,7 +40020,16 @@ pub struct PreparedClaimScope {
     /// genuinely undecided residue: a bare reference to a name the referring module neither
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
-    pub ambiguous_bare_names: usize,
+    pub ambiguous_bare_names: Vec<AmbiguousBareName>,
+    /// THE READS, which is the population a refusal is affordable against — see
+    /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
+    /// the two whose members are defects rather than declarations.
+    pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
+    /// THE POSITIVE HALF: a reference to an otherwise-ambiguous name that does NOT fall through,
+    /// with the module that answered it. A pair leaving `ambiguous_bare_reads` proves only that
+    /// the list moved; this says what the reference resolves TO, which is the whole content of a
+    /// qualification. `(name, referring module, resolved module)`.
+    pub qualified_bare_reads: Vec<(String, String, String)>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
     /// grain the terminal correction has to choose between. The floor already reports what a
     /// scope COSTS in resident bytes (`[floor-scope-cost]`) and how many it built, and neither
@@ -39810,7 +40093,14 @@ pub struct ReferenceClosureIndex {
     pub module_count: usize,
     pub decl_index: HashMap<String, std::collections::BTreeSet<String>>,
     pub module_names: std::collections::HashSet<String>,
+    /// EVERY name a module reaches, in any position — the closure question. Over-approximate by
+    /// design: see `ExprVarClassification::value_refs` for why that is right here and wrong as a
+    /// refusal's population.
     pub refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
+    /// The VALUE-POSITION subset — free variables and call targets, the two forms the
+    /// interpreter resolves through the shared slot. This is the population the bare-name
+    /// ambiguity census and its wall are keyed on.
+    pub value_refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
 }
 
 /// THE PREPARED SUBJECTS ONE FLOOR PROCESS BUILDS, BY DESIGN: the policy module's own closure
@@ -40023,6 +40313,8 @@ fn reference_closure_index(
     let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
     let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut refs_by_module: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut value_refs_by_module: HashMap<String, std::collections::BTreeSet<String>> =
+        HashMap::new();
     for m in prepared.graph.modules.iter() {
         let name = m.func_env.name.clone();
         module_names.insert(name.clone());
@@ -40037,6 +40329,7 @@ fn reference_closure_index(
         tally: &mut class_tally,
         unclassified: &mut unclassified,
         module: String::new(),
+        value_refs: std::collections::BTreeSet::new(),
         occurrences: 0,
         free_reference_edges: 0,
         bound_occurrences_suppressed: 0,
@@ -40064,6 +40357,7 @@ fn reference_closure_index(
         for chain in chains {
             flat.insert(format!("\u{1f}{}", chain.join(".")));
         }
+        value_refs_by_module.insert(name.clone(), std::mem::take(&mut classify.value_refs));
         refs_by_module.insert(name, flat);
     }
     // EXACT RECONCILIATION IS ASSERTED BEFORE THE INDEX IS PUBLISHED, not reported after it is
@@ -40133,6 +40427,7 @@ fn reference_closure_index(
         decl_index,
         module_names,
         refs_by_module,
+        value_refs_by_module,
     });
     eprintln!(
         "[floor-phase] phase=reference-closure-index state=completed wall_ms={} modules={} names={} subject={}",
@@ -40360,8 +40655,8 @@ fn claim_scope_for_with_memos(
     // Which module won each bare name, and whether it won inside the authored region. A later
     // module claiming a name already won OUTSIDE that region is the ambiguous case: two
     // transitively-reached declarations spell the same and nothing the author wrote ranks them.
-    let mut winner_of: HashMap<String, (String, bool)> = HashMap::new();
-    let mut ambiguous: HashSet<String> = HashSet::new();
+    let mut winner_of: HashMap<String, (String, bool, &'static str)> = HashMap::new();
+    let mut ambiguous: BTreeMap<String, BTreeSet<(String, &'static str)>> = BTreeMap::new();
     {
         let module_by_name: HashMap<&str, &Rc<v1_compiler_compile::TypedModule>> = modules
             .iter()
@@ -40380,21 +40675,26 @@ fn claim_scope_for_with_memos(
             // the registry underneath it stops being ambiguous.
             for (_identity, info) in module.item_registry.iter() {
                 let name = &info.name;
+                let kind = item_kind_census_label(&info.kind);
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());
-                        winner_of.insert(name.clone(), (module_name.clone(), authored));
+                        winner_of.insert(name.clone(), (module_name.clone(), authored, kind));
                     }
                     // Already claimed by this same module — one module's own registry, not a
                     // collision between two.
-                    Some((winner, _)) if winner == module_name => {}
+                    Some((winner, _, _)) if winner == module_name => {}
                     // Already won inside the authored region: the author's imports rank it and
                     // precedence has settled it. Ordinary shadowing, not ambiguity.
-                    Some((_, true)) => {}
+                    Some((_, true, _)) => {}
                     // Won outside it, and now claimed again from outside it. Nothing the author
-                    // wrote decides between these two spellings.
-                    Some((_, false)) => {
-                        ambiguous.insert(name.clone());
+                    // wrote decides between these two spellings. BOTH sides are recorded, not
+                    // just the loser: a census that named only the newcomer could not say what
+                    // it collided with, and the rename that dissolves the site needs both.
+                    Some((held_module, false, held_kind)) => {
+                        let claimants = ambiguous.entry(name.clone()).or_default();
+                        claimants.insert((held_module.clone(), *held_kind));
+                        claimants.insert((module_name.clone(), kind));
                     }
                 }
             }
@@ -40424,11 +40724,71 @@ fn claim_scope_for_with_memos(
         fragments,
     );
     let indexes_nanos = indexes_started.elapsed().as_nanos();
+    // WHICH OF THOSE AMBIGUOUS NAMES IS ACTUALLY READ THROUGH THE SHARED SLOT, decided
+    // statically over every value-position reference in the scope rather than over the lookups
+    // any fold executes. Computed HERE, after the indexes exist, because the question "does this
+    // reference fall through to the shared slot" is `lookup_fn_from`'s and is answered on
+    // `lookup_fn_from`'s own index — see `PreparedScopeIndexes::falls_through_to_shared_slot`.
+    // An earlier revision asked it of `func_env.parents` instead and under-reported silently:
+    // that carrier is the flattened transitive closure, so a module merely REACHED by the site
+    // suppressed a row the interpreter would still resolve through the slot.
+    //
+    // The reference sites come from `reference_closure_index`, which already classified every
+    // `ExprVar` occurrence into bindings and free references; its VALUE-POSITION projection is
+    // the one consulted, since `refs_by_module` unions type annotations, record-literal type
+    // names and variant constructors into one set and a wall keyed on that union would refuse a
+    // TYPE collision at a site where the shared value slot is never consulted.
+    let mut ambiguous_reads: Vec<AmbiguousBareRead> = Vec::new();
+    let mut qualified_reads: Vec<(String, String, String)> = Vec::new();
+    if !ambiguous.is_empty() {
+        for module in scoped_graph.modules.iter() {
+            let referring = module.func_env.name.as_str();
+            let Some(refs) = ref_index.value_refs_by_module.get(referring) else {
+                continue;
+            };
+            let site_file = module.module.span.file.as_str();
+            for name in refs.iter() {
+                let Some(claimants) = ambiguous.get(name) else {
+                    continue;
+                };
+                if !indexes.falls_through_to_shared_slot(site_file, name) {
+                    // Not a defect — and worth publishing anyway, because "this site no longer
+                    // appears in the ambiguous list" and "this site now reads the declaration its
+                    // author named" are different claims and only the second is the fix.
+                    if let Some(resolved) = indexes.site_resolved_module(site_file, name) {
+                        qualified_reads.push((name.clone(), referring.to_string(), resolved));
+                    }
+                    continue;
+                }
+                ambiguous_reads.push(AmbiguousBareRead {
+                    name: name.clone(),
+                    referring_module: referring.to_string(),
+                    claimants: claimants.iter().cloned().collect(),
+                });
+            }
+        }
+        // A function of the scope's data, not of the module vector's order.
+        ambiguous_reads.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.referring_module.cmp(&b.referring_module))
+        });
+        qualified_reads.sort();
+        qualified_reads.dedup();
+    }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
         scope_identity,
-        ambiguous_bare_names: ambiguous.len(),
+        ambiguous_bare_reads: ambiguous_reads,
+        qualified_bare_reads: qualified_reads,
+        ambiguous_bare_names: ambiguous
+            .into_iter()
+            .map(|(name, claimants)| AmbiguousBareName {
+                name,
+                claimants: claimants.into_iter().collect(),
+            })
+            .collect(),
         build_split: ScopeBuildSplit {
             order_nanos,
             registry_nanos,
@@ -41003,6 +41363,16 @@ pub struct RequiredFloorOutcome {
     /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
     /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
     pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
+    /// NEWLY ENROLLED IDENTITIES REFUSED BY THE ENROLMENT MARGIN GATE, each with its cause.
+    /// Authority: `v2.workflow.floor_enrolment_margin` `enrolment_margin_blocking_cause`.
+    ///
+    /// SCOPED TO WHAT THIS CHANGE ENROLS, never the standing corpus — the same discipline
+    /// `changed_witness_blocking` keeps, and for a stronger reason here: the margin is TIGHTER
+    /// than the ceiling, so a corpus-wide reading of it would refuse main for every row already
+    /// living between the margin and the ceiling. Those rows are pre-existing debt with their own
+    /// roster (`v2.workflow.floor_cost_debt`), and refusing a PR for them would be the
+    /// externalization DESIGN section 5 names: moving an accepted cost onto whoever pushed next.
+    pub enrolment_margin_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -41033,7 +41403,7 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
@@ -41044,6 +41414,14 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
     "gunbc.v1_interpreter_opaque_host_call",
+    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`, qualified, from
+    // `floor_enrolment_margin_budget_ms`). Enrolled here for the same reason the opaque-host-call
+    // surface is: this list IS the declaration that a module is evaluated by name. It cannot live
+    // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
+    // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
+    // policy module for it would require the import to run the other way -- a cycle, which DESIGN
+    // section 4 makes the import graph's one structural prohibition.
+    "v2.workflow.floor_enrolment_margin",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -41098,10 +41476,135 @@ fn process_cpu_ms() -> u64 {
 /// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
 /// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
 /// right; only the CPU counter was absolute.
-/// The one spelling of "this reading would not read". Named rather than inlined so a check can
-/// bind to the arm that produces it: an unreadable field is `na` in every reader, and a fabricated
-/// number can only appear here by deleting this arm.
-const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the raw
+/// bracket-tagged `wall_s= phase= cpu_ms=` key=value eprintln dissolved into the observation
+/// projection (2026-09-11). The census probes assert the raw shape is ABSENT from this file by
+/// substring, so this comment deliberately does not spell it.
+#[allow(dead_code)]
+pub const FLOOR_HEARTBEAT_CENSUS_MARKER: &str = "[floor-heartbeat]";
+
+/// Mirrors of `gunbc.observation_seed_render` `seed_heartbeat_*_unreadable_cause`: one cause per
+/// source the beat reads, so the line names WHICH file did not read. A fabricated number can only
+/// appear on the line by deleting one of these arms.
+const HEARTBEAT_STAT_UNREADABLE: &str = "/proc/self/stat unreadable";
+const HEARTBEAT_STATM_UNREADABLE: &str = "/proc/self/statm unreadable";
+const HEARTBEAT_CGROUP_CURRENT_UNREADABLE: &str = "memory.current unreadable";
+const HEARTBEAT_CGROUP_EVENTS_UNREADABLE: &str = "memory.events unreadable";
+const HEARTBEAT_CGROUP_EVENTS_LOCAL_UNREADABLE: &str = "memory.events.local unreadable";
+const HEARTBEAT_VMSTAT_UNREADABLE: &str = "/proc/vmstat unreadable";
+const HEARTBEAT_STALL_UNREADABLE: &str = "stall counters unreadable";
+/// Mirror of `gunbc.observation_seed_render` `seed_heartbeat_run_id`.
+const HEARTBEAT_RUN_ID: &str = "required floor";
+
+fn heartbeat_unreadable(cause: &str) -> String {
+    format!("unreadable ({cause})")
+}
+
+fn heartbeat_measured_count(v: Option<u64>, cause: &str) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => heartbeat_unreadable(cause),
+    }
+}
+
+fn heartbeat_measured_bytes(v: Option<u64>, cause: &str) -> String {
+    match v {
+        Some(b) => measurement_human_bytes(b),
+        None => heartbeat_unreadable(cause),
+    }
+}
+
+/// Pure Rust mirror of `gunbc.observation_seed_render.seed_heartbeat_line` --
+/// `ci_heartbeat_line ∘ ci_render_line` over the floor's real sample. JUSTIFIED DIVERGENCE from
+/// the interpreter seed boundary: the heartbeat runs on the detached liveness thread in a
+/// memory-constrained context, and an interpreter render there would build a duplicate module
+/// index, consuming the very memory the heartbeat watches, on the one thread whose job is to
+/// stay alive when the interpreter is busy. The format authority stays in `.dag`: this fn is
+/// held byte-equal to the oracle by `heartbeat_tests::render_heartbeat_line_mirror_matches_seed_oracle`
+/// (which runs the `.dag` through the interpreter on the same two specimens), and the oracle's
+/// bytes for those specimens are pinned on the required floor by
+/// `test.claim.observation_seed_heartbeat_witness_test`. The stall clause is computed by the
+/// `memory_governor` mirrors of `gunbc.memory_stall_refusal` -- the same two functions the stall
+/// refusal consumes -- exactly as the `.dag` renderer calls the authority's own.
+pub(crate) fn render_heartbeat_line_mirror(
+    elapsed_ms: u64,
+    seam: &str,
+    sample: &required_floor_runner::FloorResourceSample,
+    stall: Option<&crate::memory_governor::MemoryStallObservation>,
+    emoji: bool,
+) -> String {
+    let _ = FLOOR_HEARTBEAT_CENSUS_MARKER;
+    let glyph = if emoji { "🕐" } else { "◷" };
+    // ci_subject_activity_text over [RunSegment, PhaseSegment?]: "run <id>", then ", now <phase>".
+    let identity = if seam.is_empty() {
+        format!("still in run {HEARTBEAT_RUN_ID}")
+    } else {
+        format!("still in run {HEARTBEAT_RUN_ID}, now {seam}")
+    };
+    let cpu = match sample.cpu_ms {
+        Some(ms) => crate::v1_rt::obs_human_duration(ms),
+        None => heartbeat_unreadable(HEARTBEAT_STAT_UNREADABLE),
+    };
+    let (high, max) = match sample.cgroup_events {
+        Some((h, m)) => (Some(h), Some(m)),
+        None => (None, None),
+    };
+    let (swap_in, host_major) = match sample.host_vmstat {
+        Some((s, m)) => (Some(s), Some(m)),
+        None => (None, None),
+    };
+    let stall_text = match stall {
+        Some(o) => format!(
+            "{} faults/min at {} user cpu",
+            crate::memory_governor::memory_stall_major_faults_per_minute(o),
+            crate::memory_governor::mirror_ci_human_percent(
+                crate::memory_governor::memory_stall_self_cpu_share_basis_points(o)
+            )
+        ),
+        None => heartbeat_unreadable(HEARTBEAT_STALL_UNREADABLE),
+    };
+    let vitals = [
+        format!("cpu {cpu}"),
+        format!(
+            "memory {}",
+            heartbeat_measured_bytes(sample.rss_bytes, HEARTBEAT_STATM_UNREADABLE)
+        ),
+        format!(
+            "cgroup charge {}",
+            heartbeat_measured_bytes(
+                sample.cgroup_charge_bytes,
+                HEARTBEAT_CGROUP_CURRENT_UNREADABLE
+            )
+        ),
+        format!(
+            "cgroup events high {} / max {} / local high {}",
+            heartbeat_measured_count(high, HEARTBEAT_CGROUP_EVENTS_UNREADABLE),
+            heartbeat_measured_count(max, HEARTBEAT_CGROUP_EVENTS_UNREADABLE),
+            heartbeat_measured_count(
+                sample.cgroup_local_high_events,
+                HEARTBEAT_CGROUP_EVENTS_LOCAL_UNREADABLE
+            )
+        ),
+        format!(
+            "major faults {}",
+            heartbeat_measured_count(sample.major_faults, HEARTBEAT_STAT_UNREADABLE)
+        ),
+        format!(
+            "host swap-in {}",
+            heartbeat_measured_count(swap_in, HEARTBEAT_VMSTAT_UNREADABLE)
+        ),
+        format!(
+            "host major faults {}",
+            heartbeat_measured_count(host_major, HEARTBEAT_VMSTAT_UNREADABLE)
+        ),
+        format!("stall {stall_text}"),
+    ]
+    .join(", ");
+    format!(
+        "{glyph} {} in — {identity}. {vitals}",
+        crate::v1_rt::obs_human_duration(elapsed_ms)
+    )
+}
 
 // A HEARTBEAT, BECAUSE A BLANK INTERVAL AND A FOUR-HOUR INTERVAL LOOK IDENTICAL FROM OUTSIDE.
 //
@@ -41185,17 +41688,19 @@ fn spawn_floor_heartbeat() {
         // /proc here as the resource sample does.
         let now_faults = crate::memory_governor::self_major_faults();
         let now_user_cpu = crate::memory_governor::self_user_cpu_ms();
-        let stall_fields = match (&stall_window, now_faults, now_user_cpu) {
-            (Some(prev), Some(f), Some(c)) => required_floor_runner::floor_stall_metric_fields(
-                prev.started.elapsed().as_millis() as u64,
-                Some(f.saturating_sub(prev.major_faults)),
-                Some(c.saturating_sub(prev.self_user_cpu_ms)),
-            ),
-            // A window that cannot be read has no figures, and renders the sentinel rather than
+        let stall = match (&stall_window, now_faults, now_user_cpu) {
+            (Some(prev), Some(f), Some(c)) => {
+                required_floor_runner::floor_stall_window_observation(
+                    prev.started.elapsed().as_millis() as u64,
+                    Some(f.saturating_sub(prev.major_faults)),
+                    Some(c.saturating_sub(prev.self_user_cpu_ms)),
+                )
+            }
+            // A window that cannot be read has no figures, and renders its cause rather than
             // a zero -- a zero share is the most severe reading this line can carry, so
             // fabricating one manufactures a stall. With the window opened at spawn this arm is
             // reached only where the counters themselves do not read.
-            _ => required_floor_runner::floor_stall_metric_fields(0, None, None),
+            _ => None,
         };
         if let (Some(f), Some(c)) = (now_faults, now_user_cpu) {
             stall_window = Some(required_floor_runner::FloorStallWindow {
@@ -41204,18 +41709,183 @@ fn spawn_floor_heartbeat() {
                 self_user_cpu_ms: c,
             });
         }
+        // Projected through the observation renderer's mirror (restoration of the floor-memory
+        // migration #9228 deleted; gunbc.observation_emit_census floor_heartbeat_site). Every
+        // reading that did not read prints its cause; nothing here formats a number.
         eprintln!(
-            "[floor-heartbeat] wall_s={} phase={} {} {}",
-            started.elapsed().as_secs(),
-            if seam.is_empty() { "<unset>" } else { &seam },
-            floor_resource_sample(cpu_baseline_ms),
-            stall_fields
+            "{}",
+            render_heartbeat_line_mirror(
+                started.elapsed().as_millis() as u64,
+                &seam,
+                &floor_resource_sample(cpu_baseline_ms),
+                stall.as_ref(),
+                typecheck_emoji(),
+            )
         );
         beat += 1;
         if beat % 10 == 0 {
             floor_cgroup_envelope(&format!("beat-{beat}"));
         }
     });
+}
+
+#[cfg(test)]
+mod heartbeat_tests {
+    use super::*;
+
+    /// Run `gunbc.observation_seed_render.seed_heartbeat_line` through the interpreter on the
+    /// checkout's own `.dag` roots. `None` when the entry cannot be resolved or the call refuses,
+    /// which the test then reports rather than treating as agreement.
+    #[allow(clippy::too_many_arguments)]
+    fn run_seed_heartbeat_line(
+        elapsed_ms: u64,
+        seam: &str,
+        sample: &required_floor_runner::FloorResourceSample,
+        stall: Option<&crate::memory_governor::MemoryStallObservation>,
+        emoji: bool,
+    ) -> Option<String> {
+        use v1_interpreter::Value;
+        let root = workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/gunbc/observation_seed_render.dag")
+            .to_string_lossy()
+            .into_owned();
+        let (graph, indices) = resolve_entry_graph_shared(&roots, &entry).ok()?;
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let int = |name: &str, v: u64| (Some(name.to_string()), Value::Int(v as i64));
+        let flag = |name: &str, b: bool| (Some(name.to_string()), Value::Bool(b));
+        // Unit-bearing arguments cross the seam as std.measure carriers built by the
+        // authority's own constructors, never as bare integers (review 63436; same shape as
+        // `render_batch_summary_line`'s `nanosecond`).
+        let carrier = |ctor: &str, v: u64| -> Option<Value> {
+            v1_interpreter::run_in_context_with_args(
+                &ctx,
+                ctor,
+                &[(Some("count".to_string()), Value::Int(v as i64))],
+                false,
+            )
+            .ok()
+        };
+        let ms = |name: &str, v: u64| -> Option<(Option<String>, Value)> {
+            Some((Some(name.to_string()), carrier("millisecond", v)?))
+        };
+        let bytes = |name: &str, v: u64| -> Option<(Option<String>, Value)> {
+            Some((Some(name.to_string()), carrier("byte_size", v)?))
+        };
+        let (high, max) = sample.cgroup_events.unwrap_or((0, 0));
+        let (swap_in, host_major) = sample.host_vmstat.unwrap_or((0, 0));
+        let out = v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "seed_heartbeat_line",
+            &[
+                ms("elapsed", elapsed_ms)?,
+                (Some("seam".to_string()), str_value(seam.to_string())),
+                ms("cpu", sample.cpu_ms.unwrap_or(0))?,
+                int("major_faults", sample.major_faults.unwrap_or(0)),
+                flag("stat_available", sample.cpu_ms.is_some()),
+                bytes("rss", sample.rss_bytes.unwrap_or(0))?,
+                flag("rss_available", sample.rss_bytes.is_some()),
+                bytes("cgroup_charge", sample.cgroup_charge_bytes.unwrap_or(0))?,
+                flag(
+                    "cgroup_charge_available",
+                    sample.cgroup_charge_bytes.is_some(),
+                ),
+                int("cgroup_high_events", high),
+                int("cgroup_max_events", max),
+                flag("cgroup_events_available", sample.cgroup_events.is_some()),
+                int(
+                    "cgroup_local_high_events",
+                    sample.cgroup_local_high_events.unwrap_or(0),
+                ),
+                flag(
+                    "cgroup_events_local_available",
+                    sample.cgroup_local_high_events.is_some(),
+                ),
+                int("host_swap_in", swap_in),
+                int("host_major_faults", host_major),
+                flag("vmstat_available", sample.host_vmstat.is_some()),
+                ms("stall_window", stall.map(|o| o.window_wall_ms).unwrap_or(0))?,
+                int(
+                    "stall_major_faults",
+                    stall.map(|o| o.major_faults_in_window).unwrap_or(0),
+                ),
+                ms(
+                    "stall_user_cpu",
+                    stall.map(|o| o.self_user_cpu_ms_in_window).unwrap_or(0),
+                )?,
+                flag("stall_available", stall.is_some()),
+                flag("emoji", emoji),
+            ],
+            false,
+        )
+        .ok()?;
+        match out {
+            Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    }
+
+    /// THE ORACLE RED for `render_heartbeat_line_mirror`: the mirror must be byte-equal to the
+    /// `.dag` renderer on the same two specimens `test.claim.observation_seed_heartbeat_witness_test`
+    /// pins on the required floor -- a fully-read beat and a beat where nothing read. The
+    /// expected strings are asserted here as well, so the three agree over one input: if the
+    /// `.dag` moves, the floor witness reds; if the mirror moves, this reds; and neither can
+    /// pass by the other's construction.
+    #[test]
+    fn render_heartbeat_line_mirror_matches_seed_oracle() {
+        let measured = required_floor_runner::FloorResourceSample {
+            cpu_ms: Some(59_830),
+            major_faults: Some(1234),
+            rss_bytes: Some(16_107_200_512),
+            cgroup_charge_bytes: Some(17_179_869_184),
+            cgroup_events: Some((3, 0)),
+            cgroup_local_high_events: Some(1),
+            host_vmstat: Some((0, 999)),
+        };
+        let stall =
+            required_floor_runner::floor_stall_window_observation(60_000, Some(178_795), Some(480))
+                .expect("both counters read");
+        let mirror = render_heartbeat_line_mirror(
+            1_980_000,
+            "closure-strict-resolve",
+            &measured,
+            Some(&stall),
+            true,
+        );
+        let oracle = run_seed_heartbeat_line(
+            1_980_000,
+            "closure-strict-resolve",
+            &measured,
+            Some(&stall),
+            true,
+        )
+        .expect("the .dag oracle must resolve and render");
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "🕐 33 minutes in — still in run required floor, now closure-strict-resolve. cpu 59 seconds, memory 15.0 GiB, cgroup charge 16.0 GiB, cgroup events high 3 / max 0 / local high 1, major faults 1234, host swap-in 0, host major faults 999, stall 178795 faults/min at 0.8% user cpu"
+        );
+
+        let unreadable = required_floor_runner::FloorResourceSample::default();
+        let mirror = render_heartbeat_line_mirror(500, "", &unreadable, None, false);
+        let oracle = run_seed_heartbeat_line(500, "", &unreadable, None, false)
+            .expect("the .dag oracle must resolve and render");
+        assert_eq!(
+            mirror, oracle,
+            "mirror must be byte-equal to the seed oracle"
+        );
+        assert_eq!(
+            mirror,
+            "◷ 500ms in — still in run required floor. cpu unreadable (/proc/self/stat unreadable), memory unreadable (/proc/self/statm unreadable), cgroup charge unreadable (memory.current unreadable), cgroup events high unreadable (memory.events unreadable) / max unreadable (memory.events unreadable) / local high unreadable (memory.events.local unreadable), major faults unreadable (/proc/self/stat unreadable), host swap-in unreadable (/proc/vmstat unreadable), host major faults unreadable (/proc/vmstat unreadable), stall unreadable (stall counters unreadable)"
+        );
+    }
 }
 
 /// The non-verdict admission, as a PURE FUNCTION OF TWO IDENTITY SETS.
@@ -42323,6 +42993,15 @@ pub fn run_required_regen_fixed_point(
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
+/// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --
+/// see `required_regen_host::run_dag_artifact_identity`. Re-exported here rather than reached
+/// directly so every required phase addresses its producer through one surface, the way the
+/// regen and generated-artifact paths do.
+pub use required_regen_host::{
+    run_dag_artifact_identity, DagArtifactIdentityOutcome, DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT,
+    DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT,
+};
+
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
 
@@ -42635,6 +43314,7 @@ mod reference_collector_binder_fixtures {
             tally: &mut tally,
             unclassified: &mut unclassified,
             module: "fixture".to_string(),
+            value_refs: std::collections::BTreeSet::new(),
             occurrences: 0,
             free_reference_edges: 0,
             bound_occurrences_suppressed: 0,

@@ -15,6 +15,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data apt_bin_dir: FilePath = "/usr/bin"
 data apt_local_bin_dir: FilePath = "/usr/local/bin"
 
+// Debian/Ubuntu apt packages in this corpus install their binaries under apt_bin_dir. The
+// path is derived from that directory plus the binary name, the same FHS location
+// apt_get_binary_path already names for apt-get.
+fn apt_installed_bin_path(binary: NonEmptyStr) -> FilePath {
+  concat(apt_bin_dir as String, concat("/", binary as String)) as FilePath
+}
+
 data package_coreutils: NonEmptyStr = "coreutils"     
 data package_grep: NonEmptyStr = "grep"               
 data package_diffutils: NonEmptyStr = "diffutils"     
@@ -29,6 +36,7 @@ data package_tmux: NonEmptyStr = "tmux"
 data package_curl: NonEmptyStr = "curl"
 data package_nbdkit: NonEmptyStr = "nbdkit"
 data package_socat: NonEmptyStr = "socat"
+data package_sshpass: NonEmptyStr = "sshpass"
 data package_mosquitto_clients: NonEmptyStr = "mosquitto-clients"
 data package_websocat: NonEmptyStr = "websocat"
 data package_xorriso: NonEmptyStr = "xorriso"

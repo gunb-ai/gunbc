@@ -55,6 +55,12 @@ made a 401 read as success.
 | …of those, heads that are **wrappers**, not tools | 78 |
 | `sh -c` / `bash -c` embedded-language leaves | 14 |
 
+**Every count in this section is a measurement of one commit, `5c106b8a30` (2026-09-04), and is
+not re-derived as the tree moves.** It is recorded that way deliberately rather than hand-refreshed:
+a number edited to match today's tree is unreachable from whatever produced it and rots silently at
+both ends (§6). Re-derive against a named ref before relying on any figure here; what the section
+argues does not depend on the exact values.
+
 Two precision bounds: 315 of 597 argv lines have computed heads and are unclassifiable by
 this method, so 78 is a **lower bound** on wrapper-hidden tools; the metacharacter count is
 a text match, not a parse.
@@ -67,6 +73,14 @@ a text match, not a parse.
 Counting by argv head yields `git` 43, `sshpass` 40, `sh` 13, `sudo` 9, `env` 9. The middle
 four are wrappers, not tools; the real program sits at some positional offset. All seventeen
 jq-over-ssh sites count as `sshpass`, not jq.
+
+**Moved since that measurement: #11061 binds the 40 `sshpass` heads to the computed
+`extdeps.exec.command` `sshpass_binary_name`**, in `extdeps.bmc.openbmc_password_ssh_transport` and
+`extdeps.ssh.password_session`. The invocations are unchanged — those operations still exec sshpass,
+so the tool count of 40 still holds — but they have crossed from the literal-head population into
+the computed-head one, so a re-derivation by matching the literal now answers zero for sshpass. That
+is the shape this section is arguing about: the count was never wrong, the METHOD is what the corpus
+moved out from under.
 
 This is itself the argument: tool identity is a positional accident in a flat string array, so
 the corpus cannot answer "what do we invoke" without knowing `argv[11]` is the real program

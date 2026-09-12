@@ -128,6 +128,12 @@ fn git_commit_parents_argv(parents: GitCommitParents) -> List<String> {
   }
 }
 
+// HASH-OBJECT HAS TWO FORMS HERE AND THEY ARE NOT INTERCHANGEABLE. HashObjectWrite hashes a FILE,
+// which is right when the bytes ARE a file another process produced; HashObjectWriteStdin is
+// git-hash-object(1)'s --stdin mode, whose object is exactly the bytes handed to the process, so
+// the oid is bound to the caller's content. Hashing a value the caller holds through a path it just
+// wrote leaves a name between the value and its id that another writer can reach
+// (gunbc.recurring_failure_mode identity_hashed_from_a_shared_mutable_path).
 service git.Plumbing {
   operation HashObjectWrite {
     input { address: GitRepositoryAddress, path: FilePath }
@@ -137,6 +143,19 @@ service git.Plumbing {
       stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "hash-object", "-w", "--", "{path}"] }
+  }
+
+  operation HashObjectWriteStdin {
+    input { address: GitRepositoryAddress, content: String }
+    output {
+      oid: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["git", git_repository_address_argv(address: address), "hash-object", "-w", "--stdin"]
+      stdin: content
+    }
   }
 
   operation CatFileBlob {
