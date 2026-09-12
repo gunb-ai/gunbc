@@ -1,6 +1,11 @@
 module v2.lens.complexity_accumulator_copy.roster_gate
 
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+}
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
