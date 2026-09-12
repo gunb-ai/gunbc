@@ -1558,45 +1558,42 @@ pub struct TransitionAdmission {
 /// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
 /// by joining each row against main's tree on its own tuple, not by trusting this sentence.
 
-/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11156). The `gunbc#11137 extdeps.tools.sha256sum
-/// names Filesystem instead of reaching it` row is deleted. #11137 merged, so its narrowed import
-/// is at the base, the delta it admitted stopped being producible, and a row matching no delta
-/// reports STALE and blocks the phase. Its own recorded trigger was "this row goes when #11137
-/// merges", and this change is a roster touch on which that came due.
+/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
+/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
+/// next roster-touching change, which is this one.
 ///
-/// gunbc#11138 pays the same debt on its own branch. Whichever merges second will conflict here
-/// and should keep the surviving cohort rather than restore the row: the deletion is owed once.
+/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
+/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
+/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
+/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
+/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
+/// and both consumers, `test.claim.cable_leg_coding_witness` and
+/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
+/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
+/// reading rather than an author error.
 ///
-/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
-/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
-/// BARE now name `{ Filesystem }` / `{ Clock }`. The required floor on this head enumerated eight
-/// deltas; six were a defect and are repaired in the source rather than admitted here (see below),
-/// and these two are the real transitions.
+/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
+/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
+/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
 ///
-/// ROW ONE -- `extdeps.provisioning.ubuntu_seeded_install_media_remaster`. A bare module import
-/// drags the whole module into the candidate set for EVERY name it declares, so
-/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
-/// per-module convention row some 315 modules each author -- was a candidate at this site. Naming
-/// `{ Filesystem }` drops it. NO RESOLUTION CHANGES: this module authors its own anchor, and a
-/// module's own declaration wins inside the authored region, so the removed candidate could not
-/// have won either way. What narrowed is the SET.
+///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
+///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
+///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
+///   as an import from the fixture (and as uses inside `mb_scene` and
+///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
+///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
+///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
+///   the correct reading for all nine.
 ///
-/// ROW TWO -- `gunbc.srv3_boot_once_cd`, and this one moves in the GOOD direction, which is why it
-/// is `AuthoredReferenceResolution` rather than `TargetChanged`: base `{}` -> head
-/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
-/// declaring module under no spelling at all, so the name resolved to NOTHING the author had
-/// named and reached its declaration only through pool membership. It now names it. The file
-/// already carried a modeled `DeclarationRef { module_path:
-/// "extdeps.filesystem.filesystem_io", decl_name: "Filesystem" }`; the import states in the import
-/// graph what that row already asserted.
+/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
+/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
+/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
+/// permissions standing over nothing.
 ///
-/// WHAT WAS NOT ADMITTED, because admitting it would have been the wrong answer. Six of the eight
-/// deltas were `NewUnresolvedness` -- `Present` (from `v2.std.optional`) in `gunbc.clock_read` and
-/// `gunbc.fabric_event_log_host`, and `List` (from `std.types`) in the two `roster_gate` modules --
-/// names going from resolved to UNRESOLVED. A bare import propagates reach beyond the importing
-/// module's own declarations, so narrowing one can strand names belonging to modules the file
-/// never mentions. Those are repaired with explicit imports naming the declaring module. An
-/// admission row records an intended transition; a name losing its declaration is not one.
+/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
+/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
+/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
+/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
 ///
 /// THE gunbc#10688 ROWS DISSOLVE HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
 /// THEY NAMED. The two `call_semantics_target` re-home rows reported CONSUMED on required run
@@ -1715,55 +1712,32 @@ pub struct TransitionAdmission {
 /// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
 /// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
-/// gunbc#11137 sha256sum names Filesystem instead of reaching it (2026-09-12). The row below is a
-/// DIFFERENT delta that this change produces, not that one restored: empty is the resting state
-/// and one change authoring a row back into it is the ordinary motion.
-///
-/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
-/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
-/// module into the candidate set for every name it declares, so filesystem_io's copy of
-/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
-/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
-///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
-/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
-/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. NO RESOLUTION CHANGES.
-/// `extdeps.tools.sha256sum` authors its own `extdeps_external_authority_anchor`, and a module's
-/// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
-/// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
-/// either way. What narrowed is the SET, from three modules to two, which is the qualification's
-/// whole purpose: the resolution stopped depending on a module the author never named. That no
-/// consumer changed behaviour is the required floor's verdict on this head, re-derived by
-/// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
-/// and read off its own `required-floor:` verdict line -- named rather than transcribed, because a
-/// copied count rots without anyone touching either end (DESIGN §6).
-///
-/// WHY THE `String` REQUALIFICATION IN THE SAME CHANGE NEEDS NO ROW, which is a fair question to
-/// ask of a diff that moves ten import lines onto `std.string_type`. It is not this adjudication's
-/// assertion; it is the wave phase's own measurement. That phase compares the binding table on both
-/// sides, and on this head it reported exactly ONE `TargetChanged binding` delta -- the row below --
-/// and none for `String`. The ten `String` sites appear instead as
-/// `ExplicitlyEvaluatedZeroDelta membership <module> -> std.string_type ... reached by a name this
-/// module authors`: explicitly evaluated, zero delta. The reason is that `std.types` declares no
-/// `String` at all, so `import std.types { String }` bound nothing and the read fell through to the
-/// shared slot, where scope precedence already answered `std.string_type`. Naming that module
-/// changes the read's AUTHORIZATION -- from an accident of precedence to something the author
-/// wrote -- without changing which declaration answers it. A delta row adjudicates a changed
-/// binding; there is no changed binding here to adjudicate.
-///
-/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
-/// CONSUMED outcome is authored here. The old sentence predicted CONSUMED for a two-member
-/// result that the singleton proof could never accept.
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12). #11137 merged. The required floor on gunbc#11121
+/// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
 /// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
-/// The EMPTY DOES NOT MEAN PERMISSIVE rule above makes this shrink fail-closed. This is the
-/// same instance deletion carried by the other cleanup PRs; the landing-incidence repair
-/// must itself discharge the roster debt it now enforces.
+/// Empty is the resting state; this touch deletes the row rather than inheriting it.
+/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
+/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
+/// BARE now name `{ Filesystem }` / `{ Clock }`. The floor enumerated eight deltas on that head;
+/// six were a DEFECT and are repaired in source rather than admitted -- names stranded by the
+/// narrowing, which an admission row would have recorded as an intent -- and these two are the
+/// real transitions.
 ///
-/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). The two rows below admit the
-/// transitions this change makes and are unrelated to the #11137 retirement recorded above,
-/// which main has since landed -- the deletion was owed once and is paid there.
+/// ROW ONE, `extdeps.provisioning.ubuntu_seeded_install_media_remaster`: a bare module import
+/// drags the whole module into the candidate set for every name it declares, so
+/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
+/// per-module convention row some 315 modules each author -- was a candidate here. NO RESOLUTION
+/// CHANGES: this module authors its own anchor and a module's own declaration wins inside the
+/// authored region, so the removed candidate could not have won either way. What narrowed is the
+/// SET, and `expected_candidates` names the whole surviving five rather than the winner.
+///
+/// ROW TWO, `gunbc.srv3_boot_once_cd`, moves in the GOOD direction, which is why it is
+/// `AuthoredReferenceResolution` and not `TargetChanged`: base `{}` -> head
+/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
+/// declaring module under no spelling at all, so the name reached its declaration only through
+/// pool membership. It now names it -- which is what the file's own modeled `DeclarationRef`
+/// already asserted.
+///
 /// TRIGGER: these rows go when #11156 merges. The base then carries the named imports, the deltas
 /// stop being producible, and CONSUMED comes due on the roster's next touch.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
@@ -1773,10 +1747,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
             in_declaration: "extdeps_external_authority_anchor",
             spelling: "extdeps_external_authority_anchor",
-            // The EXACT head set, read off the floor's own delta line rather than shortened to
-            // the winner: base carried `extdeps.filesystem.filesystem_io` as a sixth candidate
-            // and the narrowed import drops it. Naming the whole set is what lets the check
-            // refuse a transition that lands anywhere other than here.
             expected_candidates: &[
                 "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
                 "extdeps.shell",
@@ -1793,9 +1763,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             module: "gunbc.srv3_boot_once_cd",
             in_declaration: "srv3_boot_once_cd_resolved",
             spelling: "Filesystem",
-            // base {} -> head {extdeps.filesystem.filesystem_io}: the name resolved to NOTHING
-            // the author had named and now names its declaring module, so the head set is the
-            // single module and the singleton IS the set.
             expected_candidates: &["extdeps.filesystem.filesystem_io"],
         },
         disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
