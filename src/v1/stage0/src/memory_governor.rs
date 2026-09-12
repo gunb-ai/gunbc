@@ -213,7 +213,7 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 /// got `main_wet` SIGKILLed at rc=137 with no diagnostic. A declared constant may bound a
 /// refusal, never stand in for a reading. Remaining uses: fixtures about the fleet's own slots.
 /// Authority: `gunbc.host_budget_source` the `host_budget_declared_slot_is_not_a_reading_note` annotation.
-pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16106127360;
+pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 26843545600;
 
 /// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
 /// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
