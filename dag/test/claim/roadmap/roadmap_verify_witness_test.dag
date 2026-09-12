@@ -48,7 +48,7 @@ import gunbc.roadmap_verify {
   ReadyForAcceptance,
   DispatchWarranted,
   ContractNeededFirst,
-  NotAgentWork,
+  DispatchNotAgentWork,
   EnvironmentBlocked,
   verify_contract,
 }
@@ -263,14 +263,14 @@ test fn operator_exclusive_verify_is_not_contract_needed() -> Bool {
             mode: OperatorExclusiveMode,
           },
         ) {
-          NotAgentWork { node_id: _, mode: OperatorExclusiveMode } =>
+          DispatchNotAgentWork { node_id: _, mode: OperatorExclusiveMode } =>
             verification_outcome_label(
               outcome: VerificationNotAgentWork {
                 node_id: "n",
                 mode: OperatorExclusiveMode,
               },
             ) == "operator-exclusive"
-          NotAgentWork { node_id: _, mode: _ } => false
+          DispatchNotAgentWork { node_id: _, mode: _ } => false
           ContractNeededFirst { node_id: _ } => false
           ReadyForAcceptance { node_id: _, validations_run: _ } => false
           DispatchWarranted { node_id: _, because: _ } => false

@@ -622,7 +622,7 @@ type VerifiedDispatchDisposition
   = ReadyForAcceptance { node_id: String, validations_run: Int }
   | DispatchWarranted { node_id: String, because: String }
   | ContractNeededFirst { node_id: String }
-  | NotAgentWork { node_id: String, mode: NonAgentWorkMode }
+  | DispatchNotAgentWork { node_id: String, mode: NonAgentWorkMode }
   | EnvironmentBlocked { node_id: String, reason: String }
 
 fn dispatch_disposition_for(outcome: VerificationOutcome) -> VerifiedDispatchDisposition {
@@ -636,7 +636,7 @@ fn dispatch_disposition_for(outcome: VerificationOutcome) -> VerifiedDispatchDis
       }
     VerificationUnbound { node_id } => ContractNeededFirst { node_id: node_id }
     VerificationNotAgentWork { node_id, mode } =>
-      NotAgentWork { node_id: node_id, mode: mode }
+      DispatchNotAgentWork { node_id: node_id, mode: mode }
     VerificationRefused { node_id, label: _, reason } =>
       EnvironmentBlocked { node_id: node_id, reason: reason }
     VerificationNodeNotFound { node_id } =>
