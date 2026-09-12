@@ -7,7 +7,8 @@ import tools.cause_assertion_census {
   CauseCaretOccurrence,
   CauseSourceObserved, CauseSourceExcluded, CauseSourceLexicalRefused, cause_source_observation_from_content,
   cause_caret_occurrences, cause_import_members, cause_declarations_by_name, cause_join_declaration,
-  cause_row_evidence, cause_row_record_use, cause_census_join, cause_joined_rows
+  cause_row_evidence, cause_row_record_use, cause_census_join, cause_all_joined_rows, cause_standing_rows,
+  CauseCorpusAcquisition, cause_complete_report
 }
 import v2.std.compilers.lexing { Token }
 import v2.std.decl_index { DataDeclTypeFact }
@@ -116,7 +117,7 @@ test fn cause_census_ambiguous_assertion_cannot_become_no_assertion() -> Bool {
     cause_census_source(owner: "second", witness: false, argument: true),
     cause_census_source(owner: "test.fixture", witness: true, argument: false)
   ], declarations: [cause_census_declaration(owner: "first"), cause_census_declaration(owner: "second")])
-  count(joined.refusals) == 1 && count(cause_joined_rows(joined: joined)) == 0
+  count(joined.refusals) == 1 && count(cause_standing_rows(joined: joined, rows: cause_all_joined_rows(joined: joined))) == 0
 }
 
 test fn cause_census_deleted_production_cause_keeps_witness_refusal() -> Bool {
@@ -124,7 +125,27 @@ test fn cause_census_deleted_production_cause_keeps_witness_refusal() -> Bool {
     cause_census_source(owner: "first", witness: false, argument: true),
     cause_census_source(owner: "test.fixture", witness: true, argument: false)
   ], declarations: [])
-  count(joined.refusals) == 2 && count(cause_joined_rows(joined: joined)) == 0
+  count(joined.refusals) == 2 && count(cause_standing_rows(joined: joined, rows: cause_all_joined_rows(joined: joined))) == 0
+}
+
+test fn cause_census_ambiguity_does_not_erase_a_separate_import_gap() -> Bool {
+  let known = CauseModuleSyntax {
+    module: "test.known", path: "known.dag", witness: true,
+    carets: [CauseCaretOccurrence { spelling: "fixture_cause", start: 0, cause_argument: false }],
+    import_modules: map_insert(m: empty_map(), key: "first", value: true),
+    import_members: empty_map()
+  }
+  let report = cause_complete_report(acquisition: CauseCorpusAcquisition {
+    sources: [
+      cause_census_source(owner: "first", witness: false, argument: true),
+      cause_census_source(owner: "second", witness: false, argument: true),
+      known,
+      cause_census_source(owner: "test.ambiguous", witness: true, argument: false)
+    ],
+    excluded: [], refusals: [], identifier_counts: empty_map()
+  }, declarations: [cause_census_declaration(owner: "first"), cause_census_declaration(owner: "second")])
+  string_contains(s: report, pattern: "missing_import_files\tknown.dag\n")
+    && string_contains(s: report, pattern: "first.fixture_cause\tfirst.dag\ttrue\t\tknown.dag\tknown.dag")
 }
 
 test fn cause_census_acquired_projection_keeps_raw_lexeme_and_seed_class() -> Bool {

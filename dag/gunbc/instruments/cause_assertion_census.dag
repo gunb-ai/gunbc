@@ -464,12 +464,12 @@ fn cause_row_standing(row: CauseRowEvidence) -> CauseAssertionStanding {
   if count(sorted_map_keys(row.assertion_files)) == 0 { NO_ASSERTION } else { ASSERTED_UNESTABLISHED }
 }
 
-fn cause_row_report(row: CauseRowEvidence) -> String {
+fn cause_row_report(row: CauseRowEvidence, standing_admitted: Bool) -> String {
   join([
     cause_declaration_key(declaration: row.declaration),
     row.declaration.rel_path,
     to_string(row.production_use),
-    if row.production_use { cause_standing_label(standing: cause_row_standing(row: row)) } else { "" },
+    if row.production_use && standing_admitted { cause_standing_label(standing: cause_row_standing(row: row)) } else { "" },
     join(sorted_map_keys(row.missing_import_files), ","),
     join(sorted_map_keys(row.assertion_files), ",")
   ], "\t")
@@ -537,7 +537,16 @@ fn cause_unconsumed_string_rows(
   })
 }
 
-fn cause_joined_rows(joined: CauseCensusJoin) -> List<CauseRowEvidence> {
+fn cause_all_joined_rows(joined: CauseCensusJoin) -> List<CauseRowEvidence> {
+  fold(sorted_map_keys(joined.rows), init: [], f: (acc, key) => {
+    match map_lookup(m: joined.rows, key: key) {
+      Present { value: row } => list_snoc_item(xs: acc, item: row)
+      Absent => acc
+    }
+  })
+}
+
+fn cause_standing_rows(joined: CauseCensusJoin, rows: List<CauseRowEvidence>) -> List<CauseRowEvidence> {
   let unresolved = fold(joined.refusals, init: empty_map(), f: (acc, refusal) => {
     match refusal {
       CauseDeclarationAmbiguous { path: _, spelling: _, candidates: candidates } =>
@@ -547,14 +556,8 @@ fn cause_joined_rows(joined: CauseCensusJoin) -> List<CauseRowEvidence> {
       CauseDeclarationJoined { declaration: _ } => acc
     }
   })
-  fold(sorted_map_keys(joined.rows), init: [], f: (acc, key) => {
-    if cause_name_is_known(names: unresolved, spelling: key) { acc } else {
-      match map_lookup(m: joined.rows, key: key) {
-        Present { value: row } => list_snoc_item(xs: acc, item: row)
-        Absent => acc
-      }
-    }
-  })
+  filter(rows, row =>
+    !cause_name_is_known(names: unresolved, spelling: cause_declaration_key(declaration: row.declaration)))
 }
 
 fn cause_missing_import_file_list(rows: List<CauseRowEvidence>) -> List<String> {
@@ -565,16 +568,19 @@ fn cause_missing_import_file_list(rows: List<CauseRowEvidence>) -> List<String> 
 
 fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List<DataDeclTypeFact>) -> String {
   let joined = cause_census_join(sources: acquisition.sources, declarations: declarations)
-  let rows = cause_joined_rows(joined: joined)
+  let all_rows = cause_all_joined_rows(joined: joined)
+  let rows = cause_standing_rows(joined: joined, rows: all_rows)
+  let standing_keys = fold(rows, init: empty_map(), f: (acc, row) =>
+    map_insert(m: acc, key: cause_declaration_key(declaration: row.declaration), value: true))
   let production_rows = filter(rows, r => r.production_use)
-  let missing_files = cause_missing_import_file_list(rows: rows)
+  let missing_files = cause_missing_import_file_list(rows: all_rows)
   let unconsumed = cause_unconsumed_string_rows(declarations: declarations, identifier_counts: acquisition.identifier_counts, joined: joined.rows)
   join([
     "roots\tdag,src/v2",
     cause_acquisition_disposition_report(acquisition: acquisition),
     "method\ttools.cause_assertion_census.census",
     "evidence boundary: NO_ASSERTION is a candidate gap; ASSERTED_UNESTABLISHED records syntax, not discriminating coverage; ESTABLISHED requires a cause-identity join to v2.std.test_claim_falsification.FalsificationReceipt",
-    "identity boundary: ambiguous candidate rows are withheld from assertion-standing columns and named in the typed refusal section",
+    "identity boundary: ambiguous candidates have empty assertion-standing columns and are named in the typed refusal section; independently joined import gaps remain reportable",
     join(["missing_import_file_count", to_string(count(missing_files))], "\t"),
     join(["missing_import_files", join(missing_files, ",")], "\t"),
     join(["NO_ASSERTION", to_string(count(filter(production_rows, r => cause_row_standing(row: r) == NO_ASSERTION)))], "\t"),
@@ -584,7 +590,7 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
     "UNCONSUMED boundary: unmarked String data whose spelling has no identifier-token occurrences beyond its data-declaration names; this is a syntactic observation, not a claim about reflective consumption or intended causes",
     "population boundary: assertion standing is reported only for declarations joined from direct production cause/reason arguments; witness-only declarations retain their import-gap observation with an empty standing column",
     "declaration\tdeclaration_file\tproduction_cause_use\tassertion_standing\tmissing_import_files\tmention_or_import_files",
-    join(map(rows, r => cause_row_report(row: r)), "\n"),
+    join(map(all_rows, r => cause_row_report(row: r, standing_admitted: cause_name_is_known(names: standing_keys, spelling: cause_declaration_key(declaration: r.declaration)))), "\n"),
     join(map(unconsumed, d => join([cause_declaration_key(declaration: d), d.rel_path, "false", "UNCONSUMED", "", ""], "\t")), "\n"),
     join(["identity_refusal_count", to_string(count(joined.refusals))], "\t"),
     join(map(joined.refusals, r => cause_identity_refusal_report(refusal: r)), "\n")
