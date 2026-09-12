@@ -3,7 +3,7 @@ module extdeps.github.workflow_runs
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome }
-import std.types { CommitSha, NonEmptyStr, Timestamp }
+import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -39,6 +39,19 @@ type WorkflowRunConclusion
   | TimedOut
   | ActionRequired
   | StartupFailure
+
+// DECLARED FRONTIER for the two fields this change adds to WorkflowJobRun. They are not consumed
+// in this change: the census that reads WorkflowJobRun today asks about starvation and has no use
+// for either, and filling its fixtures with labels: [] and run_attempt: 1 is padding rather than
+// consumption. Section 3c admits that state only with the trigger stated beside it, so it is
+// stated rather than left for a reader to infer from the fields' own rationale.
+data workflow_job_run_observed_runner_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun"),
+    reason: "labels and run_attempt are added for a runtime-observation carrier that does not exist in this change: a row recording what a job's run ACTUALLY selected, joined to the workflow-source identity the file was read at, so a declared runner label and an observed one stay separable. The census that reads WorkflowJobRun today (gunbc.superseded_run_starvation_census) asks a different question and reads neither, so the fixture entries this change adds are shape-completion and not consumption. The fields are modelled here rather than in the consumer because they are what the upstream job resource returns",
+    dissolution: unbound_dissolution(description: "a production fold outside test.claim reads WorkflowJobRun.labels and WorkflowJobRun.run_attempt - the capability being that an OBSERVED runner label and attempt reach a consumer that can tell them apart from the declared ones. NOT satisfied by a witness constructing a WorkflowJobRun, nor by a fixture carrying the fields, nor by a consumer that reads one of the two"),
+  )
+]
 
 data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
@@ -111,12 +124,32 @@ type WorkflowRunList {
 // no census consumer reads individual step data; if a future consumer needs it, adding it
 // here is a backward-compatible extension (the field is optional in the API response and
 // would become an optional field here).
+// WHY THE TWO ADDED FIELDS ARE NOT OPTIONAL RICHNESS.
+//
+// labels is THE OBSERVED RUNNER LABEL, and it is a different fact from the label the workflow
+// file declared. A `runs-on` written as an expression resolves at dispatch, so the YAML can
+// establish an architecture while leaving the provider open - that is a real row in this
+// fleet's workload census, where a job whose workflow offers a Ubicloud alternative was observed
+// running on GitHub-hosted ubuntu-24.04-arm. Only the job resource settles it, and a consumer
+// with no field to put it in has to treat the declaration as the observation.
+//
+// run_attempt is what makes a job identity re-findable. A re-run reuses run_id and mints new job
+// ids, so (run_id, job_id) alone cannot say which attempt an observation belonged to, and a
+// duration compared across attempts is comparing a cold run to a warm one.
+//
+// A THIRD FIELD WAS HERE AND IS NOT. runner_name was added in the same motion because the vendor's
+// machine name is corroborating - the Biome baseline job reports "depot-1mw2k81zm2" - and then
+// nothing read it, in this change or in the one that consumes the other two. Interesting is not a
+// consumer. It is deleted rather than parked behind a frontier, because a frontier admits a
+// declaration whose consumer LANDS IN A NAMED LATER CHANGE and there is no such change for it.
 type WorkflowJobRun {
   id: Int
   run_id: Int
+  run_attempt: Int
   name: String
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
+  labels: List<String>
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?

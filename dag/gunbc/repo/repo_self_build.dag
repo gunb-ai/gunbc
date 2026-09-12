@@ -124,10 +124,27 @@ fn repo_self_test_command() -> String {
 fn repo_self_clippy_command() -> String {
   join(
     argv_words(
-      command: cargo_clippy_command(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
+      command: cargo_clippy_command(extra_args: ["--all-targets"], lint_args: repo_self_warning_denial)
     ),
     " "
   )
+}
+
+// THAT A WARNING IS AN ERROR IS ONE FACT ABOUT THIS REPOSITORY, SPELLED ONCE. It reaches rustc
+// two ways: as the lint arguments after clippy's `--` separator (the row above), and as the
+// RUSTFLAGS environment cargo forwards to every rustc it spawns -- the form the required
+// v2-native lane sets EXPLICITLY on the emitted compiler crate's build
+// (gunbc.witness_v2_native_route NativeRouteEmittedBuild). Until that lane set it, the emitted
+// crate was built under whatever RUSTFLAGS the runner's toolchain step happened to export -- the
+// setup-rust-toolchain action's DEFAULT input, which this authority never declared -- so the same
+// crate compiled clean on a workstation and refused with status 101 in CI, and the receipt's
+// "compiled" was true of a runner rather than of the crate. The environment form is the lint
+// arguments joined by a space because that is how cargo tokenises RUSTFLAGS (whitespace-split);
+// it is derived here from the same row, never re-spelled at the invocation.
+data repo_self_warning_denial: List<String> = ["-D", "warnings"]
+
+fn repo_self_warning_denial_rustflags() -> String {
+  join(repo_self_warning_denial, " ")
 }
 
 // THE DERIVED STAGE0 PARTITION CRATES, WHICH THE PACKAGE-AS-DATA DECISION ABOVE DOES NOT REACH.

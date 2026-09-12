@@ -24333,6 +24333,21 @@ fn collect_sorted_decl_lines_for_file(
 pub(crate) struct FloorDiffEdits {
     overlapping_data_items: HashSet<(String, String)>,
     edited_test_fns: HashSet<(String, String)>,
+    /// Test fns declared in a path whose DECLARATION SET IS ESTABLISHED FRESH at NEW — a wholly
+    /// added file or a rename destination, exactly the population
+    /// `parse_unified_diff_added_paths` already rules on. These identities have never executed
+    /// under their current qualified spelling, so they are the NEWLY ENROLLED set the enrolment
+    /// margin gate (`v2.workflow.floor_enrolment_margin`) is scoped to.
+    ///
+    /// A STRICT SUBSET OF `edited_test_fns`, AND DELIBERATELY NARROWER THAN "NEWLY ENROLLED"
+    /// IN FULL. A brand-new `test fn` added to an EXISTING file is also newly enrolled and is
+    /// NOT in this set: distinguishing it from a modified sibling needs the base revision's
+    /// declaration names, which no observation in this tree produces today. The narrower set is
+    /// the sound one — every member provably did not exist before, so the gate cannot refuse a
+    /// PR for a witness it did not author, which is the property that makes a merge-blocking
+    /// conjunct safe. The residual is a declared gap with a named trigger, not silence; see the
+    /// gate module's own header.
+    enrolled_test_fns: HashSet<(String, String)>,
     /// `.dag` files with a non-data, non-test-fn declaration touched — run that entry's roster.
     touched_entry_files: HashSet<String>,
 }
@@ -31081,6 +31096,22 @@ struct ExprVarClassification<'a> {
     /// reconciliation identity is over the same population as the tally; walking per-module with
     /// per-module counters against a shared tally would compare two different denominators.
     module: String,
+    /// THE VALUE-POSITION SUBSET OF THIS MODULE'S FREE REFERENCES, accumulated for the module
+    /// currently being walked and drained by the caller at its end.
+    ///
+    /// `bare` — the collector's other output — is deliberately a UNION over several question
+    /// kinds, because its consumer asks only "which modules must this scope reach": a type
+    /// annotation's `String`, a record literal's type name, a variant pattern's constructor and
+    /// an expression's callee all widen the closure equally, and over-approximating there is
+    /// harmless.
+    ///
+    /// It is NOT harmless as a refusal's population. A wall keyed on the union would refuse a
+    /// TYPE whose spelling two modules share, and would refuse it at a site where the evaluator's
+    /// shared value slot is never consulted at all. So the value positions — a free `ExprVar` and
+    /// a call's callee, the two forms the interpreter resolves through that slot — are collected
+    /// separately here rather than filtered back out of the union afterwards, which could only
+    /// ever be an approximation of the walk that already knows the answer.
+    value_refs: std::collections::BTreeSet<String>,
 }
 
 impl ExprVarClassification<'_> {
@@ -31304,12 +31335,27 @@ fn collect_node_refs_inner(
                         .map(|(_, class)| *class);
                     if classify.classify(&node.name, bound_as, chain_receiver) {
                         bare.insert(node.name.clone());
+                        // A free `ExprVar` IS a value-position read: nothing binds it here, so
+                        // the interpreter resolves it through the file's declarations, then the
+                        // author's imports, then the shared slot.
+                        classify.value_refs.insert(node.name.clone());
                     }
                 }
             }
             ExprData::ExprCall { .. } => {
                 if !node.name.is_empty() {
                     bare.insert(node.name.clone());
+                    // The callee of a call is resolved through the same tiers as a free variable
+                    // — `lookup_fn_from` — so it is a value-position read too, UNLESS an
+                    // enclosing binder holds the spelling. `fn f(observe: fn(..) -> ..) { match
+                    // observe(x) { .. } }` calls its own parameter, and `let observe =
+                    // handler.observe` calls its own local; neither reaches the shared slot, and
+                    // both were reported as ambiguous reads until the binder stack was consulted
+                    // here as it already is for `ExprVar` one arm above.
+                    let bound_as = bound.iter().rev().find(|(n, _)| n == &node.name);
+                    if bound_as.is_none() {
+                        classify.value_refs.insert(node.name.clone());
+                    }
                 }
             }
             ExprData::ExprRecordLit { .. } => {
@@ -39708,6 +39754,83 @@ impl ScopeBuildSplit {
     }
 }
 
+/// ONE AMBIGUOUS BARE NAME AND THE DECLARATIONS THAT CLAIM IT, carried rather than counted.
+///
+/// The count alone sizes the population; it cannot name a single site, so it cannot be acted on.
+/// Layer 2 of this class is a REFUSAL landed together with the rename or qualification of every
+/// site it would refuse, and that set is exactly this list — the count answers "how many", the
+/// list answers "which", and only the second is a census a deletion can be planned from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbiguousBareName {
+    pub name: String,
+    /// Every module OUTSIDE the authored region that declares this bare name, with the kind it
+    /// declares it as, sorted and deduped. The kind is carried because the two failure shapes
+    /// are not equally dangerous: a `data`/`fn` homonym crosses the evaluator's kind dispatch,
+    /// while `fn`/`fn` across two modules merely picks the wrong body.
+    pub claimants: Vec<(String, &'static str)>,
+}
+
+impl AmbiguousBareName {
+    /// The distinct kinds claiming this name, sorted and joined with `+` — the grouping key the
+    /// floor's kind histogram folds over, derived from the claimants rather than authored beside
+    /// them.
+    pub fn kind_signature(&self) -> String {
+        let mut kinds: Vec<&'static str> = self.claimants.iter().map(|(_, k)| *k).collect();
+        kinds.sort_unstable();
+        kinds.dedup();
+        kinds.join("+")
+    }
+}
+
+/// The stable spelling of an item kind for the ambiguity census. `Debug` would do as bytes and
+/// would silently re-spell every census line if a variant were renamed, so the projection is
+/// written once here.
+pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -> &'static str {
+    use crate::v1_compiler_infer_items::ItemKind;
+    match kind {
+        ItemKind::FnItem => "fn",
+        ItemKind::FuncItem => "func",
+        ItemKind::TypeItem => "type",
+        ItemKind::DataItem => "data",
+        ItemKind::ServiceItem => "service",
+        ItemKind::OtherItem => "other",
+    }
+}
+
+/// ONE BARE-NAME REFERENCE SITE THAT RESOLVES THROUGH THE AMBIGUOUS SHARED SLOT.
+///
+/// The declaration census ([`AmbiguousBareName`]) says which names two transitively-reached
+/// modules both spell; it does NOT say that anything reads one. A name nothing references bare
+/// harms nothing, and the corpus deliberately carries whole families of per-module convention
+/// rows that every extdeps module declares — so a refusal keyed on the DECLARATION population
+/// would refuse a convention rather than a defect.
+///
+/// The refusal's real population is the READ. This row is one of them: a module in the scope
+/// that references `name` in value position where `lookup_fn_from`'s own first two tiers — the
+/// site file's module's own declaration, then the module that file explicitly imported the name
+/// FROM — both decline, so the reference falls through to the shared slot and the slot holds one
+/// of several declarations that nothing the author wrote ranks.
+///
+/// COUNTED STATICALLY, over the scope's whole closure rather than over the lookups a fold
+/// happens to EXECUTE. An execution-keyed census omits a reference on a path no witness runs,
+/// which is precisely the site that would be refused later — or, if the wall were placed at
+/// runtime lookup, never refused at all.
+///
+/// THE GRAIN IS (name, referring module), NOT the occurrence. `refs_by_module` publishes a
+/// module's free references as a deduped set, so three references to one name from one module
+/// are one row here. That is the grain a rename is written at — a module either resolves the
+/// name through the shared slot or it does not, and fixing it fixes every occurrence in it — but
+/// it is not an occurrence count and must not be reported as one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmbiguousBareRead {
+    pub name: String,
+    /// The module whose body carries the reference(s) — where a qualification would be written,
+    /// or whose declaring side has to move.
+    pub referring_module: String,
+    /// The out-of-region declarations the shared slot is choosing between for this read.
+    pub claimants: Vec<(String, &'static str)>,
+}
+
 pub struct PreparedClaimScope {
     /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
     /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
@@ -39746,7 +39869,16 @@ pub struct PreparedClaimScope {
     /// genuinely undecided residue: a bare reference to a name the referring module neither
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
-    pub ambiguous_bare_names: usize,
+    pub ambiguous_bare_names: Vec<AmbiguousBareName>,
+    /// THE READS, which is the population a refusal is affordable against — see
+    /// [`AmbiguousBareRead`]. A subset of `ambiguous_bare_names` by name, and the only one of
+    /// the two whose members are defects rather than declarations.
+    pub ambiguous_bare_reads: Vec<AmbiguousBareRead>,
+    /// THE POSITIVE HALF: a reference to an otherwise-ambiguous name that does NOT fall through,
+    /// with the module that answered it. A pair leaving `ambiguous_bare_reads` proves only that
+    /// the list moved; this says what the reference resolves TO, which is the whole content of a
+    /// qualification. `(name, referring module, resolved module)`.
+    pub qualified_bare_reads: Vec<(String, String, String)>,
     /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
     /// grain the terminal correction has to choose between. The floor already reports what a
     /// scope COSTS in resident bytes (`[floor-scope-cost]`) and how many it built, and neither
@@ -39810,7 +39942,14 @@ pub struct ReferenceClosureIndex {
     pub module_count: usize,
     pub decl_index: HashMap<String, std::collections::BTreeSet<String>>,
     pub module_names: std::collections::HashSet<String>,
+    /// EVERY name a module reaches, in any position — the closure question. Over-approximate by
+    /// design: see `ExprVarClassification::value_refs` for why that is right here and wrong as a
+    /// refusal's population.
     pub refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
+    /// The VALUE-POSITION subset — free variables and call targets, the two forms the
+    /// interpreter resolves through the shared slot. This is the population the bare-name
+    /// ambiguity census and its wall are keyed on.
+    pub value_refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
 }
 
 /// THE PREPARED SUBJECTS ONE FLOOR PROCESS BUILDS, BY DESIGN: the policy module's own closure
@@ -40023,6 +40162,8 @@ fn reference_closure_index(
     let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
     let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut refs_by_module: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut value_refs_by_module: HashMap<String, std::collections::BTreeSet<String>> =
+        HashMap::new();
     for m in prepared.graph.modules.iter() {
         let name = m.func_env.name.clone();
         module_names.insert(name.clone());
@@ -40037,6 +40178,7 @@ fn reference_closure_index(
         tally: &mut class_tally,
         unclassified: &mut unclassified,
         module: String::new(),
+        value_refs: std::collections::BTreeSet::new(),
         occurrences: 0,
         free_reference_edges: 0,
         bound_occurrences_suppressed: 0,
@@ -40064,6 +40206,7 @@ fn reference_closure_index(
         for chain in chains {
             flat.insert(format!("\u{1f}{}", chain.join(".")));
         }
+        value_refs_by_module.insert(name.clone(), std::mem::take(&mut classify.value_refs));
         refs_by_module.insert(name, flat);
     }
     // EXACT RECONCILIATION IS ASSERTED BEFORE THE INDEX IS PUBLISHED, not reported after it is
@@ -40133,6 +40276,7 @@ fn reference_closure_index(
         decl_index,
         module_names,
         refs_by_module,
+        value_refs_by_module,
     });
     eprintln!(
         "[floor-phase] phase=reference-closure-index state=completed wall_ms={} modules={} names={} subject={}",
@@ -40360,8 +40504,8 @@ fn claim_scope_for_with_memos(
     // Which module won each bare name, and whether it won inside the authored region. A later
     // module claiming a name already won OUTSIDE that region is the ambiguous case: two
     // transitively-reached declarations spell the same and nothing the author wrote ranks them.
-    let mut winner_of: HashMap<String, (String, bool)> = HashMap::new();
-    let mut ambiguous: HashSet<String> = HashSet::new();
+    let mut winner_of: HashMap<String, (String, bool, &'static str)> = HashMap::new();
+    let mut ambiguous: BTreeMap<String, BTreeSet<(String, &'static str)>> = BTreeMap::new();
     {
         let module_by_name: HashMap<&str, &Rc<v1_compiler_compile::TypedModule>> = modules
             .iter()
@@ -40380,21 +40524,26 @@ fn claim_scope_for_with_memos(
             // the registry underneath it stops being ambiguous.
             for (_identity, info) in module.item_registry.iter() {
                 let name = &info.name;
+                let kind = item_kind_census_label(&info.kind);
                 match winner_of.get(name) {
                     None => {
                         item_registry.insert(name.clone(), info.clone());
-                        winner_of.insert(name.clone(), (module_name.clone(), authored));
+                        winner_of.insert(name.clone(), (module_name.clone(), authored, kind));
                     }
                     // Already claimed by this same module — one module's own registry, not a
                     // collision between two.
-                    Some((winner, _)) if winner == module_name => {}
+                    Some((winner, _, _)) if winner == module_name => {}
                     // Already won inside the authored region: the author's imports rank it and
                     // precedence has settled it. Ordinary shadowing, not ambiguity.
-                    Some((_, true)) => {}
+                    Some((_, true, _)) => {}
                     // Won outside it, and now claimed again from outside it. Nothing the author
-                    // wrote decides between these two spellings.
-                    Some((_, false)) => {
-                        ambiguous.insert(name.clone());
+                    // wrote decides between these two spellings. BOTH sides are recorded, not
+                    // just the loser: a census that named only the newcomer could not say what
+                    // it collided with, and the rename that dissolves the site needs both.
+                    Some((held_module, false, held_kind)) => {
+                        let claimants = ambiguous.entry(name.clone()).or_default();
+                        claimants.insert((held_module.clone(), *held_kind));
+                        claimants.insert((module_name.clone(), kind));
                     }
                 }
             }
@@ -40424,11 +40573,71 @@ fn claim_scope_for_with_memos(
         fragments,
     );
     let indexes_nanos = indexes_started.elapsed().as_nanos();
+    // WHICH OF THOSE AMBIGUOUS NAMES IS ACTUALLY READ THROUGH THE SHARED SLOT, decided
+    // statically over every value-position reference in the scope rather than over the lookups
+    // any fold executes. Computed HERE, after the indexes exist, because the question "does this
+    // reference fall through to the shared slot" is `lookup_fn_from`'s and is answered on
+    // `lookup_fn_from`'s own index — see `PreparedScopeIndexes::falls_through_to_shared_slot`.
+    // An earlier revision asked it of `func_env.parents` instead and under-reported silently:
+    // that carrier is the flattened transitive closure, so a module merely REACHED by the site
+    // suppressed a row the interpreter would still resolve through the slot.
+    //
+    // The reference sites come from `reference_closure_index`, which already classified every
+    // `ExprVar` occurrence into bindings and free references; its VALUE-POSITION projection is
+    // the one consulted, since `refs_by_module` unions type annotations, record-literal type
+    // names and variant constructors into one set and a wall keyed on that union would refuse a
+    // TYPE collision at a site where the shared value slot is never consulted.
+    let mut ambiguous_reads: Vec<AmbiguousBareRead> = Vec::new();
+    let mut qualified_reads: Vec<(String, String, String)> = Vec::new();
+    if !ambiguous.is_empty() {
+        for module in scoped_graph.modules.iter() {
+            let referring = module.func_env.name.as_str();
+            let Some(refs) = ref_index.value_refs_by_module.get(referring) else {
+                continue;
+            };
+            let site_file = module.module.span.file.as_str();
+            for name in refs.iter() {
+                let Some(claimants) = ambiguous.get(name) else {
+                    continue;
+                };
+                if !indexes.falls_through_to_shared_slot(site_file, name) {
+                    // Not a defect — and worth publishing anyway, because "this site no longer
+                    // appears in the ambiguous list" and "this site now reads the declaration its
+                    // author named" are different claims and only the second is the fix.
+                    if let Some(resolved) = indexes.site_resolved_module(site_file, name) {
+                        qualified_reads.push((name.clone(), referring.to_string(), resolved));
+                    }
+                    continue;
+                }
+                ambiguous_reads.push(AmbiguousBareRead {
+                    name: name.clone(),
+                    referring_module: referring.to_string(),
+                    claimants: claimants.iter().cloned().collect(),
+                });
+            }
+        }
+        // A function of the scope's data, not of the module vector's order.
+        ambiguous_reads.sort_by(|a, b| {
+            a.name
+                .cmp(&b.name)
+                .then_with(|| a.referring_module.cmp(&b.referring_module))
+        });
+        qualified_reads.sort();
+        qualified_reads.dedup();
+    }
     Ok(PreparedClaimScope {
         indexes,
         module_count,
         scope_identity,
-        ambiguous_bare_names: ambiguous.len(),
+        ambiguous_bare_reads: ambiguous_reads,
+        qualified_bare_reads: qualified_reads,
+        ambiguous_bare_names: ambiguous
+            .into_iter()
+            .map(|(name, claimants)| AmbiguousBareName {
+                name,
+                claimants: claimants.into_iter().collect(),
+            })
+            .collect(),
         build_split: ScopeBuildSplit {
             order_nanos,
             registry_nanos,
@@ -41003,6 +41212,16 @@ pub struct RequiredFloorOutcome {
     /// that ran and failed, in a run where zero claims failed. Authority for the cause spelling:
     /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`.
     pub changed_witness_blocking: Vec<ChangedWitnessBlocker>,
+    /// NEWLY ENROLLED IDENTITIES REFUSED BY THE ENROLMENT MARGIN GATE, each with its cause.
+    /// Authority: `v2.workflow.floor_enrolment_margin` `enrolment_margin_blocking_cause`.
+    ///
+    /// SCOPED TO WHAT THIS CHANGE ENROLS, never the standing corpus — the same discipline
+    /// `changed_witness_blocking` keeps, and for a stronger reason here: the margin is TIGHTER
+    /// than the ceiling, so a corpus-wide reading of it would refuse main for every row already
+    /// living between the margin and the ceiling. Those rows are pre-existing debt with their own
+    /// roster (`v2.workflow.floor_cost_debt`), and refusing a PR for them would be the
+    /// externalization DESIGN section 5 names: moving an accepted cost onto whoever pushed next.
+    pub enrolment_margin_blocking: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -41033,7 +41252,7 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
 /// import closure rather than asked directly: the barren-sidecar question the runner used to
 /// put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 6] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
@@ -41044,6 +41263,14 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 5] = [
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
     "gunbc.v1_interpreter_opaque_host_call",
+    // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`, qualified, from
+    // `floor_enrolment_margin_budget_ms`). Enrolled here for the same reason the opaque-host-call
+    // surface is: this list IS the declaration that a module is evaluated by name. It cannot live
+    // in the policy module's own frame, because `v2.workflow.floor_enrolment_margin` IMPORTS
+    // `v2.workflow.required_floor` for the ceiling it derives its margin from, and asking the
+    // policy module for it would require the import to run the other way -- a cycle, which DESIGN
+    // section 4 makes the import graph's one structural prohibition.
+    "v2.workflow.floor_enrolment_margin",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -42615,6 +42842,15 @@ pub fn run_required_regen_fixed_point(
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
+/// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --
+/// see `required_regen_host::run_dag_artifact_identity`. Re-exported here rather than reached
+/// directly so every required phase addresses its producer through one surface, the way the
+/// regen and generated-artifact paths do.
+pub use required_regen_host::{
+    run_dag_artifact_identity, DagArtifactIdentityOutcome, DAG_ARTIFACT_IDENTITY_PERTURBED_ROOT,
+    DAG_ARTIFACT_IDENTITY_SUBJECT_ROOT,
+};
+
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
 
@@ -42927,6 +43163,7 @@ mod reference_collector_binder_fixtures {
             tally: &mut tally,
             unclassified: &mut unclassified,
             module: "fixture".to_string(),
+            value_refs: std::collections::BTreeSet::new(),
             occurrences: 0,
             free_reference_edges: 0,
             bound_occurrences_suppressed: 0,

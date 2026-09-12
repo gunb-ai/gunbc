@@ -297,6 +297,26 @@ type CostShape
   | ShapeIterateBody
   | ShapeSortBody
 
+// THE STRUCTURED FORM OF THIS FACT IS NOT DECLARED HERE, AND THE FIRST REVISION OF THIS WORK
+// DECLARED IT ANYWAY. CostShape names a growth RANK and nothing else, so it cannot distinguish an
+// operation whose work is linear in BOTH operands from one linear in only the right operand -- both
+// are "linear" -- and that distinction is the whole of the concat specimen in
+// gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization. The
+// repair needs a cost expression over NAMED operands, and this module minted one: a sum-of-products
+// grammar of constant, log, linear and linearithmic factors.
+//
+// THAT WAS A FAILED DECOMPOSITION (DESIGN section 2): std.induction CostBound ALREADY owns exactly
+// that grammar -- AtomicCost PolyCost/LogCost over a named param, ProductBound for a product,
+// SumOfProductsBound for a sum of products -- and owns it more completely, with fractional and
+// log-based exponents this corpus already uses. cost_nlogn IS linearithmic and cost_graph_linear IS
+// the concat specimen, both already written. Minting a second grammar here would have put two names
+// on one concept (section 3) in the same change that argued against exactly that one field over, in
+// the module whose subject is a cost authority disagreeing with itself.
+//
+// So the structured cost of an operation is a std.induction CostBound, and CostShape remains what
+// it always was: a coarse rank for the sites that only need one. The projection between them lives
+// with the growth derivation in std.induction, beside the carrier it reads.
+
 type AlgebraFieldTemplate {
   name: String
   param_types: List<AlgebraTypeTemplate>
