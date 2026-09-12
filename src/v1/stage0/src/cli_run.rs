@@ -9407,6 +9407,45 @@ mod closure_edge_demand_tests {
     }
 
     #[test]
+    fn decomposition_releases_production_name_censuses_and_admission() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module frontier_entry\nfn main() -> Int { 1 }\n",
+        )]);
+        let index = fixture.index();
+        let root = workspace_relative_repo_path(&index.source_roots[0]);
+        let tree = closure_name_census(&index, Some(&root)).unwrap();
+        let pool = closure_name_census(&index, None).unwrap();
+        assert!(!tree.entries.is_empty());
+        assert!(!pool.entries.is_empty());
+        let owners = [Rc::downgrade(&tree), Rc::downgrade(&pool)];
+        drop(tree);
+        drop(pool);
+        admit_pool_bare_references(&index).unwrap();
+        assert!(index.pool_bare_census.borrow().is_none());
+        assert!(index.both_closure_edges.borrow().is_none());
+        let counts = private_term_entry_counts_for_test(&index);
+        assert!(counts.contains(&("closure_name_censuses", 2)));
+        assert!(counts.contains(&("bare_reference_admission", 1)));
+        for term in ["closure_name_censuses", "bare_reference_admission"] {
+            assert!(drop_attributable_terms_for_test().contains(&term));
+        }
+        assert!(owners.iter().all(|owner| owner.upgrade().is_some()));
+        assert!(drop_private_term_for_test(&index, "closure_name_censuses"));
+        assert!(owners.iter().all(|owner| owner.upgrade().is_none()));
+        assert!(index.bare_reference_admission.borrow().is_some());
+        assert!(drop_private_term_for_test(
+            &index,
+            "bare_reference_admission"
+        ));
+        assert!(index.bare_reference_admission.borrow().is_none());
+        let counts = private_term_entry_counts_for_test(&index);
+        assert!(counts.contains(&("closure_name_censuses", 0)));
+        assert!(counts.contains(&("bare_reference_admission", 0)));
+        assert!(!drop_private_term_for_test(&index, "unknown_census_term"));
+    }
+
+    #[test]
     fn heads_and_resolved_readings_agree_on_candidate_and_variant_gating() {
         let fixture = Fixture::new(&[
             ("a.dag", "module frontier\ntype Box<T> { value: T }\ntype Choice = First | Second\nfn generic<T>(x: T) -> Box<T> { Box { value: x } }\nfn duplicated() -> Int { 1 }\n"),
@@ -12163,6 +12202,14 @@ pub fn private_term_entry_counts_for_test(index: &MultiEntryIndex) -> Vec<(&'sta
         ),
         ("tree_bare_census", index.tree_bare_census.borrow().len()),
         (
+            "closure_name_censuses",
+            index.closure_name_censuses.borrow().len(),
+        ),
+        (
+            "bare_reference_admission",
+            usize::from(index.bare_reference_admission.borrow().is_some()),
+        ),
+        (
             "entry_closure_sources",
             index.entry_closure_sources.borrow().len(),
         ),
@@ -12201,6 +12248,8 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
+        "closure_name_censuses" => index.closure_name_censuses.borrow_mut().clear(),
+        "bare_reference_admission" => *index.bare_reference_admission.borrow_mut() = None,
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
         "resolved_graph_memo" => {
@@ -12249,6 +12298,8 @@ pub fn schedule_entry_completed_for_test(
 
 /// The drop-attributable term names, in the order the decomposition reports them.
 /// `source_files` is deliberately absent (see `drop_private_term_for_test`).
+/// `pool_bare_census` is the resolved differential oracle; production name lookup
+/// retains `closure_name_censuses`, with its admission verdict attributed separately.
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
     &[
@@ -12257,6 +12308,8 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "parse_cache",
         "pool_parse",
         "both_closure_edges",
+        "closure_name_censuses",
+        "bare_reference_admission",
         "pool_bare_census",
         "tree_bare_census",
         "pool_qualified_fill",
