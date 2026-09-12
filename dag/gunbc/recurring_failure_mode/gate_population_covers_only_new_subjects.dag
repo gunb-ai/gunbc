@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.gate_population_covers_only_new_subjects
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data gate_population_covers_only_new_subjects: RecurringFailureMode = RecurringFailureMode {
+  identity: "gate_population_covers_only_new_subjects" as NonEmptyStr,
+
+  receipts: [
+    "**a gate whose population is NEW subjects, guarding a property that degrades in EXISTING ones** (INVALID STATE: a gate exists to stop a property of the standing corpus, and the population it actually ranges over is only identities enrolled in this change -- declared now minus declared at the resolved diff base -- so an already-enrolled subject that degrades into the same state passes unremarked.",
+
+    "HARM: the gate reports coverage of a failure mode it only half covers, which is DESIGN section 4b rung inflation: an inflated class never ranks for climbing.",
+
+    "SPECIMEN, confirmed by reading `v2.workflow.floor_enrolment_margin` rather than by the first recount of it. The module's own comment names the failure it exists to stop: a row measured at 450ms clears the ceiling on the run that measures it and is then a coin flip on every run after. THE GATED POPULATION paragraph then names, in terms, every newly enrolled test declaration -- `declared now` minus `declared at the resolved diff base` -- joined through `floor_run_base_test_decl_census`, and says a modified sibling whose name WAS at the lookup path is not enrolled. `enrolment_margin_blockers` folds that newly enrolled set; zero newly enrolled identities is the positive control. An ALREADY-ENROLLED row is therefore outside the gate by construction, and the comment says so: the gate closes that state for NEWLY ENROLLED identities only.",
+
+    "THE SUBJECT ROW: `v2.test.claim.affected_set_universe.affected_set_universe_gate_processes_match_declared_gates` went from roughly 30ms to roughly 371ms on main and was never gated, because it was already enrolled.",
+
+    "ARITHMETIC, because the first report of this specimen used the wrong quantity. The runner inflation envelope is MULTIPLICATIVE, not additive: 1.367x median and 1.653x p90 over rows with identical eval_steps (`floor_enrolment_margin_envelope_permille` is 1653, the p90). 302 is the DERIVED ENROLMENT BUDGET (`implied_clean_run_budget` of the 500ms ceiling over that p90), not the envelope. So 371 x 1.367 = 507, which is already over 500: the row crosses at the MEDIAN runner, not merely at p90. Do not restate this as 129ms of headroom against a 302ms envelope; that was additive arithmetic on the derived budget.",
+
+    "WHY THIS IS NOT `check_subject_narrower_than_its_declared_claim`, which is the nearest neighbour and must not absorb this. There, an executing check is CITED for a population its implementation never names, so the narrowing is silent. HERE the gated population is declared honestly in the same module that states the purpose. The defect is the JOIN: a purpose sentence about a standing-corpus cliff, plus an increment-only range, is then read as coverage of the cliff. The inflation lives in that join, not in a hidden scanner. Widening the declaration to match the range (an honest repair of the neighbour) would make this gate stop claiming the 450ms coin-flip, and the standing corpus would remain unguarded -- which is this class still, only more honestly titled. The repair that climbs is ranging over the property's actual subjects, not renaming the increment gate.",
+
+    "IT IS ALSO NOT `selection_view_read_as_population`: membership here is not a measurement threshold. It is a set difference over declared test declarations. The population is authored-stable and simply is not the standing set the purpose names.",
+
+    "RUNG FOUND AT: the new-enrolment path is mechanically preventable -- the module stamps itself DESIGN section 4b rung 2, and that stamp is honest FOR THAT POPULATION. The already-enrolled path has no executing wall for the same property. DESIGN section 4b(1) makes a class's rung the MINIMUM across its in-scope paths, so the failure mode the purpose sentence names -- a measured row that is a coin flip on the next runner -- sits at mitigatable for already-enrolled identities, and citing the gate's rung 2 as that class's rung is the inflation this row exists to record.",
+
+    "ATTAINABLE CEILING: mechanically preventable over the standing enrolled population, not structurally guaranteed. Whether a claim's measured CPU, times the named runner envelope, crosses the ceiling is a measurement, not a source property; the invalid state stays writable and safety depends on the gate executing. Claiming structural impossibility would be inflation about an undecidable-from-source cost. The same ceiling the module already claims for new identities, applied to already-enrolled ones, is the honest climb -- still rung 2, over the population the purpose actually named.",
+
+    "NEXT-RUNG TRIGGER, naming the CAPABILITY: a wall that refuses an ALREADY-ENROLLED required identity whose measured CPU, multiplied by the named runner-inflation envelope, crosses the claim CPU ceiling -- the same `implied_clean_run_budget` derivation, over the standing declared population rather than declared-now minus declared-at-base. Sufficient that a row which degrades into the 450ms-then-coin-flip state after enrolment is refused on a later PR, not only on the PR that first enrolled it. A trigger that names only this increment gate, or that names a larger ceiling, does not discharge this: the first leaves the standing population unguarded, and the second papers over the cliff the module was written to refuse.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.workflow.floor_enrolment_margin", decl_name: "enrolment_margin_blockers", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.floor_enrolment_margin", decl_name: "floor_enrolment_margin_envelope_permille", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.floor_enrolment_margin", decl_name: "floor_enrolment_margin_budget_ms", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_run_base_test_decl_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.affected_set_universe", decl_name: "affected_set_universe_gate_processes_match_declared_gates", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.check_subject_narrower_than_its_declared_claim", decl_name: "check_subject_narrower_than_its_declared_claim", field: WholeDeclaration },
+  ],
+}
