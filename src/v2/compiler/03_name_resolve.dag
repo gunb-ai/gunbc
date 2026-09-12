@@ -4,7 +4,7 @@ import v2.std.language_model { LanguageModel }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
-import v2.std.symbol_index { empty_symbol_index }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
   DeclaredBinding,
   Namespace,
@@ -97,6 +97,36 @@ type ResolutionSubject {
 type Admission {
   subject: ResolutionSubject
   imports: FreeMonoid<Import>
+}
+
+// Shared by every subject admitted against the same language and root collection.
+// The Outcome stays with the caller so validation diagnostics retain their original
+// per-subject refusal boundary when the context is constructed before admission.
+type ResolutionContext {
+  lm: LanguageModel
+  roots: FreeMonoid<NormalizedTree>
+  symbol_index: SymbolIndex
+}
+
+fn resolution_context(
+  lm: LanguageModel,
+  roots: FreeMonoid<NormalizedTree>
+) -> Outcome<ResolutionContext> {
+  match validate_module_roots(roots: roots) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: validated_roots, diagnostics: d } =>
+      Accepted {
+        value: ResolutionContext {
+          lm: lm,
+          roots: validated_roots,
+          symbol_index: symbol_index_fill_module_roots(
+            index: empty_symbol_index(),
+            roots: normalized_tree_roots_to_nodes(roots: validated_roots)
+          )
+        },
+        diagnostics: d
+      }
+  }
 }
 
 type AdmittedSubject {
@@ -593,7 +623,7 @@ fn admitted_subject_from_bindings(
   bindings: Map<Symbol, Symbol>,
   base: Namespace,
   subject_module_root: NormalizedTree,
-  validated_roots: FreeMonoid<NormalizedTree>,
+  symbol_index: SymbolIndex,
   module_qn: QualifiedName
 ) -> AdmittedSubject {
   AdmittedSubject {
@@ -603,10 +633,7 @@ fn admitted_subject_from_bindings(
         bindings: bindings
       ),
       canonical_symbols: base.canonical_symbols,
-      symbol_index: symbol_index_fill_module_roots(
-        index: empty_symbol_index(),
-        roots: normalized_tree_roots_to_nodes(roots: validated_roots)
-      ),
+      symbol_index: symbol_index,
       module_qn: module_qn
     },
     subject_root: subject_module_root
@@ -621,9 +648,27 @@ fn namespace_for_subject(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<AdmittedSubject> {
-  match validate_module_roots(roots: roots) {
+  namespace_for_subject_in_context(
+    context: resolution_context(lm: lm, roots: roots),
+    admission: admission,
+    index: index,
+    active_roots: active_roots,
+    policy: policy
+  )
+}
+
+fn namespace_for_subject_in_context(
+  context: Outcome<ResolutionContext>,
+  admission: Admission,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
+) -> Outcome<AdmittedSubject> {
+  match context {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: validated_roots, diagnostics: validate_diag } =>
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      let validated_roots = shared.roots
+      let lm = shared.lm
       match subject_module_root_for_name(
         roots: validated_roots,
         name: admission.subject.name
@@ -654,7 +699,7 @@ fn namespace_for_subject(
                         bindings: b,
                         base: base,
                         subject_module_root: subject_module_root,
-                        validated_roots: validated_roots,
+                        symbol_index: shared.symbol_index,
                         module_qn: admission.subject.name
                       ),
                       diagnostics: validate_diag
@@ -675,7 +720,7 @@ fn namespace_for_subject(
                         bindings: b,
                         base: base,
                         subject_module_root: subject_module_root,
-                        validated_roots: validated_roots,
+                        symbol_index: shared.symbol_index,
                         module_qn: admission.subject.name
                       ),
                       diagnostics: validate_diag
@@ -706,32 +751,51 @@ fn resolve_with_admission_policy(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
-  match namespace_for_subject(
-    lm: lm,
-    roots: roots,
+  resolve_with_admission_context_policy(
+    context: resolution_context(lm: lm, roots: roots),
     admission: admission,
     index: index,
     active_roots: active_roots,
     policy: policy
-  ) {
-    Accepted { value: admitted, diagnostics: namespace_diag } =>
-      match resolve_with_namespace_policy(
-        tree: admitted.subject_root,
-        namespace: admitted.namespace,
-        lm: lm,
+  )
+}
+
+fn resolve_with_admission_context_policy(
+  context: Outcome<ResolutionContext>,
+  admission: Admission,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
+) -> Outcome<ResolvedTree> {
+  match context {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: shared, diagnostics: _ } =>
+      match namespace_for_subject_in_context(
+        context: context,
+        admission: admission,
+        index: index,
+        active_roots: active_roots,
         policy: policy
       ) {
-        Accepted { value: resolved, diagnostics: resolve_diag } =>
-          Accepted {
-            value: resolved,
-            diagnostics: diagnostics_merge(outer: namespace_diag, inner: resolve_diag)
+        Accepted { value: admitted, diagnostics: namespace_diag } =>
+          match resolve_with_namespace_policy(
+            tree: admitted.subject_root,
+            namespace: admitted.namespace,
+            lm: shared.lm,
+            policy: policy
+          ) {
+            Accepted { value: resolved, diagnostics: resolve_diag } =>
+              Accepted {
+                value: resolved,
+                diagnostics: diagnostics_merge(outer: namespace_diag, inner: resolve_diag)
+              }
+            Rejected { diagnostics: r } =>
+              Rejected {
+                diagnostics: rejected_with_pending(pending: namespace_diag, rejected: r)
+              }
           }
-        Rejected { diagnostics: r } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: namespace_diag, rejected: r)
-          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 

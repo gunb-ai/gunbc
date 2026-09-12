@@ -10,6 +10,8 @@ import v2.compiler.name_resolve {
   ImportVisible,
   ResolutionSubject,
   admit_import_entry,
+  resolution_context,
+  resolve_with_admission_context_policy,
   resolve_with_admission,
   resolve_with_admission_policy,
   subject_module_root_for_name,
@@ -23,7 +25,7 @@ import v2.extdeps.languages.dag {
   dag_named_edge
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_node }
+import v2.std.algebra { fold_list, fold_list_node }
 import v2.std.collection { empty_map }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic {
@@ -34,7 +36,8 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted,
   Textual,
-  diagnostics_eq
+  diagnostics_eq,
+  non_empty_diagnostics_eq
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.logic { Bool }
@@ -375,3 +378,46 @@ test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool 
   })
 }
 
+
+fn fc_shared_validation_refusal_preserved(roots: FreeMonoid<NormalizedTree>) -> Bool {
+  match validate_module_roots(roots: roots) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: expected } =>
+      let context = resolution_context(
+        lm: dag_language_model_surface_empty_prelude(),
+        roots: roots
+      )
+      fold_list(
+        xs: [^fc_dup_seg, ^fc_missing_seg],
+        empty: true,
+        cons: fn(preserved, subject) {
+          preserved && match resolve_with_admission_context_policy(
+            context: context,
+            admission: Admission {
+              subject: ResolutionSubject { name: fc_qn(seg: subject) },
+              imports: Empty
+            },
+            index: source_root_index_empty(),
+            active_roots: Empty,
+            policy: ImportScoped
+          ) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: actual } =>
+              non_empty_diagnostics_eq(a: expected, b: actual)
+          }
+        }
+      )
+  }
+}
+
+test fn shared_context_duplicate_root_refusal_preserves_every_diagnostic_for_each_subject() -> Bool {
+  fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
+    fc_shared_validation_refusal_preserved(roots: roots)
+  })
+}
+
+test fn shared_context_malformed_root_refusal_preserves_every_diagnostic_for_each_subject() -> Bool {
+  fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
+    fc_shared_validation_refusal_preserved(roots: roots)
+  })
+}
