@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
 import std.decl_ref { DeclarationRef }
+import std.algebra { trim }
 import extdeps.bmc.ipmi_sel {
   OemSelPayload,
   SystemBootInitiatedOffset,
