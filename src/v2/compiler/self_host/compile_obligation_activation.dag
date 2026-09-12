@@ -1,0 +1,179 @@
+module v2.compiler.self_host.compile_obligation_activation
+
+// WHAT ACTIVATION IS, AND WHY IT IS NOT A SECOND ROSTER. An obligation is ACTIVATED when the door
+// actually runs the lens that decides it against a tree the door admitted. Before this module the
+// only thing that named the required lenses per-obligation was `gunbc.v2_compile_obligation_census`,
+// which is a ledger of what SHOULD hold; nothing carried the executing counterpart at obligation
+// grain, so "this obligation is enforced on this compile" was a sentence rather than a value.
+//
+// EVERY NODE HERE IS DERIVED FROM `required_compile_lens_roster()` AND THIS MODULE ENUMERATES
+// NOTHING. `activation_of` is a total function from one roster row to one activation, and
+// `compile_obligation_activations` is `list_map` over the roster -- so a lens added to the roster
+// gains an activation without an edit here, and one removed loses it. A hand-written list beside the
+// roster would be the DESIGN section 3 fork this file exists to avoid, and it would rot in the
+// direction that reads safe: an activation for a lens the door no longer runs.
+//
+// NO GATE LOGIC LIVES HERE. An activation calls `apply_compile_lens`, which calls the row's own
+// declared `gate`. This module decides WHICH obligations are activated and reports what came back;
+// it never decides whether a tree passes one. The witness stamp carries the row's `identity` and
+// `grain` unchanged, so an activation cannot rename the lens it ran.
+//
+// THE IMPORT DIRECTION IS FORCED AND IS WORTH STATING, because the obvious reading of "the door
+// consumes the activations" is unbuildable. `v2.compiler.compile` does not import self_host, and
+// every self_host module imports FROM `v2.compiler.*`; an activation authority needs `CompileLens`
+// and the roster, both of which live in the door's module, so a door that imported this file would
+// close a cycle and the import graph's one structural law is acyclicity (DESIGN section 4). The
+// direction that survives is this one: activation is a self-host reading of the door, routing every
+// node through the SHARED DOOR below rather than re-deriving what the door does.
+import v2.compiler.compile {
+  CompileLens,
+  CompileLensGrain,
+  CompileLensRoot,
+  CompileLensSubtree,
+  LensGateWitness,
+  compile_lens_grain_eq,
+  required_compile_lens_roster,
+  run_required_lens_gates,
+  run_required_lens_gates_on_subtree
+}
+import v2.compiler.infer { InferredTree, infer }
+import v2.compiler.resolve { ResolvedTree }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import v2.std.algebra { Cons, Empty, fold_list, list_map, list_reverse }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Diagnostics, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+
+// ONE ACTIVATION, AND THE `activate` FIELD IS THE NODE ITSELF. The carrier is not a description of
+// an activation -- it holds the transform the door runs, closed over its row, so the only way to
+// read what this activation does is to run it. A record of identity and grain WITHOUT the function
+// would be the census again at a second address (DESIGN section 3), and it would be inert: nothing
+// could execute it, which section 3c calls dangling however well it is modelled.
+type CompileObligationActivation {
+  lens: DeclarationRef
+  grain: CompileLensGrain
+  activate: fn(InferredTree) -> Outcome<List<LensGateWitness>>
+}
+
+// THE GRAIN IS LOAD-BEARING HERE, NOT DECORATIVE, AND THE FIRST DRAFT GOT IT WRONG. That draft ran
+// every activation once against the root, which is correct for a root-grain row and silently wrong
+// for a subtree-grain one: a subtree lens saw only the root, so a tree whose ROOT is well formed and
+// whose child is a hollow alias activated clean. The witness that caught it is
+// `a_refused_subject_is_refused_through_the_door` -- the activation carried `grain` and then nothing
+// read it, which is the field-that-decides-nothing shape.
+//
+// THE ROUTING IS THE DOOR'S OWN, not a copy. Each activation calls the runner the door calls for its
+// grain -- `run_required_lens_gates` at root, `run_required_lens_gates_on_subtree` per node -- over a
+// single-row list. Re-deriving "visit every node once" here would be a second walk beside the door's,
+// and the two would drift; worse, a hand walk inside a gate is the O(n^2) self-application the
+// complexity lens exists to refuse.
+fn activation_of(lens: CompileLens) -> CompileObligationActivation {
+  CompileObligationActivation {
+    lens: lens.identity,
+    grain: lens.grain,
+    activate: match lens.grain {
+      CompileLensRoot =>
+        fn(tree) { run_required_lens_gates(inferred: tree, lenses: [lens]) }
+      CompileLensSubtree =>
+        fn(tree) { run_required_lens_gates_on_subtree(inferred: tree, lenses: [lens]) }
+    }
+  }
+}
+
+// THE BUNDLES ARE A DECLARED SECTION 3c FRONTIER, NOT A LIST, and the reason is recorded because the
+// two available shortcuts are both defects this repository has names for.
+//
+// WHAT A BUNDLE IS MEANT TO BE: a lens together with the obligations its gate actually CONSUMES --
+// the complexity bundle being the accumulator-copy lens and what it rests on, the determinism bundle
+// likewise. That is a real relation over the Node tree, and it is what makes "supporting
+// obligations" mean something rather than name a topic.
+//
+// WHY IT IS NOT WRITTEN HERE. Deriving it needs a lens's identity resolved to the Node that DECLARES
+// it inside an ingested compiler tree, and then the closure of that subtree. Both halves nearly
+// exist and neither is the join: `v2.std.dependency dependency_lens` already folds a tree into
+// node-grain dependency edges and is consumed today by `v2.lens.affected_set` and
+// `v2.lens.wiring_liveness`, and `v2.compiler.program_assembly assemble_program_from_ingest`
+// already supplies the compiler's own source as a tree. What is absent is the binding from a
+// `CompileLens` identity -- a `DeclarationRef` -- to its declaring `Node` in that tree, at which
+// point a bundle is a closure and never an author's opinion.
+//
+// THE TWO SHORTCUTS, REFUSED BY NAME. Grouping by module-path prefix would work today
+// (`v2.lens.complexity_accumulator_copy` against `v2.lens.determinism`) and is a LEXICAL PROXY for
+// the predicate -- `gunbc.recurring_failure_mode population_selector_that_cannot_admit_a_counterexample`
+// is filed for exactly that, and DESIGN section 3 says paths are discriminators rather than gospel.
+// Adding a `kind` field to the roster row would make the grouping authoritative without making it
+// derived: a label wearing a derivation's costume, which is the defect this module's own neighbours
+// were corrected for.
+//
+// CONSUMER: this module's activation set, handing a door a lens together with its supporting
+// obligations. TRIGGER: a `CompileLens` identity resolved to its declaring `Node` within an ingested
+// compiler tree, so `dependency_lens` over that subtree yields the consumed-obligation set. KILL
+// CONDITION: if that binding lands and bundles are still authored rather than derived, the frontier
+// was wrong and the grouping is an opinion, which is the state this comment refuses.
+//
+// THE DERIVATION, AND IT IS THE WHOLE MEMBERSHIP STORY. One activation per roster row, in roster
+// order, by `list_map` over the single authority.
+fn compile_obligation_activations() -> List<CompileObligationActivation> {
+  list_map(xs: required_compile_lens_roster(), f: fn(lens) { activation_of(lens: lens) })
+}
+
+// THE LEDGER IS FAIL-CLOSED AND STOPS AT THE FIRST REFUSAL, which is the door's own behaviour and
+// not a policy invented here: a tree that a required lens refuses is not compiled, so an activation
+// ledger that kept going would be reporting about a program that does not exist. The refusal is
+// returned with the lens's own diagnostics, so the caller learns WHICH obligation refused from the
+// diagnostic rather than from position.
+fn activate_all_in(
+  activations: List<CompileObligationActivation>,
+  inferred: InferredTree
+) -> Outcome<List<LensGateWitness>> {
+  bind_outcome(
+    o: fold_list(
+      xs: activations,
+      empty: Accepted { value: Empty, diagnostics: None },
+      cons: fn(acc, a) {
+        match acc {
+          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Accepted { value: seen, diagnostics: od } =>
+            match a.activate(inferred) {
+              Rejected { diagnostics: d } => Rejected { diagnostics: d }
+              Accepted { value: produced, diagnostics: _ } =>
+                Accepted {
+                  value: fold_list(xs: produced, empty: seen, cons: fn(acc2, w) { Cons { head: w, tail: acc2 } }),
+                  diagnostics: od
+                }
+            }
+        }
+      }
+    ),
+    f: fn(seen) { Accepted { value: list_reverse(xs: seen), diagnostics: None } }
+  )
+}
+
+fn activate_all(inferred: InferredTree) -> Outcome<List<LensGateWitness>> {
+  activate_all_in(activations: compile_obligation_activations(), inferred: inferred)
+}
+
+// THE SHARED DOOR. Every node hangs off this one entry: a resolved tree is admitted by `infer`
+// exactly once and the activations all read THAT tree. Two doors would mean two subjects, and an
+// obligation activated against a tree the compile did not use answers about nothing.
+fn activate_through_compile_door(source: ResolvedTree) -> Outcome<List<LensGateWitness>> {
+  bind_outcome(o: infer(tree: source), f: fn(inferred) { activate_all(inferred: inferred) })
+}
+
+// THE READING SIDE, so a caller can ask which obligations a compile activated without re-running
+// them. It reports the ledger's identities, not the roster's: asking the roster would answer the
+// question the roster already answers and would be green whether or not anything ran.
+fn activated_lens_identities(witnesses: List<LensGateWitness>) -> List<DeclarationRef> {
+  list_map(xs: witnesses, f: fn(w) { w.lens })
+}
+
+fn activation_covers(witnesses: List<LensGateWitness>, lens: CompileLens) -> Bool {
+  fold_list(
+    xs: witnesses,
+    empty: false,
+    cons: fn(acc, w) {
+      acc || (declaration_ref_eq(a: w.lens, b: lens.identity)
+              && compile_lens_grain_eq(a: w.grain, b: lens.grain))
+    }
+  )
+}

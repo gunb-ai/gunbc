@@ -1,0 +1,219 @@
+module v2.test.lens_application.compile_obligation_activation
+
+// THE EXECUTING CONSUMER OF THE ACTIVATION AUTHORITY. Activation is a claim that the door RAN the
+// lens deciding an obligation, so a suite that only inspected the carrier would be asserting the
+// shape of a claim about execution -- the specification-without-execution DESIGN section 5 names.
+// Every witness here runs activations against a real tree through the shared door, and the two
+// join controls run in BOTH directions because a one-way join is satisfied by a set that has
+// extras and a set that has gaps in equal measure.
+import v2.compiler.self_host.compile_obligation_activation {
+  CompileObligationActivation,
+  activate_all,
+  activate_through_compile_door,
+  activated_lens_identities,
+  activation_covers,
+  activation_of,
+  compile_obligation_activations
+}
+import v2.compiler.compile {
+  CompileLens,
+  CompileLensSubtree,
+  LensGateWitness,
+  compile_lens_grain_eq,
+  required_compile_lens_roster
+}
+import v2.compiler.infer { InferredTree }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.witness { Holds }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts, claim_inferred_tree }
+
+// THE SUBJECT A REQUIRED LENS REFUSES, and it is refused by a REAL roster row rather than a probe
+// lens authored for this file: a type carrier that is neither kernel-ambient nor carries a named
+// fact reads as NoFact, so v2.lens.fact_density refuses it with fact_density_hollow_alias_locus.
+//
+// IT IS AN EMPTY CONJ AND NOT A BARE ATOM, and the difference is the whole point of routing through
+// the door. A bare atom IS refused -- but by `infer`, upstream of every lens, so a red built on it
+// passes while the activations do nothing at all. Measured: the first version of this witness used
+// claim_atom_node and failed, because the door refused before any gate ran. The subject has to be
+// one the door ADMITS and a lens then refuses, or the red is about the wrong stage.
+data activation_hollow_field: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^compile_obligation_activation_hollow_alias } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data activation_hollow_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Named { name: ^ram_bytes }, target: activation_hollow_field }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+// THE SUBJECT EVERY REQUIRED LENS ADMITS. Same shape the coverage-join suite uses for its executed
+// control: a conjunction carrying one named field whose target is a kernel-ambient int, which is a
+// modelled fact rather than a hollow alias.
+data activation_clean_field: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_int } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data activation_clean_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Named { name: ^ram_bytes }, target: activation_clean_field }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn activation_tree(root: Node) -> InferredTree {
+  claim_inferred_tree(
+    root: root,
+    facts: claim_inferred_facts(
+      type_symbol: ^compile_obligation_activation_type,
+      algebra_symbol: ^compile_obligation_activation_algebra,
+      descent_symbol: ^compile_obligation_activation_descent,
+    )
+  )
+}
+
+// THE DISCRIMINATING RED, THROUGH THE SHARED DOOR. Not activate_all: this enters at
+// activate_through_compile_door, so the tree is admitted by infer exactly as the door admits it and
+// the refusal is the door's refusal. If the activations stopped calling their rows' gates, this
+// greens.
+fn diagnostics_name_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  if d.head.reason == reason {
+    true
+  } else {
+    fold_list(xs: d.tail, empty: false, cons: fn(acc, diag) { acc || diag.reason == reason })
+  }
+}
+
+test fn a_refused_subject_is_refused_through_the_door() -> Bool {
+  match activate_through_compile_door(source: activation_hollow_root) {
+    Rejected { diagnostics: d } =>
+      diagnostics_name_reason(d: d, reason: ^fact_density_hollow_alias_locus)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THAT RED, so a green above cannot come from activations that refuse
+// everything. Same entry, same route, a subject every required lens admits.
+test fn an_admitted_subject_passes_through_the_door() -> Bool {
+  match activate_through_compile_door(source: activation_clean_root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE LEDGER IS PRODUCED BY EXECUTION AND NAMES WHAT RAN. Asserting against the roster would be a
+// comparison whose two operands share a producer; this asserts that the ledger a RUN produced
+// covers every registration, at identity AND grain.
+fn ledger_covers_every_roster_row(tree: InferredTree) -> Bool {
+  match activate_all(inferred: tree) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: witnesses, diagnostics: _ } =>
+      fold_list(
+        xs: required_compile_lens_roster(),
+        empty: true,
+        cons: fn(acc, lens) { acc && activation_covers(witnesses: witnesses, lens: lens) }
+      )
+  }
+}
+
+test fn a_clean_run_activates_every_required_obligation() -> Bool {
+  ledger_covers_every_roster_row(tree: activation_tree(root: activation_clean_root))
+}
+
+// THE REVERSE JOIN, AND ITS SUBJECT IS A FIXTURE BECAUSE THE DOOR CANNOT VIOLATE IT. An earlier
+// version asked this of the ledger a real run produced, and that check was GREEN BY CONSTRUCTION:
+// the runners stamp each witness from the roster row they are folding, so the ledger's identities
+// and the roster's have a common producer and cannot disagree. Measured, not reasoned -- a plant
+// that made every activation carry a phantom identity left that witness passing, because the stamp
+// never comes from the activation's own field. That is
+// `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`, and a check in that
+// state is the decoration DESIGN section 4b calls worse than absent.
+//
+// So the subject here is an AUTHORED witness list, which is where the red is authorable: a fixture
+// may hand the reader an observation the door could not produce, exactly as section 4b sanctions for
+// a compiler's own regression probes. What this establishes is narrower than the deleted version
+// pretended and is actually true: the reader reports an unregistered identity when it sees one.
+data activation_phantom_witness: LensGateWitness = LensGateWitness {
+  lens: decl_ref(module_path: "v2.lens.not_registered", decl_name: "phantom_gate"),
+  grain: CompileLensSubtree,
+  witness: Holds { value: activation_clean_field }
+}
+
+fn every_identity_is_registered(witnesses: List<LensGateWitness>) -> Bool {
+  fold_list(
+    xs: activated_lens_identities(witnesses: witnesses),
+    empty: true,
+    cons: fn(acc, id) {
+      acc && fold_list(
+        xs: required_compile_lens_roster(),
+        empty: false,
+        cons: fn(seen, lens) { seen || declaration_ref_eq(a: id, b: lens.identity) }
+      )
+    }
+  )
+}
+
+test fn an_unregistered_identity_in_the_ledger_is_reported() -> Bool {
+  !every_identity_is_registered(witnesses: [activation_phantom_witness])
+}
+
+// THE POSITIVE CONTROL FOR THAT READER, so the red above cannot come from a reader that rejects
+// every list. The subject is the ledger a real run produced, which must read as fully registered.
+test fn a_real_runs_ledger_is_entirely_registered() -> Bool {
+  match activate_all(inferred: activation_tree(root: activation_clean_root)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: witnesses, diagnostics: _ } =>
+      every_identity_is_registered(witnesses: witnesses)
+  }
+}
+
+// THE DERIVATION, ASSERTED AT IDENTITY GRAIN RATHER THAN BY COUNT. A length check passes while an
+// activation is derived from the wrong row, which is the case a count cannot see -- and this
+// module's whole claim is that activations are derived from the roster and not authored beside it.
+fn activation_for_identity(id: DeclarationRef) -> Bool {
+  fold_list(
+    xs: compile_obligation_activations(),
+    empty: false,
+    cons: fn(acc, a) { acc || declaration_ref_eq(a: a.lens, b: id) }
+  )
+}
+
+test fn every_roster_row_has_an_activation() -> Bool {
+  fold_list(
+    xs: required_compile_lens_roster(),
+    empty: true,
+    cons: fn(acc, lens) { acc && activation_for_identity(id: lens.identity) }
+  )
+}
+
+// AND EVERY ACTIVATION CARRIES ITS OWN ROW'S GRAIN. The grain decides which runner the door uses,
+// so an activation that kept the identity and lost the grain would route a root lens per node --
+// the O(n^2) self-application the complexity lens exists to refuse.
+test fn every_activation_carries_its_rows_grain() -> Bool {
+  fold_list(
+    xs: required_compile_lens_roster(),
+    empty: true,
+    cons: fn(acc, lens) {
+      acc && compile_lens_grain_eq(a: activation_of(lens: lens).grain, b: lens.grain)
+    }
+  )
+}
+
+// ONE ACTIVATION PER ROW, NOT A SET THAT HAPPENS TO COVER. The identity joins above are satisfied by
+// a list carrying a row twice, which would run a gate twice and stamp two witnesses for one
+// obligation; this is the cardinality half and it is deliberately separate from them.
+test fn the_activation_set_is_one_per_roster_row() -> Bool {
+  length(compile_obligation_activations()) == length(required_compile_lens_roster())
+}
