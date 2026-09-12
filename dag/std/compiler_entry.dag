@@ -121,18 +121,17 @@ fn native_driver_cost_account(
   }
 }
 
-// A COMPLETE --v2-native-route RUN WITH NO COST LINES IS UN-OBSERVED, NOT GREEN.
-// The driver eprints [native-cost-partition] on ITS stderr; that is the receipt the
-// reconcile verdict rides on. Observed requires that tag after NativeDriverChildExited.
-// On main the host spawn (native_lane_runner run_native_binary) captures that pipe via
-// Command::output and drops it on the success path — measured: srv2 15508s admitted run,
-// 3536 verdict rows, zero cost tags in host-captured stderr (eager-raven-113 universe
-// receipt on #11060). #10940 relays child stderr after output() returns; that is
-// exit-gated, not streamed (Command::output collects to completion — a cancelled run never
-// reaches the relay). Empty stderr on NativeDriverChildExited is the discriminating RED.
-// A child that has not exited is NativeDriverCostRowsPending: the same empty pipe is
-// not "no rows". The live spawn bind is that harness, not a second copy of the
-// reconcile law.
+// DECLARED FRONTIER (DESIGN §3c) — not a live bind on this head.
+// native_driver_cost_row_standing has no executing consumer here: planted witnesses
+// prove the fold; they do not exercise the spawn. The named later consumer is #10940
+// run_native_binary after its relay: NativeDriverChildExited { stderr: the forwarded
+// child pipe } and refuse NativeDriverCostRowsUnobserved. Trigger: #10940 merges
+// (success-path child stderr is forwarded). Until then this PR stays off
+// native_lane_runner.rs (deep-cat-655 owns it). Observed is [native-cost-partition]
+// after exit; Unobserved is exited without that tag; Pending is the child still running.
+// On main, Command::output drops the pipe on success (eager-raven-113 #11060 universe
+// receipt: 15508s admitted, 3536 verdict rows, zero partition tags in host-captured
+// stderr). The relay is exit-gated, not streamed.
 
 type NativeDriverChildStanding
   = NativeDriverChildExited { stderr: String }
