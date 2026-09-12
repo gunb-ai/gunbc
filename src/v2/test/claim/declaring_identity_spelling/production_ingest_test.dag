@@ -1,0 +1,191 @@
+module v2.test.claim.declaring_identity_spelling.production_ingest
+
+import v2.compiler.declaring_identity_spelling_census {
+  DeclaringIdentitySpellingCensus,
+  spelling_census_from_ingest,
+  spelling_census_is_total
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import std.algebra { Cons, Empty }
+import std.declaring_identity_spelling {
+  IdentityUnbound,
+  IdentityAmbiguous,
+  IdentityOwnerless,
+  ResolvedSpelling,
+  UnresolvableSpelling
+}
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// FILE FIXTURES INGESTED ON THE PRODUCTION ROUTE (bytes match the committed files).
+// Inline Medium is the same tokenize→parse→normalize as a SourceFile read; it is not a
+// hand-built Node tree.
+
+data value_outside_call_source: String = "module v2.test.fixture.declaring_identity_spelling.value_outside_call\n\ndata marker: Int = 0\n\nfn go() -> Int { marker }\n"
+
+data shorter_source: String = "module v2.test.fixture.declaring_identity_spelling.shorter\n\ntype Marker {}\n\nfn f(x: Marker) -> Int { 0 }\n"
+
+data unresolvable_source: String = "module v2.test.fixture.declaring_identity_spelling.unresolvable\n\ndata row: ThisNameIsNotDeclaredInThisFixture = 0\n"
+
+data call_only_source: String = "module v2.test.fixture.declaring_identity_spelling.call_only\n\nfn helper() -> Int { 0 }\n\nfn go() -> Int { helper() }\n"
+
+fn fixture_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: unit,
+      file_path: path
+    },
+    compilation_unit: unit,
+    source_root: V2Tree
+  }
+}
+
+fn authored_unbound(census: DeclaringIdentitySpellingCensus, spelling: String) -> Bool {
+  fold_list(
+    xs: census.rows,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || match row {
+        UnresolvableSpelling { authored: authored, cause: cause } =>
+          qualified_name_to_dotted_string(qn: authored) == spelling
+            && match cause {
+              IdentityUnbound => true
+              IdentityAmbiguous => false
+              IdentityOwnerless => false
+            }
+        ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: _ } => false
+      }
+    }
+  )
+}
+
+fn ingest_of(text: String, path: String, unit: Symbol) -> SourceRootIngest {
+  Cons {
+    head: fixture_read(text: text, path: path, unit: unit),
+    tail: Empty
+  }
+}
+
+fn census_of(text: String, path: String, unit: Symbol) -> DeclaringIdentitySpellingCensus {
+  match spelling_census_from_ingest(
+    ingest: ingest_of(text: text, path: path, unit: unit),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: census, diagnostics: _ } => census
+    Rejected { diagnostics: _ } =>
+      DeclaringIdentitySpellingCensus { rows: Empty, unreadable_roots: Empty }
+  }
+}
+
+fn authored_is(census: DeclaringIdentitySpellingCensus, spelling: String) -> Bool {
+  fold_list(
+    xs: census.rows,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || match row {
+        ResolvedSpelling { authored: authored, declaring: _, canonical: _, path_verdict: _ } =>
+          qualified_name_to_dotted_string(qn: authored) == spelling
+        UnresolvableSpelling { authored: authored, cause: _ } =>
+          qualified_name_to_dotted_string(qn: authored) == spelling
+      }
+    }
+  )
+}
+
+test fn value_outside_call_ingests_holds() -> Bool {
+  match spelling_census_from_ingest(
+    ingest: ingest_of(
+      text: value_outside_call_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+      unit: ^xl3_value_outside_call
+    ),
+    lm: dag_language_model()
+  ) {
+    Accepted { value: census, diagnostics: _ } => spelling_census_is_total(census: census)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_bare_value_mention_outside_a_call_reaches_the_census_holds() -> Bool {
+  authored_is(
+    census: census_of(
+      text: value_outside_call_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+      unit: ^xl3_value_outside_call
+    ),
+    spelling: "marker"
+  )
+}
+
+// The production site that observes today: a bare value mention outside a call.
+// It reaches the census and is IdentityUnbound: symbol_index_fill over this
+// normalized tree does not bind the mention, so SpelledShorter cannot fire here.
+// Discriminating Shorter is v2.test.claim.declaring_identity_spelling.verdict_fold.
+// This unbound arm reds when fill binds the mention.
+test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
+  authored_unbound(
+    census: census_of(
+      text: value_outside_call_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+      unit: ^xl3_value_outside_call
+    ),
+    spelling: "marker"
+  )
+}
+
+// User type-position names currently REACH the collector (unlike kernel Int/Bool).
+test fn a_user_type_position_name_reaches_the_census_today() -> Bool {
+  authored_is(
+    census: census_of(
+      text: shorter_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/shorter.dag",
+      unit: ^xl3_shorter
+    ),
+    spelling: "Marker"
+  )
+}
+
+test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
+  authored_unbound(
+    census: census_of(
+      text: unresolvable_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/unresolvable.dag",
+      unit: ^xl3_unresolvable
+    ),
+    spelling: "ThisNameIsNotDeclaredInThisFixture"
+  )
+}
+
+test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
+  !authored_is(
+    census: census_of(
+      text: call_only_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/call_only.dag",
+      unit: ^xl3_call_only
+    ),
+    spelling: "helper"
+  )
+}
+
+test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
+  !authored_is(
+    census: census_of(
+      text: value_outside_call_source,
+      path: "src/v2/test/fixture/declaring_identity_spelling/value_outside_call.dag",
+      unit: ^xl3_value_outside_call
+    ),
+    spelling: "Int"
+  )
+}

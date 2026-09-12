@@ -15,11 +15,13 @@ import v2.std.qualified_name { QualifiedName }
 // collector or a parse-tree walker.
 //
 // WHAT PRODUCTION INGEST ACTUALLY SEES is measured by
-// v2.test.claim.namespace_xl0.call_argument_mention_survival, not by this comment:
-// a value mention outside a call and a parameter mention survive; a call argument,
-// a callee name, and a type-position name do not. Restoration for the three absences
-// is the body-lowering repair (eager-raven-113 / gunbc#11207). Empty .sites on a
-// type-position or call-only fixture is RED, not Clear.
+// v2.test.claim.namespace_xl0.call_argument_mention_survival and
+// v2.test.claim.declaring_identity_spelling.production_ingest, not by this comment:
+// a value mention outside a call and a user type-position name can reach the collector;
+// a call argument, a callee name, and a kernel type-position name (Int/Bool) do not.
+// Restoration for the absences is the body-lowering repair (eager-raven-113 / gunbc#11207,
+// scope widened to type positions). Empty .sites on a kernel type-position or call-only
+// fixture is RED, not Clear.
 
 type UnresolvableCause
   = IdentityAmbiguous

@@ -900,7 +900,7 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
       )
     StageXL3DeclaringIdentitySpelling =>
       NotDerivable {
-        why: "no carrier censuses occurrences not yet spelled at their declaring identity. The wave wall's binding channel keys on leaf segments, deliberately invariant under requalification, so it cannot answer this either. Derivable once the spelling census exists." as NonEmptyStr,
+        why: "the spelling census producer exists (v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest) over module_roots_from_source_root_ingest -> normalized_tree_roots_to_nodes -> collector. A bare value mention outside a call reaches the census and is IdentityUnbound (fill does not bind it on this tree), so SpelledShorter is fold-only until that bind exists. Kernel type-position names (Int/Bool) and call contents are invisible -- std.declaring_identity_spelling InvisibleUntilTypePositionMentionSurvives (kernel) and InvisibleUntilCallExpressionRetained; restoration eager-raven-113 / gunbc#11207. Measured by v2.test.claim.declaring_identity_spelling.production_ingest and v2.test.claim.namespace_xl0.call_argument_mention_survival. Empty sites on those classes is today's loss, not Clear. The wave wall keys on leaf segments and cannot answer this. Derivable once kernel type-position and call mentions survive normalize and visible mentions bind in the index." as NonEmptyStr,
         cause: needs(i: DeclaringIdentitySpellingCensus)
       }
     StageXL4ReferenceDerivedGraph =>

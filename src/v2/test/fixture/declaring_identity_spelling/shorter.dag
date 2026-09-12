@@ -2,4 +2,4 @@ module v2.test.fixture.declaring_identity_spelling.shorter
 
 type Marker {}
 
-data row: Marker = Marker {}
+fn f(x: Marker) -> Int { 0 }
