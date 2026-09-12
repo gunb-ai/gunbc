@@ -36,7 +36,7 @@ data native_lane_closure_walk_unkeyed_membership_population: List<String> = [
   "v2.compiler.compile native_lane_module_reachable — the walk; membership was a per-round fold and is now a keyed lookup",
   "v2.compiler.compile native_lane_closure_modules — its one caller, which now builds the index before the recursion",
   "v2.compiler.compile native_lane_facts_index — the index the repair adds, module to imports, built once",
-  "v2.compiler.compile native_lane_module_named — the list scan the walk no longer reaches (still consumed by the closure-member join)",
+  "v2.compiler.compile native_lane_module_named — the list scan the walk stopped reaching, DELETED outright by review 64753's repair once the closure-member join moved to native_lane_module_set / native_lane_module_in_set and no caller was left",
 ]
 
 data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {

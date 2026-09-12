@@ -37,7 +37,8 @@ import v2.compiler.compile {
   NativeLaneUniverseModule,
   native_lane_closure_modules,
   native_lane_closure_round_budget,
-  native_lane_module_named,
+  native_lane_module_set,
+  native_lane_module_in_set,
   native_lane_declared_module_name,
   native_lane_unowned_row_path
 }
@@ -1404,10 +1405,12 @@ fn native_lane_closure_budget_probe(budget: Int) -> Outcome<List<String>> {
 test fn the_closure_holds_what_the_universe_needs() -> Bool {
   match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: closure, diagnostics: _ } =>
-      native_lane_module_named(xs: closure, name: "v2.test.subject")
-      && native_lane_module_named(xs: closure, name: "v2.std.logic")
-      && native_lane_module_named(xs: closure, name: native_route_live_control_module)
+    Accepted { value: closure, diagnostics: _ } => {
+      let members = native_lane_module_set(modules: closure)
+      native_lane_module_in_set(set: members, name: "v2.test.subject")
+        && native_lane_module_in_set(set: members, name: "v2.std.logic")
+        && native_lane_module_in_set(set: members, name: native_route_live_control_module)
+    }
   }
 }
 
@@ -1415,7 +1418,7 @@ test fn a_module_no_universe_member_imports_is_outside_the_closure() -> Bool {
   match native_lane_closure_budget_probe(budget: native_lane_closure_round_budget) {
     Rejected { diagnostics: _ } => false
     Accepted { value: closure, diagnostics: _ } =>
-      !native_lane_module_named(xs: closure, name: "v2.unrelated.outsider")
+      !native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.unrelated.outsider")
   }
 }
 
@@ -1436,7 +1439,8 @@ test fn an_exhausted_closure_budget_refuses_the_derivation() -> Bool {
 test fn a_closure_finishing_on_its_last_round_is_accepted() -> Bool {
   match native_lane_closure_budget_probe(budget: 2) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: closure, diagnostics: _ } => native_lane_module_named(xs: closure, name: "v2.std.logic")
+    Accepted { value: closure, diagnostics: _ } =>
+      native_lane_module_in_set(set: native_lane_module_set(modules: closure), name: "v2.std.logic")
   }
 }
 
