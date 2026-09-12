@@ -26,7 +26,6 @@ import gunbc.contributor_onboarding_path {
   ordinals_are_gapless,
   step_ordinals_are_gapless,
   obstacles_with_undeclared_step,
-  self_serve_steps_missing_verification,
   steps_blocked_on_others,
   operator_gated_obstacles,
   obstacles_undiscoverable_from_symptom,
@@ -126,13 +125,6 @@ test fn every_obstacle_names_a_declared_step() -> Bool {
 // the arm above is satisfied by a predicate that accepts everything.
 test fn an_undeclared_step_id_is_not_accepted() -> Bool {
   !step_id_is_declared(id: "no-such-step") && step_id_is_declared(id: "build")
-}
-
-// A SELF-SERVE STEP WITHOUT A VERIFICATION IS A STEP A NEWCOMER CANNOT TELL THEY FINISHED, which
-// is how a half-completed step surfaces three steps later attached to the wrong cause.
-test fn every_self_serve_step_says_when_it_is_done() -> Bool {
-  count(self_serve_steps_missing_verification()) == 0
-    && count(filter(onboarding_steps, s => blocker_is_self_serve(b: s.blocker))) > 0
 }
 
 // THE BUS-FACTOR CENSUS IS NON-EMPTY AND IS REPORTED RATHER THAN ASSERTED AWAY.

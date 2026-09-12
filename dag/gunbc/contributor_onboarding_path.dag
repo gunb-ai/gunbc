@@ -50,6 +50,25 @@ type OnboardingBlocker
 // refuses it. `v2.std.integer` `integer_int_to_decimal_string` records that same class as already
 // repaired for two Int-valued callers, so re-introducing it would have been a silent regression of
 // that fix. Every other `dag/gunbc` caller consumes the Int renderer; this one now does too.
+// WHY THERE IS NO CHECK THAT A STEP CARRIES A VERIFICATION (review 64666).
+//
+// There was one, and it was a DECORATION. `self_serve_steps_missing_verification` filtered the
+// steps on an empty verification string -- but `verification` is a `NonEmptyStr`, which
+// `std.types` defines as `String where non_empty`, and that refinement is an enforced wall rather
+// than documentation: the receipt beside `FilePath` in the same module records that `where
+// non_empty` made empty-string absent-file sentinels UNWRITABLE, which is why the corpus carries
+// `"<none>"` re-spellings instead of empty ones. So the filtered population was empty by
+// construction and the witness arm consuming it was permanently green while presenting as
+// coverage of a state nobody can write -- which DESIGN section 4b names as worse than absent,
+// because it will be cited as coverage.
+//
+// AND IT IS NOT A MISSING FIXTURE. Two sibling arms in this change were repaired exactly that way
+// after review 64627: a duplicated ordinal and a reading order with no first-day row are both
+// perfectly authorable, so each got an authored fixture and a real RED. This one is different in
+// kind -- the forbidden state has no constructor, at the top rung of the ladder, so the field type
+// IS the guarantee and a validator restating it would be the second representation section 5
+// forbids. The right answer is that the check is gone and this paragraph says why, so the next
+// author does not read its absence as an oversight and add it back.
 type OnboardingStep {
   ordinal: Int
   id: NonEmptyStr
@@ -488,10 +507,6 @@ fn step_ordinals_are_gapless(steps: List<OnboardingStep>) -> Bool {
 
 fn ordinals_are_gapless() -> Bool {
   step_ordinals_are_gapless(steps: onboarding_steps)
-}
-
-fn self_serve_steps_missing_verification() -> List<OnboardingStep> {
-  filter(onboarding_steps, s => blocker_is_self_serve(b: s.blocker) && (s.verification as String) == "")
 }
 
 fn step_blocks(s: OnboardingStep) -> List<MarkdownBlock> {
