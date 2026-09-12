@@ -59,6 +59,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   FirmwareProgressObserved,
   FirmwareProgressRecord,
   LocalizableFrom,
+  FirmwareEmittedUndecodedErrorCodes,
   NoRestartInWindow,
   NothingObservedBeyondActivation,
   SolHostBytesObserved,
@@ -72,6 +73,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   boot_cycles,
   firmware_console_report,
   NoTerminalStated,
+  UndecodedErrorCodesOnly,
   TrainingRefusedByFirmware,
   pre_os_bringup_verdict,
 }
@@ -427,9 +429,28 @@ test fn host_bytes_stating_no_terminal_beside_an_empty_window_are_no_restart() -
 // `ERR:` code lines alone state no terminal -- they are undecoded hex, handled exactly like the
 // OEM payload; only an `ERROR:` statement does, and the locus comes from the firmware's own
 // SK[]/MC[] lines with Absent where it named none.
-test fn err_code_lines_without_a_statement_are_no_terminal() -> Bool {
+test fn err_code_lines_without_a_statement_are_undecoded_codes_not_no_terminal() -> Bool {
   match firmware_console_report(lines: ["ERR: 84f05923", "ERR: 8ff0c500", "CP: 3ff00800"]) {
+    UndecodedErrorCodesOnly { err_lines: 2 } => true
+    _ => false
+  }
+}
+
+test fn checkpoints_alone_state_no_terminal() -> Bool {
+  match firmware_console_report(lines: ["NOTICE:  DRAM FW version 210525", "CP: 0ff00900", "CP: 3ff00800"]) {
     NoTerminalStated => true
+    _ => false
+  }
+}
+
+// UNDECODED CODES BESIDE AN EMPTY WINDOW ARE NOT "NO RESTART" -- that would read like a pass.
+test fn undecoded_err_codes_beside_an_empty_window_are_their_own_undetermined_cause() -> Bool {
+  match pre_os_bringup_verdict(
+    window: [],
+    console: SolHostBytesObserved { capture_path: "x", bytes: byte_size(count: 500), report: UndecodedErrorCodesOnly { err_lines: 3 } },
+    profile: mtcollins1_pre_os_capabilities,
+  ) {
+    BringupUndetermined { cause: FirmwareEmittedUndecodedErrorCodes { err_lines: 3 } } => true
     _ => false
   }
 }

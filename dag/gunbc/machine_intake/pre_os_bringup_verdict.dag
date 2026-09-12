@@ -81,9 +81,20 @@ type FirmwareStatedLocus {
   memory_controller: Int?
 }
 
+// UndecodedErrorCodesOnly IS THE REFUSAL ARM FOR A GRAMMAR TRANSCRIBED FROM ONE CAPTURE: the
+// firmware emitted `ERR:` lines this parser cannot read and no `ERROR:` statement it can. Such a
+// capture must not fall through to "no restart in window", which reads like a pass; it is carried
+// as its own undetermined cause (eager-owl-205, 2026-09-12).
 type FirmwareConsoleReport
   = NoTerminalStated
+  | UndecodedErrorCodesOnly { err_lines: Int }
   | TrainingRefusedByFirmware { statement: NonEmptyStr, locus: FirmwareStatedLocus }
+
+data firmware_err_code_line_prefix: NonEmptyStr = "ERR:"
+
+fn is_firmware_err_code_line(line: String) -> Bool {
+  starts_with(s: trim(line), prefix: firmware_err_code_line_prefix as String)
+}
 
 // THE INTEGER BETWEEN `<marker>` AND THE NEXT `]`, or Absent when the line does not carry it in
 // that shape. Absent is the honest answer for a line that mentions the marker but renders the
@@ -142,8 +153,9 @@ fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReport
 // those are undecoded hex and are treated exactly as the OEM payload is.
 fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
   let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
+  let err_lines = list_length(items: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
   match done.statement {
-    Absent => NoTerminalStated
+    Absent => if err_lines > 0 { UndecodedErrorCodesOnly { err_lines: err_lines } } else { NoTerminalStated }
     Present { value: st } => TrainingRefusedByFirmware { statement: st, locus: FirmwareStatedLocus { socket: done.socket, memory_controller: done.memory_controller } }
   }
 }
@@ -268,7 +280,8 @@ fn remediation_localization(profile: PreOsObservationCapabilities) -> Remediatio
 }
 
 type BringupUndeterminedCause
-  = NoRestartInWindow
+  = FirmwareEmittedUndecodedErrorCodes { err_lines: Int }
+  | NoRestartInWindow
   | RestartsBelowTerminalThreshold { restarts_without_progress: Int }
   | NothingObservedBeyondActivation
 
@@ -314,6 +327,7 @@ fn pre_os_bringup_verdict(
   match stated {
     TrainingRefusedByFirmware { statement: st, locus: l } =>
       TrainingRefusedByFirmwareStatement { statement: st, localization: StatedByFirmware { locus: l } }
+    UndecodedErrorCodesOnly { err_lines: _ } => sel_window_verdict(window: window, console: console, profile: profile)
     NoTerminalStated => sel_window_verdict(window: window, console: console, profile: profile)
   }
 }
@@ -337,7 +351,12 @@ fn sel_window_verdict(
   } else {
     match console {
       SolBannerOnly { capture_path: _, bytes: _ } => BringupUndetermined { cause: NothingObservedBeyondActivation }
-      SolHostBytesObserved { capture_path: _, bytes: _, report: _ } => BringupUndetermined { cause: NoRestartInWindow }
+      SolHostBytesObserved { capture_path: _, bytes: _, report: r } =>
+        match r {
+          UndecodedErrorCodesOnly { err_lines: n } => BringupUndetermined { cause: FirmwareEmittedUndecodedErrorCodes { err_lines: n } }
+          NoTerminalStated => BringupUndetermined { cause: NoRestartInWindow }
+          TrainingRefusedByFirmware { statement: _, locus: _ } => BringupUndetermined { cause: NoRestartInWindow }
+        }
       SolCaptureUnreadable { capture_path: _ } => BringupUndetermined { cause: NoRestartInWindow }
     }
   }
