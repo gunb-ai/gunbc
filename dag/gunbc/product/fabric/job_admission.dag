@@ -1,0 +1,55 @@
+module product.fabric.job_admission
+
+import v2.std.optional { Present, Absent }
+import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
+
+// These are declarations at the customer boundary, not a compliance regime.
+// No producer currently supplies authority to handle declared ePHI. A declaration
+// of ordinary data is not evidence of a broader handling authority.
+type JobClassification
+  = DeclaredNonEphi
+  | DeclaredEphi
+  | ClassificationUnresolved
+
+type JobAdmissionRefusal
+  = EphiHandlingAuthorityHasNoProducer
+  | AdmissionReceiptMissing
+  | AdmissionReceiptSubjectMismatch
+
+type JobAdmissionReceipt<P> sole_constructor {
+  subject: FabricIdentity<P, WorkKey>
+}
+
+type JobAdmission<P>
+  = JobAdmitted { receipt: JobAdmissionReceipt<P> }
+  | JobHeld { subject: FabricIdentity<P, WorkKey> }
+  | JobRefused { subject: FabricIdentity<P, WorkKey>, reason: JobAdmissionRefusal }
+
+// The producer and the execution boundary share the classification fold. Hold
+// remains distinguishable even if the caller has no receipt yet.
+fn classify_job<P>(subject: FabricIdentity<P, WorkKey>, classification: JobClassification) -> JobAdmission<P> {
+  match classification {
+    DeclaredNonEphi => JobAdmitted { receipt: JobAdmissionReceipt { subject: subject } }
+    DeclaredEphi => JobRefused { subject: subject, reason: EphiHandlingAuthorityHasNoProducer }
+    ClassificationUnresolved => JobHeld { subject: subject }
+  }
+}
+
+// An invoice is not an input to admission. This boundary rechecks the current
+// declaration: a previously admitted subject does not authorize changed handling.
+// The receipt is sealed on source acceptance; external authenticity remains the
+// responsibility of the transport that supplies it, not of a branded string.
+fn admit_job<P>(subject: FabricIdentity<P, WorkKey>, classification: JobClassification, receipt: JobAdmissionReceipt<P>?) -> JobAdmission<P> {
+  match classify_job(subject: subject, classification: classification) {
+    JobHeld { subject: s } => JobHeld { subject: s }
+    JobRefused { subject: s, reason: r } => JobRefused { subject: s, reason: r }
+    JobAdmitted { receipt: _ } => match receipt {
+      Absent => JobRefused { subject: subject, reason: AdmissionReceiptMissing }
+      Present { value: r } => if fabric_identity_eq(left: subject, right: r.subject) {
+        JobAdmitted { receipt: r }
+      } else {
+        JobRefused { subject: subject, reason: AdmissionReceiptSubjectMismatch }
+      }
+    }
+  }
+}
