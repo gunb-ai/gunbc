@@ -1,0 +1,1742 @@
+module test.claim.review_sheet_converge_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.upsert_decision { Noop, Apply, Refuse }
+import gunbc.ensure { EnsureMayApply, EnsureObserveOnly }
+import gunbc.review_sheet_projection {
+  ReviewColumn,
+  ReviewColumnKind,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  ReviewSheetSchema,
+  ReviewSheetProjection,
+  ProjectionRow,
+  DerivedCell,
+  ObservedSheet,
+  ObservedSheetRow,
+  ReviewSheetWritePlan,
+  DerivedCellWrite,
+  ReviewSheetConverged,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
+  write_plan_preserves_operator_columns,
+  write_plan_touches_column,
+  write_plan_covers_column_letter,
+  a1_row_span_includes_letter,
+  classify_review_sheet,
+  conflict_reason,
+  append_listing_row,
+  columns_by_name,
+  judgement_for_listing,
+  buyer_review_judgement_read_frontier,
+  JudgementBlank,
+  JudgementEntered,
+  JudgementUnreadable,
+  listing_standing_label,
+  read_listing_standing,
+  StandingObserved,
+  StandingGone,
+  StandingKnown,
+  StandingBlank,
+  StandingForeign,
+  a1_column_letter,
+  a1_column_letters,
+  a1_column,
+  a1_cell,
+  a1_cell_wire,
+  a1_row_span_wire,
+  a1_origin_cell,
+  A1Column,
+  A1Cell,
+}
+import gunbc.review_sheet_sheets {
+  observed_sheet_from_value_range,
+  review_sheet_ensure,
+  value_ranges_from_write_plan,
+  value_range_includes_column_letter,
+  TabBoundWritePlan,
+  ReadbackObserved,
+  ReadbackUnreadable,
+  review_sheet_batch_value_input_option,
+  review_sheet_get_value_render_option,
+  review_sheet_get_values_request,
+  sheet_a1_range_wire,
+  SheetA1Range,
+  A1EndOpen,
+  A1EndClosed,
+  A1EndWholeTab,
+  review_sheet_live_access,
+  review_sheet_live_access_from,
+  ReviewSheetLiveOpen,
+  ReviewSheetLiveNotAdmitted,
+  live_sheets_transport_frontier,
+}
+import extdeps.google.sheets {
+  ValueRange,
+  sheets_major_dimension_wire,
+  sheets_major_dimension_from_wire,
+  DimensionRows,
+  DimensionColumns,
+  sheets_serviceusage_api_id,
+  sheets_value_input_option_wire,
+  sheets_value_input_option_from_wire,
+  sheets_value_render_option_wire,
+  sheets_value_render_option_from_wire,
+  RenderFormattedValue,
+  RenderUnformattedValue,
+  RenderFormula,
+  InputRaw,
+  InputUserEntered,
+  BatchUpdateValuesResponse,
+}
+import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import std.disposition { Terminal, Scaffold, RealizationDispatch, SingleAuthority, SubstrateMandatoryTag }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  DeviceOnce,
+  EveryProvision,
+  BreakGlassOnly,
+  NoDischargeSiteModeled,
+  DischargedAt,
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.review_sheet_operator {
+  admit_review_sheet_operator,
+  fleet_review_sheet_operator_admission,
+  buyer_review_spreadsheet,
+  buyer_review_workspace_domain_sharing,
+  buyer_review_workspace_sharing_reading,
+  buyer_review_account_tenancy,
+  spreadsheet_share_intervention,
+  share_intervention_for_spreadsheet,
+  sheets_api_enablement_decision,
+  sheets_api_desired_enablement,
+  serviceusage_enable_iam_grant_intervention,
+  SpreadsheetAwaitingCreation,
+  SpreadsheetIdentified,
+  ReviewSheetWorkspaceDomain,
+  ReviewSheetPlainGoogleAccount,
+  AccountTenancyUnobserved,
+  DomainSharingPolicyUnobserved,
+  DomainSharingForbidsExternalPrincipals,
+  DomainSharingAllowsServiceAccountShare,
+  ReviewSheetOperatorAdmitted,
+  ReviewSheetAwaitingHuman,
+  ReviewSheetNeedsApiEnable,
+  ReviewSheetEstateUnresolved,
+  ReviewSheetOperatorRefused,
+}
+import gunbc.gcp_service_enablement {
+  decide_service_enablement,
+  service_enablement_from_state_wire,
+  live_serviceusage_get_frontier,
+  live_serviceusage_enable_frontier,
+  ServiceEnablementObservation,
+  ServiceDesiredEnabled,
+  ServiceDesiredDisabled,
+  ServiceObservedEnabled,
+  ServiceObservedDisabled,
+  ServiceEnablementUnobserved,
+  ServiceEnablementStateForeign,
+}
+import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
+import gunbc.gcp_estate_observation { sheets_calling_home, SheetsCallingHomeUnresolved }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId }
+
+fn w_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "listing_id" as NonEmptyStr,
+    columns: [
+      ReviewColumn { name: "title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } },
+      ReviewColumn { name: "standing" as NonEmptyStr, kind: ListingStanding },
+      ReviewColumn { name: "judgement" as NonEmptyStr, kind: OperatorEntered },
+    ]
+  }
+}
+
+fn w_projection(rows: List<ProjectionRow>) -> ReviewSheetProjection {
+  ReviewSheetProjection { schema: w_schema(), rows: rows }
+}
+
+fn w_row(listing_id: NonEmptyStr, title: String) -> ProjectionRow {
+  ProjectionRow {
+    listing_id: listing_id,
+    derived: [DerivedCell { column: "title" as NonEmptyStr, value: title }],
+  }
+}
+
+fn w_observed(headers: List<String>, rows: List<List<String>>) -> ObservedSheet {
+  ObservedSheet {
+    headers: headers,
+    rows: rows |> enumerate |> map(pair => ObservedSheetRow { data_index: pair.first, cells: pair.second }),
+  }
+}
+
+fn w_headers() -> List<String> {
+  ["listing_id", "title", "standing", "judgement"]
+}
+
+fn w_standing_observed() -> String {
+  listing_standing_label(state: StandingObserved)
+}
+
+fn w_value_range(rows: List<List<String>>) -> ValueRange {
+  ValueRange {
+    range: "Review!A1:D",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], rows) },
+  }
+}
+
+fn w_open_request(tab: NonEmptyStr) -> SheetA1Range {
+  review_sheet_get_values_request(tab: tab)
+}
+
+test fn converge_twice_unchanged_is_noop() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", w_standing_observed(), ""]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetConverged =>
+      match classify_review_sheet(observed: observed, projection: projection) {
+        ReviewSheetConverged => true
+        ReviewSheetNeedsWrite { plan: _ } => false
+        ReviewSheetConflict { conflict: _ } => false
+        ReviewSheetUnreadable { reason: _ } => false
+      }
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
+  }
+}
+
+test fn converge_preserves_populated_human_column() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "", w_standing_observed(), "buy"]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && match judgement_for_listing(
+          observed: observed,
+          identity_column: "listing_id" as NonEmptyStr,
+          judgement_column: "judgement" as NonEmptyStr,
+          listing_id: "L1" as NonEmptyStr,
+        ) {
+          JudgementEntered { value: v } => (v as String) == "buy"
+          JudgementBlank => false
+          JudgementUnreadable { reason: _ } => false
+        }
+        && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
+  }
+}
+
+test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "hand-edited", w_standing_observed(), ""]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetConflict { conflict: c } =>
+      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=title")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=B2")
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "listing=L1")
+        && string_contains(s: r as String, pattern: "column=title")
+        && string_contains(s: r as String, pattern: "cell=B2")
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+  }
+}
+
+test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
+  let projection = w_projection(rows: [
+    w_row(listing_id: "L1" as NonEmptyStr, title: "alpha"),
+    w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
+  ])
+  let sorted = w_observed(
+    headers: w_headers(),
+    rows: [
+      ["L1", "alpha", w_standing_observed(), "buy"],
+      ["L2", "beta", w_standing_observed(), "skip"],
+    ],
+  )
+  let resorted = w_observed(
+    headers: w_headers(),
+    rows: [
+      ["L2", "beta", w_standing_observed(), "skip"],
+      ["L1", "alpha", w_standing_observed(), "buy"],
+    ],
+  )
+  match classify_review_sheet(observed: sorted, projection: projection) {
+    ReviewSheetConverged =>
+      match classify_review_sheet(observed: resorted, projection: projection) {
+        ReviewSheetConverged =>
+          match judgement_for_listing(
+            observed: resorted,
+            identity_column: "listing_id" as NonEmptyStr,
+            judgement_column: "judgement" as NonEmptyStr,
+            listing_id: "L1" as NonEmptyStr,
+          ) {
+            JudgementEntered { value: v } => (v as String) == "buy"
+            JudgementBlank => false
+            JudgementUnreadable { reason: _ } => false
+          }
+            && match judgement_for_listing(
+              observed: resorted,
+              identity_column: "listing_id" as NonEmptyStr,
+              judgement_column: "judgement" as NonEmptyStr,
+              listing_id: "L2" as NonEmptyStr,
+            ) {
+              JudgementEntered { value: v } => (v as String) == "skip"
+              JudgementBlank => false
+              JudgementUnreadable { reason: _ } => false
+            }
+        ReviewSheetNeedsWrite { plan: _ } => false
+        ReviewSheetConflict { conflict: _ } => false
+        ReviewSheetUnreadable { reason: _ } => false
+      }
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
+  }
+}
+
+test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
+  let projection = w_projection(rows: [])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", w_standing_observed(), "buy"]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && (p.appends |> count) == 0
+        && match judgement_for_listing(
+          observed: observed,
+          identity_column: "listing_id" as NonEmptyStr,
+          judgement_column: "judgement" as NonEmptyStr,
+          listing_id: "L1" as NonEmptyStr,
+        ) {
+          JudgementEntered { value: v } => (v as String) == "buy"
+          JudgementBlank => false
+          JudgementUnreadable { reason: _ } => false
+        }
+        && fold(p.patches, init: false, f: fn(acc, w) {
+          acc || (w.listing_id == ("L1" as NonEmptyStr)
+            && w.column == ("standing" as NonEmptyStr)
+            && w.value == listing_standing_label(state: StandingGone))
+        })
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
+  }
+}
+
+test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
+  let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+    Apply { plan: bound } =>
+      (bound.tab as String) == "Review"
+        && match bound.plan.patches |> first {
+          Present { value: w } =>
+            a1_cell_wire(cell: w.a1) == "B2"
+              && !string_contains(s: a1_cell_wire(cell: w.a1), pattern: "!")
+              && match value_ranges_from_write_plan(bound: bound) |> first {
+                Present { value: vr } =>
+                  vr.range == "Review!B2"
+                    && !string_contains(s: vr.range, pattern: "Review!Review!")
+                Absent => false
+              }
+          Absent => false
+        }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
+  let range = ValueRange {
+    range: "OtherTab!A1:D",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], [["L1", "", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "OtherTab" as NonEmptyStr), range: range, projection: projection) {
+    Apply { plan: bound } =>
+      (bound.tab as String) == "OtherTab"
+        && match value_ranges_from_write_plan(bound: bound) |> first {
+          Present { value: vr } =>
+            vr.range == "OtherTab!B2"
+              && !string_contains(s: vr.range, pattern: "Review!")
+          Absent => false
+        }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn ensure_over_unchanged_readback_is_noop() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+    Noop =>
+      match review_sheet_ensure(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+        Noop => true
+        Apply { plan: _ } => false
+        Refuse { reason: _ } => false
+      }
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn observe_only_does_not_emit_a_write_plan() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
+  let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
+  match review_sheet_ensure(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "derived region differs")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn column_major_readback_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "Review!A1:D",
+    majorDimension: Present { value: "COLUMNS" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "column-major")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn foreign_major_dimension_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "Review!A1:D",
+    majorDimension: Present { value: "DIAGONAL" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "foreign majorDimension")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
+  let projection = w_projection(rows: [
+    w_row(listing_id: "L1" as NonEmptyStr, title: "alpha"),
+    w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
+  ])
+  let range = w_value_range(rows: [
+    ["L2", "beta", w_standing_observed(), "skip"],
+    ["L1", "alpha", w_standing_observed(), "buy"],
+  ])
+  let observed_read = observed_sheet_from_value_range(range: range)
+  match observed_read {
+    ReadbackUnreadable { reason: _ } => false
+    ReadbackObserved { observed: observed, tab: _ } =>
+      match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+        Noop =>
+          match judgement_for_listing(
+            observed: observed,
+            identity_column: "listing_id" as NonEmptyStr,
+            judgement_column: "judgement" as NonEmptyStr,
+            listing_id: "L1" as NonEmptyStr,
+          ) {
+            JudgementEntered { value: v } => (v as String) == "buy"
+            JudgementBlank => false
+            JudgementUnreadable { reason: _ } => false
+          }
+        Apply { plan: _ } => false
+        Refuse { reason: _ } => false
+      }
+  }
+}
+
+test fn readback_not_a1_anchored_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "Review!B2:E200",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "not A1-anchored")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn unqualified_readback_range_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = ValueRange {
+    range: "A1:D4",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], [["L1", "alpha", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "unqualified A1 range")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn bounded_get_values_request_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), ""]])
+  match review_sheet_ensure(
+    policy: EnsureMayApply,
+    requested: SheetA1Range {
+      tab: "Review" as NonEmptyStr,
+      origin: a1_origin_cell(),
+      end: A1EndClosed {
+        cell: match a1_cell(column_index: 3, sheet_row: 4) {
+          Present { value: c } => c
+          Absent => a1_origin_cell()
+        }
+      },
+    },
+    range: range,
+    projection: projection,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "bounded GetValues request")
+        && string_contains(s: r as String, pattern: "unobserved rows")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn column_bounded_get_values_request_refuses() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), ""]])
+  match review_sheet_ensure(
+    policy: EnsureMayApply,
+    requested: SheetA1Range {
+      tab: "Review" as NonEmptyStr,
+      origin: a1_origin_cell(),
+      end: A1EndOpen {
+        column: A1Column { letter: "D" as NonEmptyStr },
+      },
+    },
+    range: range,
+    projection: projection,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "column-bounded GetValues request")
+        && string_contains(s: r as String, pattern: "unobserved columns")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
+  let range = ValueRange {
+    range: "Review!A1:D1000",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: concat([w_headers()], [["L1", "", w_standing_observed(), ""]]) },
+  }
+  match review_sheet_ensure(
+    policy: EnsureMayApply,
+    requested: review_sheet_get_values_request(
+      tab: "Review" as NonEmptyStr,
+    ),
+    range: range,
+    projection: projection,
+  ) {
+    Apply { plan: bound } =>
+      (bound.tab as String) == "Review"
+        && match value_ranges_from_write_plan(bound: bound) |> first {
+          Present { value: vr } => vr.range == "Review!B2"
+          Absent => false
+        }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn standing_is_a_sum_projected_at_emit() -> Bool {
+  match read_listing_standing(cell: listing_standing_label(state: StandingObserved)) {
+    StandingKnown { state: s } => match s {
+      StandingObserved => match read_listing_standing(cell: listing_standing_label(state: StandingGone)) {
+        StandingKnown { state: g } => match g {
+          StandingGone => match read_listing_standing(cell: "") {
+            StandingBlank => true
+            StandingKnown { state: _ } => false
+            StandingForeign { raw: _ } => false
+          }
+          StandingObserved => false
+        }
+        StandingBlank => false
+        StandingForeign { raw: _ } => false
+      }
+      StandingGone => false
+    }
+    StandingBlank => false
+    StandingForeign { raw: _ } => false
+  }
+}
+
+test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: ["listing_id", "title", "standing", "judgement", "title"],
+    rows: [["L1", "alpha", w_standing_observed(), "", "hand-edit"]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "duplicate header title")
+        && !string_contains(s: r as String, pattern: "derived cell conflict")
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
+test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", "Obsered", ""]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetConflict { conflict: c } =>
+      string_contains(s: conflict_reason(conflict: c) as String, pattern: "listing=L1")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "column=standing")
+        && string_contains(s: conflict_reason(conflict: c) as String, pattern: "cell=C2")
+    ReviewSheetUnreadable { reason: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+  }
+}
+
+test fn a1_column_past_z_has_no_letter() -> Bool {
+  match a1_column_letter(index: 0) {
+    Present { value: a } =>
+      a == "A"
+        && match a1_column_letter(index: 25) {
+          Present { value: z } =>
+            z == "Z"
+              && match a1_column_letter(index: 26) {
+                Absent => true
+                Present { value: _ } => false
+              }
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool {
+  let schema = ReviewSheetSchema {
+    identity_column: "listing_id" as NonEmptyStr,
+    columns: map(a1_column_letters, n => ReviewColumn {
+      name: n as NonEmptyStr,
+      kind: if n == "Z" {
+        DerivedField { source_field: n as NonEmptyStr }
+      } else {
+        OperatorEntered
+      },
+    }),
+  }
+  let projection = ReviewSheetProjection {
+    schema: schema,
+    rows: [ProjectionRow {
+      listing_id: "L1" as NonEmptyStr,
+      derived: [DerivedCell { column: "Z" as NonEmptyStr, value: "x" }],
+    }],
+  }
+  let observed = w_observed(
+    headers: concat(["listing_id"], a1_column_letters),
+    rows: [concat(["L1"], map(a1_column_letters, n => ""))],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } => string_contains(s: r as String, pattern: "unrepresentable A1 column index 26")
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
+test fn absent_listing_appends_a_located_row() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "beta")])
+  let observed = w_observed(headers: w_headers(), rows: [])
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
+        && !write_plan_covers_column_letter(plan: p, letter: "D")
+        && (p.patches |> count) == 0
+        && match p.appends |> first {
+          Present { value: a } =>
+            (a.listing_id as String) == "L2"
+              && a.sheet_row == 2
+              && match a.runs |> first {
+                Present { value: run } =>
+                  a1_row_span_wire(span: run.a1) == "A2:C2"
+                    && !a1_row_span_includes_letter(span: run.a1, letter: "D")
+                    && match run.cells |> first {
+                      Present { value: id } =>
+                        id == "L2"
+                          && match run.cells.skip(n: 2).first() {
+                            Present { value: standing } =>
+                              standing == w_standing_observed()
+                                && (run.cells |> count) == 3
+                                && all(
+                                  value_ranges_from_write_plan(
+                                    bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                  ),
+                                  vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
+                                )
+                                && match value_ranges_from_write_plan(
+                                  bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                ) |> first {
+                                  Present { value: vr } =>
+                                    vr.range == "Review!A2:C2"
+                                      && match vr.values {
+                                        Present { value: rows } =>
+                                          match rows |> first {
+                                            Present { value: cells } =>
+                                              match cells.skip(n: 1).first() {
+                                                Present { value: title } => title == "beta"
+                                                Absent => false
+                                              }
+                                            Absent => false
+                                          }
+                                        Absent => false
+                                      }
+                                  Absent => false
+                                }
+                            Absent => false
+                          }
+                      Absent => false
+                    }
+                Absent => false
+              }
+          Absent => false
+        }
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
+  }
+}
+
+test fn append_follows_observed_header_order_not_schema_order() -> Bool {
+  let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "alpha")])
+  let headers = ["listing_id", "standing", "title", "judgement"]
+  let observed = w_observed(headers: headers, rows: [])
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetNeedsWrite { plan: p } =>
+      write_plan_preserves_operator_columns(schema: w_schema(), plan: p)
+        && !write_plan_touches_column(plan: p, column: "judgement" as NonEmptyStr)
+        && !write_plan_covers_column_letter(plan: p, letter: "D")
+        && match p.appends |> first {
+        Present { value: a } =>
+          match a.runs |> first {
+            Present { value: run } =>
+              match run.cells.skip(n: 1).first() {
+                Present { value: standing } =>
+                  standing == w_standing_observed()
+                    && match run.cells.skip(n: 2).first() {
+                      Present { value: title } =>
+                        title == "alpha"
+                          && (run.cells |> count) == 3
+                          && match run.cells.skip(n: 3).first() {
+                            Present { value: _ } => false
+                            Absent =>
+                              all(
+                                value_ranges_from_write_plan(
+                                  bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                ),
+                                vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
+                              )
+                                && match value_ranges_from_write_plan(
+                                  bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
+                                ) |> first {
+                                Present { value: vr } =>
+                                  match vr.values {
+                                    Present { value: rows } =>
+                                      match rows |> first {
+                                        Present { value: cells } =>
+                                          match cells.skip(n: 1).first() {
+                                            Present { value: standing_cell } =>
+                                              standing_cell == w_standing_observed()
+                                                && match cells.skip(n: 2).first() {
+                                                  Present { value: title_cell } => title_cell == "alpha"
+                                                  Absent => false
+                                                }
+                                            Absent => false
+                                          }
+                                        Absent => false
+                                      }
+                                    Absent => false
+                                  }
+                                Absent => false
+                              }
+                          }
+                      Absent => false
+                    }
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+    ReviewSheetUnreadable { reason: _ } => false
+  }
+}
+
+test fn append_over_populated_operator_cell_refuses() -> Bool {
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", w_standing_observed(), "buy"]],
+  )
+  match append_listing_row(
+    observed: observed,
+    projection_row: w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
+    schema: w_schema(),
+    headers: w_headers(),
+    column_by_name: columns_by_name(schema: w_schema()),
+    sheet_row: 2,
+    plan: ReviewSheetWritePlan { patches: [], appends: [] },
+  ) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "append would overwrite operator column judgement")
+        && string_contains(s: r as String, pattern: "listing=L2")
+        && string_contains(s: r as String, pattern: "row=2")
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConverged => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
+test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool {
+  let projection = w_projection(rows: [
+    ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },
+  ])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "", w_standing_observed(), ""]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "projection omitted derived column title")
+        && string_contains(s: r as String, pattern: "listing=L1")
+        && !string_contains(s: r as String, pattern: "derived cell conflict")
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
+test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
+  let projection = w_projection(rows: [
+    ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },
+  ])
+  let observed = w_observed(
+    headers: w_headers(),
+    rows: [["L1", "alpha", w_standing_observed(), ""]],
+  )
+  match classify_review_sheet(observed: observed, projection: projection) {
+    ReviewSheetUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "projection omitted derived column title")
+        && !string_contains(s: r as String, pattern: "derived cell conflict")
+    ReviewSheetConverged => false
+    ReviewSheetNeedsWrite { plan: _ } => false
+    ReviewSheetConflict { conflict: _ } => false
+  }
+}
+
+test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
+  match live_sheets_transport_frontier {
+    Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+      (b.module_path as String) == "gunbc.review_sheet_sheets"
+        && (b.decl_name as String) == "review_sheet_ensure"
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+    Terminal { reason: _ } => false
+  }
+    && match buyer_review_judgement_read_frontier {
+      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+        (b.module_path as String) == "gunbc.review_sheet_projection"
+          && (b.decl_name as String) == "judgement_for_listing"
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+      Terminal { reason: _ } => false
+    }
+    && sheet_a1_range_wire(
+      range: review_sheet_get_values_request(
+        tab: "Review" as NonEmptyStr,
+      ),
+    ) == "Review"
+    && match live_serviceusage_get_frontier {
+      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+        (b.decl_name as String) == "service_enablement_from_state_wire"
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+      Terminal { reason: _ } => false
+    }
+    && match live_serviceusage_enable_frontier {
+      Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
+        (b.decl_name as String) == "decide_service_enablement"
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
+      Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
+      Terminal { reason: _ } => false
+    }
+    && match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionRows)) {
+      Present { value: DimensionRows } =>
+        match sheets_major_dimension_from_wire(raw: sheets_major_dimension_wire(d: DimensionColumns)) {
+          Present { value: DimensionColumns } =>
+            match sheets_value_input_option_from_wire(
+              raw: sheets_value_input_option_wire(o: review_sheet_batch_value_input_option()),
+            ) {
+              Present { value: InputRaw } =>
+                match sheets_value_input_option_from_wire(raw: sheets_value_input_option_wire(o: InputUserEntered)) {
+                  Present { value: InputUserEntered } =>
+                    match sheets_value_render_option_from_wire(
+                      raw: sheets_value_render_option_wire(o: review_sheet_get_value_render_option()),
+                    ) {
+                      Present { value: RenderFormattedValue } =>
+                        match value_ranges_from_write_plan(
+                          bound: TabBoundWritePlan {
+                            tab: "Review" as NonEmptyStr,
+                            plan: ReviewSheetWritePlan {
+                              patches: [
+                                DerivedCellWrite {
+                                  listing_id: "L1" as NonEmptyStr,
+                                  column: "title" as NonEmptyStr,
+                                  a1: A1Cell {
+                                    column: A1Column { letter: "B" as NonEmptyStr },
+                                    row: 2,
+                                  },
+                                  value: "Widget",
+                                }
+                              ],
+                              appends: [],
+                            },
+                          },
+                        ) |> first {
+                          Present { value: vr } =>
+                            vr.range == "Review!B2"
+                              && match vr.values {
+                                Present { value: rows } =>
+                                  match rows |> first {
+                                    Present { value: cells } =>
+                                      match cells |> first {
+                                        Present { value: v } => v == "Widget"
+                                        Absent => false
+                                      }
+                                    Absent => false
+                                  }
+                                Absent => false
+                              }
+                          Absent => false
+                        }
+                      Present { value: RenderUnformattedValue } => false
+                      Present { value: RenderFormula } => false
+                      Absent => false
+                    }
+                  Present { value: InputRaw } => false
+                  Absent => false
+                }
+              Present { value: InputUserEntered } => false
+              Absent => false
+            }
+          Present { value: DimensionRows } => false
+          Absent => false
+        }
+      Present { value: DimensionColumns } => false
+      Absent => false
+    }
+}
+
+test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool {
+  match sheets_published_mock_corpus |> first {
+    Present { value: get } =>
+      get.operation_key == "sheets.Spreadsheets.GetValues"
+        && match sheets_published_mock_corpus.skip(n: 1).first() {
+          Present { value: upd } =>
+            upd.operation_key == "sheets.Spreadsheets.BatchUpdateValues"
+              && match sheets_published_mock_corpus.skip(n: 2).first() {
+                Absent =>
+                  match BatchUpdateValuesResponse {
+                    spreadsheetId: "s",
+                    totalUpdatedRows: none,
+                    totalUpdatedColumns: none,
+                    totalUpdatedCells: none,
+                    totalUpdatedSheets: none,
+                    responses: none,
+                  }.totalUpdatedCells {
+                    Absent => true
+                    Present { value: _ } => false
+                  }
+                Present { value: _ } => false
+              }
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+fn w_fixture_project() -> GcpProjectId {
+  "fixture-api-project"
+}
+
+fn w_fixture_writer() -> ServiceAccountEmail {
+  "writer@fixture.iam.gserviceaccount.com"
+}
+
+fn w_discharged_iam() -> HumanIntervention {
+  w_discharged_iam_for(project: w_fixture_project(), writer: w_fixture_writer())
+}
+
+fn w_discharged_iam_for(project: GcpProjectId, writer: ServiceAccountEmail) -> HumanIntervention {
+  let pending = serviceusage_enable_iam_grant_intervention(project: project, writer: writer)
+  HumanIntervention {
+    identity: pending.identity,
+    frequency: pending.frequency,
+    subject: pending.subject,
+    instruction: pending.instruction,
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "test.claim.review_sheet_converge_witness",
+        decl_name: "w_discharged_iam",
+        field: WholeDeclaration,
+      }
+    },
+  }
+}
+
+fn w_pending_share() -> HumanIntervention {
+  spreadsheet_share_intervention(spreadsheet_id: "sheet-abc" as NonEmptyStr, writer: w_fixture_writer())
+}
+
+fn w_discharged_share() -> HumanIntervention {
+  let pending = spreadsheet_share_intervention(
+    spreadsheet_id: "sheet-abc" as NonEmptyStr,
+    writer: w_fixture_writer(),
+  )
+  HumanIntervention {
+    identity: pending.identity,
+    frequency: pending.frequency,
+    subject: pending.subject,
+    instruction: pending.instruction,
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "test.claim.review_sheet_converge_witness",
+        decl_name: "w_discharged_share",
+        field: WholeDeclaration,
+      }
+    },
+  }
+}
+
+fn w_observed_enabled() -> ServiceEnablementObservation {
+  ServiceObservedEnabled { project: w_fixture_project(), service_id: sheets_serviceusage_api_id }
+}
+
+fn w_observed_disabled() -> ServiceEnablementObservation {
+  ServiceObservedDisabled { project: w_fixture_project(), service_id: sheets_serviceusage_api_id }
+}
+
+test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bool {
+  match fleet_review_sheet_operator_admission() {
+    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
+      (s as String) == "sheets_calling_home"
+        && match sheets_calling_home() {
+          SheetsCallingHomeUnresolved {
+            refused_api_surface_project: p,
+            refused_writer: w,
+            candidate_writer_in_secrets: _,
+            kitchen_sink_project: _,
+            pool_host_without_sts: _,
+            sts_host_without_sheets: _,
+          } =>
+            string_contains(s: r as String, pattern: p as String)
+              && string_contains(s: r as String, pattern: w as String)
+        }
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+    && match buyer_review_spreadsheet {
+      SpreadsheetAwaitingCreation => true
+      SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
+    }
+    && match buyer_review_account_tenancy {
+      ReviewSheetWorkspaceDomain => true
+      ReviewSheetPlainGoogleAccount => false
+      AccountTenancyUnobserved => false
+    }
+    && match buyer_review_workspace_domain_sharing() {
+      DomainSharingAllowsServiceAccountShare =>
+        (buyer_review_workspace_sharing_reading.read_on as String) == "2026-09-11"
+          && string_contains(
+            s: buyer_review_workspace_sharing_reading.source as String,
+            pattern: "Drive and Docs > Sharing settings",
+          )
+          && string_contains(
+            s: buyer_review_workspace_sharing_reading.quoted_selection as String,
+            pattern: "shared outside of gunb.ai",
+          )
+      DomainSharingPolicyUnobserved => false
+      DomainSharingForbidsExternalPrincipals => false
+    }
+    && match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
+      NoDischargeSiteModeled => true
+      DischargedAt { evidence: _ } => false
+    }
+    && match review_sheet_live_access(
+      credential: SecretRef {
+        project: "custody-only",
+        secret: "unused" as NonEmptyStr,
+        version: "pending",
+        hash_state: HashPending,
+      },
+    ) {
+      ReviewSheetLiveNotAdmitted { admission: a } =>
+        match a {
+          ReviewSheetEstateUnresolved { subject: s, reason: _ } =>
+            (s as String) == "sheets_calling_home"
+          ReviewSheetAwaitingHuman { intervention: _ } => false
+          ReviewSheetOperatorRefused { reason: _ } => false
+          ReviewSheetNeedsApiEnable { plan: _ } => false
+          ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+        }
+      ReviewSheetLiveOpen { access: _ } => false
+    }
+}
+
+test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bool {
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: _,
+      refused_writer: _,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
+    } =>
+      match fleet_review_sheet_operator_admission() {
+        ReviewSheetEstateUnresolved { subject: s, reason: _ } =>
+          (s as String) == "sheets_calling_home"
+        ReviewSheetAwaitingHuman { intervention: _ } => false
+        ReviewSheetNeedsApiEnable { plan: _ } => false
+        ReviewSheetOperatorRefused { reason: _ } => false
+        ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+      }
+  }
+}
+
+test fn desired_enabled_observed_disabled_is_apply() -> Bool {
+  match decide_service_enablement(
+    policy: EnsureMayApply,
+    desired: sheets_api_desired_enablement(project: w_fixture_project()),
+    observed: w_observed_disabled(),
+  ) {
+    Apply { plan: p } =>
+      (p.project as String) == "fixture-api-project"
+        && (p.service_id as String) == "sheets.googleapis.com"
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn enablement_observe_only_refuses_disabled_instead_of_applying() -> Bool {
+  match decide_service_enablement(
+    policy: EnsureObserveOnly,
+    desired: sheets_api_desired_enablement(project: w_fixture_project()),
+    observed: w_observed_disabled(),
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "desired enabled, observed disabled")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+test fn admit_observe_only_refuses_disabled_api_instead_of_needing_enable() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_disabled(),
+    enablement_policy: EnsureObserveOnly,
+    spreadsheet: SpreadsheetAwaitingCreation,
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "desired enabled, observed disabled")
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn enablement_converge_never_disables() -> Bool {
+  match decide_service_enablement(
+    policy: EnsureMayApply,
+    desired: ServiceDesiredDisabled {
+      project: w_fixture_project(),
+      service_id: sheets_serviceusage_api_id,
+    },
+    observed: w_observed_enabled(),
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "never disables")
+        && string_contains(s: r as String, pattern: "sheets.googleapis.com")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+test fn fleet_admission_does_not_admit_while_calling_home_is_unresolved() -> Bool {
+  match fleet_review_sheet_operator_admission() {
+    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
+      (s as String) == "sheets_calling_home"
+        && string_contains(s: r as String, pattern: "refused writer")
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_disabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetAwaitingCreation,
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetNeedsApiEnable { plan: p } =>
+      (p.project as String) == "fixture-api-project"
+        && (p.service_id as String) == "sheets.googleapis.com"
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetAwaitingCreation,
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      (i.identity as String) == "buyer-review-spreadsheet-create"
+        && match i.frequency {
+          FleetOnce => true
+          DeviceOnce => false
+          EveryProvision => false
+          BreakGlassOnly => false
+        }
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      match i.frequency {
+        DeviceOnce =>
+          string_contains(s: i.instruction as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+            && string_contains(s: i.instruction as String, pattern: "Editor")
+            && string_contains(s: i.identity as String, pattern: "sheet-abc")
+            && match spreadsheet_share_intervention(spreadsheet_id: id, writer: w_fixture_writer()).frequency {
+              DeviceOnce => true
+              FleetOnce => false
+              EveryProvision => false
+              BreakGlassOnly => false
+            }
+        FleetOnce => false
+        EveryProvision => false
+        BreakGlassOnly => false
+      }
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn identified_spreadsheet_share_uses_that_id_not_a_placeholder() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  let share = share_intervention_for_spreadsheet(
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    writer: w_fixture_writer(),
+  )
+  string_contains(s: share.identity as String, pattern: "sheet-abc")
+    && string_contains(s: share.identity as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+    && !string_contains(s: share.identity as String, pattern: "unidentified")
+}
+
+test fn awaiting_creation_does_not_mint_an_unidentified_share_id() -> Bool {
+  !string_contains(
+    s: share_intervention_for_spreadsheet(
+      spreadsheet: SpreadsheetAwaitingCreation,
+      writer: w_fixture_writer(),
+    ).identity as String,
+    pattern: "unidentified",
+  )
+}
+
+test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
+  match service_enablement_from_state_wire(
+    project: w_fixture_project(),
+    service_id: sheets_serviceusage_api_id,
+    state_wire: "ENABLED",
+  ) {
+    ServiceObservedEnabled { project: p, service_id: s } =>
+      (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
+    ServiceObservedDisabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
+  }
+}
+
+test fn enablement_state_wire_disabled_is_not_unobserved() -> Bool {
+  match service_enablement_from_state_wire(
+    project: w_fixture_project(),
+    service_id: sheets_serviceusage_api_id,
+    state_wire: "DISABLED",
+  ) {
+    ServiceObservedDisabled { project: p, service_id: s } =>
+      (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
+    ServiceObservedEnabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
+  }
+}
+
+test fn unspecified_or_unknown_serviceusage_state_is_foreign_not_unobserved() -> Bool {
+  match service_enablement_from_state_wire(
+    project: w_fixture_project(),
+    service_id: sheets_serviceusage_api_id,
+    state_wire: "STATE_UNSPECIFIED",
+  ) {
+    ServiceEnablementStateForeign { project: _, service_id: _, raw: r } =>
+      r == "STATE_UNSPECIFIED"
+        && match service_enablement_from_state_wire(
+          project: w_fixture_project(),
+          service_id: sheets_serviceusage_api_id,
+          state_wire: "NOT_A_STATE",
+        ) {
+          ServiceEnablementStateForeign { project: _, service_id: _, raw: raw2 } =>
+            raw2 == "NOT_A_STATE"
+              && match decide_service_enablement(
+                policy: EnsureMayApply,
+                desired: ServiceDesiredEnabled {
+                  project: w_fixture_project(),
+                  service_id: sheets_serviceusage_api_id,
+                },
+                observed: ServiceEnablementStateForeign {
+                  project: w_fixture_project(),
+                  service_id: sheets_serviceusage_api_id,
+                  raw: "STATE_UNSPECIFIED",
+                },
+              ) {
+                Refuse { reason: reason } =>
+                  string_contains(s: reason as String, pattern: "state foreign")
+                    && string_contains(s: reason as String, pattern: "STATE_UNSPECIFIED")
+                Noop => false
+                Apply { plan: _ } => false
+              }
+          ServiceObservedEnabled { project: _, service_id: _ } => false
+          ServiceObservedDisabled { project: _, service_id: _ } => false
+          ServiceEnablementUnobserved { project: _, service_id: _ } => false
+        }
+    ServiceObservedEnabled { project: _, service_id: _ } => false
+    ServiceObservedDisabled { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+  }
+}
+
+test fn iam_grant_is_fleet_once_per_project_not_per_api() -> Bool {
+  match serviceusage_enable_iam_grant_intervention(project: w_fixture_project(), writer: w_fixture_writer()).frequency {
+    FleetOnce =>
+      string_contains(
+        s: serviceusage_enable_iam_grant_intervention(project: w_fixture_project(), writer: w_fixture_writer()).instruction as String,
+        pattern: "One grant per project",
+      )
+        && string_contains(
+          s: serviceusage_enable_iam_grant_intervention(project: w_fixture_project(), writer: w_fixture_writer()).instruction as String,
+          pattern: "writer@fixture.iam.gserviceaccount.com",
+        )
+        && !string_contains(
+          s: serviceusage_enable_iam_grant_intervention(project: w_fixture_project(), writer: w_fixture_writer()).instruction as String,
+          pattern: "fleet-automation",
+        )
+    DeviceOnce => false
+    EveryProvision => false
+    BreakGlassOnly => false
+  }
+}
+
+test fn fleet_secrets_wif_binding_is_still_undischarged() -> Bool {
+  match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
+    NoDischargeSiteModeled =>
+      match w_discharged_iam().completion_evidence {
+        DischargedAt { evidence: _ } => true
+        NoDischargeSiteModeled => false
+      }
+    DischargedAt { evidence: _ } => false
+  }
+}
+
+test fn judgement_failures_are_unreadable_not_blank() -> Bool {
+  let observed = w_observed(headers: w_headers(), rows: [["L1", "alpha", w_standing_observed(), "buy"]])
+  match judgement_for_listing(
+    observed: observed,
+    identity_column: "missing_id" as NonEmptyStr,
+    judgement_column: "judgement" as NonEmptyStr,
+    listing_id: "L1" as NonEmptyStr,
+  ) {
+    JudgementUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "missing identity column")
+        && match judgement_for_listing(
+          observed: observed,
+          identity_column: "listing_id" as NonEmptyStr,
+          judgement_column: "missing_judgement" as NonEmptyStr,
+          listing_id: "L1" as NonEmptyStr,
+        ) {
+          JudgementUnreadable { reason: r2 } =>
+            string_contains(s: r2 as String, pattern: "missing judgement column")
+              && match judgement_for_listing(
+                observed: observed,
+                identity_column: "listing_id" as NonEmptyStr,
+                judgement_column: "judgement" as NonEmptyStr,
+                listing_id: "NOPE" as NonEmptyStr,
+              ) {
+                JudgementUnreadable { reason: r3 } =>
+                  string_contains(s: r3 as String, pattern: "listing not present")
+                    && match judgement_for_listing(
+                      observed: observed,
+                      identity_column: "listing_id" as NonEmptyStr,
+                      judgement_column: "judgement" as NonEmptyStr,
+                      listing_id: "L1" as NonEmptyStr,
+                    ) {
+                      JudgementEntered { value: v } => (v as String) == "buy"
+                      JudgementBlank => false
+                      JudgementUnreadable { reason: _ } => false
+                    }
+                JudgementBlank => false
+                JudgementEntered { value: _ } => false
+              }
+          JudgementBlank => false
+          JudgementEntered { value: _ } => false
+        }
+    JudgementBlank => false
+    JudgementEntered { value: _ } => false
+  }
+}
+
+test fn judgement_for_duplicate_listing_rows_is_unreadable() -> Bool {
+  match judgement_for_listing(
+    observed: w_observed(
+      headers: w_headers(),
+      rows: [
+        ["L1", "alpha", w_standing_observed(), "buy"],
+        ["L1", "alpha", w_standing_observed(), "reject"],
+      ],
+    ),
+    identity_column: "listing_id" as NonEmptyStr,
+    judgement_column: "judgement" as NonEmptyStr,
+    listing_id: "L1" as NonEmptyStr,
+  ) {
+    JudgementUnreadable { reason: r } =>
+      string_contains(s: r as String, pattern: "duplicate sheet listing L1")
+    JudgementEntered { value: _ } => false
+    JudgementBlank => false
+  }
+}
+
+test fn discharged_share_for_another_spreadsheet_does_not_admit() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified {
+      spreadsheet_id: "sheet-other" as NonEmptyStr,
+      owner: "operator" as NonEmptyStr,
+    },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "share intervention is not for spreadsheet")
+        && string_contains(s: r as String, pattern: "sheet-other")
+        && string_contains(s: r as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+test fn discharged_share_for_another_writer_does_not_admit() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  let other = spreadsheet_share_intervention(
+    spreadsheet_id: id,
+    writer: "other@fixture.iam.gserviceaccount.com",
+  )
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: HumanIntervention {
+      identity: other.identity,
+      frequency: other.frequency,
+      subject: other.subject,
+      instruction: other.instruction,
+      completion_evidence: DischargedAt {
+        evidence: DeclarationRef {
+          module_path: "test.claim.review_sheet_converge_witness",
+          decl_name: "discharged_share_for_another_writer_does_not_admit",
+          field: WholeDeclaration,
+        }
+      },
+    },
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "share intervention is not for spreadsheet")
+        && string_contains(s: r as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: sid } => sid == id
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+  }
+}
+
+test fn enabled_api_does_not_demand_serviceusage_enable_iam() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
+      project: w_fixture_project(),
+      writer: w_fixture_writer(),
+    ),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: sid } => sid == id
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+  }
+}
+
+test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_disabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetAwaitingCreation,
+    serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
+      project: w_fixture_project(),
+      writer: w_fixture_writer(),
+    ),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      string_contains(s: i.identity as String, pattern: "gcp-serviceusage-enable-iam")
+        && string_contains(s: i.identity as String, pattern: "fixture-api-project")
+        && string_contains(s: i.identity as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+        && string_contains(s: i.instruction as String, pattern: "serviceusage.services.enable")
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn discharged_iam_for_another_project_does_not_need_enable() -> Bool {
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_disabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetAwaitingCreation,
+    serviceusage_enable_iam: w_discharged_iam_for(
+      project: "other-api-project",
+      writer: w_fixture_writer(),
+    ),
+    share: w_pending_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "serviceusage enable iam intervention is not for project")
+        && string_contains(s: r as String, pattern: "fixture-api-project")
+        && string_contains(s: r as String, pattern: "writer@fixture.iam.gserviceaccount.com")
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+  }
+}
+
+test fn unread_workspace_sharing_policy_refuses() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingPolicyUnobserved,
+    tenancy: buyer_review_account_tenancy,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "sharing policy unread")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingForbidsExternalPrincipals,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "forbids sharing")
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+test fn admitted_admission_opens_live_access() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  let admission = admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  )
+  match review_sheet_live_access_from(
+    admission: admission,
+    credential: SecretRef {
+      project: "custody-only",
+      secret: "unused" as NonEmptyStr,
+      version: "pending",
+      hash_state: HashPending,
+    },
+  ) {
+    ReviewSheetLiveOpen { access: a } => a.spreadsheet_id == id
+    ReviewSheetLiveNotAdmitted { admission: _ } => false
+  }
+}

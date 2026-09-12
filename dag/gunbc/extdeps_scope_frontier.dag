@@ -503,7 +503,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/docker/images/xomoxcc_dgx_spark_sglang.dag",
   "dag/extdeps/vllm/recipe_deepseek_v4_1_flash.dag",
   "dag/extdeps/ebay/browse.dag",
-  "dag/extdeps/ebay/marketplace_account_deletion.dag"
+  "dag/extdeps/ebay/marketplace_account_deletion.dag",
+  "dag/extdeps/google/workspace.dag",
+  "dag/extdeps/google/sheets.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
@@ -524,5 +526,6 @@ data scope_machinery_exempt_paths: List<String> = [
   "dag/extdeps/shell_mock_corpus.dag",
   "dag/extdeps/ssh/mock_corpus.dag",
   "dag/extdeps/tcgplayer/mock_corpus.dag",
-  "dag/extdeps/test/mock_corpus.dag"
+  "dag/extdeps/test/mock_corpus.dag",
+  "dag/extdeps/google/sheets_mock_corpus.dag"
 ]
