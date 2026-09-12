@@ -64,9 +64,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type LbpBinding
   = LbpBound
+  | LbpUnbound
 
 type LbpRepair
   = LbpDeclined
+  | LbpApplied
 
 fn lbp_span() -> SourceSpan {
   SourceSpan { file: "legacy-baseline-persist-fixture.dag", start: 1, end: 2 }

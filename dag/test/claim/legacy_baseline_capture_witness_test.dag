@@ -119,6 +119,7 @@ fn lbc_repair_subject() -> LegacyRepairObservationSubject {
 
 type LbcRepairOutcome
   = LbcRepairDeclined
+  | LbcRepairApplied
 
 fn lbc_repair_observation(sites: List<RepairSite>) -> LegacyRepairObservation<LbcRepairOutcome> {
   LegacyRepairObservation {
@@ -357,10 +358,10 @@ test fn a_repair_observation_missing_a_roster_site_refuses_as_repair_incomplete(
   }
 }
 
-test fn the_reported_capability_is_available_once_the_repair_envelope_is_fed() -> Bool {
+test fn the_reported_capability_is_blocked_until_a_live_repair_tap_exists() -> Bool {
   match legacy_baseline_capture_capability() {
-    CaptureAvailable => true
-    CaptureBlocked { phase: _, cause: _ } => false
+    CaptureAvailable => false
+    CaptureBlocked { phase: _, cause: _ } => true
   }
 }
 

@@ -128,6 +128,7 @@ type LegacyBaselineCapturePhase
 
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision
+  | LiveRepairObservationTapAbsent
 
 // THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
 // different owners and different repairs: a source-set mismatch means the tree was not the one
@@ -267,15 +268,24 @@ fn capture_legacy_baseline<O, R>(
 }
 
 // THE MILESTONE'S POPULATION, AND IT IS DELIBERATELY NOT A ROSTER OF ROWS. There is no committed
-// list of captures: a plain (base, identity) row is a relabeling constructor. Capability answers
-// whether the capture transaction can mint; whether a mint is HELD against a named base is
-// v2.workflow.legacy_baseline_persisted_observation, which stores the capture carrier itself.
+// list of captures: a plain (base, identity) row is a relabeling constructor. Persistence stores
+// the capture carrier itself (v2.workflow.legacy_baseline_persisted_observation).
+//
+// CAPABILITY IS WHETHER A LIVE CAPTURE OF A NAMED BASE CAN BE TAKEN, not whether the fold can mint
+// given caller-supplied rows. Fixtures already drive capture_legacy_baseline to LegacyBaselineCaptured.
+// No executing producer yet yields a LegacyRepairObservation for a live checkout: emit_rust
+// reference_derived_census exists in the seed, is not mapped into this envelope, and has no
+// executing consumer that hands capture a graph. Until that tap lands, CaptureAvailable would
+// read as "a capture can be taken". Named later change: a v2 producer that maps the repairer's
+// per-site dispositions into LegacyRepairObservation<R> + RepairSiteRoster over one GitObjectId
+// checkout, without growing the v1 emitter. Trigger: that producer is called from a capture
+// entry that materializes the named base. Dissolve LiveRepairObservationTapAbsent then.
 type LegacyBaselineCaptureCapability
   = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
   | CaptureAvailable
 
 fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
-  CaptureAvailable
+  CaptureBlocked { phase: RepairCensusPhase, cause: LiveRepairObservationTapAbsent }
 }
 
 fn capture_blocked_reason(c: LegacyBaselineCaptureCapability) -> List<String> {
@@ -299,5 +309,6 @@ fn capture_phase_label(p: LegacyBaselineCapturePhase) -> String {
 fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
   match cause {
     ObserverNeverReachedDecision => "the observer never reached its decision stage"
+    LiveRepairObservationTapAbsent => "no executing producer yields LegacyRepairObservation for a live named base"
   }
 }
