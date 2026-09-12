@@ -4,6 +4,7 @@ import std.types { Bool, CommitSha, EpochMs, Int, NonEmptyStr }
 import std.claim_evidence { Claim, ClaimId, RecordedFact, RecordedFactId }
 import std.decl_ref { decl_ref }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.predictive_claim {
   AdversarialTestingObligation, Prediction, PredictionRestriction,
@@ -26,10 +27,10 @@ import std.predictive_claim {
   predictive_next_obligation, AdversarialTestRequired, CounterexampleNarrowingRequired,
 }
 import gunbc.machine_intake_mtcollins1_memory_prediction {
-  memory_prediction_review, MemoryPredictionReported, MemoryPredictionReviewRefused,
+  memory_prediction_review, memory_prediction_cli, MemoryPredictionReported, MemoryPredictionReviewRefused,
 }
 import gunbc.machine_intake_mtcollins1_spare_screen_prediction {
-  spare_screen_prediction_review, SpareScreenPredictionReported, SpareScreenPredictionRefused,
+  spare_screen_prediction_review, spare_screen_prediction_cli, SpareScreenPredictionReported, SpareScreenPredictionRefused,
   spare_screen_configuration, original_screen_configuration, spare_screen_prediction_commit,
   spare_screen_prediction, SpareScreenConfiguration, SpareScreenOutcome, TrainingAndPostObserved,
   RestartInsideDeclaredWindow,
@@ -373,6 +374,28 @@ test fn training_instead_of_restart_would_not_falsify_the_spare_screen() -> Bool
   }
 }
 
+test fn operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() -> Bool {
+  let conversation_visible = match memory_prediction_cli() {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: bytes, exit: exit } => match exit {
+      ExitSuccess => bytes.contains("conversation-only") && bytes.contains("CONFOUNDED")
+        && bytes.contains("TESTING STILL DUE") && bytes.contains("0fde70330502")
+      _ => false
+    }
+  }
+  let falsifier_visible = match spare_screen_prediction_cli() {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: bytes, exit: exit } => match exit {
+      ExitSuccess => bytes.contains("NARROWED, awaiting a new test")
+        && bytes.contains("SUPERSEDED: mtcollins1-supported-shape-suffices-v1")
+        && bytes.contains("FALSIFIES prediction") && bytes.contains("ordering not independently witnessed")
+        && bytes.contains("0fde70331102") && bytes.contains("TESTING STILL DUE")
+      _ => false
+    }
+  }
+  conversation_visible && falsifier_visible
+}
+
 func predictive_claim_contract_probe() -> ProcessExit {
   if prediction_must_have_a_distinguishable_falsifier()
     && commitment_must_strictly_precede_start()
@@ -391,7 +414,8 @@ func predictive_claim_contract_probe() -> ProcessExit {
     && tonight_is_one_weak_conversation_match_and_not_preregistered()
     && a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration()
     && spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass()
-    && training_instead_of_restart_would_not_falsify_the_spare_screen() {
+    && training_instead_of_restart_would_not_falsify_the_spare_screen()
+    && operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() {
     return ExitSuccess
   }
   return exit_failure(reason: "predictive claim contract failed")
