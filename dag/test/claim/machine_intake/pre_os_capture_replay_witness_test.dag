@@ -4,7 +4,7 @@ import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
 import gunbc.memory_observation { read_verified_memory_capture }
-import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, pre_os_quiet_archive_assessment }
+import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, pre_os_quiet_archive_assessment, pre_os_host_archive_assessment }
 import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_milestones, pre_os_boot_assessment }
 import gunbc.host_memory_qualification { BootReachedOperatingSystem, TrainingOutcomeUnobserved, BootOutcomeUnobserved }
@@ -71,10 +71,11 @@ test fn w_real_host_userspace_positive_and_truncated_negative() -> Bool {
   match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log", expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: payload } => {
-      let os_boot = pre_os_host_userspace_boot(text: payload, host_mac: "28:c1:3c:8a:d6:4a")
-      let milestones = pre_os_milestones(console: ObservationEstablished { observed: payload }, os_boot: os_boot)
+      let assessed = pre_os_host_archive_assessment(payload: payload, host_mac: "28:c1:3c:8a:d6:4a")
+      let milestones = assessed.milestones
       let truncated = split(s: payload, delimiter: "marker-end=gunbc-runner-host-boot").first()
       contains(payload, "DMI: Memory slots populated: 16/32")
+        && match assessed.population_statement { ObservationEstablished { observed: statement } => contains(statement as String, "16/32") _ => false }
         && milestones.boot == BootReachedOperatingSystem
         && match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => true _ => false }
         && match truncated { Present { value: text } => match pre_os_host_userspace_boot(text: text, host_mac: "28:c1:3c:8a:d6:4a") { ObservationRefused { cause: _ } => true _ => false } Absent => false }

@@ -100,3 +100,16 @@ fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> Observatio
     ObservationEstablished { observed: BootReachedOperatingSystem }
   } else { ObservationRefused { cause: "complete host userspace boot marker, host NIC or kernel evidence missing" } }
 }
+
+// Preserve what DMI actually stated, separately from the OS milestone. A slot
+// count does not identify modules or their socket positions and cannot replace
+// #11198's positioned inventory for configuration applicability.
+fn pre_os_host_population_statement(text: String) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+  let rows = filter(map(split(s: text, delimiter: "\n"), line => trim(line)),
+    line => contains(line, "DMI: Memory slots populated: "))
+  match rows.first() {
+    Absent => ObservationRefused { cause: "no host-produced DMI population statement" }
+    Present { value: row } => if count(rows) == 1 { ObservationEstablished { observed: row as NonEmptyStr } }
+      else { ObservationRefused { cause: "multiple DMI population statements require occurrence association" } }
+  }
+}

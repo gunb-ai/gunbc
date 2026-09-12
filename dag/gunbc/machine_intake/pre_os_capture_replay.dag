@@ -11,8 +11,20 @@ import gunbc.memory_observation {
 }
 import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_configuration, mtcollins_3ds_printed_parts, mtcollins_3ds_printed_positions }
 import gunbc.machine_intake_pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
-import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones }
+import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_host_population_statement }
 import gunbc.machine_intake_sel_stimulus_listener { sel_snapshot_summary }
+
+type PreOsHostArchiveAssessment {
+  milestones: PreOsMilestones
+  population_statement: ObservationAttempt<NonEmptyStr, NonEmptyStr>
+}
+
+fn pre_os_host_archive_assessment(payload: String, host_mac: NonEmptyStr) -> PreOsHostArchiveAssessment {
+  PreOsHostArchiveAssessment {
+    milestones: pre_os_milestones(console: ObservationEstablished { observed: payload }, os_boot: pre_os_host_userspace_boot(text: payload, host_mac: host_mac)),
+    population_statement: pre_os_host_population_statement(text: payload),
+  }
+}
 
 // Historical assessment retains the snapshot scope without inventing a collector
 // session or firmware attempt for a file that has neither. The claimed topology
