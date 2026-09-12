@@ -832,7 +832,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/accumulator_copy_compile_gate_test.dag",
     functions: [
       "gate_red_quadratic_rejects", "gate_green_identity_accepts_clean",
-      "gate_refusal_ledger_counted_not_gating", "door_root_roster_runs_and_passes_clean_tree"
+      "gate_refusal_ledger_counted_not_gating", "door_root_roster_accepts_clean_inferred_tree"
     ]
   },
   FrozenPathDeferral {

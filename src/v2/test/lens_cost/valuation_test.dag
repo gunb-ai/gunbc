@@ -338,8 +338,7 @@ test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
 
 // Ten iterations of a body that refuses unconditionally yield ONE cause, not ten. Both halves of
 // that are the subject: ten identical causes would amplify a single deficit tenfold, degrading the
-// countability the accumulate rule exists to protect, and building them costs quadratic time
-// because non_empty_append is linear in its left argument. This witness reds if the
+// countability the accumulate rule exists to protect. This witness reds if the
 // settled-disposition skip in evaluate_summation is removed, which is what makes it a regression
 // control rather than a description.
 
