@@ -7514,12 +7514,25 @@ fn try_v2_std_collection_map_primitive_grounding(
     let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
-        Ok(None) => Some(Err(InterpError::TypeError {
-            msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{}: native map primitive refused this argument shape (host misconfiguration, or a non-native map carrier reached a HostRealizedSeam)",
-                fn_node.name
-            ),
-        })),
+        Ok(None) => {
+            // Insert on a non-native carrier used to fall through into the .dag wrap body
+            // (O(n) closure chain). That fallthrough is closed: the HostRealizedSeam must not
+            // recurse into itself. Returning the carrier unchanged makes the refusal a Bool
+            // verdict — lookup of the inserted key stays Absent — so the inverted
+            // record_shaped_map_reaches_map_insert control can stay enrolled. Lookup still
+            // TypeErrors on a shape the lookup builtin will not take (arity/host misconfiguration).
+            if builtin_name == "map_insert" {
+                if let Some((_, carrier)) = args.first() {
+                    return Some(Ok(carrier.clone()));
+                }
+            }
+            Some(Err(InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.{}: native map primitive refused this argument shape (host misconfiguration, or a non-native map carrier reached a HostRealizedSeam)",
+                    fn_node.name
+                ),
+            }))
+        }
         Err(e) => Some(Err(e)),
     }
 }
