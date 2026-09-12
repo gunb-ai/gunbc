@@ -234,6 +234,17 @@ fn pa_provenance(
   GenerationProvenanceReceipt { subject: subject, producer: producer }
 }
 
+// THE FIXTURE IDENTITIES CITE DECLARATIONS THAT EXIST, which is not a detail: they first cited
+// `v2.test.promotion_lens.alpha` and `.beta`, modules invented for the fixture, and the required-ci
+// DECLARATIONS phase refused the run with CITED-MODULE-ABSENT. A DeclarationRef is a citation
+// whether or not anything dereferences it, and DESIGN section 3 wants the symbol named rather than a
+// plausible-looking string. They now name this file's own two fixture declarations, which is honest
+// -- the identity of a fixture lens IS that fixture declaration -- and stays authored here.
+//
+// WORTH KNOWING FOR ANY LANE AUTHORING A DeclarationRef IN A FIXTURE: claim_batch does not run the
+// declarations phase, so a fabricated module path passes every local witness and fails only on a
+// real required-ci run.
+//
 // THE FIXTURE OBLIGATIONS, AUTHORED HERE RATHER THAN READ FROM THE LIVE ROSTER. A witness that took
 // its required set from `required_compile_lens_roster()` would compare the checker's answer against
 // the same list the checker was handed, and the roster moving would move both sides together --
@@ -247,7 +258,10 @@ fn pa_provenance(
 // `pa_coverage_foreign_digest`, where disagreement is the point.
 fn pa_lens_alpha() -> CompileLens {
   CompileLens {
-    identity: decl_ref(module_path: "v2.test.promotion_lens.alpha", decl_name: "alpha_gate"),
+    identity: decl_ref(
+      module_path: "test.claim.self_host_promotion_admission_witness",
+      decl_name: "pa_lens_alpha"
+    ),
     grain: CompileLensRoot,
     gate: fn(tree) { outcome_accepted(value: Holds { value: pa_lens_probe_node }) }
   }
@@ -255,7 +269,10 @@ fn pa_lens_alpha() -> CompileLens {
 
 fn pa_lens_beta() -> CompileLens {
   CompileLens {
-    identity: decl_ref(module_path: "v2.test.promotion_lens.beta", decl_name: "beta_gate"),
+    identity: decl_ref(
+      module_path: "test.claim.self_host_promotion_admission_witness",
+      decl_name: "pa_lens_beta"
+    ),
     grain: CompileLensRoot,
     gate: fn(tree) { outcome_accepted(value: Holds { value: pa_lens_probe_node }) }
   }
