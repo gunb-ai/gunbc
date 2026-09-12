@@ -1815,6 +1815,71 @@ pub(crate) fn run_phantom_marker_identity_discrimination(
     }
 }
 
+/// THE THREE EMITTER ARMS THE WIDENED 00_compile CLOSURE EXPOSED, EACH POSED TO RUSTC (node
+/// adhoc-7f877994-e3a).
+///
+/// All three were found the same way and none of them is a spelling question, which is why they are
+/// here and not in a substring witness. #11011 widened the emitted closure to carry
+/// `extdeps.rust.cargo_build` and `extdeps.exec.command`, the first execution of that route emitted
+/// a crate rustc refused with 28 errors, and every one of the 28 fell into one of three classes:
+/// an empty-map turbofish naming type formals that do not exist at the point it was written (E0425),
+/// a `List<String>` handed to `Command::arg` as one argument (E0277), and the concat form of `append`
+/// spelled as the snoc bridge (E0308).
+///
+/// EACH ARM IS ITS OWN GREEN SO A REGRESSION IS ATTRIBUTED. One fixture carrying all three shapes
+/// would redden as a single fact and say nothing about which emitter decision broke; three fixtures
+/// name three decisions. Each pair's red is the route's own `FIXTURE_RED_PATH`, adjudicated by the
+/// same predicate with the same expected rustc code -- the established proof that the route can
+/// still fail -- so what each pair adds is its green arm, exactly as the nested-refinement-cast pair
+/// does.
+///
+/// EVERY ONE OF THESE GREENS WAS MEASURED RED FIRST, on the seed as it stood before the repair:
+/// `rc_empty_map::<K, V>()` at the data initializer and the fn body (the fold position was already
+/// correct and is in the fixture as the arm that must not regress), `.arg(extra_args)` at four argv
+/// positions, and `v1_rt::append` at all six append declarations. The fixtures are the REDs, not
+/// descriptions of them.
+#[cfg(test)]
+const FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/empty_map_data_turbofish_probe.dag";
+
+/// See `FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH`.
+#[cfg(test)]
+const FIXTURE_ARGV_WORD_LIST_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/argv_word_list_splice_probe.dag";
+
+/// See `FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH`.
+#[cfg(test)]
+const FIXTURE_APPEND_CONCAT_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/append_concat_form_probe.dag";
+
+/// The empty-map turbofish pair -- subject `v1.compiler.emit_rust` `rust_empty_map_init_expr`.
+#[cfg(test)]
+pub(crate) fn run_empty_map_turbofish_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
+/// The argv word-list splice pair -- subject `v1.compiler.emit_rust` `emit_shell_call`.
+#[cfg(test)]
+pub(crate) fn run_argv_word_list_splice_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_ARGV_WORD_LIST_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
+/// The append concat-form pair -- subject `v1.compiler.emit_rust`
+/// `rust_append_call_is_concat_form`.
+#[cfg(test)]
+pub(crate) fn run_append_concat_form_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_APPEND_CONCAT_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
 /// The pair passes only when BOTH directions hold: the control compiled, and the meaning-level
 /// fixture was refused BY RUSTC, in its own emitted module, WITH THE ERROR CLASS THE ARM CLAIMS.
 ///

@@ -23041,6 +23041,41 @@ pub fn rust_empty_map_kv_type_str(
     }
 }
 
+pub fn rust_empty_map_init_expr(
+    map_type: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let kv_type_str = rust_empty_map_kv_type_str(
+            map_type.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        );
+        if (kv_type_str.clone() == "".to_string()) {
+            rust_shared_wrap_ctor(
+                "HashMap::new() /* BRIDGE: empty_map value type unresolved */".to_string(),
+            )
+        } else {
+            if rust_fold_rendered_type_has_any_spurious_generic(
+                v1_rt::concat(
+                    v1_rt::concat("<".to_string(), kv_type_str.clone()),
+                    ">".to_string(),
+                ),
+                emit_info.fn_generic_param_names.clone(),
+            ) {
+                "v1_rt::rc_empty_map::<_, _>()".to_string()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat("v1_rt::rc_empty_map::<".to_string(), kv_type_str.clone()),
+                    ">()".to_string(),
+                )
+            }
+        }
+    }
+}
+
 pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     {
         let ch = crate::v1_compiler_infer_types::child_type_node(c.clone());
@@ -24387,27 +24422,12 @@ pub fn emit_typed_call_expr(
         let target_is_runtime = call_target_is_runtime_primitive(call_target.clone());
         let call_str = if (target_is_runtime.clone() && (func.clone() == "empty_map".to_string())) {
             match inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: ret_type, .. }) => {
-                    let kv_type_str = rust_empty_map_kv_type_str(
-                        ret_type.clone(),
-                        shared_types.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    if (kv_type_str.clone() != "".to_string()) {
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "v1_rt::rc_empty_map::<".to_string(),
-                                kv_type_str.clone(),
-                            ),
-                            ">()".to_string(),
-                        )
-                    } else {
-                        rust_shared_wrap_ctor(
-                            "HashMap::new() /* BRIDGE: empty_map value type unresolved */"
-                                .to_string(),
-                        )
-                    }
-                }
+                Some(InferredNode::Resolved { node: ret_type, .. }) => rust_empty_map_init_expr(
+                    ret_type.clone(),
+                    shared_types.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    emit_info.clone(),
+                ),
                 _ => rust_shared_wrap_ctor(
                     "HashMap::new() /* BRIDGE: empty_map return type unresolved */".to_string(),
                 ),
@@ -26510,36 +26530,12 @@ pub fn emit_rust_fold_method_call(
                         && (acc_type_str.clone() != "".to_string()))
                         && !acc_has_unit_child.clone())
                     {
-                        {
-                            let kv_type_str = rust_empty_map_kv_type_str(
-                                acc_type_node.clone(),
-                                shared_types.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            );
-                            if ((kv_type_str.clone() != "".to_string())
-                                && rust_fold_rendered_type_has_any_spurious_generic(
-                                    v1_rt::concat(
-                                        v1_rt::concat("<".to_string(), kv_type_str.clone()),
-                                        ">".to_string(),
-                                    ),
-                                    emit_info.fn_generic_param_names.clone(),
-                                ))
-                            {
-                                "v1_rt::rc_empty_map::<_, _>()".to_string()
-                            } else {
-                                if (kv_type_str.clone() != "".to_string()) {
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "v1_rt::rc_empty_map::<".to_string(),
-                                            kv_type_str.clone(),
-                                        ),
-                                        ">()".to_string(),
-                                    )
-                                } else {
-                                    rust_shared_wrap_ctor("HashMap::new() /* BRIDGE: fold empty_map value type unresolved */".to_string())
-                                }
-                            }
-                        }
+                        rust_empty_map_init_expr(
+                            acc_type_node.clone(),
+                            shared_types.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            emit_info.clone(),
+                        )
                     } else {
                         if (init_func.clone() == "empty_map".to_string()) {
                             rust_shared_wrap_ctor("HashMap::new() /* BRIDGE: fold empty_map accumulator type unresolved */".to_string())
@@ -27558,7 +27554,17 @@ pub fn emit_rust_generic_method_call(
                         __result
                     });
                     let all_strs = v1_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
-                    let bridge_name = rust_runtime_bridge_name(function_name.clone());
+                    let bridge_function_name = if rust_append_call_is_concat_form(
+                        function_name.clone(),
+                        rust_append_method_call_appended_arg(args.clone()),
+                        runtime_bridge.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        "list_concat".to_string()
+                    } else {
+                        function_name.clone()
+                    };
+                    let bridge_name = rust_runtime_bridge_name(bridge_function_name.clone());
                     let lowered = v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
@@ -27575,7 +27581,7 @@ pub fn emit_rust_generic_method_call(
                         ),
                         ")".to_string(),
                     );
-                    if rust_runtime_bridge_result_wraps_in_rc(function_name.clone()) {
+                    if rust_runtime_bridge_result_wraps_in_rc(bridge_function_name.clone()) {
                         rust_shared_wrap_ctor(lowered.clone())
                     } else {
                         lowered.clone()
@@ -32027,6 +32033,50 @@ pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
     }
 }
 
+pub fn is_list_typed_expr(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match e.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            ((((rt.return_cardinality.clone() != Cardinality::CardOptional)
+                && crate::v1_compiler_infer_types::node_is_element_collection(
+                    rt.clone(),
+                    source_indices.clone(),
+                ))
+                && !crate::v1_compiler_infer_types::node_is_set_collection(
+                    rt.clone(),
+                    source_indices.clone(),
+                ))
+                && !is_rust_string_like(rt.clone(), source_indices.clone()))
+        }
+        _ => false,
+    }
+}
+
+pub fn rust_append_call_is_concat_form(
+    func: String,
+    appended: Option<Rc<Node>>,
+    target_is_runtime: bool,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((target_is_runtime.clone() == false) || (func.clone() != "append".to_string())) {
+        false
+    } else {
+        match appended.clone() {
+            Some(value_node) => is_list_typed_expr(value_node.clone(), source_indices.clone()),
+            std::option::Option::None => false,
+        }
+    }
+}
+
+pub fn rust_append_method_call_appended_arg(args: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
+    match args.clone().first().cloned() {
+        Some(a) => Some(crate::v1_std_core::arg_value(a.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn is_string_comparison(
     op: BinOp,
     left: Rc<Node>,
@@ -35723,6 +35773,27 @@ pub fn emit_shell_call(
                 )
             },
         );
+        let list_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in op_node.params.clone().iter().cloned() {
+                if shell_argv_param_is_word_list(p.clone(), source_indices.clone()) {
+                    __result.push(p);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone()),
+                    true,
+                )
+            },
+        );
         let has_stdin =
             match crate::v1_std_core::transport_stdin(transport.clone(), source_indices.clone()) {
                 Some(_) => true,
@@ -35782,17 +35853,36 @@ pub fn emit_shell_call(
                 .iter()
                 .cloned()
                 {
-                    __result.push(v1_rt::concat(
-                        v1_rt::concat(
-                            "    .arg(".to_string(),
-                            emit_shell_argv_element(
-                                arg.clone(),
-                                optional_params.clone(),
-                                source_indices.clone(),
-                            ),
-                        ),
-                        ")".to_string(),
-                    ));
+                    __result.push(
+                        if shell_argv_element_is_word_list(
+                            arg.clone(),
+                            list_params.clone(),
+                            source_indices.clone(),
+                        ) {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    .args(".to_string(),
+                                    emit_shell_argv_word_list_element(
+                                        arg.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                ),
+                                ".iter())".to_string(),
+                            )
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    .arg(".to_string(),
+                                    emit_shell_argv_element(
+                                        arg.clone(),
+                                        optional_params.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                ),
+                                ")".to_string(),
+                            )
+                        },
+                    );
                 }
                 __result
             })
@@ -35904,6 +35994,53 @@ pub fn emit_shell_call(
             }
         }
     }
+}
+
+pub fn shell_argv_param_is_word_list(
+    param: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let type_expr = crate::v1_std_core::param_node_type_expr(param.clone());
+        (((type_expr.return_cardinality.clone() != Cardinality::CardOptional)
+            && crate::v1_compiler_infer_types::node_is_element_collection(
+                type_expr.clone(),
+                source_indices.clone(),
+            ))
+            && !crate::v1_compiler_infer_types::node_is_set_collection(
+                type_expr.clone(),
+                source_indices.clone(),
+            ))
+    }
+}
+
+pub fn shell_argv_element_is_word_list(
+    arg: Rc<Node>,
+    list_params: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => match v1_rt::map_get(
+            &list_params,
+            crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
+        ) {
+            Some(_) => true,
+            std::option::Option::None => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn emit_shell_argv_word_list_element(
+    arg: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    crate::v1_compiler_emit::emit_ident(
+        crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
+        RenderTarget::Rust,
+    )
 }
 
 pub fn emit_shell_argv_element(
