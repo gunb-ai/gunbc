@@ -33,11 +33,44 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // payload stay metadata-only: gunbc.spark.first_party_serving matches the content class and takes
 // the refusing arm if upstream ever reports CarriesRequestMaterial.
 //
-// WHAT IS AND IS NOT LOST. Not lost: whether the path exists, who receives it, what it carries, and
-// whether the launch could have disabled it -- all four are typed, folded and refusable. Lost: the
-// guarantee that a Located path's jurisdiction was established. The harm is that a consumer asking
-// "which legal systems does this route touch" gets a confident answer from two paths and a citation
-// standing where a jurisdiction belongs from the third, and nothing in the arm tells it apart.
+// WHAT IS AND IS NOT LOST. Not lost: whether the path exists, who receives it, and what it carries --
+// all three typed, folded and refusable. Lost: the guarantee that a Located path's jurisdiction was
+// established.
+//
+// THE POPULATION IS CURRENTLY EMPTY, AND THAT IS NOT THE SAME AS THE SUBJECT BEING GONE. The
+// distinction is the whole point of this paragraph, because the two are recorded differently and
+// only one of them is true. What this row waives is the JURISDICTION guarantee for a located path
+// whose reporter is established and applicable, and that waiver is untouched: Located remains the
+// right answer for such a reporter, and the operator's 2026-09-11 ruling still governs it. What has
+// changed is that gunbc.spark.first_party_serving no longer ATTRIBUTES a reporter and its path to
+// the launch that answered without evidence bound to that launch, so nothing currently reaches the
+// located arm and the row admits nothing today. The arm is retained and reachable; it is GATED on
+// the attribution evidence named at spark_serving_usage_stats_declared_environment_obligation.
+//
+// SO THIS ROW IS NOT RETIRED AND IS NOT DISSOLVED. Not retired, because DESIGN 4b(3) retires a drop
+// by its restoration trigger and by nothing else, and that trigger -- a jurisdiction standing on
+// ProviderPathStanding -- does not exist. Not dissolved by subject deletion either, which an earlier
+// draft of this paragraph claimed: the admitting path was not deleted, and recording it as deleted
+// would make the ruling silently unreachable while this record went on claiming otherwise. It stands
+// with an empty population, pending attribution, and it starts counting again the moment an
+// evidence-bearing admission path is built.
+//
+// A FOURTH ITEM WAS CLAIMED HERE AND IS NOW GONE, and the correction belongs in this row rather than
+// only in the module, because this row is what a reader consults to learn what survived the drop. It
+// read "whether the launch could have disabled it -- typed, folded and refusable", which was true
+// while gunbc.spark.first_party_serving concluded from the DECLARED container environment that
+// reporting was off for the deployment that answered, and turned the path Absent on that basis. That
+// conclusion was a claim about a process nobody read, so it was withdrawn -- and then the fold behind
+// it was deleted outright rather than kept behind a population that happens to be empty today, because
+// a deciding standing that still consults the declared environment is only postponing the same
+// attribution. gunbc.spark.first_party_serving no longer imports spark_pair_container_env at all.
+// So this row no longer claims anything about disabling: what the launch is declared to do is not
+// consulted, and what the process does needs the capability named at
+// gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation.
+//
+// THE HARM THE DROP ADMITS, unchanged by that correction: a consumer asking "which legal systems does
+// this route touch" gets a confident answer from two paths and a citation standing where a
+// jurisdiction belongs from the third, and nothing in the arm tells it apart.
 //
 // THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT. Reading stats.vllm.ai's operator off a
 // third-party page would not retire this row: it would fill one slot for one route and leave the
@@ -62,7 +95,7 @@ data provider_path_jurisdiction_unread_admits: RungDrop = RungDrop {
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: [
-    "gunbc.spark.first_party_serving spark_usage_stats_telemetry_path (returns ProviderPathLocated whose jurisdiction cites extdeps.vllm.usage_stats vllm_usage_stats_reporting service_jurisdiction, a field whose value is ServiceJurisdictionUndocumentedUpstream; the fail-closed arm ProviderPathUnread is reachable from the same fold and refuses the route)",
+    "gunbc.spark.first_party_serving spark_usage_stats_telemetry_path — GATED, EMPTY PENDING ATTRIBUTION EVIDENCE, and stated in this field rather than only in prose beside it. The located arm still stands there and still cites extdeps.vllm.usage_stats vllm_usage_stats_reporting service_jurisdiction, a field whose value is ServiceJurisdictionUndocumentedUpstream, so this row still describes the risk that arm carries and the operator's 2026-09-11 jurisdiction ruling still governs it. But nothing reaches that arm today: spark_serving_usage_stats_standing returns UsageStatsLaunchUnread on every arm, because attributing a reporter and its path to the launch that answered needs evidence bound to that launch and none exists. So the population is currently ZERO. It becomes non-empty again, with no edit to this row, the moment an admission path carries the evidence named at gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation.",
     ],
     restoration_trigger: "product.fabric.provider_route ProviderPathStanding carries a jurisdiction standing SUFFICIENT FOR a located path to declare its jurisdiction unread without the whole path becoming unread -- so that a consumer matching the located arm can see which of its three components were established -- and gunbc.spark.first_party_serving's telemetry path states the fact in its arm. Reading who operates the usage-stats service does NOT discharge this row: it fills one slot on one route and leaves every other located path with an undocumented counterparty in the same unexpressible position",
   }

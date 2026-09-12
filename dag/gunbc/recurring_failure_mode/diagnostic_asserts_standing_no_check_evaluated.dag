@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.diagnostic_asserts_standing_no_check_evaluated
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data diagnostic_asserts_standing_no_check_evaluated: RecurringFailureMode = RecurringFailureMode {
+  identity: "diagnostic_asserts_standing_no_check_evaluated" as NonEmptyStr,
+
+  receipts: [
+    "**an emitted diagnostic asserts a positive standing for a check that did not run on the path that emitted it** (INVALID STATE: a refusal or progress message states that some subject was admitted, validated or cleared, while the arm constructing that message never calls the producer of that judgement, so every reader of the text inherits an acceptance the program never established. It is DESIGN section 4b rung inflation emitted at RUNTIME: the message fabricates the acceptance in its own words, and the fabrication travels further than a comment because a diagnostic is the artifact humans quote as evidence for what happened. ",
+
+    "THE INSTANCE, 2026-09-11/12. gunbc.harness.harness_seat harness_bind_candidate, the SparkOfferBound arm, built its refusal note from the sentence 'the serving offer bound and its route is admissible, but a serving turn has no Work identity'. That arm never calls gunbc.spark.first_party_serving spark_first_party_admission; the annotation directly above it says the producer is reached only once the demand and work identities exist, which is the wall the same sentence goes on to report. So the clause about the route being admissible described a decision nothing had taken. ",
+
+    "THE COST, WHICH IS FOUR READINGS IN ONE NIGHT AND IS WHY THIS IS A CLASS RATHER THAN A TYPO. It misled its own author, who wrote the sentence and then reasoned from it. It misled a manager and a reviewer into reporting upward that both spark serving walls had fallen, when provider-use admission had never been evaluated -- the producer existed and was never exercised. And it misled its author a third time while he was correcting it: asked whether the fix mattered, he answered that the string was unreachable behind the Work-identity wall, when the string IS how that wall is reported. AND THE FOURTH READING IS THE ONE THAT SETTLES THE CEILING, because it happened with the diagnosis already in hand: after the class had been named and the correction written, a manager told the author the corrected string was unreachable, citing the dev end-to-end receipt as corroboration -- and that receipt WAS the sentence being emitted. Four readers, one of them the author twice and one of them a reader who had already diagnosed it. A wrong diagnostic does not mislead once. It keeps being read, including by the person holding the pen on its correction and by the person who caught it, and authorship is no protection -- it raises confidence rather than lowering it. That is the argument for the ceiling rather than for a review habit: no amount of knowing about this class stopped it, in four consecutive readings by three people who knew. ",
+
+    "THE REVIEW TELL IS MECHANICAL AND CHEAP: read the clause, name the producer it asserts an outcome for, and grep the emitting arm for that producer. If the producer does not appear in the arm, the sentence is inventing standing. The same read answers the honest rewrite, which is to say what did happen and what was not evaluated -- and to name the producer as existing and not run, so a reader cannot take existence for execution. ",
+
+    "RUNG FOUND AT: mitigatable -- the text is wrong and a human catches it downstream, after it has been quoted. CEILING: structurally preventable, because a note that names a check can be CONSTRUCTED FROM that check's outcome value rather than authored beside it, and a standing with no evaluated outcome then has no way to reach the text at all. NEXT TRIGGER: the seat refusal carrying the admission outcome and the work-identity outcome as VALUES it renders, rather than as prose a caller writes. ",
+
+    "WHY THIS IS NOT ONE OF THE NEIGHBOURING ROWS, checked before minting rather than after. prose_asserts_an_enforcement_no_operation_can_produce is an ANNOTATION claiming an enforcement over a field nothing reads; unbacked_execution_claim is authored prose asserting a live executing relation no authority backs; diagnostic_name_mechanism_silent is a diagnostic whose NAME is faithful and silent about which predicate fired. This row is none of those: the artifact is the program's own emitted TEXT, the defect is a positive standing rather than a missing mechanism, and the distinguishing fact is that the asserted clause names a subject whose producer is absent from the emitting arm. ",
+  ],
+
+  evidence: [],
+}

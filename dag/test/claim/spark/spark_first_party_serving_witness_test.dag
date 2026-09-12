@@ -4,7 +4,10 @@ import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
-import product.fabric.provider_route { CompliancePostureRevision }
+import product.fabric.provider_route {
+  CompliancePostureRevision, ProviderRouteFacts, ProviderDataPathClosure,
+  ProviderPathUnread, ProviderPathLocated, ProviderPathAbsent,
+}
 import product.fabric.provider_admission {
   ProviderUseScope, ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied,
   DispositionStanding, DispositionCleared, DispositionNotEngaged,
@@ -15,8 +18,23 @@ import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread,
 }
+import product.placement_supply { HostIdentity }
+import std.measure { token_count }
+import v2.std.optional { Present, Absent }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.pair_serving_realization {
+  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
+}
+import gunbc.spark.vllm_observed {
+  VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteDocumentUnreadable,
+  vllm_models_route_readback,
+}
 import gunbc.spark.first_party_serving {
-  spark_serving_usage_stats_standing,
+  SparkServingRealization, spark_serving_usage_stats_standing, spark_usage_stats_telemetry_path,
+  spark_serving_usage_stats_unread_cause, SparkTelemetryUnreadCause,
+  TelemetryReadbackUnresolved, TelemetryReportedPathDiffers, TelemetryDeclaredPathUnpinned,
+  TelemetryNoHostMembership, TelemetryHostsWithoutObservedLanes,
+  TelemetryConfigurationMatchedButUnread,
   spark_first_party_use_scope, spark_first_party_admission,
   spark_first_party_sanction_roster, spark_first_party_route_facts, spark_first_party_posture,
   spark_sanctions_disposition, spark_export_disposition, spark_prohibited_use_disposition,
@@ -60,17 +78,79 @@ fn t_third_party_scope() -> ProviderUseScope<NonEmptyStr> {
   }
 }
 
-// POSITIVE CONTROL. The first-party scope admits, and the permit carries the route and posture it
-// was admitted under rather than merely existing.
-test fn the_first_party_scope_admits_and_the_permit_names_its_posture() -> Bool {
+// THE REALIZATION THAT ANSWERED IS NOW PART OF EVERY SUBJECT, because the route facts are about the
+// deployment being offered rather than about a declaration. The pair-serving fixture is the one the
+// site allocation covers and whose container environment this module models; the foreign one differs
+// in the single field that decides attribution -- the model path the running engine reported.
+fn t_readback(path: String) -> VllmModelsRouteReadbackStanding {
+  ModelsRouteRead {
+    readback: vllm_models_route_readback(
+      served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+      configured_model_path: path as NonEmptyStr,
+      max_model_len: token_count(count: 1048576)),
+  }
+}
+
+// THE DECLARED PATH IS TAKEN FROM THE SAME PRODUCER THE MODULE COMPARES AGAINST, never transcribed.
+// A literal here would pass whatever the pinned snapshot became, which is the fixture agreeing with
+// itself rather than with the launch.
+fn t_declared_path() -> String {
+  match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+    Present { value: p } => p
+    Absent => ""
+  }
+}
+
+fn t_pair_realization() -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: t_readback(path: t_declared_path()),
+  }
+}
+
+// THE FOREIGN DEPLOYMENT DIFFERS IN WHAT THE RUNNING ENGINE REPORTED, not in where it answered. An
+// earlier spelling discriminated on the PORT, which review 64424 correctly refused: a replacement
+// engine on the same port would inherit an environment nothing observed it to have.
+fn t_foreign_realization() -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: t_readback(path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a"),
+  }
+}
+
+// THIS WITNESS USED TO ASSERT THAT THE FIRST-PARTY SCOPE ADMITS AND THAT THE PERMIT CARRIED THE
+// ROUTE AND POSTURE IT WAS ADMITTED UNDER. It no longer can, and that description is recorded here
+// in the past tense rather than left standing above this paragraph, where a reader met it first. It is kept
+// rather than deleted because it is the executed statement of what this repair COSTS: the work item
+// this module was built for asks that the dev end-to-end run PASS the two spark serving walls, and
+// this producer now refuses instead. SCOPED HONESTLY, that is a statement about THIS PRODUCER and not
+// about the run: the harness takes SparkOfferBound directly to its missing-Work refusal and does not
+// call spark_first_party_admission at all, so the dev run does not reach this refusal and its
+// terminal is unchanged by it. The route refuses, for a reason nothing here can retire -- the only
+// environment the corpus holds for a serving container is the one it declares the container is
+// CREATED with, and no producer reads a running one. The refusal is therefore unconditional rather
+// than situational, and it stands until the capability named at
+// spark_serving_usage_stats_declared_environment_obligation exists.
+//
+// IT ASSERTS THE CAUSE AND NOT MERELY THE ARM. A denial is easy to keep green by denying for the
+// wrong reason -- an expired posture, an uncovered site -- so this pins the refusal to the route
+// facts being incomplete. Everything else about the scope is still right and is still asserted by
+// its own witnesses: the posture is current, the site allocation covers these hosts, and every use
+// program is NotEngaged. The one thing missing is a reading of the environment of the process that
+// answered.
+test fn the_first_party_scope_refuses_while_its_environment_is_declared_not_read() -> Bool {
   match spark_first_party_admission(
+    realization: t_pair_realization(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
   ) {
-    ProviderUseDenied { decision: _, cause: _ } => false
-    ProviderUseAdmitted { permit: p } =>
-      declaration_ref_eq(a: p.route.region, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation"))
-        && declaration_ref_eq(a: p.posture.authority, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"))
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } =>
+      match c {
+        ProviderRouteFactsIncomplete { route: _, obligation: o } =>
+          declaration_ref_eq(a: o, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_serving_usage_stats_standing"))
+        _ => false
+      }
   }
 }
 
@@ -90,17 +170,23 @@ fn t_not_engaged_naming(d: DispositionStanding, basis_decl: NonEmptyStr) -> Bool
   }
 }
 
+// WHAT THIS ROW ESTABLISHES AND WHAT IT DOES NOT, stated first because the distinction is easy to
+// lose: t_not_engaged_naming checks the VARIANT and the basis REFERENCE. It does not evaluate the
+// truth of the prose inside the referenced basis, so re-pointing this row does not turn those
+// sentences into executed findings and must not be described as doing so. What it establishes is
+// that each program is NOT ENGAGED rather than cleared, and that each names the basis it claims to.
+//
+// AND IT ASSERTS AT THE SEAM THAT OWNS THE DISPOSITIONS, which is forced rather than stylistic. It used to read the three standings off an ADMITTED permit. After the telemetry repair
+// no realization admits -- the route facts are incomplete for every input, by design -- so the
+// permit arm is unreachable and a witness that asserts through it is asserting nothing. The
+// dispositions are not admission's to produce, though: they are produced by this module's own
+// spark_sanctions_disposition, spark_export_disposition and spark_prohibited_use_disposition, and
+// that is where the NOT-ENGAGED claim lives. Reading them there tests the same obligation without
+// routing it through a refusal that belongs to a different question.
 test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
-  match spark_first_party_admission(
-    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
-    offer: t_offer(),
-  ) {
-    ProviderUseDenied { decision: _, cause: _ } => false
-    ProviderUseAdmitted { permit: p } =>
-      t_not_engaged_naming(d: p.evidence.sanctions_standing, basis_decl: "spark_sanctions_not_engaged" as NonEmptyStr)
-        && t_not_engaged_naming(d: p.evidence.export_standing, basis_decl: "spark_export_not_engaged" as NonEmptyStr)
-        && t_not_engaged_naming(d: p.evidence.prohibited_use_standing, basis_decl: "spark_prohibited_use_not_engaged" as NonEmptyStr)
-  }
+  t_not_engaged_naming(d: spark_sanctions_disposition(), basis_decl: "spark_sanctions_not_engaged" as NonEmptyStr)
+    && t_not_engaged_naming(d: spark_export_disposition(), basis_decl: "spark_export_not_engaged" as NonEmptyStr)
+    && t_not_engaged_naming(d: spark_prohibited_use_disposition(), basis_decl: "spark_prohibited_use_not_engaged" as NonEmptyStr)
 }
 
 // THE ARM IS READ THROUGH refusal_reason, WHICH IS THE MODULE'S OWN EXHAUSTIVE DERIVATION, rather
@@ -114,8 +200,62 @@ test fn every_use_program_is_not_engaged_and_names_its_basis() -> Bool {
 // RED -- "IT IS JUST SERVING US FOR NOW" IS ENFORCED BY EXECUTION. A use whose customer is anybody
 // but us reaches the same producer and is refused, and the refusal names the unsupported profile so
 // the remedy is the right one: get that profile sanctioned under a posture, not widen this one.
+// AN ISOLATING FIXTURE, AND WHAT IT IS NOT. After the telemetry repair every realization produces
+// an unread telemetry path, so spark_first_party_route_facts always refuses as
+// ProviderRouteFactsIncomplete -- correctly, and FIRST. That refusal would mask every obligation
+// downstream of it: a row asserting "a third-party customer is unsupported" would go green on a
+// route-facts refusal and prove nothing about customer scope. The reviewer named this hazard
+// exactly -- an earlier, correctly located refusal must not be presented as execution evidence for
+// a later one -- so the rows below take facts whose paths are all resolved and therefore reach the
+// question they are about.
+//
+// THIS IS A HYPOTHETICAL RESOLVED-ROUTE FIXTURE, AND THAT NAME IS THE HONEST ONE. An earlier
+// spelling defended it as "inventing nothing", on the ground that every slot reuses a value
+// production already returns -- this module's own on-site path. That defence is wrong and worth
+// recording as wrong: COPYING A PRODUCTION VALUE INTO A SLOT DOES NOT MAKE IT AN OBSERVATION OF THAT
+// SLOT'S DESTINATION. Assigning the execution path to the telemetry slot constructs a closure that
+// no producer returns and no evidence supports; the provenance of the copied value buys nothing.
+//
+// WHAT MAKES IT ADMISSIBLE IS THE EXPLICIT HYPOTHESIS AND THE BOUNDED QUESTION, nothing else. The
+// claim these rows support is exactly: GIVEN a resolved-route fixture, the production admission
+// evaluator still rejects an unsupported customer profile and a superseded posture, each for its own
+// reason. That is a fact about the evaluator's later arms, which is what they are for.
+//
+// IT IS NOT PRODUCTION TELEMETRY EVIDENCE and must never be cited as any. It does not establish that
+// a telemetry path resolves, it does not reach production, and it is NOT the deferred launch-bound
+// positive control -- that row remains absent until evidence bound to the offered launch exists.
+fn t_facts_reaching_the_scope_checks() -> ProviderRouteFacts {
+  let f = spark_first_party_route_facts(realization: t_pair_realization())
+  let onsite = f.data_paths.execution
+  ProviderRouteFacts {
+    route: f.route,
+    contract_terms: f.contract_terms,
+    data_paths: ProviderDataPathClosure {
+      execution: onsite,
+      durable_storage: onsite,
+      backups: onsite,
+      logs: onsite,
+      telemetry: onsite,
+      control_plane: onsite,
+      support_access: onsite,
+      administrative_access: onsite,
+      spill: onsite,
+    },
+    downstream: f.downstream,
+    observed_at: f.observed_at,
+    facts_revision: f.facts_revision,
+  }
+}
+
 test fn a_non_first_party_use_refuses_as_unsupported() -> Bool {
-  match spark_first_party_admission(scope: t_third_party_scope(), offer: t_offer()) {
+  match admit_provider_use(
+    roster: spark_first_party_sanction_roster(),
+    facts: t_facts_reaching_the_scope_checks(),
+    active: spark_first_party_posture,
+    scope: t_third_party_scope(),
+    offer: t_offer(),
+    decision_receipt: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
+  ) {
     ProviderUseAdmitted { permit: _ } => false
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "customer scope unsupported"
   }
@@ -136,7 +276,7 @@ fn t_later_posture() -> CompliancePostureRevision {
 test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
   match admit_provider_use(
     roster: spark_first_party_sanction_roster(),
-    facts: spark_first_party_route_facts(),
+    facts: t_facts_reaching_the_scope_checks(),
     active: t_later_posture(),
     scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
     offer: t_offer(),
@@ -146,23 +286,146 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
     ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "posture stale"
   }
 }
-
-
-// THE DROP'S POPULATION AND THE CODE MOVE TOGETHER, WHICH IS WHAT THIS ROW IS FOR. The rung drop
-// gunbc.rung_drop.provider_path_jurisdiction_unread_admits is declared against a telemetry path that
-// exists only while the serving launch leaves usage reporting on. That standing is now DERIVED from
-// gunbc.spark.pair_serving_realization's container environment, so the day somebody adds
-// VLLM_NO_USAGE_STATS=1 the path becomes ProviderPathAbsent and the drop is declared against nothing
-// -- and this row goes red and says so, rather than leaving a rostered drop describing a path that
-// no longer exists.
+// THE DROP'S POSITIVE CONTROL IS DELETED HERE, AND THE DELETION IS THE HONEST MOVE RATHER THAN A
+// GAP. It asserted that the launch leaves usage reporting ON, which is what
+// gunbc.rung_drop.provider_path_jurisdiction_unread_admits was declared against. That standing no
+// longer exists to assert: the deciding producer does not read the declared environment at all, so
+// there is no arm that concludes reporting is on or off for this launch, and the drop's population
+// is empty pending attribution evidence. A control whose subject has no producer is not a weak
+// control, it is a permanently green one, and DESIGN 4b is explicit that such a check is worse than
+// absent because it will be cited as coverage.
 //
-// IT IS NOT A CHANGE DETECTOR: it asserts the arm the fold selects, and the fold reads a declaration
-// in another module, so what goes red is a real divergence between the launch and the drop roster
-// rather than a number someone has to keep in step by hand.
-test fn the_launch_leaves_usage_reporting_on_which_is_what_the_drop_is_declared_against() -> Bool {
-  match spark_serving_usage_stats_standing() {
-    UsageStatsEnabledByDefault { basis: _ } => true
-    UsageStatsDisabledByLaunch { mechanism: _ } => false
-    UsageStatsLaunchUnread { obligation: _ } => false
+// WHAT REPLACES IT IS NOT NOTHING. The same input is now driven by the first control below, which
+// asserts the opposite and correct result -- that a matching readback establishes no telemetry
+// standing at all. The drop keeps its record in its own row; what it does not keep is a witness
+// claiming a live population it no longer has.
+
+
+// THE THREE RESULTS THIS REPAIR HAS TO ESTABLISH, each at the seam that owns it. They are separate
+// witnesses rather than one because an earlier refusal at an earlier seam must not be presented as
+// evidence for a later one: if the standing refused for a foreign path or for missing membership,
+// that would say nothing about whether the telemetry attribution was closed.
+//
+// AND THE NAME OF THE FIRST ONE IS DELIBERATE. It is NOT "a foreign launch is detected". With no
+// input distinguishing two launches that share a configuration, this producer CANNOT detect that
+// distinction -- it can only decline to infer it. Naming it detection would claim a capability the
+// code does not have, which is the class this PR mints a row for.
+//
+// 1. MATCHING REPORTED CONFIGURATION DOES NOT ESTABLISH THE EFFECTIVE TELEMETRY CONFIGURATION.
+// Nonempty hosts, every one lane-covered, readback matching the declared launch -- and the standing
+// still returns Unread, for the missing-launch-bound-evidence reason rather than for either of the
+// two earlier causes. Before this repair this exact input produced an established standing.
+test fn a_matching_readback_does_not_establish_the_effective_telemetry_configuration() -> Bool {
+  match spark_serving_usage_stats_unread_cause(realization: t_pair_realization()) {
+    TelemetryConfigurationMatchedButUnread { configured_model_path: p } =>
+      (p as String) == t_declared_path()
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+  }
+}
+
+// 2. THE REFUSAL SURVIVES THE PATH CONVERSION. Neither Located nor Absent may be produced from it.
+// Both are established answers, and the earlier defect was that the metadata-only branch produced
+// Located -- which product.fabric.provider_route first_unresolved_obligation counts as RESOLVED, so
+// the route admitted.
+test fn the_missing_evidence_refusal_produces_an_unread_telemetry_path() -> Bool {
+  match spark_usage_stats_telemetry_path(realization: t_pair_realization()) {
+    ProviderPathUnread { obligation: _ } => true
+    ProviderPathLocated { operator: _, jurisdiction: _, evidence: _ } => false
+    ProviderPathAbsent { evidence: _ } => false
+  }
+}
+
+
+
+// RED -- A DEPLOYMENT THIS MODULE HAS NO ENVIRONMENT MODEL FOR DOES NOT INHERIT PAIR-SERVING'S
+// ANSWER. Same hosts, same site coverage, and the one thing that differs is the model path the
+// engine itself reported: before this repair the telemetry fold read
+// gunbc.spark.pair_serving_realization's container environment over the global lane roster and would
+// have handed this launch the pair route's answer, so a native GLM engine would have been admitted
+// on route facts describing a different container. It is unread now, which refuses.
+test fn a_foreign_deployment_on_the_same_hosts_is_unread_not_inherited() -> Bool {
+  match spark_serving_usage_stats_unread_cause(realization: t_foreign_realization()) {
+    TelemetryReportedPathDiffers { reported: rep, declared: dec } =>
+      (dec as String) == t_declared_path() && (rep as String) != t_declared_path()
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
+  }
+}
+
+// RED -- AND THE REFUSAL REACHES ADMISSION RATHER THAN STOPPING AT THE STANDING. An unread telemetry
+// path is an unresolved data path, so provider-use admission refuses for that route: the engine can
+// be healthy, the site covered and the posture current, and the route still does not admit.
+test fn a_foreign_deployment_refuses_provider_use_admission() -> Bool {
+  match spark_first_party_admission(
+    realization: t_foreign_realization(),
+    scope: spark_first_party_use_scope(demand: t_demand(), work: t_work()),
+    offer: t_offer(),
+  ) {
+    ProviderUseAdmitted { permit: _ } => false
+    ProviderUseDenied { decision: _, cause: c } => refusal_reason(c: c) == "route facts incomplete"
+  }
+}
+
+// RED -- A REALIZATION WITH NO READABLE HOST MEMBERSHIP IS UNREAD TOO, and for its own reason rather
+// than the foreign-deployment one: the readback identifies the declared launch, so the environment
+// WOULD be attributable, and what is missing is which hosts serve it. The obligation must name THAT
+// -- reading more of the lane roster answers nothing while the realization names no hosts (review
+// 64438).
+test fn a_pair_realization_with_no_hosts_is_unread_for_membership() -> Bool {
+  match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
+    hosts: [] as List<HostIdentity>,
+    readback: t_readback(path: t_declared_path()),
+  }) {
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => true
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
+  }
+}
+
+
+// RED -- A REALIZATION WHOSE HOSTS ARE ONLY PARTLY OBSERVED IS UNREAD, NOT ANSWERED FROM THE HALF
+// THAT IS. The earlier spelling refused only an EMPTY lane result, so one observed host and one
+// unobserved host resolved from the observed one and silently dropped the other (review 64424).
+// Partial evidence is missing evidence: srv5 has an observed lane and srv1 does not, and the answer
+// is the obligation rather than srv5's environment.
+test fn a_partly_observed_realization_is_unread_rather_than_answered_from_its_observed_half() -> Bool {
+  match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv1],
+    readback: t_readback(path: t_declared_path()),
+  }) {
+    TelemetryReadbackUnresolved => false
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => true
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
+  }
+}
+
+// RED -- AN UNRESOLVED READBACK IDENTIFIES NOTHING, so a route whose /v1/models document could not
+// be decoded cannot have an environment attributed to it either. This is the arm that makes the
+// identity join launch-bound rather than declaration-bound: with nothing reported by the process,
+// there is nothing to compare to the declared path.
+test fn an_unresolved_readback_leaves_the_deployment_unidentified() -> Bool {
+  match spark_serving_usage_stats_unread_cause(realization: SparkServingRealization {
+    hosts: [operator_host_srv5, operator_host_srv6],
+    readback: ModelsRouteDocumentUnreadable { cause: "the document's data member is not an array" as NonEmptyStr },
+  }) {
+    TelemetryReadbackUnresolved => true
+    TelemetryDeclaredPathUnpinned => false
+    TelemetryNoHostMembership => false
+    TelemetryHostsWithoutObservedLanes => false
+    TelemetryReportedPathDiffers { reported: _, declared: _ } => false
+    TelemetryConfigurationMatchedButUnread { configured_model_path: _ } => false
   }
 }
