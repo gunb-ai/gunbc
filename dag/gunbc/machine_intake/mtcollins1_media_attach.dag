@@ -21,7 +21,6 @@ import gunbc.machine_intake_megarac_media_attach {
   MegaRacImagesUnreadable,
   MegaRacSessionRefused,
   MegaRacSessionTokenUnreadable,
-  MegaRacStartRefused,
   megarac_attach_remote_image,
 }
 
@@ -79,8 +78,6 @@ fn mtcollins1_render_attach(outcome: MegaRacAttachOutcome) -> ProcessExit {
       exit_failure(reason: concat("mtcollins1 media attach: the images listing was not valid JSON, which is a protocol failure rather than the stale-cache case above: ", d))
     MegaRacImageNotEnumerated { image_name: n } =>
       exit_failure(reason: concat("mtcollins1 media attach: the image is not presented, and the controller offers other images but not '", n as String, "' — so it is absent from the share as the controller sees it, rather than already in use"))
-    MegaRacStartRefused { detail: d } =>
-      exit_failure(reason: concat("mtcollins1 media attach: start-media refused AND the configurations listing does not name the image: ", d))
     MegaRacAttachUnconfirmed { image_name: n, configurations: c } =>
       exit_failure(reason: concat("mtcollins1 media attach: start-media was accepted but configurations does not yet name '", n as String, "'; the mount daemon is asynchronous so this may be pending: ", c))
   }

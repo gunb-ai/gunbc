@@ -100,7 +100,6 @@ type MegaRacAttachOutcome
   | MegaRacImageListingEmpty
   | MegaRacImageListingUnparseable { detail: String }
   | MegaRacImageNotEnumerated { image_name: NonEmptyStr }
-  | MegaRacStartRefused { detail: String }
   | MegaRacAttachUnconfirmed { image_name: NonEmptyStr, configurations: String }
 
 // THE CSRF TOKEN IS READ FROM THE PARSED DOCUMENT, not scraped. The shell version matched a regex
@@ -461,15 +460,13 @@ fn presented_media_standing(
 
 // A NON-ZERO START FOLLOWED BY NO CONFIRMATION IS PENDING, NOT REFUSED, and this firmware is why:
 // the same controller answers HTTP 500 on writes that take effect, and its mount daemon is
-// asynchronous. Reporting MegaRacStartRefused on a status code would refuse an attach that is
-// merely still mounting. The bounded read-back decides; the status code only distinguishes which
-// unconfirmed state is reported.
+// asynchronous. Treating start.success as refusal would refuse an attach that is merely still
+// mounting. The bounded read-back decides.
 //
-// THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. This firmware answers HTTP 500
-// on writes that take effect; mapping start.success == false to MegaRacStartRefused refused an
-// attach that was merely still mounting. A known-stopped confirmation after any start response is
-// pending (Unconfirmed). An unreadable configurations document — parse failure or an uncatalogued
-// redirection standing — is ConfigurationsUnreadable: decoder ignorance is not a retry cue.
+// THE READ-BACK DECIDES, INCLUDING WHEN START REPORTED FAILURE. A known-stopped confirmation after
+// any start response is pending (Unconfirmed). An unreadable configurations document — parse
+// failure or an uncatalogued redirection standing — is ConfigurationsUnreadable: decoder ignorance
+// is not a retry cue.
 func megarac_start_and_confirm(
   bmc_host: NonEmptyStr,
   cookie_jar: NonEmptyStr,
