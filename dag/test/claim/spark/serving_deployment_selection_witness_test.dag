@@ -7,7 +7,7 @@ import std.measure { token_count, token_count_value, basis_point, byte_size, byt
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
 import std.pareto { LowerIsBetter, SelectionAxis }
-import std.decision { HardConstraint }
+import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, CandidateStandingIncomplete, SubjectClosureIncomplete }
 import std.roster_frontier {
   FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
 }
@@ -67,6 +67,12 @@ import gunbc.spark.serving_deployment_selection {
   serving_selection_axes, v4_1_selection_axes, ax_kv_bytes_per_token,
   kv_layout_policy_matching_wire, sm12_kv_layout_standing, Sm12KvLayoutAdmitted, Sm12KvLayoutJoinFailed,
   engram_standing, EngramOffloadZeroPoolGainOnUnifiedMemory, EngramNotAComponentOfThisArtifact,
+  ax_component_route, constraint_component_route,
+  ArtifactComponent, artifact_component, ArtifactComponentPlacement, ComponentResident, ComponentPlacedByRoute,
+  v4_1_artifact_components, legacy_undecomposed_artifact,
+  artifact_decomposition_defect, candidate_resident_footprint, sum_component_footprints,
+  footprint_bytes, component_route_holds,
+  FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
   VllmSourceRevisionEstablished, VllmSourceRevisionUnestablished,
@@ -490,6 +496,7 @@ test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
     label: artifact_deepseek_v4_flash_native.label,
     footprint: artifact_deepseek_v4_flash_native.footprint,
     weight_treatment: RequantisedWeights { distinction: "identity-collision-probe" as NonEmptyStr },
+    components: artifact_deepseek_v4_flash_native.components,
   }
   let requant_field = serving_candidate_field(
     identity: settled_field.identity,
@@ -987,5 +994,142 @@ test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bo
     requirement: deepseek_quality_requirement) {
     QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
     _ => false
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// DSV41-10: THE ENGRAM ROUTE INTEGRATION, CHECKED AT THE PRODUCT ROOT
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+// THE CONTROL THAT REDS IF THE INTEGRATION IS REMOVED. This is not a fixture calling an unused
+// function: it is the live V4.1 serving decision -- the same `deepseek_v4_1_decision_input` the
+// product declares -- and it asserts that the evidence it reports back includes the component-route
+// axis. Delete the axis from `v4_1_selection_axes`, or stop `candidate_gaps` from carrying the
+// route standing, and this goes red rather than quietly returning the same answer for other reasons.
+fn needs_name_axis(needs: List<SelectionEvidenceNeed>, axis: DeclarationRef) -> Bool {
+  any(needs, n => match n {
+    UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: axis)
+    CandidateStandingIncomplete { candidate: _, cause: _ } => false
+    SubjectClosureIncomplete { subject: _, obligation: _ } => false
+  })
+}
+
+test fn the_live_v4_1_serving_decision_reports_the_component_route_evidence_need() -> Bool {
+  match select_serving_deployment(input: deepseek_v4_1_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: ns } =>
+      count(ns) > 0 && needs_name_axis(needs: ns, axis: ax_component_route)
+    ServingDeploymentSelected { selected: _ } => false
+    ServingDeploymentNeedsPolicy { survivors: _ } => false
+    NoFeasibleServingDeployment { causes: _ } => false
+    ServingDeploymentSelectionRefused { defects: _ } => false
+  }
+}
+
+// AND THE ROUTE AXIS IS THIS SUBJECT'S, NOT EVERY SUBJECT'S. GLM and V4-Flash declare no components,
+// so neither the axis nor its hard constraint appears in their populations and their results are
+// reached exactly as before.
+test fn the_component_route_axis_and_constraint_are_v4_1_only() -> Bool {
+  any(v4_1_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
+    && !any(serving_selection_axes, a => declaration_ref_eq(a: a.identity, b: ax_component_route))
+    && any(v4_1_selection_constraints, c => declaration_ref_eq(a: c.axis, b: ax_component_route))
+    && !any(serving_selection_constraints, c => declaration_ref_eq(a: c.axis, b: ax_component_route))
+    && count(artifact_glm_53_flash_native.components) == 0
+    && count(artifact_deepseek_v4_flash_native.components) == 0
+    && count(artifact_glm_53_flash_2bit.components) == 0
+    && count(artifact_deepseek_v4_1_flash_native.components) == 4
+}
+
+// THE WHOLE-ARTIFACT FOOTPRINT IS THE DERIVED TOTAL OF THE PARTS. The four V4.1 components are the
+// shard headers' name partition, and their sum is the figure the artifact already carried -- so the
+// decomposition refines that number rather than replacing it.
+test fn the_v4_1_component_bytes_sum_to_the_whole_artifact_footprint() -> Bool {
+  match footprint_bytes(f: sum_component_footprints(cps: v4_1_artifact_components)) {
+    Absent => false
+    Present { value: parts } => match footprint_bytes(f: artifact_deepseek_v4_1_flash_native.footprint) {
+      Absent => false
+      Present { value: whole } =>
+        byte_size_count(b: parts) == byte_size_count(b: whole)
+          && byte_size_count(b: parts) == 510286023000
+    }
+  } && match artifact_decomposition_defect(art: artifact_deepseek_v4_1_flash_native) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND A DECOMPOSITION THAT DOES NOT SUM IS A STRUCTURAL REFUSAL, not a rounding note. The field
+// carrying such an artifact is unestablished, which the product root turns into
+// `ServingDeploymentSelectionRefused` rather than a decision over a quantity nobody can name.
+fn mismatched_artifact() -> ModelArtifact {
+  ModelArtifact {
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_artifact"),
+    label: "fixture: components that do not sum to the whole" as NonEmptyStr,
+    footprint: FootprintObservedOnFleet { bytes: byte_size(count: 1000), how: "fixture" as NonEmptyStr },
+    weight_treatment: PublishedNativeWeights,
+    components: [
+      artifact_component(
+        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_part"),
+        label: "fixture part" as NonEmptyStr,
+        footprint: FootprintObservedOnFleet { bytes: byte_size(count: 999), how: "fixture" as NonEmptyStr },
+        placement: ComponentResident),
+    ],
+  }
+}
+
+test fn a_decomposition_that_does_not_sum_refuses_at_the_product_root() -> Bool {
+  match artifact_decomposition_defect(art: mismatched_artifact()) {
+    Present { value: _ } => true
+    Absent => false
+  } && match establish_serving_candidate_field(field: serving_candidate_field(
+    identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "mismatched_field"),
+    domain: serving_deployment_domain(
+      artifacts: [mismatched_artifact()],
+      topologies: [topology_shape(tensor_parallel_degree: 4, replica_count: 2)],
+      parameters: serving_parameters_current),
+    candidates: [cand(name: "mismatched", art: mismatched_artifact(), t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))])) {
+    ServingFieldUnestablished { causes: cs } => count(cs) > 0
+    ServingFieldEstablished => false
+  }
+}
+
+// LEGACY BEHAVIOUR IS UNCHANGED OUTSIDE THE NEW SUBJECT. An artifact with no components has a
+// resident footprint that IS its whole-artifact footprint, arm for arm and byte for byte, so the
+// screen divides exactly what it divided before this change.
+test fn an_undecomposed_artifact_divides_exactly_what_it_divided_before() -> Bool {
+  let v4 = cand(name: "legacy_v4", art: artifact_deepseek_v4_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2))
+  match candidate_resident_footprint(c: v4, p: serving_parameters_current) {
+    FootprintObservedOnFleet { bytes: b, how: _ } => byte_size_count(b: b) == 168683720987
+    FootprintReportedExternally { bytes: _, source: _ } => false
+    FootprintUnread { obligation: _ } => false
+  } && match weight_fit_of(c: v4, fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => false
+    WeightFitUnderivable { because: _ } => false
+  } && match candidate_resident_footprint(
+    c: cand(name: "legacy_glm", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)),
+    p: serving_parameters_current) {
+    FootprintUnread { obligation: _ } => true
+    FootprintObservedOnFleet { bytes: _, how: _ } => false
+    FootprintReportedExternally { bytes: _, source: _ } => false
+  } && component_route_holds(
+    c: cand(name: "legacy_glm2", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)),
+    p: serving_parameters_current)
+}
+
+// AND THE V4.1 CANDIDATE'S RESIDENT FOOTPRINT IS UNREAD RATHER THAN SMALLER. With no route selected,
+// the Engram component contributes an obligation, so the sum is `FootprintUnread` and the fit stays
+// underivable. That is the arm that would be a silent zero if the route's working set were assumed
+// away -- and a zero here is exactly what would make a narrow topology look feasible.
+test fn a_routed_component_leaves_the_resident_footprint_unread_rather_than_zero() -> Bool {
+  let v41 = cand(name: "v41_routed", art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))
+  match candidate_resident_footprint(c: v41, p: serving_parameters_current) {
+    FootprintUnread { obligation: o } => count(o as String) > 0
+    FootprintObservedOnFleet { bytes: _, how: _ } => false
+    FootprintReportedExternally { bytes: _, source: _ } => false
+  } && match weight_fit_of(c: v41, fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightFitUnderivable { because: _ } => true
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => false
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => false
   }
 }

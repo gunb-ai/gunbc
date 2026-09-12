@@ -1,7 +1,7 @@
 module extdeps.deepseek.deepseek_v4_1_flash
 
 import std.types { NonEmptyStr, String, Bool, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.measure {
   TokenCount, token_count, token_count_value,
   ParameterCount, parameter_count,
@@ -14,6 +14,15 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl, concat_frontier_row_groups }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.safetensors.format {
+  SafetensorsEntry, safetensors_entry,
+  SafeF8E4M3, SafeF8E8M0, SafeBf16,
+  SafetensorsPopulationReading, PopulationScanned,
+  SafetensorsPopulationStanding, safetensors_population_standing,
+  safetensors_population_entries, safetensors_population_declared_bytes,
+  SafetensorsShardFile, safetensors_shard_file,
+}
 
 // DEEPSEEK-V4.1-FLASH, as its own extdeps authority because it is an independently versioned
 // upstream product, not a revision of DeepSeek-V4-Flash and not a property of whatever happens to
@@ -472,3 +481,230 @@ data deepseek_v4_1_flash_chat_reasoning_field: NonEmptyStr = "reasoning_content"
 // system message behaves like a user message for appending the assistant generation header.
 data deepseek_v4_1_flash_system_token: NonEmptyStr = "<｜System｜>" as NonEmptyStr
 data deepseek_v4_1_flash_mid_conversation_system_messages_supported: Bool = true
+
+// ===========================================================================================
+// THE EXACT ENGRAM TENSOR POPULATION AT THE PIN, read from the safetensors headers rather than
+// from any size summary. `deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes` above is
+// a partition total over all 48 shard headers; it is a number, and a number cannot say which
+// tensors it covers, what shapes they have, or whether a local copy holds them. This section
+// carries the population itself, so the total becomes DERIVED from named subjects.
+//
+// HOW IT WAS OBTAINED. `model.safetensors.index.json` at this revision maps 96085 tensor names to
+// 48 shards; exactly 12 of those names contain `.engram.`, and they occupy exactly two shards
+// (47 and 48), which carry no other tensors. Each shard's 8-byte length prefix and JSON header
+// were read by ranged request at this revision and the twelve entries transcribed below verbatim.
+//
+// WHAT THIS IS NOT. It is the publisher's DECLARED structure. The shard sha256 rows below are the
+// publisher's own content digests for the two files. Neither is a reading of bytes on this fleet,
+// and `extdeps.safetensors.format` keeps the declared-structure fact and the byte-digest fact in
+// separate carriers for that reason. Declared frontier: DSV41-10.
+// ===========================================================================================
+
+data deepseek_v4_1_flash_engram_tensor_name_infix: NonEmptyStr = ".engram." as NonEmptyStr
+data deepseek_v4_1_flash_index_tensor_count: Nat = 96085
+data deepseek_v4_1_flash_engram_tensor_count: Nat = 12
+
+data deepseek_v4_1_flash_engram_shard_1_path: NonEmptyStr = "model-00047-of-00048.safetensors" as NonEmptyStr
+data deepseek_v4_1_flash_engram_shard_14_path: NonEmptyStr = "model-00048-of-00048.safetensors" as NonEmptyStr
+
+// The six tensors of the layer-1 Engram table, from the shard-47 header. Offsets are relative to
+// that shard's payload region.
+data deepseek_v4_1_flash_engram_entries_layer_1: List<SafetensorsEntry> = [
+  safetensors_entry(name: "layers.1.engram.embed.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [384006168, 256], begin_offset: 0, end_offset: 98305579008),
+  safetensors_entry(name: "layers.1.engram.embed.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [384006168, 8], begin_offset: 98305579008, end_offset: 101377628352),
+  safetensors_entry(name: "layers.1.engram.q_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101377628352, end_offset: 101377669312),
+  safetensors_entry(name: "layers.1.engram.k_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101377669312, end_offset: 101377710272),
+  safetensors_entry(name: "layers.1.engram.wkv.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [25600, 6144], begin_offset: 101377710272, end_offset: 101534996672),
+  safetensors_entry(name: "layers.1.engram.wkv.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [800, 192], begin_offset: 101534996672, end_offset: 101535150272),
+]
+
+// The six tensors of the layer-14 Engram table, from the shard-48 header.
+data deepseek_v4_1_flash_engram_entries_layer_14: List<SafetensorsEntry> = [
+  safetensors_entry(name: "layers.14.engram.embed.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [384016682, 256], begin_offset: 0, end_offset: 98308270592),
+  safetensors_entry(name: "layers.14.engram.embed.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [384016682, 8], begin_offset: 98308270592, end_offset: 101380404048),
+  safetensors_entry(name: "layers.14.engram.q_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101380404048, end_offset: 101380445008),
+  safetensors_entry(name: "layers.14.engram.k_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 5120], begin_offset: 101380445008, end_offset: 101380485968),
+  safetensors_entry(name: "layers.14.engram.wkv.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [25600, 6144], begin_offset: 101380485968, end_offset: 101537772368),
+  safetensors_entry(name: "layers.14.engram.wkv.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [800, 192], begin_offset: 101537772368, end_offset: 101537925968),
+]
+
+data deepseek_v4_1_flash_engram_population_reading: SafetensorsPopulationReading = PopulationScanned {
+  entries: concat(deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14),
+}
+
+data deepseek_v4_1_flash_engram_population: SafetensorsPopulationStanding = safetensors_population_standing(
+  reading: deepseek_v4_1_flash_engram_population_reading,
+)
+
+// THE TWO SHARD FILES, with the publisher's sha256 over each whole file. These are the LFS object
+// ids at this revision; the file size includes the 8-byte length prefix and the JSON header, which
+// is why it exceeds the payload the header declares.
+type DeepseekV41EngramShard sole_constructor {
+  file: SafetensorsShardFile
+  sha256: Sha256Digest
+}
+
+data deepseek_v4_1_flash_engram_shard_1: DeepseekV41EngramShard = DeepseekV41EngramShard {
+  file: safetensors_shard_file(
+    path: deepseek_v4_1_flash_engram_shard_1_path,
+    header_bytes: 656,
+    file_bytes: byte_size(count: 101535150936),
+  ),
+  sha256: Sha256Digest { hex: "824db4881320407ac340736d14dcee5ecd748c27d0f5836b8127ecc2e3781b0f" as Sha256DigestHex },
+}
+
+data deepseek_v4_1_flash_engram_shard_14: DeepseekV41EngramShard = DeepseekV41EngramShard {
+  file: safetensors_shard_file(
+    path: deepseek_v4_1_flash_engram_shard_14_path,
+    header_bytes: 664,
+    file_bytes: byte_size(count: 101537926640),
+  ),
+  sha256: Sha256Digest { hex: "976330f4954338e1ad8b508c32aa912032c7ad908959fd53c8307650fe4520ed" as Sha256DigestHex },
+}
+
+data deepseek_v4_1_flash_engram_shards: List<DeepseekV41EngramShard> = [
+  deepseek_v4_1_flash_engram_shard_1,
+  deepseek_v4_1_flash_engram_shard_14,
+]
+
+// THE TOTAL, DERIVED. Every byte comes from a named tensor's declared span. This is the quantity
+// `deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes` reports, and the witness module
+// asserts the two agree -- which is the check that the partition summary above covered exactly
+// this population and no other tensor.
+fn deepseek_v4_1_flash_engram_derived_bytes() -> ByteSize? {
+  safetensors_population_declared_bytes(s: deepseek_v4_1_flash_engram_population)
+}
+
+// ── THE WEIGHT/SCALE RELATION, DERIVED FROM THE SHAPES RATHER THAN ASSERTED ────────────────────
+//
+// The fp8 tensors are block-scaled: an F8_E4M3 payload tensor is paired with an F8_E8M0 scale
+// tensor, and `deepseek_v4_1_flash_weight_block_size` is 32. THE BLOCKING IS NOT UNIFORM ACROSS
+// AXES and that is a real fact about this checkpoint, not a tolerance: `embed` is scaled per row
+// along its last axis only (384006168 rows unchanged, 256 -> 8), while `wkv` is blocked along both
+// (25600 -> 800, 6144 -> 192). A relation that demanded every axis be blocked would refuse the
+// real embed pair; one that demanded none would admit an arbitrary scale shape. So each axis is
+// classified, and a pair whose axis is NEITHER equal NOR the blocked quotient has no arm.
+type EngramScaleAxisRelation
+  = ScaleAxisUnblocked
+  | ScaleAxisBlockedBy { block: Nat }
+  | ScaleAxisUnrelated { payload_dim: Nat, scale_dim: Nat }
+
+fn deepseek_v4_1_flash_scale_axis_relation(payload_dim: Nat, scale_dim: Nat, block: Nat) -> EngramScaleAxisRelation {
+  if payload_dim == scale_dim {
+    ScaleAxisUnblocked
+  } else {
+    if block > 0 && scale_dim > 0 && payload_dim == scale_dim * block {
+      ScaleAxisBlockedBy { block: block }
+    } else {
+      ScaleAxisUnrelated { payload_dim: payload_dim, scale_dim: scale_dim }
+    }
+  }
+}
+
+fn deepseek_v4_1_flash_scale_axis_is_related(r: EngramScaleAxisRelation) -> Bool {
+  match r {
+    ScaleAxisUnblocked => true
+    ScaleAxisBlockedBy { block: _ } => true
+    ScaleAxisUnrelated { payload_dim: _, scale_dim: _ } => false
+  }
+}
+
+type EngramScalePairing sole_constructor {
+  payload_name: NonEmptyStr
+  scale_name: NonEmptyStr
+  axis_relations: List<EngramScaleAxisRelation>
+}
+
+fn deepseek_v4_1_flash_entry_named(name: NonEmptyStr) -> SafetensorsEntry? {
+  (filter(
+    safetensors_population_entries(s: deepseek_v4_1_flash_engram_population),
+    e => (e.name as String) == (name as String))).first()
+}
+
+// A ZERO DIMENSION IS THE ABSENT ANSWER, and the relation fold below classifies zero against any
+// payload dimension as Unrelated -- so an out-of-range index cannot silently read as a match.
+fn deepseek_v4_1_flash_dim_at(shape: List<Nat>, index: Nat) -> Nat {
+  match (shape.skip(index)).first() {
+    Absent => 0
+    Present { value: d } => d
+  }
+}
+
+fn deepseek_v4_1_flash_scale_pairing(payload_name: NonEmptyStr, scale_name: NonEmptyStr) -> EngramScalePairing? {
+  match deepseek_v4_1_flash_entry_named(name: payload_name) {
+    Absent => none
+    Present { value: p } => match deepseek_v4_1_flash_entry_named(name: scale_name) {
+      Absent => none
+      Present { value: s } =>
+        if count(p.shape) == count(s.shape) {
+          Present { value: EngramScalePairing {
+            payload_name: payload_name,
+            scale_name: scale_name,
+            axis_relations: map(
+              nat_range_inclusive(lo: 0, hi: count(p.shape) - 1),
+              i => deepseek_v4_1_flash_scale_axis_relation(
+                payload_dim: deepseek_v4_1_flash_dim_at(shape: p.shape, index: i),
+                scale_dim: deepseek_v4_1_flash_dim_at(shape: s.shape, index: i),
+                block: deepseek_v4_1_flash_weight_block_size)),
+          } }
+        } else { none }
+    }
+  }
+}
+
+fn deepseek_v4_1_flash_scale_pairing_holds(p: EngramScalePairing) -> Bool {
+  count(p.axis_relations) > 0 && all(p.axis_relations, r => deepseek_v4_1_flash_scale_axis_is_related(r: r))
+}
+
+// THE FOUR PAIRS THIS POPULATION CONTAINS. A fifth fp8 tensor without a scale, or a scale without
+// its payload, does not appear here and would leave the pairing fold with an unmatched tensor --
+// which the witness module checks by counting the scale-dtype tensors against these rows.
+data deepseek_v4_1_flash_engram_scale_pair_names: List<List<NonEmptyStr>> = [
+  ["layers.1.engram.embed.weight" as NonEmptyStr, "layers.1.engram.embed.scale" as NonEmptyStr],
+  ["layers.1.engram.wkv.weight" as NonEmptyStr, "layers.1.engram.wkv.scale" as NonEmptyStr],
+  ["layers.14.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.scale" as NonEmptyStr],
+  ["layers.14.engram.wkv.weight" as NonEmptyStr, "layers.14.engram.wkv.scale" as NonEmptyStr],
+]
+
+// ── THE CONFIG DIMENSIONS AND THE TENSOR SHAPES ARE TWO SOURCES THAT MUST AGREE ────────────────
+//
+// `deepseek_v4_1_flash_engram.unpadded_embeddings` and the embed tensors' row counts are read from
+// DIFFERENT FILES -- config.json and the shard headers -- so their agreement is evidence rather
+// than a tautology. Same for the n-gram projections: q_weight and k_weight are [max_ngram_size,
+// hidden_size], both config keys. head_dim is the embed tensors' last axis.
+fn deepseek_v4_1_flash_engram_embed_rows() -> List<Nat> {
+  flat_map(
+    ["layers.1.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.weight" as NonEmptyStr],
+    n => match deepseek_v4_1_flash_entry_named(name: n) {
+      Absent => []
+      Present { value: e } => match e.shape.first() {
+        Absent => []
+        Present { value: rows } => [rows]
+      }
+    })
+}
+
+fn deepseek_v4_1_flash_engram_ngram_projection_shape() -> List<Nat> {
+  [deepseek_v4_1_flash_engram.max_ngram_size, deepseek_v4_1_flash_hidden_size]
+}
+
+data deepseek_v4_1_flash_engram_population_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+data deepseek_v4_1_flash_frontier_dsv41_10: List<FrontierRow> = deepseek_v4_1_flash_frontier_rows(
+  decl_names: [
+    "deepseek_v4_1_flash_engram_entries_layer_1" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_entries_layer_14" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_population" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_shards" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_derived_bytes" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_scale_pair_names" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_population_standing" as NonEmptyStr,
+    "deepseek_v4_1_flash_index_tensor_count" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_tensor_count" as NonEmptyStr,
+    "deepseek_v4_1_flash_engram_tensor_name_infix" as NonEmptyStr,
+  ],
+  reason: "DSV41-10 gunbc.fabric.engram_materialization consumes this exact population as its component subject",
+  dissolution: unbound_dissolution(description: "TRIGGER: a fleet-side reading that verifies these two shard sha256 digests over bytes present on a Spark and relates the header-declared population to them. SUFFICIENT FOR: the component subject's realization evidence stops being publisher-declared structure plus publisher-declared digests and becomes a local materialization receipt." as NonEmptyStr),
+)

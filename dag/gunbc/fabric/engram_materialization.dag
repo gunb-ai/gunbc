@@ -1,0 +1,1788 @@
+module gunbc.fabric.engram_materialization
+
+import std.types { Bool, Int, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.interval { OrderedClosedInterval, degenerate_interval }
+import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic }
+import std.realization { Placement, LocalInProcess, LocalFilesystem, RemoteNetwork, LocalAccelerator }
+import std.materialization_ladder {
+  CacheProvider, provider_row, ProviderTier, ReferenceTier, CopyTier, MemoTier, ArtifactTier, CasTier,
+  CacheKeying, ContentKeyed, ExistenceKeyed,
+  CacheCoverage, CoversIdentities,
+  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame,
+  ProviderAddressing, EdgeAddressed, KeyAddressed,
+  tier_axes, persistent_retention, scope_released_retention,
+}
+import std.cache_interface { ProviderRetention, CapacityPolicy, CapacityUnobserved }
+import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.decision {
+  HardConstraint, SelectionPolicy, UniqueSurvivorRequired,
+  SelectionEvidenceNeed, DecisionAssessment, DecisionSubject, DecisionVariable,
+  DecisionRegion, ObjectiveTerm, ObjectiveMeasure, ChoiceDomain,
+  PhysicalModelUnestablished, CausalModelUnestablished,
+  RealizationSelectionResult, SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
+  RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
+  SelectionReceipt, select_realization,
+}
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_revision,
+  deepseek_v4_1_flash_engram_population,
+  deepseek_v4_1_flash_engram_population_standing,
+  deepseek_v4_1_flash_engram_shards,
+  deepseek_v4_1_flash_engram_shard_1,
+  deepseek_v4_1_flash_engram_shard_14,
+}
+import extdeps.safetensors.format {
+  SafetensorsEntry, SafetensorsPopulationStanding,
+  PopulationEstablished, PopulationIncomplete, PopulationRefused,
+  SafetensorsShardFile,
+  safetensors_population_declared_bytes, safetensors_population_entries,
+}
+
+// ── PLACING ONE COMPONENT OF A CHECKPOINT, AS A MATERIALIZATION QUESTION ───────────────────────
+//
+// WHY THIS EXISTS. A checkpoint is not one indivisible blob. DeepSeek-V4.1-Flash's Engram tables
+// are roughly two fifths of its payload, they are touched by a different access pattern from the
+// backbone, and the question "where do those bytes live" has at least four answers with materially
+// different memory, latency and failure costs. The first way that question got answered anywhere
+// was `engram_location = "ssd"` in somebody's launch recipe -- a string on the artifact, which
+// makes placement a property OF THE WEIGHTS. Two placements then become two checkpoints, and
+// nothing in the model can any longer state that they serve the same thing.
+//
+// SO THE FIRST MOVE IS TO SPLIT THREE FACTS APART, and the split is the whole point of this file:
+//
+//   the SEMANTIC COMPONENT SUBJECT   an exact model revision and an exact tensor population
+//   a MATERIALIZED ENCODING          a physical layout, with a digest over ITS OWN bytes
+//   a FAITHFULNESS RELATION          the evidence that this encoding realizes that subject
+//
+// A repacked row store tuned for gather is a legitimate encoding of the Engram tables and it does
+// NOT share their safetensors digest. Saying "every route serves the same digest" is therefore
+// either false or presupposes a canonical physical encoding nobody has defined. Identity lives on
+// the subject; each route carries its own artifact digest; and the route is admissible only when a
+// faithfulness relation joins the two.
+//
+// WHAT THIS MODULE IS NOT. It is not a second decision algebra: route choice is
+// `std.decision.select_realization` over `std.pareto`, exactly as
+// `gunbc.spark.serving_deployment_selection` calls it, and this module declares the subject, the
+// candidates and the evidence rather than a ranking of its own. It is not a second cache-retention
+// vocabulary: every hop IS a `std.materialization_ladder` `CacheProvider`, so placement and
+// retention are READ OFF the provider rather than restated beside it. And it is not a host
+// scheduler: it never says which host runs what.
+//
+// IT IS ALSO NOT SPECIFIC TO ENGRAM. Engram is the first subject. The carriers are generic over
+// component and route, so a vision tower, a draft model or a KV offload tier supplies its own
+// population and demand rows and consumes the same folds.
+
+// ── THE SUBJECT ───────────────────────────────────────────────────────────────────────────────
+//
+// The population arrives as a `SafetensorsPopulationStanding`, which is the carrier that cannot
+// lose the difference between "scanned and well formed", "partially scanned" and "refused". That
+// is why the subject's standing has three arms rather than one: a component whose population could
+// not be established is not a component with zero tensors.
+type ComponentSubject sole_constructor {
+  identity: DeclarationRef
+  label: NonEmptyStr
+  upstream_revision: NonEmptyStr
+  population: SafetensorsPopulationStanding
+  published_encoding: PhysicalEncoding
+  published_shard_digests: List<Sha256Digest>
+  population_standing: CitedFigureStanding
+}
+
+// THE ENCODINGS ARE LAYOUTS, NOT LOCATIONS. `engram_location = "ssd"` conflated the two: a layout
+// is what the bytes ARE, a route is where they are reached from. The same safetensors shard set is
+// the encoding on the origin, on an NVMe copy and on an NFS export; only the route differs.
+type PhysicalEncoding
+  = SafetensorsShardSet { shard_paths: List<NonEmptyStr> }
+  | ResidentParameterTensors { framework: NonEmptyStr }
+  | RepackedRowStore { layout: NonEmptyStr, record_stride_established: Bool }
+
+fn physical_encoding_key(e: PhysicalEncoding) -> String {
+  match e {
+    SafetensorsShardSet { shard_paths: ps } =>
+      join(["safetensors[", join(map(ps, p => p as String), ","), "]"], "")
+    ResidentParameterTensors { framework: f } => join(["resident-parameters|", f as String], "")
+    RepackedRowStore { layout: l, record_stride_established: s } =>
+      join(["repacked|", l as String, "|stride-established:", if s { "true" } else { "false" }], "")
+  }
+}
+
+fn physical_encoding_eq(a: PhysicalEncoding, b: PhysicalEncoding) -> Bool {
+  physical_encoding_key(e: a) == physical_encoding_key(e: b)
+}
+
+// THE SUBJECT HAS A BUILDER AND THE LAUNCH RECEIPT DELIBERATELY DOES NOT. Describing a component
+// is ordinary data -- naming a revision and a population is not a claim that anything was served.
+// `RouteLaunchReceipt` is sole_constructor with no builder for the opposite reason: it is the
+// payload of the arm that says the runtime WAS observed serving the component, and that may come
+// only from this module's own folds.
+fn component_subject(
+  identity: DeclarationRef,
+  label: NonEmptyStr,
+  upstream_revision: NonEmptyStr,
+  population: SafetensorsPopulationStanding,
+  published_encoding: PhysicalEncoding,
+  published_shard_digests: List<Sha256Digest>,
+  population_standing: CitedFigureStanding,
+) -> ComponentSubject {
+  ComponentSubject {
+    identity: identity,
+    label: label,
+    upstream_revision: upstream_revision,
+    population: population,
+    published_encoding: published_encoding,
+    published_shard_digests: published_shard_digests,
+    population_standing: population_standing,
+  }
+}
+
+type ComponentSubjectStanding
+  = ComponentSubjectEstablished { subject: ComponentSubject, declared_bytes: ByteSize, tensor_count: Nat }
+  | ComponentSubjectPopulationIncomplete { identity: DeclarationRef, obligation: NonEmptyStr }
+  | ComponentSubjectRefused { identity: DeclarationRef, defects: List<NonEmptyStr> }
+
+// THE DECLARED BYTES ARE DERIVED FROM THE POPULATION AND NOWHERE ELSE. There is no parameter here
+// for a size summary, so a component cannot be given a byte count that its tensors do not add up
+// to -- which is the structural version of "derive totals from the population rather than
+// transcribing another size summary".
+fn establish_component_subject(subject: ComponentSubject) -> ComponentSubjectStanding {
+  match subject.population {
+    PopulationRefused { defects: ds } => ComponentSubjectRefused { identity: subject.identity, defects: ds }
+    PopulationIncomplete { obligation: o, partial_entry_count: k } =>
+      ComponentSubjectPopulationIncomplete {
+        identity: subject.identity,
+        obligation: join([
+          o as String,
+          " (", to_string(k), " tensor rows were read; a partial population is not the component)",
+        ], "") as NonEmptyStr,
+      }
+    PopulationEstablished { population: p } =>
+      ComponentSubjectEstablished {
+        subject: subject,
+        declared_bytes: p.declared_bytes,
+        tensor_count: count(p.entries),
+      }
+  }
+}
+
+fn component_subject_declared_bytes(s: ComponentSubjectStanding) -> ByteSize? {
+  match s {
+    ComponentSubjectEstablished { subject: _, declared_bytes: b, tensor_count: _ } => Present { value: b }
+    ComponentSubjectPopulationIncomplete { identity: _, obligation: _ } => none
+    ComponentSubjectRefused { identity: _, defects: _ } => none
+  }
+}
+
+fn component_subject_identity(s: ComponentSubjectStanding) -> DeclarationRef {
+  match s {
+    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _ } => sub.identity
+    ComponentSubjectPopulationIncomplete { identity: i, obligation: _ } => i
+    ComponentSubjectRefused { identity: i, defects: _ } => i
+  }
+}
+
+fn component_subject_obligations(s: ComponentSubjectStanding) -> List<NonEmptyStr> {
+  match s {
+    ComponentSubjectEstablished { subject: _, declared_bytes: _, tensor_count: _ } => []
+    ComponentSubjectPopulationIncomplete { identity: _, obligation: o } => [o]
+    ComponentSubjectRefused { identity: _, defects: ds } => ds
+  }
+}
+
+// ── THE MATERIALIZED ENCODING, AND THE RELATION THAT MAKES IT THE SUBJECT'S ────────────────────
+type MaterializedComponentArtifact sole_constructor {
+  subject: DeclarationRef
+  encoding: PhysicalEncoding
+  digest: ContentHash
+  encoded_bytes: ByteSize
+}
+
+fn materialized_component_artifact(
+  subject: DeclarationRef,
+  encoding: PhysicalEncoding,
+  digest: ContentHash,
+  encoded_bytes: ByteSize,
+) -> MaterializedComponentArtifact {
+  MaterializedComponentArtifact { subject: subject, encoding: encoding, digest: digest, encoded_bytes: encoded_bytes }
+}
+
+// FAITHFULNESS IS EVIDENCE, NOT A FLAG. Byte identity is available only where the encoding IS the
+// published one; anything else needs a relation that someone wrote down and that this module can
+// name. `FaithfulnessUnestablished` is the honest arm and is the one every non-published encoding
+// starts in.
+type FaithfulnessEvidence
+  = ByteIdenticalToPublishedEncoding { shard_digests: List<Sha256Digest> }
+  | StructurePreservingTransform { relation: DeclarationRef, preserved: List<NonEmptyStr> }
+  | FaithfulnessUnestablished { obligation: NonEmptyStr }
+
+type FaithfulComponentRealization
+  = RealizationFaithful { subject: DeclarationRef, artifact_digest: ContentHash, evidence: FaithfulnessEvidence }
+  | RealizationUnfaithful { subject: DeclarationRef, defects: List<NonEmptyStr> }
+  | RealizationEvidenceMissing { subject: DeclarationRef, obligation: NonEmptyStr }
+
+fn sha256_digest_list_eq(a: List<Sha256Digest>, b: List<Sha256Digest>) -> Bool {
+  count(a) == count(b)
+    && all(a, x => any(b, y => (x.hex as String) == (y.hex as String)))
+    && all(b, y => any(a, x => (x.hex as String) == (y.hex as String)))
+}
+
+// THE ONLY PRODUCER OF A FAITHFUL REALIZATION, and it is a comparison rather than an assertion.
+//
+// THE LOAD-BEARING ARM IS THE SECOND ONE: a byte-identity claim over an encoding that is NOT the
+// published encoding is refused rather than believed. That is the exact state a repacked row store
+// would be in if someone carried the safetensors digests forward with it, and it is the reason
+// "different physical encodings require an explicit faithfulness relation" is a wall here rather
+// than a sentence.
+fn realize_component(
+  standing: ComponentSubjectStanding,
+  artifact: MaterializedComponentArtifact,
+  evidence: FaithfulnessEvidence,
+) -> FaithfulComponentRealization {
+  match standing {
+    ComponentSubjectRefused { identity: i, defects: ds } => RealizationUnfaithful { subject: i, defects: ds }
+    ComponentSubjectPopulationIncomplete { identity: i, obligation: o } =>
+      RealizationEvidenceMissing { subject: i, obligation: o }
+    ComponentSubjectEstablished { subject: sub, declared_bytes: _, tensor_count: _ } =>
+      if !declaration_ref_eq(a: artifact.subject, b: sub.identity) {
+        RealizationUnfaithful {
+          subject: sub.identity,
+          defects: ["this artifact names a different component subject, so it answers a different question" as NonEmptyStr],
+        }
+      } else {
+        match evidence {
+          FaithfulnessUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
+          ByteIdenticalToPublishedEncoding { shard_digests: ds } =>
+            if !physical_encoding_eq(a: artifact.encoding, b: sub.published_encoding) {
+              RealizationUnfaithful {
+                subject: sub.identity,
+                defects: [join([
+                  "byte identity to the published encoding was claimed for encoding ",
+                  physical_encoding_key(e: artifact.encoding),
+                  ", which is not the published encoding ",
+                  physical_encoding_key(e: sub.published_encoding),
+                  "; a different physical layout cannot share the published bytes' digest and needs an explicit faithfulness relation instead",
+                ], "") as NonEmptyStr],
+              }
+            } else {
+              if sha256_digest_list_eq(a: ds, b: sub.published_shard_digests) {
+                RealizationFaithful { subject: sub.identity, artifact_digest: artifact.digest, evidence: evidence }
+              } else {
+                RealizationUnfaithful {
+                  subject: sub.identity,
+                  defects: ["the digests offered are not the published shard digests for this revision" as NonEmptyStr],
+                }
+              }
+            }
+          StructurePreservingTransform { relation: r, preserved: ps } =>
+            if physical_encoding_eq(a: artifact.encoding, b: sub.published_encoding) {
+              RealizationFaithful { subject: sub.identity, artifact_digest: artifact.digest, evidence: evidence }
+            } else {
+              if count(ps) == 0 {
+                RealizationEvidenceMissing {
+                  subject: sub.identity,
+                  obligation: join([
+                    "encoding ", physical_encoding_key(e: artifact.encoding),
+                    " cites relation ", declaration_ref_display_key(ref: r),
+                    " but names nothing it preserves; a faithfulness relation that preserves no stated property relates nothing",
+                  ], "") as NonEmptyStr,
+                }
+              } else {
+                RealizationFaithful { subject: sub.identity, artifact_digest: artifact.digest, evidence: evidence }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn realization_is_faithful(r: FaithfulComponentRealization) -> Bool {
+  match r {
+    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => true
+    RealizationUnfaithful { subject: _, defects: _ } => false
+    RealizationEvidenceMissing { subject: _, obligation: _ } => false
+  }
+}
+
+fn realization_obligations(r: FaithfulComponentRealization) -> List<NonEmptyStr> {
+  match r {
+    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => []
+    RealizationUnfaithful { subject: _, defects: _ } => []
+    RealizationEvidenceMissing { subject: _, obligation: o } => [o]
+  }
+}
+
+fn realization_defects(r: FaithfulComponentRealization) -> List<NonEmptyStr> {
+  match r {
+    RealizationFaithful { subject: _, artifact_digest: _, evidence: _ } => []
+    RealizationUnfaithful { subject: _, defects: ds } => ds
+    RealizationEvidenceMissing { subject: _, obligation: _ } => []
+  }
+}
+
+// ── A ROUTE IS A CHAIN OF PROVIDER HOPS, EACH PLAYING ONE ROLE ─────────────────────────────────
+//
+// A hop identifies a `CacheProvider` and says what part that provider plays in this chain. It does
+// NOT restate placement or retention: `tier_axes` already derives placement from the tier and the
+// provider already carries its retention, so a hop claiming `ArtifactTier` beside `RemoteNetwork`
+// is not caught by a check -- there is no field in which to write the disagreement.
+//
+// THE ROLES ARE WHY NFS NEEDS FOUR ARMS AND NOT ONE. NFS can be the correctness-bearing origin,
+// the site-level fill source, or the thing the runtime reads on every token. Those are different
+// costs and different guarantees, so a route that says "NFS" without saying which has said nothing.
+type RouteRole
+  = DurableOrigin
+  | FillSource
+  | TokenTimeAccess
+  | RetainedWorkingSet
+
+fn route_role_wire(r: RouteRole) -> NonEmptyStr {
+  match r {
+    DurableOrigin => "durable-origin" as NonEmptyStr
+    FillSource => "fill-source" as NonEmptyStr
+    TokenTimeAccess => "token-time-access" as NonEmptyStr
+    RetainedWorkingSet => "retained-working-set" as NonEmptyStr
+  }
+}
+
+fn route_role_eq(a: RouteRole, b: RouteRole) -> Bool {
+  (route_role_wire(r: a) as String) == (route_role_wire(r: b) as String)
+}
+
+type RouteHop sole_constructor {
+  provider: CacheProvider
+  role: RouteRole
+}
+
+fn route_hop(provider: CacheProvider, role: RouteRole) -> RouteHop {
+  RouteHop { provider: provider, role: role }
+}
+
+// DERIVED, EVERY ONE OF THEM. Nothing below is a second spelling of a provider fact.
+fn route_hop_placement(h: RouteHop) -> Placement {
+  (tier_axes(t: h.provider.tier)).placement
+}
+
+fn route_hop_addressing(h: RouteHop) -> ProviderAddressing {
+  (tier_axes(t: h.provider.tier)).addressing
+}
+
+// A TIER NAME IS NOT AN INTEGRITY GUARANTEE. `CasTier` carries an explicit keying value, and
+// `CasTier { keying: ExistenceKeyed }` is a remote store addressed by path -- which is exactly
+// what an NFS export is. Reading "CAS" or "remote filesystem" as content-addressed integrity is
+// the inference this function refuses to make: only `ContentKeyed` answers true.
+fn route_hop_is_content_addressed(h: RouteHop) -> Bool {
+  match route_hop_addressing(h: h) {
+    EdgeAddressed => false
+    KeyAddressed { keying: k } => match k {
+      ContentKeyed => true
+      ExistenceKeyed => false
+    }
+  }
+}
+
+fn placement_is_in_memory_pool(p: Placement) -> Bool {
+  match p {
+    LocalInProcess => true
+    LocalAccelerator => true
+    LocalFilesystem => false
+    RemoteNetwork => false
+  }
+}
+
+fn route_hop_reaches_storage(h: RouteHop) -> Bool {
+  !placement_is_in_memory_pool(p: route_hop_placement(h: h))
+}
+
+type MaterializationRoute sole_constructor {
+  identity: DeclarationRef
+  label: NonEmptyStr
+  hops: List<RouteHop>
+  digest_verified_at: RouteRole
+}
+
+fn materialization_route(
+  identity: DeclarationRef,
+  label: NonEmptyStr,
+  hops: List<RouteHop>,
+  digest_verified_at: RouteRole,
+) -> MaterializationRoute {
+  MaterializationRoute { identity: identity, label: label, hops: hops, digest_verified_at: digest_verified_at }
+}
+
+fn route_hops_with_role(r: MaterializationRoute, role: RouteRole) -> List<RouteHop> {
+  filter(r.hops, h => route_role_eq(a: h.role, b: role))
+}
+
+fn route_role_count(r: MaterializationRoute, role: RouteRole) -> Nat {
+  count(route_hops_with_role(r: r, role: role))
+}
+
+fn route_key(r: MaterializationRoute) -> String {
+  join([
+    declaration_ref_display_key(ref: r.identity),
+    "|",
+    join(map(r.hops, h => join([h.provider.id, ":", route_role_wire(r: h.role) as String], "")), ">"),
+    "|verify@", route_role_wire(r: r.digest_verified_at) as String,
+  ], "")
+}
+
+// ── ROUTE WELL-FORMEDNESS, WHICH IS WHERE THE FABRIC-M0 BOUNDARY IS ENFORCED ───────────────────
+//
+// ONE DURABLE ORIGIN, AT THE HEAD, AND IT MUST BE THE DECLARED M0 ORIGIN PROVIDER. That is the
+// no-peer-mesh wall: a route cannot name a serving host as its origin, because the only provider
+// admitted in the origin position is the one this module declares, and a second `DurableOrigin`
+// hop anywhere refuses. This cut builds no new origin infrastructure; it forbids inventing one.
+//
+// ONE TOKEN-TIME HOP, AT THE TAIL. The thing the runtime reads on every token is a single place.
+// A route with two is not a chain, and a route with none serves nothing.
+fn route_defects(r: MaterializationRoute, origin_provider_id: String) -> List<NonEmptyStr> {
+  concat(
+    concat(
+      if count(r.hops) > 0 {
+        []
+      } else {
+        ["a route with no hops is not a chain from an origin to the bytes the runtime touches" as NonEmptyStr]
+      },
+      if route_role_count(r: r, role: DurableOrigin) == 1 {
+        []
+      } else {
+        [join([
+          "route ", declaration_ref_display_key(ref: r.identity), " declares ",
+          to_string(route_role_count(r: r, role: DurableOrigin)),
+          " durable-origin hops; FABRIC-M0 admits exactly one, so a peer serving host can never stand in as a fill origin",
+        ], "") as NonEmptyStr]
+      }),
+    concat(
+      concat(
+        if route_role_count(r: r, role: TokenTimeAccess) == 1 {
+          []
+        } else {
+          [join([
+            "route ", declaration_ref_display_key(ref: r.identity), " declares ",
+            to_string(route_role_count(r: r, role: TokenTimeAccess)),
+            " token-time hops; the place the runtime reads on every token is exactly one",
+          ], "") as NonEmptyStr]
+        },
+        match r.hops.first() {
+          Absent => []
+          Present { value: head } =>
+            if route_role_eq(a: head.role, b: DurableOrigin) && head.provider.id == origin_provider_id {
+              []
+            } else {
+              [join([
+                "route ", declaration_ref_display_key(ref: r.identity),
+                " begins at ", head.provider.id, " playing ", route_role_wire(r: head.role) as String,
+                "; every chain's head is the declared durable origin ", origin_provider_id,
+              ], "") as NonEmptyStr]
+            }
+        }),
+      match r.hops.last() {
+        Absent => []
+        Present { value: tail } =>
+          if route_role_eq(a: tail.role, b: TokenTimeAccess) {
+            []
+          } else {
+            [join([
+              "route ", declaration_ref_display_key(ref: r.identity),
+              " ends at ", route_role_wire(r: tail.role) as String,
+              " rather than the token-time hop, so the chain does not reach what the runtime reads",
+            ], "") as NonEmptyStr]
+          }
+      }))
+}
+
+type RouteStructuralStanding
+  = RouteWellFormed
+  | RouteMalformed { defects: List<NonEmptyStr> }
+
+fn route_structural_standing(r: MaterializationRoute, origin_provider_id: String) -> RouteStructuralStanding {
+  if count(route_defects(r: r, origin_provider_id: origin_provider_id)) == 0 {
+    RouteWellFormed
+  } else {
+    RouteMalformed { defects: route_defects(r: r, origin_provider_id: origin_provider_id) }
+  }
+}
+
+// WHERE THE DIGEST IS CHECKED IS A ROUTE FACT WITH A COST. Verifying at fill is one pass per host
+// per deployment; verifying at every token-time read is a per-gather cost. The two are different
+// guarantees and this carries which was chosen -- but it only counts as content-addressed
+// integrity when the hop at that role actually keys on content.
+type RouteIntegrityStanding
+  = IntegrityContentAddressedAt { role: RouteRole, provider_id: String }
+  | IntegrityNotContentAddressed { role: RouteRole, because: NonEmptyStr }
+  | IntegrityVerificationPointAbsent { role: RouteRole }
+
+fn route_integrity_standing(r: MaterializationRoute) -> RouteIntegrityStanding {
+  match (route_hops_with_role(r: r, role: r.digest_verified_at)).first() {
+    Absent => IntegrityVerificationPointAbsent { role: r.digest_verified_at }
+    Present { value: h } =>
+      if route_hop_is_content_addressed(h: h) {
+        IntegrityContentAddressedAt { role: r.digest_verified_at, provider_id: h.provider.id }
+      } else {
+        IntegrityNotContentAddressed {
+          role: r.digest_verified_at,
+          because: join([
+            "the hop chosen as this route's verification point is ", h.provider.id,
+            ", which is addressed by existence rather than by content; neither a remote filesystem nor a tier called CAS establishes content-addressed integrity on its own",
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn route_integrity_holds(s: RouteIntegrityStanding) -> Bool {
+  match s {
+    IntegrityContentAddressedAt { role: _, provider_id: _ } => true
+    IntegrityNotContentAddressed { role: _, because: _ } => false
+    IntegrityVerificationPointAbsent { role: _ } => false
+  }
+}
+
+fn route_integrity_causes(s: RouteIntegrityStanding) -> List<NonEmptyStr> {
+  match s {
+    IntegrityContentAddressedAt { role: _, provider_id: _ } => []
+    IntegrityNotContentAddressed { role: _, because: b } => [b]
+    IntegrityVerificationPointAbsent { role: rl } =>
+      [join([
+        "this route names ", route_role_wire(r: rl) as String,
+        " as its digest verification point and has no hop in that role",
+      ], "") as NonEmptyStr]
+  }
+}
+
+// ── THE SUBJECT A PIECE OF ROUTE EVIDENCE BELONGS TO ──────────────────────────────────────────
+//
+// Route cost is not a property of a route. Fill is per host, the tables are row-sharded across
+// ranks, retained page-cache memory depends on concurrency, and the latency a route must meet is
+// the serving profile's. So every reading below is keyed to the EXACT consumer context it was
+// taken under, and a reading taken under a different one is refused rather than reused.
+//
+// THE KEY IS OPAQUE HERE ON PURPOSE. This module must not import the serving module -- that would
+// be a cycle -- and it must not re-spell a serving execution profile, which would be the §3 fork.
+// So it holds whatever digest the consumer derives from its own profile authority, beside the
+// declaration that produced it.
+type RouteSubjectKey sole_constructor {
+  consumer: DeclarationRef
+  context_digest: String
+}
+
+fn route_subject_key(consumer: DeclarationRef, context_digest: String) -> RouteSubjectKey {
+  RouteSubjectKey { consumer: consumer, context_digest: context_digest }
+}
+
+fn route_subject_key_eq(a: RouteSubjectKey, b: RouteSubjectKey) -> Bool {
+  declaration_ref_eq(a: a.consumer, b: b.consumer) && a.context_digest == b.context_digest
+}
+
+fn route_subject_key_render(k: RouteSubjectKey) -> String {
+  join([declaration_ref_display_key(ref: k.consumer), "@", k.context_digest], "")
+}
+
+// ── RESIDENT MEMORY: FOUR STANDINGS, AND NONE OF THEM IS ZERO ─────────────────────────────────
+//
+// A storage-backed route does not use no memory. Routes that read through a page cache depend on
+// one BY CONSTRUCTION, and direct network reads populate buffers too. Writing "zero resident
+// bytes" for a non-resident route deletes the single term that makes the whole comparison honest,
+// and it deletes it in the generous direction -- it is what would make a narrow topology look
+// feasible. So there is no zero arm, and the unestablished arm keeps the fit result OPEN.
+//
+// THE LOWER-BOUND ARM IS SEPARATE FROM THE UPPER-BOUND ARM because they do opposite work. A lower
+// bound can DISPROVE a fit and can never establish one -- the same asymmetry
+// `gunbc.spark.serving_deployment_selection` `WeightFit` already carries. Collapsing them into one
+// "bounded" arm is how a floor comes to be read as a ceiling.
+type RouteResidentMemoryStanding
+  = ResidentMemoryObserved { bytes: ByteSize, receipt: DeclarationRef }
+  | ResidentMemoryBoundedAbove { upper_bound: ByteSize, authority: DeclarationRef }
+  | ResidentMemoryLowerBoundOnly { lower_bound: ByteSize, authority: DeclarationRef, obligation: NonEmptyStr }
+  | ResidentMemoryUnestablished { obligation: NonEmptyStr }
+
+fn resident_memory_upper_bound(s: RouteResidentMemoryStanding) -> ByteSize? {
+  match s {
+    ResidentMemoryObserved { bytes: b, receipt: _ } => Present { value: b }
+    ResidentMemoryBoundedAbove { upper_bound: b, authority: _ } => Present { value: b }
+    ResidentMemoryLowerBoundOnly { lower_bound: _, authority: _, obligation: _ } => none
+    ResidentMemoryUnestablished { obligation: _ } => none
+  }
+}
+
+fn resident_memory_lower_bound(s: RouteResidentMemoryStanding) -> ByteSize? {
+  match s {
+    ResidentMemoryObserved { bytes: b, receipt: _ } => Present { value: b }
+    ResidentMemoryBoundedAbove { upper_bound: _, authority: _ } => none
+    ResidentMemoryLowerBoundOnly { lower_bound: b, authority: _, obligation: _ } => Present { value: b }
+    ResidentMemoryUnestablished { obligation: _ } => none
+  }
+}
+
+fn resident_memory_obligations(s: RouteResidentMemoryStanding) -> List<NonEmptyStr> {
+  match s {
+    ResidentMemoryObserved { bytes: _, receipt: _ } => []
+    ResidentMemoryBoundedAbove { upper_bound: _, authority: _ } => []
+    ResidentMemoryLowerBoundOnly { lower_bound: _, authority: _, obligation: o } => [o]
+    ResidentMemoryUnestablished { obligation: o } => [o]
+  }
+}
+
+// ── HOST-RAM / UVA OFFLOAD ADDS NO SECOND POOL, AND THAT SAYS NOTHING ABOUT STORAGE ────────────
+//
+// On a GB10 the host and the accelerator are ONE pool. Moving a table from "GPU memory" to "pinned
+// host memory via UVA" therefore frees nothing there, however the runtime spells it. This is
+// DERIVED from the hops' placements rather than asserted: a route every one of whose hops sits in
+// the memory pool cannot relieve the memory pool.
+//
+// AND THE CONVERSE IS NOT SMUGGLED IN. A route that DOES reach a storage tier is not thereby
+// proven to free bytes -- it still has a retained working set, which is the arm below that demands
+// evidence. Unified memory is a fact about a host, not about NVMe or NFS.
+type PoolReliefStanding
+  = NoPoolReliefEveryHopInMemoryPool { how: NonEmptyStr }
+  | PoolReliefBoundedByWorkingSet { resident_upper_bound: ByteSize, authority: DeclarationRef }
+  | PoolReliefNeedsWorkingSetEvidence { obligations: List<NonEmptyStr> }
+
+// THE QUESTION IS WHERE THE BYTES LIVE AT TOKEN TIME, NOT WHERE THEY CAME FROM. Every route's head
+// is the durable origin, whose derived placement is `RemoteNetwork` -- so "any hop reaches storage"
+// is true of the fully resident route too, and would have reported relief for a route that keeps
+// the whole table in the pool. What relieves the pool is the runtime reading from somewhere other
+// than the pool, which is the TOKEN-TIME hop and only that one. Fill sources and the origin are
+// where bytes are fetched, not where they reside while serving.
+fn route_reaches_storage_tier(r: MaterializationRoute) -> Bool {
+  any(route_hops_with_role(r: r, role: TokenTimeAccess), h => route_hop_reaches_storage(h: h))
+}
+
+fn pool_relief_standing(
+  r: MaterializationRoute,
+  unified_memory_host: Bool,
+  resident: RouteResidentMemoryStanding,
+) -> PoolReliefStanding {
+  if !route_reaches_storage_tier(r: r) {
+    NoPoolReliefEveryHopInMemoryPool {
+      how: join([
+        "the token-time hop of ", declaration_ref_display_key(ref: r.identity),
+        " has a derived placement inside the memory pool, so the runtime reads the component from the pool itself",
+        if unified_memory_host {
+          ", and on a unified-memory host the host and accelerator shares are one pool, so no arrangement of them adds a second device-sized pool"
+        } else {
+          "; on a split-pool host this would still need a reading before it could be priced as relief"
+        },
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match resident_memory_upper_bound(s: resident) {
+      Present { value: b } => PoolReliefBoundedByWorkingSet {
+        resident_upper_bound: b,
+        authority: route_resident_authority(s: resident),
+      }
+      Absent => PoolReliefNeedsWorkingSetEvidence {
+        obligations: concat(
+          resident_memory_obligations(s: resident),
+          [join([
+            "route ", declaration_ref_display_key(ref: r.identity),
+            " reaches a storage tier, which is not the same fact as freeing pool bytes: its retained cache and buffer working set is unmeasured, and treating that as zero would make the memory screen generous in the one direction it must not be",
+          ], "") as NonEmptyStr]),
+      }
+    }
+  }
+}
+
+fn route_resident_authority(s: RouteResidentMemoryStanding) -> DeclarationRef {
+  match s {
+    ResidentMemoryObserved { bytes: _, receipt: r } => r
+    ResidentMemoryBoundedAbove { upper_bound: _, authority: a } => a
+    ResidentMemoryLowerBoundOnly { lower_bound: _, authority: a, obligation: _ } => a
+    ResidentMemoryUnestablished { obligation: _ } => id_resident_memory_unestablished
+  }
+}
+
+// ── PHYSICAL ACCESS IS A ROUTE-ON-A-PROFILE MEASUREMENT, NOT A DERIVATION ──────────────────────
+//
+// A count of hash lookups per token is implementation plus configuration. It is not a count of
+// disk reads: coalescing, page-cache hits, read-ahead and per-rank ownership all sit between the
+// two, and an illustrative payload size is not an established contiguous storage record. So
+// logical requests and physical reads are SEPARATE FIELDS of one measurement, and neither is
+// derived from the other here. Until a bounded measurement on admitted resources exists, the arm
+// is `PhysicalAccessUnobserved` and no IOPS, amplification, latency or throughput figure may be
+// computed from the logical side alone.
+type RoutePhysicalAccessStanding
+  = PhysicalAccessMeasured {
+      receipt: DeclarationRef
+      logical_requests_per_token: Nat
+      physical_reads_per_token: Nat
+      bytes_transferred_per_token: Nat
+    }
+  | PhysicalAccessUnobserved { obligation: NonEmptyStr }
+
+fn physical_access_obligations(s: RoutePhysicalAccessStanding) -> List<NonEmptyStr> {
+  match s {
+    PhysicalAccessMeasured { receipt: _, logical_requests_per_token: _, physical_reads_per_token: _, bytes_transferred_per_token: _ } => []
+    PhysicalAccessUnobserved { obligation: o } => [o]
+  }
+}
+
+// ── TWO GATES FOR "CAN THE RUNTIME DO THIS AT ALL", AND ONLY THE SECOND IS FEASIBILITY ─────────
+//
+// A symbol lookup, an import probe or a capability inventory rules an image IN as a candidate and
+// establishes nothing about serving. So the mechanism standing is a PREREQUISITE, deliberately
+// named so it cannot be mistaken for a receipt, and the launch-observed standing is the separate
+// thing the hard constraint actually needs.
+//
+// THE ASYMMETRY IS THE USEFUL PART. Established ABSENCE is decisive and cheap: it excludes exactly
+// the runtime, route and profile it was established for, and nothing else. Presence is not
+// decisive at all.
+type NonResidentMechanismStanding
+  = MechanismNotRequiredByThisRoute
+  | MechanismEstablishedAbsent { runtime: DeclarationRef, receipt: DeclarationRef, how: NonEmptyStr }
+  | MechanismPrerequisiteObserved { runtime: DeclarationRef, receipt: DeclarationRef, caveat: NonEmptyStr }
+  | MechanismUnobserved { runtime: DeclarationRef, obligation: NonEmptyStr }
+
+// NO BUILDER IS EXPORTED FOR THIS RECORD. It is the payload of the observed arm, so a caller
+// cannot mint "the runtime served this route" from a probe: the only way to hold one is to have
+// run the launch that produced the receipt.
+type RouteLaunchReceipt sole_constructor {
+  receipt: DeclarationRef
+  subject: RouteSubjectKey
+  route: DeclarationRef
+  observed_token_time_provider_id: String
+}
+
+type RouteRuntimeFeasibility
+  = RouteObservedInLaunch { witness: RouteLaunchReceipt }
+  | RouteRuntimeUnobserved { subject: RouteSubjectKey, route: DeclarationRef, obligation: NonEmptyStr }
+
+// ── ONE EVIDENCE ROW, KEYED TO ONE (ROUTE, CONSUMER CONTEXT) PAIR ─────────────────────────────
+type RouteEvidence sole_constructor {
+  route: DeclarationRef
+  subject: RouteSubjectKey
+  resident_memory: RouteResidentMemoryStanding
+  access: RoutePhysicalAccessStanding
+  mechanism: NonResidentMechanismStanding
+  runtime: RouteRuntimeFeasibility
+}
+
+fn route_evidence(
+  route: DeclarationRef,
+  subject: RouteSubjectKey,
+  resident_memory: RouteResidentMemoryStanding,
+  access: RoutePhysicalAccessStanding,
+  mechanism: NonResidentMechanismStanding,
+  runtime: RouteRuntimeFeasibility,
+) -> RouteEvidence {
+  RouteEvidence {
+    route: route,
+    subject: subject,
+    resident_memory: resident_memory,
+    access: access,
+    mechanism: mechanism,
+    runtime: runtime,
+  }
+}
+
+// A READING FROM ANOTHER PROFILE IS NOT A MISSING READING, and conflating them is how evidence
+// gets reused across topologies it says nothing about. The two arms have different remedies: an
+// absent row needs a measurement, a foreign row needs the measurement repeated under THIS context.
+type RouteEvidenceLookup
+  = RouteEvidenceFound { evidence: RouteEvidence }
+  | RouteEvidenceForeignProfile { route: DeclarationRef, wanted: RouteSubjectKey, offered: List<String> }
+  | RouteEvidenceAbsent { route: DeclarationRef, wanted: RouteSubjectKey }
+
+fn route_evidence_for(route: DeclarationRef, wanted: RouteSubjectKey, rows: List<RouteEvidence>) -> RouteEvidenceLookup {
+  let for_route = filter(rows, e => declaration_ref_eq(a: e.route, b: route))
+  match (filter(for_route, e => route_subject_key_eq(a: e.subject, b: wanted))).first() {
+    Present { value: e } => RouteEvidenceFound { evidence: e }
+    Absent =>
+      if count(for_route) == 0 {
+        RouteEvidenceAbsent { route: route, wanted: wanted }
+      } else {
+        RouteEvidenceForeignProfile {
+          route: route,
+          wanted: wanted,
+          offered: map(for_route, e => route_subject_key_render(k: e.subject)),
+        }
+      }
+  }
+}
+
+fn route_evidence_lookup_obligations(l: RouteEvidenceLookup) -> List<NonEmptyStr> {
+  match l {
+    RouteEvidenceFound { evidence: _ } => []
+    RouteEvidenceAbsent { route: r, wanted: w } =>
+      [join([
+        "no route evidence exists for ", declaration_ref_display_key(ref: r),
+        " under ", route_subject_key_render(k: w),
+      ], "") as NonEmptyStr]
+    RouteEvidenceForeignProfile { route: r, wanted: w, offered: os } =>
+      [join([
+        "route ", declaration_ref_display_key(ref: r), " has evidence only under ",
+        join(os, ", "), ", and this decision is about ", route_subject_key_render(k: w),
+        "; topology and execution profile change sharding, access and communication, so a reading from another context is refused rather than reused",
+      ], "") as NonEmptyStr]
+  }
+}
+
+// ── THE AXES, WITH EVERY COST DIMENSION PRESENT AND THE UNMEASURED ONES AS GAPS ────────────────
+//
+// A route cannot win by having fewer dimensions than its rivals, so every term that could change
+// this choice is declared here and the ones with no measurement produce an `AxisGap`. The intended
+// consequence is that this subject answers `SelectionNeedsEvidence` today and keeps doing so until
+// the measurements exist. That is the answer, not a failure to reach one.
+data id_route_subject: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_question")
+data id_route_var_route: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "var_materialization_route")
+data id_route_var_context: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "var_consumer_context")
+data id_route_term_serving_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "term_total_serving_cost")
+data id_route_region: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_region")
+data id_route_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_constraints")
+data id_route_policy: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_policy")
+data id_resident_memory_unestablished: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ResidentMemoryUnestablished")
+
+data ax_route_faithful_realization: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_faithful_realization")
+data ax_route_well_formed: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_well_formed")
+data ax_route_integrity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_integrity")
+data ax_route_nonresident_mechanism: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_nonresident_mechanism")
+data ax_route_runtime_observed: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_runtime_observed")
+data ax_route_resident_bytes: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_resident_bytes")
+data ax_route_fill_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_fill_cost")
+data ax_route_token_time_access_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_token_time_access_cost")
+data ax_route_network_bytes: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_network_bytes")
+data ax_route_refill_cost_on_host_loss: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_refill_cost_on_host_loss")
+data ax_route_failure_domain_breadth: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_failure_domain_breadth")
+data ax_route_local_storage_bytes: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_local_storage_bytes")
+
+data component_route_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: ax_route_faithful_realization, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_route_well_formed, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_route_integrity, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_route_nonresident_mechanism, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_route_runtime_observed, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_route_resident_bytes, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_route_fill_cost, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_route_token_time_access_cost, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_route_network_bytes, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_route_refill_cost_on_host_loss, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_route_failure_domain_breadth, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_route_local_storage_bytes, goal: LowerIsBetter },
+]
+
+// FIVE HARD CONSTRAINTS, screened before Pareto so an attractive-but-unservable route is excluded
+// rather than ranked. A cheap route the runtime cannot serve must not compete on cost.
+data component_route_constraints: List<HardConstraint> = [
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_faithful_realization, bound_micro: 1 },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_well_formed, bound_micro: 1 },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_integrity, bound_micro: 1 },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_nonresident_mechanism, bound_micro: 1 },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_runtime_observed, bound_micro: 1 },
+]
+
+data unmeasured_route_axes: List<DeclarationRef> = [
+  ax_route_fill_cost,
+  ax_route_token_time_access_cost,
+  ax_route_network_bytes,
+  ax_route_refill_cost_on_host_loss,
+  ax_route_failure_domain_breadth,
+  ax_route_local_storage_bytes,
+]
+
+fn unmeasured_route_axis_cause(axis: DeclarationRef, subject: RouteSubjectKey) -> NonEmptyStr {
+  join([
+    "no measurement feeds ", declaration_ref_display_key(ref: axis),
+    " for this route under ", route_subject_key_render(k: subject),
+    "; a bounded measurement on separately admitted resources is the obligation, and no third-party figure substitutes for it",
+  ], "") as NonEmptyStr
+}
+
+fn route_point(v: Int) -> OrderedClosedInterval<Int> { degenerate_interval(point: v) }
+
+fn route_reading(axis: DeclarationRef, v: Int) -> AxisReading {
+  AxisReading { axis: axis, interval_micro: route_point(v: v) }
+}
+
+fn route_flag(b: Bool) -> Int { if b { 1 } else { 0 } }
+
+// ── ONE ROUTE CANDIDATE: A ROUTE, ITS ARTIFACT, AND THE EVIDENCE FOR IT UNDER THIS CONTEXT ─────
+type RouteCandidate sole_constructor {
+  route: MaterializationRoute
+  artifact: MaterializedComponentArtifact
+  faithfulness: FaithfulnessEvidence
+}
+
+fn route_candidate(
+  route: MaterializationRoute,
+  artifact: MaterializedComponentArtifact,
+  faithfulness: FaithfulnessEvidence,
+) -> RouteCandidate {
+  RouteCandidate { route: route, artifact: artifact, faithfulness: faithfulness }
+}
+
+// THE MECHANISM READING IS THE PLACE THE ASYMMETRY LIVES. Established absence scores zero and the
+// hard constraint excludes exactly this candidate -- this route, this runtime, this context -- and
+// no other. An unobserved mechanism is a gap, so it cannot silently read as either a pass or a
+// failure. A prerequisite observation scores one and is explicitly not a serving receipt: the
+// separate runtime axis is what a launch has to satisfy.
+fn mechanism_reading(m: NonResidentMechanismStanding) -> AxisReading? {
+  match m {
+    MechanismNotRequiredByThisRoute => Present { value: route_reading(axis: ax_route_nonresident_mechanism, v: 1) }
+    MechanismEstablishedAbsent { runtime: _, receipt: _, how: _ } =>
+      Present { value: route_reading(axis: ax_route_nonresident_mechanism, v: 0) }
+    MechanismPrerequisiteObserved { runtime: _, receipt: _, caveat: _ } =>
+      Present { value: route_reading(axis: ax_route_nonresident_mechanism, v: 1) }
+    MechanismUnobserved { runtime: _, obligation: _ } => none
+  }
+}
+
+fn mechanism_gap(m: NonResidentMechanismStanding) -> List<AxisGap> {
+  match m {
+    MechanismUnobserved { runtime: rt, obligation: o } =>
+      [AxisGap {
+        axis: ax_route_nonresident_mechanism,
+        cause: join([
+          o as String, " (runtime ", declaration_ref_display_key(ref: rt),
+          "); an import or symbol probe would rule the image in as a candidate and establish nothing about serving",
+        ], "") as NonEmptyStr,
+      }]
+    MechanismNotRequiredByThisRoute => []
+    MechanismEstablishedAbsent { runtime: _, receipt: _, how: _ } => []
+    MechanismPrerequisiteObserved { runtime: _, receipt: _, caveat: _ } => []
+  }
+}
+
+// AND THE LAUNCH GATE IS SEPARATE, AND IS KEYED. A receipt taken under another context does not
+// satisfy this axis: the witness's own subject key must equal the one being decided, so a
+// transported receipt reads as unobserved rather than as a pass.
+fn route_runtime_reading(r: RouteRuntimeFeasibility, wanted: RouteSubjectKey) -> AxisReading? {
+  match r {
+    RouteObservedInLaunch { witness: w } =>
+      if route_subject_key_eq(a: w.subject, b: wanted) {
+        Present { value: route_reading(axis: ax_route_runtime_observed, v: 1) }
+      } else {
+        none
+      }
+    RouteRuntimeUnobserved { subject: _, route: _, obligation: _ } => none
+  }
+}
+
+fn route_runtime_gap(r: RouteRuntimeFeasibility, wanted: RouteSubjectKey) -> List<AxisGap> {
+  match r {
+    RouteObservedInLaunch { witness: w } =>
+      if route_subject_key_eq(a: w.subject, b: wanted) {
+        []
+      } else {
+        [AxisGap {
+          axis: ax_route_runtime_observed,
+          cause: join([
+            "the launch receipt offered for this route was taken under ",
+            route_subject_key_render(k: w.subject), " and this decision is about ",
+            route_subject_key_render(k: wanted),
+          ], "") as NonEmptyStr,
+        }]
+      }
+    RouteRuntimeUnobserved { subject: _, route: rt, obligation: o } =>
+      [AxisGap {
+        axis: ax_route_runtime_observed,
+        cause: join([
+          "route ", declaration_ref_display_key(ref: rt), " has no launch in which the runtime was observed serving the component from it: ",
+          o as String,
+        ], "") as NonEmptyStr,
+      }]
+  }
+}
+
+fn resident_reading(s: RouteResidentMemoryStanding) -> AxisReading? {
+  match resident_memory_upper_bound(s: s) {
+    Present { value: b } => Present { value: route_reading(axis: ax_route_resident_bytes, v: byte_size_count(b: b)) }
+    Absent => none
+  }
+}
+
+fn resident_gap(s: RouteResidentMemoryStanding, route: DeclarationRef) -> List<AxisGap> {
+  match resident_memory_upper_bound(s: s) {
+    Present { value: _ } => []
+    Absent => map(
+      resident_memory_obligations(s: s),
+      o => AxisGap {
+        axis: ax_route_resident_bytes,
+        cause: join([
+          "route ", declaration_ref_display_key(ref: route), " has no established upper bound on the bytes it keeps resident: ",
+          o as String,
+        ], "") as NonEmptyStr,
+      })
+  }
+}
+
+fn route_candidate_readings(
+  c: RouteCandidate,
+  standing: ComponentSubjectStanding,
+  origin_provider_id: String,
+  evidence: RouteEvidence,
+  wanted: RouteSubjectKey,
+) -> List<AxisReading> {
+  concat(
+    concat(
+      [
+        route_reading(
+          axis: ax_route_faithful_realization,
+          v: route_flag(b: realization_is_faithful(r: realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)))),
+        route_reading(
+          axis: ax_route_well_formed,
+          v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id)) == 0)),
+        route_reading(
+          axis: ax_route_integrity,
+          v: route_flag(b: route_integrity_holds(s: route_integrity_standing(r: c.route)))),
+      ],
+      optional_route_reading(r: mechanism_reading(m: evidence.mechanism))),
+    concat(
+      optional_route_reading(r: route_runtime_reading(r: evidence.runtime, wanted: wanted)),
+      optional_route_reading(r: resident_reading(s: evidence.resident_memory))))
+}
+
+fn optional_route_reading(r: AxisReading?) -> List<AxisReading> {
+  match r {
+    Present { value: v } => [v]
+    Absent => []
+  }
+}
+
+fn route_candidate_gaps(
+  c: RouteCandidate,
+  standing: ComponentSubjectStanding,
+  evidence: RouteEvidence,
+  wanted: RouteSubjectKey,
+) -> List<AxisGap> {
+  concat(
+    concat(
+      map(
+        concat(
+          realization_obligations(r: realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)),
+          component_subject_obligations(s: standing)),
+        o => AxisGap { axis: ax_route_faithful_realization, cause: o }),
+      concat(mechanism_gap(m: evidence.mechanism), route_runtime_gap(r: evidence.runtime, wanted: wanted))),
+    concat(
+      concat(
+        resident_gap(s: evidence.resident_memory, route: c.route.identity),
+        map(
+          physical_access_obligations(s: evidence.access),
+          o => AxisGap { axis: ax_route_token_time_access_cost, cause: o })),
+      map(unmeasured_route_axes, a => AxisGap { axis: a, cause: unmeasured_route_axis_cause(axis: a, subject: wanted) })))
+}
+
+// A CANDIDATE WHOSE EVIDENCE ROW IS ABSENT OR FOREIGN IS NOT PROJECTED WITH DEFAULTS. Its gaps
+// carry the lookup's own cause, so the reason a route could not be priced is the reason the
+// selection reports rather than a silence.
+fn project_route_candidate(
+  c: RouteCandidate,
+  standing: ComponentSubjectStanding,
+  origin_provider_id: String,
+  rows: List<RouteEvidence>,
+  wanted: RouteSubjectKey,
+) -> ParetoEntry {
+  match route_evidence_for(route: c.route.identity, wanted: wanted, rows: rows) {
+    RouteEvidenceFound { evidence: e } => ParetoEntry {
+      identity: c.route.identity,
+      display_label: c.route.label,
+      readings: route_candidate_readings(c: c, standing: standing, origin_provider_id: origin_provider_id, evidence: e, wanted: wanted),
+      missing_inputs: route_candidate_gaps(c: c, standing: standing, evidence: e, wanted: wanted),
+    }
+    RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os } =>
+      route_entry_without_evidence(c: c, standing: standing, origin_provider_id: origin_provider_id, wanted: w,
+        causes: route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os }))
+    RouteEvidenceAbsent { route: rt, wanted: w } =>
+      route_entry_without_evidence(c: c, standing: standing, origin_provider_id: origin_provider_id, wanted: w,
+        causes: route_evidence_lookup_obligations(l: RouteEvidenceAbsent { route: rt, wanted: w }))
+  }
+}
+
+// THE THREE STRUCTURAL READINGS SURVIVE A MISSING EVIDENCE ROW because they are facts about the
+// route's own shape rather than measurements of it: a malformed chain is malformed whether or not
+// anyone measured it, and it is excluded on that basis rather than deferred.
+fn route_entry_without_evidence(
+  c: RouteCandidate,
+  standing: ComponentSubjectStanding,
+  origin_provider_id: String,
+  wanted: RouteSubjectKey,
+  causes: List<NonEmptyStr>,
+) -> ParetoEntry {
+  ParetoEntry {
+    identity: c.route.identity,
+    display_label: c.route.label,
+    readings: [
+      route_reading(
+        axis: ax_route_faithful_realization,
+        v: route_flag(b: realization_is_faithful(r: realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)))),
+      route_reading(
+        axis: ax_route_well_formed,
+        v: route_flag(b: count(route_defects(r: c.route, origin_provider_id: origin_provider_id)) == 0)),
+      route_reading(
+        axis: ax_route_integrity,
+        v: route_flag(b: route_integrity_holds(s: route_integrity_standing(r: c.route)))),
+    ],
+    missing_inputs: concat(
+      concat(
+        map(causes, cz => AxisGap { axis: ax_route_nonresident_mechanism, cause: cz }),
+        map(causes, cz => AxisGap { axis: ax_route_runtime_observed, cause: cz })),
+      concat(
+        map(causes, cz => AxisGap { axis: ax_route_resident_bytes, cause: cz }),
+        map(unmeasured_route_axes, a => AxisGap { axis: a, cause: unmeasured_route_axis_cause(axis: a, subject: wanted) }))),
+  }
+}
+
+// ── THE DECISION SUBJECT, AND IT IS HONESTLY INCOMPLETE ────────────────────────────────────────
+//
+// THE PHYSICAL MODEL IS UNESTABLISHED AND SAYING SO IS THE POINT. There is one objective term --
+// total serving cost of holding this component where the route puts it -- and no cited physical
+// model closes it: fill bandwidth, steady-state access cost and retained working set are exactly
+// what has not been measured. `std.decision` folds an unestablished physical model into a deferred
+// closure, which merges into the pick as `SubjectClosureIncomplete` needs and leaves
+// `NoFeasibleRealization` intact. So an established mechanism ABSENCE still excludes and still
+// reports as infeasible, while everything else reports as needing evidence. Declaring an
+// established model here to obtain a cleaner arm would be the inflation DESIGN §4b(1) forbids.
+data var_materialization_route: DecisionVariable = DecisionVariable { identity: id_route_var_route }
+data var_consumer_context: DecisionVariable = DecisionVariable { identity: id_route_var_context }
+data component_route_region: DecisionRegion = DecisionRegion { identity: id_route_region }
+
+data component_route_question: NonEmptyStr = "which materialization route places this exact component for this exact consumer context" as NonEmptyStr
+
+data term_total_serving_cost: ObjectiveTerm = ObjectiveTerm {
+  identity: id_route_term_serving_cost,
+  ground: CitedToAuthority { authority: component_route_cost_authority },
+}
+
+data component_route_cost_authority: ExternalAuthority = ExternalAuthority {
+  uri: "https://huggingface.co/docs/safetensors/index" as NonEmptyStr,
+}
+
+data component_route_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_objective"),
+  goal: LowerIsBetter,
+  terms: [term_total_serving_cost],
+}
+
+data component_route_choice_domain: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_choice_domain"),
+  variables: [var_materialization_route, var_consumer_context],
+}
+
+// ONE DECISION PER COMPONENT, so two components' route choices are never one stale receipt. The
+// identity is derived from the component's own declaration name rather than authored beside it.
+fn component_route_subject_identity(component: DeclarationRef) -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.fabric.engram_materialization",
+    decl_name: join(["component_route_question_for_", component.decl_name as String], ""))
+}
+
+fn component_route_subject(component: DeclarationRef) -> DecisionSubject {
+  DecisionSubject {
+    identity: component_route_subject_identity(component: component),
+    question: component_route_question,
+    parameters: [],
+    constraints: [],
+    objective: component_route_objective,
+    choice_domain: component_route_choice_domain,
+  }
+}
+
+fn component_route_assessment(component: DeclarationRef) -> DecisionAssessment {
+  DecisionAssessment {
+    subject: component_route_subject(component: component),
+    sensitivities: [],
+    constraints: [],
+    parameters: [],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelUnestablished {
+      subject: component_route_subject_identity(component: component),
+      read_obligation: "no cited physical model closes the total-serving-cost term for a component route on this fleet: fill bandwidth, steady-state access cost at the workload's concurrency, and retained page-cache working set are unmeasured, and the published third-party per-step figures are somebody else's deployment rather than a reading here" as NonEmptyStr,
+    },
+    causal_model: CausalModelUnestablished {
+      subject: component_route_subject_identity(component: component),
+      read_obligation: "the coupling between total serving cost and the route, and between it and the consumer context, is not established: sharding degree, per-rank ownership and concurrency all mediate it and none has been observed on admitted resources" as NonEmptyStr,
+    },
+  }
+}
+
+// ── THE CHOICE: ONE CALL INTO THE SELECTION AUTHORITY, PER CONSUMER CONTEXT ─────────────────────
+type ComponentRouteField sole_constructor {
+  identity: DeclarationRef
+  component: DeclarationRef
+  candidates: List<RouteCandidate>
+  origin_provider_id: String
+}
+
+fn component_route_field(
+  identity: DeclarationRef,
+  component: DeclarationRef,
+  candidates: List<RouteCandidate>,
+  origin_provider_id: String,
+) -> ComponentRouteField {
+  ComponentRouteField { identity: identity, component: component, candidates: candidates, origin_provider_id: origin_provider_id }
+}
+
+fn select_component_route(
+  field: ComponentRouteField,
+  standing: ComponentSubjectStanding,
+  rows: List<RouteEvidence>,
+  context: RouteSubjectKey,
+  evidence_snapshot: DeclarationRef,
+) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: component_route_assessment(component: field.component),
+    candidate_field_identity: field.identity,
+    field: map(
+      field.candidates,
+      c => project_route_candidate(c: c, standing: standing, origin_provider_id: field.origin_provider_id, rows: rows, wanted: context)),
+    axes: component_route_axes,
+    constraints: component_route_constraints,
+    constraint_authority: id_route_constraint_authority,
+    policy: UniqueSurvivorRequired { identity: id_route_policy },
+    evidence_snapshot: evidence_snapshot,
+  )
+}
+
+// ── WHAT A CONSUMER READS BACK, WITH ALL SIX SELECTION ARMS PRESERVED ─────────────────────────
+//
+// The result carried here IS `std.decision`'s `RealizationSelectionResult`, not a local spelling of
+// it. A three-armed projection would preserve the words and delete `SelectionNeedsPolicy` and the
+// difference between an infeasible field and a defective one -- which is the fork §3d exists to
+// prevent. The only thing added is the arm for a component this subject is not about.
+type ComponentRouteStanding
+  = ComponentRouteNotThisSubject
+  | ComponentRouteDecided {
+      component: DeclarationRef
+      context: RouteSubjectKey
+      result: RealizationSelectionResult<ParetoEntry>
+      routes: List<MaterializationRoute>
+      evidence: List<RouteEvidence>
+    }
+
+fn route_in_list(routes: List<MaterializationRoute>, identity: DeclarationRef) -> MaterializationRoute? {
+  (filter(routes, r => declaration_ref_eq(a: r.identity, b: identity))).first()
+}
+
+// THE RESIDENT SHARE A CONSUMER MAY ADD TO ITS FOOTPRINT, and there are only three answers. A
+// selected route with an established upper bound contributes that number. A selected route without
+// one, and every state in which no route is selected, contribute an OBLIGATION -- never zero.
+type ComponentResidentShare
+  = ComponentResidentBytes { bytes: ByteSize, route: DeclarationRef }
+  | ComponentResidentUnderivable { because: NonEmptyStr }
+  | ComponentNotDecomposedHere
+
+fn component_resident_share(s: ComponentRouteStanding) -> ComponentResidentShare {
+  match s {
+    ComponentRouteNotThisSubject => ComponentNotDecomposedHere
+    ComponentRouteDecided { component: comp, context: ctx, result: res, routes: rs, evidence: rows } =>
+      match res {
+        SelectedWithin { candidate: e, receipt: _ } =>
+          match route_in_list(routes: rs, identity: e.identity) {
+            Absent => ComponentResidentUnderivable {
+              because: "the selection returned a route identity that resolves to no declared route, which is a projector contradiction rather than a placement" as NonEmptyStr,
+            }
+            Present { value: r } =>
+              match route_evidence_for(route: r.identity, wanted: ctx, rows: rows) {
+                RouteEvidenceFound { evidence: ev } =>
+                  match resident_memory_upper_bound(s: ev.resident_memory) {
+                    Present { value: b } => ComponentResidentBytes { bytes: b, route: r.identity }
+                    Absent => ComponentResidentUnderivable {
+                      because: join([
+                        "route ", declaration_ref_display_key(ref: r.identity),
+                        " was selected for ", route_subject_key_render(k: ctx),
+                        " and has no established upper bound on the bytes it keeps resident, so its contribution to the memory screen is an obligation rather than a number -- and specifically not zero: ",
+                        join(map(resident_memory_obligations(s: ev.resident_memory), o => o as String), "; "),
+                      ], "") as NonEmptyStr,
+                    }
+                  }
+                RouteEvidenceForeignProfile { route: rr, wanted: ww, offered: oo } => ComponentResidentUnderivable {
+                  because: join(map(route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rr, wanted: ww, offered: oo }), o => o as String), "; ") as NonEmptyStr,
+                }
+                RouteEvidenceAbsent { route: rr, wanted: ww } => ComponentResidentUnderivable {
+                  because: join(map(route_evidence_lookup_obligations(l: RouteEvidenceAbsent { route: rr, wanted: ww }), o => o as String), "; ") as NonEmptyStr,
+                }
+              }
+          }
+        SelectionNeedsEvidence { needs: ns } => ComponentResidentUnderivable {
+          because: join([
+            "no route is selected for component ", declaration_ref_display_key(ref: comp),
+            " under ", route_subject_key_render(k: ctx), ": ", to_string(count(ns)),
+            " evidence needs are open, so the bytes this component keeps resident are not established and must not be read as zero",
+          ], "") as NonEmptyStr,
+        }
+        SelectionNeedsPolicy { survivors: sv } => ComponentResidentUnderivable {
+          because: join([
+            "route selection for component ", declaration_ref_display_key(ref: comp),
+            " reached a front of ", to_string(count(sv)),
+            " non-dominated routes with no policy to separate them; a front is not a winner and no resident share follows from it",
+          ], "") as NonEmptyStr,
+        }
+        NoFeasibleRealization { causes: cs } => ComponentResidentUnderivable {
+          because: join([
+            "every route for component ", declaration_ref_display_key(ref: comp),
+            " violated a hard constraint (", to_string(count(cs)), " causes), so this component has no admissible placement under ",
+            route_subject_key_render(k: ctx),
+          ], "") as NonEmptyStr,
+        }
+        CandidateFieldUnestablished { causes: cs } => ComponentResidentUnderivable {
+          because: join([
+            "the route candidate field for component ", declaration_ref_display_key(ref: comp),
+            " is not established (", to_string(count(cs)), " causes)",
+          ], "") as NonEmptyStr,
+        }
+        RealizationSelectionRefused { defects: ds } => ComponentResidentUnderivable {
+          because: join([
+            "route selection for component ", declaration_ref_display_key(ref: comp),
+            " is refused as defective (", to_string(count(ds)), " defects)",
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn component_route_needs(s: ComponentRouteStanding) -> List<SelectionEvidenceNeed> {
+  match s {
+    ComponentRouteNotThisSubject => []
+    ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
+      match res {
+        SelectionNeedsEvidence { needs: ns } => ns
+        SelectedWithin { candidate: _, receipt: _ } => []
+        SelectionNeedsPolicy { survivors: _ } => []
+        NoFeasibleRealization { causes: _ } => []
+        CandidateFieldUnestablished { causes: _ } => []
+        RealizationSelectionRefused { defects: _ } => []
+      }
+  }
+}
+
+fn component_route_is_admissible(s: ComponentRouteStanding) -> Bool {
+  match s {
+    ComponentRouteNotThisSubject => true
+    ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
+      match res {
+        SelectedWithin { candidate: _, receipt: _ } => true
+        SelectionNeedsEvidence { needs: _ } => true
+        SelectionNeedsPolicy { survivors: _ } => true
+        NoFeasibleRealization { causes: _ } => false
+        CandidateFieldUnestablished { causes: _ } => true
+        RealizationSelectionRefused { defects: _ } => true
+      }
+  }
+}
+
+fn component_route_defects(s: ComponentRouteStanding) -> List<NonEmptyStr> {
+  match s {
+    ComponentRouteNotThisSubject => []
+    ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
+      match res {
+        RealizationSelectionRefused { defects: ds } => ds
+        CandidateFieldUnestablished { causes: cs } => cs
+        SelectedWithin { candidate: _, receipt: _ } => []
+        SelectionNeedsEvidence { needs: _ } => []
+        SelectionNeedsPolicy { survivors: _ } => []
+        NoFeasibleRealization { causes: _ } => []
+      }
+  }
+}
+
+fn component_route_infeasibility_causes(s: ComponentRouteStanding) -> List<NonEmptyStr> {
+  match s {
+    ComponentRouteNotThisSubject => []
+    ComponentRouteDecided { component: _, context: _, result: res, routes: _, evidence: _ } =>
+      match res {
+        NoFeasibleRealization { causes: cs } => cs
+        SelectedWithin { candidate: _, receipt: _ } => []
+        SelectionNeedsEvidence { needs: _ } => []
+        SelectionNeedsPolicy { survivors: _ } => []
+        CandidateFieldUnestablished { causes: _ } => []
+        RealizationSelectionRefused { defects: _ } => []
+      }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE FIRST SUBJECT: THE DEEPSEEK-V4.1-FLASH ENGRAM TABLES
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+data engram_component_identity: DeclarationRef = decl_ref(
+  module_path: "gunbc.fabric.engram_materialization",
+  decl_name: "deepseek_v4_1_engram_component")
+
+data engram_component_coverage: CacheCoverage = CoversIdentities {
+  identities: [declaration_ref_display_key(ref: engram_component_identity)],
+}
+
+// ── THE PROVIDER HOPS, EACH A CACHE PROVIDER ROW AND NOTHING MORE ──────────────────────────────
+//
+// Placement and addressing are DERIVED from the tier by `tier_axes`; no row below restates them.
+// Every capacity here is `CapacityUnobserved` because nobody has read the NVMe budget, the NFS
+// export's quota or what the page cache retains -- and `CapacityUnobserved` is the arm that says so
+// rather than an unbounded claim or an invented ceiling.
+data engram_fabric_frame: Frame = Frame { name: "spark-serving-deployment", kind: IsolatedChildrenFrame }
+data engram_host_frame: Frame = Frame { name: "spark-serving-host", kind: IsolatedChildrenFrame }
+data engram_process_frame: Frame = Frame { name: "spark-serving-process", kind: SharedStateFrame }
+
+// THE ONE DURABLE ORIGIN. FABRIC-M0's origin readback is the authority for what this is and how it
+// is verified; this row names it as a provider so a route can carry it as a hop, and the
+// well-formedness fold admits no other provider in the origin position. That is the no-peer-mesh
+// wall: there is no way to write a route whose head is a serving host.
+data engram_origin_provider_id: String = "fabric-m0-origin"
+
+data engram_m0_origin_authority: DeclarationRef = decl_ref(
+  module_path: "gunbc.fabric_m0_origin_readback",
+  decl_name: "fabric_m0_origin_readback")
+
+data engram_origin_provider: CacheProvider = provider_row(
+  id: engram_origin_provider_id,
+  scope: [engram_fabric_frame],
+  coverage: engram_component_coverage,
+  tier: CasTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: CapacityUnobserved),
+)
+
+// THE SITE NFS EXPORT. IT IS A REMOTE FILESYSTEM ADDRESSED BY PATH, and that is why its keying is
+// `ExistenceKeyed`: reaching it over the network says nothing about content-addressed integrity,
+// and a tier whose name contains "CAS" says nothing either. The keying value is the fact.
+data engram_nfs_provider_id: String = "site-nfs-export"
+
+data engram_nfs_provider: CacheProvider = provider_row(
+  id: engram_nfs_provider_id,
+  scope: [engram_fabric_frame],
+  coverage: engram_component_coverage,
+  tier: CasTier { keying: ExistenceKeyed },
+  retention: persistent_retention(capacity: CapacityUnobserved),
+)
+
+// PER-HOST NVME. Content-keyed because the fill writes a digest-named object; local filesystem
+// placement follows from `ArtifactTier` rather than being asserted beside it.
+data engram_host_nvme_provider_id: String = "per-host-nvme"
+
+data engram_host_nvme_provider: CacheProvider = provider_row(
+  id: engram_host_nvme_provider_id,
+  scope: [engram_host_frame],
+  coverage: engram_component_coverage,
+  tier: ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: CapacityUnobserved),
+)
+
+// THE KERNEL PAGE CACHE. Existence-keyed (an inode and an offset are not a content address),
+// released with the host's scope, and its capacity is precisely the unmeasured quantity this whole
+// decision turns on -- so it is `CapacityUnobserved` and its resident standing is an obligation.
+data engram_page_cache_provider_id: String = "host-page-cache"
+
+data engram_page_cache_provider: CacheProvider = provider_row(
+  id: engram_page_cache_provider_id,
+  scope: [engram_host_frame],
+  coverage: engram_component_coverage,
+  tier: MemoTier { keying: ExistenceKeyed },
+  retention: scope_released_retention(capacity: CapacityUnobserved),
+)
+
+// THE RESIDENT PARAMETER TENSORS. `ReferenceTier` derives `LocalInProcess`, which is the honest
+// available placement on a unified-memory host: `LocalAccelerator` versus `LocalInProcess` for
+// bytes in one pool is an open modelling obligation and this row does not pretend to settle it.
+// What matters for the pool-relief fold is that both are inside the memory pool, so neither gives
+// relief -- the distinction the obligation concerns cannot change that answer.
+data engram_resident_provider_id: String = "serving-process-resident-parameters"
+
+data engram_resident_provider: CacheProvider = provider_row(
+  id: engram_resident_provider_id,
+  scope: [engram_process_frame],
+  coverage: engram_component_coverage,
+  tier: ReferenceTier,
+  retention: scope_released_retention(capacity: CapacityUnobserved),
+)
+
+// ── THE FOUR ROUTES ────────────────────────────────────────────────────────────────────────────
+//
+// C AND D ARE NOT THE SAME ROUTE AND THE DIFFERENCE IS WHICH ROLE NFS PLAYS. In C, NFS is the hop
+// the runtime reads on every gather. In D, NFS appears only as a fill source and the token-time
+// read never leaves the host. Published per-step figures for local NVMe and for NFS differ by
+// roughly a factor of three, so pricing D at C's access cost -- which is what collapsing them into
+// "NFS works" does -- would be inventing a cost, not saving a distinction.
+//
+// EVERY ROUTE VERIFIES ITS DIGEST AT THE ORIGIN, which is content-keyed, so none of the four is
+// excluded by the integrity constraint. That is deliberate: a route whose only verification point
+// were an existence-keyed hop WOULD be excluded, and that state stays authorable so the wall has a
+// red rather than being permanently green.
+data engram_route_a_identity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_a_resident")
+data engram_route_b_identity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_b_host_nvme")
+data engram_route_c_identity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_c_nfs_token_time")
+data engram_route_d_identity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_d_nfs_fill_then_nvme")
+
+data engram_route_a_resident: MaterializationRoute = materialization_route(
+  identity: engram_route_a_identity,
+  label: "A: origin to RAM-resident component, the status quo" as NonEmptyStr,
+  hops: [
+    route_hop(provider: engram_origin_provider, role: DurableOrigin),
+    route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
+  ],
+  digest_verified_at: DurableOrigin,
+)
+
+data engram_route_b_host_nvme: MaterializationRoute = materialization_route(
+  identity: engram_route_b_identity,
+  label: "B: origin to per-host NVMe, then the runtime page cache" as NonEmptyStr,
+  hops: [
+    route_hop(provider: engram_origin_provider, role: DurableOrigin),
+    route_hop(provider: engram_host_nvme_provider, role: FillSource),
+    route_hop(provider: engram_page_cache_provider, role: RetainedWorkingSet),
+    route_hop(provider: engram_host_nvme_provider, role: TokenTimeAccess),
+  ],
+  digest_verified_at: DurableOrigin,
+)
+
+data engram_route_c_nfs_token_time: MaterializationRoute = materialization_route(
+  identity: engram_route_c_identity,
+  label: "C: origin over NFS, directly on the token-time access path, no local copy" as NonEmptyStr,
+  hops: [
+    route_hop(provider: engram_origin_provider, role: DurableOrigin),
+    route_hop(provider: engram_page_cache_provider, role: RetainedWorkingSet),
+    route_hop(provider: engram_nfs_provider, role: TokenTimeAccess),
+  ],
+  digest_verified_at: DurableOrigin,
+)
+
+data engram_route_d_nfs_fill_then_nvme: MaterializationRoute = materialization_route(
+  identity: engram_route_d_identity,
+  label: "D: origin over NFS for fill, then local NVMe and page cache at token time" as NonEmptyStr,
+  hops: [
+    route_hop(provider: engram_origin_provider, role: DurableOrigin),
+    route_hop(provider: engram_nfs_provider, role: FillSource),
+    route_hop(provider: engram_host_nvme_provider, role: FillSource),
+    route_hop(provider: engram_page_cache_provider, role: RetainedWorkingSet),
+    route_hop(provider: engram_host_nvme_provider, role: TokenTimeAccess),
+  ],
+  digest_verified_at: DurableOrigin,
+)
+
+data engram_routes: List<MaterializationRoute> = [
+  engram_route_a_resident,
+  engram_route_b_host_nvme,
+  engram_route_c_nfs_token_time,
+  engram_route_d_nfs_fill_then_nvme,
+]
+
+// THE PREDICATE THAT KEEPS C AND D APART, derived from the roles rather than from the labels.
+fn route_provider_roles(r: MaterializationRoute, provider_id: String) -> List<RouteRole> {
+  map(filter(r.hops, h => h.provider.id == provider_id), h => h.role)
+}
+
+fn route_provider_serves_token_time(r: MaterializationRoute, provider_id: String) -> Bool {
+  any(route_provider_roles(r: r, provider_id: provider_id), role => route_role_eq(a: role, b: TokenTimeAccess))
+}
+
+fn route_provider_is_fill_only(r: MaterializationRoute, provider_id: String) -> Bool {
+  count(route_provider_roles(r: r, provider_id: provider_id)) > 0
+    && !route_provider_serves_token_time(r: r, provider_id: provider_id)
+}
+
+// ── THE COMPONENT SUBJECT AND ITS ENCODINGS ────────────────────────────────────────────────────
+//
+// The subject's population is `extdeps.deepseek.deepseek_v4_1_flash`'s twelve-tensor Engram
+// population at the pin, and its declared bytes are DERIVED from it. The published encoding is the
+// two safetensors shards, and the published digests are the publisher's sha256 for those files.
+data engram_published_encoding: PhysicalEncoding = SafetensorsShardSet {
+  shard_paths: map(deepseek_v4_1_flash_engram_shards, s => s.file.path),
+}
+
+data deepseek_v4_1_engram_component: ComponentSubject = ComponentSubject {
+  identity: engram_component_identity,
+  label: "DeepSeek-V4.1-Flash Engram tables, layers 1 and 14" as NonEmptyStr,
+  upstream_revision: deepseek_v4_1_flash_revision,
+  population: deepseek_v4_1_flash_engram_population,
+  published_encoding: engram_published_encoding,
+  published_shard_digests: map(deepseek_v4_1_flash_engram_shards, s => s.sha256),
+  population_standing: deepseek_v4_1_flash_engram_population_standing,
+}
+
+data engram_component_standing: ComponentSubjectStanding = establish_component_subject(
+  subject: deepseek_v4_1_engram_component,
+)
+
+// THE ENCODING EACH ROUTE READS AT TOKEN TIME. Routes B, C and D read the published safetensors
+// shards from wherever their chain put them, so their artifact is the published encoding and its
+// faithfulness is byte identity. Route A reads parameter tensors the loader built from those bytes
+// -- a DIFFERENT physical encoding, so it may not claim byte identity and instead names the
+// reference loader as its structure-preserving relation. That asymmetry is the whole point of
+// keeping the three facts apart.
+data engram_shard_set_bytes: ByteSize = byte_size(
+  count: fold(deepseek_v4_1_flash_engram_shards, init: 0, f: (acc, s) => acc + byte_size_count(b: s.file.file_bytes)))
+
+data engram_published_artifact: MaterializedComponentArtifact = materialized_component_artifact(
+  subject: engram_component_identity,
+  encoding: engram_published_encoding,
+  digest: as_content_hash_cryptographic(digest: deepseek_v4_1_flash_engram_shard_1.sha256),
+  encoded_bytes: engram_shard_set_bytes,
+)
+
+data engram_published_faithfulness: FaithfulnessEvidence = ByteIdenticalToPublishedEncoding {
+  shard_digests: map(deepseek_v4_1_flash_engram_shards, s => s.sha256),
+}
+
+data engram_resident_encoding: PhysicalEncoding = ResidentParameterTensors {
+  framework: "torch parameters allocated by the reference inference loader" as NonEmptyStr,
+}
+
+data engram_loader_relation: DeclarationRef = decl_ref(
+  module_path: "extdeps.deepseek.deepseek_v4_1_flash",
+  decl_name: "deepseek_v4_1_flash_inference_model_path")
+
+data engram_resident_artifact: MaterializedComponentArtifact = materialized_component_artifact(
+  subject: engram_component_identity,
+  encoding: engram_resident_encoding,
+  digest: as_content_hash_cryptographic(digest: deepseek_v4_1_flash_engram_shard_14.sha256),
+  encoded_bytes: engram_shard_set_bytes,
+)
+
+// WHAT THE LOADER PRESERVES, NAMED. A relation that preserves nothing stated relates nothing, and
+// `realize_component` refuses an empty list for exactly that reason.
+data engram_resident_faithfulness: FaithfulnessEvidence = StructurePreservingTransform {
+  relation: engram_loader_relation,
+  preserved: [
+    "tensor names, one parameter per header entry" as NonEmptyStr,
+    "declared shapes, unpadded embedding row counts included" as NonEmptyStr,
+    "the fp8 payload and ue8m0 scale pairing at the declared block size" as NonEmptyStr,
+  ],
+}
+
+fn engram_route_candidate(r: MaterializationRoute) -> RouteCandidate {
+  if declaration_ref_eq(a: r.identity, b: engram_route_a_identity) {
+    route_candidate(route: r, artifact: engram_resident_artifact, faithfulness: engram_resident_faithfulness)
+  } else {
+    route_candidate(route: r, artifact: engram_published_artifact, faithfulness: engram_published_faithfulness)
+  }
+}
+
+data engram_route_field: ComponentRouteField = component_route_field(
+  identity: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_field"),
+  component: engram_component_identity,
+  candidates: map(engram_routes, r => engram_route_candidate(r: r)),
+  origin_provider_id: engram_origin_provider_id,
+)
+
+// ── THE EVIDENCE THAT EXISTS TODAY, WHICH IS ALMOST NONE, STATED AS SUCH ───────────────────────
+//
+// Route A's resident cost has a LOWER bound and no upper one: the component's declared payload is
+// what it occupies at minimum, and allocator padding, alignment and any staging copy are on top.
+// A lower bound can rule a fit out and can never rule one in, so route A carries
+// `ResidentMemoryLowerBoundOnly` and still gaps the resident axis.
+//
+// Routes B, C and D have no resident reading at all. Each of them keeps a page cache or a network
+// buffer resident BY CONSTRUCTION, and how much is exactly what a bounded measurement would say.
+// Until then the standing is unestablished and the memory screen stays open.
+data engram_runtime_under_evaluation: DeclarationRef = decl_ref(
+  module_path: "gunbc.spark.v41_published_image_observation",
+  decl_name: "v41_published_arm64_digest")
+
+data engram_nonresident_mechanism_obligation: NonEmptyStr = "whether the published arm64 serving image can hold this component on a storage tier at all is unread. A third party patched THEIR vLLM build to do it, which observes nothing about this digest -- they may have started from another base or never tried the stock path. Two gates, and only the second is feasibility: a capability or symbol observation rules the image in as a candidate, and a launch in which the runtime is observed serving the component from the route is what this axis needs" as NonEmptyStr
+
+data engram_access_obligation: NonEmptyStr = "no physical access measurement exists for this route on this fleet. The per-token count of logical hash lookups is implementation plus configuration and is NOT a count of disk reads; an illustrative record size is not an established contiguous storage layout. So no IOPS, read amplification, latency or throughput figure may be derived here, and the published third-party per-step numbers are somebody else's deployment rather than a reading of this one" as NonEmptyStr
+
+fn engram_resident_standing_for(r: MaterializationRoute) -> RouteResidentMemoryStanding {
+  if declaration_ref_eq(a: r.identity, b: engram_route_a_identity) {
+    match component_subject_declared_bytes(s: engram_component_standing) {
+      Absent => ResidentMemoryUnestablished {
+        obligation: "the component population is not established, so not even a floor on its resident cost follows" as NonEmptyStr,
+      }
+      Present { value: b } => ResidentMemoryLowerBoundOnly {
+        lower_bound: b,
+        authority: decl_ref(module_path: "extdeps.deepseek.deepseek_v4_1_flash", decl_name: "deepseek_v4_1_flash_engram_population"),
+        obligation: "the declared payload is a FLOOR on what a fully resident route occupies: allocator padding, alignment and any staging copy sit above it, and a floor can rule a fit out but never rule one in" as NonEmptyStr,
+      }
+    }
+  } else {
+    ResidentMemoryUnestablished {
+      obligation: join([
+        "route ", declaration_ref_display_key(ref: r.identity),
+        " retains a page cache or network buffer by construction and nobody has measured how much; storage-backed does not mean zero resident memory",
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
+fn engram_mechanism_standing_for(r: MaterializationRoute) -> NonResidentMechanismStanding {
+  if declaration_ref_eq(a: r.identity, b: engram_route_a_identity) {
+    MechanismNotRequiredByThisRoute
+  } else {
+    MechanismUnobserved {
+      runtime: engram_runtime_under_evaluation,
+      obligation: engram_nonresident_mechanism_obligation,
+    }
+  }
+}
+
+fn engram_route_evidence_for(r: MaterializationRoute, context: RouteSubjectKey) -> RouteEvidence {
+  route_evidence(
+    route: r.identity,
+    subject: context,
+    resident_memory: engram_resident_standing_for(r: r),
+    access: PhysicalAccessUnobserved { obligation: engram_access_obligation },
+    mechanism: engram_mechanism_standing_for(r: r),
+    runtime: RouteRuntimeUnobserved {
+      subject: context,
+      route: r.identity,
+      obligation: "no launch receipt names this route under this context, and a mechanism or import probe cannot mint one" as NonEmptyStr,
+    },
+  )
+}
+
+fn engram_route_evidence_rows(context: RouteSubjectKey) -> List<RouteEvidence> {
+  map(engram_routes, r => engram_route_evidence_for(r: r, context: context))
+}
+
+data engram_route_evidence_snapshot: DeclarationRef = decl_ref(
+  module_path: "gunbc.fabric.engram_materialization",
+  decl_name: "engram_route_evidence_rows")
+
+// ── THE ENTRY POINT A SERVING CONSUMER CALLS, ONCE PER EXACT CANDIDATE ─────────────────────────
+//
+// The consumer passes the component it is asking about and the digest of its own exact serving
+// context. A component this subject does not cover gets `ComponentRouteNotThisSubject`, which is
+// how every legacy artifact keeps its present behaviour unchanged.
+fn engram_route_standing(component: DeclarationRef, context: RouteSubjectKey) -> ComponentRouteStanding {
+  if !declaration_ref_eq(a: component, b: engram_component_identity) {
+    ComponentRouteNotThisSubject
+  } else {
+    ComponentRouteDecided {
+      component: engram_component_identity,
+      context: context,
+      result: select_component_route(
+        field: engram_route_field,
+        standing: engram_component_standing,
+        rows: engram_route_evidence_rows(context: context),
+        context: context,
+        evidence_snapshot: engram_route_evidence_snapshot,
+      ),
+      routes: engram_routes,
+      evidence: engram_route_evidence_rows(context: context),
+    }
+  }
+}
+
+// THE POOL-RELIEF ANSWER FOR EACH ROUTE ON A UNIFIED-MEMORY HOST, derived rather than asserted.
+// Route A gets `NoPoolReliefEveryHopInMemoryPool` because every hop's derived placement is inside
+// the pool -- which is also the answer any host-RAM or UVA arrangement would get, and is why no
+// such arm exists among the four. B, C and D reach a storage tier and therefore land on
+// `PoolReliefNeedsWorkingSetEvidence`: reaching storage is not the same fact as freeing bytes.
+fn engram_pool_relief(r: MaterializationRoute) -> PoolReliefStanding {
+  pool_relief_standing(r: r, unified_memory_host: true, resident: engram_resident_standing_for(r: r))
+}
+
+data engram_materialization_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_route_evidence_rows"),
+    reason: "every route's cost axes are gaps because no bounded measurement on admitted resources exists yet",
+    dissolution: unbound_dissolution(description: "TRIGGER: bounded route probes on SEPARATELY ADMITTED resources that record logical requests apart from physical reads, page-cache behaviour, bytes transferred and per-rank communication, each keyed to the exact serving context it ran under. SUFFICIENT FOR: engram_route_evidence_for returns PhysicalAccessMeasured and a ResidentMemoryObserved or ResidentMemoryBoundedAbove standing for the measured routes, so the resident and access axes carry readings instead of gaps." as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_nonresident_mechanism_obligation"),
+    reason: "whether the published image can serve this component from a storage tier is unread, and a probe would not settle it",
+    dissolution: unbound_dissolution(description: "TRIGGER: a launch on admitted resources in which the exact published image is observed serving this component from a named non-resident route, recorded as a receipt keyed to that serving context. SUFFICIENT FOR: engram_route_evidence_for returns MechanismPrerequisiteObserved or MechanismEstablishedAbsent and a RouteObservedInLaunch witness, so the two hard-constrained runtime axes carry readings; a capability inventory alone satisfies neither." as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_resident_provider"),
+    reason: "LocalInProcess versus LocalAccelerator for bytes in one unified pool is an open modelling obligation",
+    dissolution: unbound_dissolution(description: "TRIGGER: std.realization Placement grows a modelled distinction for unified-memory hosts, or this repository establishes that the existing two arms are sufficient for resident-byte accounting. SUFFICIENT FOR: engram_resident_provider's tier is chosen against a modelled placement rather than against the arm ReferenceTier happens to derive. The pool-relief answer does not wait on this: both arms are inside the memory pool, so neither gives relief." as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_assessment"),
+    reason: "the route subject's physical and causal models are both unestablished, so the closure is deferred",
+    dissolution: unbound_dissolution(description: "TRIGGER: a cited or fleet-observed cost model for the total-serving-cost term and its coupling to the route and the consumer context, at which point PhysicalModelEstablished and CausalModelEstablished replace the unestablished arms. SUFFICIENT FOR: select_component_route can reach a decided arm on evidence alone rather than always merging subject-closure needs; until then SelectionNeedsEvidence is the correct answer and NoFeasibleRealization still survives the merge." as NonEmptyStr),
+  ),
+]
