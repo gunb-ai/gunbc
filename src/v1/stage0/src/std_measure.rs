@@ -456,14 +456,6 @@ pub type Millivolt = Rc<Measure<ElectricPotentialDifference, Milli, i64>>;
 
 pub type Ampere = Rc<Measure<ElectricCurrent, One, i64>>;
 
-pub type Kilogram = Rc<Measure<Mass, One, i64>>;
-
-pub type Gram = Rc<Measure<Mass, Milli, i64>>;
-
-pub type AmpereHour = Rc<Measure<ElectricCharge, One, i64>>;
-
-pub type MilliampereHour = Rc<Measure<ElectricCharge, Milli, i64>>;
-
 pub type Nanometer = Rc<Measure<Length, Nano, i64>>;
 
 pub type Micrometer = Rc<Measure<Length, Micro, i64>>;
@@ -800,6 +792,10 @@ pub fn ampere_count(a: Ampere) -> Nat {
     measure_count(a.clone())
 }
 
+pub type Kilogram = Rc<Measure<Mass, One, i64>>;
+
+pub type Gram = Rc<Measure<Mass, Milli, i64>>;
+
 pub fn kilogram(count: Nat) -> Kilogram {
     Rc::new(Measure {
         count: count.clone(),
@@ -825,6 +821,10 @@ pub fn gram_count(g: Gram) -> Nat {
 pub fn gram_to_kilogram_floor(g: Gram) -> Kilogram {
     kilogram((gram_count(g.clone()) / milli_per_unit()))
 }
+
+pub type AmpereHour = Rc<Measure<ElectricCharge, One, i64>>;
+
+pub type MilliampereHour = Rc<Measure<ElectricCharge, Milli, i64>>;
 
 pub fn ampere_hour(count: Nat) -> AmpereHour {
     Rc::new(Measure {
