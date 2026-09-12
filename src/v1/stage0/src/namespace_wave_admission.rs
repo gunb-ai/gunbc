@@ -1764,34 +1764,48 @@ const STRING_EQ_COLLAPSE_LABEL: &str = "gunbc#11138 string_eq collapse to v2.std
 ///
 /// gunbc#11138 string_eq collapse (2026-09-12). The roster is NOT empty on this head: the 37
 /// rows below admit the relocation this change makes, one per call site the floor enumerated.
-/// They are unrelated to the #11137 retirement recorded above, which this branch also reached
-/// independently and which main has since landed -- the deletion was owed once and is paid
-/// there, so nothing is re-deleted here.
-/// TRIGGER: this row goes when #11137 merges. The base then carries the named import, the delta
-/// stops being producible, and CONSUMED comes due on the roster's next touch.
 ///
-/// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11138). The `gunbc#11137 extdeps.tools.sha256sum
-/// names Filesystem instead of reaching it` row is deleted. #11137 merged, so the narrowed import
-/// is at the base, the delta it admitted stopped being producible, and the required floor on this
-/// head reported it as `STALE ADMISSION` -- a row matching no delta, which blocks the phase. Its
-/// own recorded TRIGGER was "this row goes when #11137 merges", and this change is the roster
-/// touch on which that came due.
-///
-/// THIS CHANGE WAS ALSO AUTHORED BELIEVING IT OWED THE THREE `gunbc#11071` DELETIONS, and it did
-/// not: #11137 reached the roster first and paid them. The original text claimed that deletion;
-/// the claim is retracted rather than carried, because a ledger recording one deletion twice is
-/// worse than one recording it once. This change was
-/// authored believing it owed the three `gunbc#11071` consumed-row deletions; #11137 reached the
-/// roster first and paid them, so by the time this merged there was no debt left to pay. The
-/// original text claimed the deletion; that claim is corrected rather than carried, because a
-/// ledger recording one deletion twice is worse than one recording it once.
+/// NOTHING IS RETIRED BY THIS ENTRY. This change was authored believing it owed both the
+/// `gunbc#11137` row and the three `gunbc#11071` consumed-row deletions; other branches reached
+/// the roster first and paid them, and main carries that history above. The original claims are
+/// retracted rather than carried, because a ledger recording one deletion twice is worse than one
+/// recording it once -- and a cohort header carrying a trigger that is already satisfied is how
+/// the wrong rows get retired on the next roster touch (§4b(3): a row is retired BY ITS TRIGGER
+/// and by nothing else).
 ///
 /// gunbc#11138 string_eq collapse (2026-09-12). `fn string_eq(a: String, b: String) -> Bool
 /// { a == b }` was declared NINE times, byte-identical, across `v2.lens` -- one concept, nine
-/// homes, which is DESIGN §2 duplication in its plainest form. The nine copies are deleted and the
-/// single declaration now lives in `v2.std.text`, beside `char_eq`, its exact peer: both are
-/// equality folds over that module's own carrier, and `char_eq` is already the `eq` argument to
+/// homes, which is DESIGN §2 duplication in its plainest form. Those nine are deleted and an
+/// authority is landed in `v2.std.text`, beside `char_eq`, its exact peer: both are equality
+/// folds over that module's own carrier, and `char_eq` is already the `eq` argument to
 /// `list_starts_with` exactly as `string_eq` is the `eq` argument to `contains`.
+///
+/// THE AUTHORITY IS LANDED; SINGLE AUTHORITY IS NOT YET REACHED, and the difference is stated
+/// here rather than left to read as the stronger claim. NINE HOMES SURVIVE this change, measured
+/// with `grep -rn '^fn [a-z_]*string_eq[a-z_]*(a: String, b: String)' --include=*.dag dag/ src/v2`
+/// rather than recalled:
+///
+///   exact `fn string_eq` -- `v2.workflow.witness_admission`,
+///   `v2.test.claim.compile_door_ledger_ownership_test`,
+///   `v2.test.lens_mock_totality.witness_template`,
+///   `gunbc.v1.v1_complexity_decl_classification`,
+///   `test.claim.long.import_closure_live_test`,
+///   `test.claim.long.reference_closure_equivalence_test`
+///
+///   renamed, same signature, byte-identical body -- `floor_join_string_eq`
+///   (`v2.compiler.effect_demand_floor_join`), `string_eq_native_routing`
+///   (`v2.compiler.self_host.native_routing_frontier`), `fn_index_string_eq`
+///   (`v2.std.fn_index`)
+///
+/// The renamed three are the §3 NICKNAME -- a second name for one concept -- which is the form
+/// `grep string_eq` does not find, and the reason they are named here rather than left to the
+/// next reader's search. DECLARED FRONTIER (§3c), not a silent residue: this change is scoped to
+/// `v2.lens` because each additional consumer produces its own `TargetChanged` delta needing an
+/// adjudicated row, and the `dag/` files would be the first `dag/` modules importing
+/// `v2.std.text` for this name -- legal under acyclicity, a different reach question, and one
+/// that deserves its own evidence. TRIGGER for the frontier: the survivor population reaches
+/// zero, at which point `v2.std.text` is the single declaration in fact and not only in
+/// intention.
 ///
 /// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling `string_eq` is authored on both
 /// sides at every one of the 37 sites below, and what changed is which declaration it admits: base
