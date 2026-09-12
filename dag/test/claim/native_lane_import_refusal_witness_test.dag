@@ -3,6 +3,10 @@ module test.claim.native_lane_import_refusal
 import v2.compiler.compile { native_lane_universe }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -37,7 +41,7 @@ data malformed_import_read: DagSourceReadWitness = DagSourceReadWitness {
     file_path: "src/v2/test/native_lane_import_subject.dag"
   },
   compilation_unit: ^native_lane_import_malformed_cu,
-  source_root: V2Tree
+  source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
 data well_formed_import_read: DagSourceReadWitness = DagSourceReadWitness {
@@ -51,7 +55,7 @@ data well_formed_import_read: DagSourceReadWitness = DagSourceReadWitness {
     file_path: "src/v2/test/native_lane_import_subject.dag"
   },
   compilation_unit: ^native_lane_import_wellformed_cu,
-  source_root: V2Tree
+  source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
 // The bare spelling: `import` with only spaces after it TRIMS TO `import`, with no trailing space,
@@ -70,7 +74,7 @@ data bare_import_read: DagSourceReadWitness = DagSourceReadWitness {
     file_path: "src/v2/test/native_lane_import_subject.dag"
   },
   compilation_unit: ^native_lane_import_bare_cu,
-  source_root: V2Tree
+  source_root: v2.std.cross_tree.import_model.V2Tree
 }
 
 data malformed_import_ingest: SourceRootIngest = [malformed_import_read]
