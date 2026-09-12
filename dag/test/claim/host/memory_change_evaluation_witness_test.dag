@@ -10,7 +10,7 @@ import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, ObservationRefused, ObservationEstablished }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.memory_configuration {
-  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, memory_module_capacity,
+  memory_module_label,
   MemoryConfiguration, MemoryChangeProposal, MemoryPlanAction, PositionedMemoryModule, MemoryDeliveryVariant,
   MemoryOperatingObligation, MemoryTrainingFailureScreen, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport, MemoryTraining, MemoryBoot,
   AdditionalMemoryRequirement, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,

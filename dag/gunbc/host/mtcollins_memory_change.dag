@@ -21,7 +21,7 @@ import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKA
 import product.placement_supply { HostIdentity }
 import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import gunbc.memory_configuration {
-  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, memory_module_capacity,
+  CatalogMemoryModule,
   MemoryPosition, MemoryPackageEvidence, MemoryDeliveryVariant, PositionedMemoryModule,
   MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, RetainedMemoryUnit, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,

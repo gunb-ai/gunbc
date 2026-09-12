@@ -5,7 +5,7 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
 }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.memory_configuration {
-  CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, memory_module_capacity,
+  CatalogMemoryModule,
   MemoryPlatform, MemoryPosition, PositionedMemoryModule, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, MemoryPowerOff, MemoryReadbackRequired, memory_operating_obligations,
 }
