@@ -1,0 +1,98 @@
+module std.declaring_identity_spelling
+
+import std.types { Bool }
+import std.decl_ref { DeclarationRef }
+import v2.std.algebra { is_prefix_of, list_reverse }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
+
+// XL-3: whether one mention is spelled as the identity that declared its target.
+// Canonical spelling is the SymbolIndex path (v2.std.symbol_index), the same qualified
+// projection 03_resolve already uses. This module does not walk trees and does not collect
+// sites -- that producer is held until the file-ingest path yields sites.
+
+type UnresolvableCause
+  = IdentityAmbiguous
+  | IdentityUnbound
+  | IdentityOwnerless
+
+type ResolvedPathVerdict
+  = SpelledCanonically
+  | SpelledShorter
+  | ResolvedAuthoredNotOnCanonicalPath
+
+type DeclaringIdentitySpelling
+  = ResolvedSpelling {
+      authored: QualifiedName
+      declaring: DeclarationRef
+      canonical: QualifiedName
+      path_verdict: ResolvedPathVerdict
+    }
+  | UnresolvableSpelling {
+      authored: QualifiedName
+      cause: UnresolvableCause
+    }
+
+// Coverage of the (held) file-ingest producer. Empty observed sites on a file that
+// authorially contains a mention is RED, not Clear.
+type DeclaringIdentityCensusCoverage
+  = ObservedOnNormalizedTree
+  | InvisibleUntilProductionIngestYieldsSites
+  | InvisibleUntilCallExpressionRetained
+
+fn spelling_symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn authored_is_suffix_of_canonical(authored: QualifiedName, canonical: QualifiedName) -> Bool {
+  is_prefix_of(
+    prefix: list_reverse(xs: authored),
+    xs: list_reverse(xs: canonical),
+    eq: spelling_symbol_eq
+  )
+}
+
+fn resolved_path_verdict(authored: QualifiedName, canonical: QualifiedName) -> ResolvedPathVerdict {
+  if authored == canonical {
+    SpelledCanonically
+  } else if authored_is_suffix_of_canonical(authored: authored, canonical: canonical) {
+    SpelledShorter
+  } else {
+    ResolvedAuthoredNotOnCanonicalPath
+  }
+}
+
+fn declaring_identity_spelling_resolved(
+  authored: QualifiedName,
+  declaring: DeclarationRef,
+  canonical: QualifiedName
+) -> DeclaringIdentitySpelling {
+  ResolvedSpelling {
+    authored: authored,
+    declaring: declaring,
+    canonical: canonical,
+    path_verdict: resolved_path_verdict(authored: authored, canonical: canonical)
+  }
+}
+
+fn declaring_identity_spelling_unresolvable(
+  authored: QualifiedName,
+  cause: UnresolvableCause
+) -> DeclaringIdentitySpelling {
+  UnresolvableSpelling {
+    authored: authored,
+    cause: cause
+  }
+}
+
+fn resolved_spelling_needs_requalification(row: DeclaringIdentitySpelling) -> Bool {
+  match row {
+    ResolvedSpelling { authored: _, declaring: _, canonical: _, path_verdict: path_verdict } =>
+      match path_verdict {
+        SpelledCanonically => false
+        SpelledShorter => true
+        ResolvedAuthoredNotOnCanonicalPath => true
+      }
+    UnresolvableSpelling { authored: _, cause: _ } => false
+  }
+}
