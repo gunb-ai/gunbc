@@ -152,7 +152,7 @@ import v2.std.collection { List }
 // the general class -- any row dominated by another unbracketed shared build is miswarded and
 // invisible here.
 //
-// `both_closure_edge_index` IS NOT SUCH A BUILD, and this clause previously called it the
+// `whole_pool_closure_edge_index` IS NOT SUCH A BUILD, and this clause previously called it the
 // obvious next candidate and left it unverified. Settled, and confirmed here by code read rather
 // than relayed: `v1_compiler.cli_run` `run_required_floor` calls `warm_bare_reference_edge_index`
 // TWICE during strict-preparation -- once over the source roots and once over

@@ -1,0 +1,98 @@
+module extdeps.instrument.fs_box_v3_v4_v5_faq
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+  CitedFigureStanding, CitedToAuthority,
+}
+import extdeps.uri { Uri, Https }
+
+// FS'S PUBLISHED FS BOX V3 & V4 & V5 FAQ (filename date 2026-08-24). This is a separately
+// governed publication from the V4 data sheet. It is mostly service and account POLICY as FS
+// printed it, which still belongs here as a citation of that publication: inventing a second
+// "our policy" copy in workflow would nickname the same document. What THIS FLEET does with the
+// terms is a product join (product.fs_box_published_claims). Free-BOX spend-tier campaign
+// pricing was read and is not declared: it is a marketing offer with no executing consumer in
+// this change. Account trial/freeze/buffer and the BOX Pro review window are cited because a live
+// FS BOX account is a prerequisite of the programming intervention, and BOX Pro's writable-field
+// split is what keeps byte 192 from being read out of this FAQ.
+//
+// THE FAQ DOES NOT GROUND LEG PROGRAMMING. It has no hits for disconnect, individually, breakout,
+// QSFP56, EEPROM, byte 192, or 0x40. "Offline" is the internet requirement, not write recovery.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "resource.fs.com/mall/resource/fs-box-v3v4v5-faq-20260824100858.pdf"
+  }
+}
+
+type FsBoxV3V4V5Faq {
+  online_configuration_fields: List<NonEmptyStr>
+  box_pro_fields: List<NonEmptyStr>
+  box_pro_customization_review: NonEmptyStr
+  custom_compatible_brand_requires_engineering_approval: Bool
+  third_party_modules_supported: Bool
+  reconfiguration_not_supported: List<NonEmptyStr>
+  works_offline: Bool
+  operating_systems: List<NonEmptyStr>
+  browsers: List<NonEmptyStr>
+  trial_period: NonEmptyStr
+  trial_frozen_on_expiry: Bool
+  formal_account_buffer: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data fs_box_v3_v4_v5_faq: FsBoxV3V4V5Faq = FsBoxV3V4V5Faq {
+  online_configuration_fields: [
+    "compatible brands" as NonEmptyStr,
+    "SN" as NonEmptyStr,
+  ],
+  box_pro_fields: [
+    "Compatible Brands" as NonEmptyStr,
+    "Vendor names" as NonEmptyStr,
+    "P/N" as NonEmptyStr,
+    "S/N" as NonEmptyStr,
+  ],
+  box_pro_customization_review: "1-2 working days" as NonEmptyStr,
+  custom_compatible_brand_requires_engineering_approval: true,
+  third_party_modules_supported: false,
+  reconfiguration_not_supported: [
+    "HPE-compatible SFP+/SFP28/XFP/QSFP+/QSFP28 transceivers" as NonEmptyStr,
+    "all 40G BiDi transceivers" as NonEmptyStr,
+    "GPON transceivers" as NonEmptyStr,
+    "25G SFP28 Loopback Modules" as NonEmptyStr,
+  ],
+  works_offline: false,
+  operating_systems: [
+    "Windows 10 or later" as NonEmptyStr,
+    "macOS 10.13 or later" as NonEmptyStr,
+    "Android 5.0 or later" as NonEmptyStr,
+    "iOS 11.0 or later" as NonEmptyStr,
+  ],
+  browsers: [
+    "Google Chrom(68 or newer)" as NonEmptyStr,
+    "Firefox" as NonEmptyStr,
+  ],
+  trial_period: "seven-day" as NonEmptyStr,
+  trial_frozen_on_expiry: true,
+  formal_account_buffer: "24-hour" as NonEmptyStr,
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+fn fs_box_faq_lists_box_pro_field(name: NonEmptyStr) -> Bool {
+  any(fs_box_v3_v4_v5_faq.box_pro_fields, f => (f as String) == (name as String))
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.instrument.fs_box_v3_v4_v5_faq",
+      decl_name: "fs_box_v3_v4_v5_faq",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
