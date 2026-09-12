@@ -77,20 +77,13 @@ data marker_arms: List<MarkerArm> = [
     name: "inline_distinct",
     source: "module marker_probe\ntype MarkerQ = MqA | MqB\ntype Carrier<Q> { count: Int }\nfn take_a(a: Carrier<MqA>) -> Int { a.count }\nfn feed(b: Carrier<MqB>) -> Int { take_a(a: b) }\n",
     expect_blocking: false,
-    expect_class: ""
+    expect_class: "TypeMismatch"
   }
 ]
 
 // A NEGATIVE COUNT IS THE COULD-NOT-MEASURE ARM AND NEVER A ZERO: folding an unrunnable probe to 0
 // would make a broken harness read as an accepted source, which is the top-as-answer conflation
 // DESIGN section 5 forbids. Every expectation below is non-negative, so an unrunnable probe reds.
-
-fn arm_blocking_count(a: MarkerArm) -> Int {
-  match compile_dag_diagnostic_census(a.source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
-}
 
 fn arm_class_blocking_count(a: MarkerArm) -> Int {
   match compile_dag_diagnostic_census(a.source) {
@@ -102,31 +95,28 @@ fn arm_class_blocking_count(a: MarkerArm) -> Int {
 
 // COUNT THE INTENDED CLASS, AND DELIBERATELY NOT THE TOTAL. gunbc.compile_diagnostic_census states
 // that the row set is the WHOLE COMPILE's, so a bare "blocking >= 1" would let ANY refusal carry an
-// arm. brand_nominal_identity_witness_test answers that by also requiring targeted == total, which
-// is exact and is the stronger form -- ITS fixtures reach that bar because they are built from
-// String alone and drag in no closure. These fixtures need Int, and the closure that arrives with it
+// arm. brand_nominal_identity_witness_test answers that by also requiring targeted == total, which is
+// exact and is the stronger form -- ITS fixtures reach that bar because they are built from String
+// alone and drag in no closure. These fixtures need Int, and the closure that arrives with it
 // contributes blocking rows this fixture does not author and cannot suppress: measured, the intended
 // TypeMismatch count is exactly 1 while the total blocking count is not. Asserting targeted == total
 // here would red on rows belonging to somebody else's module.
 //
 // WHAT THE NARROWER FORM STILL CATCHES, which is the whole question: if the nominal check regressed,
-// the TypeMismatch count on a refusing arm drops to 0 and the arm reds; if structural marker
-// enforcement ever lands, the count on the accepting arm rises to 1 and THAT arm reds. Both
-// directions of the property remain falsifiable. What is given up is only the guarantee that nothing
-// ELSE refuses in the same fixture, which is not this property's subject.
+// the count on a refusing arm drops to 0 and the arm reds; if structural marker enforcement ever
+// lands, the count on the accepting arm rises to 1 and THAT arm reds. Both directions of the property
+// remain falsifiable. What is given up is only the guarantee that nothing ELSE refuses in the same
+// fixture, which is not this property's subject.
+//
+// EVERY ARM NAMES THE SAME CLASS, INCLUDING THE ACCEPTING ONE, AND THAT IS THE POINT RATHER THAN A
+// REDUNDANCY. An accepting arm's expectation is not "no class" -- it is ZERO ROWS OF THE CLASS THIS
+// PROPERTY EMITS, which expect_class states exactly. An empty-string sentinel there would be a field
+// no reader consults, and the fold would have to route around it; then editing expect_class on that
+// arm would change nothing while the realization went on ignoring it, which is the validation-standing
+// -where-construction-was-available tell in DESIGN section 5. One fold, read on both branches.
 fn arm_agrees(a: MarkerArm) -> Bool {
   let targeted = arm_class_blocking_count(a: a)
-  if a.expect_blocking { targeted == 1 } else { marker_typemismatch_count(a: a) == 0 }
-}
-
-// The accepting arm must ask about the class this property emits, not about a blank string: an
-// expect_class of "" would count rows of no class and read as zero however the compiler behaved.
-fn marker_typemismatch_count(a: MarkerArm) -> Int {
-  match compile_dag_diagnostic_census(a.source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: "TypeMismatch"))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
+  if a.expect_blocking { targeted == 1 } else { targeted == 0 }
 }
 
 test fn m_all_three_arms_are_enrolled() -> Bool {
