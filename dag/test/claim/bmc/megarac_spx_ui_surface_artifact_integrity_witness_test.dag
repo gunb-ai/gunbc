@@ -1,0 +1,45 @@
+module test.claim.megarac_spx_ui_surface_artifact_integrity_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { Sha256Matches, sha256sum_verify_via_shell }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation {
+  megarac_spx_ui_surface_path,
+  megarac_spx_ui_surface_sha256,
+}
+import gunbc.machine_intake_megarac_pre_os_channel {
+  megarac_sol_host_payload_positive_control_path,
+  megarac_sol_host_payload_positive_control_sha256,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE COMMITTED ARTIFACT IS THE ORACLE. megarac_spx_ui_surface_sha256 names the catalog
+// identity; this witness hashes the file on disk. Editing the file without updating the
+// digest reds; updating the digest without the bytes reds. That is not measure() == measure().
+test fn committed_spx_ui_surface_hashes_to_the_catalog_identity() -> Bool {
+  sha256sum_verify_via_shell(
+    path: megarac_spx_ui_surface_path,
+    expected_digest: megarac_spx_ui_surface_sha256,
+  ) == Sha256Matches
+}
+
+// PATH PRESENCE AND ABSENCE ARE READ FROM THE HASHED FILE, not from a second authored list.
+// RED: add a redfish line, or drop api/fru or aep_dimm_info, or add settings/bios.
+test fn committed_spx_ui_surface_redfish_absent_fru_and_aep_dimm_present() -> Bool {
+  let read = Filesystem.Read(path: megarac_spx_ui_surface_path as String)
+  read.success
+    && !string_contains(s: read.content, pattern: "redfish")
+    && string_contains(s: read.content, pattern: "api/aep_inventory/aep_dimm_info")
+    && string_contains(s: read.content, pattern: "api/fru")
+    && string_contains(s: read.content, pattern: "api/maintenance/hpm/getbiosversions")
+    && !string_contains(s: read.content, pattern: "settings/bios")
+}
+
+test fn committed_sol_host_payload_hashes_to_the_positive_control_identity() -> Bool {
+  sha256sum_verify_via_shell(
+    path: megarac_sol_host_payload_positive_control_path,
+    expected_digest: megarac_sol_host_payload_positive_control_sha256,
+  ) == Sha256Matches
+}

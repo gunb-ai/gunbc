@@ -1,0 +1,299 @@
+module test.claim.megarac_operation_surface_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.megarac {
+  AepDimmInventory,
+  BiosUefiSettings,
+  BiosVersionFlash,
+  ChassisPowerOnEventsEnable,
+  ChasisPowerOnEventsEnable,
+  DiesOnReset,
+  FramebufferRecorder,
+  FruInventory,
+  MegaRacIpmiSelPayloadPreserved,
+  MegaRacWebEventLogOemEmptySelData,
+  RedirectionConnecting,
+  RedirectionKnownStopped,
+  RedirectionPresentationUnknown,
+  RedirectionPresenting,
+  RedirectionStartedConnectionAccepted,
+  RedirectionStatusFirmwareUncatalogued,
+  RedirectionStatusKnown,
+  RedirectionStopped,
+  RedirectionWireUncatalogued,
+  RedfishService,
+  ServedUiFactFirmwareUncatalogued,
+  ServedUiFactKnown,
+  ServedUiSurfaceAbsent,
+  ServedUiSurfacePresent,
+  SolStreamRecorder,
+  SurvivesHostAndControllerReset,
+  megarac_firmware_0_32,
+  megarac_framebuffer_recorder_reset_survival,
+  megarac_ipmi_sel_layout,
+  megarac_live_sol_activate_reset_survival,
+  megarac_recorder_reset_survival,
+  megarac_recorder_trigger_power_on_field,
+  megarac_redirection_presentation_standing,
+  megarac_redirection_status_of_wire,
+  megarac_served_ui_surface_standing,
+  megarac_sol_recorder_reset_survival,
+  megarac_sol_trigger_power_on_field,
+  megarac_trigger_power_on_field_wire,
+  megarac_video_trigger_power_on_field,
+  megarac_web_event_log_layout,
+}
+import extdeps.ampere.oem_sel {
+  AmpereBootSyndromeOemSel,
+  AmpereOemSelManufacturerIdNotThisPen,
+  AmpereOemSelSensorOutsideLayout,
+  ampere_oem_sel_producer_layout,
+  ampere_oem_sel_record_match,
+}
+import gunbc.machine_intake_sol_collector_observation {
+  CollectorTerminatedExitZeroStdinEof,
+  SolCollectorDidNotEstablishCoverage,
+  SolCollectorSessionAcknowledged,
+  SolCollectorSessionNotAcknowledged,
+  SolCoverageComplete,
+  SolCoverageNeverEstablished,
+  SolCoverageStillRunningPastDeadline,
+  SolHostPayloadAdmitted,
+  SolHostPayloadNotReceived,
+  SolHostPayloadReceived,
+  SolHostProducedNoConsoleBytes,
+  SolCollectorObservation,
+  SolSessionNeverAcknowledged,
+  sol_host_fact_from_collector,
+}
+import gunbc.machine_intake_megarac_pre_os_channel {
+  megarac_sol_collector_terminate_deadline,
+  megarac_sol_host_payload_positive_control,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
+  match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1) {
+    RedirectionStatusKnown { firmware: _, status: RedirectionStartedConnectionAccepted } =>
+      match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 100) {
+        RedirectionStatusKnown { firmware: _, status: RedirectionConnecting } =>
+          match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0) {
+            RedirectionStatusKnown { firmware: _, status: RedirectionStopped } =>
+              match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7) {
+                RedirectionStatusKnown { firmware: _, status: RedirectionWireUncatalogued { wire: 7 } } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn redirection_status_refuses_an_uncatalogued_firmware() -> Bool {
+  let other = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.31")
+  match megarac_redirection_status_of_wire(firmware: other, wire: 1) {
+    RedirectionStatusFirmwareUncatalogued { firmware: _, wire: 1 } => true
+    _ => false
+  }
+}
+
+test fn uncatalogued_wire_cannot_confirm_attachment() -> Bool {
+  megarac_redirection_presentation_standing(
+    lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1),
+  ) == RedirectionPresenting
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 100),
+    ) == RedirectionPresenting
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0),
+    ) == RedirectionKnownStopped
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 2),
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 5),
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7),
+    ) == RedirectionPresentationUnknown
+    && megarac_redirection_presentation_standing(
+      lookup: megarac_redirection_status_of_wire(
+        firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.31"),
+        wire: 1,
+      ),
+    ) == RedirectionPresentationUnknown
+}
+
+test fn recorders_survive_reset_and_live_sol_does_not() -> Bool {
+  megarac_recorder_reset_survival(subject: FramebufferRecorder) == SurvivesHostAndControllerReset
+    && megarac_recorder_reset_survival(subject: SolStreamRecorder) == SurvivesHostAndControllerReset
+    && megarac_live_sol_activate_reset_survival == DiesOnReset
+    && megarac_framebuffer_recorder_reset_survival != megarac_live_sol_activate_reset_survival
+    && megarac_recorder_trigger_power_on_field(subject: FramebufferRecorder) == ChassisPowerOnEventsEnable
+    && megarac_recorder_trigger_power_on_field(subject: SolStreamRecorder) == ChasisPowerOnEventsEnable
+    && megarac_trigger_power_on_field_wire(name: megarac_video_trigger_power_on_field)
+      != megarac_trigger_power_on_field_wire(name: megarac_sol_trigger_power_on_field)
+}
+
+test fn other_firmware_does_not_inherit_0_32_surfaces() -> Bool {
+  let other = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "1.00")
+  match megarac_served_ui_surface_standing(firmware: other, surface: RedfishService) {
+    ServedUiFactFirmwareUncatalogued { firmware: _ } => true
+    _ => false
+  }
+}
+
+test fn catalogued_firmware_discriminates_present_and_absent_surfaces() -> Bool {
+  match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: RedfishService) {
+    ServedUiFactKnown { firmware: _, presence: ServedUiSurfaceAbsent } => true
+    _ => false
+  }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: BiosUefiSettings) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfaceAbsent } => true
+      _ => false
+    }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: FruInventory) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => true
+      _ => false
+    }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: AepDimmInventory) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => true
+      _ => false
+    }
+    && match megarac_served_ui_surface_standing(firmware: megarac_firmware_0_32, surface: BiosVersionFlash) {
+      ServedUiFactKnown { firmware: _, presence: ServedUiSurfacePresent } => true
+      _ => false
+    }
+}
+
+test fn web_and_ipmi_event_log_layouts_are_distinct() -> Bool {
+  megarac_web_event_log_layout == MegaRacWebEventLogOemEmptySelData
+    && megarac_ipmi_sel_layout == MegaRacIpmiSelPayloadPreserved
+    && megarac_web_event_log_layout != megarac_ipmi_sel_layout
+}
+
+fn collector_without_coverage() -> SolCollectorObservation {
+  SolCollectorSessionAcknowledged {
+    coverage: SolCoverageNeverEstablished { termination: CollectorTerminatedExitZeroStdinEof },
+    host_payload: SolHostPayloadNotReceived,
+    terminate_deadline: megarac_sol_collector_terminate_deadline,
+  }
+}
+
+fn collector_with_host_payload() -> SolCollectorObservation {
+  SolCollectorSessionAcknowledged {
+    coverage: SolCoverageComplete,
+    host_payload: SolHostPayloadReceived,
+    terminate_deadline: megarac_sol_collector_terminate_deadline,
+  }
+}
+
+test fn incomplete_sol_coverage_is_not_a_host_silence_fact() -> Bool {
+  match sol_host_fact_from_collector(obs: collector_without_coverage()) {
+    SolCollectorDidNotEstablishCoverage { coverage: SolCoverageNeverEstablished { termination: CollectorTerminatedExitZeroStdinEof } } => true
+    _ => false
+  }
+    && match sol_host_fact_from_collector(obs: collector_with_host_payload()) {
+      SolHostPayloadAdmitted => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
+      coverage: SolCoverageComplete,
+      host_payload: SolHostPayloadNotReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolHostProducedNoConsoleBytes => true
+      _ => false
+    }
+}
+
+test fn unacknowledged_session_never_claims_the_host_produced_no_bytes() -> Bool {
+  match sol_host_fact_from_collector(obs: SolCollectorSessionNotAcknowledged {
+    termination: CollectorTerminatedExitZeroStdinEof,
+    host_payload: SolHostPayloadNotReceived,
+    terminate_deadline: megarac_sol_collector_terminate_deadline,
+  }) {
+    SolSessionNeverAcknowledged => true
+    SolHostProducedNoConsoleBytes => false
+    _ => false
+  }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionNotAcknowledged {
+      termination: CollectorTerminatedExitZeroStdinEof,
+      host_payload: SolHostPayloadReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolSessionNeverAcknowledged => true
+      SolHostPayloadAdmitted => false
+      _ => false
+    }
+}
+
+test fn ampere_oem_sel_layout_does_not_cover_sensor_0xde() -> Bool {
+  match ampere_oem_sel_record_match(
+    layout: ampere_oem_sel_producer_layout,
+    sensor: 235,
+    manufacturer_id_byte0: 58,
+    manufacturer_id_byte1: 205,
+    manufacturer_id_byte2: 0,
+  ) {
+    AmpereBootSyndromeOemSel =>
+      match ampere_oem_sel_record_match(
+        layout: ampere_oem_sel_producer_layout,
+        sensor: 222,
+        manufacturer_id_byte0: 58,
+        manufacturer_id_byte1: 205,
+        manufacturer_id_byte2: 0,
+      ) {
+        AmpereOemSelSensorOutsideLayout { sensor: 222 } =>
+          match ampere_oem_sel_record_match(
+            layout: ampere_oem_sel_producer_layout,
+            sensor: 235,
+            manufacturer_id_byte0: 0,
+            manufacturer_id_byte1: 0,
+            manufacturer_id_byte2: 0,
+          ) {
+            AmpereOemSelManufacturerIdNotThisPen => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn sol_host_payload_is_admitted_while_coverage_is_still_past_deadline() -> Bool {
+  match sol_host_fact_from_collector(obs: megarac_sol_host_payload_positive_control) {
+    SolHostPayloadAdmitted => true
+    _ => false
+  }
+    && match megarac_sol_host_payload_positive_control {
+      SolCollectorSessionAcknowledged {
+        coverage: SolCoverageStillRunningPastDeadline,
+        host_payload: SolHostPayloadReceived,
+        terminate_deadline: _,
+      } => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
+      coverage: SolCoverageComplete,
+      host_payload: SolHostPayloadReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolHostPayloadAdmitted => true
+      _ => false
+    }
+    && match sol_host_fact_from_collector(obs: SolCollectorSessionAcknowledged {
+      coverage: SolCoverageStillRunningPastDeadline,
+      host_payload: SolHostPayloadNotReceived,
+      terminate_deadline: megarac_sol_collector_terminate_deadline,
+    }) {
+      SolCollectorDidNotEstablishCoverage { coverage: SolCoverageStillRunningPastDeadline } => true
+      _ => false
+    }
+}
