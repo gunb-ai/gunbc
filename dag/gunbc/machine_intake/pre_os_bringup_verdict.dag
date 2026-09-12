@@ -249,13 +249,18 @@ fn verdict_permits_further_actuation(verdict: PreOsBringupVerdict) -> Bool {
 
 // ── the OEM record, as three facts ─────────────────────────────────────────────────────────────
 
-// FACT ONE: THE PAYLOAD WAS OBSERVED, this many times, between these record ids. A count over a
-// window, nothing about meaning.
-type OemSelPayloadObserved {
-  payload: OemSelPayload
-  occurrences: Int
-  first_record_id: Int
-  last_record_id: Int
+// FACT ONE: WHETHER AND WHERE THE PAYLOAD WAS OBSERVED. A payload absent from the window has no
+// first or last record, so it has no arm that carries one (review 64221): a sentinel 0 would read
+// as "present from the start of the log", the strongest claim any observation could make.
+type OemSelPayloadObserved
+  = OemPayloadAbsentFromWindow { payload: OemSelPayload }
+  | OemPayloadSeen { payload: OemSelPayload, occurrences: Int, first_record_id: Int, last_record_id: Int }
+
+fn oem_payload_seen_in_window(observed: OemSelPayloadObserved) -> Bool {
+  match observed {
+    OemPayloadAbsentFromWindow { payload: _ } => false
+    OemPayloadSeen { payload: _, occurrences: _, first_record_id: _, last_record_id: _ } => true
+  }
 }
 
 // FACT TWO: WHAT THE MANUFACTURER'S REALIZATION SAID WHEN ASKED TO DECODE IT. Derived from the
@@ -273,13 +278,15 @@ fn oem_sel_decode_standing(profile: PreOsObservationCapabilities) -> OemSelDecod
   }
 }
 
-// FACT THREE: WHAT THE PAYLOAD CO-OCCURS WITH. Computed over the window, carrying the marker it
-// appears only after and the payloads it never sits beside. This is an association and its type
-// says so; it names no cause, decodes no bytes, and no fold in this module consumes it.
+// FACT THREE: WHAT THE PAYLOAD CO-OCCURS WITH. Computed over the window. `never_within_same_cycle_as`
+// holds only candidates that DO appear in the window and never share a cycle with the payload;
+// a candidate absent from the window is listed apart, because "never beside something that never
+// happened" is vacuous and must not read as a co-occurrence finding. This is an association and
+// its type says so; it names no cause, decodes no bytes, and no fold in this module consumes it.
 type OemSelEmpiricalAssociation {
   observed: OemSelPayloadObserved
-  appears_only_at_or_after_record: Int
   never_within_same_cycle_as: List<OemSelPayload>
+  candidates_absent_from_window: List<OemSelPayload>
   decode_standing: OemSelDecodeStanding
 }
 
@@ -309,11 +316,15 @@ fn oem_payload_observed(window: List<SelWindowEvent>, payload: OemSelPayload) ->
       OtherStandardEvent { rendering: _ } => acc
     },
   )
-  OemSelPayloadObserved {
-    payload: payload,
-    occurrences: counted.occurrences,
-    first_record_id: counted.first_record_id,
-    last_record_id: counted.last_record_id,
+  if counted.occurrences == 0 {
+    OemPayloadAbsentFromWindow { payload: payload }
+  } else {
+    OemPayloadSeen {
+      payload: payload,
+      occurrences: counted.occurrences,
+      first_record_id: counted.first_record_id,
+      last_record_id: counted.last_record_id,
+    }
   }
 }
 
@@ -349,21 +360,20 @@ fn payloads_co_occur_in_a_cycle(window: List<SelWindowEvent>, a: OemSelPayload, 
   done.co_occurred || (done.saw_a_this_cycle && done.saw_b_this_cycle)
 }
 
-// THE ASSOCIATION IS COMPUTED, NOT AUTHORED, so a "never beside" claim that the window contradicts
-// cannot be written: the candidates that DO co-occur are dropped from the list rather than kept on
-// the author's say-so, and a payload absent from the window yields an observation with zero
-// occurrences rather than a fabricated first-seen.
+// THE ASSOCIATION IS COMPUTED, NOT AUTHORED, so a "never beside" claim the window contradicts
+// cannot be written, and a candidate the window never shows cannot masquerade as one it shows
+// often and never beside the payload.
 fn oem_sel_empirical_association(
   window: List<SelWindowEvent>,
   payload: OemSelPayload,
   never_beside_candidates: List<OemSelPayload>,
   profile: PreOsObservationCapabilities,
 ) -> OemSelEmpiricalAssociation {
-  let observed = oem_payload_observed(window: window, payload: payload)
+  let present = filter(xs: never_beside_candidates, f: c => oem_payload_seen_in_window(observed: oem_payload_observed(window: window, payload: c)))
   OemSelEmpiricalAssociation {
-    observed: observed,
-    appears_only_at_or_after_record: observed.first_record_id,
-    never_within_same_cycle_as: filter(xs: never_beside_candidates, f: c => payloads_co_occur_in_a_cycle(window: window, a: payload, b: c) == false),
+    observed: oem_payload_observed(window: window, payload: payload),
+    never_within_same_cycle_as: filter(xs: present, f: c => payloads_co_occur_in_a_cycle(window: window, a: payload, b: c) == false),
+    candidates_absent_from_window: filter(xs: never_beside_candidates, f: c => oem_payload_seen_in_window(observed: oem_payload_observed(window: window, payload: c)) == false),
     decode_standing: oem_sel_decode_standing(profile: profile),
   }
 }

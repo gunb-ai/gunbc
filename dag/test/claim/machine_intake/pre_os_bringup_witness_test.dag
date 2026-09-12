@@ -54,8 +54,10 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   FirmwareProgressRecord,
   LocalizableFrom,
   NoRestartInWindow,
+  OemPayloadAbsentFromWindow,
   OemTimestamped,
   PhysicalRemediationRequired,
+  oem_sel_empirical_association,
   RestartsBelowTerminalThreshold,
   SelWindowEvent,
   SolBannerOnly,
@@ -337,6 +339,34 @@ test fn progress_in_the_open_cycle_resets_the_trailing_run() -> Bool {
     profile: mtcollins1_pre_os_capabilities,
   ) {
     FirmwareProgressObserved { cycles_with_progress: 1, cycles_without_progress: 3 } => true
+    _ => false
+  }
+}
+
+// ── the OEM association, the arms the corpus does not reach ────────────────────────────────────
+
+// A CANDIDATE THE WINDOW NEVER SHOWS IS REPORTED ABSENT, NOT "NEVER BESIDE"; a payload the window
+// never shows has no first-seen record at all (review 64221).
+test fn a_candidate_absent_from_the_window_is_not_reported_as_never_beside() -> Bool {
+  let ghost = OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "ffffffffffff" }
+  let assoc = oem_sel_empirical_association(
+    window: [restart(id: 1), oem(id: 2), restart(id: 3), oem(id: 4)],
+    payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" },
+    never_beside_candidates: [ghost],
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  list_length(items: assoc.never_within_same_cycle_as) == 0 && list_length(items: assoc.candidates_absent_from_window) == 1
+}
+
+test fn a_payload_absent_from_the_window_has_no_first_seen_record() -> Bool {
+  let assoc = oem_sel_empirical_association(
+    window: [restart(id: 1), restart(id: 2)],
+    payload: OemSelPayload { manufacturer_id_rendering: "00cd3a", oem_bytes_rendering: "0fde70330102" },
+    never_beside_candidates: [],
+    profile: mtcollins1_pre_os_capabilities,
+  )
+  match assoc.observed {
+    OemPayloadAbsentFromWindow { payload: _ } => true
     _ => false
   }
 }

@@ -53,6 +53,8 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   ConsoleSilentAndWindowEmpty,
   ControllerDeclaredUnknown,
   FirmwareProgressObserved,
+  OemPayloadAbsentFromWindow,
+  OemPayloadSeen,
   OemSelEmpiricalAssociation,
   PhysicalRemediationRequired,
   PreOsBringupVerdict,
@@ -539,20 +541,21 @@ fn check_bounded_terminal() -> ProcessExit {
 // LAW 3: the OEM association counts, dates and co-occurs -- and does not decode.
 fn check_opaque_oem_stays_opaque() -> ProcessExit {
   let assoc = mtcollins1_oem_association()
-  let count = if assoc.observed.occurrences == 16 {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat("opaque-oem: expected 16 occurrences of 0fde70330102 in records 0x3ea..0x44f, counted ", to_string(assoc.observed.occurrences)))
+  let seen = match assoc.observed {
+    OemPayloadSeen { payload: _, occurrences: n, first_record_id: f, last_record_id: _ } =>
+      if n != 16 {
+        exit_failure(reason: concat("opaque-oem: expected 16 occurrences of 0fde70330102 in records 0x3ea..0x44f, counted ", to_string(n)))
+      } else if f != 1023 {
+        exit_failure(reason: "opaque-oem: first occurrence was not record 0x3ff, the first post-change restart")
+      } else {
+        ExitSuccess
+      }
+    OemPayloadAbsentFromWindow { payload: _ } => exit_failure(reason: "opaque-oem: 0fde70330102 was reported absent from a window that carries it sixteen times")
   }
-  let first_seen = if assoc.appears_only_at_or_after_record == 1023 {
+  let never_beside = if list_length(items: assoc.never_within_same_cycle_as) == 2 && list_length(items: assoc.candidates_absent_from_window) == 0 {
     ExitSuccess
   } else {
-    exit_failure(reason: "opaque-oem: first occurrence was not record 0x3ff, the first post-change restart")
-  }
-  let never_beside = if list_length(items: assoc.never_within_same_cycle_as) == 2 {
-    ExitSuccess
-  } else {
-    exit_failure(reason: "opaque-oem: the completed-boot OEM pair was found in a cycle beside 0fde70330102, or the fold dropped a candidate it should have kept")
+    exit_failure(reason: "opaque-oem: the completed-boot OEM pair -- present in the window at 0x3ec/0x3ed -- was found in a cycle beside 0fde70330102, or a candidate was dropped or reported absent")
   }
   let undecoded = if association_is_decoded(association: assoc) {
     exit_failure(reason: "opaque-oem: an association over a payload the controller does not decode was read as decoded")
@@ -562,7 +565,7 @@ fn check_opaque_oem_stays_opaque() -> ProcessExit {
       _ => exit_failure(reason: "opaque-oem: decode standing was not derived from the measured profile")
     }
   }
-  first_failure(checks: [count, first_seen, never_beside, undecoded])
+  first_failure(checks: [seen, never_beside, undecoded])
 }
 
 fn first_failure(checks: List<ProcessExit>) -> ProcessExit {
