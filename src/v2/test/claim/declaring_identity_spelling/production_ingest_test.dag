@@ -153,7 +153,8 @@ test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
   )
 }
 
-// User type-position names currently REACH the collector (unlike kernel Int/Bool).
+// User type-position names REACH the census (fixture 1). Not held red: they are
+// present. Unbound type-position names REACH as IdentityUnbound (fixture 3).
 test fn a_user_type_position_name_reaches_the_census_today() -> Bool {
   authored_is(
     census: census_of(
@@ -187,6 +188,8 @@ test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
   )
 }
 
+// Census-row spelling "Int" on this single-module ingest. Not a hold of the
+// collector type-position class: user type-position names reach (see above).
 test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
   !authored_is(
     census: census_of(
@@ -206,10 +209,9 @@ fn matched_census() -> DeclaringIdentitySpellingCensus {
   )
 }
 
-// MATCHED CONTROL (sharp-owl-21): same module, no call. One name only as a value
-// mention outside a call, one only as a user type in a parameter, one imported kernel
-// type (Bool) only in a parameter. If the value is present and a type is absent, that
-// type-position class is not call-expression erasure.
+// Same module, no call. User type_only REACHES. Imported Bool as a census-row
+// spelling may still be absent here; that is not a collector type-position miss
+// and is not a reason to hold fixtures 1-3.
 test fn matched_value_only_mention_reaches_the_census_today() -> Bool {
   authored_is(census: matched_census(), spelling: "value_only")
 }
