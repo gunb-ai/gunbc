@@ -30,6 +30,10 @@ import tools.reference_occurrence_binding_census {
   ReferenceOccurrenceBindingRow,
   ReferenceOccurrenceBindingDisposition
 }
+import gunbc.reference_derived_candidate {
+  ReferenceDerivedCandidateDisposition,
+  ReferenceDerivedCandidateRow
+}
 import gunbc.namespace_cut_subject_roster {
   NamespaceCutSubjectIdentity,
   subjects_deleted_at
@@ -45,21 +49,6 @@ import v2.workflow.legacy_baseline_persisted_observation {
 // Roster-from-same-rows is a declared tautology (parent 2026-09-12): checkable, not structurally
 // independent of answering. The arm is never enrolled on a required-floor path; one offline run
 // per pinned base stores the observation. Deleted with v1.compiler.emit_rust / the interpreter.
-
-type ReferenceDerivedCandidateDisposition
-  = CandidateSurvived { provider_module: String }
-  | CandidateOwnModule
-  | CandidateVariantDelegatedToParent { parent_enum: String }
-  | CandidateVariantParentUnresolved
-  | CandidateRegistryAbsent
-  | CandidateLeafAmbiguous
-  | CandidateExportProofFailed { provider_module: String }
-
-type ReferenceDerivedCandidateRow {
-  module_name: String
-  name: String
-  disposition: ReferenceDerivedCandidateDisposition
-}
 
 type Xl1PrimaryRootTap
   = Xl1PrimaryRootObserved {
@@ -216,12 +205,16 @@ fn never_emitted_declared_modules(
   declared_modules |> filter(d => !(emitted_modules |> any(e => e == d)))
 }
 
-fn xl1_live_repair_tap_tally(source_roots: List<String>) -> Int {
+type Xl1LiveRepairTapCensus
+  = Xl1LiveRepairTapRows { count: Int }
+  | Xl1LiveRepairTapUnavailable { cause: String }
+
+fn xl1_live_repair_tap_census(source_roots: List<String>) -> Xl1LiveRepairTapCensus {
   match emit_rust_reference_derived_rows_bridge(source_roots) {
-    Xl1PrimaryRootRefused { cause: _ } => 0
+    Xl1PrimaryRootRefused { cause: c } => Xl1LiveRepairTapUnavailable { cause: c }
     Xl1PrimaryRootObserved { repair_rows: rows, primary_root: _, occurrence_transport: _, binding_rows: _ } =>
-      rows |> count
+      Xl1LiveRepairTapRows { count: rows |> count }
   }
 }
 
-data emit_rust_reference_derived_rows_bridge_v1_deletion: String = "Deleted with v1.compiler.emit_rust and the interpreter (gunbc.v1_deletion_plan InterpreterDeleted). Listed from land day. Sole consumer: v2.workflow.legacy_repair_tap persist_capture_from_primary_root_tap / persist_capture_from_bridge_rows / xl1_live_repair_tap_tally."
+data emit_rust_reference_derived_rows_bridge_v1_deletion: String = "Deleted with v1.compiler.emit_rust and the interpreter (gunbc.v1_deletion_plan InterpreterDeleted). Listed from land day. Sole consumer: v2.workflow.legacy_repair_tap persist_capture_from_primary_root_tap / persist_capture_from_bridge_rows / xl1_live_repair_tap_census."

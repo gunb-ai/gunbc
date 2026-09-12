@@ -24,9 +24,13 @@ import v2.workflow.legacy_repair_observation {
   admit_complete_repair_observation,
   RepairObservationAdmitted,
   RepairObservationSubjectDiverged,
-  RepairObservationRefused
+  RepairObservationRefused,
+  LegacyRepairSubjectField,
+  RepairSemanticSourceDigestField,
+  RepairSourceSetDigestField,
+  RepairCompilerArtifactDigestField
 }
-import std.observation_completeness { ObservationCompleteness, ObservationMissingExpected }
+import std.observation_completeness { ObservationCompleteness }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
   LegacyBindingObservationSubject,
@@ -169,7 +173,7 @@ type LegacyBaselineCaptureOutcome<O, R>
       subject_digest: Fnv1a64Structural,
       roster_digest: Fnv1a64Structural
     }
-  | LegacyBaselineRepairSubjectDiverged { field: LegacyObservationSubjectField }
+  | LegacyBaselineRepairSubjectDiverged { field: LegacyRepairSubjectField }
   | LegacyBaselineRepairIncomplete { completeness: ObservationCompleteness<RepairSite> }
   | LegacyBaselineExecutionRefused {
       phase: LegacyBaselineCapturePhase,
@@ -222,29 +226,13 @@ fn first_subject_disagreement(
 fn first_repair_base_disagreement(
   tree: LegacyBindingObservationSubject,
   repair: LegacyRepairObservationSubject
-) -> LegacyObservationSubjectField? {
+) -> LegacyRepairSubjectField? {
   if !(tree.semantic_source_digest == repair.semantic_source_digest) {
-    Present { value: SemanticSourceDigestField }
+    Present { value: RepairSemanticSourceDigestField }
   } else if !(tree.source_set_digest == repair.source_set_digest) {
-    Present { value: SourceSetDigestField }
+    Present { value: RepairSourceSetDigestField }
   } else if !(tree.compiler_artifact_digest == repair.compiler_artifact_digest) {
-    Present { value: CompilerArtifactDigestField }
-  } else {
-    none
-  }
-}
-
-fn observation_subject_field_from_label(label: String) -> LegacyObservationSubjectField? {
-  if label == (subject_field_label(f: SemanticSourceDigestField) as String) {
-    Present { value: SemanticSourceDigestField }
-  } else if label == (subject_field_label(f: SourceSetDigestField) as String) {
-    Present { value: SourceSetDigestField }
-  } else if label == (subject_field_label(f: CompilerArtifactDigestField) as String) {
-    Present { value: CompilerArtifactDigestField }
-  } else if label == (subject_field_label(f: OccurrenceTransportDigestField) as String) {
-    Present { value: OccurrenceTransportDigestField }
-  } else if label == (subject_field_label(f: DeclarationIndexDigestField) as String) {
-    Present { value: DeclarationIndexDigestField }
+    Present { value: RepairCompilerArtifactDigestField }
   } else {
     none
   }
@@ -321,12 +309,7 @@ fn capture_legacy_baseline<O, R>(
                   RepairRosterProven { proven: proven } =>
                     match admit_complete_repair_observation(observation: repair_observation, proven: proven) {
                       RepairObservationSubjectDiverged { field: f } =>
-                        match observation_subject_field_from_label(label: f) {
-                          Present { value: sf } => LegacyBaselineRepairSubjectDiverged { field: sf }
-                          Absent => LegacyBaselineRepairIncomplete {
-                            completeness: ObservationMissingExpected { keys: [] }
-                          }
-                        }
+                        LegacyBaselineRepairSubjectDiverged { field: f }
                       RepairObservationRefused { completeness: c } =>
                         LegacyBaselineRepairIncomplete { completeness: c }
                       RepairObservationAdmitted { admitted: repair } =>

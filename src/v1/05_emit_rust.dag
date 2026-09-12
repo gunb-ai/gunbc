@@ -12,6 +12,17 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
+import gunbc.reference_derived_candidate {
+  ReferenceDerivedCandidateDisposition,
+  CandidateSurvived,
+  CandidateOwnModule,
+  CandidateVariantDelegatedToParent,
+  CandidateVariantParentUnresolved,
+  CandidateRegistryAbsent,
+  CandidateLeafAmbiguous,
+  CandidateExportProofFailed,
+  ReferenceDerivedCandidateRow
+}
 
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 
@@ -4884,25 +4895,6 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // says that covers every reference form. The check is mechanical and is the arm's next rung: no
 // parent_enum may appear in a routed row without appearing as a row of its own. Until that is
 // measured, a routed row is a claim about WHERE the obligation went, never that it was discharged.
-type ReferenceDerivedCandidateDisposition
-  = CandidateSurvived { provider_module: String }
-  | CandidateOwnModule
-  | CandidateVariantDelegatedToParent { parent_enum: String }
-  | CandidateVariantParentUnresolved
-  | CandidateRegistryAbsent
-  | CandidateLeafAmbiguous
-  | CandidateExportProofFailed { provider_module: String }
-
-// One decided candidate, at the grain the census reports: (module, name, disposition). The module is
-// the REFERENCING module, never the provider -- the provider rides on the disposition where it is
-// known, and for CandidateRegistryAbsent there is no provider to name, which is exactly the fact
-// that arm carries.
-type ReferenceDerivedCandidateRow {
-  module_name: String
-  name: String
-  disposition: ReferenceDerivedCandidateDisposition
-}
-
 // THE ONE DECISION, WITH TWO CONSUMERS (DESIGN section 2, one concept derived twice rather than
 // modelled twice). reference_derived_use_lines takes the survivors and emits exactly the use-lines it
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
