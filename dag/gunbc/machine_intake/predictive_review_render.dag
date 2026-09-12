@@ -1,0 +1,124 @@
+module gunbc.machine_intake_predictive_review_render
+
+import std.types { List, String }
+import std.decl_ref { declaration_ref_display_key }
+import std.process { ExitSuccess, exit_failure }
+import std.render { Document, Leaf, RenderFrame, Append, RenderCapability, plain_line }
+import std.symbols { Ascii }
+import extdeps.render.surface { PlainTerminal }
+import gunbc.cli_wire { CliWireResponse, cli_wire_response }
+import std.predictive_claim {
+  PredictionRegistration, ConversationOnly, CommittedPredictionWithoutWitnessedOrder, PreregisteredPrediction,
+  PredictionTestReceipt, ConsistentWithPrediction, ContradictsPrediction, PredictionTestInconclusive,
+  IsolatedMechanism, ConfoundedMechanisms,
+  PredictiveStanding, UntestedPrediction, NarrowedPredictionAwaitingTest, TestedPrediction, FalsifiedPredictionNeedsNarrowing,
+  PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
+  PredictiveNextObligation, AdversarialTestRequired, CounterexampleNarrowingRequired,
+  predictive_standing, predictive_next_obligation,
+  PredictiveClaimRefusal, IndistinguishablePredictionAndFalsifier, PredictionScopeExcluded,
+  PredictionRequiresNarrowing, PredictionNotFalsified, PredictionRevisionReused,
+  NarrowingRetainsCounterexample, NarrowingHasNoRetainedSubject, DuplicatePredictionObservation,
+  PredictionNotRecordedBeforeStart, PredictionSnapshotPredatesItsEvidence,
+  PredictionObservationBeforeStart, PredictionObservationBeyondBound, PredictionWindowRequired,
+}
+
+fn predictive_refusal_text(cause: PredictiveClaimRefusal) -> String {
+  match cause {
+    IndistinguishablePredictionAndFalsifier => "prediction and falsifier are identical"
+    PredictionScopeExcluded => "configuration is outside the prediction scope"
+    PredictionRequiresNarrowing => "a counterexample requires narrowing before another test"
+    PredictionNotFalsified => "no counterexample permits this narrowing transition"
+    PredictionRevisionReused => "revision identity was already used"
+    NarrowingRetainsCounterexample => "new restriction retains the counterexample"
+    NarrowingHasNoRetainedSubject => "no retained subject inhabits the restricted scope"
+    DuplicatePredictionObservation => "observation identity already occurs in this lineage"
+    PredictionNotRecordedBeforeStart => "recording did not strictly precede test start"
+    PredictionSnapshotPredatesItsEvidence => "committed snapshot predates evidence it contains"
+    PredictionObservationBeforeStart => "observation precedes test start"
+    PredictionObservationBeyondBound => "observation exceeds the committed window"
+    PredictionWindowRequired => "a positive exact observation window is required"
+  }
+}
+
+fn prediction_registration_text(registration: PredictionRegistration) -> String {
+  match registration {
+    ConversationOnly { report: report } => concat("conversation-only; no immutable pre-outcome receipt: ", declaration_ref_display_key(ref: report))
+    CommittedPredictionWithoutWitnessedOrder { commit: commit, artifact: artifact, report: _ } =>
+      concat("committed; ordering not independently witnessed: ", concat(commit, concat(":", artifact)))
+    PreregisteredPrediction { commit: commit, declaration: declaration, recorded_at: _, started_at: _, observed_at: _ } =>
+      concat("preregistered on supplied ordered observations: ", concat(commit, concat(" ", declaration_ref_display_key(ref: declaration))))
+  }
+}
+
+fn predictive_standing_text(standing: PredictiveStanding) -> String {
+  match standing {
+    UntestedPrediction => "UNTESTED prediction"
+    NarrowedPredictionAwaitingTest { revisions: n } => concat("NARROWED, awaiting a new test; retained falsified revisions: ", to_string(n))
+    FalsifiedPredictionNeedsNarrowing { narrowed_revisions: n } => concat("FALSIFIED, narrowing required; earlier narrowed revisions: ", to_string(n))
+    TestedPrediction { preregistered_isolated_matches: strong, weak_matches: weak, committed_unwitnessed_matches: committed, inconclusive: unknown, narrowed_revisions: revisions } =>
+      join(["TESTED prediction; preregistered isolated matches=", to_string(strong),
+        "; weak matches=", to_string(weak), " (committed without witnessed ordering=", to_string(committed),
+        "); inconclusive=", to_string(unknown), "; narrowed revisions=", to_string(revisions)], "")
+  }
+}
+
+fn prediction_test_lines<S, O>(receipt: PredictionTestReceipt<S, O>) -> List<String> {
+  let verdict = match receipt.verdict {
+    ConsistentWithPrediction => "consistent with prediction; not proof"
+    ContradictsPrediction => "FALSIFIES prediction"
+    PredictionTestInconclusive => "inconclusive"
+  }
+  let discrimination = match receipt.discrimination {
+    IsolatedMechanism { isolation_evidence: evidence } => [concat("Isolation evidence: ", declaration_ref_display_key(ref: evidence))]
+    ConfoundedMechanisms { first_confound: first, further_confounds: further } =>
+      append([concat("CONFOUNDED: ", first)], items: further)
+  }
+  append([
+    concat(receipt.observation.id, concat(": ", verdict)),
+    prediction_registration_text(registration: receipt.registration),
+    concat("Observation source: ", declaration_ref_display_key(ref: receipt.source)),
+  ], items: discrimination)
+}
+
+fn predictive_next_obligation_text(next: PredictiveNextObligation) -> String {
+  match next {
+    AdversarialTestRequired { obligation: obligation } => concat("TESTING STILL DUE: ", obligation.next_discriminator)
+    CounterexampleNarrowingRequired { obligation: obligation } => concat("NARROWING REQUIRED BEFORE ANOTHER TEST: ", obligation.next_discriminator)
+  }
+}
+
+// One renderer consumes both machine experiments. No success-shaped projection drops standing,
+// confounds, the killed version, or the continuing obligation at the operator boundary.
+fn predictive_review_cli<S, O>(result: PredictiveModelResult<S, O>, context: List<String>) -> CliWireResponse {
+  let lines = match result {
+    PredictiveModelRefused { cause: cause } => [concat("REFUSED: ", predictive_refusal_text(cause: cause))]
+    PredictiveModelAccepted { model: model } => {
+      let history = model.superseded |> flat_map(version => append([
+        concat("SUPERSEDED: ", version.prediction.claim.id),
+        version.prediction.statement,
+        concat("Falsifying receipt: ", version.falsifying_receipt.observation.id),
+      ], items: version.tests |> flat_map(receipt => prediction_test_lines(receipt: receipt))))
+      let current = append([
+        concat("PREDICTION: ", model.prediction.claim.id),
+        model.prediction.statement,
+        predictive_standing_text(standing: predictive_standing(model: model)),
+        concat("CITED FACTUAL BASIS (not authority for the prediction): ", declaration_ref_display_key(ref: model.prediction.factual_basis)),
+      ], items: append(model.prediction.further_factual_basis |> map(basis => concat("Further cited basis: ", declaration_ref_display_key(ref: basis))),
+        items: append(model.prediction.claim.scope |> map(restriction => concat("Scope: ", restriction.reason)),
+          items: model.tests |> flat_map(receipt => prediction_test_lines(receipt: receipt)))))
+      append(append(current, items: history), items: [predictive_next_obligation_text(next: predictive_next_obligation(model: model))])
+    }
+  }
+  let exit = match result {
+    PredictiveModelRefused { cause: cause } => exit_failure(reason: predictive_refusal_text(cause: cause))
+    PredictiveModelAccepted { model: _ } => ExitSuccess
+  }
+  cli_wire_response(
+    doc: Document { blocks: [Leaf { frame: RenderFrame {
+      lines: append(context, items: lines) |> map(line => plain_line(text: line)), cursor_action: Append,
+    } }] },
+    target: PlainTerminal,
+    capability: RenderCapability { color: false, tier: Ascii, cursor_addressable: false },
+    exit: exit,
+  )
+}
