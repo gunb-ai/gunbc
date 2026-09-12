@@ -13,6 +13,7 @@ import gunbc.mtcollins_3ds_memory_change { mtcollins_3ds_configuration, mtcollin
 import gunbc.machine_intake_pre_os_bringup_verdict { FirmwareConsoleReport, firmware_console_report }
 import gunbc.machine_intake_pre_os_observer { pre_os_has_banner, PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_host_population_statement }
 import gunbc.machine_intake_sel_stimulus_listener { sel_snapshot_summary }
+import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation }
 
 type PreOsHostArchiveAssessment {
   milestones: PreOsMilestones
@@ -77,15 +78,18 @@ type PreOsArchiveReading {
   continuous_collection: ObservationAttempt<Bool, NonEmptyStr>
 }
 
-fn pre_os_archive_classify(spec: PreOsArchiveSpec, payload: String) -> PreOsArchiveReading {
-  let coverage = MemoryCaptureCycles { required_cycles: spec.required_cycles, start_token: "NOTICE:  DRAM FW version 210525", completion_token: spec.completion }
-  let inventory = match memory_cycle_coverage_refusal(coverage: coverage, payload: payload) {
-    Present { value: cause } => ObservationRefused { cause: cause }
-    Absent => if memory_inventory_in_capture(configuration: spec.configuration, coverage: coverage, payload: payload,
-      printed_parts: mtcollins_3ds_printed_parts(), printed_positions: mtcollins_3ds_printed_positions(configuration: spec.configuration), expected_payload_token: "DRAM populated DIMMs:") {
-      ObservationEstablished { observed: true }
-    } else { ObservationRefused { cause: "complete positioned inventory is absent from a captured cycle" } }
+fn pre_os_archive_inventory_question(spec: PreOsArchiveSpec) -> PreOsInventoryQuestion {
+  PreOsInventoryQuestion {
+    configuration: spec.configuration,
+    coverage: MemoryCaptureCycles { required_cycles: spec.required_cycles, start_token: "NOTICE:  DRAM FW version 210525", completion_token: spec.completion },
+    printed_parts: mtcollins_3ds_printed_parts(), printed_positions: mtcollins_3ds_printed_positions(configuration: spec.configuration),
+    expected_payload_token: "DRAM populated DIMMs:",
   }
+}
+
+fn pre_os_archive_classify(spec: PreOsArchiveSpec, payload: String) -> PreOsArchiveReading {
+  let inventory = pre_os_inventory_observation(question: pre_os_archive_inventory_question(spec: spec), payload: payload)
+
   PreOsArchiveReading { spec: spec, firmware: firmware_console_report(lines: split(s: payload, delimiter: "\n")),
     banner_present: pre_os_has_banner(text: payload),
     script_exit_footer_present: contains(payload, "[COMMAND_EXIT_CODE=\"0\"]"), inventory: inventory,

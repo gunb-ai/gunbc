@@ -1,0 +1,176 @@
+module gunbc.machine_intake_pre_os_timeline
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.measure { byte_size_count }
+import std.content_hash { Sha256Hash }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalAssessmentRefused, GoalIndeterminate }
+import std.algebra { FreeSemigroup, Empty }
+import gunbc.memory_observation { read_verified_memory_capture }
+import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope }
+import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, range_end }
+import gunbc.machine_intake_pre_os_replay { pre_os_same_source_generation, pre_os_envelope_binding_consistent, pre_os_continuity_covers_chunk, pre_os_occurrence_conflicts, pre_os_same_occurrence_content, pre_os_same_source, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
+import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
+
+// Parser selection is an observation request, not a success goal. A platform
+// without SEL can supply only console observations. No reported-source list is
+// interpreted as a complete required-evidence roster.
+type PreOsSourceFormat = PreOsSelSnapshot | PreOsConsoleText
+
+type PreOsReplayObservation {
+  envelope: ObservationEnvelope
+  format: PreOsSourceFormat
+  payload: ObservationAttempt<String, NonEmptyStr>
+}
+
+fn pre_os_utf8_size(text: String) -> Nat { count(bytes_octets(b: utf8_encode_bytes(s: text))) }
+
+// Only immutable artifact bytes verified against the envelope's digest and byte
+// count enter replay through this effectful reader. Unsupported hash families
+// refuse explicitly; a structural fingerprint is not an artifact checksum.
+func pre_os_read_observation(envelope: ObservationEnvelope, format: PreOsSourceFormat) -> PreOsReplayObservation {
+  let payload = match envelope.chunk.payload_digest {
+    Sha256Hash(digest) => match read_verified_memory_capture(path: envelope.chunk.artifact_ref, expected_sha256: digest.hex as NonEmptyStr) {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: text } =>
+        if pre_os_utf8_size(text: text) == byte_size_count(b: envelope.chunk.range.length) {
+          ObservationEstablished { observed: text }
+        } else { ObservationRefused { cause: "artifact byte count differs from recorded stream range" } }
+    }
+    _ => ObservationRefused { cause: "replay artifact reader requires a cryptographic SHA-256 artifact reference" }
+  }
+  PreOsReplayObservation { envelope: envelope, format: format, payload: payload }
+}
+
+// A DRAM cycle marker is not a firmware boot id. These anchors name captured
+// cycles only; neither one-to-one boot mapping nor a kernel UUID is presumed.
+type PreOsCapturedCycleAnchor { occurrence: ChunkOccurrence, stream_offset: Nat }
+type PreOsCapturedCycleReading {
+  anchor: PreOsCapturedCycleAnchor
+  firmware_attempt: ObservationAttempt<NonEmptyStr, NonEmptyStr>
+  kernel_boot: ObservationAttempt<NonEmptyStr, NonEmptyStr>
+  milestones: PreOsMilestones
+  firmware_selection: ObservationAttempt<NonEmptyStr, NonEmptyStr>
+}
+type PreOsCycleScan { next_offset: Nat, cycles: List<PreOsCapturedCycleReading> }
+
+fn pre_os_captured_cycles(observation: PreOsReplayObservation, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr) -> List<PreOsCapturedCycleReading> {
+  match observation.format {
+    PreOsSelSnapshot => []
+    PreOsConsoleText => match observation.payload {
+      ObservationRefused { cause: _ } => []
+      ObservationEstablished { observed: text } => {
+        let marker = "NOTICE:  DRAM FW version 210525"
+        let parts = split(s: text, delimiter: marker)
+        let prefix_bytes = match parts.first() { Absent => 0 Present { value: prefix } => pre_os_utf8_size(text: prefix) }
+        let scanned = fold(parts.skip(n: 1), init: PreOsCycleScan { next_offset: observation.envelope.chunk.range.first_offset + prefix_bytes, cycles: [] }, f: (acc, part) => {
+          let cycle = PreOsCapturedCycleReading {
+            firmware_attempt: ObservationRefused { cause: "no evidence joins this captured cycle to a firmware boot identity" },
+            kernel_boot: ObservationRefused { cause: "host milestone does not supply a kernel boot UUID" },
+            anchor: PreOsCapturedCycleAnchor { occurrence: observation.envelope.chunk.occurrence, stream_offset: acc.next_offset },
+            milestones: pre_os_milestones(console: ObservationEstablished { observed: part }, os_boot: pre_os_host_userspace_boot(text: part, host_mac: host_mac)),
+            firmware_selection: pre_os_firmware_boot_selection(text: part, rendered_host_mac: rendered_host_mac),
+          }
+          PreOsCycleScan { next_offset: acc.next_offset + pre_os_utf8_size(text: marker) + pre_os_utf8_size(text: part), cycles: concat(acc.cycles, [cycle]) }
+        })
+        scanned.cycles
+      }
+    }
+  }
+}
+
+type PreOsTimelineRow {
+  observation: PreOsReplayObservation
+  association: ObservationAttempt<Bool, NonEmptyStr>
+  cycles: List<PreOsCapturedCycleReading>
+  sel: ObservationAttempt<PreOsSelIngestion, NonEmptyStr>
+  configuration: ObservationAttempt<Bool, NonEmptyStr>
+  boot: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
+  training: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
+  present_admission: GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr>
+}
+
+type PreOsTimelineFold { rows: List<PreOsTimelineRow>, cursors: List<PreOsSelCursor> }
+
+// No clock is read. A SEL observation remains unassociated with console cycles,
+// even if its receive timestamp is very close. Input order is replay order, not
+// a claimed total chronology across source clock domains.
+fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayObservation>, host_mac: NonEmptyStr, rendered_host_mac: NonEmptyStr, inventory_question: ObservationAttempt<PreOsInventoryQuestion, NonEmptyStr>) -> List<PreOsTimelineRow> {
+  let envelopes = map(observations, o => o.envelope)
+  let result = fold(observations, init: PreOsTimelineFold { rows: [], cursors: [] }, f: (acc, o) => {
+    if any(acc.rows, row => pre_os_same_occurrence_content(a: row.observation.envelope, b: o.envelope)) { acc } else {
+    let association = if o.envelope.binding.enrolled_machine != machine || !pre_os_envelope_binding_consistent(envelope: o.envelope) {
+      ObservationRefused { cause: "observation source/owner binding does not establish this machine" }
+    } else if pre_os_occurrence_conflicts(envelopes: envelopes, subject: o.envelope) {
+      ObservationRefused { cause: "same occurrence has conflicting source or artifact identity; all versions retained" }
+    } else { match o.payload {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: _ } => ObservationEstablished { observed: true }
+    } }
+    let previous = match filter(acc.cursors, c => pre_os_same_source(a: c.envelope, b: o.envelope)).first() {
+      Absent => ObservationRefused { cause: "no source cursor" }
+      Present { value: c } => ObservationEstablished { observed: c }
+    }
+    let sel = match o.format {
+      PreOsConsoleText => ObservationRefused { cause: "console source is not a SEL snapshot" }
+      PreOsSelSnapshot => match association {
+        ObservationRefused { cause } => ObservationRefused { cause: cause }
+        ObservationEstablished { observed: _ } => match o.payload {
+          ObservationRefused { cause } => ObservationRefused { cause: cause }
+          ObservationEstablished { observed: text } => ObservationEstablished { observed: pre_os_ingest_sel(previous: previous, envelope: o.envelope, payload: text) }
+        }
+      }
+    }
+    let remaining = filter(acc.cursors, c => !pre_os_same_source(a: c.envelope, b: o.envelope))
+    let cursors = match o.format {
+      PreOsConsoleText => acc.cursors
+      PreOsSelSnapshot => match sel {
+        ObservationEstablished { observed: reading } => match reading.cursor {
+          ObservationEstablished { observed: cursor } => concat([cursor], remaining)
+          ObservationRefused { cause: _ } => remaining
+        }
+        ObservationRefused { cause: _ } => remaining
+      }
+    }
+    let console = match association {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: _ } => match o.format {
+        PreOsConsoleText => o.payload
+        PreOsSelSnapshot => ObservationRefused { cause: "SEL observations do not establish console milestones" }
+      }
+    }
+    let os_boot = match console {
+      ObservationEstablished { observed: text } => pre_os_host_userspace_boot(text: text, host_mac: host_mac)
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+    }
+    let configuration = match inventory_question {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: question } => match console {
+        ObservationRefused { cause } => ObservationRefused { cause: cause }
+        ObservationEstablished { observed: text } => pre_os_inventory_observation(question: question, payload: text)
+      }
+    }
+    let milestones = pre_os_milestones(console: console, os_boot: os_boot)
+    let row = PreOsTimelineRow {
+      configuration: configuration, sel: sel, observation: o, association: association,
+      cycles: match association { ObservationEstablished { observed: _ } => pre_os_captured_cycles(observation: o, host_mac: host_mac, rendered_host_mac: rendered_host_mac) _ => [] },
+      boot: pre_os_boot_assessment(milestones: milestones), training: match configuration {
+        ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+        ObservationEstablished { observed: _ } => pre_os_training_assessment(milestones: milestones)
+      },
+      present_admission: GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: "historical milestones are not present fleet admission evidence", tail: Empty } },
+    }
+    PreOsTimelineFold { rows: concat(acc.rows, [row]), cursors: cursors }
+    }
+  })
+  result.rows
+}
+
+// The published view is derived, never a second handwritten ledger authority.
+fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
+  join(map(rows, row => concat(to_string(row.observation.envelope), "\nassociation=", to_string(row.association),
+    "\nsel=", to_string(row.sel), "\ncycles=", to_string(row.cycles), "\nboot=", to_string(row.boot), "\ntraining=", to_string(row.training),
+    "\nconfiguration=", to_string(row.configuration), "\npresent_admission=", to_string(row.present_admission))), "\n\n")
+}
