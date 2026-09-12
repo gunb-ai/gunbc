@@ -1,0 +1,545 @@
+module gunbc.contributor_onboarding_path
+
+import std.types { String, List, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.integer { integer_nat_to_decimal_string }
+import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, hr }
+import extdeps.languages.markdown { serialize_markdown_source }
+import extdeps.exec.command { argv_words }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import tools.docs_projection_agreement { docs_projection_regen_command }
+
+// THE PATH A NEW ENGINEER WALKS, MODELED SO THE COMMANDS CANNOT ROT AWAY FROM THEIR AUTHORITIES.
+//
+// The exit criterion this module serves is an OUTCOME, not a document: a new engineer clones,
+// builds, runs the witnesses and lands one reviewed change with no operator in the loop. So the
+// projection below is NOT the deliverable and must not be read as one -- it is the derived index
+// of a path that was walked, and the walk is what establishes the claim. What this module adds
+// over prose is the one property prose cannot have: EVERY COMMAND IS CONSUMED FROM THE AUTHORITY
+// THAT OWNS IT, so the build line changes when gunbc.repo_self_build changes and the witness line
+// changes when the lane partition changes. A hand-typed first-day document is stale on the day
+// the package name moves, and staleness in exactly this document is the bus-factor risk the item
+// exists to remove.
+//
+// WHAT THIS MODULE DELIBERATELY DOES NOT ASSERT. It names no live CI job roster and transcribes
+// no measurement. gunbc.commit_workflow records, with a named victim, that what a carrier may
+// safely assert about CI is WHICH AUTHORITY OWNS A FACT and never which steps are running today;
+// a first-day document is the worst possible place to break that rule, because its reader has no
+// way to tell a stale sentence from a live one. Costs belong to the run that measured them.
+data contributor_onboarding_path_authority_note: String = "Single authority for the ordered path from a bare clone to one landed reviewed change, and for the obstacles that path hits. It is the projection source for docs/onboarding.md. The steps carry DERIVED commands rather than typed ones: the build argv is gunbc.repo_self_build, the witness argv is gunbc.fabric_witness_run, the source roots are gunbc.ci_layer_roots, the regen recipe is tools.docs_projection_agreement. The only literal argv words here are git and rustup words, which this repository does not model and whose upstreams own them. THE OBSTACLE ROSTER IS THE ITEM'S REAL DELIVERABLE and is typed rather than narrated, because each row answers a question a hiring or bus-factor decision needs: can a newcomer clear this alone, does the error text tell them how, and if not, who must be in the loop. A row whose disposition is OperatorGated is a standing bus-factor risk and is not a defect in this document."
+
+// WHO MUST BE IN THE LOOP FOR A STEP TO COMPLETE. This is the bus-factor census, and the reason
+// it is a coproduct rather than a Bool is that the three blocking kinds have different remedies:
+// a credential is provisioned, a decision is made, a machine is acquired. Collapsing them to
+// "blocked" would report one number to a question that needs three.
+type OnboardingBlocker
+  = SelfServe
+  | NeedsCredential { credential: NonEmptyStr }
+  | NeedsOperatorDecision { decision: NonEmptyStr }
+  | NeedsMachine { resource: NonEmptyStr }
+
+type OnboardingStep {
+  ordinal: Nat
+  id: NonEmptyStr
+  goal: NonEmptyStr
+  command: String
+  verification: NonEmptyStr
+  blocker: OnboardingBlocker
+}
+
+// WHAT WAS DONE ABOUT AN OBSTACLE, WHICH IS NOT THE SAME QUESTION AS WHETHER IT IS FIXED.
+// RemediedByDerivation is the only arm that removes the obstacle for the next reader without
+// asking them to know anything; DocumentedRemedy still requires the reader to have read this;
+// OperatorGated cannot be discharged by any document and is the honest red.
+type ObstacleDisposition
+  = RemediedByDerivation { how: NonEmptyStr }
+  | DocumentedRemedy { remedy: NonEmptyStr }
+  | OperatorGated { who_must_act: NonEmptyStr }
+
+type OnboardingObstacle {
+  step_id: NonEmptyStr
+  symptom: NonEmptyStr
+  cause: NonEmptyStr
+  disposition: ObstacleDisposition
+  discoverable_from_symptom: Bool
+}
+
+// WHEN A READER NEEDS A PIECE OF DESIGN.md. The item names the problem precisely: DESIGN.md is
+// loaded in full every session and is not a first-day document. It is also not optional reading
+// -- it is the authority every change is judged against -- so the answer is an ORDER, not a
+// subset. FirstDay is what a reader needs before their first build makes sense; BeforeFirstCommit
+// is what they need before a diff can be admitted; WhenItBites is genuinely deferrable and is
+// listed so a reader knows it exists rather than discovering it in review.
+type DesignReadingPriority
+  = FirstDay
+  | BeforeFirstCommit
+  | WhenItBites
+
+type DesignReading {
+  section: NonEmptyStr
+  priority: DesignReadingPriority
+  why: NonEmptyStr
+}
+
+fn source_root_flags() -> List<String> {
+  fold(witness_layer_roots, init: [], f: fn(acc, root) { append(acc, items: ["--source-root", root]) })
+}
+
+// THE BINS A NEWCOMER NEEDS, WHICH IS THE SAME PAIR THE REQUIRED BUILD LANE NEEDS AND IS NOT
+// RESTATED FROM IT: gunbc runs an entry, claim_executor runs the lanes. A newcomer who builds
+// only gunbc cannot run the witnesses, which is the most common way the path stops after a
+// successful build.
+data onboarding_required_bins: List<String> = ["claim_executor", "gunbc"]
+
+fn onboarding_build_command() -> String {
+  repo_self_build_command(bins: onboarding_required_bins)
+}
+
+fn onboarding_witness_command() -> String {
+  join(argv_words(command: witnesses_lane_run_command()), " ")
+}
+
+fn onboarding_build_lane_command() -> String {
+  join(argv_words(command: build_lane_run_command()), " ")
+}
+
+data onboarding_clone_command: String = "git clone https://github.com/gunb-ai/gunbc.git"
+
+data onboarding_hooks_command: String = "git config core.hooksPath .githooks"
+
+data onboarding_toolchain_command: String = "rustup show"
+
+data onboarding_merge_check_command: String = "git merge-tree --write-tree origin/main HEAD"
+
+data onboarding_steps: List<OnboardingStep> = [
+  OnboardingStep {
+    ordinal: 1,
+    id: "clone" as NonEmptyStr,
+    goal: "Obtain the repository." as NonEmptyStr,
+    command: onboarding_clone_command,
+    verification: "DESIGN.md is present at the root, and README.md and CLAUDE.md are symlinks to it." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    ordinal: 2,
+    id: "toolchain" as NonEmptyStr,
+    goal: "Get the pinned Rust toolchain, with clippy and rustfmt." as NonEmptyStr,
+    command: onboarding_toolchain_command,
+    verification: "The active toolchain is the channel rust-toolchain.toml pins, reported as the directory override rather than the default." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    ordinal: 3,
+    id: "build" as NonEmptyStr,
+    goal: "Build the two binaries every later step needs." as NonEmptyStr,
+    command: onboarding_build_command(),
+    verification: "Both binaries exist under the cargo target directory and answer a bare invocation." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    ordinal: 4,
+    id: "seed-hooks" as NonEmptyStr,
+    goal: "Point git at the generated hooks, which is the one documented manual seed per clone." as NonEmptyStr,
+    command: onboarding_hooks_command,
+    verification: "A commit touching a generated-artifact path converges the merge driver instead of text-merging it." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    ordinal: 5,
+    id: "run-witnesses" as NonEmptyStr,
+    goal: "Run the corpus lane the merge gate runs: the parse sweep and the witness floor." as NonEmptyStr,
+    command: onboarding_witness_command(),
+    verification: "The run announces one phase line per phase it owns and one routed line per phase it does not, and exits nonzero on any failed phase." as NonEmptyStr,
+    blocker: NeedsMachine { resource: "a host whose cgroup exposes an enforceable memory bound large enough for the floor fold" as NonEmptyStr },
+  },
+  OnboardingStep {
+    ordinal: 6,
+    id: "run-build-lane" as NonEmptyStr,
+    goal: "Run the emission lane: the regen comparison and the emission compile." as NonEmptyStr,
+    command: onboarding_build_lane_command(),
+    verification: "The generated-artifact phase reports each population it owns, and names the path plus the regeneration recipe when a projection has drifted." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    ordinal: 7,
+    id: "change" as NonEmptyStr,
+    goal: "Make one small change in the .dag authority that owns the fact, then regenerate what projects from it." as NonEmptyStr,
+    command: docs_projection_regen_command,
+    verification: "The build lane above goes from refusing the drift to exiting zero, with the regenerated bytes in the diff." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    ordinal: 8,
+    id: "local-checks" as NonEmptyStr,
+    goal: "Run the checks that block a merge and the ones that are local diligence only." as NonEmptyStr,
+    command: repo_self_clippy_command(),
+    verification: "Clippy over every target is clean; a warning is an error." as NonEmptyStr,
+    blocker: SelfServe,
+  },
+  OnboardingStep {
+    ordinal: 9,
+    id: "propose" as NonEmptyStr,
+    goal: "Push a branch and open a pull request." as NonEmptyStr,
+    command: "",
+    verification: "The pull request exists and the required contexts are queued against its head." as NonEmptyStr,
+    blocker: NeedsCredential { credential: "push access to the repository, or a fork plus the ability to open a pull request from it" as NonEmptyStr },
+  },
+  OnboardingStep {
+    ordinal: 10,
+    id: "land" as NonEmptyStr,
+    goal: "Get the change reviewed and merged." as NonEmptyStr,
+    command: onboarding_merge_check_command,
+    verification: "A review has been recorded, the required contexts are green on the current head, and a local merge-tree of the head against the base reports no conflict." as NonEmptyStr,
+    blocker: NeedsOperatorDecision { decision: "who reviews and who merges; the merge itself is performed by the operator under the standing squash-merge policy" as NonEmptyStr },
+  },
+]
+
+// THE OBSTACLES, EACH ATTACHED TO THE STEP WHERE IT BITES.
+//
+// Every row here was hit rather than imagined, and the ones carried from sibling lanes are marked
+// as such in their cause rather than presented as this walk's own reading. The
+// discoverable_from_symptom field is the field that matters for a bus-factor judgement: an
+// obstacle whose error text explains itself costs a newcomer minutes, and one whose text points
+// somewhere else costs them a day and usually a message to the operator -- which is precisely the
+// dependency this item exists to remove.
+data onboarding_obstacles: List<OnboardingObstacle> = [
+  OnboardingObstacle {
+    step_id: "clone" as NonEmptyStr,
+    symptom: "The repository root offers DESIGN.md, and README.md and CLAUDE.md are symlinks to the same file. There is no CONTRIBUTING file and no first-day document." as NonEmptyStr,
+    cause: "DESIGN.md is the single authority and is a serially-reasoned argument from axioms, loaded in full every session. Measured on the tree: it names no build command, no toolchain installer and no binary path, so the document a newcomer is pointed at cannot get them to a build." as NonEmptyStr,
+    disposition: RemediedByDerivation { how: "docs/onboarding.md is generated from this module, carries the ordered path with commands derived from their authorities, and is linked from the section of DESIGN.md that names the checks." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "toolchain" as NonEmptyStr,
+    symptom: "A build under a distribution-packaged rustc fails in ways that have nothing to do with the toolchain pin." as NonEmptyStr,
+    cause: "rust-toolchain.toml is honoured by rustup and ignored by a bare rustc, and nothing in the repository tells a reader that rustup is the assumed installer. The pin is the sole in-repo channel authority, so a reader who never installs rustup silently builds against a different compiler." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Install rustup first; it reads the pin as a directory override with no further action. Confirm the override is active before building rather than after." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "build" as NonEmptyStr,
+    symptom: "There is no obvious package to build. The binary is named gunbc, the crate directory is a stage0 path, and the package name matches neither." as NonEmptyStr,
+    cause: "The package is the v1 seed compiler and the bins are its targets; the naming is a fact about the bootstrap layout rather than about the product. A newcomer cannot derive the invocation from the directory tree." as NonEmptyStr,
+    disposition: RemediedByDerivation { how: "The build step above consumes gunbc.repo_self_build, the single point through which this repository builds its own binaries, so the projected command is the same argv the required lane uses and moves when that authority moves." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "build" as NonEmptyStr,
+    symptom: "A build reports success and the binary is absent from the target path the repository names." as NonEmptyStr,
+    cause: "A cargo target directory override redirects artifacts away from the in-tree target path, and the release-path authority names the default location. The two disagree silently, so a successful build and an absent binary are simultaneously true." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Resolve the binary through the cargo target directory in effect rather than through the in-tree path, and check that variable before concluding a build produced nothing." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "build" as NonEmptyStr,
+    symptom: "An entry that compiled yesterday refuses today with unresolved-import errors naming standard-library modules the reader never touched." as NonEmptyStr,
+    cause: "A previously-built or previously-installed gunbc on the path predates a language capability the corpus now uses, dies inside the standard library before registering the module, and reports the failure as a defect in whatever module the reader is editing. An old local binary silently accepts and rejects a different language than the merge path does, which is how a break reached main." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Run the binary this clone built, addressed by path, never one resolved from the shell path; rebuild it after pulling. When a diagnostic names a module you did not touch, suspect the compiler before the corpus." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "run-witnesses" as NonEmptyStr,
+    symptom: "The run refuses before doing any work, reporting that the host memory budget is unreadable." as NonEmptyStr,
+    cause: "No cgroup memory.high or memory.max binds the process, so the planning allowance is unknown and the run refuses rather than admitting against the widest cap it could have chosen. The authority is explicit that this is not a state an environment integer can rescue: the planning-request variable may only narrow an observed bound, never supply a missing one, and treating it as a rescue converts a typed refusal into an unbounded resolve on an unbounded host." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Run under an executor that exposes an enforceable cgroup memory bound. Do not reach for the planning-request variable to clear this refusal -- it is the escape hatch the refusal exists to refuse, and the run it admits is killed rather than refused." as NonEmptyStr },
+    discoverable_from_symptom: true,
+  },
+  OnboardingObstacle {
+    step_id: "run-witnesses" as NonEmptyStr,
+    symptom: "The floor fold goes red on a clean checkout, and going red again on a re-run looks like an unstable test suite." as NonEmptyStr,
+    cause: "The required floor carries a structural memory deficit against the bound it is admitted under, so an environmental red is an ordinary outcome of the run rather than a statement about the diff. Reported by a sibling lane in this subtree and not independently re-measured here." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Read the refusal and classify it before acting: an environmental refusal names the budget, a corpus failure names a claim. Never re-run to sample a green -- that is sampling until the instrument agrees with you, and it destroys the only signal the deficit produces." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "change" as NonEmptyStr,
+    symptom: "A hand edit to a generated file is reverted by the next run, or the merge gate refuses a file the author never opened." as NonEmptyStr,
+    cause: "Several committed documents are projections of .dag authorities, including DESIGN.md itself, and the generated-artifact phase adjudicates them against those authorities. Editing the projection edits the copy." as NonEmptyStr,
+    disposition: RemediedByDerivation { how: "The change step above names the regeneration recipe as its command, and the build-lane step names the phase whose refusal prints that recipe beside the drifted path, so the loop closes without the reader knowing which files are generated in advance." as NonEmptyStr },
+    discoverable_from_symptom: true,
+  },
+  OnboardingObstacle {
+    step_id: "propose" as NonEmptyStr,
+    symptom: "A clone over an anonymous transport can fetch and build everything, and cannot push." as NonEmptyStr,
+    cause: "Read access is anonymous and write access is not. Nothing in the path up to this point requires an account, so the first credential requirement appears at the moment the work is finished." as NonEmptyStr,
+    disposition: OperatorGated { who_must_act: "whoever administers repository access; provisioning is a separate item and is deliberately not specified here" as NonEmptyStr },
+    discoverable_from_symptom: true,
+  },
+  OnboardingObstacle {
+    step_id: "land" as NonEmptyStr,
+    symptom: "The forge reports the pull request as mergeable while a real conflict against the base exists." as NonEmptyStr,
+    cause: "The forge's mergeability field has been observed reporting clean over conflicting trees, so it is not an oracle for whether a merge applies. Reported by a sibling lane in this subtree and carried here because the step it breaks is the last one." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Establish mergeability locally by writing a merge tree for the head against the base and reading its conflict report, rather than from the forge's summary field." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "land" as NonEmptyStr,
+    symptom: "The change is reviewed, green and mergeable, and nothing happens." as NonEmptyStr,
+    cause: "A review is advisory: it establishes that no blocking defect was found, never that the change is what was asked for. The merge itself is performed under a standing policy by the operator, so the last step of the path is the one step that structurally is not self-serve." as NonEmptyStr,
+    disposition: OperatorGated { who_must_act: "the operator, who performs the merge; this is the single irreducible operator dependency remaining in the path and it is a policy choice rather than a gap" as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+]
+
+// WHAT A FIRST-DAY READER ACTUALLY NEEDS FROM DESIGN.md, which the item asks for by name.
+// The ordering is not a summary of DESIGN.md and must not become one -- a second, shorter account
+// of the axioms would be exactly the nicknaming fork the document forbids. Each row names a
+// section and says WHY a reader needs it at that point, so the reader reads the authority itself.
+data onboarding_design_reading: List<DesignReading> = [
+  DesignReading {
+    section: "Building and checks" as NonEmptyStr,
+    priority: FirstDay,
+    why: "It names the checks and the one manual per-clone seed, and it is the section this path is linked from. It is the only section a reader needs before a build." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Section 1, the objective" as NonEmptyStr,
+    priority: FirstDay,
+    why: "Three axioms and the three consequences every later section is derived from. Without it the rest of the document reads as a list of preferences rather than a chain, and a reader will argue with conclusions instead of premises." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Section 5, fail-closed" as NonEmptyStr,
+    priority: BeforeFirstCommit,
+    why: "It carries the hard reject: a silent widen, a fabricated default, an uncounted degradation or an escape hatch is refused regardless of what else the change delivers. It is the single most likely reason a first diff is rejected." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Sections 2 and 3, redundancy and single authority" as NonEmptyStr,
+    priority: BeforeFirstCommit,
+    why: "They decide where a fact is allowed to live. A first change usually either restates something that already has an owner or cites a position instead of a symbol, and both are refused on these two sections." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Sections 3b and 3c, conformance and consumption" as NonEmptyStr,
+    priority: BeforeFirstCommit,
+    why: "They are the two questions a reviewer asks of a diff: does it inhabit the models it touches, and who consumes what it adds. A well-shaped declaration nothing reads is refused under the second." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Section 4b, the guarantee ladder" as NonEmptyStr,
+    priority: BeforeFirstCommit,
+    why: "It fixes what a change may claim about its own safety, and it is where the vocabulary a reviewer will use comes from. A claim stated one rung above its executed evidence is the failure mode it names." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Section 4, the substrate, and section 4c, annotations" as NonEmptyStr,
+    priority: WhenItBites,
+    why: "Needed at the first .dag edit rather than at the first read: the closed vocabulary the language is built from, and the rule that a comment is the only place uncarried prose may live." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Section 6, how to work" as NonEmptyStr,
+    priority: WhenItBites,
+    why: "The authorship tells -- scaffold, workaround, for-now, a new artifact with no consumer. Read it when a change starts wanting one of those, which is the moment it is about to be refused." as NonEmptyStr,
+  },
+  DesignReading {
+    section: "Section 7, self-hosting, and the recurring failure modes" as NonEmptyStr,
+    priority: WhenItBites,
+    why: "Why Rust is present at all and what the seed is shrinking toward, plus the ledger of classes already found. Deferrable on day one and indispensable once a change touches the compiler." as NonEmptyStr,
+  },
+]
+
+fn blocker_rendered(b: OnboardingBlocker) -> String {
+  match b {
+    SelfServe => "self-serve"
+    NeedsCredential { credential } => concat("needs a credential: ", (credential as String))
+    NeedsOperatorDecision { decision } => concat("needs an operator decision: ", (decision as String))
+    NeedsMachine { resource } => concat("needs a machine: ", (resource as String))
+  }
+}
+
+fn blocker_is_self_serve(b: OnboardingBlocker) -> Bool {
+  match b {
+    SelfServe => true
+    NeedsCredential { credential: _ } => false
+    NeedsOperatorDecision { decision: _ } => false
+    NeedsMachine { resource: _ } => false
+  }
+}
+
+fn disposition_rendered(d: ObstacleDisposition) -> String {
+  match d {
+    RemediedByDerivation { how } => concat("REMEDIED BY DERIVATION. ", (how as String))
+    DocumentedRemedy { remedy } => concat("DOCUMENTED REMEDY. ", (remedy as String))
+    OperatorGated { who_must_act } => concat("OPERATOR GATED. ", (who_must_act as String))
+  }
+}
+
+fn disposition_is_operator_gated(d: ObstacleDisposition) -> Bool {
+  match d {
+    RemediedByDerivation { how: _ } => false
+    DocumentedRemedy { remedy: _ } => false
+    OperatorGated { who_must_act: _ } => true
+  }
+}
+
+fn priority_rendered(pr: DesignReadingPriority) -> String {
+  match pr {
+    FirstDay => "first day"
+    BeforeFirstCommit => "before the first commit"
+    WhenItBites => "when it bites"
+  }
+}
+
+fn steps_blocked_on_others() -> List<OnboardingStep> {
+  filter(onboarding_steps, s => !blocker_is_self_serve(b: s.blocker))
+}
+
+fn operator_gated_obstacles() -> List<OnboardingObstacle> {
+  filter(onboarding_obstacles, o => disposition_is_operator_gated(d: o.disposition))
+}
+
+fn obstacles_undiscoverable_from_symptom() -> List<OnboardingObstacle> {
+  filter(onboarding_obstacles, o => !o.discoverable_from_symptom)
+}
+
+fn step_ids() -> List<String> {
+  map(onboarding_steps, s => (s.id as String))
+}
+
+fn step_id_is_declared(id: String) -> Bool {
+  fold(step_ids(), init: false, f: fn(acc, declared) { acc || declared == id })
+}
+
+// EVERY OBSTACLE NAMES A DECLARED STEP. An identity join, not a count: an obstacle attached to a
+// step that does not exist is unreachable from the path a reader walks, so it is invisible
+// exactly when it fires.
+fn obstacles_with_undeclared_step() -> List<OnboardingObstacle> {
+  filter(onboarding_obstacles, o => !step_id_is_declared(id: (o.step_id as String)))
+}
+
+// THE ORDINALS ARE A GAPLESS TOTAL ORDER. A duplicated or skipped ordinal makes the projection
+// render two steps as the same position, and a reader following a numbered path cannot tell
+// which one they are on.
+fn step_ordinals_are_gapless(steps: List<OnboardingStep>) -> Bool {
+  let n = count(steps)
+  fold(
+    steps,
+    init: true,
+    f: fn(acc, s) {
+      let matching = count(filter(steps, other => other.ordinal == s.ordinal))
+      acc && matching == 1 && s.ordinal >= 1 && s.ordinal <= n
+    }
+  )
+}
+
+fn ordinals_are_gapless() -> Bool {
+  step_ordinals_are_gapless(steps: onboarding_steps)
+}
+
+fn self_serve_steps_missing_verification() -> List<OnboardingStep> {
+  filter(onboarding_steps, s => blocker_is_self_serve(b: s.blocker) && (s.verification as String) == "")
+}
+
+fn step_blocks(s: OnboardingStep) -> List<MarkdownBlock> {
+  let head = h3(text: join([integer_nat_to_decimal_string(value: s.ordinal), ". ", (s.id as String)], ""))
+  let goal = p(text: (s.goal as String))
+  let who = p(text: join(["Who is needed: ", blocker_rendered(b: s.blocker)], ""))
+  let verify = p(text: join(["Done when: ", (s.verification as String)], ""))
+  if s.command == "" {
+    [head, goal, who, verify]
+  } else {
+    [head, goal, p(text: join(["`", s.command, "`"], "")), who, verify]
+  }
+}
+
+fn obstacle_item_text(o: OnboardingObstacle) -> String {
+  join(
+    [
+      "**", (o.step_id as String), " — ", (o.symptom as String), "** ",
+      (o.cause as String), " ",
+      disposition_rendered(d: o.disposition), " ",
+      if o.discoverable_from_symptom {
+        "The error text points at the remedy."
+      } else {
+        "THE ERROR TEXT DOES NOT POINT AT THE REMEDY, which is why this row exists."
+      },
+    ],
+    ""
+  )
+}
+
+fn reading_item_text(r: DesignReading) -> String {
+  join(["**", (r.section as String), " — ", priority_rendered(pr: r.priority), ".** ", (r.why as String)], "")
+}
+
+fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
+
+fn onboarding_preamble_blocks() -> List<MarkdownBlock> {
+  [
+    h1(text: "gunbc — from a bare clone to one landed change"),
+    p(text: "Generated from `gunbc.contributor_onboarding_path`. Do not hand-edit — the generated-artifact phase adjudicates this file against that authority. Every command below is derived from the authority that owns it, so this page moves when the build, the lane partition or the source roots move."),
+    p(text: "This page is an index of a path, not the proof that it works. What establishes the path is walking it: clone, build, run the lanes, make one change, get it reviewed, land it. If a step here does not work, that is a defect in the path and worth reporting as one — the obstacle roster below exists because each of its rows was hit rather than imagined."),
+    p(text: "`DESIGN.md` is the authority for every judgement about a change and is not a first-day document. The reading order at the end of this page says what you need before your first build, what you need before your first commit, and what can wait."),
+    hr(),
+  ]
+}
+
+fn onboarding_step_blocks() -> List<MarkdownBlock> {
+  flat_map(
+    [
+      [
+        h2(text: "The path"),
+        p(text: "Ten steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause."),
+      ],
+      flat_map(onboarding_steps, s => step_blocks(s: s)),
+    ],
+    bs => bs
+  )
+}
+
+fn onboarding_obstacle_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "What bites, and where"),
+    p(text: "Each row is attached to the step it breaks. The last sentence of each row says whether the error text explains itself, because that is the difference between a newcomer losing minutes and a newcomer needing someone who already knows."),
+    ul(items: map(onboarding_obstacles, o => li(text: obstacle_item_text(o: o)))),
+  ]
+}
+
+fn onboarding_bus_factor_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "Where the path still needs somebody else"),
+    p(text: "Stated as a census rather than as reassurance. These are the steps and obstacles a document cannot discharge, and they are the standing bus-factor risks in this path."),
+    ul(items: map(steps_blocked_on_others(), s => li(text: join(["Step ", integer_nat_to_decimal_string(value: s.ordinal), ", ", (s.id as String), ": ", blocker_rendered(b: s.blocker)], "")))),
+    p(text: "Obstacles whose only honest disposition is that somebody else must act:"),
+    ul(items: map(operator_gated_obstacles(), o => li(text: join([(o.step_id as String), ": ", disposition_rendered(d: o.disposition)], "")))),
+  ]
+}
+
+fn onboarding_reading_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "Reading DESIGN.md in an order"),
+    p(text: "`DESIGN.md` is reasoned serially from three axioms, and every section is a consequence of the ones before it. So it rewards being read in its own order and punishes being skimmed for the section that seems relevant. What follows is when you need each part, not a summary of any of them — a shorter second account of the axioms would be the exact duplication the document forbids."),
+    ul(items: map(onboarding_design_reading, r => li(text: reading_item_text(r: r)))),
+  ]
+}
+
+fn onboarding_checks_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "The other commands worth knowing"),
+    p(text: "Derived from `gunbc.repo_self_build`, which is the single point through which this repository builds and checks itself."),
+    ol(items: [
+      li(text: join(["Lint over every target, which a merge is blocked on: `", repo_self_clippy_command(), "`"], "")),
+      li(text: join(["The package's own unit tests, which are local diligence and are run by no required step: `", repo_self_test_command(), "`"], "")),
+      li(text: join(["The source roots every entry is resolved against: `", join(source_root_flags(), " "), "`"], "")),
+    ]),
+  ]
+}
+
+fn onboarding_document() -> MarkdownDocument {
+  MarkdownDocument {
+    blocks: flat_map(
+      [
+        onboarding_preamble_blocks(),
+        onboarding_step_blocks(),
+        onboarding_obstacle_blocks(),
+        onboarding_bus_factor_blocks(),
+        onboarding_checks_blocks(),
+        onboarding_reading_blocks(),
+      ],
+      bs => bs
+    )
+  }
+}
+
+func expected_contributor_onboarding_md() -> String {
+  serialize_markdown_source(doc: onboarding_document())
+}
