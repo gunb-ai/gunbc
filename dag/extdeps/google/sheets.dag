@@ -3,7 +3,7 @@ module extdeps.google.sheets
 import std.types { NonEmptyStr, String, Int, List, Secret, Bool, HttpMethod, AuthScheme }
 import extdeps.transports.rest { RestOutcome }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
@@ -114,15 +114,6 @@ data sheets_rate_limits: List<UpstreamRateLimit> = [
   sheets_write_requests_per_minute_per_project,
   sheets_requests_per_minute_per_user
 ]
-
-data sheets_read_quota_citation: FactCitation = FactCitation {
-  fact: DeclarationRef {
-    module_path: "extdeps.google.sheets",
-    decl_name: "sheets_read_requests_per_minute_per_project",
-    field: WholeDeclaration
-  },
-  authority: sheets_quota_citation
-}
 
 type SheetsMajorDimension = DimensionRows | DimensionColumns
 
