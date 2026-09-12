@@ -39,7 +39,10 @@ import v2.workflow.legacy_repair_tap {
   CandidateOwnModule,
   CandidateRegistryAbsent,
   persist_capture_from_bridge_rows,
-  repair_roster_from_bridge_rows
+  repair_roster_from_bridge_rows,
+  never_emitted_declared_modules,
+  repair_emitted_module_names,
+  xl1_primary_root_cut_subjects
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -156,4 +159,17 @@ test fn empty_name_row_is_dropped_from_the_roster() -> Bool {
     }
   ]
   (repair_roster_from_bridge_rows(rows: rows).sites |> count) == 0
+}
+
+test fn never_emitted_is_declared_modules_absent_from_the_emitter_walk() -> Bool {
+  let emitted = repair_emitted_module_names(rows: lrt_rows())
+  let never = never_emitted_declared_modules(
+    declared_modules: ["std.logic", "std.not.emitted"],
+    emitted_modules: emitted
+  )
+  (never |> any(m => m == "std.not.emitted")) && !(never |> any(m => m == "std.logic"))
+}
+
+test fn xl1_capture_subject_is_the_xl6_cut_roster_join() -> Bool {
+  xl1_primary_root_cut_subjects() |> any(_ => true)
 }

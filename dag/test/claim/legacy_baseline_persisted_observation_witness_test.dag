@@ -46,7 +46,8 @@ import v2.workflow.legacy_baseline_capture {
   LegacyBaselineRepairRosterMismatch,
   LegacyBaselineRepairSubjectDiverged,
   LegacyBaselineRepairIncomplete,
-  LegacyBaselineExecutionRefused
+  LegacyBaselineExecutionRefused,
+  LegacyBaselineObservedTransportRefused
 }
 import v2.workflow.legacy_baseline_persisted_observation {
   persist_legacy_baseline,
@@ -203,6 +204,7 @@ fn lbp_minted_capture_persisted() -> Bool {
               LegacyBaselineRepairSubjectDiverged { field: _ } => false
               LegacyBaselineRepairIncomplete { completeness: _ } => false
               LegacyBaselineExecutionRefused { phase: _, cause: _ } => false
+              LegacyBaselineObservedTransportRefused { refusal: _ } => false
             }
         }
     }

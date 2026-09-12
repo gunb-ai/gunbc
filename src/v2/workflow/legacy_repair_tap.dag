@@ -1,9 +1,12 @@
 module v2.workflow.legacy_repair_tap
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
-import std.content_hash { structural_content_hash }
 import std.decl_ref { decl_ref }
-import std.occurrence_identity { ValidatedOccurrenceTransport }
+import std.occurrence_identity {
+  ValidatedOccurrenceTransport,
+  OccurrenceTransport,
+  OccurrenceId
+}
 import v2.workflow.legacy_repair_observation {
   RepairSite,
   RepairSiteRoster,
@@ -12,15 +15,30 @@ import v2.workflow.legacy_repair_observation {
   LegacyRepairObservationSubject,
   repair_site_roster_identity
 }
-import v2.workflow.legacy_binding_observation { LegacyBindingObservation }
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject
+}
 import v2.workflow.legacy_baseline_capture {
   CheckoutMaterialization,
   TreeDerivedSubjectReceipt,
-  capture_legacy_baseline
+  capture_legacy_baseline,
+  capture_legacy_baseline_from_observed_transport
 }
+import tools.reference_occurrence_binding_census {
+  ReferenceOccurrenceBindingRow,
+  ReferenceOccurrenceBindingDisposition
+}
+import gunbc.namespace_cut_subject_roster {
+  NamespaceCutSubjectIdentity,
+  subjects_deleted_at
+}
+import gunbc.namespace_cut_stage { StageXL6AtomicCutover }
 import v2.workflow.legacy_baseline_persisted_observation {
   persist_legacy_baseline,
-  PersistAdmission
+  PersistAdmission,
+  PersistRefusedNotCaptured
 }
 
 // XL-1 LIVE REPAIR TAP. Sole consumer of the seed builtin emit_rust_reference_derived_rows_bridge.
@@ -41,6 +59,19 @@ type ReferenceDerivedCandidateRow {
   module_name: String
   name: String
   disposition: ReferenceDerivedCandidateDisposition
+}
+
+type Xl1PrimaryRootTap
+  = Xl1PrimaryRootObserved {
+      primary_root: String
+      repair_rows: List<ReferenceDerivedCandidateRow>
+      occurrence_transport: OccurrenceTransport
+      binding_rows: List<ReferenceOccurrenceBindingRow>
+    }
+  | Xl1PrimaryRootRefused { cause: String }
+
+fn xl1_primary_root_cut_subjects() -> List<NamespaceCutSubjectIdentity> {
+  subjects_deleted_at(stage: StageXL6AtomicCutover)
 }
 
 fn repair_site_from_row(row: ReferenceDerivedCandidateRow) -> RepairSite? {
@@ -81,17 +112,18 @@ fn append_observation_row(
 }
 
 fn repair_observation_from_bridge_rows(
-  rows: List<ReferenceDerivedCandidateRow>
+  rows: List<ReferenceDerivedCandidateRow>,
+  tree: LegacyBindingObservationSubject
 ) -> LegacyRepairObservation<ReferenceDerivedCandidateDisposition> {
   let roster = repair_roster_from_bridge_rows(rows: rows)
   LegacyRepairObservation {
     subject: LegacyRepairObservationSubject {
-      semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
-      source_set_digest: structural_content_hash(digest: "2222222222222222"),
-      compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+      semantic_source_digest: tree.semantic_source_digest,
+      source_set_digest: tree.source_set_digest,
+      compiler_artifact_digest: tree.compiler_artifact_digest,
       repairer_identity: decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_reference_derived_rows"),
       repair_site_roster_digest: repair_site_roster_identity(roster: roster),
-      resolution_registry_digest: structural_content_hash(digest: "5555555555555555")
+      resolution_registry_digest: tree.declaration_index_digest
     },
     rows: fold(rows, init: [], f: append_observation_row)
   }
@@ -110,14 +142,86 @@ fn persist_capture_from_bridge_rows<O>(
       tree_subject: tree_subject,
       observation: observation,
       transport: transport,
-      repair_observation: repair_observation_from_bridge_rows(rows: rows),
+      repair_observation: repair_observation_from_bridge_rows(rows: rows, tree: tree_subject.subject),
       repair_roster: repair_roster_from_bridge_rows(rows: rows)
     )
   )
 }
 
-fn xl1_live_repair_tap_tally() -> Int {
-  emit_rust_reference_derived_rows_bridge() |> count
+fn binding_observation_from_tap_rows(
+  subject: LegacyBindingObservationSubject,
+  rows: List<ReferenceOccurrenceBindingRow>
+) -> LegacyBindingObservation<ReferenceOccurrenceBindingDisposition> {
+  LegacyBindingObservation {
+    subject: subject,
+    rows: rows |> map(r => LegacyBindingObservationRow {
+      occurrence: OccurrenceId { value: r.occurrence },
+      outcome: r.disposition
+    })
+  }
 }
 
-data emit_rust_reference_derived_rows_bridge_v1_deletion: String = "Deleted with v1.compiler.emit_rust and the interpreter (gunbc.v1_deletion_plan InterpreterDeleted). Listed from land day. Sole consumer: v2.workflow.legacy_repair_tap persist_capture_from_bridge_rows / xl1_live_repair_tap_tally."
+fn persist_capture_from_observed_tap<O>(
+  materialization: CheckoutMaterialization,
+  tree_subject: TreeDerivedSubjectReceipt,
+  observation: LegacyBindingObservation<O>,
+  tap: Xl1PrimaryRootTap
+) -> PersistAdmission<O, ReferenceDerivedCandidateDisposition> {
+  match tap {
+    Xl1PrimaryRootRefused { cause: _ } => PersistRefusedNotCaptured
+    Xl1PrimaryRootObserved { repair_rows: rows, occurrence_transport: ot, primary_root: _, binding_rows: _ } =>
+      persist_legacy_baseline(
+        outcome: capture_legacy_baseline_from_observed_transport(
+          materialization: materialization,
+          tree_subject: tree_subject,
+          observation: observation,
+          observed_transport: ot,
+          repair_observation: repair_observation_from_bridge_rows(rows: rows, tree: tree_subject.subject),
+          repair_roster: repair_roster_from_bridge_rows(rows: rows)
+        )
+      )
+  }
+}
+
+fn persist_capture_from_primary_root_tap<O>(
+  materialization: CheckoutMaterialization,
+  tree_subject: TreeDerivedSubjectReceipt,
+  observation: LegacyBindingObservation<O>,
+  source_roots: List<String>
+) -> PersistAdmission<O, ReferenceDerivedCandidateDisposition> {
+  persist_capture_from_observed_tap(
+    materialization: materialization,
+    tree_subject: tree_subject,
+    observation: observation,
+    tap: emit_rust_reference_derived_rows_bridge(source_roots)
+  )
+}
+
+fn append_unique_module(acc: List<String>, n: String) -> List<String> {
+  if n == "" || (acc |> any(x => x == n)) {
+    acc
+  } else {
+    concat(acc, [n])
+  }
+}
+
+fn repair_emitted_module_names(rows: List<ReferenceDerivedCandidateRow>) -> List<String> {
+  fold(rows, init: [], f: (acc, row) => append_unique_module(acc: acc, n: row.module_name))
+}
+
+fn never_emitted_declared_modules(
+  declared_modules: List<String>,
+  emitted_modules: List<String>
+) -> List<String> {
+  declared_modules |> filter(d => !(emitted_modules |> any(e => e == d)))
+}
+
+fn xl1_live_repair_tap_tally(source_roots: List<String>) -> Int {
+  match emit_rust_reference_derived_rows_bridge(source_roots) {
+    Xl1PrimaryRootRefused { cause: _ } => 0
+    Xl1PrimaryRootObserved { repair_rows: rows, primary_root: _, occurrence_transport: _, binding_rows: _ } =>
+      rows |> count
+  }
+}
+
+data emit_rust_reference_derived_rows_bridge_v1_deletion: String = "Deleted with v1.compiler.emit_rust and the interpreter (gunbc.v1_deletion_plan InterpreterDeleted). Listed from land day. Sole consumer: v2.workflow.legacy_repair_tap persist_capture_from_primary_root_tap / persist_capture_from_bridge_rows / xl1_live_repair_tap_tally."
