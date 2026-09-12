@@ -142,6 +142,10 @@ fn fixture_sites() -> FreeMonoid<ReferenceSite> {
   fixture_collection().sites
 }
 
+fn fixture_import_sites() -> FreeMonoid<ReferenceSite> {
+  fixture_collection().import_sites
+}
+
 fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
   fold_list(
     xs: sites,
@@ -240,10 +244,6 @@ test fn a_callee_name_is_absent_from_the_denominator_today() -> Bool {
 // type-position row on its declared frontier. A negative claim measured over a silently truncated
 // population is exactly the fabricated plausible output DESIGN section 5 forbids, and it travelled
 // further than the file it lived in.
-test fn an_imported_type_name_reaches_the_collector_somewhere_holds() -> Bool {
-  sites_mention(sites: fixture_sites(), spelling: "Bool")
-}
-
 // THE DISCRIMINATOR THAT SEPARATES A REAL TYPE-POSITION HIT FROM AN IMPORT-STATEMENT HIT.
 // `Xl0UserType` is declared in this module and used ONLY as a parameter type -- it appears in no
 // import statement anywhere, so a site spelling it can only have come from the type position.
@@ -315,4 +315,32 @@ test fn the_census_population_covers_every_ingested_root_holds() -> Bool {
 
 test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
   reference_site_collection_is_total(collection: fixture_collection())
+}
+
+// THE IMPORT SURFACE IS ITS OWN ARM, AND THESE ARE THE ROWS THAT MAKE THAT CHECKABLE RATHER THAN
+// ASSERTED. The collector used to emit import-statement mentions as ordinary sites, which is how
+// this file's type-position row came to be green on `import v2.std.logic { Bool }` instead of on a
+// type position. The pair below is the discriminator that defect needed:
+//
+//   Xl0UserType is declared in the fixture, used ONLY as a parameter type, and named in NO import
+//   anywhere -- so a site spelling it can only be a type-position mention, and it must be in
+//   `sites`.
+//   Bool is named in an IMPORT in both fixture modules -- so its mention must be in `import_sites`
+//   and must NOT be in `sites`, or the denominator is once again counting the very import surface
+//   the cut deletes.
+//
+// Together they fail in opposite directions: collapse the arms and the second reds; drop the
+// import surface instead of classifying it and the third reds.
+test fn a_user_declared_type_in_type_position_lands_in_sites_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
+    && !sites_mention(sites: fixture_import_sites(), spelling: "Xl0UserType")
+}
+
+test fn an_imported_name_lands_in_import_sites_and_not_in_sites_holds() -> Bool {
+  sites_mention(sites: fixture_import_sites(), spelling: "Bool")
+    && !sites_mention(sites: fixture_sites(), spelling: "Bool")
+}
+
+test fn the_import_surface_is_carried_rather_than_dropped_holds() -> Bool {
+  fold_list(xs: fixture_import_sites(), empty: false, cons: fn(acc, site) { true })
 }

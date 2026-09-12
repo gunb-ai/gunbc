@@ -18,6 +18,7 @@ import v2.std.node {
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
+  node_is_qualified_name_spine,
   qualified_name_from_node,
   qualified_name_snoc
 }
@@ -82,47 +83,28 @@ import v2.extdeps.languages.dag {
 // not. The two rules agree wherever a binding and a mention coincide and differ only where the
 // index deliberately stops walking, which is the difference between the two questions rather than
 // a divergence between two answers to one question.
-// THE O(1) GUARD THAT KEEPS THIS WALK LINEAR.
+// THE O(1) GUARD THAT KEEPS THIS WALK LINEAR LIVES IN v2.std.qualified_name, NOT HERE.
 //
-// qualified_name_from_node FOLDS THE ENTIRE SUBTREE before it can answer, and this walk then
-// descends into that same subtree -- so calling it on every Conj made the traversal quadratic in
-// the depth of nested conjunctions: each level re-folded everything beneath it, and everything
-// beneath it was then walked again. DESIGN section 6 rules a proven cost-shape defect is ALWAYS
-// fixed regardless of the realised n, because "n is small here" is not a time-stable fact.
+// qualified_name_from_node FOLDS AN ENTIRE SUBTREE before it can answer, and this walk then
+// descends into that same subtree -- so asking it at every Conj made the traversal quadratic in
+// nesting depth. DESIGN section 6 rules a proven cost-shape defect is always fixed regardless of
+// the realised n, so a cheap precondition is required; the question was WHERE IT LIVES.
 //
-// A genuine authored qualified spelling is the fold-list shape: a Conj with exactly two children,
-// labelled head and tail. Both are O(1) to check, and they are the SAME two labels
-// v2.std.qualified_name's own fold recognises, so this is a cheap precondition on that authority
-// rather than a second, weaker spelling of it. Nodes that fail it cannot be qualified names, so
-// the expensive fold never runs on them; nodes that pass it are emitted as ONE site and never
-// descended into, so no subtree is ever both folded and walked.
-fn edge_is_qualified_name_spine_label(edge: Edge) -> Bool {
-  match edge.label {
-    Named { name: sym } =>
-      (sym == ^fold_list_node_head) || (sym == ^fold_list_node_tail)
-    Positional => false
-  }
-}
-
-fn node_has_qualified_name_shape(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if count(node.children) == 2 {
-        fold(node.children, init: true, f: fn(acc, edge) {
-          acc && edge_is_qualified_name_spine_label(edge: edge)
-        })
-      } else {
-        false
-      }
-    _ => false
-  }
-}
-
+// IT WAS WRITTEN HERE FIRST AND THAT WAS A SECOND RECOGNISER FOR ONE CONCEPT. Two places deciding
+// what a qualified-name spine looks like is section 3's nickname at the meaning layer, and the
+// failure is silent and lands on exactly this PR's subject: widen the accepted spine in
+// qualified_name and a prefilter sitting over here answers `false`, so this walk falls through to
+// the children and emits every segment of `a.b.C` as its own BARE SAME-MODULE mention -- which is
+// the cross-module class XL-0's denominator is made of, quietly turned into local noise.
+//
+// node_is_qualified_name_spine now sits beside the fold whose shape it asserts, and this module
+// consumes it.
 fn reference_sites_in_edge(
-  acc: FreeMonoid<ReferenceSite>,
+  acc: ReferenceSiteCollection,
   position: QualifiedName,
+  inside_import: Bool,
   edge: Edge
-) -> FreeMonoid<ReferenceSite> {
+) -> ReferenceSiteCollection {
   match edge.label {
     Named { name: sym } =>
       if dag_surface_module_header_metadata_edge(name: sym) {
@@ -131,22 +113,54 @@ fn reference_sites_in_edge(
         reference_sites_in_node(
           acc: acc,
           position: qualified_name_snoc(qn: position, segment: sym),
+          inside_import: inside_import || edge_enters_import_surface(name: sym),
           node: edge.target
         )
       }
     Positional =>
-      reference_sites_in_node(acc: acc, position: position, node: edge.target)
+      reference_sites_in_node(
+        acc: acc,
+        position: position,
+        inside_import: inside_import,
+        node: edge.target
+      )
   }
 }
 
 fn reference_sites_in_children(
-  acc: FreeMonoid<ReferenceSite>,
+  acc: ReferenceSiteCollection,
   position: QualifiedName,
+  inside_import: Bool,
   node: Node
-) -> FreeMonoid<ReferenceSite> {
+) -> ReferenceSiteCollection {
   fold(node.children, init: acc, f: fn(inner, edge) {
-    reference_sites_in_edge(acc: inner, position: position, edge: edge)
+    reference_sites_in_edge(
+      acc: inner,
+      position: position,
+      inside_import: inside_import,
+      edge: edge
+    )
   })
+}
+
+fn collection_snoc_site(
+  acc: ReferenceSiteCollection,
+  inside_import: Bool,
+  site: ReferenceSite
+) -> ReferenceSiteCollection {
+  if inside_import {
+    ReferenceSiteCollection {
+      sites: acc.sites,
+      import_sites: list_snoc_item(xs: acc.import_sites, item: site),
+      unreadable_roots: acc.unreadable_roots
+    }
+  } else {
+    ReferenceSiteCollection {
+      sites: list_snoc_item(xs: acc.sites, item: site),
+      import_sites: acc.import_sites,
+      unreadable_roots: acc.unreadable_roots
+    }
+  }
 }
 
 // THE ACCUMULATOR IS THREADED, NEVER APPENDED. A walk that built a list per node and concatenated
@@ -162,23 +176,35 @@ fn reference_sites_in_children(
 // before any lookup, so admitting it here would manufacture an unbound mention the resolver never
 // asks about.
 fn reference_sites_in_node(
-  acc: FreeMonoid<ReferenceSite>,
+  acc: ReferenceSiteCollection,
   position: QualifiedName,
+  inside_import: Bool,
   node: Node
-) -> FreeMonoid<ReferenceSite> {
-  if node_has_qualified_name_shape(node: node) {
+) -> ReferenceSiteCollection {
+  if node_is_qualified_name_spine(node: node) {
     match qualified_name_from_node(root: node) {
       Accepted { value: qn, diagnostics: _ } =>
         if is_empty(xs: qn) {
-          reference_sites_in_children(acc: acc, position: position, node: node)
+          reference_sites_in_children(
+            acc: acc,
+            position: position,
+            inside_import: inside_import,
+            node: node
+          )
         } else {
-          list_snoc_item(
-            xs: acc,
-            item: ReferenceSite { position: position, spelling: qn }
+          collection_snoc_site(
+            acc: acc,
+            inside_import: inside_import,
+            site: ReferenceSite { position: position, spelling: qn }
           )
         }
       Rejected { diagnostics: _ } =>
-        reference_sites_in_children(acc: acc, position: position, node: node)
+        reference_sites_in_children(
+          acc: acc,
+          position: position,
+          inside_import: inside_import,
+          node: node
+        )
     }
   } else {
     match node.kind {
@@ -186,15 +212,22 @@ fn reference_sites_in_node(
         if dag_node_is_int_literal_atom(node: node) {
           acc
         } else {
-          list_snoc_item(
-            xs: acc,
-            item: ReferenceSite {
+          collection_snoc_site(
+            acc: acc,
+            inside_import: inside_import,
+            site: ReferenceSite {
               position: position,
               spelling: Cons { head: sym, tail: Empty }
             }
           )
         }
-      _ => reference_sites_in_children(acc: acc, position: position, node: node)
+      _ =>
+        reference_sites_in_children(
+          acc: acc,
+          position: position,
+          inside_import: inside_import,
+          node: node
+        )
     }
   }
 }
@@ -225,13 +258,38 @@ type UnreadableModuleRoot {
 // The collector's answer is the pair, never the sites alone, so a caller cannot take the population
 // without also taking what was lost producing it. That is the shape section 5 asks for: the refusal
 // travels WITH the result rather than beside it where it can be ignored.
+// IMPORT-STATEMENT MENTIONS ARE THEIR OWN ARM, NEITHER MIXED IN NOR DROPPED.
+//
+// They used to arrive in `sites` as ordinary mentions, and that was a defect with two heads. For
+// XL-0 it pollutes the denominator with the very import surface the cut DELETES -- an import is the
+// thing being removed, not a reference needing respelling. And it makes every spelling-match
+// unable to tell an import from a use: this collector's own witness asserted "a type-position name
+// reaches" and was GREEN ON THE IMPORT LINE, which is how the defect was found.
+//
+// A TYPED ARM RATHER THAN AN EXCLUSION, DELIBERATELY. Dropping them at the producer would destroy
+// information every consumer might want -- the import surface is exactly what XL-5's rewrites and
+// XL-7's grammar deletion operate on -- and a silent drop is the shape DESIGN section 5 forbids.
+// Carrying them classified lets each consumer choose without re-walking, which is the point: XL-4
+// was filtering import-decl sites by position on ITS side while XL-0 was not, so one question had
+// two policies in two lanes. It is answered once, here.
 type ReferenceSiteCollection {
   sites: FreeMonoid<ReferenceSite>
+  import_sites: FreeMonoid<ReferenceSite>
   unreadable_roots: FreeMonoid<UnreadableModuleRoot>
 }
 
 fn empty_reference_site_collection() -> ReferenceSiteCollection {
-  ReferenceSiteCollection { sites: Empty, unreadable_roots: Empty }
+  ReferenceSiteCollection { sites: Empty, import_sites: Empty, unreadable_roots: Empty }
+}
+
+// The import surface is recognised by the grammar's OWN emitted production identities, not by a
+// shape guess and not by a spelling: a mention is an import mention exactly when it sits under one
+// of these, which is the same vocabulary the parser stamps.
+fn edge_enters_import_surface(name: Symbol) -> Bool {
+  (name == ^dag_surface_import_decl)
+    || (name == ^dag_surface_import_block)
+    || (name == ^dag_surface_import_decl_block)
+    || (name == ^dag_surface_import_decl_qualified_name)
 }
 
 fn reference_site_collection_is_total(collection: ReferenceSiteCollection) -> Bool {
@@ -274,20 +332,19 @@ fn module_reference_sites(
 ) -> ReferenceSiteCollection {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      ReferenceSiteCollection {
-        sites: reference_sites_in_node(
-          acc: acc.sites,
-          position: module_qn,
-          node: module_spine_unwrapped(
+      reference_sites_in_node(
+        acc: acc,
+        position: module_qn,
+        inside_import: false,
+        node: module_spine_unwrapped(
           root: root,
           segments_remaining: length(xs: module_qn)
         )
-        ),
-        unreadable_roots: acc.unreadable_roots
-      }
+      )
     Rejected { diagnostics: _ } =>
       ReferenceSiteCollection {
         sites: acc.sites,
+        import_sites: acc.import_sites,
         unreadable_roots: list_snoc_item(
           xs: acc.unreadable_roots,
           item: UnreadableModuleRoot { locus: node_locus(node: root) }
