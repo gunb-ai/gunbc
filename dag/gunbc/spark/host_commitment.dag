@@ -285,12 +285,20 @@ fn spark_host_standing(host: HostIdentity) -> SparkHostStanding? {
 // measured, because adding that cause is exactly what happened. A refusal now renders the CAUSES THIS
 // HOST ACTUALLY CARRIES, which no edit can desynchronise from the fold, and which tells an operator
 // the one thing the generic sentence never did: which authority to go and talk to.
-fn spark_commitment_tail_wire(rest: FreeMonoid<SparkHostCommitment>) -> String {
-  match rest {
-    Empty => ""
-    Cons { head: next, tail: more } =>
-      join(["; ", spark_host_commitment_wire(c: next) as String, spark_commitment_tail_wire(rest: more)], "")
-  }
+// ONE PASS AND ONE JOIN, BECAUSE THE SHAPE THIS REPLACES RE-COPIED ITS OWN SUFFIX.
+//
+// `spark_commitment_tail_wire` recursed down the tail and joined the head's rendering to the ENTIRE
+// rendered remainder at every step, so each level copied the whole suffix again -- quadratic in the
+// number of causes. DESIGN section 6 rules that a proven cost-shape defect is always fixed regardless
+// of the realized n, and it is right to insist here even though a host carries at most four causes
+// today: n is not a time-stable fact (a fifth commitment source is one row away), and pricing a
+// per-site exception costs more than the fix. `FreeMonoid` inhabits the collection profile, so `map`
+// and `join` are already its operations -- no local rendering fold is authored, which is the same
+// move as reading the causes from the standing rather than restating them (found by codex review
+// 64236).
+fn spark_commitment_causes_text(c: FreeSemigroup<SparkHostCommitment>) -> String {
+  let every_cause = Cons { head: c.head, tail: c.tail }
+  every_cause.map(x => spark_host_commitment_wire(c: x) as String).join("; ")
 }
 
 fn spark_host_commitment_causes_wire(host: HostIdentity) -> NonEmptyStr {
@@ -299,11 +307,7 @@ fn spark_host_commitment_causes_wire(host: HostIdentity) -> NonEmptyStr {
     Present { value: standing } =>
       match standing {
         SparkHostUncommitted { host: _ } => "nothing has claimed that host" as NonEmptyStr
-        SparkHostCommitted { host: _, commitments: c } =>
-          join([
-            spark_host_commitment_wire(c: c.head) as String,
-            spark_commitment_tail_wire(rest: c.tail),
-          ], "") as NonEmptyStr
+        SparkHostCommitted { host: _, commitments: c } => spark_commitment_causes_text(c: c) as NonEmptyStr
       }
   }
 }
