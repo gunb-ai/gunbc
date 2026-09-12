@@ -156,6 +156,13 @@ fn repair_input_origin_roster_over_roots(
 // ONE base the manager pins at ACT-0, and gunbc.namespace_cut_stage is explicit that a delivery
 // receipt carries no base because it makes no claim about one. This is the producer; pinning is
 // ACT-0's act.
+//
+// ACT-0 COMPOSES THE TWO FUNCTIONS THAT EXIST; THERE IS NO ROOTS-TAKING CONVENIENCE WRAPPER HERE.
+// One was authored and deleted: it had no call site, and the delivery receipt names
+// repair_input_origin_roster_over_roots as the producer rather than the wrapper, so the wrapper
+// was not the frontier's named entry point and stating a frontier beside it did not make it one.
+// A caller with roots writes repair_input_origin_roster_digest_lines over
+// repair_input_origin_roster_over_roots, both of which the XL-0 witness exercises.
 fn provenance_digest_token(provenance: RepairInputDeclarationProvenance) -> String {
   match provenance {
     RepairInputDeclared { declaring: declaring } =>
@@ -204,13 +211,5 @@ fn repair_input_origin_roster_digest_lines(
     cons: fn(acc, candidate) {
       list_snoc_item(xs: acc, item: carrier_digest_line(candidate: candidate))
     }
-  )
-}
-
-fn repair_input_origin_denominator_digest_lines(
-  roots: FreeMonoid<Node>
-) -> FreeMonoid<String> {
-  repair_input_origin_roster_digest_lines(
-    roster: repair_input_origin_roster_over_roots(roots: roots)
   )
 }

@@ -514,6 +514,9 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
 // DenominatorRosterInstrumentDelivered over the held roster, and it is asserted against that fold
 // rather than against a literal standing, so deleting the receipt row reds this witness while
 // rewiring the arm back onto any observable population abandons the fold and reds it too.
+// The second clause holds the other half: the instrument is retired, so no instrument report may
+// still name XL-0 as awaiting one -- a stage that both derives and appears on the
+// missing-instrument join is giving two answers to one question.
 test fn xl0_derives_from_its_own_delivery_receipt_and_not_from_probe_observability() -> Bool {
   let outstanding = stage_delivery_kind_outstanding(
     kind: DenominatorRosterInstrumentDelivered,
@@ -525,8 +528,6 @@ test fn xl0_derives_from_its_own_delivery_receipt_and_not_from_probe_observabili
     } else {
       standing_is(want: ClassOutstanding, s: stage_status(s: StageXL0Denominator))
     }
-  // The instrument is retired, so no instrument report may still name XL-0 as awaiting one --
-  // a stage that both derives and appears on the missing-instrument join is two answers.
   let no_instrument_still_awaited = count(
     all_missing_instruments |> filter(i =>
       any(stages_awaiting(i: i), l => l == namespace_cut_stage_label(s: StageXL0Denominator)))

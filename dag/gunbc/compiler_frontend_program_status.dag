@@ -867,6 +867,12 @@ fn act0_release_standing() -> MilestoneStanding {
   }
 }
 
+// XL-0 DERIVES NOW, AND IT DERIVES FROM THE STAGE'S OWN DELIVERABLE. The StageXL0Denominator arm
+// below used to be NotDerivable on a missing producer; before that it read
+// gunbc.namespace_cut_subject_roster's probes, which answered a different question entirely. It now
+// reads the same delivery-receipt channel XL-2 and XL-4 read, which is the channel that means "the
+// instrument exists and has been discriminated once" -- so a repair to probe observability still
+// cannot move it, and only delivering the producer can.
 fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
   match s {
     StageF0 =>
@@ -876,12 +882,6 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
           outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
         )
       )
-    // XL-0 DERIVES NOW, AND IT DERIVES FROM THE STAGE'S OWN DELIVERABLE. The arm that used to
-    // stand here was NotDerivable on a missing producer; before that it read
-    // gunbc.namespace_cut_subject_roster's probes, which answered a different question entirely.
-    // It now reads the same delivery-receipt channel XL-2 and XL-4 read, which is the channel that
-    // means "the instrument exists and has been discriminated once" -- so a repair to probe
-    // observability still cannot move it, and only delivering the producer can.
     StageXL0Denominator =>
       standing_from_evidence(
         e: observe_outstanding(
