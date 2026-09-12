@@ -1,0 +1,163 @@
+module gunbc.managed_principal_command
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.resources { Network }
+import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
+import gunbc.fleet_known_hosts_anchor {
+  SshTarget, FleetSshExecutionContext, PortableRemoteWord, portable_remote_words, shape_fleet_ssh_exec,
+}
+import std.realization_dependency {
+  CapabilityRequirement, requirement_key,
+  RealizedCapability,
+  DependentAdmission, DependentRunnable, DependentUnattempted, admit_dependent,
+}
+import gunbc.managed_principal_session {
+  ManagedPrincipalSessionReady, ManagedPrivilegedPrincipalReady,
+  ManagedPrincipalInvocation, invoke_as_managed_principal,
+  PrivilegedInvocationAdmission, PrivilegedInvocationAdmitted, PrivilegedInvocationRefused, invoke_privileged,
+  principal_session_requirement, FleetCredentialIdentity,
+}
+
+// ── THE DOWNSTREAM CONSUMER, WHICH IS WHERE THE LAW EITHER HOLDS OR DOES NOT ───────────────────
+//
+// THIS MODULE IS THE REASON THE READY HANDLE EXISTS. Every piece of machinery before it -- the closure, the
+// three standings, the provider chain, the sealed handles -- is preparation for one property, stated at the
+// only place it can be observed:
+//
+//   no ManagedPrincipalSessionReady -> no value these functions accept -> the command cannot be attempted
+//
+// AND IT IS STRONGER THAN CHECKING A PRIOR RESULT. A convergence command that took `host`, `login` and a
+// context and checked an earlier outcome first would still be CALLABLE with three arguments assembled from
+// anywhere; the check would be a runtime courtesy an author could forget. Here the argument does not exist
+// until a probe produced it.
+//
+// THE TRANSPORT IS CONSTRUCTED HERE AND NOWHERE ELSE. gunbc.managed_principal_session keeps its target and
+// context private and hands out only a ManagedPrincipalInvocation, so this module cannot pair one proven
+// session's context with another session's target -- it never sees either field separately.
+
+// ── WHAT A MANAGED COMMAND PRODUCES ───────────────────────────────────────────────────────────
+//
+// THREE ARMS, AND THE THIRD IS NOT A FAILURE. A command that never ran because its capability was not realized
+// asserts nothing about itself; folding it into a failure is what turns one cause into several findings in a
+// receipt, and it is the distinction std.realization_dependency draws as DependentUnattempted.
+type ManagedCommandOutcome
+  = ManagedCommandRan { stdout: String, stderr: String, exit_code: Nat }
+  | ManagedCommandRefused { cause: NonEmptyStr }
+  | ManagedCommandUnattempted { unmet_keys: List<NonEmptyStr> }
+
+fn managed_command_succeeded(o: ManagedCommandOutcome) -> Bool {
+  match o {
+    ManagedCommandRan { stdout: _, stderr: _, exit_code: c } => c == 0
+    ManagedCommandRefused { cause: _ } => false
+    ManagedCommandUnattempted { unmet_keys: _ } => false
+  }
+}
+
+fn managed_command_stdout(o: ManagedCommandOutcome) -> String {
+  match o {
+    ManagedCommandRan { stdout: s, stderr: _, exit_code: _ } => trim(s: s)
+    ManagedCommandRefused { cause: _ } => ""
+    ManagedCommandUnattempted { unmet_keys: _ } => ""
+  }
+}
+
+fn managed_command_label(o: ManagedCommandOutcome) -> String {
+  match o {
+    ManagedCommandRan { stdout: s, stderr: e, exit_code: c } =>
+      if c == 0 { join(["ran  ", trim(s: s)], "") }
+      else { join(["ran and exited ", to_string(c), ": ", trim(s: e)], "") }
+    ManagedCommandRefused { cause: x } => join(["REFUSED  ", x as String], "")
+    ManagedCommandUnattempted { unmet_keys: ks } =>
+      join(["unattempted: the managed principal was not realized (", join(map(ks, k => k as String), ", "), ")"], "")
+  }
+}
+
+// ── THE ELIMINATOR'S ONLY EXECUTING CONSUMER ──────────────────────────────────────────────────
+//
+// IT TAKES THE HANDLE, NOT ITS PARTS. The words are ordinary data and the session is the capability; the
+// portable-word admission still runs because a word carrying a space or a redirect is not the word that
+// executes on the far side, and that is a property of the ARGUMENT rather than of the session.
+func run_as_managed_principal(ready: ManagedPrincipalSessionReady, raw_words: List<String>) -> ManagedCommandOutcome
+  uses net: Network
+{
+  let invocation = invoke_as_managed_principal(ready: ready, words: raw_words)
+  match portable_remote_words(raws: invocation.words) {
+    Absent => ManagedCommandRefused {
+      cause: "a requested word is not portable through a remote login shell, so the command that would execute is not the command that was asked for" as NonEmptyStr,
+    }
+    Present { value: words } => {
+      let r = ssh_session_exec_portable_words_with_stdin(
+        client_args: shape_fleet_ssh_exec(context: invocation.context, target: invocation.target, words: words),
+        stdin_payload: "",
+      )
+      ManagedCommandRan { stdout: r.stdout, stderr: r.stderr, exit_code: r.exit_code }
+    }
+  }
+}
+
+// ── THE SAME COMMAND WHEN THE CAPABILITY MAY NOT HAVE BEEN REALIZED ───────────────────────────
+//
+// THIS IS THE PRODUCT-SHAPED ENTRY: a caller holds whatever the provider chain realized and asks for a command.
+// Where the session is absent the command is UNATTEMPTED and names the unmet requirement -- so a failed account
+// or key provider makes every managed command structurally unattemptable rather than separately broken.
+//
+// THE REQUIREMENT IS RECOMPUTED FROM THE SUBJECT RATHER THAN PASSED IN, because a caller that supplied the key
+// it wanted checked could ask about a requirement the command does not actually need.
+func run_managed_command_where_realized(
+  host: NonEmptyStr,
+  principal: NonEmptyStr,
+  credential: FleetCredentialIdentity,
+  realized: List<RealizedCapability<ManagedPrincipalSessionReady>>,
+  raw_words: List<String>,
+) -> ManagedCommandOutcome
+  uses net: Network
+{
+  let required = principal_session_requirement(host: host, principal: principal, credential: credential)
+  match admit_dependent(required: [required], realized: realized) {
+    DependentUnattempted { unmet_keys: ks } => ManagedCommandUnattempted { unmet_keys: ks }
+    DependentRunnable =>
+      match (filter(realized, r => (requirement_key(r: r.requirement) as String) == (requirement_key(r: required) as String))).first() {
+        Absent => ManagedCommandUnattempted { unmet_keys: [requirement_key(r: required)] }
+        Present { value: cap } => run_as_managed_principal(ready: cap.handle, raw_words: raw_words)
+      }
+  }
+}
+
+// ── AND THE PRIVILEGED FORM, WHICH IS A DIFFERENT CAPABILITY ──────────────────────────────────
+//
+// AN ORDINARY SESSION HANDLE IS NOT ACCEPTED HERE. The parameter is ManagedPrivilegedPrincipalReady, so a
+// command needing narrow sudo cannot be satisfied by key access alone -- and the admitted command is checked
+// against the one the grant readback established, which keeps the narrow grant narrow at the call site as well
+// as in the sudoers file.
+func run_privileged_as_managed_principal(
+  ready: ManagedPrivilegedPrincipalReady,
+  command: NonEmptyStr,
+  raw_words: List<String>,
+) -> ManagedCommandOutcome
+  uses net: Network
+{
+  match invoke_privileged(ready: ready, command: command, words: raw_words) {
+    PrivilegedInvocationRefused { admitted_command: a, requested: q } =>
+      ManagedCommandRefused {
+        cause: join([
+          "this privileged handle admits only ", a as String, " and the request was ", q as String,
+          ". A handle for one narrow grant is not a general sudo capability",
+        ], "") as NonEmptyStr,
+      }
+    PrivilegedInvocationAdmitted { invocation: invocation } =>
+      match portable_remote_words(raws: invocation.words) {
+        Absent => ManagedCommandRefused {
+          cause: "a requested word is not portable through a remote login shell" as NonEmptyStr,
+        }
+        Present { value: words } => {
+          let r = ssh_session_exec_portable_words_with_stdin(
+            client_args: shape_fleet_ssh_exec(context: invocation.context, target: invocation.target, words: words),
+            stdin_payload: "",
+          )
+          ManagedCommandRan { stdout: r.stdout, stderr: r.stderr, exit_code: r.exit_code }
+        }
+      }
+  }
+}

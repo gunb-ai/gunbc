@@ -1,0 +1,137 @@
+module test.claim.spark.managed_access_apply_repoint_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.managed_principal_provider {
+  ManagedProviderOutcome, ProviderRealized, ProviderRefused, ProviderUnattempted,
+  ManagedAccountProvider, ManagedAuthorizedKeyProvider,
+}
+import gunbc.spark.managed_access_apply {
+  SparkApplyOutcome, ApplyConverged, ApplyRefused, ApplyUnattempted,
+  apply_converged, apply_outcome_label,
+  third_line_triple, account_readback_of, key_readback_of,
+  provider_outcome_as_apply, readback_unread_sentinel,
+}
+import gunbc.managed_principal_session { PosixAccountReadback, AuthorizedKeyReadback }
+
+// ── THE PRODUCT ROOT'S OWN SEAMS ──────────────────────────────────────────────────────────────
+//
+// THIS FILE EXISTS SO THAT REVERTING THE REPOINT BREAKS SOMETHING. The four hand-sequenced legs that used to be
+// gunbc.spark.managed_access_apply's body are gone, and what replaced them is a chain of provider terminals plus
+// three seams: the readback parse, the sentinel for an unparseable read, and the projection of a provider
+// outcome into the receipt's vocabulary. Deleting the provider path would leave these functions with no
+// consumer and this module unresolvable -- which is the red the ruling asked for, expressed at the grain the
+// apply's pure half can actually be executed at.
+//
+// THE WET FUNCTION ITSELF IS NOT CALLED HERE, deliberately: it opens ssh sessions. What is asserted is every
+// decision the repoint introduced that does NOT need a host, which is where the structural change lives.
+
+// ── THE READBACK PARSE ────────────────────────────────────────────────────────────────────────
+//
+// THREE LINES, BY POSITION, AND A SHORT OUTPUT PRODUCES NOTHING. A truncated or warning-prefixed stdout must
+// not become a readback with empty fields: an empty observed owner would compare unequal to the principal and
+// surface as a refusal ABOUT OWNERSHIP, sending a reader to the wrong place entirely.
+test fn a_three_line_output_parses_by_position() -> Bool {
+  match third_line_triple(stdout: "gunbc-automation\n/home/gunbc-automation\n/bin/bash\n") {
+    Present { value: t } => count(t) == 3
+    Absent => false
+  }
+}
+
+test fn a_two_line_output_produces_no_triple() -> Bool {
+  match third_line_triple(stdout: "gunbc-automation\n/home/gunbc-automation\n") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND BLANK LINES ARE NOT FIELDS, so a script whose output is padded still parses to the three values it
+// printed rather than to blanks that would compare unequal.
+test fn blank_lines_are_not_counted_as_fields() -> Bool {
+  match third_line_triple(stdout: "\ngunbc-automation\n\n/home/gunbc-automation\n/bin/bash\n\n") {
+    Present { value: t } => count(t) == 3
+    Absent => false
+  }
+}
+
+// ── THE SENTINEL IS A LOCATED WORD, NOT AN EMPTY STRING ───────────────────────────────────────
+//
+// THE DISTINCTION THAT DECIDES WHICH REFUSAL A READER SEES. On a refused or unattempted leg there is no
+// readback at all, and the fields say so; an empty string would be compared against the expected principal and
+// reported as a mismatch, which describes a host that is fine.
+test fn a_refused_leg_yields_an_unread_account_readback() -> Bool {
+  let rb = account_readback_of(outcome: ApplyRefused { cause: "the account script exited 1" })
+  (rb.observed_principal as String) == (readback_unread_sentinel as String)
+    && (rb.observed_home as String) == (readback_unread_sentinel as String)
+}
+
+test fn an_unattempted_leg_yields_an_unread_key_readback() -> Bool {
+  let rb = key_readback_of(outcome: ApplyUnattempted { blocked_by: "managed-posix-account-upsert" })
+  (rb.observed_line as String) == (readback_unread_sentinel as String)
+    && (rb.observed_mode as String) == (readback_unread_sentinel as String)
+}
+
+// AND A CONVERGED LEG WHOSE STDOUT IS UNPARSEABLE ALSO YIELDS THE SENTINEL, which is the case a positive exit
+// status would otherwise carry into an admission as three empty fields.
+test fn a_converged_leg_with_unparseable_stdout_yields_the_sentinel() -> Bool {
+  let rb = account_readback_of(outcome: ApplyConverged { detail: "only one line" })
+  (rb.observed_principal as String) == (readback_unread_sentinel as String)
+}
+
+// AND A CONVERGED LEG WITH A REAL THREE-LINE READ CARRIES THE VALUES, so the rows above are not passing because
+// the extractor always returns the sentinel.
+test fn a_converged_leg_with_three_lines_carries_the_observed_values() -> Bool {
+  let rb = account_readback_of(outcome: ApplyConverged { detail: "gunbc-automation\n/home/gunbc-automation\n/bin/bash\n" })
+  (rb.observed_principal as String) == "gunbc-automation"
+    && (rb.observed_home as String) == "/home/gunbc-automation"
+    && (rb.observed_shell as String) == "/bin/bash"
+}
+
+// ── THE PROJECTION PRESERVES UNATTEMPTED ──────────────────────────────────────────────────────
+//
+// THE ROW THAT WOULD UNDO THE WHOLE REPOINT AT ITS LAST STEP. The receipt is what a person reads, so collapsing
+// an unattempted provider into a refusal here would put four failures back in front of a reader who has one
+// cause and three consequences.
+test fn an_unattempted_provider_projects_to_an_unattempted_step() -> Bool {
+  match provider_outcome_as_apply(o: ProviderUnattempted { kind: ManagedAuthorizedKeyProvider, blocked_by: ManagedAccountProvider }) {
+    ApplyUnattempted { blocked_by: b } => b == "managed-posix-account-upsert"
+    ApplyConverged { detail: _ } => false
+    ApplyRefused { cause: _ } => false
+  }
+}
+
+test fn a_refused_provider_projects_to_a_refused_step() -> Bool {
+  match provider_outcome_as_apply(o: ProviderRefused { kind: ManagedAccountProvider, cause: "the readback disagrees" as NonEmptyStr }) {
+    ApplyRefused { cause: c } => c == "the readback disagrees"
+    ApplyConverged { detail: _ } => false
+    ApplyUnattempted { blocked_by: _ } => false
+  }
+}
+
+test fn a_realized_provider_projects_to_a_converged_step() -> Bool {
+  match provider_outcome_as_apply(o: ProviderRealized { kind: ManagedAccountProvider, detail: "the host reports it" as NonEmptyStr }) {
+    ApplyConverged { detail: d } => d == "the host reports it"
+    ApplyRefused { cause: _ } => false
+    ApplyUnattempted { blocked_by: _ } => false
+  }
+}
+
+// ── AND AN UNATTEMPTED STEP IS NOT A PRECONDITION FOR THE NEXT ONE ────────────────────────────
+//
+// THE FOLD'S TEMPTING WRONG ANSWER. `apply_converged` decides whether a leg licenses the leg after it, and the
+// shape an author reaches for is "it did not fail, so carry on" -- which is how a chain that never ran reports
+// success and resumes in the middle.
+test fn an_unattempted_step_does_not_license_the_next_leg() -> Bool {
+  !apply_converged(o: ApplyUnattempted { blocked_by: "managed-posix-account-upsert" })
+    && !apply_converged(o: ApplyRefused { cause: "x" })
+    && apply_converged(o: ApplyConverged { detail: "y" })
+}
+
+// AND THE RECEIPT LABEL SAYS UNATTEMPTED WITHOUT SAYING REFUSED, because a reader scanning four lines must see
+// one cause rather than four problems.
+test fn the_receipt_label_distinguishes_unattempted_from_refused() -> Bool {
+  let label = apply_outcome_label(outcome: ApplyUnattempted { blocked_by: "create-managed-account" })
+  string_contains(s: label, pattern: "unattempted")
+    && string_contains(s: label, pattern: "create-managed-account")
+    && !string_contains(s: label, pattern: "REFUSED")
+}

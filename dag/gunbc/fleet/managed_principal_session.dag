@@ -1,0 +1,599 @@
+module gunbc.managed_principal_session
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.ssh { SshPublicKey, ssh_public_key_line }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext, SshTarget, FleetSshAttemptIdentity,
+}
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
+import std.realization_dependency {
+  RealizationLocus, LocalRunner, RemoteHost, ContainerImage, ManagedPrincipalOnHost,
+  CapabilityRequirement, capability_requirement, requirement_key,
+  CapabilityProvider, capability_provider,
+  RealizedCapability, realized_capability,
+}
+
+// ── THE CAPABILITY IS A WORKING SESSION, NOT A WRITTEN LINE ────────────────────────────────────
+//
+// THE TERMINAL PREREQUISITE OF THE FLEET-ACCESS CHAIN IS NOT "THE KEY LINE WAS WRITTEN". Every weaker fact was
+// available and every one of them has been mistaken for this one in this repository: an access decision
+// permits, an operator grant consents, a credential is proof material held LOCALLY, a zero exit status says a
+// command ran, and a written authorized_keys line says a file changed. None of them says a connection works.
+// The local private key can be perfectly valid while the remote account is missing, the file has the wrong
+// mode, the home directory is wrong, or sshd policy refuses the principal.
+//
+// SO THE CAPABILITY IS: AN INDEPENDENTLY ESTABLISHED KEY-ONLY CONNECTION TO THIS HOST, AS THIS PRINCIPAL,
+// USING THIS CREDENTIAL IDENTITY AND THIS HOST-TRUST ANCHOR.
+
+// ── ONE CREDENTIAL IDENTITY, JOINING THE INSTALLED HALF TO THE USED HALF ───────────────────────
+//
+// WITHOUT THIS JOIN THE MODEL CAN ESTABLISH TWO TRUE FACTS THAT DO NOT COMPOSE: "public key A is installed on
+// this host" and "access was proven with private key B", while prose calls them the same fleet key. That
+// relation is expressed today by convention across two separate operations -- managed_access_apply installs
+// the line from `fleet_authorized_key_line()` and the proof leg authenticates with whatever the ssh context's
+// credential binding happens to hold -- and nothing compares them.
+//
+// THE FINGERPRINT IS THE IDENTITY BECAUSE IT IS WHAT BOTH SIDES CAN PRODUCE. The installed side can be read
+// back and fingerprinted; the using side is reported by the client. A key's MATERIAL would also serve, but the
+// agent listing and `ssh-keygen -l` both speak fingerprints, so making the model speak material would put a
+// conversion at every boundary.
+type FleetCredentialIdentity sole_constructor {
+  fingerprint: NonEmptyStr
+}
+
+fn fleet_credential_identity(fingerprint: NonEmptyStr) -> FleetCredentialIdentity {
+  FleetCredentialIdentity { fingerprint: fingerprint }
+}
+
+fn fleet_declared_credential_identity() -> FleetCredentialIdentity {
+  fleet_credential_identity(fingerprint: fleet_automation_ssh_key_fingerprint as NonEmptyStr)
+}
+
+fn credential_identity_eq(a: FleetCredentialIdentity, b: FleetCredentialIdentity) -> Bool {
+  (a.fingerprint as String) == (b.fingerprint as String)
+}
+
+// ── THE REQUIREMENTS, EACH CARRYING ITS LOCUS ─────────────────────────────────────────────────
+//
+// THE LOCUS IS NOT DECORATION. An earlier revision keyed these capabilities by a string with the host spelled
+// into it, which made a locus mistake unspellable rather than impossible -- and the case that matters is not
+// hypothetical: the password session's `sshpass` is required on the RUNNER, not on the Spark, so a graph
+// without loci could be closed by installing it on the wrong machine.
+data cap_bootstrap_session: NonEmptyStr = "fleet.bootstrap_administrator_session" as NonEmptyStr
+data cap_posix_account: NonEmptyStr = "fleet.managed_posix_account" as NonEmptyStr
+data cap_authorized_key: NonEmptyStr = "fleet.managed_authorized_key" as NonEmptyStr
+data cap_membership: NonEmptyStr = "fleet.managed_group_membership" as NonEmptyStr
+data cap_principal_session: NonEmptyStr = "fleet.managed_principal_session" as NonEmptyStr
+data cap_privileged_principal: NonEmptyStr = "fleet.managed_privileged_principal" as NonEmptyStr
+
+fn bootstrap_session_requirement(host: NonEmptyStr, admin_principal: NonEmptyStr) -> CapabilityRequirement {
+  capability_requirement(
+    capability: cap_bootstrap_session,
+    locus: ManagedPrincipalOnHost { host: host, principal: admin_principal },
+    subject: "a password-authenticated administrator session able to create accounts and write their authorized_keys" as NonEmptyStr,
+  )
+}
+
+fn posix_account_requirement(host: NonEmptyStr, principal: NonEmptyStr) -> CapabilityRequirement {
+  capability_requirement(
+    capability: cap_posix_account,
+    locus: ManagedPrincipalOnHost { host: host, principal: principal },
+    subject: "a POSIX account with a home directory, observed after creation rather than inferred from a useradd exit" as NonEmptyStr,
+  )
+}
+
+fn authorized_key_requirement(host: NonEmptyStr, principal: NonEmptyStr, credential: FleetCredentialIdentity) -> CapabilityRequirement {
+  capability_requirement(
+    capability: cap_authorized_key,
+    locus: ManagedPrincipalOnHost { host: host, principal: principal },
+    subject: join(["the exact authorized_keys line for credential ", credential.fingerprint as String, ", read back with its owner and mode"], "") as NonEmptyStr,
+  )
+}
+
+fn membership_requirement(host: NonEmptyStr, principal: NonEmptyStr, group: NonEmptyStr) -> CapabilityRequirement {
+  capability_requirement(
+    capability: cap_membership,
+    locus: ManagedPrincipalOnHost { host: host, principal: principal },
+    subject: join(["membership of ", group as String, " observed on the principal itself"], "") as NonEmptyStr,
+  )
+}
+
+fn principal_session_requirement(host: NonEmptyStr, principal: NonEmptyStr, credential: FleetCredentialIdentity) -> CapabilityRequirement {
+  capability_requirement(
+    capability: cap_principal_session,
+    locus: ManagedPrincipalOnHost { host: host, principal: principal },
+    subject: join(["a key-only session proven by a fresh connection using credential ", credential.fingerprint as String], "") as NonEmptyStr,
+  )
+}
+
+// THE PRIVILEGED CAPABILITY IS ITS OWN REQUIREMENT AND NOT A FLAG ON THE SESSION. An ordinary convergence
+// command needs key-authenticated access; an installer additionally needs one exact sudo grant. Folding them
+// would make every managed command depend on a broad "sudo is ready" standing, which is the widest possible
+// grant justified by the narrowest consumer.
+fn privileged_principal_requirement(host: NonEmptyStr, principal: NonEmptyStr, command: NonEmptyStr) -> CapabilityRequirement {
+  capability_requirement(
+    capability: cap_privileged_principal,
+    locus: ManagedPrincipalOnHost { host: host, principal: principal },
+    subject: join(["the exact sudo command ", command as String, " admitted for this principal, read back from its own sudo listing"], "") as NonEmptyStr,
+  )
+}
+
+// ── THE READ-BACK RECEIPTS, WHICH ARE OBSERVATIONS AND NOT VERDICTS ───────────────────────────
+//
+// THESE ARE DELIBERATELY UNSEALED. A seal on an OBSERVATION makes the negative controls unwritable -- the
+// wrong-principal reading is exactly the case the admissions below exist to refuse -- and buys nothing,
+// because a forged reading still has to survive a comparison against a declared value. The rule the compiler
+// taught this module twice: SEAL THE CONCLUSION, NOT THE READING.
+type PosixAccountReadback {
+  observed_principal: NonEmptyStr
+  observed_home: NonEmptyStr
+  observed_shell: NonEmptyStr
+  instrument: NonEmptyStr
+}
+
+// THE KEY READBACK IS THE LINE, THE OWNER AND THE MODE -- not "the file exists". A world-writable
+// authorized_keys is ignored by sshd, and a line owned by root in the principal's home is equally inert, so a
+// readback that only proved presence would report a converged key that cannot authenticate anything.
+type AuthorizedKeyReadback {
+  observed_line: NonEmptyStr
+  observed_owner: NonEmptyStr
+  observed_mode: NonEmptyStr
+  instrument: NonEmptyStr
+}
+
+type MembershipReadback {
+  observed_groups: List<NonEmptyStr>
+  instrument: NonEmptyStr
+}
+
+// THE PROOF IS THE PRINCIPAL THE REMOTE SIDE REPORTED, not the exit status. A session that falls back to the
+// administrator, or whose agent offers a different key, exits zero and is the wrong capability.
+//
+// AND IT CARRIES THE MEMBERSHIPS THE SAME CONNECTION SAW, because a session handle minted before a membership
+// change and used after it would be a stale capability that still typechecks. Reading `id` once gives the
+// principal and its groups from one connection, so the properties downstream work relies on are observed
+// together rather than assembled from two moments.
+type ManagedPrincipalAuthenticationReceipt {
+  observed_principal: NonEmptyStr
+  observed_groups: List<NonEmptyStr>
+  used_credential: FleetCredentialIdentity
+  attempt: FleetSshAttemptIdentity
+  probe_detail: NonEmptyStr
+}
+
+// ── THE SEALED READY HANDLES ──────────────────────────────────────────────────────────────────
+//
+// SEALED, AND THIS IS WHERE SEALING BELONGS. std.realization_dependency carries handles and never mints them;
+// the wall is HERE, on the domain carriers, each admitted to the one admission that performed and observed the
+// convergence.
+type ManagedPosixAccountReady sole_constructor {
+  host: NonEmptyStr
+  principal: NonEmptyStr
+  home: NonEmptyStr
+  readback: PosixAccountReadback
+}
+
+fn managed_posix_account_seal(host: NonEmptyStr, principal: NonEmptyStr, home: NonEmptyStr, readback: PosixAccountReadback) -> ManagedPosixAccountReady
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_principal_session", decl_name: "admit_managed_posix_account"),
+  ]
+{
+  ManagedPosixAccountReady { host: host, principal: principal, home: home, readback: readback }
+}
+
+type ManagedAuthorizedKeyReady sole_constructor {
+  host: NonEmptyStr
+  principal: NonEmptyStr
+  credential: FleetCredentialIdentity
+  readback: AuthorizedKeyReadback
+}
+
+fn managed_authorized_key_seal(host: NonEmptyStr, principal: NonEmptyStr, credential: FleetCredentialIdentity, readback: AuthorizedKeyReadback) -> ManagedAuthorizedKeyReady
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_principal_session", decl_name: "admit_managed_authorized_key"),
+  ]
+{
+  ManagedAuthorizedKeyReady { host: host, principal: principal, credential: credential, readback: readback }
+}
+
+// THE PRIVATE HALF IS A CAPABILITY TOO, and it is LOCAL: the binding is a materialized identity file plus a
+// trust anchor on the runner, not anything on the host. Keeping it a separate handle is what lets the session
+// admission compare the installed fingerprint against the one actually in use.
+type FleetPrivateKeyBindingReady sole_constructor {
+  credential: FleetCredentialIdentity
+  context: FleetSshExecutionContext
+}
+
+fn fleet_private_key_binding_seal(credential: FleetCredentialIdentity, context: FleetSshExecutionContext) -> FleetPrivateKeyBindingReady
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_principal_session", decl_name: "admit_fleet_private_key_binding"),
+  ]
+{
+  FleetPrivateKeyBindingReady { credential: credential, context: context }
+}
+
+// THE SESSION HANDLE, AND IT CARRIES THE TRANSPORT RATHER THAN PUBLISHING ITS INGREDIENTS. An earlier revision
+// exposed `session_target` and `session_context` as separate projections, and a review found the hole: both
+// fields would be "consumed" while their RELATION went unprotected, so a caller could take the context from
+// one proven session and pair it with another target. The fields are private to this module and the only way
+// out is the eliminator below.
+type ManagedPrincipalSessionReady sole_constructor {
+  host: NonEmptyStr
+  principal: NonEmptyStr
+  credential: FleetCredentialIdentity
+  observed_groups: List<NonEmptyStr>
+  target: SshTarget
+  context: FleetSshExecutionContext
+  proof: ManagedPrincipalAuthenticationReceipt
+}
+
+fn managed_principal_session_seal(
+  host: NonEmptyStr,
+  principal: NonEmptyStr,
+  credential: FleetCredentialIdentity,
+  observed_groups: List<NonEmptyStr>,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  proof: ManagedPrincipalAuthenticationReceipt,
+) -> ManagedPrincipalSessionReady
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_principal_session", decl_name: "admit_managed_principal_session"),
+  ]
+{
+  ManagedPrincipalSessionReady {
+    host: host, principal: principal, credential: credential, observed_groups: observed_groups,
+    target: target, context: context, proof: proof,
+  }
+}
+
+// AND THE PRIVILEGED HANDLE CONTAINS THE ORDINARY ONE PLUS ONE EXACT ADMITTED COMMAND. Containment rather than
+// a second parallel handle, so a privileged consumer can also run ordinary work without a second session, and
+// an ordinary consumer cannot be satisfied by a privilege it does not need.
+type ManagedPrivilegedPrincipalReady sole_constructor {
+  session: ManagedPrincipalSessionReady
+  admitted_command: NonEmptyStr
+  sudo_listing: NonEmptyStr
+}
+
+fn managed_privileged_principal_seal(session: ManagedPrincipalSessionReady, admitted_command: NonEmptyStr, sudo_listing: NonEmptyStr) -> ManagedPrivilegedPrincipalReady
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_principal_session", decl_name: "admit_managed_privileged_principal"),
+  ]
+{
+  ManagedPrivilegedPrincipalReady { session: session, admitted_command: admitted_command, sudo_listing: sudo_listing }
+}
+
+// ── THE ADMISSIONS, EACH COMPARING WHAT WAS ASKED WITH WHAT ANSWERED ──────────────────────────
+type ManagedPosixAccountAdmission
+  = ManagedPosixAccountAdmitted { ready: ManagedPosixAccountReady }
+  | ManagedPosixAccountRefused { expected: NonEmptyStr, cause: NonEmptyStr }
+
+// A USERADD EXIT IS NOT THE HANDLE. The readback must name the principal the host reports and a home it
+// reports having, because an account created with no home directory is a principal sshd will authenticate and
+// then fail to place an authorized_keys file for.
+fn admit_managed_posix_account(
+  host: NonEmptyStr,
+  expected_principal: NonEmptyStr,
+  readback: PosixAccountReadback,
+) -> ManagedPosixAccountAdmission {
+  if (trim(s: readback.observed_principal as String)) != (expected_principal as String) {
+    ManagedPosixAccountRefused {
+      expected: expected_principal,
+      cause: join(["the host reports the account as ", readback.observed_principal as String, ", which is a different principal"], "") as NonEmptyStr,
+    }
+  } else {
+    if (trim(s: readback.observed_home as String)) == "" {
+      ManagedPosixAccountRefused {
+        expected: expected_principal,
+        cause: "the account exists and the host reports no home directory, so there is nowhere to place authorized_keys" as NonEmptyStr,
+      }
+    } else {
+      ManagedPosixAccountAdmitted {
+        ready: managed_posix_account_seal(host: host, principal: expected_principal, home: readback.observed_home, readback: readback),
+      }
+    }
+  }
+}
+
+type ManagedAuthorizedKeyAdmission
+  = ManagedAuthorizedKeyAdmitted { ready: ManagedAuthorizedKeyReady }
+  | ManagedAuthorizedKeyRefusedLine { expected_line: NonEmptyStr, observed_line: NonEmptyStr }
+  | ManagedAuthorizedKeyRefusedOwnership { expected_owner: NonEmptyStr, observed_owner: NonEmptyStr, observed_mode: NonEmptyStr }
+
+data authorized_keys_required_mode: NonEmptyStr = "600" as NonEmptyStr
+
+// THE KEY IS ADMITTED AGAINST THE EXACT LINE THE MODEL DECLARES, and against ownership and mode, because sshd
+// silently ignores a group- or world-writable authorized_keys and a file owned by another user. A readback
+// asserting presence would have reported those three worlds as converged.
+//
+// AND IT REQUIRES THE ACCOUNT HANDLE, so a key cannot be admitted for a principal whose existence was never
+// observed -- which is the dependency edge made structural rather than sequential.
+fn admit_managed_authorized_key(
+  account: ManagedPosixAccountReady,
+  credential: FleetCredentialIdentity,
+  expected_key: SshPublicKey,
+  readback: AuthorizedKeyReadback,
+) -> ManagedAuthorizedKeyAdmission {
+  if (trim(s: readback.observed_line as String)) != (trim(s: ssh_public_key_line(k: expected_key))) {
+    ManagedAuthorizedKeyRefusedLine {
+      expected_line: ssh_public_key_line(k: expected_key) as NonEmptyStr,
+      observed_line: readback.observed_line,
+    }
+  } else {
+    if (trim(s: readback.observed_owner as String)) != (account.principal as String)
+      || (trim(s: readback.observed_mode as String)) != (authorized_keys_required_mode as String) {
+      ManagedAuthorizedKeyRefusedOwnership {
+        expected_owner: account.principal,
+        observed_owner: readback.observed_owner,
+        observed_mode: readback.observed_mode,
+      }
+    } else {
+      ManagedAuthorizedKeyAdmitted {
+        ready: managed_authorized_key_seal(host: account.host, principal: account.principal, credential: credential, readback: readback),
+      }
+    }
+  }
+}
+
+type FleetPrivateKeyBindingAdmission
+  = FleetPrivateKeyBindingAdmitted { ready: FleetPrivateKeyBindingReady }
+  | FleetPrivateKeyBindingRefused { expected: NonEmptyStr, derived: NonEmptyStr }
+
+// THE BINDING IS ADMITTED ONLY WHERE THE KEY WE HOLD IS THE KEY THE MODEL DECLARES, which is the local half of
+// the join: gunbc.fleet_ssh_credential_verify already derives the public half from the private material, so
+// this compares that derivation's identity against the declared fingerprint rather than trusting a file path.
+fn admit_fleet_private_key_binding(
+  derived_credential: FleetCredentialIdentity,
+  context: FleetSshExecutionContext,
+) -> FleetPrivateKeyBindingAdmission {
+  if !credential_identity_eq(a: derived_credential, b: fleet_declared_credential_identity()) {
+    FleetPrivateKeyBindingRefused {
+      expected: (fleet_declared_credential_identity()).fingerprint,
+      derived: derived_credential.fingerprint,
+    }
+  } else {
+    FleetPrivateKeyBindingAdmitted { ready: fleet_private_key_binding_seal(credential: derived_credential, context: context) }
+  }
+}
+
+type ManagedPrincipalSessionAdmission
+  = ManagedPrincipalSessionAdmitted { ready: ManagedPrincipalSessionReady }
+  | ManagedPrincipalSessionRefusedPrincipal { expected: NonEmptyStr, observed: NonEmptyStr }
+  | ManagedPrincipalSessionRefusedCredentialSplit { installed: NonEmptyStr, in_use: NonEmptyStr }
+  | ManagedPrincipalSessionRefusedCredentialUsed { declared: NonEmptyStr, used: NonEmptyStr }
+  | ManagedPrincipalSessionRefusedMembership { required: NonEmptyStr, observed: List<NonEmptyStr> }
+  | ManagedPrincipalSessionRefusedUnreachable { cause: NonEmptyStr }
+
+fn groups_contain(groups: List<NonEmptyStr>, wanted: NonEmptyStr) -> Bool {
+  any(groups, g => (trim(s: g as String)) == (wanted as String))
+}
+
+fn first_missing_group(required: List<NonEmptyStr>, observed: List<NonEmptyStr>) -> NonEmptyStr? {
+  (filter(required, r => !groups_contain(groups: observed, wanted: r))).first()
+}
+
+// THE SESSION ADMISSION IS THE JOIN OF EVERY EARLIER HANDLE, which is why it takes them rather than their
+// fields. Two comparisons here are the ones a convention could not make:
+//
+// THE INSTALLED CREDENTIAL AND THE BINDING'S CREDENTIAL MUST AGREE. Otherwise the model holds "public key A is
+// installed" and "access proven with private key B" as independent truths, and calls them one fleet key.
+//
+// AND THE REQUIRED MEMBERSHIPS ARE OBSERVED BY THE SAME CONNECTION THAT PROVED THE PRINCIPAL. A handle minted
+// before a membership change and used after it would still typecheck, so the memberships downstream work
+// relies on are read from this session or the session is refused.
+fn admit_managed_principal_session(
+  account: ManagedPosixAccountReady,
+  key: ManagedAuthorizedKeyReady,
+  binding: FleetPrivateKeyBindingReady,
+  required_groups: List<NonEmptyStr>,
+  target: SshTarget,
+  receipt: ManagedPrincipalAuthenticationReceipt,
+  reachable: Bool,
+  unreachable_cause: NonEmptyStr,
+) -> ManagedPrincipalSessionAdmission {
+  if !reachable {
+    ManagedPrincipalSessionRefusedUnreachable { cause: unreachable_cause }
+  } else {
+    if !credential_identity_eq(a: key.credential, b: binding.credential) {
+      ManagedPrincipalSessionRefusedCredentialSplit {
+        installed: key.credential.fingerprint,
+        in_use: binding.credential.fingerprint,
+      }
+    } else {
+      if !credential_identity_eq(a: receipt.used_credential, b: binding.credential) {
+        ManagedPrincipalSessionRefusedCredentialUsed {
+          declared: binding.credential.fingerprint,
+          used: receipt.used_credential.fingerprint,
+        }
+      } else {
+        if (trim(s: receipt.observed_principal as String)) != (account.principal as String) {
+          ManagedPrincipalSessionRefusedPrincipal { expected: account.principal, observed: receipt.observed_principal }
+        } else {
+          match first_missing_group(required: required_groups, observed: receipt.observed_groups) {
+            Present { value: missing } =>
+              ManagedPrincipalSessionRefusedMembership { required: missing, observed: receipt.observed_groups }
+            Absent =>
+              ManagedPrincipalSessionAdmitted {
+                ready: managed_principal_session_seal(
+                  host: account.host,
+                  principal: account.principal,
+                  credential: binding.credential,
+                  observed_groups: receipt.observed_groups,
+                  target: target,
+                  context: binding.context,
+                  proof: receipt,
+                ),
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+type ManagedPrivilegedPrincipalAdmission
+  = ManagedPrivilegedPrincipalAdmitted { ready: ManagedPrivilegedPrincipalReady }
+  | ManagedPrivilegedPrincipalRefused { required_command: NonEmptyStr, listing: NonEmptyStr }
+
+// THE GRANT IS ADMITTED AGAINST THE PRINCIPAL'S OWN SUDO LISTING, read through the session it extends -- not
+// through the administrator session that wrote the drop-in. A drop-in installed successfully and a principal
+// actually permitted to run the command are different facts, and only the second is the capability.
+fn admit_managed_privileged_principal(
+  session: ManagedPrincipalSessionReady,
+  required_command: NonEmptyStr,
+  sudo_listing: NonEmptyStr,
+) -> ManagedPrivilegedPrincipalAdmission {
+  if !string_contains(s: sudo_listing, pattern: required_command as String) {
+    ManagedPrivilegedPrincipalRefused { required_command: required_command, listing: sudo_listing as NonEmptyStr }
+  } else {
+    ManagedPrivilegedPrincipalAdmitted {
+      ready: managed_privileged_principal_seal(session: session, admitted_command: required_command, sudo_listing: sudo_listing as NonEmptyStr),
+    }
+  }
+}
+
+// ── THE ELIMINATOR: THE ONLY WAY A MANAGED-PRINCIPAL COMMAND IS SPELLED ───────────────────────
+//
+// PUBLISHING `session_target` AND `session_context` WAS THE HOLE A REVIEW FOUND. Both would have been
+// "consumed" by a caller that read them, while the RELATION between them went unprotected -- so a context from
+// one proven session could be paired with a target from another, and the handle's whole provenance would be
+// lost at the first call site. The fields are private to this module now.
+//
+// THE ELIMINATOR TAKES THE OPERATION AND RETURNS THE SHAPED INVOCATION, rather than returning a transport.
+// Returning a FleetSsh would lose the provenance immediately, because a caller can construct one directly and
+// nothing would distinguish the two. Here the only way to obtain a managed-principal invocation is to hand
+// over a handle a probe produced:
+//
+//   no ManagedPrincipalSessionReady -> no value this accepts -> no managed-principal command can be attempted
+//
+// which is stronger than "run the effect, but check an earlier result first".
+type ManagedPrincipalInvocation sole_constructor {
+  target: SshTarget
+  context: FleetSshExecutionContext
+  words: List<String>
+  as_principal: NonEmptyStr
+}
+
+fn invoke_as_managed_principal(ready: ManagedPrincipalSessionReady, words: List<String>) -> ManagedPrincipalInvocation {
+  ManagedPrincipalInvocation {
+    target: ready.target,
+    context: ready.context,
+    words: words,
+    as_principal: ready.principal,
+  }
+}
+
+// A PRIVILEGED INVOCATION MAY ONLY NAME THE COMMAND THAT WAS ADMITTED, which keeps the narrow grant narrow at
+// the call site as well as in the sudoers file. A caller holding a privileged handle for `loginctl
+// enable-linger` cannot use it to run something else.
+type PrivilegedInvocationAdmission
+  = PrivilegedInvocationAdmitted { invocation: ManagedPrincipalInvocation }
+  | PrivilegedInvocationRefused { admitted_command: NonEmptyStr, requested: NonEmptyStr }
+
+fn invoke_privileged(ready: ManagedPrivilegedPrincipalReady, command: NonEmptyStr, words: List<String>) -> PrivilegedInvocationAdmission {
+  if (command as String) != (ready.admitted_command as String) {
+    PrivilegedInvocationRefused { admitted_command: ready.admitted_command, requested: command }
+  } else {
+    PrivilegedInvocationAdmitted { invocation: invoke_as_managed_principal(ready: ready.session, words: words) }
+  }
+}
+
+// ── THE PROVIDER GRAPH FOR ONE HOST AND PRINCIPAL ─────────────────────────────────────────────
+//
+// DECLARED AS EDGES AND NOTHING ELSE. A working session requires a converged key AND the account AND the local
+// private-key binding AND, where later work depends on them, the memberships.
+//
+// THE BOOTSTRAP SESSION AND THE PRIVATE-KEY BINDING HAVE NO PREREQUISITES HERE, and that is a boundary rather
+// than an omission: the administrator password, the known-hosts anchor and the runner's own ssh client are
+// roots supplied from outside this subgraph. They are named as requirements so a future provider can bind them
+// without a rename.
+//
+// AND THE MEMBERSHIP PROVIDER IS INCLUDED ONLY WHEN A GROUP IS REQUIRED. An empty group list produces no
+// membership node, so a caller that needs no membership does not acquire a dependency on one -- which is the
+// same discipline that keeps the privileged capability out of the ordinary session.
+fn managed_principal_providers(
+  host: NonEmptyStr,
+  principal: NonEmptyStr,
+  admin_principal: NonEmptyStr,
+  credential: FleetCredentialIdentity,
+  required_groups: List<NonEmptyStr>,
+) -> List<CapabilityProvider> {
+  concat(
+    [
+      capability_provider(
+        identity: join(["bootstrap-administrator-session@", host as String], "") as NonEmptyStr,
+        provides: bootstrap_session_requirement(host: host, admin_principal: admin_principal),
+        prerequisites: [],
+      ),
+      capability_provider(
+        identity: join(["fleet-private-key-binding@runner/", credential.fingerprint as String], "") as NonEmptyStr,
+        provides: private_key_binding_requirement(credential: credential),
+        prerequisites: [],
+      ),
+      capability_provider(
+        identity: join(["managed-posix-account-upsert@", host as String, "/", principal as String], "") as NonEmptyStr,
+        provides: posix_account_requirement(host: host, principal: principal),
+        prerequisites: [bootstrap_session_requirement(host: host, admin_principal: admin_principal)],
+      ),
+      capability_provider(
+        identity: join(["authorized-keys-reconcile@", host as String, "/", principal as String], "") as NonEmptyStr,
+        provides: authorized_key_requirement(host: host, principal: principal, credential: credential),
+        prerequisites: [
+          posix_account_requirement(host: host, principal: principal),
+          bootstrap_session_requirement(host: host, admin_principal: admin_principal),
+        ],
+      ),
+    ],
+    concat(
+      map(required_groups, g => capability_provider(
+        identity: join(["managed-membership-upsert@", host as String, "/", principal as String, "/", g as String], "") as NonEmptyStr,
+        provides: membership_requirement(host: host, principal: principal, group: g),
+        prerequisites: [
+          posix_account_requirement(host: host, principal: principal),
+          bootstrap_session_requirement(host: host, admin_principal: admin_principal),
+        ],
+      )),
+      [
+        capability_provider(
+          identity: join(["key-only-authentication-probe@", host as String, "/", principal as String], "") as NonEmptyStr,
+          provides: principal_session_requirement(host: host, principal: principal, credential: credential),
+          prerequisites: concat(
+            [
+              posix_account_requirement(host: host, principal: principal),
+              authorized_key_requirement(host: host, principal: principal, credential: credential),
+              private_key_binding_requirement(credential: credential),
+            ],
+            map(required_groups, g => membership_requirement(host: host, principal: principal, group: g)),
+          ),
+        ),
+      ],
+    ),
+  )
+}
+
+// THE PRIVATE-KEY BINDING IS A LOCAL-RUNNER CAPABILITY, which is the locus distinction doing visible work: it
+// is not on the host being converged, and a graph that placed it there would be satisfied by materializing a
+// key file on the wrong machine.
+fn private_key_binding_requirement(credential: FleetCredentialIdentity) -> CapabilityRequirement {
+  capability_requirement(
+    capability: "fleet.private_key_binding" as NonEmptyStr,
+    locus: LocalRunner,
+    subject: join(["a materialized identity file whose derived public half is ", credential.fingerprint as String], "") as NonEmptyStr,
+  )
+}
+
+fn realized_principal_session(
+  host: NonEmptyStr,
+  principal: NonEmptyStr,
+  credential: FleetCredentialIdentity,
+  ready: ManagedPrincipalSessionReady,
+) -> RealizedCapability<ManagedPrincipalSessionReady> {
+  realized_capability(
+    requirement: principal_session_requirement(host: host, principal: principal, credential: credential),
+    provider_identity: join(["key-only-authentication-probe@", host as String, "/", principal as String], "") as NonEmptyStr,
+    handle: ready,
+  )
+}

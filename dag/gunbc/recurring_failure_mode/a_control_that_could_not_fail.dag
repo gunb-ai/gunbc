@@ -1,0 +1,45 @@
+module gunbc.recurring_failure_mode.a_control_that_could_not_fail
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_control_that_could_not_fail: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_control_that_could_not_fail" as NonEmptyStr,
+
+  receipts: [
+    "**a control that could not fail** (a check is authored, cited as coverage, and is incapable of going red -- because its producer cannot reach the arm it asserts, because the module never compiled, because it asserts a declaration EXISTS rather than exercising it, or because it varies no dimension the subject actually has. It is worse than an absent check: an absent check ranks for work, and this one is reported as done. ",
+
+    "SIX INSTANCES IN ONE SESSION (2026-09-11), which is why this is a class and not an incident. FOUR of them were authored and reported as verification by the same worker, and TWO were found by an outside review reading the model beside the check rather than reading the check. ",
+
+    "ONE: THE PRODUCER COULD NOT REACH THE ARM. gunbc.spark.native_rank_observer's population read hardcoded `endpoint_alias: none`, so the readback's DeploymentAccepted arm was unreachable. The witness authored `endpoint_alias: served()` in its own fixture, so it tested the ASSESSOR and not the producer. Nine cutover attempts ran toward a success state the program could not report. ",
+
+    "TWO: THE MODULE NEVER COMPILED. test.claim.vllm_memory_receipt asserted a `parameters_digest` field that ServingExecutionProfile does not have. The row was cited as the closure of a borrowed-profile finding; the finding was closed by a control nobody could run. ",
+
+    "THREE: A SIGNATURE WIDENING BROKE TWO WITNESSES AND A PER-FILE COMPILE HID IT. `plan_arm_launch` gained a profile parameter; two witness modules were left uncompilable and reported green off a compile that never loaded them. ",
+
+    "FOUR: THE ORACLE WAS A SECOND SPELLING OF THE FIXTURE. `every_line_spells_the_memory_envelope` asserted the literal \"0.90\" against a fixture carrying 8400 basis points, which render \"0.84\". It was red at every revision of the file, including the revision an outside review inspected. ",
+
+    "FIVE: THE ONLY CONSUMER COUNTED THE ENTRIES. A conformance-probe roster landed with a witness asserting there were three probes. Nothing executed one. ",
+
+    "SIX: THE MUTATION VARIED NO DIMENSION THE GATE IGNORED. Rows meant to prove a five-field subject comparison varied TOPOLOGY, which passes against a three-field gate and a five-field gate alike -- so they certified a comparison that was ignoring two of its own dimensions. A test cannot report a dimension nobody varied. ",
+
+    "THE COMMON ROOT IS INFERRING EXECUTION FROM EXISTENCE. In every instance the author confirmed the artifact was THERE -- it typechecks, the symbol resolves, the file is in the required lane -- and inferred that it RAN and that it DISCRIMINATED. DESIGN section 5 names exactly this and was quoted in the same session it was violated, which is the evidence that knowing the rule is not the mechanism. ",
+
+    "AND PER-TEST PASSES AND MODULE-COMPILES-CLEAN ARE INDEPENDENT FACTS, measured on this session's own harness: a witness module refused at emit while eight of its nine rows still PASSED, because a scoped run resolves only what the named function needs. So neither result implies the other, and a report citing one as the other is the same inference in the opposite direction. ",
+
+    "RECOGNITION RULE: FOR EVERY CHECK, NAME THE INPUT THAT MAKES IT RED AND CONFIRM THAT INPUT IS AUTHORABLE WHERE THE CHECK RUNS. If the red requires a state the producer cannot construct, the check is testing a fixture. If the red requires editing the declaration rather than the realization, the check is validation standing where construction was available. If no input makes it red, it is a decoration that will be cited as coverage. ",
+
+    "RUNG FOUND AT: mitigatable. Five of the six were caught by executing the corpus rather than by any gate, and the sixth by an outside reviewer reading the subject type beside the comparison. ",
+
+    "ATTAINABLE CEILING: mechanically preventable. Three of the six are decidable from the tree the namespace authority already walks -- a witness module absent from any compiling closure, a declaration with no call site in the closure, a test whose body only projects fields of a `data` row it also authored. The producer-cannot-reach-the-arm case needs reachability over the producer's own match arms, which is the same analysis the compiler performs for exhaustiveness. It does not reach structural impossibility: whether a check DISCRIMINATES is a property of the subject's semantics, which is Rice's theorem territory, so the red-input obligation stays a ratchet. ",
+
+    "NEXT TRIGGER: an ingestion-time refusal for a witness declaration that no compiling closure contains, plus the unconsumed-declaration set DESIGN section 3c already says is derivable at ingestion. Those two close instances two, three and five; the discriminating-red obligation remains review diligence, and this row says so rather than claiming the class is solved.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.spark.native_rank_observer", decl_name: "observe_endpoint_alias_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.spark.serving_compatibility_witness_test", decl_name: "a_profile_only_change_is_not_covered_by_the_refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.spark.nope_conformance_probe", decl_name: "run_nope_conformance", field: WholeDeclaration },
+  ],
+}

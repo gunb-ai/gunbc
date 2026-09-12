@@ -90,7 +90,7 @@ data conformance_domains: List<ConformanceDomain> = [
   ConformanceDomain {
     key: "conformance-realization",
     label: "materialization / realization",
-    question: "Does the change cache, memoize, build, emit or execute something without inhabiting the corpus's realization model -- a content-addressed pure spec realized by a bound handler -- and if it departs from that model, does it say why?",
+    question: "Does the change cache, memoize, build, emit or execute something without inhabiting the corpus's realization model -- a content-addressed pure spec realized by a bound handler -- or does it CONSUME a capability whose usable instance must exist on a target -- an executable, a POSIX principal, a credentialed session, a directory, a service, a kernel module -- without declaring the exact requirement and resolving it through the realization closure: exactly one bound provider, recursively closed prerequisites, separately authorized mutation where the provider must apply, grounded readback, and a ready handle consumed by the dependent? Does it instead rely on ambient state, statement or list order, a username or path literal, or an actuation exit code; and where it departs from the model, does it say why?",
     homes: ConformanceHomes {
       first: decl_ref(module_path: "std.realization", decl_name: "Materialization"),
       rest: [
@@ -98,14 +98,28 @@ data conformance_domains: List<ConformanceDomain> = [
         decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
         decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
         decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
+        decl_ref(module_path: "std.realization_dependency", decl_name: "CapabilityRequirement"),
+        decl_ref(module_path: "std.realization_dependency", decl_name: "resolve_realization_closure"),
+        decl_ref(module_path: "std.realization_dependency", decl_name: "RealizedCapability"),
+        decl_ref(module_path: "gunbc.ensure", decl_name: "ensure_reconcile"),
+        decl_ref(module_path: "std.realization_reconcile", decl_name: "reconcile_effect"),
+        decl_ref(module_path: "std.realization_schedule", decl_name: "RealizationPlan"),
+        decl_ref(module_path: "gunbc.managed_principal_session", decl_name: "ManagedPrincipalSessionReady"),
       ],
     },
     tells: [
       "a hand-rolled map, memo flag or scratch directory keyed by something other than declared-input content",
       "a shell or host call that executes what a realization handler already binds",
-      "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit"
+      "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit",
+      "a consumer names an executable path, a username or a service endpoint instead of accepting a realized capability handle",
+      "an installer or bootstrap sits earlier in a list, a workflow job or a let chain, but no dependency edge or ready value connects it to the consumer",
+      "a dependent operation is attempted after its prerequisite refused, was inaccessible, or applied without a grounded readback",
+      "a requirement with no provider produces a human instruction or a late shell failure instead of a plan refusal naming the unbound capability",
+      "several providers are resolved by list order or first match rather than by target policy producing exactly one binding",
+      "an access decision, an operator grant, a credential, a zero exit status or a written file is treated as evidence that the resulting capability is usable",
+      "the same target capability is ensured once per consumer instead of one exact requirement being shared across the closure"
     ],
-    narrative: "caching and execution are one concept, keyed by content hash",
+    narrative: "caching and execution are one concept keyed by content hash, and realization precedes use: a capability is consumed through a grounded handle its converger produced, never through ambient state or statement order",
   },
   ConformanceDomain {
     key: "conformance-leasing",
