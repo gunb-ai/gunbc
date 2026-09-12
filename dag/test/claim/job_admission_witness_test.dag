@@ -9,6 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, WorkKey, fabric_identity_eq }
 import product.fabric.job_admission {
   classification_receipt_issuer_frontier, job_admission_billing_frontier, job_admission_runner_frontier,
+  job_admission_mutation_harness_frontier,
   JobAdmission, JobClassification, JobClassificationReceipt, JobAdmitted, JobHeld, JobRefused,
   DeclaredNonEphi, DeclaredEphi, ClassificationUnresolved,
   EphiHandlingAuthorityHasNoProducer, ClassificationReceiptMissing,
@@ -173,5 +174,6 @@ fn frontier_enrolled_once(row: FrontierRow) -> Bool {
 test fn admission_frontiers_reach_the_dissolution_census() -> Bool {
   frontier_enrolled_once(row: classification_receipt_issuer_frontier) &&
   frontier_enrolled_once(row: job_admission_billing_frontier) &&
-  frontier_enrolled_once(row: job_admission_runner_frontier)
+  frontier_enrolled_once(row: job_admission_runner_frontier) &&
+  frontier_enrolled_once(row: job_admission_mutation_harness_frontier)
 }
