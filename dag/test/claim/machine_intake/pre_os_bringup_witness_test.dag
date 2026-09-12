@@ -32,6 +32,7 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   BmcControllerReset,
   ChassisPowerCycle,
   CollectorNotProven,
+  ConsoleDeadlineNotAfterAliveInstant,
   CollectorStanding,
   CollectorProvenRunning,
   ConsoleLeaseNotHeld,
@@ -151,6 +152,36 @@ test fn a_missing_liveness_watch_is_named_as_the_gap() -> Bool {
     ],
   ) {
     NotReady { gap: CollectorNotProven { kind: ControllerLivenessWatch } } => true
+    _ => false
+  }
+}
+
+// THE DEADLINE IS CONSUMED BY collectors_ready ITSELF: the positive fixture admits, and the same
+// fixture with the deadline moved to or before the alive instant refuses.
+test fn a_console_deadline_not_after_the_alive_instant_refuses_readiness() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: [
+      CollectorProvenRunning { proof: ConsoleSessionHeldPastActivation { capture_path: "x.log", activation_bytes: byte_size(count: 86), client_alive_at: 900, terminate_deadline: 900 } },
+      CollectorProvenRunning { proof: SelCursorRecorded { last_record_id: 1, recorded_at: 1 } },
+      CollectorProvenRunning { proof: ControllerObservedReachable { at: 1 } },
+    ],
+  ) {
+    NotReady { gap: ConsoleDeadlineNotAfterAliveInstant { client_alive_at: 900, terminate_deadline: 900 } } => true
+    _ => false
+  }
+}
+
+test fn the_positive_console_fixture_with_a_later_deadline_admits() -> Bool {
+  match collectors_ready(
+    attempt: mtcollins1_ac_cycle_attempt,
+    sink: EvidenceSinkPresent { directory: "sink" },
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningExpected),
+    collectors: proven_collectors(),
+  ) {
+    Ready { ready: _ } => true
     _ => false
   }
 }

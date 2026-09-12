@@ -129,6 +129,7 @@ type CollectorGap
   = EvidenceSinkMissing
   | ConsoleLeaseNotHeld { verdict: ObservationVerdict }
   | CollectorNotProven { kind: CollectorKind }
+  | ConsoleDeadlineNotAfterAliveInstant { client_alive_at: EpochMs, terminate_deadline: EpochMs }
 
 // SEALED. The only producer is collectors_ready below, so a CollectorsReady in hand IS the fact
 // that every gap above was checked and none held. There is no literal any other module can write.
@@ -151,14 +152,22 @@ fn standing_kind(c: CollectorStanding) -> CollectorKind {
   }
 }
 
-// ONE COLLECTOR'S STANDING WITHIN THE ROSTER, as the first gap it presents or none.
+// ONE COLLECTOR'S STANDING WITHIN THE ROSTER, as the first gap it presents or none. The console
+// proof's instants are CONSUMED here, not carried: a deadline that does not lie after the instant
+// the client was seen alive bounds nothing, and readiness refuses it (eager-owl-205, 2026-09-12).
 fn collector_gap_for(kind: CollectorKind, collectors: List<CollectorStanding>) -> CollectorGap? {
   let matching = filter(xs: collectors, f: c => collector_kind_eq(a: standing_kind(c: c), b: kind))
   match matching.first() {
     Absent => Present { value: CollectorNotProven { kind: kind } }
     Present { value: s } =>
       match s {
-        CollectorProvenRunning { proof: _ } => none
+        CollectorProvenRunning { proof: p } =>
+          match p {
+            ConsoleSessionHeldPastActivation { capture_path: _, activation_bytes: _, client_alive_at: alive, terminate_deadline: deadline } =>
+              if deadline > alive { none } else { Present { value: ConsoleDeadlineNotAfterAliveInstant { client_alive_at: alive, terminate_deadline: deadline } } }
+            SelCursorRecorded { last_record_id: _, recorded_at: _ } => none
+            ControllerObservedReachable { at: _ } => none
+          }
         CollectorArmedUnproven { kind: k } => Present { value: CollectorNotProven { kind: k } }
         CollectorAbsent { kind: k } => Present { value: CollectorNotProven { kind: k } }
       }
@@ -301,5 +310,5 @@ fn power_actuation_outcome(request: PowerActuationRequest, ack: ControllerAcknow
 // then the pure folds above are consumed by the regression corpus and its witnesses, and the
 // machine is not driven by a model that has never run.
 data pre_os_actuation_issuance_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a collector orchestrator that produces CollectorsReady from live instruments -- console capture spawned under the held session lease, SEL cursor read, controller observed reachable -- and dispatches PowerActuationRequest to the controller transport, reading its acknowledgement into ControllerAcknowledgement; SUFFICIENT FOR every pre-OS power action in machine-intake, not merely one host's wrapper",
+  description: "a collector orchestrator that produces CollectorsReady from live instruments -- console capture spawned under the held session lease with TWO bounds, an observation deadline that ends the capture interval and starts termination and a cleanup deadline bounding termination of the owned client and its children, output draining and session release, where termination at the observation deadline is the NORMAL outcome and not an interruption -- SEL cursor read, controller observed reachable -- and dispatches PowerActuationRequest to the controller transport, reading its acknowledgement into ControllerAcknowledgement; SUFFICIENT FOR every pre-OS power action in machine-intake, not merely one host's wrapper",
 )
