@@ -28,7 +28,7 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet_asset_identity { chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
+import gunbc.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -42,6 +42,13 @@ import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
 import product.inventory {
   CatalogRowExact,
+  CatalogRowUnread,
+  BalanceDerived,
+  BalanceRefused,
+  LedgerRefusalCause,
+  derive_inventory_balance,
+  LandedCostHeldPrivately,
+  LotReceived,
   InventoryEvent,
   InventoryLotAllocator,
   InventoryLotIdentity,
@@ -590,4 +597,131 @@ fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> Nat {
 fn dimm_lot_intent_fits_the_lot() -> Bool {
   intended_allocation_total(rows: dimm_lot_64gib_32x_intended_allocation)
     <= dimm_lot_64gib_32x.quantity_acquired
+}
+
+// ---------------------------------------------------------------------------
+// DGX Spark procurement population, independently attested on 2026-09-12:
+// Micro Center supplied SIX (the acquisition memo's quantity, relayed by the
+// operator's CPA session); eBay supplied a separate PAIR. The recalled six was
+// one lot, not the whole population. Neither quantity is back-solved from eight.
+//
+// These are procurement events, not the 2 + 2 + 3 + 1 LAN arrival batches in
+// gunbc.spark.dgx_procurement. The asset-to-lot and arrival-to-lot joins are
+// UNOBSERVED: no serial, router label, or host identity is attributed to either
+// lot here. Inventory labels below name the operator-confirmed physical units.
+//
+// MODELING GAPS (explicitly retained, not resolved by omission):
+// - ProcurementLot / InventoryEvent has no receipt-date field or unsettled-date
+//   arm. The eBay pair was delivered 2026-08-06. Micro Center's receipt date is
+//   unresolved: a 2026-08-19 purchase-date assertion and a 2026-08-15 service-date
+//   assertion disagree, and neither establishes receipt. No date is chosen.
+//   Date-sensitive acquisition chronology cannot be derived from these ledgers.
+//   LotReceived records receipt, not its date.
+// - InventoryEvent has no ordered-then-cancelled arm. A separate eBay order was
+//   CANCELLED and acquired nothing. It has no ProcurementLot or LotAcquired event;
+//   this model cannot distinguish that cancelled order from never ordering.
+// - Both lots' storage SKUs are unobserved. CatalogRowUnread carries each read
+//   obligation. extdeps.systems.nvidia has 1 TB and 4 TB catalog rows; no exact
+//   DeclarationRef is licensed until storage and source-lot identity are observed.
+// - dgx_spark_procurement_intent.unit_count is an authored intent literal, not an
+//   acquisition fold. Its aggregate 4 TB catalog binding is not per-lot evidence.
+//   That pre-existing row and the arrival model remain outside this change.
+//
+// CONSUMPTION: dgx_spark_procurement_population folds the two lot ledgers through
+// product.inventory.derive_inventory_balance. The executing route is `gunbc run
+// --source-root dag --source-root src/v2 --entry
+// dag/test/claim/dgx_spark_inventory_witness_test.dag --function
+// w_independent_acquisitions_reconcile_eight --claim-run`, also discovered as a
+// test fn by the required witness lane. This is an executing acquisition witness,
+// not a production asset-register consumer: no production consumer yet reads the
+// derived count. The private register integration is outside this public change.
+// ---------------------------------------------------------------------------
+
+data dgx_spark_micro_center_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dimm_lot).id
+
+data fleet_lot_allocator_after_dgx_spark_micro_center: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dimm_lot).alloc
+
+data dgx_spark_ebay_pair_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocator_after_dgx_spark_micro_center).id
+
+data dgx_spark_micro_center_lot: ProcurementLot = ProcurementLot {
+  identity: dgx_spark_micro_center_lot_identity,
+  receipt: ReceiptHeldPrivately,
+  catalog: CatalogRowUnread {
+    observed_family: "NVIDIA DGX Spark" as NonEmptyStr,
+    read_obligation: "Observe storage capacity (1 TB or 4 TB) and identify each unit belonging to the Micro Center acquisition before citing an exact extdeps.systems.nvidia catalog row" as NonEmptyStr,
+  },
+  display_label: "NVIDIA DGX Spark, Micro Center acquisition" as NonEmptyStr,
+  quantity_acquired: 6,
+  landed_cost: LandedCostHeldPrivately,
+}
+
+data dgx_spark_micro_center_lot_ledger: List<InventoryEvent> = [
+  LotAcquired { lot: dgx_spark_micro_center_lot_identity },
+  LotReceived { lot: dgx_spark_micro_center_lot_identity, quantity: dgx_spark_micro_center_lot.quantity_acquired },
+]
+
+data dgx_spark_ebay_pair_lot: ProcurementLot = ProcurementLot {
+  identity: dgx_spark_ebay_pair_lot_identity,
+  receipt: ReceiptHeldPrivately,
+  catalog: CatalogRowUnread {
+    observed_family: "NVIDIA DGX Spark" as NonEmptyStr,
+    read_obligation: "Observe storage capacity (1 TB or 4 TB) and identify each unit belonging to the eBay pair delivered 2026-08-06 before citing an exact extdeps.systems.nvidia catalog row" as NonEmptyStr,
+  },
+  display_label: "NVIDIA DGX Spark, eBay pair acquisition" as NonEmptyStr,
+  quantity_acquired: 2,
+  landed_cost: LandedCostHeldPrivately,
+}
+
+data dgx_spark_ebay_pair_lot_ledger: List<InventoryEvent> = [
+  LotAcquired { lot: dgx_spark_ebay_pair_lot_identity },
+  LotReceived { lot: dgx_spark_ebay_pair_lot_identity, quantity: dgx_spark_ebay_pair_lot.quantity_acquired },
+]
+
+type FleetInventoryLedger {
+  lot: ProcurementLot
+  events: List<InventoryEvent>
+}
+
+data dgx_spark_procurement_ledgers: List<FleetInventoryLedger> = [
+  FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+  FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+]
+
+data dgx_spark_asset_identities: List<PhysicalAssetIdentity> = [
+  dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04,
+  dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08,
+]
+
+type FleetInventoryPopulation
+  = FleetPopulationDerived { acquired: Nat, received: Nat, owned: Nat }
+  | FleetPopulationRefused {
+      lot: InventoryLotIdentity,
+      cause: LedgerRefusalCause,
+      event_ordinal: Nat,
+      event_label: NonEmptyStr,
+    }
+
+// No failed ledger contributes a zero or a valid prefix. The first located refusal
+// survives the outer fold, so a later valid lot cannot hide an invalid acquisition.
+fn fleet_inventory_population(ledgers: List<FleetInventoryLedger>) -> FleetInventoryPopulation {
+  fold(ledgers, init: FleetPopulationDerived { acquired: 0, received: 0, owned: 0 }, f: fn(acc, ledger) {
+    match acc {
+      FleetPopulationRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => acc
+      FleetPopulationDerived { acquired: a, received: r, owned: o } =>
+        match derive_inventory_balance(lot: ledger.lot, events: ledger.events) {
+          BalanceDerived { balance: b } => FleetPopulationDerived {
+            acquired: a + b.acquired,
+            received: r + b.received,
+            owned: o + b.owned,
+          }
+          BalanceRefused { cause: c, event_ordinal: n, event_label: l } => FleetPopulationRefused {
+            lot: ledger.lot.identity, cause: c, event_ordinal: n, event_label: l,
+          }
+        }
+    }
+  })
+}
+
+fn dgx_spark_procurement_population() -> FleetInventoryPopulation {
+  fleet_inventory_population(ledgers: dgx_spark_procurement_ledgers)
 }

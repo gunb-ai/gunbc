@@ -1,0 +1,124 @@
+module test.claim.dgx_spark_inventory_witness
+
+import std.types { Bool, String }
+import std.nat { Nat }
+import product.inventory {
+  LotAcquired, LotReceived, CatalogRowUnread, CatalogRowExact,
+  ReceiptHeldPrivately, ReceiptRecorded,
+  LandedCostHeldPrivately, LandedCostUnsettled, LandedCostRecorded,
+  inventory_lot_identity_eq, ledger_refusal_cause_label,
+}
+import product.placement_supply { physical_asset_identity_eq }
+import gunbc.fleet_physical_inventory {
+  FleetInventoryLedger, FleetInventoryPopulation,
+  FleetPopulationDerived, FleetPopulationRefused,
+  dgx_spark_micro_center_lot, dgx_spark_micro_center_lot_ledger,
+  dgx_spark_ebay_pair_lot, dgx_spark_ebay_pair_lot_ledger,
+  dimm_lot_64gib_32x_identity,
+  dgx_spark_procurement_ledgers, dgx_spark_asset_identities,
+  fleet_inventory_population, dgx_spark_procurement_population,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn population_is(reading: FleetInventoryPopulation, acquired: Nat, received: Nat, owned: Nat) -> Bool {
+  match reading {
+    FleetPopulationDerived { acquired: a, received: r, owned: o } =>
+      a == acquired && r == received && o == owned
+    FleetPopulationRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+  }
+}
+
+// Eight is the independently operator-confirmed physical count, not copied from
+// dgx_spark_procurement_intent (which is intentionally not imported). Six and two
+// are independently attested acquisitions. Omitting either lot must change the
+// result; an implementation returning eight without folding cannot pass.
+test fn w_independent_acquisitions_reconcile_eight() -> Bool {
+  let micro_center_only = fleet_inventory_population(ledgers: [
+    FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: dgx_spark_micro_center_lot_ledger },
+  ])
+  let ebay_only = fleet_inventory_population(ledgers: [
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  ])
+  dgx_spark_procurement_ledgers.length() == 2
+    && population_is(reading: dgx_spark_procurement_population(), acquired: 8, received: 8, owned: 8)
+    && population_is(reading: micro_center_only, acquired: 6, received: 6, owned: 6)
+    && population_is(reading: ebay_only, acquired: 2, received: 2, owned: 2)
+    && !inventory_lot_identity_eq(left: dgx_spark_micro_center_lot.identity, right: dgx_spark_ebay_pair_lot.identity)
+    && !inventory_lot_identity_eq(left: dgx_spark_micro_center_lot.identity, right: dimm_lot_64gib_32x_identity)
+    && !inventory_lot_identity_eq(left: dgx_spark_ebay_pair_lot.identity, right: dimm_lot_64gib_32x_identity)
+}
+
+// Same lot rows, different events. This distinguishes an event fold from summing
+// quantity_acquired blindly, and receipt from acquisition. The empty ledger is a
+// synthetic control, NOT a representation of the real cancelled order: the model
+// has no cancelled-order state, as documented beside the acquisition rows.
+test fn w_counts_follow_events_not_just_lot_rows() -> Bool {
+  let without_receipt = fleet_inventory_population(ledgers: [
+    FleetInventoryLedger {
+      lot: dgx_spark_micro_center_lot,
+      events: [LotAcquired { lot: dgx_spark_micro_center_lot.identity }],
+    },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  ])
+  let without_acquisition = fleet_inventory_population(ledgers: [
+    FleetInventoryLedger { lot: dgx_spark_micro_center_lot, events: [] },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  ])
+  population_is(reading: without_receipt, acquired: 8, received: 2, owned: 8)
+    && population_is(reading: without_acquisition, acquired: 2, received: 2, owned: 2)
+    && population_is(reading: fleet_inventory_population(ledgers: []), acquired: 0, received: 0, owned: 0)
+}
+
+// Valid eBay events precede an invalid Micro Center ledger and follow it again.
+// Neither a valid prefix nor a later valid lot may replace the located refusal.
+test fn w_invalid_ledger_refuses_the_whole_population() -> Bool {
+  match fleet_inventory_population(ledgers: [
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+    FleetInventoryLedger {
+      lot: dgx_spark_micro_center_lot,
+      events: [LotReceived { lot: dgx_spark_micro_center_lot.identity, quantity: 6 }],
+    },
+    FleetInventoryLedger { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
+  ]) {
+    FleetPopulationRefused { lot: l, cause: c, event_ordinal: n, event_label: e } =>
+      inventory_lot_identity_eq(left: l, right: dgx_spark_micro_center_lot.identity)
+        && ledger_refusal_cause_label(cause: c) as String == "event_before_acquisition"
+        && n == 0 && e as String == "LotReceived"
+    FleetPopulationDerived { acquired: _, received: _, owned: _ } => false
+  }
+}
+
+// This checks aggregate coverage, not a unit-to-lot join: no test attributes an
+// inventory label to a procurement event or borrows a router label as evidence.
+test fn w_distinct_physical_identities_cover_the_derived_population() -> Bool {
+  let distinct = unique(xs: dgx_spark_asset_identities, eq: physical_asset_identity_eq)
+  match dgx_spark_procurement_population() {
+    FleetPopulationDerived { acquired: _, received: r, owned: o } =>
+      distinct && dgx_spark_asset_identities.length() == r && r == o
+    FleetPopulationRefused { lot: _, cause: _, event_ordinal: _, event_label: _ } => false
+  }
+}
+
+// The physical sum must not require disclosing money or claiming a storage SKU.
+// Read every live lot, not separately authored lookalike fixtures.
+test fn w_lots_preserve_private_costs_and_unobserved_skus() -> Bool {
+  fold(dgx_spark_procurement_ledgers, init: true, f: fn(acc, ledger) {
+    let private_receipt = match ledger.lot.receipt {
+      ReceiptHeldPrivately => true
+      ReceiptRecorded { receipt: _ } => false
+    }
+    let private_cost = match ledger.lot.landed_cost {
+      LandedCostHeldPrivately => true
+      LandedCostUnsettled => true
+      LandedCostRecorded { cost: _ } => false
+    }
+    let unread_sku = match ledger.lot.catalog {
+      CatalogRowUnread { observed_family: family, read_obligation: obligation } =>
+        family as String == "NVIDIA DGX Spark" && (obligation as String).length() > 0
+      CatalogRowExact { row: _ } => false
+    }
+    acc && private_receipt && private_cost && unread_sku
+  })
+}
