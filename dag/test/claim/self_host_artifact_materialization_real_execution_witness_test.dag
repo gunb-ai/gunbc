@@ -235,6 +235,7 @@ fn axis_identity(artifact: GeneratedArtifactIdentity) -> GenerationIdentity {
     target_model: symbol_identity_digest(sym: "axis-derivation-target-model"),
     toolchain: symbol_identity_digest(sym: "axis-derivation-toolchain"),
     build_configuration: symbol_identity_digest(sym: "axis-derivation-build-configuration"),
+    required_lens_contract: symbol_identity_digest(sym: "axis-derivation-required-lens-contract"),
     materialized_artifact: artifact
   }
 }
