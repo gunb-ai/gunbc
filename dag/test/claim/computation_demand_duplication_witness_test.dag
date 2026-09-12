@@ -44,7 +44,8 @@ test fn replicated_oracle_pair_is_declared_and_admissible() -> Bool {
 // Formerly keyed on tools.emit_determinism_transport.ed_typed_compile_invocation (the x2
 // full-corpus emit oracle); re-homed to a self-contained synthetic fixture when the x2
 // emit-determinism gate and transport were deleted (Phase D, 2026-07-14 — determinism became a
-// construction gate, v2.lens.determinism enrolled in always_required_root_lenses). The lens's
+// construction gate, v2.lens.determinism registered at CompileLensRoot grain in
+// required_compile_lens_roster). The lens's
 // ShellProgram walker keeps its synthetic lens-unit subjects in v2.test.duplicate_computation and
 // the not-yet-migrated bash-program transports as its domain; it dissolves with the sidecar.
 

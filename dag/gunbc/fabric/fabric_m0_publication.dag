@@ -39,28 +39,20 @@ import gunbc.fabric_m0_commit {
 //
 // CONSUMERS, NAMED POSITIVELY (DESIGN 3c): this fold is called by
 // test.claim.fabric_m0_publication_witness, which exercises it across the five
-// publication arms. THE FRONTIER IS THE CAPABILITY THAT CLOSES IT, not a claim
-// about what is absent: a job-ending that already holds a run's Work, that
-// attempt's commit transport, and an INDEPENDENT ORIGIN READBACK of the commit
-// manifest, and that decides the process or check conclusion from the
-// JobPublication this fold returns.
+// publication arms, and by gunbc.fabric_m0_job_ending end_required_job, which
+// derives the check conclusion from the JobPublication. THE REMAINING FRONTIER
+// IS THE REQUIRED-CI WIRE, not a claim about what is absent: claim_executor
+// --required-ci still maps process exit through floor_exit_to_check_conclusion
+// and does not yet call end_required_job. That wire waits on an independent
+// origin readback constructible on the run path (origin PUT + self-staging GET).
 //
-// WHY THE REQUIRED-CI ENDING IS NOT THAT CAPABILITY, which is the part worth
-// keeping: claim_executor --required-ci accumulates phase failures and maps the
-// process exit to a GitHub check through floor_exit_to_check_conclusion. That
-// ending never constructs CommitTransportOutcome or ManifestReadbackObservation.
-// Wiring this join into it without an independent origin readback would refuse
+// WHY THE REQUIRED-CI ENDING IS STILL NOT THIS JOIN'S CONSUMER, which is the
+// part worth keeping: claim_executor --required-ci accumulates phase failures and
+// maps the process exit to a GitHub check through floor_exit_to_check_conclusion.
+// That ending never constructs CommitTransportOutcome or ManifestReadbackObservation.
+// Wiring end_required_job into it without an independent origin readback would refuse
 // every green job (ReadbackUnknown) or fabricate a confirming readback. The
-// missing capability is named on gunbc.fabric_m0_commit publish_after_commit.
-//
-// THE COMPLEMENT IS DATED, NOT ASSERTED LIVE. Measured at gunbc#10972 against
-// main 51405ad9e3f: the five witness call sites above were the only callers of
-// publish_work in the corpus. The previous form of this paragraph said `TODAY
-// this fold is reached by enrolled witnesses and by no job-ending`, and TODAY is
-// a word rather than a binding -- nothing derives that negative, nothing
-// recomputes it, and the mutation that falsifies it (adding a job-ending caller)
-// happens in a different file and would not touch this comment. A dated
-// observation cannot rot; a live open-world negative does.
+// remaining capability is that wire, not a second publication algebra.
 //
 // THAT SENTENCE NAMED DurableOriginRead UNTIL NOW, and the symbol has not existed since gunbc#10934
 // deleted the ReadSource stamp. A citation naming a declaration that no longer resolves is the
