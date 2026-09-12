@@ -19,7 +19,7 @@ import gunbc.memory_configuration_evaluation {
   MemoryPackageMissing, MemoryVariantsMissing, MemoryProcurementCondition,
   MemoryFindingUnavailable, MemoryFirmwareScopeUnestablished, MemoryComparisonUnestablished,
   MemoryStandingMissing, MemoryStandingEvidenceUnobserved, MemoryTrainingScreenUnresolved,
-  MemoryModelMissing, MemoryCollectorUnavailable,
+  MemoryModelMissing, MemoryCollectorUnavailable, MemoryPopulationRoleUnresolved,
 }
 import gunbc.memory_change_evaluation { MemoryChangeAssessment }
 
@@ -75,6 +75,9 @@ fn memory_unknown_text(fact: MemoryUnknownFact) -> NonEmptyStr {
     MemoryTrainingScreenUnresolved { dimm, implication: _ } => concat("training screen requires evidence for ", dimm.catalog.part_number as String, " at ", dimm.position.connector as String) as NonEmptyStr
     MemoryModelMissing { obligation } => concat("model capability missing: ", memory_obligation_label(obligation: obligation) as String) as NonEmptyStr
     MemoryCollectorUnavailable { cause } => cause
+    MemoryPopulationRoleUnresolved { refusal } => concat("population role unresolved at socket ", to_string(refusal.processor_socket),
+      " / MCU ", to_string(refusal.memory_controller), "; pair ", to_string(refusal.table_left_connector), "/", to_string(refusal.table_right_connector),
+      ": ", to_string(refusal.cause)) as NonEmptyStr
   }
 }
 

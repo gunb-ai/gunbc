@@ -6,7 +6,9 @@ import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.boards.types { AmpereMtCollins }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
-  MtCollinsChannelConnectorPair, mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs,
+  MtCollinsChannelPopulationRole, MtCollinsPopulationRoleRefusal,
+  PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles,
+  mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs,
 }
 import extdeps.memory.micron {
   mta36ads2g72pz_2g1a1_catalog, mta36ads2g72pz_2g1a1_primary_package,
@@ -15,7 +17,7 @@ import extdeps.memory.micron {
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
 import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
 import product.placement_supply { HostIdentity }
-import product.installed_bom_reconcile { DimmSlotLocator }
+import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import gunbc.memory_configuration {
   MemoryPosition, MemoryPackageEvidence, MemoryDeliveryVariant, PositionedMemoryModule,
   MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
@@ -42,15 +44,6 @@ data mtcollins_observed_hynix_package: MemoryPackageEvidence = MemoryPackageEvid
   value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT { Data: 0 }, source: mtcollins_training_capture_source,
 }
 
-fn mtcollins_memory_position(pair: MtCollinsChannelConnectorPair) -> MemoryPosition {
-  let connector = if pair.table_left_connector % 2 == 1 { pair.table_left_connector } else { pair.table_right_connector }
-  MemoryPosition {
-    connector: concat("J", to_string(connector)) as DimmSlotLocator,
-    socket: pair.processor_socket, controller: pair.memory_controller, slot: 0,
-    mapping: decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.memory_population", decl_name: "mt_collins_channel_population_roles"),
-  }
-}
-
 fn mtcollins_memory_variants(ads: Bool) -> List<MemoryDeliveryVariant> {
   if ads { [MemoryDeliveryVariant {
     identity: "Micron published SKU process variants",
@@ -75,20 +68,19 @@ fn mtcollins_memory_module(position: MemoryPosition, ads: Bool) -> PositionedMem
 // The artifact does not contain serials. The replay therefore reconstructs
 // placement and part identities without fabricating retained unit serials.
 // Board identity cites the existing intake observation, not a fabricated vendor catalog.
-fn mtcollins_witnessed_configuration() -> MemoryConfiguration {
+fn mtcollins_witnessed_configuration(roles: List<MtCollinsChannelPopulationRole>) -> MemoryConfiguration {
   MemoryConfiguration {
     platform: MemoryPlatform { host: "mtcollins1" as HostIdentity, board: AmpereMtCollins,
       board_part: decl_field_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "baseboard"),
       processor: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog"),
       firmware: "210525", settings: [MemoryFirmwareSetting { name: "ecc_en", value: "00000002" }],
     },
-    population: map(concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs), pair =>
-      mtcollins_memory_module(position: mtcollins_memory_position(pair: pair), ads: pair.processor_socket == 0 && pair.memory_controller < 4)),
+    population: map(roles, role =>
+      mtcollins_memory_module(position: mtcollins_memory_position(role: role, additional: false), ads: role.processor_socket == 0 && role.memory_controller < 4)),
   }
 }
 
-fn mtcollins_replay_proposal() -> MemoryChangeProposal {
-  let configuration = mtcollins_witnessed_configuration()
+fn mtcollins_replay_proposal(configuration: MemoryConfiguration) -> MemoryChangeProposal {
   MemoryChangeProposal { initial: configuration, proposed: configuration,
     actions: [MemoryPowerOff, MemoryInitialize, MemoryReadbackRequired], additional_requirements: [] }
 }
@@ -97,13 +89,13 @@ fn mtcollins_replay_proposal() -> MemoryChangeProposal {
 // attached to this attempt, not inferred from the script wrapper's timestamps.
 // Printed tokens are transcribed from this capture and bound to catalog symbols;
 // no rule about every ADS part or other firmware truncating an MTA prefix follows.
-fn mtcollins_training_collector(payload: String) -> MemoryCollectorReceipt {
+fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: String) -> MemoryCollectorReceipt {
   MemoryCollectorReceipt { source: mtcollins_training_capture_source,
     printed_parts: [
       MemoryPrintedPartBinding { part: mtcollins_ads_part, printed: "36ADS2G72PZ-2G1A1" },
       MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK" },
     ],
-    printed_positions: map(mtcollins_witnessed_configuration().population, dimm => MemoryPrintedPositionBinding {
+    printed_positions: map(configuration.population, dimm => MemoryPrintedPositionBinding {
       position: dimm.position, printed: concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":") as NonEmptyStr,
     }),
     expected_payload_token: "DRAM populated DIMMs:",
@@ -153,40 +145,52 @@ fn mtcollins_training_mixture_finding(
   }
 }
 
-fn mtcollins_memory_evidence_from_capture(payload: String) -> MemoryEvaluationEvidence {
+fn mtcollins_memory_evidence_from_capture(configuration: MemoryConfiguration, payload: String) -> MemoryEvaluationEvidence {
   MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
-    mixture: mtcollins_training_mixture_finding(attempt: "2026-09-12T02:37:23Z", configuration: mtcollins_witnessed_configuration(),
-      collector: mtcollins_training_collector(payload: payload)),
+    mixture: mtcollins_training_mixture_finding(attempt: "2026-09-12T02:37:23Z", configuration: configuration,
+      collector: mtcollins_training_collector(configuration: configuration, payload: payload)),
     qualifications: [], training_failures: [],
   }
 }
 
-func replay_mtcollins_memory_change() -> MemoryChangeAssessment {
-  let read = Filesystem.Read(path: mtcollins_training_capture_path as String)
-  let hash = sha256sum_file_digest_via_shell(path: mtcollins_training_capture_path)
-  let valid_hash = match hash {
-    Sha256FileDigest { digest } => digest.hex == mtcollins_training_capture_sha256
-    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+func replay_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeAssessment, List<MtCollinsPopulationRoleRefusal>> {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals } => ObservationRefused { cause: refusals }
+    PopulationRolesResolved { roles } => {
+      let configuration = mtcollins_witnessed_configuration(roles: roles)
+      let read = Filesystem.Read(path: mtcollins_training_capture_path as String)
+      let hash = sha256sum_file_digest_via_shell(path: mtcollins_training_capture_path)
+      let valid_hash = match hash {
+        Sha256FileDigest { digest } => digest.hex == mtcollins_training_capture_sha256
+        Sha256FileDigestUnavailable { path: _, reason: _ } => false
+      }
+      let evidence = if read.success && valid_hash {
+        mtcollins_memory_evidence_from_capture(configuration: configuration, payload: read.content)
+      } else { MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
+        mixture: ObservationRefused { cause: "committed capture could not be read and verified" },
+        qualifications: [], training_failures: [],
+      } }
+      ObservationEstablished { observed: evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: configuration), evidence: evidence) }
+    }
   }
-  let evidence = if read.success && valid_hash {
-    mtcollins_memory_evidence_from_capture(payload: read.content)
-  } else { MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
-    mixture: ObservationRefused { cause: "committed capture could not be read and verified" },
-    qualifications: [], training_failures: [],
-  } }
-  evaluate_memory_change(proposal: mtcollins_replay_proposal(), evidence: evidence)
 }
 
-func explain_mtcollins_memory_change() -> MemoryChangeExplanation {
-  explain_memory_change(assessment: replay_mtcollins_memory_change())
+func explain_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeExplanation, List<MtCollinsPopulationRoleRefusal>> {
+  match replay_mtcollins_memory_change() {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed } => ObservationEstablished { observed: explain_memory_change(assessment: observed) }
+  }
 }
 
 // Read-only assessment command. Its failure exit is the proposed production
 // admission refusal, not a claim that a new hardware experiment was executed.
 func assess_mtcollins_memory_change() -> ProcessExit {
-  let explanation = explain_mtcollins_memory_change()
-  match memory_change_admission_refusal(a: explanation.assessment, purpose: ProductionMemoryPurchase) {
-    Present { value: cause } => exit_failure(reason: concat(cause as String, "\n", join(map(explanation.lines, line => line as String), "\n")))
-    Absent => ExitSuccess
+  match explain_mtcollins_memory_change() {
+    ObservationRefused { cause } => exit_failure(reason: concat("UNEVALUATED: population-role authority refused: ", to_string(cause)))
+    ObservationEstablished { observed: explanation } =>
+      match memory_change_admission_refusal(a: explanation.assessment, purpose: ProductionMemoryPurchase) {
+        Present { value: cause } => exit_failure(reason: concat(cause as String, "\n", join(map(explanation.lines, line => line as String), "\n")))
+        Absent => ExitSuccess
+      }
   }
 }

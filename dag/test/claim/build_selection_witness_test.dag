@@ -1,8 +1,11 @@
 module test.claim.build_selection_witness
 
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelPopulationRole, mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused,
+}
 import product.build_fulfillment { MemoryFulfillmentContext, BuildResolution }
 import gunbc.memory_change_evaluation { evaluate_memory_change, ProductionMemoryPurchase }
-import gunbc.mtcollins_memory_change { mtcollins_replay_proposal, mtcollins_memory_evidence_from_capture }
+import gunbc.mtcollins_memory_change { mtcollins_witnessed_configuration, mtcollins_replay_proposal, mtcollins_memory_evidence_from_capture }
 
 
 import std.types { Bool, List, NonEmptyStr }
@@ -69,10 +72,10 @@ fn purchase_line() -> BomLine {
   }
 }
 
-fn selection_fixture_resolution(lines: List<LineResolution>) -> BuildResolution {
+fn selection_fixture_resolution(fixture_roles: List<MtCollinsChannelPopulationRole>, lines: List<LineResolution>) -> BuildResolution {
   BuildResolution {
     memory_context: MemoryFulfillmentContext {
-      assessment: evaluate_memory_change(proposal: mtcollins_replay_proposal(), evidence: mtcollins_memory_evidence_from_capture(payload: "")),
+      assessment: evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: mtcollins_witnessed_configuration(roles: fixture_roles)), evidence: mtcollins_memory_evidence_from_capture(configuration: mtcollins_witnessed_configuration(roles: fixture_roles), payload: "")),
       purpose: ProductionMemoryPurchase,
     },
     lines: lines,
@@ -80,7 +83,7 @@ fn selection_fixture_resolution(lines: List<LineResolution>) -> BuildResolution 
 }
 
 // A candidate whose lines all resolved: nothing is missing, so it is comparable.
-fn candidate(
+fn candidate(fixture_roles: List<MtCollinsChannelPopulationRole>,
   identity: DeclarationRef,
   label: NonEmptyStr,
   capacity: ByteSize,
@@ -95,20 +98,20 @@ fn candidate(
     memory_capacity: capacity,
     wall_power: wall_power,
     memory_bandwidth: bandwidth,
-    resolutions: selection_fixture_resolution(lines: []),
+    resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
     cash: CashDerived { cash: cash },
     ceiling: CeilingDerived { builds: builds, bottlenecks: [purchase_line()], bottleneck_units: builds * 32 },
   }
 }
 
-fn cheap_build() -> BuildCandidate {
-  candidate(identity: cheap_ref, label: "cheap" as NonEmptyStr, capacity: one_terabyte, cash: usd_micros(count: 1000000), builds: 31, wall_power: watt(count: 300), bandwidth: Bandwidth { count: 204800000000 })
+fn cheap_build(fixture_roles: List<MtCollinsChannelPopulationRole>) -> BuildCandidate {
+  candidate(fixture_roles: fixture_roles, identity: cheap_ref, label: "cheap" as NonEmptyStr, capacity: one_terabyte, cash: usd_micros(count: 1000000), builds: 31, wall_power: watt(count: 300), bandwidth: Bandwidth { count: 204800000000 })
 }
 
 // Strictly worse on every funded axis than the cheap build: less memory, more
 // money, fewer builds, more power, less bandwidth.
-fn dear_build() -> BuildCandidate {
-  candidate(identity: dear_ref, label: "dear" as NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 9000000), builds: 30, wall_power: watt(count: 400), bandwidth: Bandwidth { count: 187712000000 })
+fn dear_build(fixture_roles: List<MtCollinsChannelPopulationRole>) -> BuildCandidate {
+  candidate(fixture_roles: fixture_roles, identity: dear_ref, label: "dear" as NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 9000000), builds: 30, wall_power: watt(count: 400), bandwidth: Bandwidth { count: 187712000000 })
 }
 
 test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
@@ -116,16 +119,26 @@ test fn w_the_axes_are_the_five_the_pipeline_funds() -> Bool {
 }
 
 test fn w_a_strictly_worse_candidate_is_dominated() -> Bool {
-  match build_standing(subject: dear_build(), field: [cheap_build(), dear_build()], declared: Usd) {
-    DominatedBy { dominators: ds } => count(ds) == 1
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      match build_standing(subject: dear_build(fixture_roles: fixture_roles), field: [cheap_build(fixture_roles: fixture_roles), dear_build(fixture_roles: fixture_roles)], declared: Usd) {
+        DominatedBy { dominators: ds } => count(ds) == 1
+        _ => false
+      }
+    }
   }
 }
 
 test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
-  match build_standing(subject: cheap_build(), field: [cheap_build(), dear_build()], declared: Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      match build_standing(subject: cheap_build(fixture_roles: fixture_roles), field: [cheap_build(fixture_roles: fixture_roles), dear_build(fixture_roles: fixture_roles)], declared: Usd) {
+        ProvisionallyNonDominated { sensitivities: _ } => true
+        _ => false
+      }
+    }
   }
 }
 
@@ -135,10 +148,15 @@ test fn w_the_better_candidate_stands_on_the_frontier() -> Bool {
 // higher-is-better, the dominance above would still hold and this claim goes
 // red.
 test fn w_a_tradeoff_is_not_a_domination() -> Bool {
-  let tradeoff = candidate(identity: dear_ref, label: "tradeoff" as NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 100000), builds: 31, wall_power: watt(count: 300), bandwidth: Bandwidth { count: 204800000000 })
-  match build_standing(subject: tradeoff, field: [cheap_build(), tradeoff], declared: Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let tradeoff = candidate(fixture_roles: fixture_roles, identity: dear_ref, label: "tradeoff" as NonEmptyStr, capacity: half_terabyte, cash: usd_micros(count: 100000), builds: 31, wall_power: watt(count: 300), bandwidth: Bandwidth { count: 204800000000 })
+      match build_standing(subject: tradeoff, field: [cheap_build(fixture_roles: fixture_roles), tradeoff], declared: Usd) {
+        ProvisionallyNonDominated { sensitivities: _ } => true
+        _ => false
+      }
+    }
   }
 }
 
@@ -151,14 +169,14 @@ test fn w_a_tradeoff_is_not_a_domination() -> Bool {
 // derived at all. That is not the same answer as two present-but-overlapping readings, which do
 // yield a standing and merely fail to separate. Same refusal to call it a winner; different reason,
 // different remedy — supply the reading, rather than measure it more sharply.
-fn pending_build() -> BuildCandidate {
+fn pending_build(fixture_roles: List<MtCollinsChannelPopulationRole>) -> BuildCandidate {
   BuildCandidate {
     identity: pending_ref,
     display_label: "pending" as NonEmptyStr,
     memory_capacity: one_terabyte,
     wall_power: watt(count: 200),
     memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: selection_fixture_resolution(lines: [
+    resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [
       LineResolved {
         line: purchase_line(),
         fulfillment: CompatibilityUnread {
@@ -173,10 +191,15 @@ fn pending_build() -> BuildCandidate {
 }
 
 test fn w_an_unread_compatibility_is_not_computable_not_a_winner() -> Bool {
-  match build_standing(subject: pending_build(), field: [cheap_build(), pending_build()], declared: Usd) {
-    NotComputable { missing: _ } => true
-    PendingEvidence { undecided: _ } => false
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      match build_standing(subject: pending_build(fixture_roles: fixture_roles), field: [cheap_build(fixture_roles: fixture_roles), pending_build(fixture_roles: fixture_roles)], declared: Usd) {
+        NotComputable { missing: _ } => true
+        PendingEvidence { undecided: _ } => false
+        _ => false
+      }
+    }
   }
 }
 
@@ -184,9 +207,14 @@ test fn w_an_unread_compatibility_is_not_computable_not_a_winner() -> Bool {
 // declaring missing inputs from being a challenger, so the cheap build keeps
 // its standing even though the pending candidate would beat it on paper.
 test fn w_a_pending_candidate_neither_wins_nor_poisons_the_field() -> Bool {
-  match build_standing(subject: cheap_build(), field: [cheap_build(), pending_build()], declared: Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      match build_standing(subject: cheap_build(fixture_roles: fixture_roles), field: [cheap_build(fixture_roles: fixture_roles), pending_build(fixture_roles: fixture_roles)], declared: Usd) {
+        ProvisionallyNonDominated { sensitivities: _ } => true
+        _ => false
+      }
+    }
   }
 }
 
@@ -194,40 +222,50 @@ test fn w_a_pending_candidate_neither_wins_nor_poisons_the_field() -> Bool {
 // This is the claim the deleted memory_part_selection held at its own
 // admission; it is re-enrolled here, where the pipeline actually compares.
 test fn w_a_candidate_in_an_undeclared_currency_does_not_rank() -> Bool {
-  let eur = BuildCandidate {
-    identity: dear_ref,
-    display_label: "priced in euro" as NonEmptyStr,
-    memory_capacity: one_terabyte,
-    wall_power: watt(count: 300),
-    memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: selection_fixture_resolution(lines: []),
-    cash: CashDerived { cash: MoneyOnce { amount: money_amount_micro(count: 1), currency: Eur } },
-    ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
-  }
-  match build_standing(subject: eur, field: [cheap_build(), eur], declared: Usd) {
-    NotComputable { missing: _ } => true
-    PendingEvidence { undecided: _ } => false
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let eur = BuildCandidate {
+        identity: dear_ref,
+        display_label: "priced in euro" as NonEmptyStr,
+        memory_capacity: one_terabyte,
+        wall_power: watt(count: 300),
+        memory_bandwidth: Bandwidth { count: 204800000000 },
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        cash: CashDerived { cash: MoneyOnce { amount: money_amount_micro(count: 1), currency: Eur } },
+        ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
+      }
+      match build_standing(subject: eur, field: [cheap_build(fixture_roles: fixture_roles), eur], declared: Usd) {
+        NotComputable { missing: _ } => true
+        PendingEvidence { undecided: _ } => false
+        _ => false
+      }
+    }
   }
 }
 
 // A refused cash answer and a refused ceiling are missing inputs too: a
 // candidate whose price could not be computed must not be ranked as free.
 test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
-  let broken = BuildCandidate {
-    identity: dear_ref,
-    display_label: "unpriceable" as NonEmptyStr,
-    memory_capacity: one_terabyte,
-    wall_power: watt(count: 300),
-    memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: selection_fixture_resolution(lines: []),
-    cash: CashRefused { cause: CashLineUnfulfilled { part: part_ref } },
-    ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
-  }
-  match build_standing(subject: broken, field: [cheap_build(), broken], declared: Usd) {
-    NotComputable { missing: _ } => true
-    PendingEvidence { undecided: _ } => false
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let broken = BuildCandidate {
+        identity: dear_ref,
+        display_label: "unpriceable" as NonEmptyStr,
+        memory_capacity: one_terabyte,
+        wall_power: watt(count: 300),
+        memory_bandwidth: Bandwidth { count: 204800000000 },
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        cash: CashRefused { cause: CashLineUnfulfilled { part: part_ref } },
+        ceiling: CeilingDerived { builds: 99, bottlenecks: [purchase_line()], bottleneck_units: 3168 },
+      }
+      match build_standing(subject: broken, field: [cheap_build(fixture_roles: fixture_roles), broken], declared: Usd) {
+        NotComputable { missing: _ } => true
+        PendingEvidence { undecided: _ } => false
+        _ => false
+      }
+    }
   }
 }
 
@@ -235,54 +273,74 @@ test fn w_a_refused_cash_answer_makes_the_candidate_incomparable() -> Bool {
 // it — the no-purchase arm is not a missing input, because every line was owned
 // or included and the incremental cash genuinely is zero.
 test fn w_a_fully_owned_build_ranks_at_zero_cash() -> Bool {
-  let owned = BuildCandidate {
-    identity: dear_ref,
-    display_label: "all from stock" as NonEmptyStr,
-    memory_capacity: one_terabyte,
-    wall_power: watt(count: 300),
-    memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: selection_fixture_resolution(lines: []),
-    cash: CashNoPurchaseLines,
-    ceiling: CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 },
-  }
-  match build_standing(subject: owned, field: [cheap_build(), owned], declared: Usd) {
-    ProvisionallyNonDominated { sensitivities: _ } => true
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let owned = BuildCandidate {
+        identity: dear_ref,
+        display_label: "all from stock" as NonEmptyStr,
+        memory_capacity: one_terabyte,
+        wall_power: watt(count: 300),
+        memory_bandwidth: Bandwidth { count: 204800000000 },
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        cash: CashNoPurchaseLines,
+        ceiling: CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 },
+      }
+      match build_standing(subject: owned, field: [cheap_build(fixture_roles: fixture_roles), owned], declared: Usd) {
+        ProvisionallyNonDominated { sensitivities: _ } => true
+        _ => false
+      }
+    }
   }
 }
 
 // A ceiling no line bounds has no build count to compare, and the candidate
 // says so rather than reading zero and losing the axis.
 test fn w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero() -> Bool {
-  let unbounded = BuildCandidate {
-    identity: dear_ref,
-    display_label: "whole system" as NonEmptyStr,
-    memory_capacity: one_terabyte,
-    wall_power: watt(count: 300),
-    memory_bandwidth: Bandwidth { count: 204800000000 },
-    resolutions: selection_fixture_resolution(lines: []),
-    cash: CashNoPurchaseLines,
-    ceiling: CeilingUnconstrainedByAnyLine,
-  }
-  match build_standing(subject: unbounded, field: [cheap_build(), unbounded], declared: Usd) {
-    NotComputable { missing: _ } => true
-    PendingEvidence { undecided: _ } => false
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let unbounded = BuildCandidate {
+        identity: dear_ref,
+        display_label: "whole system" as NonEmptyStr,
+        memory_capacity: one_terabyte,
+        wall_power: watt(count: 300),
+        memory_bandwidth: Bandwidth { count: 204800000000 },
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: []),
+        cash: CashNoPurchaseLines,
+        ceiling: CeilingUnconstrainedByAnyLine,
+      }
+      match build_standing(subject: unbounded, field: [cheap_build(fixture_roles: fixture_roles), unbounded], declared: Usd) {
+        NotComputable { missing: _ } => true
+        PendingEvidence { undecided: _ } => false
+        _ => false
+      }
+    }
   }
 }
 
 // Two candidates sharing one identity REFUSE the whole selection — the spine's
 // own duplicate rule, reached through this projector.
 test fn w_duplicate_candidate_identity_refuses_the_selection() -> Bool {
-  match build_standing(subject: cheap_build(), field: [cheap_build(), cheap_build()], declared: Usd) {
-    SelectionRefused { cause: _ } => true
-    _ => false
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      match build_standing(subject: cheap_build(fixture_roles: fixture_roles), field: [cheap_build(fixture_roles: fixture_roles), cheap_build(fixture_roles: fixture_roles)], declared: Usd) {
+        SelectionRefused { cause: _ } => true
+        _ => false
+      }
+    }
   }
 }
 
 // The projection is identity-keyed, not label-keyed: the entry carries the
 // candidate's DeclarationRef and its readings carry the axes' refs.
 test fn w_the_projected_entry_is_keyed_by_declaration_identity() -> Bool {
-  let e = project_entry(candidate: cheap_build(), declared: Usd)
-  count(e.readings) == 5 && count(e.missing_inputs) == 0
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let e = project_entry(candidate: cheap_build(fixture_roles: fixture_roles), declared: Usd)
+      count(e.readings) == 5 && count(e.missing_inputs) == 0
+    }
+  }
 }

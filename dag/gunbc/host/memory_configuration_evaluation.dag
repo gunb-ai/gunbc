@@ -6,7 +6,11 @@ import std.integer { UInt8 }
 import std.algebra { FreeSemigroup }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.boards.types { AmpereMtCollins }
-import extdeps.ampere.mt_collins_product_brief.memory_population { mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsPopulationRoleRefusal, MtCollinsChannelPopulationRoleStanding,
+  PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles,
+}
+import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationEstablished, ObservationRefused }
 import gunbc.memory_configuration {
   MemoryConfiguration, MemoryChangeProposal, MemoryPosition, PositionedMemoryModule,
@@ -49,6 +53,7 @@ type MemoryUnknownFact
   | MemoryTrainingScreenUnresolved { dimm: PositionedMemoryModule, implication: PartImplication }
   | MemoryModelMissing { obligation: MemoryOperatingObligation }
   | MemoryCollectorUnavailable { cause: NonEmptyStr }
+  | MemoryPopulationRoleUnresolved { refusal: MtCollinsPopulationRoleRefusal }
 
 // The carrier is std.goal_assessment's outcome algebra, specialized only in
 // payload. A missing collector is not a successful empty observation.
@@ -183,21 +188,33 @@ fn memory_placement_facts(configuration: MemoryConfiguration) -> MemoryCheckFact
   if configuration.platform.board != AmpereMtCollins || count(configuration.population) == 0 {
     memory_unknown(fact: MemoryModelMissing { obligation: MemoryPlacement })
   } else {
-    fold(configuration.population, init: memory_empty_facts, f: (acc, m) => {
-      let copies = count(filter(configuration.population, other =>
-        other.position.connector == m.position.connector ||
-        (other.position.socket == m.position.socket && other.position.controller == m.position.controller && other.position.slot == m.position.slot)))
-      let position_matches = any(concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs), pair => {
-        let odd = if pair.table_left_connector % 2 == 1 { pair.table_left_connector } else { pair.table_right_connector }
-        let even = if pair.table_left_connector % 2 == 0 { pair.table_left_connector } else { pair.table_right_connector }
-        let connector = if m.position.slot == 0 { odd } else { even }
-        pair.processor_socket == m.position.socket && pair.memory_controller == m.position.controller
-          && m.position.slot <= 1 && m.position.connector == concat("J", to_string(connector))
+    memory_placement_from_roles(configuration: configuration, standing: mt_collins_channel_population_roles)
+  }
+}
+
+// The production join accepts the authority's complete standing; an unresolved
+// pair never becomes a partial roster or a fabricated connector conflict.
+fn memory_placement_from_roles(configuration: MemoryConfiguration, standing: MtCollinsChannelPopulationRoleStanding) -> MemoryCheckFacts {
+  match standing {
+    PopulationRolesRefused { refusals } => MemoryCheckFacts {
+      sources: [], deviations: [], unknowns: map(refusals, refusal => MemoryPopulationRoleUnresolved { refusal: refusal }),
+    }
+    PopulationRolesResolved { roles } => {
+      let positions = flat_map(roles, role => [
+        mtcollins_memory_position(role: role, additional: false), mtcollins_memory_position(role: role, additional: true),
+      ])
+      fold(configuration.population, init: memory_empty_facts, f: (acc, m) => {
+        let copies = count(filter(configuration.population, other =>
+          other.position.connector == m.position.connector ||
+          (other.position.socket == m.position.socket && other.position.controller == m.position.controller && other.position.slot == m.position.slot)))
+        let position_matches = any(positions, position =>
+          position.socket == m.position.socket && position.controller == m.position.controller
+            && position.slot == m.position.slot && position.connector == m.position.connector)
+        if copies != 1 || !position_matches {
+          memory_facts_join(a: acc, b: MemoryCheckFacts { sources: [], unknowns: [], deviations: [MemoryPositionConflict { position: m.position }] })
+        } else { acc }
       })
-      if copies != 1 || !position_matches {
-        memory_facts_join(a: acc, b: MemoryCheckFacts { sources: [], unknowns: [], deviations: [MemoryPositionConflict { position: m.position }] })
-      } else { acc }
-    })
+    }
   }
 }
 
