@@ -79,7 +79,8 @@ test fn w_independent_positive_boot_does_not_require_a_sel() -> Bool {
 }
 
 test fn w_known_statement_does_not_hide_unknown_statement() -> Bool {
-  match pre_os_terminal_from_console(text: "ERROR:   DDR initialization failure. STOP!\nERROR: new undecoded failure") { ObservationRefused { cause: _ } => true _ => false }
+  all(["ERROR: new undecoded failure", "ERROR: unknown fault mentioning SK[0]"], unknown =>
+    match pre_os_terminal_from_console(text: concat("ERROR:   DDR initialization failure. STOP!\n", unknown)) { ObservationRefused { cause: _ } => true _ => false })
 }
 
 test fn w_known_substring_is_not_recognized_statement() -> Bool {
