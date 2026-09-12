@@ -57,12 +57,10 @@ type OemSelDecodeCapability
   | OemDecodeRenderedUncited { rendering: NonEmptyStr }
   | OemDecodeNotProbed
 
-type WebEventLogCapability
-  = WebEventLogAvailable
-  | WebEventLogAbsent
-
 // WHAT A CONTROLLER'S WEB EVENT LOG WAS OBSERVED TO DECODE, as the receipt the OEM-decode axis is
-// DERIVED from rather than authored beside. A surface that renders one uniform description for
+// DERIVED from rather than authored beside. There is no separate web-log axis on the profile: the
+// receipt itself carries what the surface served, and a two-arm available/absent summary of it
+// would have no consumer and would read an empty log as an absent one (review 64534). A surface that renders one uniform description for
 // every record and carries no OEM data bytes has offered no decode; only a surface that carries a
 // decode table an authority can be cited for licenses OemDecodeAvailable, and that arm is not
 // derivable from this receipt at all -- it must come from the cited table.
@@ -82,11 +80,6 @@ data web_event_log_unknown_rendering: NonEmptyStr = "unknown"
 // DERIVED FROM THE FIELDS, NOT FROM THE COUNT (review 64251): no OEM records served is not a probe;
 // a uniform "unknown" description WITH empty OEM bytes is the controller declining; anything else
 // the surface rendered is carried as an uncited rendering, which licenses no decode.
-// THE WEB-LOG AXIS IS DERIVED FROM THE SAME RECEIPT: a surface that served records is available.
-fn web_event_log_capability_of(observation: WebEventLogDecodeObservation) -> WebEventLogCapability {
-  if observation.records_served > 0 { WebEventLogAvailable } else { WebEventLogAbsent }
-}
-
 fn oem_sel_decode_capability_of_web_log(observation: WebEventLogDecodeObservation) -> OemSelDecodeCapability {
   if observation.oem_records_served == 0 {
     OemDecodeNotProbed
@@ -142,7 +135,6 @@ type PreOsObservationCapabilities {
   console: ConsoleObservationCapability
   sel: SelReadCapability
   oem_sel_decode: OemSelDecodeCapability
-  web_event_log: WebEventLogCapability
   dimm_localization: DimmLocalizationCapability
   memory_power: MemoryPowerTelemetryCapability
   managed_ac: ManagedAcActuationCapability

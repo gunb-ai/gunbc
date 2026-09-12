@@ -24,7 +24,6 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   PreOsObservationCapabilities,
   WebEventLogDecodeObservation,
   oem_sel_decode_capability_of_web_log,
-  web_event_log_capability_of,
   SelStandardDecoded,
   SolPresentEmitting,
   PerSlotLocalizationExposed,
@@ -387,8 +386,8 @@ data mtcollins1_sdr_capture: SdrCapture = SdrCapture {
 // SOL present and EMITTING under a held session (mtcollins1_dram_training_capture; the four
 // banner-only captures and the keystroke probe 22-sol-probe.log were the client exiting at stdin
 // EOF and are not measurements of the console); raw SEL and standard decode yes (50-sel-final.txt
-// renders every standard sensor event); OEM decode no (mtcollins1_web_event_log_decode); web
-// event log yes (it answered 500 records); per-DIMM localization exposed BY THE FIRMWARE CONSOLE
+// renders every standard sensor event); OEM decode no (mtcollins1_web_event_log_decode, which also
+// records that the web event log answered 500 records); per-DIMM localization exposed BY THE FIRMWARE CONSOLE
 // -- the SEL carries no slot-addressed record and the census module established that EDAC under
 // firmware-first exposes no channel topology, but the training firmware prints SK/MC/S-addressed
 // rows and names a socket and controller when it refuses; aggregate memory power yes
@@ -402,7 +401,6 @@ data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObserva
   },
   sel: SelStandardDecoded,
   oem_sel_decode: oem_sel_decode_capability_of_web_log(observation: mtcollins1_web_event_log_decode),
-  web_event_log: web_event_log_capability_of(observation: mtcollins1_web_event_log_decode),
   dimm_localization: PerSlotLocalizationExposed {
     source: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
   },
