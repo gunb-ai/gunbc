@@ -50,6 +50,7 @@ type OnboardingBlocker
 // refuses it. `v2.std.integer` `integer_int_to_decimal_string` records that same class as already
 // repaired for two Int-valued callers, so re-introducing it would have been a silent regression of
 // that fix. Every other `dag/gunbc` caller consumes the Int renderer; this one now does too.
+//
 // WHY THERE IS NO CHECK THAT A STEP CARRIES A VERIFICATION (review 64666).
 //
 // There was one, and it was a DECORATION. `self_serve_steps_missing_verification` filtered the
@@ -286,7 +287,7 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
   OnboardingObstacle {
     step_id: "run-witnesses" as NonEmptyStr,
     symptom: "The floor fold goes red on a clean checkout, and going red again on a re-run looks like an unstable test suite." as NonEmptyStr,
-    cause: "The required floor carries a structural memory deficit against the bound it is admitted under, so an environmental red is an ordinary outcome of the run rather than a statement about the diff. Reported by a sibling lane in this subtree and not independently re-measured here." as NonEmptyStr,
+    cause: "The required floor runs close under the memory line it is admitted against, so an environmental red is an ordinary outcome of the run rather than a statement about the diff. THE GROUNDING IS AN AUTHORITY RATHER THAN HEARSAY, and a reader can check it: gunbc.runner_slot_allocation declares the per-slot ceiling and the throttle line beneath it, and gunbc_runner_slot_memory_max_ruling_note records that the ceiling was RAISED because the floor's measured peak no longer fit under the previous throttle line. That note also carries the reading that matters when you see a peak equal to the throttle line -- it is a censored lower bound, the workload being held rather than measured -- so a run that looks like it fitted exactly did not." as NonEmptyStr,
     disposition: DocumentedRemedy { remedy: "Read the refusal and classify it before acting, WITH THREE ARMS RATHER THAN TWO: an environmental refusal names the budget; a MISSING BINARY refusal names a claim but was caused by an artifact that was never built; and only what is left is a corpus failure. The two-arm form of this rule was measured wrong on the cold-start walk -- it routed a never-built binary into the corpus arm and sent the reader hunting the corpus for a build problem. Never re-run a corpus or cost refusal to sample a green: that is sampling until the instrument agrees with you, and it destroys the only signal the deficit produces. A TOOLCHAIN CRASH IS THE ONE EXCEPTION and has its own row below." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
@@ -323,6 +324,13 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
     symptom: "A fold whose accumulator starts as an empty list compiles into a wall of errors saying a field does not exist on a type the author never wrote, pointing at lines far from the fold." as NonEmptyStr,
     cause: "An empty list literal as a fold seed has no element type to infer from, so the accumulator resolves to the bare free monoid and every later field access on its elements is a field on THAT type. The diagnostics are therefore correct and land nowhere near the cause. Observed while writing this change's own witness: one seeded fold produced eleven field-does-not-exist errors across two functions, none of them on the fold." as NonEmptyStr,
     disposition: DocumentedRemedy { remedy: "Give the accumulator an element type the seed can carry, or author the fixture as a typed data declaration instead of folding one out of a live roster. When a diagnostic says a field is missing on a type you did not name, read it as an inference failure upstream rather than as a mistake at the line it cites." as NonEmptyStr },
+    discoverable_from_symptom: false,
+  },
+  OnboardingObstacle {
+    step_id: "change" as NonEmptyStr,
+    symptom: "A change that adds a generated artifact goes red in CI on a job that is not a required lane, reporting HealAuthorCommitRequired against a path under .github/workflows that the author never opened, with the cause ActionsJobCredentialScopeUnavailable." as NonEmptyStr,
+    cause: "The emitted workflow carries a staging line per committed generated artifact, derived from the registry, so registering an artifact CHANGES the workflow. The repairing job would ordinarily regenerate and push that itself, and for workflow files it cannot: the credential an Actions job runs under is not permitted to modify workflows. So it refuses, names the path, and requires the author to carry the emission. Observed on the change that introduced this very page -- one staging line for docs/onboarding.md -- so the mechanism is this row's own receipt rather than a report." as NonEmptyStr,
+    disposition: DocumentedRemedy { remedy: "Run the whole-registry regenerator the refusal names, then commit the workflow it rewrites. THE CAUSE STRING DOES NOT SAY THIS AND IT IS THE WHOLE POINT: a credential-scope refusal on a workflow path is not a defect in your change and not something a retry clears -- it is a step the repairing job is structurally unable to take for you. Confirm the regenerator rewrote ONLY paths you can explain: on this change it left every other generated artifact byte-identical, which is what distinguishes carrying your own emission from importing somebody else's drift." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
   OnboardingObstacle {
