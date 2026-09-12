@@ -11,6 +11,7 @@ import v2.compiler.self_host.generation {
   SuccessorGeneration
 }
 import v2.compiler.self_host.promotion_admission {
+  GenerationLensCoverage,
   BehaviorAgrees,
   BehaviorDiverges,
   BehavioralComparisonObservation,
@@ -39,6 +40,15 @@ import v2.compiler.self_host.promotion_admission {
   PromotionRefused,
   promotion_refusal_carries
 }
+import v2.compiler.compile {
+  CompileLensRoot,
+  RequiredLensCoverageClosed,
+  RequiredLensCoverageRefused,
+  RequiredLensCoverageRow,
+  RequiredLensRosterEmpty
+}
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, symbol_identity_digest }
 import v2.std.optional { Absent, Present }
@@ -218,7 +228,62 @@ fn pa_provenance(
   GenerationProvenanceReceipt { subject: subject, producer: producer }
 }
 
+// THE FIXTURE OBLIGATIONS, AUTHORED HERE RATHER THAN READ FROM THE LIVE ROSTER. A witness that took
+// its required set from `required_compile_lens_roster()` would compare the checker's answer against
+// the same list the checker was handed, and the roster moving would move both sides together --
+// `gunbc.recurring_failure_mode comparison_whose_operands_share_a_producer`. These two identities
+// are this file's own, so the population is fixed and a dropped obligation is visible.
+fn pa_lens_alpha() -> DeclarationRef {
+  decl_ref(module_path: "v2.test.promotion_lens.alpha", decl_name: "alpha_gate")
+}
+
+fn pa_lens_beta() -> DeclarationRef {
+  decl_ref(module_path: "v2.test.promotion_lens.beta", decl_name: "beta_gate")
+}
+
+fn pa_required_lenses() -> List<DeclarationRef> {
+  [pa_lens_alpha(), pa_lens_beta()]
+}
+
+fn pa_coverage_row(lens: DeclarationRef) -> RequiredLensCoverageRow {
+  RequiredLensCoverageRow { lens: lens, grain: CompileLensRoot, observations: 1 }
+}
+
+// CLOSED AND COMPLETE: the join closed and every required obligation has a row.
+fn pa_coverage_closed() -> GenerationLensCoverage {
+  GenerationLensCoverage {
+    required: pa_required_lenses(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: "pa-roster-digest",
+      rows: [pa_coverage_row(lens: pa_lens_alpha()), pa_coverage_row(lens: pa_lens_beta())]
+    }
+  }
+}
+
+// CLOSED AND SHORT: the join closed over a roster that no longer names beta, so the coverage is
+// internally consistent and still fails the obligation this generation owes. This is the case a
+// reader of the coverage value alone cannot see.
+fn pa_coverage_missing_beta() -> GenerationLensCoverage {
+  GenerationLensCoverage {
+    required: pa_required_lenses(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: "pa-roster-digest-short",
+      rows: [pa_coverage_row(lens: pa_lens_alpha())]
+    }
+  }
+}
+
+// REFUSED: the join could not close at all, so it reports no rows for anything.
+fn pa_coverage_refused() -> GenerationLensCoverage {
+  GenerationLensCoverage {
+    required: pa_required_lenses(),
+    observed: RequiredLensCoverageRefused { cause: RequiredLensRosterEmpty }
+  }
+}
+
 fn pa_bundle(
+  candidate_lens_coverage: GenerationLensCoverage,
+  successor_lens_coverage: GenerationLensCoverage,
   candidate_build: BuildReceipt,
   successor_build: BuildReceipt,
   candidate_equivalence: BehavioralEquivalenceReceipt,
@@ -236,12 +301,16 @@ fn pa_bundle(
     successor_equivalence: successor_equivalence,
     discriminating_fault: discriminating_fault,
     candidate_provenance: candidate_provenance,
-    successor_provenance: successor_provenance
+    successor_provenance: successor_provenance,
+    candidate_lens_coverage: candidate_lens_coverage,
+    successor_lens_coverage: successor_lens_coverage
   }
 }
 
 fn pa_good() -> SelfHostCandidate {
   pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
     candidate_build: pa_build(
       subject: pa_candidate_identity(),
       outcome: ObservationPresent { value: BuildGreen }
@@ -321,7 +390,9 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
         outcome: ObservationPresent { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(subject: ident, producer: ident),
-      successor_provenance: pa_provenance(subject: ident, producer: ident)
+      successor_provenance: pa_provenance(subject: ident, producer: ident),
+      candidate_lens_coverage: pa_coverage_closed(),
+      successor_lens_coverage: pa_coverage_closed()
     }
   )
   !pa_admitted(o: o)
@@ -334,6 +405,8 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
 test fn uncaught_planted_fault_is_refused() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -379,6 +452,8 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
 test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -422,6 +497,8 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
 test fn empty_behavioral_corpus_is_refused() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -475,6 +552,8 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
   }
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -517,6 +596,8 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
 test fn failed_successor_build_is_refused() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -560,6 +641,8 @@ test fn failed_successor_build_is_refused() -> Bool {
 test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -612,6 +695,8 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
   }
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -697,7 +782,9 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
       successor_provenance: pa_provenance(
         subject: pa_successor_identity(),
         producer: unbuilt_identity
-      )
+      ),
+      candidate_lens_coverage: pa_coverage_closed(),
+      successor_lens_coverage: pa_coverage_closed()
     }
   )
   !pa_admitted(o: o)
@@ -753,7 +840,9 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
       successor_provenance: pa_provenance(
         subject: pa_successor_identity(),
         producer: other_candidate.identity
-      )
+      ),
+      candidate_lens_coverage: pa_coverage_closed(),
+      successor_lens_coverage: pa_coverage_closed()
     }
   )
   !pa_admitted(o: o)
@@ -769,6 +858,8 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
 test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -863,7 +954,9 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
       successor_provenance: pa_provenance(
         subject: pa_successor_identity(),
         producer: pa_candidate_identity()
-      )
+      ),
+      candidate_lens_coverage: pa_coverage_closed(),
+      successor_lens_coverage: pa_coverage_closed()
     }
   )
   !pa_admitted(o: o)
@@ -882,6 +975,8 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
 test fn truncated_successor_run_is_refused() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -925,6 +1020,8 @@ test fn truncated_successor_run_is_refused() -> Bool {
 test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -968,6 +1065,8 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
 test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
   let o = admit_promotion(
     c: pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
         outcome: ObservationPresent { value: BuildGreen }
@@ -1030,6 +1129,8 @@ fn pa_bundle_from_observation(
   o: BehavioralComparisonObservation
 ) -> SelfHostCandidate {
   pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
     candidate_build: build_receipt_from_observation(
       o: o,
       subject: pa_candidate_identity()
@@ -1121,4 +1222,150 @@ test fn unbuilt_run_refuses_through_the_seam() -> Bool {
       o: o,
       cause: ^refusal_receipt_observation_unavailable
     )
+}
+
+// ---- REQUIRED-LENS COVERAGE ON THE PROMOTION SUBJECT ----
+//
+// WHY THE RED HAS TWO HALVES AND NEITHER IMPLIES THE OTHER. A coverage value can fail a generation
+// in two different ways, and a suite that tested one would leave the other silent. The join can
+// REFUSE, in which case there are no rows at all; or it can CLOSE over a roster that no longer names
+// an obligation this generation owes, in which case the value is internally consistent and still
+// short. The second is the case a reader of the coverage alone cannot see, which is exactly why the
+// required set is carried beside the observation rather than re-read from the live roster.
+
+fn pa_with_coverage(
+  candidate_cov: GenerationLensCoverage,
+  successor_cov: GenerationLensCoverage
+) -> SelfHostCandidate {
+  pa_bundle(
+    candidate_lens_coverage: candidate_cov,
+    successor_lens_coverage: successor_cov,
+    candidate_build: pa_build(
+      subject: pa_candidate_identity(),
+      outcome: ObservationPresent { value: BuildGreen }
+    ),
+    successor_build: pa_build(
+      subject: pa_successor_identity(),
+      outcome: ObservationPresent { value: BuildGreen }
+    ),
+    candidate_equivalence: pa_equivalence(
+      subject: pa_candidate_identity(),
+      cases: pa_corpus_cases,
+      outcome: ObservationPresent { value: BehaviorAgrees }
+    ),
+    successor_equivalence: pa_equivalence(
+      subject: pa_successor_identity(),
+      cases: pa_corpus_cases,
+      outcome: ObservationPresent { value: BehaviorAgrees }
+    ),
+    discriminating_fault: pa_fault(
+      subject: pa_candidate_identity(),
+      outcome: ObservationPresent { value: FaultCaught }
+    ),
+    candidate_provenance: pa_provenance(
+      subject: pa_candidate_identity(),
+      producer: pa_seed_identity()
+    ),
+    successor_provenance: pa_provenance(
+      subject: pa_successor_identity(),
+      producer: pa_candidate_identity()
+    )
+  )
+}
+
+// RED, HALF ONE: the join refused, so it reports no rows. Promotion must refuse, and it must refuse
+// BY NAME on both counts -- the join's own cause AND the obligations left unaccounted -- because a
+// refusal that named only the join would tell a reader the coverage is unusable while leaving them
+// to guess what it failed to cover.
+test fn refused_candidate_coverage_refuses_promotion_by_name() -> Bool {
+  let o = admit_promotion(c: pa_with_coverage(
+    candidate_cov: pa_coverage_refused(),
+    successor_cov: pa_coverage_closed()
+  ))
+  promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_not_closed)
+    && promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
+}
+
+// RED, HALF TWO: the join CLOSED and is short. Nothing in the coverage value is inconsistent, so
+// only the carried required set can catch it. This is the witness that fails if the required set is
+// ever re-read from the live roster instead of pinned.
+test fn closed_but_short_candidate_coverage_refuses_promotion() -> Bool {
+  let o = admit_promotion(c: pa_with_coverage(
+    candidate_cov: pa_coverage_missing_beta(),
+    successor_cov: pa_coverage_closed()
+  ))
+  promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_not_closed)
+}
+
+// THE SUCCESSOR IS JUDGED TOO, not just the candidate. A promotion that checked only the candidate
+// would admit a successor whose own compile never ran the required roster, which is the generation
+// that actually becomes the next compiler.
+test fn refused_successor_coverage_refuses_promotion() -> Bool {
+  promotion_refusal_carries(
+    o: admit_promotion(c: pa_with_coverage(
+      candidate_cov: pa_coverage_closed(),
+      successor_cov: pa_coverage_refused()
+    )),
+    cause: ^refusal_required_lens_coverage_not_closed
+  )
+}
+
+// THE POSITIVE CONTROL, so the three reds above cannot come from an admission that refuses every
+// candidate: identical receipts, closed and complete coverage on both generations, and it promotes.
+test fn closed_and_complete_coverage_on_both_generations_promotes() -> Bool {
+  match admit_promotion(c: pa_with_coverage(
+    candidate_cov: pa_coverage_closed(),
+    successor_cov: pa_coverage_closed()
+  )) {
+    Promoted { successor: _, cases_compared: _ } => true
+    PromotionRefused { causes: _ } => false
+  }
+}
+
+// THE PRE-EXISTING CAUSES SURVIVE THE ADDITION, which the ruling asked for explicitly. A candidate
+// that is bad for an OLD reason and clean on coverage must still refuse for that old reason -- the
+// new arms must not shadow or replace the ones already there.
+fn pa_build_failed_with_clean_coverage() -> SelfHostCandidate {
+  pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed(),
+    candidate_build: pa_build(
+      subject: pa_candidate_identity(),
+      outcome: ObservationPresent { value: BuildFailed { cause: ^rustc_error } }
+    ),
+    successor_build: pa_build(
+      subject: pa_successor_identity(),
+      outcome: ObservationPresent { value: BuildGreen }
+    ),
+    candidate_equivalence: pa_equivalence(
+      subject: pa_candidate_identity(),
+      cases: pa_corpus_cases,
+      outcome: ObservationPresent { value: BehaviorAgrees }
+    ),
+    successor_equivalence: pa_equivalence(
+      subject: pa_successor_identity(),
+      cases: pa_corpus_cases,
+      outcome: ObservationPresent { value: BehaviorAgrees }
+    ),
+    discriminating_fault: pa_fault(
+      subject: pa_candidate_identity(),
+      outcome: ObservationPresent { value: FaultCaught }
+    ),
+    candidate_provenance: pa_provenance(
+      subject: pa_candidate_identity(),
+      producer: pa_seed_identity()
+    ),
+    successor_provenance: pa_provenance(
+      subject: pa_successor_identity(),
+      producer: pa_candidate_identity()
+    )
+  )
+}
+
+test fn adding_coverage_preserves_the_existing_refusal_causes() -> Bool {
+  let o = admit_promotion(c: pa_build_failed_with_clean_coverage())
+  promotion_refusal_carries(o: o, cause: ^refusal_build_not_green)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_not_closed)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
 }

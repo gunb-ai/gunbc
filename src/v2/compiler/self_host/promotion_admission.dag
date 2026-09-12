@@ -10,6 +10,14 @@ import v2.compiler.self_host.generation {
   generation_axis_symbol,
   generation_identity_mismatched_axes
 }
+import v2.compiler.compile {
+  RequiredLensCoverage,
+  RequiredLensCoverageClosed,
+  RequiredLensCoverageRefused,
+  RequiredLensCoverageRow,
+  required_lens_join_cause_reason
+}
+import std.decl_ref { DeclarationRef, declaration_ref_display_key, declaration_ref_eq }
 import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
@@ -111,6 +119,18 @@ type GenerationProvenanceReceipt {
 // own build and behavioral evidence, because "the candidate builds" and "the thing
 // the candidate produced builds" are different facts, and a compiler that builds but
 // cannot reproduce itself has not self-hosted.
+// COVERAGE IS PAIRED WITH THE OBLIGATIONS IT WAS JUDGED AGAINST, and the pairing is the whole
+// carrier. A `RequiredLensCoverage` alone answers "did the join close for the roster that ran",
+// which is a question about THAT run's roster -- so a generation compiled against a shrunken roster
+// reports closed and says nothing about what it failed to run. Reading the live roster here instead
+// would be worse: the required set would then move with the tree this admission executes in rather
+// than with the generation it judges, so a roster that lost a row would retroactively make old
+// candidates admissible. The required set is therefore carried, FIXED, beside the observation.
+type GenerationLensCoverage {
+  required: List<DeclarationRef>
+  observed: RequiredLensCoverage
+}
+
 type SelfHostCandidate {
   candidate: CandidateGeneration
   successor: SuccessorGeneration
@@ -121,6 +141,8 @@ type SelfHostCandidate {
   discriminating_fault: DiscriminatingFaultReceipt
   candidate_provenance: GenerationProvenanceReceipt
   successor_provenance: GenerationProvenanceReceipt
+  candidate_lens_coverage: GenerationLensCoverage
+  successor_lens_coverage: GenerationLensCoverage
 }
 
 // WHAT A COMPARISON RUN LEARNS, separated from what it does not.
@@ -192,6 +214,8 @@ type PromotionRefusalCause
   | SuccessorNotProducedByCandidate
   | CorpusMismatchAcrossReceipts { receipt: Symbol }
   | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
+  | RequiredLensCoverageNotClosed { receipt: Symbol, cause: Symbol }
+  | RequiredLensObligationNotCovered { receipt: Symbol, lens: String }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -415,6 +439,67 @@ fn concat_causes(
 // be measured over one corpus while the planted fault was proven discriminating over a
 // different one — so the fault receipt would vouch for teeth the equivalence run never
 // had.
+// A REQUIRED OBLIGATION NEVER DISAPPEARS INTO A REFUSAL ARM, which is the whole reason this is a
+// fold over the REQUIRED set rather than a fold over the coverage rows. Folding the rows answers
+// "is every row I have satisfied", and a refused join has no rows -- so the obligations would vanish
+// exactly when the compile failed to establish them, which reads as nothing-to-report and is the
+// silence DESIGN section 5 refuses. Folding the required set answers "is every obligation I owe
+// accounted for", and that question is total on both arms.
+//
+// SO THE REFUSED ARM EMITS BOTH: the join's own cause, once, so the reason the coverage is unusable
+// is not lost, AND one uncovered-obligation cause per required identity, so the population survives
+// the refusal. An admission that reported only the first would tell a reader the join failed while
+// leaving them to guess what it failed to cover.
+fn lens_coverage_uncovered_causes(
+  receipt: Symbol,
+  required: List<DeclarationRef>,
+  rows: List<RequiredLensCoverageRow>
+) -> List<PromotionRefusalCause> {
+  fold_list(
+    xs: required,
+    empty: freemonoid_empty(),
+    cons: fn(acc, id) {
+      if fold_list(
+        xs: rows,
+        empty: false,
+        cons: fn(seen, row) { seen || declaration_ref_eq(a: row.lens, b: id) }
+      ) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: RequiredLensObligationNotCovered {
+            receipt: receipt,
+            lens: declaration_ref_display_key(ref: id)
+          }
+        )
+      }
+    }
+  )
+}
+
+fn lens_coverage_causes(
+  receipt: Symbol,
+  coverage: GenerationLensCoverage
+) -> List<PromotionRefusalCause> {
+  match coverage.observed {
+    RequiredLensCoverageRefused { cause: cause } =>
+      list_snoc_item(
+        xs: lens_coverage_uncovered_causes(
+          receipt: receipt,
+          required: coverage.required,
+          rows: freemonoid_empty()
+        ),
+        item: RequiredLensCoverageNotClosed {
+          receipt: receipt,
+          cause: required_lens_join_cause_reason(cause: cause)
+        }
+      )
+    RequiredLensCoverageClosed { roster_digest: _, rows: rows } =>
+      lens_coverage_uncovered_causes(receipt: receipt, required: coverage.required, rows: rows)
+  }
+}
+
 fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause> {
   let candidate_identity = c.candidate.identity
   let successor_identity = c.successor.identity
@@ -485,6 +570,14 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
         r: c.successor_provenance,
         expected: successor_identity,
         declared_producer: c.successor.produced_by_candidate.identity
+      ),
+      lens_coverage_causes(
+        receipt: ^receipt_candidate_lens_coverage,
+        coverage: c.candidate_lens_coverage
+      ),
+      lens_coverage_causes(
+        receipt: ^receipt_successor_lens_coverage,
+        coverage: c.successor_lens_coverage
       )
     ]
   )
@@ -536,6 +629,10 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
     CorpusMismatchAcrossReceipts { receipt: _ } => ^refusal_corpus_mismatch_across_receipts
     CorpusPopulationMismatch { receipt: _, expected: _, compared: _ } =>
       ^refusal_corpus_population_mismatch
+    RequiredLensCoverageNotClosed { receipt: _, cause: _ } =>
+      ^refusal_required_lens_coverage_not_closed
+    RequiredLensObligationNotCovered { receipt: _, lens: _ } =>
+      ^refusal_required_lens_obligation_not_covered
   }
 }
 
