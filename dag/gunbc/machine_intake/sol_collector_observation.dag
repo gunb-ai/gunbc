@@ -1,15 +1,16 @@
 module gunbc.machine_intake_sol_collector_observation
 
-import std.types { Bool, Int, Duration }
+import std.types { Bool, Int }
+import std.measure { Second }
 
 // ATTEMPT OBSERVATION: what one SOL collector covered and received. Platform capability
 // (what an implementation can provide: SolAbsent | SolPresentSilent | SolPresentEmitting,
 // SEL, OEM-decode, and the other PreOs axes) is gunbc.machine_intake_pre_os_observation_capabilities
 // on gunbc#11110. This module does not mint that file.
 
-// Activation, coverage, host payload, termination, and terminate_deadline_seconds are
-// independent. A window that elapses while the client stays attached is not coverage complete.
-// The deadline must terminate the client. Local client banner bytes (ipmitool tcgetattr /
+// Activation, coverage, host payload, termination, and terminate_deadline are independent.
+// A window that elapses while the client stays attached is not coverage complete. The
+// deadline must terminate the client. Local client banner bytes (ipmitool tcgetattr /
 // SOL Session operational) are not host payload.
 
 type SolSessionActivationStanding
@@ -37,7 +38,7 @@ type SolCollectorObservation {
   coverage: SolCollectorCoverageStanding
   termination: SolCollectorTermination
   host_payload: SolHostPayloadStanding
-  terminate_deadline_seconds: Duration
+  terminate_deadline: Second
 }
 
 type SolHostFactFromCollector

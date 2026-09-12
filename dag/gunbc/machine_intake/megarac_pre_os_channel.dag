@@ -1,6 +1,7 @@
 module gunbc.machine_intake_megarac_pre_os_channel
 
-import std.types { NonEmptyStr, Duration }
+import std.types { NonEmptyStr }
+import std.measure { Second, second }
 import gunbc.machine_intake_sol_collector_observation {
   CollectorStillRunning,
   SolCollectorDidNotEstablishCoverage,
@@ -21,14 +22,14 @@ data megarac_sol_host_payload_positive_control_path: NonEmptyStr = "artifacts/bm
 
 data megarac_sol_host_payload_positive_control_sha256: NonEmptyStr = "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c" as NonEmptyStr
 
-data megarac_sol_collector_terminate_deadline_seconds: Duration = 645
+data megarac_sol_collector_terminate_deadline: Second = second(count: 645)
 
 data megarac_sol_host_payload_positive_control: SolCollectorObservation = SolCollectorObservation {
   activation: SolSessionActivationAcknowledged,
   coverage: SolCoverageStillRunningPastDeadline,
   termination: CollectorStillRunning,
   host_payload: SolHostPayloadReceived,
-  terminate_deadline_seconds: megarac_sol_collector_terminate_deadline_seconds,
+  terminate_deadline: megarac_sol_collector_terminate_deadline,
 }
 
 fn megarac_sol_host_fact(obs: SolCollectorObservation) -> SolHostFactFromCollector {

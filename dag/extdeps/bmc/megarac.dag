@@ -122,48 +122,6 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
   contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
 }
 
-data megarac_op_media_instance: MegaRacApiOperation = MegaRacApiOperation {
-  http_method: "GET",
-  path: "/api/settings/media/instance",
-  contract_note: "cd_active_sessions is a FLAG BYTE, not a session count: 128 is 0x80 and 129 is 0x81. Neighbouring cd_port 0x80000050 is port 80 with bit 31 set. There is no session-count constructor on MegaRacCdActiveSessionsField.",
-}
-
-data megarac_op_video_triggers: MegaRacApiOperation = MegaRacApiOperation {
-  http_method: "GET",
-  path: "/api/settings/video/triggers",
-  contract_note: "framebuffer recorder arming object; field chassis_power_on_events_enable (correct spelling). Survives host and BMC resets; a live SOL activate session does not.",
-}
-
-data megarac_op_sol_triggers: MegaRacApiOperation = MegaRacApiOperation {
-  http_method: "GET",
-  path: "/api/settings/video/sol-triggers",
-  contract_note: "SOL-stream recorder arming object; upstream spells the power-on field chasis_power_on_events_enable (missing second s). Records the SOL stream, which is a different subject from video/triggers.",
-}
-
-data megarac_op_video_pre_event: MegaRacApiOperation = MegaRacApiOperation {
-  http_method: "GET",
-  path: "/api/settings/video/pre-event",
-  contract_note: "pre-event framebuffer buffer (enable, fps, duration).",
-}
-
-data megarac_op_video_data: MegaRacApiOperation = MegaRacApiOperation {
-  http_method: "GET",
-  path: "/api/logs/video-data",
-  contract_note: "retrieves captured framebuffer recordings.",
-}
-
-data megarac_op_sol_recorded_video: MegaRacApiOperation = MegaRacApiOperation {
-  http_method: "GET",
-  path: "/api/settings/sol-recorded-video",
-  contract_note: "retrieves captured SOL-stream recordings.",
-}
-
-data megarac_op_event_log: MegaRacApiOperation = MegaRacApiOperation {
-  http_method: "GET",
-  path: "/api/logs/event",
-  contract_note: "OEM records arrive with sel_data empty and advanced_event_description 'unknown'. Payload bytes are not on this route; ipmitool sel elist is the route that preserves them.",
-}
-
 // THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
 // ISO directory over NFS to the BMC address; PUT media config; wait for the daemon's own retry
 // interval while the images listing goes from refusing to listing the image; POST start-media WITH
@@ -186,13 +144,6 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_media_start,
   megarac_op_media_stop,
   megarac_op_media_status,
-  megarac_op_media_instance,
-  megarac_op_video_triggers,
-  megarac_op_sol_triggers,
-  megarac_op_video_pre_event,
-  megarac_op_video_data,
-  megarac_op_sol_recorded_video,
-  megarac_op_event_log,
 ]
 
 // THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
@@ -503,19 +454,6 @@ service megarac.Media {
     }
   }
 
-  operation GetMediaInstance {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/media/instance"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac media instance GET failed"
-    }
-  }
-
   operation StartMedia {
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -549,45 +487,6 @@ service megarac.Media {
     exit {
       0 => Unit
       nonzero => String "megarac session DELETE failed"
-    }
-  }
-
-  operation GetEventLog {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/logs/event"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac event log GET failed"
-    }
-  }
-
-  operation GetVideoTriggers {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/video/triggers"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac video triggers GET failed"
-    }
-  }
-
-  operation GetSolTriggers {
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/settings/video/sol-triggers"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac sol-triggers GET failed"
     }
   }
 }
