@@ -66,6 +66,34 @@ import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 // two, and it is a count rather than a derivation, so it was never the second fork; it is the
 // consumer that has not cut over yet.
 //
+// THIS SET ANSWERS THE NEW-DEPLOYMENT QUESTION, AND ONLY THAT ONE. ADMISSIBILITY IS SUBJECT-RELATIVE
+// AND THIS MODULE IS NOT YET.
+//
+// The set answers: which units may receive work that NOTHING has placed yet. It does not answer
+// whether a host is available TO A PARTICULAR SUBJECT, and those differ exactly where it matters. The
+// four hosts of FabricGroupA are unavailable to a new deployment -- and they are precisely where the
+// V4 Flash deployment already runs. So a subject's own commitment is availability to that subject and
+// unavailability to everyone else, and one global set cannot say both.
+//
+// THE CONSEQUENCE IS A SCOPE RULE FOR CONSUMERS, and it decided how DSV41-9's second half consumes
+// this module (operator-level ruling via the DSV41 manager, 2026-09-12). A consumer asking "where may
+// I place something new" -- the container build, the image probe, the V4.1 serving domain -- takes the
+// set as its DOMAIN. A consumer that already has a placement -- the GLM and V4 Flash candidate fields,
+// whose shapes were authored over the physical unit population -- must NOT have its domain narrowed by
+// this set, because that would assert the shape running today cannot exist, and would change three
+// decision field identities at once (DESIGN section 3d: a different candidate field is a different
+// decision). What every consumer does take is the FIT: a shape wider than the admissible set is
+// refused BY NAME against these identities, which is the fail-open this module was written to close,
+// and refusing a shape that exists carries more than never enumerating it.
+//
+// TRIGGER FOR THE REFINEMENT THAT WOULD DISSOLVE THE SPLIT: admissibility relative to a named subject
+// -- a standing that answers "available to THIS subject", where a host committed to that same subject
+// counts as available to it and committed to any other counts as unavailable. SUFFICIENT FOR: the
+// existing subjects' domains can consume admissibility too, because the V4 Flash domain asking about
+// its own hosts gets them back rather than losing them. Until that exists, a global set consumed as a
+// domain by a subject that already holds hosts is a narrowing, not a wall, and this note is what
+// stops it being done by accident.
+
 // A COMMITMENT IS NOT A CAPABILITY. Nothing here says a host cannot serve or cannot build. It says
 // some other authority has already placed work on it, so a lane that places NEW work must not treat
 // it as free. The remedy is always the same and always elsewhere: release the reservation, withdraw
