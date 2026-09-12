@@ -125,10 +125,24 @@ type PermittedJurisdictionPopulation
 // excuse the path rather than the examined fact about it, and would keep excusing it after the
 // fact changed.
 //
-// THE DROP REFERENCE IS NOT DECORATION: it is the roster row that carries the reason, the bounded
-// population and the restoration trigger, and a reader holding an admitted permit reaches all three
-// from the posture the permit records. An enrollment naming no drop would be the exception without
-// the accounting, which is the silent regression 4b(3) exists to forbid.
+// WHAT THE DROP REFERENCE DOES AND DOES NOT ESTABLISH TODAY, stated at its real strength because
+// the field sits beside one that executes. Requiring it means an enrollment with NO drop row has no
+// constructor, and because ProviderUsePermit records the whole posture, an auditor holding a permit
+// reaches the cited row's reason, bounded population and restoration trigger.
+//
+// WHAT NO CODE READS: the reference itself. jurisdiction_drop_enrolled below matches path_evidence
+// and jurisdiction and ignores drop, so nothing joins it to gunbc.rung_drop, nothing establishes
+// that the named row EXISTS in the roster, and nothing establishes that the row's population names
+// this path. An enrollment citing a row that resolves to nothing, or to a row describing something
+// else, stands the wall down with no diagnostic and no count -- and an enrollment's whole effect IS
+// that TransferOrLocationUnresolved does not fire, which is the shape DESIGN section 5 names as an
+// escape hatch. The accounting is therefore ASSERTED HERE AND EXECUTED NOWHERE, and saying otherwise
+// would be rung inflation (4b(1)) about this very field.
+//
+// NEXT-RUNG TRIGGER: a gate that REFUSES an enrollment whose drop does not resolve to a
+// gunbc.rung_drop roster row whose own population names that path_evidence -- sufficient for the
+// bounded, declared half of the 4b(3) exception to be checked rather than read, at which point this
+// annotation states a guarantee instead of a gap.
 type JurisdictionDropEnrollment {
   path_evidence: DeclarationRef
   jurisdiction: DeclarationRef

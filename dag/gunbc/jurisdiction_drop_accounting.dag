@@ -1,0 +1,105 @@
+module gunbc.jurisdiction_drop_accounting
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import product.fabric.provider_route { JurisdictionDropEnrollment, CompliancePostureRevision }
+import gunbc.rung_drop { RungDrop }
+import gunbc.rung_drop.roster { standing_rung_drops }
+
+// THE ACCOUNTING JOIN FOR A JURISDICTION DROP ENROLLMENT, AND WHY IT LIVES HERE RATHER THAN IN THE
+// FABRIC. product.fabric.provider_route JurisdictionDropEnrollment carries a drop reference so that
+// an exception suppressing TransferOrLocationUnresolved names the roster row accounting for it.
+// Requiring the field means an enrollment with NO drop row has no constructor, and because a permit
+// records the whole posture the row is reachable from an admitted permit -- but until this module
+// existed NOTHING READ the reference, so the suppression executed while its accounting did not.
+// Review 64697 named that correctly: an enrollment's entire effect is that a refusal does not fire,
+// and a suppression whose accounting nothing reads is DESIGN section 5's escape hatch in its exact
+// form -- a toggle whose only effect is "proceed as if the refusal had not fired".
+//
+// THE LAYER IS THE POINT. product.fabric.provider_route states its own authority direction: it holds
+// provider-side route facts, and "the join against posture and use scope lives one layer up",
+// because whether we are presently willing to use those facts is a fact about US. Our rung-drop
+// roster is the same kind of fact, so the generic fabric must not import it any more than it
+// enumerates jurisdictions -- a fabric that read gunbc's drop roster would be the inversion that
+// module exists to refuse. The enrollment type stays there; the join to our accounting is here.
+//
+// THE JOIN KEY IS THE ROW'S OWN DECLARED IDENTITY. A RungDrop carries identity: NonEmptyStr and no
+// module path, so the comparison is the enrollment's cited decl_name against that identity. The
+// namespace authority already establishes that the reference RESOLVES to a real declaration; what
+// this adds is that the declaration it names is a rostered drop that is still Standing. WHAT IT DOES
+// NOT ESTABLISH, said plainly rather than left for a reader to discover: the module path is not
+// compared, so a declaration elsewhere sharing a roster row's name would satisfy this join. That is
+// the same reference-versus-name weakness as the population half below and is covered by the same
+// trigger.
+type EnrollmentAccountingStanding
+  = EnrollmentAccounted { drop: DeclarationRef }
+  | EnrollmentDropUnrostered { drop: DeclarationRef }
+
+// ONE MATCH IS NOT AVAILABLE HERE BECAUSE THE SUBJECT IS A LOOKUP, NOT A COPRODUCT, so the
+// discipline the fabric module keeps for coproducts is kept in the shape that does apply: the
+// result carries the offending reference rather than a Bool, so a caller that must report the
+// failure never walks the value a second time to find out which enrollment it was.
+//
+// Retired and absent collapse into ONE arm deliberately, and the collapse is not the
+// Absent-versus-Unread conflation this corpus refuses elsewhere. Both mean the same thing to a
+// consumer -- there is no STANDING accounting for this suppression -- and both carry the same
+// remedy: declare one, or stop suppressing. standing_rung_drops is the roster's own filter, so a
+// row retiring makes every enrollment citing it unaccounted with no edit here, which is the
+// behaviour a retired drop must have.
+fn enrollment_accounting(
+  enrollment: JurisdictionDropEnrollment,
+  roster: List<RungDrop>,
+) -> EnrollmentAccountingStanding {
+  if count(filter(roster, d => d.identity == enrollment.drop.decl_name)) > 0 {
+    EnrollmentAccounted { drop: enrollment.drop }
+  } else {
+    EnrollmentDropUnrostered { drop: enrollment.drop }
+  }
+}
+
+// EVERY UNACCOUNTED ENROLLMENT, NOT THE FIRST. A posture is a small authored row and a reader fixing
+// it wants the whole set, unlike a route admission where reporting one obligation at a time stops a
+// caller shopping for the cheapest. An empty result reads as "none unaccounted" and needs no seed.
+fn unaccounted_enrollments(
+  enrollments: List<JurisdictionDropEnrollment>,
+  roster: List<RungDrop>,
+) -> List<DeclarationRef> {
+  fold(
+    enrollments,
+    init: [],
+    f: fn(acc, e) {
+      match enrollment_accounting(enrollment: e, roster: standing_rung_drops()) {
+        EnrollmentAccounted { drop } => acc
+        EnrollmentDropUnrostered { drop } => concat(acc, [drop])
+      }
+    },
+  )
+}
+
+// THE POSTURE-LEVEL QUESTION, which is what a gate asks: does every suppression this posture carries
+// name a standing accounting row? An empty list is the admitting answer.
+fn posture_unaccounted_enrollments(posture: CompliancePostureRevision) -> List<DeclarationRef> {
+  unaccounted_enrollments(
+    enrollments: posture.jurisdiction_drop_enrollments,
+    roster: standing_rung_drops(),
+  )
+}
+
+// WHICH OF THE THREE HOLES THIS CLOSES, STATED SO A GREEN IS NOT READ AS MORE THAN IT IS. Review
+// 64697 named three ways an enrollment could stand a wall down silently. Closed here: a drop
+// reference naming no rostered row at all, and one naming a row that has been RETIRED. Open: an
+// enrollment citing a real, standing row whose POPULATION describes some other path.
+//
+// THE THIRD IS BLOCKED RATHER THAN DECLINED. gunbc.rung_drop RungDropDeclaration carries
+// population: List<String> -- prose. Checking that prose "names" a DeclarationRef means
+// substring-matching a declaration name against a sentence, which is agreement by spelling between
+// producer and consumer: exactly what product.fabric.provider_route argues against at length in its
+// own opening, and it would read as coverage while enforcing nothing, which is worse than leaving
+// the gap visible.
+//
+// NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY SO IT CANNOT BE RETIRED WHILE THE GAP STAYS OPEN:
+// gunbc.rung_drop RungDropDeclaration carrying its enrolled subjects as DECLARATION REFERENCES
+// rather than prose -- sufficient for an enrollment to be checked against the drop row's actual
+// population, and sufficient for this module's join to compare references rather than a name. A
+// population sentence mentioning a path does NOT discharge it: that is the artifact, not the
+// capability, and it would leave the next enrollment in the same position.

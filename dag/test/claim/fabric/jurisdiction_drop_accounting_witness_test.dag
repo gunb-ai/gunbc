@@ -1,0 +1,137 @@
+module test.claim.fabric.jurisdiction_drop_accounting_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.fabric.provider_route { JurisdictionDropEnrollment }
+import gunbc.rung_drop.roster { rung_drop_roster, standing_rung_drops }
+import gunbc.jurisdiction_drop_accounting {
+  EnrollmentAccountingStanding, EnrollmentAccounted, EnrollmentDropUnrostered,
+  enrollment_accounting, unaccounted_enrollments, posture_unaccounted_enrollments,
+}
+import gunbc.spark.first_party_serving { spark_first_party_posture }
+
+// THE GATE ON THE JURISDICTION-DROP SUPPRESSION. An enrollment's entire effect is that
+// product.fabric.provider_admission TransferOrLocationUnresolved does not fire for one path, so the
+// question these rows ask is whether that suppression is ACCOUNTED: does its drop reference name a
+// rung-drop row that exists and is still Standing. Without these rows the reference was written by
+// producers and read by nobody, which is DESIGN section 5's escape hatch -- a toggle whose only
+// effect is "proceed as if the refusal had not fired" (review 64697).
+//
+// EVERY ROW BELOW IS A PAIR OR IT PROVES NOTHING. A refusing half alone is satisfied by a check that
+// rejects everything; an admitting half alone by one that accepts everything.
+
+// The subjects this witness cites, declared so every citation resolves.
+data a_path_evidence: NonEmptyStr = "a-path-evidence"
+data a_jurisdiction: NonEmptyStr = "a-jurisdiction"
+data no_such_drop_row: NonEmptyStr = "no-such-drop-row"
+
+// THE REAL STANDING ROW the Spark enrollment cites. Citing it here rather than inventing a fixture
+// row is deliberate: a fixture row would test the join against something the roster does not
+// contain, which is the shape of a check that passes because its subject is not real.
+fn real_standing_drop() -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.rung_drop.provider_path_jurisdiction_unread_admits",
+    decl_name: "provider_path_jurisdiction_unread_admits",
+  )
+}
+
+fn absent_drop() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.fabric.jurisdiction_drop_accounting_witness",
+    decl_name: "no_such_drop_row",
+  )
+}
+
+// A RETIRED ROW, cited from the roster's own population. gunbc.rung_drop.cited_symbol_census carries
+// standing: Retired, so an enrollment citing it must be unaccounted for the same reason an absent
+// row is: there is no STANDING accounting for the suppression. This is the row that proves the gate
+// reads the standing rather than merely the existence of a name.
+fn retired_drop() -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.rung_drop.cited_symbol_census",
+    decl_name: "cited_symbol_census",
+  )
+}
+
+fn enrollment_citing(drop: DeclarationRef) -> JurisdictionDropEnrollment {
+  JurisdictionDropEnrollment {
+    path_evidence: decl_ref(module_path: "test.claim.fabric.jurisdiction_drop_accounting_witness", decl_name: "a_path_evidence"),
+    jurisdiction: decl_ref(module_path: "test.claim.fabric.jurisdiction_drop_accounting_witness", decl_name: "a_jurisdiction"),
+    drop: drop,
+  }
+}
+
+fn accounted(s: EnrollmentAccountingStanding) -> Bool {
+  match s {
+    EnrollmentAccounted { drop } => true
+    EnrollmentDropUnrostered { drop } => false
+  }
+}
+
+// PAIR ONE, ADMITTING HALF - an enrollment citing the real standing row is accounted.
+test fn w_enrollment_citing_a_standing_drop_is_accounted() -> Bool {
+  accounted(s: enrollment_accounting(
+    enrollment: enrollment_citing(drop: real_standing_drop()),
+    roster: standing_rung_drops(),
+  ))
+}
+
+// PAIR ONE, REFUSING HALF - the SAME enrollment citing a drop that is in no roster row is
+// unaccounted. Only the reference moves. Without this the row above is satisfied by a check that
+// accounts for everything, which is the wall that stands nothing down.
+test fn w_enrollment_citing_an_absent_drop_is_unaccounted() -> Bool {
+  !accounted(s: enrollment_accounting(
+    enrollment: enrollment_citing(drop: absent_drop()),
+    roster: standing_rung_drops(),
+  ))
+}
+
+// PAIR TWO - a RETIRED row is not a standing accounting. This is the half a check joining on mere
+// existence would get wrong: the name is in the corpus and resolves, and the suppression it would
+// authorise has already been declared over. A retired drop must take every enrollment citing it out
+// of accounting with no edit to the enrollment.
+test fn w_enrollment_citing_a_retired_drop_is_unaccounted() -> Bool {
+  !accounted(s: enrollment_accounting(
+    enrollment: enrollment_citing(drop: retired_drop()),
+    roster: standing_rung_drops(),
+  ))
+}
+
+// The set form reports EVERY offender rather than the first, and reports the offending REFERENCE
+// rather than a count, so a reader fixing a posture is told which enrollment to go and account for.
+test fn w_unaccounted_set_names_the_offending_references() -> Bool {
+  count(unaccounted_enrollments(
+    enrollments: [
+      enrollment_citing(drop: real_standing_drop()),
+      enrollment_citing(drop: absent_drop()),
+      enrollment_citing(drop: retired_drop()),
+    ],
+    roster: standing_rung_drops(),
+  )) == 2
+    && count(unaccounted_enrollments(
+      enrollments: [enrollment_citing(drop: real_standing_drop())],
+      roster: standing_rung_drops(),
+    )) == 0
+}
+
+// THE ROW THAT STOPS THE RETIRED RED BEING THE ABSENT RED WRITTEN TWICE. Both reds above come back
+// unaccounted, and they would ALSO both come back unaccounted if cited_symbol_census simply were not
+// in the corpus -- in which case the retired row would be testing absence a second time and the
+// standing filter would be untested. So this asserts the discriminating fact directly: the retired
+// row IS in the full roster and is NOT in the standing one. That is what makes the red above a
+// statement about STANDING rather than about existence.
+test fn w_the_retired_row_is_rostered_but_not_standing() -> Bool {
+  count(filter(rung_drop_roster, d => d.identity == "cited_symbol_census")) == 1
+    && count(filter(standing_rung_drops(), d => d.identity == "cited_symbol_census")) == 0
+    && count(filter(standing_rung_drops(), d => d.identity == "provider_path_jurisdiction_unread_admits")) == 1
+}
+
+// THE PRODUCTION ROW, AND IT IS THE POINT OF THE GATE RATHER THAN A SMOKE TEST. The only posture in
+// this repository carrying a jurisdiction-drop enrollment is Spark's first-party serving posture,
+// whose enrollment cites gunbc.rung_drop.provider_path_jurisdiction_unread_admits. This asserts that
+// the real production posture is accounted -- so the gate is enrolled against live evidence and not
+// only against fixtures, and so a later edit that retires that drop row or renames the enrollment's
+// reference goes red HERE rather than silently standing the wall down on a serving route.
+test fn w_the_production_spark_posture_is_accounted() -> Bool {
+  count(posture_unaccounted_enrollments(posture: spark_first_party_posture)) == 0
+}
