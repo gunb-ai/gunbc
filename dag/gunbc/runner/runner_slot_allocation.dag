@@ -319,19 +319,20 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
   byte_size(host_runner_memory_envelope_bytes(host: host))
 }
 
-// srv2 IS STILL NOT DERIVED AND THIS FUNCTION DOES NOT PRETEND OTHERWISE. Its 5 is a HELD
-// allocation, and the module's own ruling forbids reading it as a memory admission: its session
-// reservation is unestablished, so the subtraction that produces an envelope cannot be performed
-// at all. It is returned unchanged, from its own arm, rather than given an envelope of zero and
-// silently re-derived to nothing -- which would convert an unestablished fact into a confident
-// refusal. `test.claim.host_allocation_conservation`
-// `the_srv2_width_derivation_is_unestablished` remains the executed statement of this.
+// EVERY HOST DIVIDES, INCLUDING THE ONE THAT CANNOT. srv2 carried a second special arm here --
+// returning its held 5 -- alongside the one in `host_held_runner_width`, so removing that one alone
+// left the bypass standing on the other foot. Both are gone: a host whose session charge is
+// unestablished has an envelope of zero, and zero divided by the slot size is a width of zero.
+//
+// THAT IS THE REFUSAL, NOT A CONFIDENT CLAIM OF EMPTINESS, and the distinction lives where it can
+// be acted on rather than here. An earlier revision of this note argued the opposite -- that
+// answering zero would "convert an unestablished fact into a confident refusal" -- and that was
+// true only while zero meant `provision nothing`. It does not: `gunbc.ci_runner_placement`
+// `admit_or_refuse_zero_width` REFUSES a zero-width host by name rather than deploying it, so the
+// zero propagates as a stop rather than as an instruction. Keeping a held number here to avoid that
+// was protecting the reader from a word while leaving the walls unable to see the host at all.
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv2 as String) {
-    5
-  } else {
-    host_runner_memory_envelope_bytes(host: host) / gunbc_runner_slot_memory_max_bytes
-  }
+  host_runner_memory_envelope_bytes(host: host) / gunbc_runner_slot_memory_max_bytes
 }
 
 type HostDiskWidthConstraint
@@ -543,14 +544,38 @@ fn host_width_binding_label(host: HostIdentity) -> String {
 // host_memory_admitted_width would be reading the held number back out as though it were an
 // admission -- the exact substitution this change exists to stop. The hold is named, and it is the
 // only path by which a host with an unestablished denominator gets a width at all.
+// srv2's HELD ARM IS DELETED (2026-09-12), AND WITH IT THE ONLY BYPASS AROUND THIS MODULE'S OWN
+// CONSERVATION MODEL.
+//
+// WHAT THE HOLD WAS FOR: srv2's session denominator was unestablished, so there was no envelope to
+// divide and no derived width to report. The hold answered with what the host was OBSERVED running
+// -- five -- so that a reader would not mistake an underived host for an empty one.
+//
+// WHY IT IS GONE: a description of what a host runs outranked every wall that decides what it may
+// run. `host_memory_admitted_width` never constrained srv2, so the conservation checks passed by
+// being unable to reach it, and the hold kept reporting five while the arithmetic behind it went
+// stale underneath. Measured 2026-09-12: five slots at the CURRENT 16 GiB row demand 80 GiB and
+// sessions.slice declares 64 GiB, against 125.09 GiB of measured usable RAM -- so the declared
+// ceilings on that host cannot all be honoured at once, and nothing in this module could say so
+// while the hold stood. That is not a hazard the 26 GiB row introduced; it is one the 26 GiB row
+// made visible.
+//
+// WHAT REPLACES IT IS A REFUSAL, NOT A SMALLER NUMBER. srv2's session reservation is
+// `ReservationUnestablished` on evidence rather than on absence (`gunbc.session_reservation_policy`
+// `srv2_session_aggregate_denominator`: the managed slice is clipping its own population at
+// memory.events high=69260300 max=1874245 oom_kill=52, AND three session-image scopes run outside
+// the slice its cap constrains). An unestablished charge yields no envelope, an envelope of zero
+// yields a width of zero, and a zero width is refused by `admit_or_refuse_zero_width` in
+// `gunbc.ci_runner_placement` rather than provisioned. srv2 therefore becomes STRUCTURALLY UNABLE
+// to receive a cap change, which is the property wanted -- as opposed to merely being left
+// unconverged, which is a decision nothing enforces.
+//
+// THE FUNCTION GOES WITH THE ARM rather than remaining as an empty mechanism. Nothing else authors
+// a hold, so a surviving `host_held_runner_width` would have no producer and could only ever answer
+// `none`: a decoration that reads as a capability. If a held width is ever wanted again it returns
+// with the authority that justifies one.
 fn host_held_runner_width(host: HostIdentity) -> Int? {
-  if host_memory_width_is_established(host: host) {
-    none
-  } else if (host as String) == (operator_host_srv2 as String) {
-    Present { value: 5 }
-  } else {
-    none
-  }
+  none
 }
 
 // A ZERO-MEMORY SLOT SHAPE ADMITS NO RUNNERS, AND THE HELD ARM MUST NOT OUTRANK THAT.
@@ -1153,6 +1178,24 @@ fn runner_slot_core_memory_relation_holds(want: ByteSize) -> Bool {
   }
 }
 
+// A ZERO WIDTH IS ACCOUNTED, NOT FILTERED, AND THAT CHOICE IS THE POINT (2026-09-12).
+//
+// srv2 derives zero now that both of its bypass arms are deleted, and the obvious repair -- drop
+// zero-width hosts from `gunbc_committed_runner_slot_allocations()` before this fold -- is the
+// empty-observation narrow DESIGN names: the host would vanish from the roster and the wall would
+// pass by no longer being able to see it, which is the same failure the held arm produced with
+// better manners. Worse, it would make the `> 0` conjunct permanently green and therefore a
+// decoration.
+//
+// THE CONJUNCT NOW READS "POSITIVE, OR REFUSED FOR A STATED REASON". A zero width is admissible
+// here ONLY where the host's session charge is unestablished -- which is exactly the condition that
+// produced the zero, and which `gunbc.ci_runner_placement` `admit_or_refuse_zero_width` turns into
+// a named refusal rather than a deployment. The red stays authorable and is the case that matters:
+// a host with an ESTABLISHED charge that still derives zero is a defect in the derivation, and it
+// still fails here.
+//
+// THE FLEET RESULT IS THEREFORE INCOMPLETE AND SAYS SO, rather than being quietly reported as whole
+// over the hosts that happened to survive the filter.
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
   let gibibyte_bytes = 1073741824
@@ -1165,7 +1208,7 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
     && all(
       gunbc_committed_runner_slot_allocations(),
       a =>
-        a.slots_per_host > 0
+        (a.slots_per_host > 0 || !host_memory_width_is_established(host: a.host))
           && gunbc_runner_slot_oversubscription_within_slice(
                slots: a.slots_per_host,
                per_slot: a.per_slot.memory_max,

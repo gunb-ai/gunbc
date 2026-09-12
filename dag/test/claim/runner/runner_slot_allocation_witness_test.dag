@@ -109,15 +109,26 @@ test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool 
     && !host_memory_width_is_established(host: operator_host_srv2)
 }
 
-// THE HELD WIDTH IS ASSERTED AS HELD, NOT AS AN ADMISSION. Without this row the hold would be
-// invisible: nothing else states that srv2 still runs five, and a reader would find only the
-// refusal and conclude the host was down to nothing.
-test fn srv2_width_is_held_rather_than_derived() -> Bool {
+// THE HOLD IS GONE AND THIS ROW NOW ASSERTS ITS ABSENCE, which is the property that matters after
+// 2026-09-12. It previously read `srv2_width_is_held_rather_than_derived` and existed so a reader
+// would not mistake an underived host for an empty one. That reason expired with the arm: srv2 is
+// no longer underived-but-running-five, it is REFUSED, and the refusal is the answer rather than a
+// gap to be papered over.
+//
+// IT ASSERTS NO HOST HOLDS, not merely that srv2 does not. A hold on any host would reinstate the
+// bypass this deletion closed -- a description of what a machine runs outranking the walls that
+// decide what it may run -- so the discriminating red is "someone authored a hold again", not
+// "srv2 specifically".
+test fn no_host_bypasses_derivation_with_a_held_width() -> Bool {
   match host_held_runner_width(host: operator_host_srv2) {
-    Present { value: n } => n == 5
-    Absent => false
+    Present { value: _ } => false
+    Absent => true
   }
     && match host_held_runner_width(host: operator_host_srv1) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match host_held_runner_width(host: operator_host_srv3) {
       Present { value: _ } => false
       Absent => true
     }
@@ -154,7 +165,7 @@ test fn srv2_width_is_held_rather_than_derived() -> Bool {
 // nothing asked for.
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
   gunbc_runner_slots_per_host(host: operator_host_srv1) == 12
-    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 0
     && gunbc_runner_slots_per_host(host: operator_host_srv3) == 12
     && gunbc_runner_slots_per_host(host: operator_host_srv4) == 12
     && gunbc_runner_slots_per_host(host: operator_host_srv1) < host_memory_admitted_width(host: operator_host_srv1)
