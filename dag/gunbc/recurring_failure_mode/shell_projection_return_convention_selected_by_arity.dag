@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.shell_projection_return_convention_selected_by_arity
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data shell_projection_return_convention_selected_by_arity: RecurringFailureMode = RecurringFailureMode {
+  identity: "shell_projection_return_convention_selected_by_arity" as NonEmptyStr,
+
+  receipts: [
+    "shell projection return convention selected by arity (an emitted method's RETURN CONVENTION is decided by counting the declared output fields rather than derived from the declaration that also decides its SIGNATURE, so one arity disagrees with the signature it was signed under).",
+
+    "INVALID STATE: a shell operation whose declared output carries exactly ONE field emits a body answering that field bare, while the same declaration signed the method `Result<.., Box<dyn Error>>` -- the emitted program violates its own emitted type. gunbc accepts the source with zero blocking diagnostics; rustc refuses the artifact with E0308.",
+
+    "HARM: this is the ordinary compiler floor, not the differentiating claim -- DESIGN's 'the floor first' names values inhabiting declared types, and here the compiler emitted both the type and the value that fails to inhabit it. It is a floor failure on the source-to-target path, which DESIGN calls a below-baseline safety regression rather than a missing capability.",
+
+    "DISTINGUISHING FACT, and the reason this is its own class rather than an instance of the sibling it was found beside: nothing here is MISSING from the emitter. The Result convention is present and correct at two fields and above. What is wrong is that an arity test chooses between two conventions where one declaration should have derived one, so the defect is a FORK inside the producer rather than an unimplemented arm -- and a reader auditing 'does the emitter know how to return a Result' finds that it plainly does.",
+
+    "NOT THE SAME CLASS AS `refusal_deferred_to_emitted_runtime`, which also lives at emit_shell_channel_expr's neighbourhood: that class is a refusal written into the artifact instead of the diagnostic stream. This one writes no refusal at all and intends the value it emits; it is simply unwrapped.",
+
+    "THE MECHANISM IS THE ARITY AND ONLY THE ARITY, ISOLATED BY MEASUREMENT RATHER THAN BY READING THE CODE. Three plausible co-causes were each measured and ruled out. The exit block is not load-bearing: a one-field operation WITH an exit block emits `0 => { output.status.success() }` and is refused at the same grain, because the exit arm calls the same projection. The channel is not: a single `stdout: String from \"stdout\"` is refused exactly as a single `success: Bool from \"exit_success\"`. And the boundary is at ONE, not at some larger shape: two declared fields already emit `Ok((output.status.success(), stdout.clone()))` and compile.",
+
+    "SPECIMEN, COMMITTED AS A RUNNABLE PAIR because a class whose specimen lives only in prose vanishes the moment production stops authoring it -- the lesson this row's sibling `accepted_source_emits_uncompilable_target` records twice. `fixtures/fixture_closure_rustc/shell_single_field_projection_probe.dag` is the red arm and `shell_multi_field_projection_probe.dag` the control; they differ in ONE authored thing, how many fields the output block declares, so a green against a red locates the refusal at the arity and at nothing else. Consumer: `v1_compiler.emitted_closure_compile_host` `fixture_closure_rustc_verdict`, through its own discrimination pair.",
+
+    "HOW IT WAS FOUND, which is the part worth keeping: it was not looked for, and the instrument that exposed it was a DIFFERENT fixture being wrong. An earlier cut of `argv_word_list_splice_probe.dag` simplified its operations to a single `success: Bool` output, and that fixture came back red with four E0308s that had nothing to do with the argv splice it exists to adjudicate. The general shape: a fixture authored to isolate one emitter decision is also an unplanned probe of every decision it happens to touch, and a red it cannot explain is a finding rather than noise -- the temptation is to make the fixture green and move on, which would have buried this.",
+
+    "WHY IT STAYED LATENT: no operation in the emitted 00_compile closure declares a single-field output -- required regeneration is green over that population -- so the shape was authorable for as long as nobody authored it. Every shell operation the corpus actually declares carries success, stdout and stderr together, which is three, and the class begins below two. Stated at the grain measured: the emitted population, not the whole corpus.",
+
+    "RUNG FOUND AT: 1, mitigatable -- the emitted crate fails to build, loudly, at cargo, and nothing in the accepting path reports it. It is NOT below the ladder: the failure is a typed refusal at the target compiler rather than a silent wrong answer, which is the same standing the sibling class records for the same reason.",
+
+    "RUNG NOW: 1, unchanged, and the repair is deliberately not in the PR that filed this row (the three emitter arms that PR carries are a different subject, and a fixture carrying two repairs adjudicates neither). What the row adds today is the committed discriminating pair, which is evidence and not a wall.",
+
+    "CEILING: structural. Whether a declared output projection has one field or many is decidable from the declaration, and the return convention is ALREADY derived from that same declaration when it signs the method -- so the invalid state is removable by construction rather than by checking, which is DESIGN section 5's single-authority move rather than a validator.",
+
+    "NEXT-RUNG TRIGGER: the emitted method's return convention DERIVED ONCE from the declared output field set, at the single authority that also renders its signature, so the wrapper and the signature cannot disagree -- sufficient that no arity can select a different convention, and sufficient for the exit-arm path too, since `emit_exit_arm` reaches the same projection and would otherwise keep its own copy of the fork. It is stated as the capability rather than as 'wrap the one-field case in Ok' because that phrasing would be satisfied by a second arity branch, leaving the fork in place one arm wider.",
+  ],
+
+  evidence: [],
+}

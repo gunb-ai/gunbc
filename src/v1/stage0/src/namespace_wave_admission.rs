@@ -1712,6 +1712,10 @@ pub struct TransitionAdmission {
 /// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
 /// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12). #11137 merged. The required floor on gunbc#11121
+/// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
+/// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
+/// Empty is the resting state; this touch deletes the row rather than inheriting it.
 /// THIRTY-SIXTH DISSOLUTION (2026-09-12, gunbc#11137). The `gunbc#11137
 /// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
 /// description that stood above it goes with it. Its trigger, authored as "this row goes when

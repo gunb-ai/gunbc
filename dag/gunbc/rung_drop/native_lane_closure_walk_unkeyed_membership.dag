@@ -1,7 +1,7 @@
 module gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership
 
 import std.types { List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-12 (review 64571). The route grows its import closure by folding the fact list
@@ -27,17 +27,25 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // DESIGN section 4b(3) names as its own review tell -- a trigger naming less than the capability it
 // restores will be satisfied while the capability stays dead.
 
+// THE POPULATION NAMES WHAT THE REPAIR TOUCHED, and every symbol here was checked against the tree
+// before this row was pushed. A first version of this list named `native_lane_closure_grow`, which
+// exists nowhere -- a section 3 citation defect, and worse in THIS field than elsewhere: 4b(3)
+// requires a BOUNDED population, so an unreadable member means whoever discharges the row cannot
+// enumerate what to delete. Review 64576 caught it.
 data native_lane_closure_walk_unkeyed_membership_population: List<String> = [
-  "v2.compiler.compile native_lane_module_reachable — the membership test folded per round",
-  "v2.compiler.compile native_lane_closure_grow — the frontier walk that calls it",
-  "v2.compiler.compile native_lane_module_named — the name comparison the fold performs",
+  "v2.compiler.compile native_lane_module_reachable — the walk; membership was a per-round fold and is now a keyed lookup",
+  "v2.compiler.compile native_lane_closure_modules — its one caller, which now builds the index before the recursion",
+  "v2.compiler.compile native_lane_facts_index — the index the repair adds, module to imports, built once",
+  "v2.compiler.compile native_lane_module_named — the list scan the walk no longer reaches (still consumed by the closure-member join)",
 ]
 
 data native_lane_closure_walk_unkeyed_membership: RungDrop = RungDrop {
   identity: "native_lane_closure_walk_unkeyed_membership" as NonEmptyStr,
   subject: "constructed membership for the route's import-closure walk",
   declared: "2026-09-12",
-  standing: Standing,
+  standing: Retired {
+    trigger_fired: "gunbc#11121 landed as dfac90c3b0 (v2.std.collection primitive-backed map_insert/map_lookup delegates), and THE REPAIR IS IN THE SAME COMMIT AS THIS RETIREMENT: native_lane_module_reachable now looks up imports through an index built once by native_lane_facts_index and answers membership against a carried seen_set, so the walk no longer folds the fact list per round. RETIRING ON THE CAPABILITY ALONE WOULD HAVE BEEN THE 4b(3) INFLATION -- a row marked discharged with the quadratic walk still standing -- which is why the discharge is the repair and not the landing." as NonEmptyStr
+  },
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

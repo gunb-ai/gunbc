@@ -1901,10 +1901,70 @@ fn native_lane_closure_exhausted_detail(budget: Int, frontier: List<String>) -> 
 // `gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership`, which names the capability as
 // gunbc#11121 and says its toucher retires the row. Until it lands this fold is the honest shape
 // rather than a keyed set in name.
+type NativeLaneClosureStep {
+  unseen: List<String>
+  seen_set: Map<String, Bool>
+}
+
+// THE FACTS ARE INDEXED ONCE, BY MODULE, AND THE WALK LOOKS UP ONLY WHAT THE FRONTIER NAMES.
+// Consumer: native_lane_closure_modules, which builds this before entering the recursion so the
+// cost is paid once for the whole walk rather than once per round.
+//
+// A MODULE DECLARED TWICE APPENDS RATHER THAN OVERWRITES. The fold this replaces visited every
+// fact whose module the frontier named, so two facts declaring one module contributed BOTH import
+// lists; a plain map_insert would silently keep the last and shrink the closure. Duplicate module
+// headers are a corpus defect, but the repair of a cost shape may not also change which modules are
+// reachable -- that would be a behaviour change wearing a performance change's clothes.
+fn native_lane_facts_index(facts: List<NativeLaneSourceFacts>) -> Map<String, List<String>> {
+  fold_list(
+    xs: facts,
+    empty: empty_map(),
+    cons: fn(acc, f) {
+      match f.module {
+        Absent => acc
+        Present { value: declared } =>
+          match map_lookup(acc, declared) {
+            Absent => map_insert(acc, declared, f.imports)
+            Present { value: prior } => map_insert(acc, declared, list_append(prior, f.imports))
+          }
+      }
+    }
+  )
+}
+
+// THE FRONTIER WALK, KEYED (gunbc#11121 landed the primitive that makes this writable).
+// It was O(rounds x facts x frontier): every round folded the WHOLE fact list and tested frontier
+// membership by list scan, and the unseen set was computed by scanning `seen` per candidate. Both
+// scans are gone: the index answers "what does this module import" by key, and `seen_set` answers
+// "have we already taken this" by key.
+//
+// `seen` IS CARRIED IN BOTH FORMS ON PURPOSE. The ordered list is the ANSWER -- callers receive the
+// closure in discovery order -- and the map is the MEMBERSHIP TEST. v2.std.collection exposes
+// insert and lookup and no key enumeration, so a map alone could not produce the returned list, and
+// a list alone is the scan this repair removes. Carrying both is the honest shape rather than a
+// conversion that does not exist.
+//
+// THE REFUSAL ARMS ARE UNCHANGED: fuel exhaustion still refuses the whole derivation by identity
+// with the budget and the frontier, because a truncated reachable set decides what is ingested.
+//
+// DISCOVERY ORDER IS FRONTIER ORDER, NOT FACT ORDER -- a deliberate divergence, stated here so the
+// next reader does not rediscover it as a bug. The walk this replaces iterated the FACT list each
+// round and took the imports of frontier-named facts, so new modules appeared in the order their
+// declaring fact appeared; this one iterates the FRONTIER and looks each member up. Same set,
+// different sequence. Preserving fact order would require a per-round pass over all modules to
+// re-derive it, which is the repeated scan this repair exists to remove.
+//
+// IT IS UNOBSERVABLE BECAUSE EVERY CONSUMER READS A SET, checked rather than assumed:
+// native_lane_closure_ingest filters the ingest by membership (the ingest supplies its own order),
+// both halves of native_lane_ingest_matches_closure are membership tests, and the emitted receipt
+// carries `closure.len()` -- a count, never the sequence. IF A CONSUMER THAT READS THE SEQUENCE
+// EVER APPEARS, the change that adds it owns this order fact and must carry it; it cannot be
+// inherited silently from here.
 fn native_lane_module_reachable(
-  facts: List<NativeLaneSourceFacts>,
+  index: Map<String, List<String>>,
   frontier: List<String>,
   seen: List<String>,
+  seen_set: Map<String, Bool>,
   fuel: Int,
   budget: Int
 ) -> Outcome<List<String>> {
@@ -1917,47 +1977,49 @@ fn native_lane_module_reachable(
     )
   } else {
     let next = fold_list(
-      xs: facts,
+      xs: frontier,
       empty: [],
-      cons: fn(acc, f) {
-        if native_lane_facts_module_named(xs: frontier, facts: f) {
-          fold_list(
-            xs: f.imports,
-            empty: acc,
-            cons: fn(grown, imported) { list_snoc_item(xs: grown, item: imported) }
-          )
-        } else {
-          acc
+      cons: fn(acc, member) {
+        match map_lookup(index, member) {
+          Absent => acc
+          Present { value: imports } =>
+            fold_list(
+              xs: imports,
+              empty: acc,
+              cons: fn(grown, imported) { list_snoc_item(xs: grown, item: imported) }
+            )
         }
       }
     )
-    let unseen = fold_list(
+    let step = fold_list(
       xs: next,
-      empty: [],
+      empty: NativeLaneClosureStep { unseen: [], seen_set: seen_set },
       cons: fn(acc, candidate) {
-        if native_lane_module_named(xs: seen, name: candidate) || native_lane_module_named(xs: acc, name: candidate) {
-          acc
-        } else {
-          list_snoc_item(xs: acc, item: candidate)
+        match map_lookup(acc.seen_set, candidate) {
+          Present { value: _ } => acc
+          Absent =>
+            NativeLaneClosureStep {
+              unseen: list_snoc_item(xs: acc.unseen, item: candidate),
+              seen_set: map_insert(acc.seen_set, candidate, true)
+            }
         }
       }
     )
     native_lane_module_reachable(
-      facts: facts,
-      frontier: unseen,
+      index: index,
+      frontier: step.unseen,
       seen: fold_list(
-        xs: unseen,
+        xs: step.unseen,
         empty: seen,
         cons: fn(acc, m) { list_snoc_item(xs: acc, item: m) }
       ),
+      seen_set: step.seen_set,
       fuel: fuel - 1,
       budget: budget
     )
   }
 }
 
-// The seed set is every universe module plus the module the authority's live-verdict controls live
-// in: the controls are executed by this route, so their own closure is part of what it needs.
 fn native_lane_closure_seed_modules(universe: NativeLaneUniverse) -> List<String> {
   list_snoc_item(
     xs: fold_list(
@@ -1975,7 +2037,14 @@ fn native_lane_closure_modules(
   budget: Int
 ) -> Outcome<List<String>> {
   let seeds = native_lane_closure_seed_modules(universe: universe)
-  native_lane_module_reachable(facts: facts, frontier: seeds, seen: seeds, fuel: budget, budget: budget)
+  native_lane_module_reachable(
+    index: native_lane_facts_index(facts: facts),
+    frontier: seeds,
+    seen: seeds,
+    seen_set: fold_list(xs: seeds, empty: empty_map(), cons: fn(acc, m) { map_insert(acc, m, true) }),
+    fuel: budget,
+    budget: budget
+  )
 }
 
 // The ingest restricted to that closure, in the order the reads arrived. A source whose header
@@ -1990,9 +2059,12 @@ fn native_lane_closure_modules(
 // empty string.
 // A SOURCE WITH NO MODULE HEADER MATCHES NO NAME, and these two say so once instead of at each
 // site. Making NativeLaneSourceFacts.module an Optional turned every read of it into a match, and
-// the same two-line match was about to appear at four call sites -- the frontier walk, both halves
-// of the closure-member join, and the refusal detail. Consumers: native_lane_closure_grow (the
-// frontier test), native_lane_ingest_matches_closure (the join and its detail).
+// the same two-line match was about to appear at several call sites. Consumers, as of the keyed
+// walk repair: native_lane_ingest_matches_closure (both halves of the closure-member join and its
+// refusal detail). THE FRONTIER WALK NO LONGER READS IT -- native_lane_module_reachable answers
+// membership by key against its own index, so the one caller this helper had there is gone. Said
+// here rather than left implied, because a citation that survives the call it names is the stale
+// name DESIGN section 3 makes decidable and this file has already carried one.
 //
 // THE ABSENT ARM IS NOT A DEFAULT. `false` here is the answer to "does this source declare the
 // name we are looking for", and a source that declares no module cannot; it is not a stand-in for

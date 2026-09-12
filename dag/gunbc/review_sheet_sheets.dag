@@ -1,0 +1,451 @@
+module gunbc.review_sheet_sheets
+
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure {
+  EnsurePolicy,
+  EnsureObserved,
+  EnsurePlan,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+  ensure_decide,
+}
+import gunbc.review_sheet_projection {
+  ObservedSheet,
+  ObservedSheetRow,
+  ReviewSheetProjection,
+  ReviewSheetWritePlan,
+  ReviewSheetClassification,
+  ReviewSheetConverged,
+  ReviewSheetNeedsWrite,
+  ReviewSheetConflict,
+  ReviewSheetUnreadable,
+  DerivedCellWrite,
+  AppendListingRow,
+  classify_review_sheet,
+  conflict_reason,
+  a1_cell_eq,
+  a1_cell_wire,
+  a1_origin_cell,
+  a1_row_span_wire,
+  a1_row_span_includes_letter,
+  a1_from_wire,
+  A1Column,
+  A1Cell,
+  A1RowSpan,
+  A1WireOpenColumn,
+  A1WireCell,
+  A1WireUnreadable,
+}
+import extdeps.google.sheets {
+  ValueRange,
+  SheetsValueInputOption,
+  InputRaw,
+  SheetsValueRenderOption,
+  RenderFormattedValue,
+  sheets_major_dimension_wire,
+  sheets_major_dimension_from_wire,
+  DimensionRows,
+  DimensionColumns,
+}
+import extdeps.cloud.gcp.gcp { GcpOAuth2AccessTokenStrategy, AdcRefresh }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.review_sheet_operator {
+  fleet_review_sheet_operator_admission,
+  ReviewSheetOperatorAdmission,
+  ReviewSheetOperatorAdmitted,
+  ReviewSheetAwaitingHuman,
+  ReviewSheetNeedsApiEnable,
+  ReviewSheetEstateUnresolved,
+  ReviewSheetOperatorRefused,
+}
+
+// ONE realization of the review-sheet projection: Google Sheets values.get as independent
+// readback, values.batchUpdate only for the derived write plan. Auth is ADC / a SecretRef under
+// gunbc.secret_provision; this module does not mint a credential type.
+
+type SheetsAccess {
+  spreadsheet_id: NonEmptyStr
+  credential: SecretRef
+  token_strategy: GcpOAuth2AccessTokenStrategy
+}
+
+fn sheets_access(spreadsheet_id: NonEmptyStr, credential: SecretRef) -> SheetsAccess {
+  SheetsAccess {
+    spreadsheet_id: spreadsheet_id,
+    credential: credential,
+    token_strategy: AdcRefresh { adc_path: none },
+  }
+}
+
+type ReviewSheetLiveAccess
+  = ReviewSheetLiveOpen { access: SheetsAccess }
+  | ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorAdmission }
+
+fn review_sheet_live_access_from(
+  admission: ReviewSheetOperatorAdmission,
+  credential: SecretRef,
+) -> ReviewSheetLiveAccess {
+  match admission {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: id } =>
+      ReviewSheetLiveOpen { access: sheets_access(spreadsheet_id: id, credential: credential) }
+    ReviewSheetAwaitingHuman { intervention: i } =>
+      ReviewSheetLiveNotAdmitted { admission: ReviewSheetAwaitingHuman { intervention: i } }
+    ReviewSheetNeedsApiEnable { plan: p } =>
+      ReviewSheetLiveNotAdmitted { admission: ReviewSheetNeedsApiEnable { plan: p } }
+    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
+      ReviewSheetLiveNotAdmitted {
+        admission: ReviewSheetEstateUnresolved { subject: s, reason: r },
+      }
+    ReviewSheetOperatorRefused { reason: r } =>
+      ReviewSheetLiveNotAdmitted { admission: ReviewSheetOperatorRefused { reason: r } }
+  }
+}
+
+fn review_sheet_live_access(credential: SecretRef) -> ReviewSheetLiveAccess {
+  review_sheet_live_access_from(
+    admission: fleet_review_sheet_operator_admission(),
+    credential: credential,
+  )
+}
+
+// USER_ENTERED parses derived strings ("1/2", leading =/+/-) into dates, numbers, or formulas,
+// so GetValues FORMATTED_VALUE readback is not the string this lane wrote and the next converge
+// CellConflicts on its own output. RAW stores the projection string as a string.
+fn review_sheet_batch_value_input_option() -> SheetsValueInputOption {
+  InputRaw
+}
+
+// Pair with RAW writes: ValueRange.values is List<List<String>>, and UNFORMATTED_VALUE can
+// return JSON numbers (structural_coverage_gap_value_range_cell_types). FORMATTED_VALUE
+// is the cited default and keeps cells as strings, inverse of RAW for this model.
+fn review_sheet_get_value_render_option() -> SheetsValueRenderOption {
+  RenderFormattedValue
+}
+
+type SheetA1End
+  = A1EndOpen { column: A1Column }
+  | A1EndClosed { cell: A1Cell }
+  | A1EndWholeTab
+
+type SheetA1Range {
+  tab: NonEmptyStr
+  origin: A1Cell
+  end: SheetA1End
+}
+
+fn sheet_a1_range_wire(range: SheetA1Range) -> String {
+  match range.end {
+    A1EndWholeTab => range.tab as String
+    A1EndOpen { column: c } =>
+      concat(
+        range.tab as String,
+        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", c.letter as String))),
+      )
+    A1EndClosed { cell: c } =>
+      concat(
+        range.tab as String,
+        concat("!", concat(a1_cell_wire(cell: range.origin), concat(":", a1_cell_wire(cell: c)))),
+      )
+  }
+}
+
+fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> String {
+  concat(tab as String, concat("!", a1_cell_wire(cell: cell)))
+}
+
+fn sheet_qualified_span(tab: NonEmptyStr, span: A1RowSpan) -> String {
+  concat(tab as String, concat("!", a1_row_span_wire(span: span)))
+}
+
+type A1ReadbackStanding
+  = A1ReadbackAnchored { range: SheetA1Range }
+  | A1ReadbackUnreadable { reason: NonEmptyStr }
+
+fn review_sheet_get_values_request(tab: NonEmptyStr) -> SheetA1Range {
+  SheetA1Range {
+    tab: tab,
+    origin: a1_origin_cell(),
+    end: A1EndWholeTab,
+  }
+}
+
+fn a1_readback_standing(range: String) -> A1ReadbackStanding {
+  let parts = range.split(delimiter: "!")
+  if (parts |> count) != 2 {
+    A1ReadbackUnreadable {
+      reason: concat("unqualified A1 range; BatchUpdate would hit the first tab: ", range) as NonEmptyStr
+    }
+  } else {
+    match parts.first() {
+      Absent =>
+        A1ReadbackUnreadable { reason: "A1 range missing sheet title" as NonEmptyStr }
+      Present { value: tab } =>
+        if (tab == "") || string_contains(s: tab, pattern: "'") {
+          A1ReadbackUnreadable {
+            reason: concat("A1 sheet title unreadable: ", tab) as NonEmptyStr
+          }
+        } else {
+          match parts.skip(n: 1).first() {
+            Absent =>
+              A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+            Present { value: cells } => {
+              let segs = cells.split(delimiter: ":")
+              if (segs |> count) != 2 {
+                A1ReadbackUnreadable {
+                  reason: concat("A1 range is not start:end: ", range) as NonEmptyStr
+                }
+              } else {
+                match segs.first() {
+                  Absent =>
+                    A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+                  Present { value: start_tok } =>
+                    match segs.skip(n: 1).first() {
+                      Absent =>
+                        A1ReadbackUnreadable { reason: "A1 range missing cell address" as NonEmptyStr }
+                      Present { value: end_tok } =>
+                        match a1_from_wire(token: start_tok) {
+                          A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
+                          A1WireOpenColumn { column: _ } =>
+                            A1ReadbackUnreadable {
+                              reason: concat(
+                                "readback not A1-anchored; write A1 would not match the compared cells: ",
+                                range,
+                              ) as NonEmptyStr
+                            }
+                          A1WireCell { cell: origin } =>
+                            if a1_cell_eq(a: origin, b: a1_origin_cell()) {
+                              match a1_from_wire(token: end_tok) {
+                                A1WireUnreadable { reason: r } => A1ReadbackUnreadable { reason: r }
+                                A1WireOpenColumn { column: c } =>
+                                  A1ReadbackAnchored {
+                                    range: SheetA1Range {
+                                      tab: tab as NonEmptyStr,
+                                      origin: origin,
+                                      end: A1EndOpen { column: c },
+                                    }
+                                  }
+                                A1WireCell { cell: end } =>
+                                  A1ReadbackAnchored {
+                                    range: SheetA1Range {
+                                      tab: tab as NonEmptyStr,
+                                      origin: origin,
+                                      end: A1EndClosed { cell: end },
+                                    }
+                                  }
+                              }
+                            } else {
+                              A1ReadbackUnreadable {
+                                reason: concat(
+                                  "readback not A1-anchored; write A1 would not match the compared cells: ",
+                                  range,
+                                ) as NonEmptyStr
+                              }
+                            }
+                        }
+                    }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> ValueRange {
+  ValueRange {
+    range: sheet_qualified_cell(tab: tab, cell: write.a1),
+    majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
+    values: Present { value: [[write.value]] },
+  }
+}
+
+fn value_range_includes_column_letter(range: String, letter: String) -> Bool {
+  match split(s: range, delimiter: "!") |> skip(n: 1) |> first {
+    Absent => false
+    Present { value: span_wire } =>
+      match split(s: span_wire, delimiter: ":") |> first {
+        Absent => false
+        Present { value: start_wire } =>
+          match a1_from_wire(token: start_wire) {
+            A1WireOpenColumn { column: _ } => false
+            A1WireUnreadable { reason: _ } => false
+            A1WireCell { cell: start } =>
+              match split(s: span_wire, delimiter: ":") |> skip(n: 1) |> first {
+                Absent => (start.column.letter as String) == letter
+                Present { value: end_wire } =>
+                  match a1_from_wire(token: end_wire) {
+                    A1WireOpenColumn { column: _ } => false
+                    A1WireUnreadable { reason: _ } => false
+                    A1WireCell { cell: end } =>
+                      a1_row_span_includes_letter(
+                        span: A1RowSpan { start: start, end: end },
+                        letter: letter,
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn value_ranges_from_append(row: AppendListingRow, tab: NonEmptyStr) -> List<ValueRange> {
+  map(row.runs, run => ValueRange {
+    range: sheet_qualified_span(tab: tab, span: run.a1),
+    majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
+    values: Present { value: [run.cells] },
+  })
+}
+
+type TabBoundWritePlan {
+  tab: NonEmptyStr
+  plan: ReviewSheetWritePlan
+}
+
+fn value_ranges_from_write_plan(bound: TabBoundWritePlan) -> List<ValueRange> {
+  concat(
+    map(bound.plan.patches, w => value_range_from_derived_write(write: w, tab: bound.tab)),
+    fold(bound.plan.appends, init: [], f: fn(acc, row) {
+      concat(acc, value_ranges_from_append(row: row, tab: bound.tab))
+    }),
+  )
+}
+
+type ObservedSheetFromReadback
+  = ReadbackObserved { observed: ObservedSheet, tab: NonEmptyStr }
+  | ReadbackUnreadable { reason: NonEmptyStr }
+
+fn observed_data_rows(rows: List<List<String>>) -> List<ObservedSheetRow> {
+  rows |> enumerate |> filter(pair => pair.first > 0) |> map(pair => ObservedSheetRow {
+    data_index: pair.first - 1,
+    cells: pair.second,
+  })
+}
+
+fn grid_from_value_rows(values: List<List<String>>?) -> ObservedSheet {
+  match values {
+    Absent => ObservedSheet { headers: [], rows: [] }
+    Present { value: rows } =>
+      match rows |> first {
+        Absent => ObservedSheet { headers: [], rows: [] }
+        Present { value: headers } => ObservedSheet {
+          headers: headers,
+          rows: observed_data_rows(rows: rows),
+        }
+      }
+  }
+}
+
+fn observed_sheet_from_value_range(range: ValueRange) -> ObservedSheetFromReadback {
+  match range.majorDimension {
+    Absent =>
+      observed_sheet_from_row_major_range(range: range)
+    Present { value: raw } =>
+      match sheets_major_dimension_from_wire(raw: raw) {
+        Absent =>
+          ReadbackUnreadable {
+            reason: concat("foreign majorDimension: ", raw) as NonEmptyStr
+          }
+        Present { value: DimensionColumns } =>
+          ReadbackUnreadable {
+            reason: "column-major ValueRange is not a row-grid readback" as NonEmptyStr
+          }
+        Present { value: DimensionRows } =>
+          observed_sheet_from_row_major_range(range: range)
+      }
+  }
+}
+
+fn observed_sheet_from_row_major_range(range: ValueRange) -> ObservedSheetFromReadback {
+  match a1_readback_standing(range: range.range) {
+    A1ReadbackUnreadable { reason: r } => ReadbackUnreadable { reason: r }
+    A1ReadbackAnchored { range: parsed } =>
+      ReadbackObserved { observed: grid_from_value_rows(values: range.values), tab: parsed.tab }
+  }
+}
+
+fn review_sheet_ensure_plan(
+  classified: ReviewSheetClassification,
+  tab: NonEmptyStr,
+) -> EnsurePlan<TabBoundWritePlan> {
+  match classified {
+    ReviewSheetConverged => EnsurePlanUnavailable { reason: "already converged" }
+    ReviewSheetNeedsWrite { plan: p } =>
+      EnsurePlanAvailable { plan: TabBoundWritePlan { tab: tab, plan: p } }
+    ReviewSheetConflict { conflict: c } =>
+      EnsurePlanUnavailable { reason: conflict_reason(conflict: c) as String }
+    ReviewSheetUnreadable { reason: r } => EnsurePlanUnavailable { reason: r as String }
+  }
+}
+
+fn review_sheet_ensure(
+  policy: EnsurePolicy,
+  requested: SheetA1Range,
+  range: ValueRange,
+  projection: ReviewSheetProjection,
+) -> UpsertDecision<TabBoundWritePlan> {
+  match requested.end {
+    A1EndClosed { cell: _ } =>
+      Refuse {
+        reason: concat(
+          "bounded GetValues request; append would write past unobserved rows: ",
+          sheet_a1_range_wire(range: requested),
+        ) as NonEmptyStr
+      }
+    A1EndOpen { column: _ } =>
+      Refuse {
+        reason: concat(
+          "column-bounded GetValues request; append would write past unobserved columns: ",
+          sheet_a1_range_wire(range: requested),
+        ) as NonEmptyStr
+      }
+    A1EndWholeTab =>
+      match observed_sheet_from_value_range(range: range) {
+        ReadbackUnreadable { reason: r } => Refuse { reason: r }
+        ReadbackObserved { observed: observed, tab: tab } =>
+          if (tab as String) != (requested.tab as String) {
+            Refuse {
+              reason: concat(
+                "readback tab ",
+                concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
+              ) as NonEmptyStr
+            }
+          } else {
+            let classified = classify_review_sheet(observed: observed, projection: projection)
+            ensure_decide(
+              policy: policy,
+              observation: EnsureObserved { evidence: observed },
+              observation_satisfies: match classified {
+                ReviewSheetConverged => true
+                ReviewSheetNeedsWrite { plan: _ } => false
+                ReviewSheetConflict { conflict: _ } => false
+                ReviewSheetUnreadable { reason: _ } => false
+              },
+              mismatch_reason: match classified {
+                ReviewSheetConverged => "derived region already equals the projection"
+                ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
+                ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
+                ReviewSheetUnreadable { reason: r } => r as String
+              },
+              plan: review_sheet_ensure_plan(classified: classified, tab: requested.tab),
+            )
+          }
+      }
+  }
+}
+
+// sunny-carp-475 binds a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter onto
+// review_sheet_ensure (policy is the caller's EnsurePolicy, never a literal in this module).
+// That same adapter is the named later consumer of sheets_spreadsheets_oauth_scope (writes)
+// and sheets_spreadsheets_readonly_oauth_scope (get-only). sheets_api_base is already the
+// service endpoint. Quota numbers are enrolled via sheets_rate_limits, not a citation grep.
+data live_sheets_transport_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_sheets",
+    decl_name: "review_sheet_ensure",
+    field: WholeDeclaration
+  }
+}
