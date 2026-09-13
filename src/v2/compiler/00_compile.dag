@@ -97,6 +97,8 @@ import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.observation { TimedMeasurement }
+import std.measure { ByteSize }
 import std.types { NonEmptyStr }
 import std.algebra { Cons, Empty, FreeMonoid, trim }
 import v2.std.algebra { contains, fold_list, is_empty, length, list_append, list_find_first, list_reverse, list_snoc_item }
@@ -2172,6 +2174,14 @@ fn native_lane_closure_ingest(
 // second authority, so they owe a witness joining this route's universe against the discovery
 // producer's own population at identity grain on the same tree. That witness is the wall and it is
 // NOT yet built; until it is, the same-universe property is diligence rather than a check.
+// Receipt construction is nested within universe derivation, not another exclusive phase.
+// Both clocks qualify their own measurement; missing CPU observations never become zero.
+type NativeLaneIngestReceiptCost {
+  timings: List<TimedMeasurement>
+  ingested_files: Int
+  ingested_bytes: ByteSize
+}
+
 type NativeLaneIngestReceipt {
   context_identity: DiscoveredSourceRefsDigest
   closure_modules: List<String>

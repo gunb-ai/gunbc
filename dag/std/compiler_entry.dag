@@ -1,11 +1,9 @@
 module std.compiler_entry
 
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.observation { TimedMeasurement }
 
 import std.measure {
   Nanosecond,
-  ByteSize,
   nanosecond,
   nanosecond_count,
   millisecond,
@@ -137,14 +135,6 @@ data native_driver_producer_roster: List<DeclarationRef> = [
   decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved"),
   decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_context_from_ingest")
 ]
-
-// Receipt construction is nested within universe derivation, not another exclusive phase.
-// Both clocks qualify their own measurement; missing CPU observations never become zero.
-type NativeDriverIngestReceiptCost {
-  timings: List<TimedMeasurement>
-  ingested_files: Int
-  ingested_bytes: ByteSize
-}
 
 type NativeDriverExclusiveRows {
   load: Nanosecond
