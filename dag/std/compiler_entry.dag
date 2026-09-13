@@ -145,6 +145,14 @@ type NativeDriverExclusiveRows {
   row_serialization: Nanosecond
   module_release: Nanosecond
   relay_emit: Nanosecond
+  // SCRATCH BISECT ROWS (not for landing). TWO non-overlapping spans around the only work in the
+  // per-module iteration that no exclusive row covers, added to read ONE full fold and find which
+  // carries the ~240 ms remainder. A third span around the "iteration tail" was written and then
+  // deleted: as written it opened and closed with nothing between it, so it could only ever read
+  // zero -- a decoration, and the interval it meant to cover is already the tail half of
+  // bisect_loop_setup, which spans one iteration's end to the next prepare open.
+  bisect_row_accumulation: Nanosecond
+  bisect_loop_setup: Nanosecond
 }
 
 type NativeDriverCostAccounting
@@ -157,7 +165,7 @@ type NativeDriverCostAccounting
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit))
+  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit) + nanosecond_count(n: rows.bisect_row_accumulation) + nanosecond_count(n: rows.bisect_loop_setup))
 }
 
 fn native_driver_cost_account(
