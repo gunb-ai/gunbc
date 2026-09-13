@@ -1,0 +1,27 @@
+module gunbc.git_use_census.roster
+
+import std.types { List }
+import gunbc.git_use_authority { GitUseRow }
+import gunbc.git_use_census.roadmap_publication_push { roadmap_publication_push }
+import gunbc.git_use_census.roadmap_publication_pull_create { roadmap_publication_pull_create }
+import gunbc.git_use_census.roadmap_event_git_execution { roadmap_event_git_execution }
+
+import gunbc.git_use_census.rust_workspace_root_marker { rust_workspace_root_marker }
+
+import gunbc.git_use_census.rust_process_workspace_root { rust_process_workspace_root }
+
+import gunbc.git_use_census.rust_floor_head_observation { rust_floor_head_observation }
+
+// In-progress census enrollment, not a claim that this is the complete live population.
+// The import wall must refuse every unrostered production Git/GitHub edge. Each use is authored
+// in its own file; appending one does not rewrite DESIGN or another use's dispositions.
+fn git_use_rows() -> List<GitUseRow> {
+  [
+    roadmap_publication_push,
+    roadmap_publication_pull_create,
+    roadmap_event_git_execution,
+    rust_floor_head_observation,
+    rust_process_workspace_root,
+    rust_workspace_root_marker,
+  ]
+}

@@ -1,0 +1,39 @@
+# Native SCM census: discovery and coverage standing
+
+This is an incomplete, source-verified census and an unconnected terminal policy. It is not an executing required-lane import wall. No complete Git-use population, successful policy-control run, or Git-free SCM execution guarantee is claimed.
+
+The appendable use rows live under `gunbc.git_use_census`; `gunbc.git_use_census.roster::git_use_rows` supplies them to `gunbc.git_use_authority::git_import_authority_verdict` in the pure controls. Adding one use does not regenerate DESIGN. These six enrolled uses are all classified: three workspace/source-authority uses, two proposal/review/publication uses, and one history/diff/gate-observation use. There are zero enrolled bootstrap/import, deployment/fleet-identity, compatibility-projection, or unclassified rows. That does not mean those populations are empty. The Rust population currently has three named rows, and the configured-process population one; neither roster is complete.
+
+## Discovery is unfinished
+
+Read-only textual searches nominated candidates for source inspection. Those searches are not a closed discovery oracle, do not establish reachability, and do not authorize a clean census verdict. Each enrolled row was checked against its consuming declaration. The number of remaining unexamined live uses is **unknown**: no complete, independently discovered production use-identity universe has yet been joined against this ledger. Unexamined candidates have not been disguised as typed `UnclassifiedGitUse` refusals. That arm is reserved for an observed use whose role cannot be decided, with its reason recorded.
+
+The existing `v1_compiler.cli_run::run_dag_parse_sweep` discovers paths before parsing and refuses unreadable directories, directory entries, source reads, and parse diagnostics. Its existing parsed `DeclarationIndex` is the specified import producer; this ticket must not add a second scan or parse. However, `DagParseSweep` currently returns the index and a count, not the independent pre-parse source-path roster. The proposed policy input requires that roster separately from the parsed module records. `git_import_authority_verdict` joins their path identities in both directions; an omitted expected source or unexpected parsed source refuses, even when counts agree. An unavailable or explicitly incomplete producer also refuses. Copying successful module paths into both inputs would violate the producer contract, not establish completeness. These declarations do not prove that a producer currently supplies the independent input.
+
+The remaining capability is to carry the existing required walk's source identities through its parsed-index projection, preserving every failure, then execute the same policy on the required acceptance path. Hand-Rust projection/invocation remains subject to the pending external scaffold approval. No host wiring is authored here. The existing line scanner `v2.std.layer_import_scan::layer_import_facts_live` is expressly unsuitable: its unreadable-source omission is recorded separately under `gunbc.recurring_failure_mode`.
+
+## The wall's actual population
+
+The policy declaration itself names all three coverage populations:
+
+- Direct `.dag` Git/GitHub imports: policy coverage only today. After required-lane enrollment and discriminating controls, closure can be reported mechanically preventable; the forbidden import remains writable. The structural next capability is construction of source dependencies that cannot express a forbidden edge.
+- Rust Git/GitHub uses: unreached, reported as use-identity rows in the verdict. The next capability is a Node-derived dependency producer whose source scope includes Rust.
+- Configured or opaque `.dag` process invocation: a **KNOWN BYPASS** of the direct-import policy. `gunbc.roadmap.roadmap_event_carrier::carrier_exec` executes `layout.git_program` without a use-site Git import. Closing this bypass requires Node-derived process provenance through capability bindings and caller-supplied arguments. No claim is made that merely finding Nodes establishes that provenance analysis already executes.
+
+In particular, the policy refuses direct Git/GitHub imports in `gunbc.scm.*`; it does not establish absence of Git execution there. Roster growth approval is another subject: review diligence only, mitigatable, until externally originated approval evidence for the exact changed obligation set is verifiable at the gate. A row cannot attest its own approval.
+
+## Mode and landing construction
+
+`NativeAuthorityMode` is closed and `native_authority_select` is consumed by `git_use_disposition`; pure controls distinguish both branches. This is disposition selection, not a production landing selector. It does not make the existing `gunbc.native_scm_interaction_contract` Landed presentation unwritable without evidence. The missing capability is an independently observed exact Git merge/read-back and imported native baseline producer, bound to the candidate, with an exclusive bridge-landing mint. No validator is claimed as construction.
+
+Bridge publication must deterministically project an exact native candidate to one idempotently maintained PR, independently observe and read back the merge, and import the next native baseline before reporting native landing. A legacy GitHub-main advance imports explicit Git provenance and makes proposals on the previous baseline stale for mechanical re-evaluation. Native-authority landing is the native exact-parent advance; Git projection follows it, and an outage records projection repair pending without rollback or Git fallback. Native identities and Git identities are mapped, never equated. These are future route obligations, not implemented routes in this phase.
+
+## Evidence and remaining acceptance work
+
+The first recurring-failure row compiled in a targeted remote closure. The remote compiler build for the pure control suite succeeded, but execution refused with `HostBudgetUnreadable`: that worker exposed no enforceable cgroup memory limit. Thus there is no successful pure-control execution receipt, let alone a required-lane receipt. A later targeted compile of the policy closure is pending. The requested local control invocation also did not execute: the checkout has no built interpreter, and the shim refused to substitute another revision. No local compiler build or budget override was used. The CAS and producer findings are SOURCE-VERIFIED readings of contract mismatches, not executed reproductions.
+
+The exact-path controls still owed are forbidden-import refusal; legal adapter and rostered-legacy acceptance; refusal after withdrawing or misclassifying either authorization; incomplete/unavailable producer refusal; a host mutation ignoring the policy refusal detected by a control; and a policy mutation admitting the forbidden edge detected by a control. Pure fixture tests do not discharge those required-lane obligations. The full production census, adapter inventory, source identity producer, host connection, and these execution receipts remain unfinished.
+
+The CAS ruling and ordered Phase 1 producer/consumer cut are in `native-scm-cas-fit-and-consumer-cut.md`. Its provider repairs are prerequisites, not work implemented here.
+
+The parent amended the Phase 0 exit gate to land these six rows explicitly incomplete. Closing the production census population is a separate follow-up lane owned by the parent, not an implicit addition to Phase 1. Required-lane wall wiring remains a declared frontier; the present identity-join input contract is not a receipt from an independently populated executing producer.
