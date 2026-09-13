@@ -1317,13 +1317,28 @@ pub(crate) enum EnrolmentMarginStanding {
         disposition: String,
     },
     /// Mirror of `EnrolmentExpensivenessDeclared`. Non-blocking: the declaration is observed
-    /// and reported with the CPU reading beside it, and this gate decides nothing from the
-    /// cost. Consumed from `changed_witness_expensiveness_is_declared` (roster first, else
-    /// long home) after the execution join, never from `claim_cost`.
+    /// and reported with the reading beside it, and this gate decides nothing from the
+    /// cost. The reading is the same three-way split the `.dag` arm carries — observed,
+    /// censored bound, or absent — never an `Option` that maps a bound onto "unmeasured"
+    /// (review 65714).
     ExpensivenessDeclared {
         ground: EnrolmentExpensivenessGround,
-        observed_cpu_ms: Option<u64>,
+        reading: EnrolmentDeclaredCostReading,
     },
+}
+
+/// Host rendering of `EnrolmentCostReading` beside a declared-expensiveness standing.
+/// A censored bound is not a missing measurement.
+#[derive(Clone, Debug)]
+pub(crate) enum EnrolmentDeclaredCostReading {
+    Observed {
+        observed_cpu_ms: u64,
+    },
+    Censored {
+        cpu_lower_bound_ms: u64,
+        censoring_ceiling_ms: u64,
+    },
+    Absent,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1415,20 +1430,25 @@ impl EnrolmentMarginStanding {
                 "not adjudicated here: this run withheld the identity (disposition={disposition}); \
                  changed_witness_blocking owns it"
             ),
-            EnrolmentMarginStanding::ExpensivenessDeclared {
-                ground,
-                observed_cpu_ms,
-            } => {
+            EnrolmentMarginStanding::ExpensivenessDeclared { ground, reading } => {
                 let ground_name = match ground {
                     EnrolmentExpensivenessGround::Roster => "roster",
                     EnrolmentExpensivenessGround::LongHome => "long_home",
                 };
-                match observed_cpu_ms {
-                    Some(ms) => format!(
-                        "expensiveness_declared ground={ground_name} observed_cpu_ms={ms} \
+                match reading {
+                    EnrolmentDeclaredCostReading::Observed { observed_cpu_ms } => format!(
+                        "expensiveness_declared ground={ground_name} observed_cpu_ms={observed_cpu_ms} \
                          (reported; does not decide this gate)"
                     ),
-                    None => format!(
+                    EnrolmentDeclaredCostReading::Censored {
+                        cpu_lower_bound_ms,
+                        censoring_ceiling_ms,
+                    } => format!(
+                        "expensiveness_declared ground={ground_name} cost=CENSORED \
+                         cpu_at_least_ms={cpu_lower_bound_ms} censoring_ceiling_ms={censoring_ceiling_ms} \
+                         (reported; does not decide this gate)"
+                    ),
+                    EnrolmentDeclaredCostReading::Absent => format!(
                         "expensiveness_declared ground={ground_name} cost=UNMEASURED \
                          (reported; does not decide this gate)"
                     ),
@@ -1605,16 +1625,23 @@ pub(crate) fn enrolment_margin_standing_for(
     // `enrolment_expensiveness_declaration` (long home, never an ungated string-roster
     // append). This match decides nothing from the CPU — `ChangedCostDebtVerdictOnly`.
     if let Some(ground) = declared_expensiveness {
-        let observed_cpu_ms = claim_cost.get(identity).and_then(|row| match &row.reading {
-            crate::cli_run::ClaimCostReading::Observed {
-                observed_cpu_ms, ..
-            } => Some(*observed_cpu_ms),
-            crate::cli_run::ClaimCostReading::RightCensored(_) => None,
-        });
-        return EnrolmentMarginStanding::ExpensivenessDeclared {
-            ground,
-            observed_cpu_ms,
+        let reading = match claim_cost.get(identity) {
+            Some(row) => match &row.reading {
+                crate::cli_run::ClaimCostReading::Observed {
+                    observed_cpu_ms, ..
+                } => EnrolmentDeclaredCostReading::Observed {
+                    observed_cpu_ms: *observed_cpu_ms,
+                },
+                crate::cli_run::ClaimCostReading::RightCensored(r) => {
+                    EnrolmentDeclaredCostReading::Censored {
+                        cpu_lower_bound_ms: r.elapsed_cpu_at_least_ms,
+                        censoring_ceiling_ms: r.cpu_safety_limit_ms,
+                    }
+                }
+            },
+            None => EnrolmentDeclaredCostReading::Absent,
         };
+        return EnrolmentMarginStanding::ExpensivenessDeclared { ground, reading };
     }
     let Some(row) = claim_cost.get(identity) else {
         return EnrolmentMarginStanding::NotMeasured {
@@ -10170,6 +10197,61 @@ mod changed_witness_projection_tests {
             enrolment_expensiveness_declaration(identity, true, false),
             Some(EnrolmentExpensivenessGround::Roster)
         );
+    }
+
+    /// review 65714: a censored bound on a declared identity is not rendered as UNMEASURED.
+    #[test]
+    fn a_declared_censored_reading_is_not_rendered_as_absent() {
+        let identity = "fixture.declared_censored";
+        let planned = RequiredFloorDisposition::PlannedAsChangedWitness;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let occurrence = crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "interrupted".to_string(),
+            reading: crate::cli_run::ClaimCostReading::RightCensored(
+                crate::cli_run::SafetyInterruptReading {
+                    raised_by: crate::cli_run::SafetyInterruptTrigger::CpuDeadlineRaised,
+                    elapsed_cpu_at_least_ms: 500,
+                    elapsed_wall_at_least_ms: 500,
+                    cpu_safety_limit_ms: 500,
+                    wall_safety_limit_ms: 8000,
+                },
+            ),
+            eval_steps: 1,
+            verdict_reached: false,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let mut cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        cost_owned.insert(identity, &occurrence);
+        let censored = enrolment_margin_standing_for(
+            identity,
+            &cost_owned,
+            &dispositions,
+            302,
+            Some(EnrolmentExpensivenessGround::LongHome),
+        );
+        let absent = enrolment_margin_standing_for(
+            identity,
+            &HashMap::new(),
+            &dispositions,
+            302,
+            Some(EnrolmentExpensivenessGround::LongHome),
+        );
+        assert!(
+            censored.detail().contains("cost=CENSORED"),
+            "censored declared reading: {}",
+            censored.detail()
+        );
+        assert!(
+            absent.detail().contains("cost=UNMEASURED"),
+            "absent declared reading: {}",
+            absent.detail()
+        );
+        assert_ne!(censored.detail(), absent.detail());
     }
 }
 
