@@ -316,3 +316,32 @@ test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool
     UnmeasuredRoot { root: _ } => false
   }
 }
+
+// The pool comparison is ordered and element-wise: reversed pools, and one pool whose spelling
+// joins two, are both different subjects from the public root's.
+test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool {
+  let reversed = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: ["src/v2" as SourceRootIdentity, "extdeps" as SourceRootIdentity],
+  }
+  let listed = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: ["extdeps" as SourceRootIdentity, "src/v2" as SourceRootIdentity],
+  }
+  let joined = WholeCorpusCompileRootIdentity {
+    repository: "gunbc" as RepositoryIdentity,
+    primary_root: "dag" as SourceRootIdentity,
+    dependency_pools: ["extdeps, src/v2" as SourceRootIdentity],
+  }
+  let row = MeasuredForRoot {
+    root: listed,
+    census: whole_corpus_compile_public_root_census,
+    peak: byte_size(1),
+    receipt: whole_corpus_compile_public_root_receipt,
+  }
+  whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: ample_budget(), root: listed, demands: [row]))
+    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: reversed, demands: [row]), root: reversed)
+    && refuses_as_unmeasured(a: whole_corpus_compile_admission(budget: ample_budget(), root: joined, demands: [row]), root: joined)
+}

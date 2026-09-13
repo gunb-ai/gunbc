@@ -169,24 +169,11 @@ type WholeCorpusCompileDemand
     }
   | UnmeasuredRoot { root: WholeCorpusCompileRootIdentity }
 
-type WholeCorpusCompileSourceRootsWalk {
-  equal: Bool
-  index: Int
-}
-
 // Element-wise and ordered: pool order is precedence order under primary-precedence indexing, so
-// [a, b] and [b, a] are different subjects.
+// [a, b] and [b, a] are different subjects. Structural list equality over the unbranded spellings is
+// one linear walk and compares elements, never a joined string, so ["a,b"] and ["a", "b"] stay distinct.
 fn whole_corpus_compile_source_roots_eq(a: List<SourceRootIdentity>, b: List<SourceRootIdentity>) -> Bool {
-  count(a) == count(b)
-    && fold(a, init: WholeCorpusCompileSourceRootsWalk { equal: true, index: 0 }, f: fn(acc, x) {
-      WholeCorpusCompileSourceRootsWalk {
-        equal: acc.equal && match b.skip(n: acc.index).first() {
-          Absent => false
-          Present { value: y } => (x as String) == (y as String)
-        },
-        index: acc.index + 1,
-      }
-    }).equal
+  (a |> map(r => r as String)) == (b |> map(r => r as String))
 }
 
 fn whole_corpus_compile_root_identity_eq(a: WholeCorpusCompileRootIdentity, b: WholeCorpusCompileRootIdentity) -> Bool {
