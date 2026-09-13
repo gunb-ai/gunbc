@@ -13,7 +13,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
@@ -393,6 +393,45 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'app_control_plane_observe'
+        timeout-minutes: 10
+      - name: "R2 mint preflight: bootstrap read + account permission-group listing (reachability, no mutation)"
+        id: r2_mint_preflight
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_permission_group_observe.dag --function observe_account_permission_groups_wet
+          cat "$ROOT/target/r2-mint-preflight-permission-groups.txt"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'r2_mint_preflight'
+        timeout-minutes: 5
+      - name: Upload R2 mint preflight receipt
+        id: r2_mint_preflight_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2-mint-preflight
+          path: target/r2-mint-preflight-permission-groups.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: github.event.inputs.mode == 'r2_mint_preflight'
+        timeout-minutes: 10
+      - name: R2 object-write token mint (AccountTokens.Create + Secret Manager custody)
+        id: r2_object_write_mint
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/cloudflare/r2_token_mint_run.dag --function run_object_write
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        if: github.event.inputs.mode == 'r2_object_write_mint'
+        timeout-minutes: 5
+      - name: Upload R2 object-write mint receipt (token id + custody version resource; no secret)
+        id: r2_object_write_mint_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2-object-write-mint-receipt
+          path: /tmp/r2-*-object-write-mint-receipt.txt
+          if-no-files-found: warn
+          retention-days: 30
+        if: always() && github.event.inputs.mode == 'r2_object_write_mint'
         timeout-minutes: 10
       - name: "Runner micro-VM guest image: observe base artifacts and their digests"
         id: guest_image_observe

@@ -1,0 +1,77 @@
+module test.claim.access_token_source_selection_witness
+
+// THE SELECTION IS WHAT MADE THE THIRD ARM REACHABLE, SO THE SELECTION IS WHAT HAS TO EXECUTE.
+// gunbc.auth.access_token_source carried WorkloadIdentityToken for some time with no entry point
+// able to resolve it: every caller chose OperatorSuppliedToken by construction. These four probes
+// are over selected_access_token_source, the pure fold that now makes the choice, and the first is
+// the discriminating one -- it goes red the moment a workflow run stops resolving the workload arm.
+import gunbc.auth.access_token_source {
+  AccessTokenSourceSelected, AccessTokenSourceUnavailable,
+  WorkloadIdentityToken, OperatorSuppliedToken, GcloudPrintToken,
+  SuppliedTokenReady, SuppliedTokenUnavailable,
+  selected_access_token_source,
+}
+import std.types { Secret, String, NonEmptyStr }
+import std.logic { Bool }
+
+test fn a_workflow_run_resolves_the_workload_arm() -> Bool {
+  match selected_access_token_source(workload_present: true, supplied: none) {
+    AccessTokenSourceSelected { source: WorkloadIdentityToken } => true
+    AccessTokenSourceSelected { source: OperatorSuppliedToken { token: _ } } => false
+    AccessTokenSourceSelected { source: GcloudPrintToken } => false
+    AccessTokenSourceUnavailable { cause: _ } => false
+  }
+}
+
+// A WORKFLOW RUN MUST NEVER REACH AN OPERATOR CREDENTIAL, and a run with BOTH variables set is the
+// case that would let it. The workload arm wins on presence, so the operator resolution beside it is
+// ignored rather than preferred; a fallback here would be a broken federation silently answered by
+// whatever else happened to be on the runner.
+test fn the_workload_arm_wins_over_a_supplied_token_when_both_are_present() -> Bool {
+  match selected_access_token_source(
+    workload_present: true,
+    supplied: Present { value: SuppliedTokenReady { token: "operator-token" as Secret } },
+  ) {
+    AccessTokenSourceSelected { source: WorkloadIdentityToken } => true
+    AccessTokenSourceSelected { source: OperatorSuppliedToken { token: _ } } => false
+    AccessTokenSourceSelected { source: GcloudPrintToken } => false
+    AccessTokenSourceUnavailable { cause: _ } => false
+  }
+}
+
+test fn a_session_run_resolves_the_operator_arm() -> Bool {
+  match selected_access_token_source(
+    workload_present: false,
+    supplied: Present { value: SuppliedTokenReady { token: "ya29.witness" as Secret } },
+  ) {
+    AccessTokenSourceSelected { source: OperatorSuppliedToken { token: t } } =>
+      t == ("ya29.witness" as Secret)
+    AccessTokenSourceSelected { source: WorkloadIdentityToken } => false
+    AccessTokenSourceSelected { source: GcloudPrintToken } => false
+    AccessTokenSourceUnavailable { cause: _ } => false
+  }
+}
+
+// NEITHER SOURCE IS A REFUSAL, NOT A GCLOUD PROMPT. GcloudPrintToken is deliberately unreachable
+// from this fold: it is an interactive authentication, and an unattended run that fell back to it
+// would block on a prompt it cannot answer instead of stopping the line.
+test fn no_source_refuses_and_names_both_variables() -> Bool {
+  match selected_access_token_source(workload_present: false, supplied: none) {
+    AccessTokenSourceUnavailable { cause: cause } =>
+      string_contains(s: cause as String, pattern: "WIF_ACCESS_TOKEN")
+        && string_contains(s: cause as String, pattern: "GUNBC_GCP_ACCESS_TOKEN_FILE")
+    AccessTokenSourceSelected { source: _ } => false
+  }
+}
+
+// AN UNREADABLE TOKEN FILE IS THE FILE'S REFUSAL, CARRIED, NOT A NEW ONE INVENTED HERE.
+test fn an_unreadable_supplied_token_carries_its_own_cause() -> Bool {
+  match selected_access_token_source(
+    workload_present: false,
+    supplied: Present { value: SuppliedTokenUnavailable { cause: "the access token file is empty, which is never a usable bearer token" as NonEmptyStr } },
+  ) {
+    AccessTokenSourceUnavailable { cause: cause } =>
+      string_contains(s: cause as String, pattern: "never a usable bearer token")
+    AccessTokenSourceSelected { source: _ } => false
+  }
+}

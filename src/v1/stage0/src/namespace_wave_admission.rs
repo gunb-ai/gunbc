@@ -1792,6 +1792,25 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
+/// gunbc#11214 DISSOLUTION (2026-09-13). The fifteen `operator-supplied-token realizer moves beside
+/// its arm` rows are deleted, and the description that stood above them goes with them.
+///
+/// THEIR OWN TRIGGER FIRED. That block authored `DISSOLVE-ON: gunbc#11214 merging. Once the
+/// relocation is on main, base and head of every pull_request build both carry it, all fifteen
+/// report stale and refuse every unrelated PR.` #11214 merged, so
+/// `read_supplied_access_token`, `SuppliedTokenReady` and `SuppliedTokenUnavailable` are in
+/// `gunbc.auth.access_token_source` on both sides of every comparison, the fifteen `TargetChanged`
+/// deltas stopped being producible, and what the rows admit no longer exists.
+///
+/// WHY THIS IS ITS OWN CHANGE, AUTHORED BEFORE ITS CARRIER WAS ENQUEUED. gunbc.v1_maintenance_standing
+/// admits a NAMESPACE_TRANSITION_ADMISSIONS row as a CONSUMED LEDGER ENTRY rather than
+/// `MaintenanceRefusal::NewEscapeHatchOrAdmissionRow` on the condition that its deletion follow-up
+/// exists before the carrying PR is enqueued and then lands. A row that adjudicates one measured
+/// delta by exact identity and is consumed by its own merge does not exempt anything; a row with no
+/// deletion in flight is indistinguishable from one that does. This PR is that condition.
+///
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the relocation present at the base there is no delta left for these to admit.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
