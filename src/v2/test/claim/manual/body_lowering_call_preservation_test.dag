@@ -24,6 +24,8 @@ import v2.std.text { String }
 
 data call_preservation_declared_source: String = "module m\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1) }\n"
 
+data call_preservation_two_named_value_source: String = "module m\n\nfn caller(acc: Int, x: Int) -> Int { list_append(left: x, right: acc) }\n"
+
 data call_preservation_two_arg_source: String = "module m\n\nfn g(x: Int, y: Int) -> Int { x }\n\nfn caller() -> Int { g(x: 1, y: 2) }\n"
 
 data call_preservation_nested_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: h(y: 5)) }\n"
@@ -76,17 +78,34 @@ fn search_call_named_children(root: Node, callee: Symbol) -> Optional<Node> {
 }
 
 fn tree_has_lbrace_operator(root: Node) -> Bool {
+  tree_has_punct_call_operator(root: root, punct: ^dag_token_lbrace)
+}
+
+fn tree_has_punct_call_operator(root: Node, punct: Symbol) -> Bool {
   let here = match call_callee_target(node: root) {
     Accepted { value: c, diagnostics: _ } =>
       match node_atom_identity_optional(node: c) {
-        Present { value: id } => id == ^dag_token_lbrace
+        Present { value: id } => id == punct
         Absent => false
       }
     Rejected { diagnostics: _ } => false
   }
   here || fold(root.children, init: false, f: fn(acc, e) {
-    acc || tree_has_lbrace_operator(root: e.target)
+    acc || tree_has_punct_call_operator(root: e.target, punct: punct)
   })
+}
+
+fn call_args_include_punct(root: Node, callee: Symbol, punct: Symbol) -> Bool {
+  match search_call_named(root: root, callee: callee) {
+    Absent => false
+    Present { value: call } =>
+      fold(call_argument_targets(node: call), init: false, f: fn(acc, arg) {
+        acc || match node_atom_identity_optional(node: arg) {
+          Present { value: id } => id == punct
+          Absent => false
+        }
+      })
+  }
 }
 
 fn normalize_unprepared(src: String, file: Symbol) -> Optional<Node> {
@@ -180,6 +199,26 @@ test fn call_preservation_two_arg_control_fails_if_erasure_restored() -> Bool {
   match normalize_unprepared(src: call_preservation_two_arg_source, file: ^call_pres_two) {
     Absent => false
     Present { value: root } => call_arity_named(root: root, callee: ^g) == 2
+  }
+}
+
+test fn call_preservation_two_named_args_keep_values_not_comma_token() -> Bool {
+  match normalize_unprepared(src: call_preservation_two_named_value_source, file: ^call_pres_named_vals) {
+    Absent => false
+    Present { value: root } =>
+      !tree_has_lbrace_operator(root: root)
+        && (call_arity_named(root: root, callee: ^list_append) == 2)
+        && !call_args_include_punct(root: root, callee: ^list_append, punct: ^dag_token_comma)
+  }
+}
+
+test fn call_preservation_sole_body_named_step_fold_keeps_fold_callee_not_lbrace() -> Bool {
+  match normalize_unprepared(src: fold_named_step_snippet, file: ^fold_named_lbrace) {
+    Absent => false
+    Present { value: root } =>
+      !tree_has_lbrace_operator(root: root)
+        && (call_arity_named(root: root, callee: ^fold) >= 1)
+        && !call_args_include_punct(root: root, callee: ^fold, punct: ^dag_token_comma)
   }
 }
 
