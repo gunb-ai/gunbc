@@ -65,13 +65,40 @@ type UseTaxResidualStanding
   | ResidualUseTaxNone
   | ResidualUseTaxUnread { read_obligation: NonEmptyStr }
 
+// AN ATTESTATION NAMES A JURISDICTION AT WHATEVER GRAIN THE ATTESTER USED, AND THAT GRAIN IS PART
+// OF THE FACT. "New York tax was paid" does not say New York State or New York City, and the
+// difference is not cosmetic: the state rate and the city combined rate are different figures, so
+// a state-only payment on goods used in the city leaves a residual that a city-grain reading would
+// report as settled. Citing the city rate for an attestation that said only "New York" asserts as
+// deduced what was merely inferred, which DESIGN section 4d forbids in the direction that loses
+// money quietly - the narrower claim is the comfortable one and it is the one with no evidence.
+//
+// This was authored wrong in 1f6c8653231, where both attested census rows cited
+// nyc_combined_sales_tax while their own attestation strings said "Operator attests New York tax
+// was paid" and went on to note that the NYC-rate figure in the private corpus is a PLANNING
+// number rather than a receipt tax line. royal-koi-731 caught the narrowing.
+//
+// The unread arm carries the name AS ATTESTED, so the attestation is not weakened either: what the
+// operator said is preserved verbatim, and what nobody has yet read is named as the obligation it
+// is. Section 4d is symmetric - under-asserting is not humility - so this records the attestation
+// as real evidence at the grain it actually has, rather than discarding it.
+// NO Bool PROJECTION OVER THESE ARMS. A predicate collapsing a standing to true/false is the shape
+// review 65038 removed from this branch, and a two-arm sum is not an exception to it: arm count
+// does not distinguish the case, and the payload is the part worth reading - "which jurisdiction"
+// and "named as what, pending which read" are the answers, not "is it cited". Consumers match the
+// arms directly and keep the payload (royal-koi-731, reviewing the first version of this carrier,
+// where I reintroduced exactly the shape that had just been taken out).
+type AttestedJurisdictionStanding
+  = AttestedAtCitedJurisdiction { jurisdiction: DeclarationRef }
+  | AttestedJurisdictionGrainUnread { named_as_attested: NonEmptyStr, read_obligation: NonEmptyStr }
+
 type LotSalesTaxStanding
   = SalesTaxCollected {
       collection: CollectedTaxRateStanding
       residual: UseTaxResidualStanding
     }
   | SalesTaxAttestedIncluded {
-      jurisdiction: DeclarationRef
+      jurisdiction: AttestedJurisdictionStanding
       residual: UseTaxResidualStanding
       attestation: NonEmptyStr
     }

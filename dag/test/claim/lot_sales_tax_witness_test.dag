@@ -14,6 +14,9 @@ import product.lot_sales_tax {
   LotTaxPopulationRepeatedLot,
   SalesTaxCollected,
   SalesTaxAttestedIncluded,
+  AttestedJurisdictionStanding,
+  AttestedAtCitedJurisdiction,
+  AttestedJurisdictionGrainUnread,
   SalesTaxIncludedJurisdictionUnread,
   SalesTaxTreatmentUnrecorded,
   RateTranscribedFromNamedReceiptLine,
@@ -97,8 +100,13 @@ data fixture_population: List<LotTaxEvidence> = [
   LotTaxEvidence {
     lot: lot_attested_ny,
     standing: SalesTaxAttestedIncluded {
-      jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
-      residual: ResidualUseTaxNone,
+      jurisdiction: AttestedJurisdictionGrainUnread {
+        named_as_attested: "New York" as NonEmptyStr,
+        read_obligation: "read the tax line and establish which New York rate was charged" as NonEmptyStr,
+      },
+      residual: ResidualUseTaxUnread {
+        read_obligation: "unsettled until the grain above is read" as NonEmptyStr,
+      },
       attestation: "operator attests New York tax was paid; no tax line has been read" as NonEmptyStr,
     },
   },
@@ -134,6 +142,61 @@ test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
 // conjunct reds, because the projection follows the rate. Under the deleted-field premise there
 // would have been nothing left to red. The second and third conjuncts hold the arms apart so a
 // projection that answered DestinationCitedByRate for every residual cannot pass.
+// AN ATTESTATION NAMING A STATE DOES NOT ESTABLISH A CITY, and this is the control for that.
+// Both attested census lots rest on the operator saying "New York tax was paid" - which does not
+// say whether the state rate or the New York City combined rate was the one charged. An earlier
+// revision cited nyc_combined_sales_tax for both, narrowing the attestation to a grain no evidence
+// established; the figures differ, so a state-only payment on goods used in the city leaves a
+// residual that the narrowed reading reported as settled. That is the expensive direction of the
+// DESIGN section 4d error: the narrower claim was the comfortable one and had no evidence.
+//
+// THE DISCRIMINATING RED: re-point either fixture at AttestedAtCitedJurisdiction with a city rate
+// and the first conjunct reds. The second conjunct is the other direction - an attestation that
+// HAS been read to a citable jurisdiction must still report as cited - so this cannot be satisfied
+// by a predicate that answers false for everything.
+test fn w_state_grain_attestation_does_not_establish_a_city() -> Bool {
+  match attested_fixture_standing() {
+    AttestedAtCitedJurisdiction { jurisdiction: _ } => false
+    AttestedJurisdictionGrainUnread { named_as_attested: n, read_obligation: _ } =>
+      n == ("New York" as NonEmptyStr)
+  }
+  && match AttestedAtCitedJurisdiction {
+    jurisdiction: decl_ref(
+      module_path: "extdeps.tax.new_york_city_sales_and_use",
+      decl_name: "nyc_pub718_authority",
+    ),
+  } {
+    AttestedAtCitedJurisdiction { jurisdiction: j } =>
+      declaration_ref_eq(
+        a: j,
+        b: decl_ref(
+          module_path: "extdeps.tax.new_york_city_sales_and_use",
+          decl_name: "nyc_pub718_authority",
+        ),
+      )
+    AttestedJurisdictionGrainUnread { named_as_attested: _, read_obligation: _ } => false
+  }
+}
+
+// THE STANDING IS READ OUT OF THE REAL FIXTURE ROW, not re-typed beside it. A control that builds
+// its own copy of the value it checks is agreeing with itself: edit the population to cite a city
+// rate and a re-typed control stays green, which is the one edit it exists to catch. This walks the
+// same fixture_population the other witnesses use and projects the attested lot's jurisdiction, so
+// the control moves when the fixture moves.
+fn attested_fixture_standing() -> AttestedJurisdictionStanding {
+  fold(fixture_population, init: AttestedJurisdictionGrainUnread {
+    named_as_attested: "no attested lot found in the fixture population" as NonEmptyStr,
+    read_obligation: "this arm means the fold matched nothing, not that a grain is unread" as NonEmptyStr,
+  }, f: fn(acc, row) {
+    match row.standing {
+      SalesTaxAttestedIncluded { jurisdiction: j, residual: r, attestation: a } => j
+      SalesTaxCollected { collection: c, residual: r } => acc
+      SalesTaxIncludedJurisdictionUnread { read_obligation: o } => acc
+      SalesTaxTreatmentUnrecorded { read_obligation: o } => acc
+    }
+  })
+}
+
 test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
   match residual_destination_jurisdiction(residual: nyc_residual) {
     DestinationCitedByRate { jurisdiction: j } =>
@@ -147,26 +210,16 @@ test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
     DestinationNotApplicableNoResidual => false
     DestinationUnreadWithResidualStanding => false
   }
-  && destination_is_none(reading: residual_destination_jurisdiction(residual: ResidualUseTaxNone))
-  && destination_is_unread(
-    reading: residual_destination_jurisdiction(
-      residual: ResidualUseTaxUnread {
-        read_obligation: "probe arm; no destination to project" as NonEmptyStr,
-      },
-    ),
-  )
-}
-
-fn destination_is_none(reading: ResidualDestinationReading) -> Bool {
-  match reading {
+  && match residual_destination_jurisdiction(residual: ResidualUseTaxNone) {
     DestinationCitedByRate { jurisdiction: _ } => false
     DestinationNotApplicableNoResidual => true
     DestinationUnreadWithResidualStanding => false
   }
-}
-
-fn destination_is_unread(reading: ResidualDestinationReading) -> Bool {
-  match reading {
+  && match residual_destination_jurisdiction(
+    residual: ResidualUseTaxUnread {
+      read_obligation: "probe arm; no destination to project" as NonEmptyStr,
+    },
+  ) {
     DestinationCitedByRate { jurisdiction: _ } => false
     DestinationNotApplicableNoResidual => false
     DestinationUnreadWithResidualStanding => true
