@@ -348,6 +348,9 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
 // would file a currently-closed published login as an unsatisfied phase and
 // block fleet admission for a residual that is not an open session. The
 // residual travels with the standing; it does not reopen the door.
+// latest_admitted_probe_at is the max observed_at among admitted LAN probes,
+// including accepted probes on the factory-retention path — not census
+// order, and not a claim about when the door closed.
 type BmcSecureOutcome
   = BmcSecured {
       endpoint: BmcControllerEndpoint,
