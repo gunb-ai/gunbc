@@ -7,9 +7,8 @@ import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
-  ArmSiliconUnread,
   ArmUsdPerVcpuMinute,
-  CapacityChannelUnread,
+  ArmListPriceStanding,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
@@ -18,8 +17,8 @@ import extdeps.ci_runner.types {
   RunnerLabelCatalog,
   RunnerShapeRow,
   RunnerShapesCited,
-  SellerArmLinuxOffer,
   CurrentlyAcceptingCustomers,
+  SellerOfferStanding,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -95,19 +94,13 @@ data buildkite_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   availability: buildkite_runner_catalog,
 )
 
-data buildkite_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: buildkite_provider_identity,
-  snapshot: buildkite_catalog_snapshot,
-  shapes: buildkite_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: CapacityChannelUnread,
-  list_price: ArmUsdPerVcpuMinute {
-    per_vcpu_minute: MoneyPerMinute {
-      amount: money_amount_micro(count: 4000),
-      currency: Usd,
-    },
+data buildkite_arm_list_price: ArmListPriceStanding = ArmUsdPerVcpuMinute {
+  per_vcpu_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 4000),
+    currency: Usd,
   },
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "buildkite.com/docs/pipelines/hosted-agents Getting started (read 2026-09-13).",
-  },
+}
+
+data buildkite_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "buildkite.com/docs/pipelines/hosted-agents Getting started (read 2026-09-13).",
 }

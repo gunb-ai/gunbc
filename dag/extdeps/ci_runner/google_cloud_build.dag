@@ -2,14 +2,9 @@ module extdeps.ci_runner.google_cloud_build
 
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.ci_runner.types {
-  ArmListPriceUnread,
-  ArmSiliconUnread,
-  CapacityChannelUnread,
   CatalogSnapshot,
   RunnerCatalogAvailability,
   RunnerShapesUnavailable,
-  SellerArmLinuxOffer,
-  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -50,12 +45,3 @@ data google_cloud_build_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
   declared_scope: "Default-pool MachineType enum on the Cloud Build projects.builds reference only. Private-pool C4A/Axion, if offered elsewhere, is unread here.",
 }
 
-data google_cloud_build_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: google_cloud_build_provider_identity,
-  snapshot: google_cloud_build_catalog_snapshot,
-  shapes: google_cloud_build_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: CapacityChannelUnread,
-  list_price: ArmListPriceUnread,
-  standing: OfferStandingUnread,
-}

@@ -8,8 +8,9 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
   ArmSiliconCitedWords,
+  ArmSiliconStanding,
   ArmUsdPerMinute,
-  CapacityChannelUnread,
+  ArmListPriceStanding,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
@@ -18,8 +19,8 @@ import extdeps.ci_runner.types {
   RunnerLabelCatalog,
   RunnerShapeRow,
   RunnerShapesCited,
-  SellerArmLinuxOffer,
   CurrentlyAcceptingCustomers,
+  SellerOfferStanding,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -107,19 +108,16 @@ data namespace_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   availability: namespace_runner_catalog,
 )
 
-data namespace_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: namespace_provider_identity,
-  snapshot: namespace_catalog_snapshot,
-  shapes: namespace_runner_catalog,
-  silicon: ArmSiliconCitedWords { quoted_family: "AmpereOne" },
-  capacity: CapacityChannelUnread,
-  list_price: ArmUsdPerMinute {
-    per_minute: MoneyPerMinute {
-      amount: money_amount_micro(count: 4000),
-      currency: Usd,
-    },
+data namespace_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords { quoted_family: "AmpereOne" }
+
+data namespace_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 4000),
+    currency: Usd,
   },
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "namespace.so: no credit card required (read 2026-09-13).",
-  },
+  priced_label: "4 vCPU 8 GB",
+}
+
+data namespace_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "namespace.so: no credit card required (read 2026-09-13).",
 }

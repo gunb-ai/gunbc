@@ -3,13 +3,12 @@ module extdeps.ci_runner.cirrus_runners
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.ci_runner.types {
   ArmSellerNotOffering,
-  ArmSiliconUnread,
-  CapacityChannelUnread,
+  ArmListPriceStanding,
   CatalogSnapshot,
   RunnerCatalogAvailability,
   RunnerShapesUnavailable,
-  SellerArmLinuxOffer,
   SellerNotAcceptingCustomers,
+  SellerOfferStanding,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -53,16 +52,10 @@ data cirrus_runners_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
   declared_scope: "Shutdown standing from cirruslabs.org only. Historical Linux Arm resource-class spellings are not modelled as a live catalog.",
 }
 
-data cirrus_runners_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: cirrus_runners_provider_identity,
-  snapshot: cirrus_runners_catalog_snapshot,
-  shapes: cirrus_runners_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: CapacityChannelUnread,
-  list_price: ArmSellerNotOffering {
-    cause: "Cirrus Runners closed to new customers; Cirrus CI shut down 2026-06-01 (cirruslabs.org, read 2026-09-13).",
-  },
-  standing: SellerNotAcceptingCustomers {
-    cause: "cirruslabs.org 2026-04-07: no longer accepting new Cirrus Runners customers; Cirrus CI shut down 2026-06-01.",
-  },
+data cirrus_runners_arm_list_price: ArmListPriceStanding = ArmSellerNotOffering {
+  cause: "Cirrus Runners closed to new customers; Cirrus CI shut down 2026-06-01 (cirruslabs.org, read 2026-09-13).",
+}
+
+data cirrus_runners_offer_standing: SellerOfferStanding = SellerNotAcceptingCustomers {
+  cause: "cirruslabs.org 2026-04-07: no longer accepting new Cirrus Runners customers; Cirrus CI shut down 2026-06-01.",
 }

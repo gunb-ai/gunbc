@@ -6,19 +6,16 @@ import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types {
-  ArmListPriceUnread,
-  ArmSiliconUnread,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
   QuotedWithoutBasis,
   ResoldNamedCloud,
+  ArmCapacityChannel,
   RunnerCatalogAvailability,
   RunnerLabelCatalog,
   RunnerShapeRow,
   RunnerShapesCited,
-  SellerArmLinuxOffer,
-  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -91,12 +88,6 @@ data gitlab_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   availability: gitlab_runner_catalog,
 )
 
-data gitlab_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: gitlab_provider_identity,
-  snapshot: gitlab_catalog_snapshot,
-  shapes: gitlab_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: ResoldNamedCloud { vendor_words: "Google Cloud Compute Engine" },
-  list_price: ArmListPriceUnread,
-  standing: OfferStandingUnread,
+data gitlab_arm_capacity: ArmCapacityChannel = ResoldNamedCloud {
+  vendor_words: "Google Cloud Compute Engine",
 }

@@ -9,7 +9,10 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.pricing.github_actions { github_actions_linux_arm_2core_price }
 import extdeps.ci_runner.types {
   ArmSiliconCitedWords,
+  ArmSiliconStanding,
   ArmUsdPerMinute,
+  ArmListPriceStanding,
+  ArmCapacityChannel,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
@@ -19,8 +22,6 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   ResoldNamedCloud,
-  SellerArmLinuxOffer,
-  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -121,19 +122,19 @@ data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
 
 // Linux 2-core arm64 list price is github_actions_linux_arm_2core_price.per_minute
 // (extdeps.pricing.github_actions); this module does not restate the micros.
-// Silicon: the 2025-01-16 changelog
-// names Cobalt 100-based processors for the 4 vCPU public ubuntu-*-arm runners;
-// that sentence is not a SKU for the larger-runner table, so the quoted family is
-// carried as GitHub's words rather than projected onto every size. Capacity:
-// GitHub names Microsoft Azure's Arm VMs in that changelog.
-data github_actions_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: github_actions_provider_identity,
-  snapshot: github_actions_catalog_snapshot,
-  shapes: github_actions_runner_catalog,
-  silicon: ArmSiliconCitedWords { quoted_family: "Cobalt 100-based processors" },
-  capacity: ResoldNamedCloud { vendor_words: "Microsoft Azure Arm VMs" },
-  list_price: ArmUsdPerMinute {
-    per_minute: github_actions_linux_arm_2core_price.per_minute,
-  },
-  standing: OfferStandingUnread,
+// Silicon: the 2025-01-16 changelog names Cobalt 100-based processors for the 4 vCPU
+// public ubuntu-*-arm runners; that sentence is not a SKU for the larger-runner table.
+// Capacity: GitHub names Microsoft Azure's Arm VMs in that changelog.
+// Offer standing is unread in the census (hosted-label docs are not a signup surface).
+data github_actions_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords {
+  quoted_family: "Cobalt 100-based processors",
+}
+
+data github_actions_arm_capacity: ArmCapacityChannel = ResoldNamedCloud {
+  vendor_words: "Microsoft Azure Arm VMs",
+}
+
+data github_actions_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: github_actions_linux_arm_2core_price.per_minute,
+  priced_label: "ubuntu-latest-arm-2core",
 }

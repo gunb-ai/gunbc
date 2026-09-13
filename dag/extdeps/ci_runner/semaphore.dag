@@ -6,10 +6,9 @@ import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types {
-  ArmListPriceUnread,
   ArmSiliconCitedSku,
+  ArmSiliconStanding,
   CatalogSnapshot,
-  CapacityChannelUnread,
   EntitlementUnstated,
   label_catalog_of_shapes,
   QuotedWithoutBasis,
@@ -17,8 +16,6 @@ import extdeps.ci_runner.types {
   RunnerLabelCatalog,
   RunnerShapeRow,
   RunnerShapesCited,
-  SellerArmLinuxOffer,
-  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -93,12 +90,4 @@ data semaphore_q8030_sku_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data semaphore_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: semaphore_provider_identity,
-  snapshot: semaphore_catalog_snapshot,
-  shapes: semaphore_runner_catalog,
-  silicon: ArmSiliconCitedSku { cpu: semaphore_q8030_sku_ref },
-  capacity: CapacityChannelUnread,
-  list_price: ArmListPriceUnread,
-  standing: OfferStandingUnread,
-}
+data semaphore_arm_silicon: ArmSiliconStanding = ArmSiliconCitedSku { cpu: semaphore_q8030_sku_ref }

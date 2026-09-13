@@ -276,10 +276,14 @@ type ArmCapacityChannel
 // A PUBLISHED ARM LINUX LIST PRICE, IN THE UNIT THE SELLER PRINTED. Credits
 // stay credits; a monthly seat is not a per-minute rate; a per-job fee is not
 // a vCPU-minute. Absence is unread, never a fabricated USD conversion.
+//
+// A per-minute or credits-per-minute figure is the price of ONE published
+// shape: priced_label is that shape's catalog label. A per-vCPU-minute,
+// per-month, or per-job figure is already a unit that is not a single size.
 type ArmListPriceStanding
-  = ArmUsdPerMinute { per_minute: MoneyPerMinute }
+  = ArmUsdPerMinute { per_minute: MoneyPerMinute, priced_label: NonEmptyStr }
   | ArmUsdPerVcpuMinute { per_vcpu_minute: MoneyPerMinute }
-  | ArmCreditsPerMinute { per_minute: CreditsPerMinute }
+  | ArmCreditsPerMinute { per_minute: CreditsPerMinute, priced_label: NonEmptyStr }
   | ArmUsdPerMonth { per_month: MoneyPerMonth }
   | ArmUsdPerJob { per_job: MoneyOnce }
   | ArmListPriceUnread
@@ -295,8 +299,11 @@ type SellerOfferStanding
   | SellerNotAcceptingCustomers { cause: NonEmptyStr }
   | OfferStandingUnread
 
-// THE TYPED PER-SELLER ARM LINUX OFFER. The hub names the shape; which sellers
-// inhabit it is an observation in gunbc, never a roster here.
+// THE TYPED PER-SELLER ARM LINUX OFFER. The hub names the shape. Instances live
+// in gunbc.arm_ci_seller_census: Unread silicon, channel, price, and standing are
+// this repository's coverage, not properties of the upstream seller module
+// (DESIGN external-upstream decomposition). Cited silicon, channel, price,
+// and standing stay on the seller or pricing module that retrieved them.
 type SellerArmLinuxOffer {
   provider: DeclarationRef
   snapshot: CatalogSnapshot

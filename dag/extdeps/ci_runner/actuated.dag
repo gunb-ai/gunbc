@@ -2,14 +2,13 @@ module extdeps.ci_runner.actuated
 
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.ci_runner.types {
-  ArmListPriceUnread,
-  ArmSiliconUnread,
   CatalogSnapshot,
   RunnerCatalogAvailability,
   RunnerShapesUnavailable,
-  SellerArmLinuxOffer,
   SoftwareOnCustomerHosts,
+  ArmCapacityChannel,
   CurrentlyAcceptingCustomers,
+  SellerOfferStanding,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -54,14 +53,8 @@ data actuated_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
   declared_scope: "docs.actuated.dev introduction and FAQ. No hosted ARM vCPU/memory table is published; capacity is the subscriber's machines.",
 }
 
-data actuated_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: actuated_provider_identity,
-  snapshot: actuated_catalog_snapshot,
-  shapes: actuated_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: SoftwareOnCustomerHosts,
-  list_price: ArmListPriceUnread,
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "docs.actuated.dev: start a subscription (read 2026-09-13).",
-  },
+data actuated_arm_capacity: ArmCapacityChannel = SoftwareOnCustomerHosts
+
+data actuated_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "docs.actuated.dev: start a subscription (read 2026-09-13).",
 }

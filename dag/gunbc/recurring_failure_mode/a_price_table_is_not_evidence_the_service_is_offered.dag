@@ -26,8 +26,10 @@ data a_price_table_is_not_evidence_the_service_is_offered: RecurringFailureMode 
   ],
 
   evidence: [
-    decl_ref(module_path: "extdeps.ci_runner.cirrus_runners", decl_name: "cirrus_runners_arm_linux_offer"),
-    decl_ref(module_path: "extdeps.ci_runner.buildjet", decl_name: "buildjet_arm_linux_offer"),
+    decl_ref(module_path: "extdeps.ci_runner.cirrus_runners", decl_name: "cirrus_runners_offer_standing"),
+    decl_ref(module_path: "extdeps.ci_runner.buildjet", decl_name: "buildjet_offer_standing"),
+    decl_ref(module_path: "gunbc.arm_ci_seller_census", decl_name: "cirrus_runners_arm_linux_offer"),
+    decl_ref(module_path: "gunbc.arm_ci_seller_census", decl_name: "buildjet_arm_linux_offer"),
     decl_ref(module_path: "extdeps.ci_runner.types", decl_name: "SellerOfferStanding"),
   ],
 }

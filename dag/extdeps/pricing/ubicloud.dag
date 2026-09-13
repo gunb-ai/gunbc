@@ -6,9 +6,6 @@ import extdeps.cloud.ubicloud {
   ubicloud_standard_16_catalog,
   ubicloud_standard_2_arm_catalog,
   ubicloud_standard_16_arm_catalog,
-  ubicloud_provider_identity,
-  ubicloud_catalog_snapshot,
-  ubicloud_runner_catalog_shapes,
 }
 import extdeps.currency.currency { Usd }
 import std.measure { MoneyPerMinute, money_amount_micro }
@@ -19,10 +16,11 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ci_runner.types {
   ArmSiliconCitedSku,
+  ArmSiliconStanding,
   ArmUsdPerMinute,
-  CapacityChannelUnread,
-  SellerArmLinuxOffer,
+  ArmListPriceStanding,
   CurrentlyAcceptingCustomers,
+  SellerOfferStanding,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -110,18 +108,13 @@ data ubicloud_q8030_sku_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-// Offer composes the runner-types shapes with THIS module's price row. The
-// 1250 micros/min figure is not restated: it is ubicloud_arm_standard_2_price.per_minute.
-data ubicloud_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: ubicloud_provider_identity,
-  snapshot: ubicloud_catalog_snapshot,
-  shapes: ubicloud_runner_catalog_shapes,
-  silicon: ArmSiliconCitedSku { cpu: ubicloud_q8030_sku_ref },
-  capacity: CapacityChannelUnread,
-  list_price: ArmUsdPerMinute {
-    per_minute: ubicloud_arm_standard_2_price.per_minute,
-  },
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "ubicloud.com/docs/github-actions-integration sign-up and billing-credit path (read 2026-09-13).",
-  },
+data ubicloud_arm_silicon: ArmSiliconStanding = ArmSiliconCitedSku { cpu: ubicloud_q8030_sku_ref }
+
+data ubicloud_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: ubicloud_arm_standard_2_price.per_minute,
+  priced_label: "ubicloud-standard-2-arm",
+}
+
+data ubicloud_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "ubicloud.com/docs/github-actions-integration sign-up and billing-credit path (read 2026-09-13).",
 }

@@ -8,8 +8,9 @@ import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
-  ArmSiliconUnread,
+  ArmListPriceStanding,
   ArmUsdPerMinute,
+  ArmCapacityChannel,
   CatalogSnapshot,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
@@ -18,8 +19,8 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
-  SellerArmLinuxOffer,
   SellerOwnMetalStated,
+  SellerOfferStanding,
   CurrentlyAcceptingCustomers,
 }
 
@@ -110,22 +111,18 @@ data blacksmith_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
 )
 
 // ARM Linux list price live-fetched 2026-09-13 from www.blacksmith.sh/pricing: Ubuntu ARM
-// 2 vCPU is $0.0025/min. Silicon for ARM is unread: the overview names a bare-metal
-// gaming-CPU fleet and an own homogenous pool versus hyperscalers, which is a host
-// statement, not a named ARM SKU.
-data blacksmith_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: blacksmith_provider_identity,
-  snapshot: blacksmith_catalog_snapshot,
-  shapes: blacksmith_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: SellerOwnMetalStated,
-  list_price: ArmUsdPerMinute {
-    per_minute: MoneyPerMinute {
-      amount: money_amount_micro(count: 2500),
-      currency: Usd,
-    },
+// 2 vCPU is $0.0025/min. Silicon for ARM is unread in the census: the overview names a
+// bare-metal gaming-CPU fleet, which is a host statement, not a named ARM SKU.
+data blacksmith_arm_capacity: ArmCapacityChannel = SellerOwnMetalStated
+
+data blacksmith_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 2500),
+    currency: Usd,
   },
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "docs.blacksmith.sh/blacksmith-runners/overview FAQ: 3000 free x64 2vCPU minutes per organization per month, ARM may use them (read 2026-09-13).",
-  },
+  priced_label: "blacksmith-2vcpu-ubuntu-2404-arm",
+}
+
+data blacksmith_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "docs.blacksmith.sh/blacksmith-runners/overview FAQ: 3000 free x64 2vCPU minutes per organization per month, ARM may use them (read 2026-09-13).",
 }

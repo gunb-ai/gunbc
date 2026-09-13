@@ -6,10 +6,9 @@ import std.measure { gibibyte, hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types {
-  ArmListPriceUnread,
-  ArmSiliconUnread,
   CatalogSnapshot,
   CloudOperatorIsTheSeller,
+  ArmCapacityChannel,
   EntitlementUnstated,
   label_catalog_of_shapes,
   QuotedBinaryGibibytes,
@@ -17,8 +16,6 @@ import extdeps.ci_runner.types {
   RunnerLabelCatalog,
   RunnerShapeRow,
   RunnerShapesCited,
-  SellerArmLinuxOffer,
-  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -93,12 +90,6 @@ data aws_codebuild_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   availability: aws_codebuild_runner_catalog,
 )
 
-data aws_codebuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: aws_codebuild_provider_identity,
-  snapshot: aws_codebuild_catalog_snapshot,
-  shapes: aws_codebuild_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: CloudOperatorIsTheSeller { vendor_words: "AWS CodeBuild" },
-  list_price: ArmListPriceUnread,
-  standing: OfferStandingUnread,
+data aws_codebuild_arm_capacity: ArmCapacityChannel = CloudOperatorIsTheSeller {
+  vendor_words: "AWS CodeBuild",
 }

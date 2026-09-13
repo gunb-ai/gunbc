@@ -8,9 +8,8 @@ import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
-  ArmSiliconUnread,
   ArmUsdPerMinute,
-  CapacityChannelUnread,
+  ArmListPriceStanding,
   CatalogSnapshot,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
@@ -19,8 +18,8 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
-  SellerArmLinuxOffer,
   CurrentlyAcceptingCustomers,
+  SellerOfferStanding,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -104,21 +103,15 @@ data warpbuild_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
 )
 
 // Hosted ARM 2x list price live-fetched 2026-09-13 from the same cloud-runners table:
-// $0.003/min. Silicon and wholesale channel for the HOSTED fleet are unread: BYOC
-// docs name AWS/GCP/Azure for customer-account runners, which is a different product.
-data warpbuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: warpbuild_provider_identity,
-  snapshot: warpbuild_catalog_snapshot,
-  shapes: warpbuild_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: CapacityChannelUnread,
-  list_price: ArmUsdPerMinute {
-    per_minute: MoneyPerMinute {
-      amount: money_amount_micro(count: 3000),
-      currency: Usd,
-    },
+// $0.003/min. Silicon and wholesale channel for the HOSTED fleet are unread in the census.
+data warpbuild_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 3000),
+    currency: Usd,
   },
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "warpbuild.com Get Started Free, no credit card required (read 2026-09-13).",
-  },
+  priced_label: "warp-ubuntu-latest-arm64-2x",
+}
+
+data warpbuild_offer_standing: SellerOfferStanding = CurrentlyAcceptingCustomers {
+  status_surface: "warpbuild.com Get Started Free, no credit card required (read 2026-09-13).",
 }

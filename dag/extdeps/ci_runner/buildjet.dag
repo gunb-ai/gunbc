@@ -3,13 +3,12 @@ module extdeps.ci_runner.buildjet
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.ci_runner.types {
   ArmSellerNotOffering,
-  ArmSiliconUnread,
-  CapacityChannelUnread,
+  ArmListPriceStanding,
   CatalogSnapshot,
   RunnerCatalogAvailability,
   RunnerShapesUnavailable,
-  SellerArmLinuxOffer,
   SellerNotAcceptingCustomers,
+  SellerOfferStanding,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -52,16 +51,10 @@ data buildjet_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
   declared_scope: "Shutdown announcement only. Historical ARM labels such as buildjet-2vcpu-ubuntu-2204-arm are not modelled as a live catalog.",
 }
 
-data buildjet_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: buildjet_provider_identity,
-  snapshot: buildjet_catalog_snapshot,
-  shapes: buildjet_runner_catalog,
-  silicon: ArmSiliconUnread,
-  capacity: CapacityChannelUnread,
-  list_price: ArmSellerNotOffering {
-    cause: "Seller shut down 2026-03-31; no live ARM list price.",
-  },
-  standing: SellerNotAcceptingCustomers {
-    cause: "buildjet.com/for-github-actions/blog/we-are-shutting-down (read 2026-09-13): runners unavailable as of 2026-03-31.",
-  },
+data buildjet_arm_list_price: ArmListPriceStanding = ArmSellerNotOffering {
+  cause: "Seller shut down 2026-03-31; no live ARM list price.",
+}
+
+data buildjet_offer_standing: SellerOfferStanding = SellerNotAcceptingCustomers {
+  cause: "buildjet.com/for-github-actions/blog/we-are-shutting-down (read 2026-09-13): runners unavailable as of 2026-03-31.",
 }

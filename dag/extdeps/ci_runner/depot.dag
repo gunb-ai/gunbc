@@ -9,7 +9,10 @@ import extdeps.github.actions { github_actions_runs_on_surface }
 import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
   ArmSiliconCitedWords,
+  ArmSiliconStanding,
   ArmUsdPerMinute,
+  ArmListPriceStanding,
+  ArmCapacityChannel,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
@@ -19,8 +22,6 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   ResoldNamedCloud,
-  SellerArmLinuxOffer,
-  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -118,18 +119,15 @@ data depot_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
 
 // Live-fetched 2026-09-13 from the same runner-types page: Arm runners use Graviton4
 // EC2 instances; the Ubuntu 24.04 arm 2 vCPU row is $0.006/min. That is a resale of
-// AWS ARM, in Depot's own words.
-data depot_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
-  provider: depot_provider_identity,
-  snapshot: depot_catalog_snapshot,
-  shapes: depot_runner_catalog,
-  silicon: ArmSiliconCitedWords { quoted_family: "Graviton4 EC2" },
-  capacity: ResoldNamedCloud { vendor_words: "Graviton4 EC2 instances" },
-  list_price: ArmUsdPerMinute {
-    per_minute: MoneyPerMinute {
-      amount: money_amount_micro(count: 6000),
-      currency: Usd,
-    },
+// AWS ARM, in Depot's own words. Offer standing is unread in the census (pricing page only).
+data depot_arm_silicon: ArmSiliconStanding = ArmSiliconCitedWords { quoted_family: "Graviton4 EC2" }
+
+data depot_arm_capacity: ArmCapacityChannel = ResoldNamedCloud { vendor_words: "Graviton4 EC2 instances" }
+
+data depot_arm_list_price: ArmListPriceStanding = ArmUsdPerMinute {
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 6000),
+    currency: Usd,
   },
-  standing: OfferStandingUnread,
+  priced_label: "depot-ubuntu-24.04-arm",
 }
