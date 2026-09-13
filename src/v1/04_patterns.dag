@@ -366,6 +366,20 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
   }
 }
 
+// THE KEY IS APPLIED TO BOTH SIDES OR IT IS NOT AN IDENTITY. This is the seed's incumbent
+// variant-name identity -- the same bare leaf that symbol_index.global_bare is keyed on and that
+// qualified_last_segment joins on throughout infer -- and it must key the DECLARED constructor
+// exactly as it keys the pattern. It was authored symmetrically; the nested-pattern matrix rewrite
+// kept the pattern-side application and dropped the two declaration-side ones, after which a
+// declared arm carrying a dotted authored name could be covered by no pattern spelling at all and
+// was reported missing under its dotted name. Every coverage comparison in the fold routes through
+// pattern_matches_constructor, so keying both operands there is the whole of the matching repair;
+// the absent-constructor witness cell carries the key separately because it names the gap.
+//
+// WHAT A LEAF-KEYED IDENTITY STILL LEAVES OPEN, so it does not stall untracked (section 4b(2)):
+// two variants sharing a leaf name under different containment collide on one key. That is the
+// namespace program's class, not this one's, and it is not narrowed here. Its trigger is the
+// scope-carrying binding cutover answering by execution; this function is that cutover's consumer.
 fn variant_pattern_coverage_key(name: String) -> String {
   let segs = split(name, separator: ".")
   if segs |> count == 0 { name } else { fold(segs, init: "", f: (_, seg) => seg) }
@@ -533,7 +547,7 @@ fn pattern_row_is_irrefutable(row: List<MatchPattern>) -> Bool {
 fn pattern_matches_constructor(p: MatchPattern, ctor: String) -> Bool {
   match p {
     VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
-      variant_pattern_coverage_key(name: n) == ctor
+      variant_pattern_coverage_key(name: n) == variant_pattern_coverage_key(name: ctor)
     LitPattern { value: v } =>
       match v {
         LitBool { value: b } => if b { ctor == "True" } else { ctor == "False" }
@@ -619,7 +633,7 @@ fn exhaustiveness_witnesses(rows: List<List<MatchPattern>>, columns: List<Node>,
               rows: default_pattern_rows(rows: rows),
               columns: rest_columns, env: env, module_name: module_name
             )
-            absent_ctors |> flat_map(c => sub |> map(w => PatternWitnessRow { cells: concat([c], w.cells) }))
+            absent_ctors |> flat_map(c => sub |> map(w => PatternWitnessRow { cells: concat([variant_pattern_coverage_key(name: c)], w.cells) }))
           } else {
             ctors |> fold(init: [], f: (acc, c) =>
               let fields = constructor_fields(type_node: head_type, ctor: c, env: env, module_name: module_name)
