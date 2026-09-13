@@ -317,8 +317,8 @@ test fn production_unread_paths_on_a_read_region_route_still_refuse() -> Bool {
     CloudflareR2RouteRegionUnobserved { obligation } => false,
     CloudflareR2RouteObserved { route } => t_denied_with(
       a: t_decide(route: route, facts: cloudflare_r2_facts(route: route)),
-      tag: "facts-incomplete",
-      located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_execution_location_obligation"),
+      tag: "downstream-unassessed",
+      located: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_downstream_obligation"),
     ),
   }
 }
