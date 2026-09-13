@@ -887,18 +887,6 @@ fn rpm_count(r: RevolutionsPerMinute) -> Nat {
   measure_count(r)
 }
 
-type AccountCredit
-
-type CreditsPerMinute = Measure<AccountCredit, One, Nat>
-
-fn credits_per_minute(count: Nat) -> CreditsPerMinute {
-  Measure { count: count }
-}
-
-fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
-  measure_count(r)
-}
-
 type MoneyAmount<S> = Measure<Currency, S, Nat>
 
 type MoneyAmountMicro = MoneyAmount<Micro>
@@ -954,6 +942,22 @@ type MoneyPerHour = MoneyRate<PerHour>
 type MoneyPerMonth = MoneyRate<PerMonth>
 
 type MoneyOnce = MoneyRate<Once>
+
+type AccountCredit
+
+type CreditRate<P> {
+  count: Nat
+}
+
+type CreditsPerMinute = CreditRate<PerMinute>
+
+fn credits_per_minute(count: Nat) -> CreditsPerMinute {
+  CreditRate { count: count }
+}
+
+fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+  r.count
+}
 
 type PerKilowattHour
 
