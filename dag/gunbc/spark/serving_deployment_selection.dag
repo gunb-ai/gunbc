@@ -1805,7 +1805,7 @@ type ShapeAdmission
 // said so. It does NOT establish that the one candidate was the complete intended domain -- the
 // completeness join answers that, and the two are deliberately separate questions.
 fn compared_candidate_count(r: SelectionReceipt) -> Nat {
-  match r.candidate_field_standing {
+  match r.scope.candidate_field_standing {
     CandidateFieldEstablished { identities: ids } => count(ids)
     CandidateFieldUnestablishedStanding { causes: _ } => 0
   }
