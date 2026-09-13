@@ -1,6 +1,9 @@
 module v2.workflow.floor_enrolment_margin
 
 import v2.workflow.required_floor { required_floor_claim_cpu_safety_limit_ms }
+import v2.workflow.floor_cost_debt_admission {
+  floor_cost_debt_typed_admitted_identities,
+}
 import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
   implied_clean_run_budget,
@@ -175,6 +178,16 @@ type EnrolmentCostReading =
 // arithmetic of its own, and a reader who changes the margin changes the envelope, never this.
 fn floor_enrolment_margin_budget_ms_count() -> Int {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
+}
+
+// TYPED COST-DEBT IDENTITIES THIS GATE MAY HONOUR AS ROSTER GROUND. Decoded by the host
+// the same way `floor_cost_debt_roster` is decoded -- never a Rust-empty HashSet. The
+// attempt list in `floor_cost_debt_typed_admission_attempts` is Empty until a row is
+// authored there; this function is what makes authoring that row reach enrolment.
+fn enrolment_typed_cost_debt_identities() -> List<String> {
+  floor_cost_debt_typed_admitted_identities(
+    ceiling_ms: millisecond(count: required_floor_claim_cpu_safety_limit_ms()),
+  )
 }
 
 type EnrolmentExpensivenessGround =

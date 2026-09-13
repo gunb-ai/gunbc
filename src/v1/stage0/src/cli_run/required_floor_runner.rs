@@ -1481,6 +1481,41 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
     }
 }
 
+/// `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`, decoded
+/// from the frame the same way `floor_cost_debt_roster` is. Never a Rust-empty HashSet:
+/// authoring `floor_cost_debt_typed_admission_attempts` must reach this gate (review 65692).
+pub(crate) fn floor_enrolment_typed_cost_debt_identities(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<HashSet<String>, String> {
+    const MODULE: &str = "v2.workflow.floor_enrolment_margin";
+    const QUALIFIED: &str =
+        "v2.workflow.floor_enrolment_margin.enrolment_typed_cost_debt_identities";
+    let scope = claim_scope_for(prepared, MODULE)?;
+    let ctx = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+    let value = v1_interpreter::run_in_context(&ctx, QUALIFIED, false)
+        .map_err(|e| format!("{QUALIFIED}: {e}"))?;
+    let items = floor_decode_list(&ctx, Some(&value)).map_err(|e| format!("{QUALIFIED}: {e}"))?;
+    let mut out = HashSet::new();
+    for item in items {
+        match item {
+            v1_interpreter::Value::Str(s) => {
+                if !out.insert(s.to_string()) {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=EnrolmentTypedCostDebtDuplicate identity={s}"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "{QUALIFIED}: expected a qualified name, got {}",
+                    floor_value_shape(Some(other))
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The per-claim cost population indexed by identity, built ONCE for the whole gate.
 ///
 /// THE SCAN THIS REPLACES WAS A QUADRATIC FOLD, and it is fixed here rather than excused by the
@@ -8564,9 +8599,7 @@ pub fn run_required_floor(
             .iter()
             .map(|row| (row.identity.as_str(), &row.disposition))
             .collect();
-        // Realizes `enrolment_expensiveness_declaration`. Empty until a
-        // `floor_cost_debt_row` reading is authored (declared §3c frontier).
-        let typed_admission: HashSet<String> = HashSet::new();
+        let typed_admission = floor_enrolment_typed_cost_debt_identities(&prepared)?;
         for identity in newly_enrolled {
             let declared_expensiveness = enrolment_expensiveness_declaration(
                 identity,

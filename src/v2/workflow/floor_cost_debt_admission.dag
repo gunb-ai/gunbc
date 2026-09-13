@@ -30,13 +30,11 @@ import std.measure { Millisecond, millisecond_count }
 // this module into every required-floor compile would import `gunbc.floor_cost_distribution`
 // onto that hot path (the reason the constructor is not inside `floor_cost_debt`).
 //
-// NAMED LATER CONSUMER: `v1_compiler.cli_run` `run_required_floor` unions
-// `floor_cost_debt_typed_admitted_identities` into the withhold HashSet it already builds
-// from `floor_cost_debt_roster`, and the string chunks freeze against additions (identity
-// join vs the merge-base roster). TRIGGER: the first identity that would otherwise be
-// appended as a string after this PR — that row is authored here as a
-// `FloorCostDebtReadingAttempt` and nowhere else. Until then this list is Empty, which is
-// the honest population, not a scaffold pretending the runner already joined it.
+// NAMED CONSUMER: `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`
+// decodes this list onto enrolment Roster ground. The withhold HashSet union into
+// `floor_cost_debt_roster` remains a later consumer: the first identity that would otherwise
+// be appended as a string after this PR is authored here as a `FloorCostDebtReadingAttempt`
+// and nowhere else. Until then this list is Empty, which is the honest population.
 
 fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttempt> {
   []
