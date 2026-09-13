@@ -5,6 +5,8 @@ module v1.compiler.infer
 // contributes an unresolved element variable, never Unit from an unresolved
 // non-collection formal. Generic substitution refines unresolved slots using
 // concrete arguments and callback results; rebinding applies that substitution.
+// Constructor comparison consumes infer_types.canonical_template_name, the
+// existing declared container-algebra head projection; aliases are not new heads.
 // Established structure and cardinality remain constraints, and conflicting
 // established constraints refuse. This rule does not widen compatibility or
 // permit a field read on a never-constrained enclosing generic. The v2-side
@@ -111,7 +113,7 @@ import v1.compiler.infer_types {
   bare_map_node, bare_set_node,
   callable_inferred,
   normalize_access_type_node,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, canonical_template_name,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   node_type_deps,
   method_receiver_element_node,
@@ -11477,7 +11479,7 @@ fn refine_generic_constraint(established: Node, incoming: Node, span: SourceSpan
     GenericConstraintRefinement { refined: if incoming_variable { established } else { incoming }, diagnostics: [] }
   } else if incoming_variable {
     GenericConstraintRefinement { refined: established, diagnostics: [] }
-  } else if type_node_label(n: established, source_indices: scope.type_env.source_indices) != type_node_label(n: incoming, source_indices: scope.type_env.source_indices)
+  } else if canonical_template_name(n: established, source_indices: scope.type_env.source_indices) != canonical_template_name(n: incoming, source_indices: scope.type_env.source_indices)
     || established.connective != incoming.connective
     || count(established.children) != count(incoming.children)
     || count(established.params) != count(incoming.params) {
