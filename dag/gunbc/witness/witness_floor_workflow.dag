@@ -1395,8 +1395,9 @@ data long_home_storage_agreement_artifact_name: String = "long-home-storage-agre
 // required run since the floor cut.
 //
 // WHAT THAT COSTS: a measurement the corpus could not take. The floor carries TWO INDEPENDENT
-// BLOCKING DEADLINES on two different clocks: `v2.workflow.required_floor`
-// `required_floor_claim_cpu_safety_limit_ms` and `required_floor_claim_wall_safety_limit_ms` --
+// BLOCKING LIMITS on two different quantities: `v2.workflow.required_floor`
+// `required_floor_claim_eval_step_budget` (work performed, compared once against a completed
+// claim) and `required_floor_claim_wall_safety_limit_ms` (the one armed deadline) --
 // NEITHER VALUE IS TRANSCRIBED HERE, because this clause carried a parenthesised value beside each
 // name and the wall one was wrong: it disagreed with the constant set by the very change that
 // wrote the note, and with the preemption fixture one file away. Two numerals, one authority, and
@@ -2769,8 +2770,10 @@ fn required_lanes_aggregate_job() -> Job {
 // Measured with `claim_batch --functions`, one witness per subject. What transfers is the shape. The assembled workflow is dominated by one job:
 // `required_lanes_aggregate_job` is about seven eighths of its cost and the six lane jobs together
 // are the remaining eighth. So a witness asking "is the dispatch input declared" was serializing a
-// gate script it says nothing about, and three such rows exceeded `v2.workflow.required_floor`
-// `required_floor_claim_cpu_safety_limit_ms` on that check.
+// gate script it says nothing about, and three such rows exceeded the 500ms CPU line then standing
+// on that check (that line no longer gates anything: `v2.workflow.required_floor` carries the same
+// 500 as `required_floor_claim_work_envelope_ms`, the policy its eval-step budget is grounded
+// against, and CPU is observed-only for every claim).
 //
 // AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED A FIXED "FLOOR FOR REACHING THIS MODULE AT ALL",
 // AND THERE IS NO SUCH FLOOR. It was inferred from a first probe in which all six per-job subjects
@@ -2803,7 +2806,7 @@ fn required_lanes_aggregate_job() -> Job {
 // CLAIM. Its subject IS the six lanes -- "every witness-bearing lane" quantifies over them, and a
 // roster-backed version would be a worse artifact at any price, since a roster stops being a
 // denominator the moment someone adds a lane. THE MODELLED ALTERNATIVE IS NOT AVAILABLE, checked
-// rather than assumed: `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` is a
+// rather than assumed: `v2.workflow.required_floor` `required_floor_claim_eval_step_budget` is a
 // single constant and is not keyed by identity, so no row can be given its own ceiling; the
 // interpreter's own remedy sentence asks for a lane that declares a dated ceiling AND names the row
 // as an executing consumer; and `gunbc.fleet.fleet_converge_plan` records that no such lane exists

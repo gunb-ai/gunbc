@@ -116,10 +116,13 @@ pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
 /// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
 /// pure function of an input already compiled in the same run. That is the DESIGN §6
 /// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
-/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms
-/// `required_floor_claim_cpu_safety_limit_ms`, which is a FAIL-STOP protecting the executor and
-/// explicitly "never a budget, tolerance, or target" — so the admissible repair is to stop
-/// recomputing, never to raise the line.
+/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms CPU
+/// safety deadline standing at the time, a FAIL-STOP protecting the executor and explicitly "never
+/// a budget, tolerance, or target" — so the admissible repair is to stop recomputing, never to
+/// raise the line. That deadline is gone (the claim ceiling gates on
+/// `required_floor_claim_eval_step_budget` since 2026-09-12 and CPU is observed-only), which does
+/// NOT retire this memo: the defect it repairs is a recomputation, and a recomputation costs the
+/// same whether or not a clock refuses on it.
 ///
 /// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
 /// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content

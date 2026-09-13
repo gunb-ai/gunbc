@@ -1,6 +1,6 @@
 module v2.workflow.floor_enrolment_margin
 
-import v2.workflow.required_floor { required_floor_claim_cpu_safety_limit_ms }
+import v2.workflow.required_floor { required_floor_claim_work_envelope_ms }
 import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
   implied_clean_run_budget,
@@ -89,7 +89,7 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // precision inflation, the numeric cousin of rung inflation.
 //
 // WHY THIS FIGURE IS A POLICY INPUT AND NOT A TRANSCRIBED MEASUREMENT. It is selected FROM the
-// instrument's output by an operator ruling, exactly as `required_floor_claim_cpu_safety_limit_ms`
+// instrument's output by an operator ruling, exactly as `required_floor_claim_work_envelope_ms`
 // carries 500. The instrument is named above so the figure can be re-derived rather than trusted;
 // what is fixed here is the CHOICE of percentile, which is a judgement and belongs in a declaration
 // with its provenance beside it.
@@ -106,9 +106,23 @@ fn floor_enrolment_margin_envelope_permille() -> Int {
 // witness and a renderer and decided nothing, which is the dangling declaration DESIGN section 3c
 // exists to catch. Consuming it IS the payment; minting a second statistic beside it would be the
 // section 3 fork.
+// THE CEILING AUTHORITY IT CONSUMES WAS RENAMED UNDER IT, AND THE NUMBER DID NOT MOVE (2026-09-12).
+// `required_floor_claim_work_envelope_ms` was deleted when the required floor's claim ceiling
+// moved onto eval steps and CPU became observed-only; the 500ms policy it carried survives as
+// `required_floor_claim_work_envelope_ms`, stated as milliseconds of work rather than as a CPU
+// deadline. This derivation is unchanged because its subject is unchanged: it asks what CPU figure
+// an author may enrol at so that a p90-inflated runner still lands under the policy envelope.
+//
+// A DIVERGENCE STATED RATHER THAN SMUGGLED (DESIGN section 3b). This gate still reads a CPU
+// measurement, on a day the run-time ceiling stopped doing so, and that is deliberate rather than
+// an oversight: this is an ENROLMENT decision made once by an author against a multi-run
+// distribution with its inflation envelope applied, not a per-run verdict over a single reading,
+// which is exactly the confound `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable`
+// names. Whether an enrolment gate should be denominated in steps as well is a live question and
+// is NOT answered here.
 fn floor_enrolment_margin_budget_ms() -> Millisecond {
   implied_clean_run_budget(
-    ceiling_ms: millisecond(count: required_floor_claim_cpu_safety_limit_ms()),
+    ceiling_ms: millisecond(count: required_floor_claim_work_envelope_ms()),
     inflation_permille: floor_enrolment_margin_envelope_permille(),
   )
 }

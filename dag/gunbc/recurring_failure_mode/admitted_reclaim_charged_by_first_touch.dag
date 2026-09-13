@@ -8,7 +8,7 @@ data admitted_reclaim_charged_by_first_touch: RecurringFailureMode = RecurringFa
   identity: "admitted_reclaim_charged_by_first_touch" as NonEmptyStr,
 
   receipts: [
-    "**a per-subject budget charges a shared, scheduling-determined reclaim cost to whichever subject touches first** INVALID STATE: a per-claim CPU ceiling (`v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`) is applied to a claim whose measured CPU includes page-refault cost that is a property of the RUN's memory pressure and of TOUCH ORDER, not of the claim.",
+    "**a per-subject budget charges a shared, scheduling-determined reclaim cost to whichever subject touches first** INVALID STATE: a per-claim CPU ceiling (in the required floor until 2026-09-12, when it was deleted rather than repaired -- see the two receipts below; still live on the fast lane and in `v2.workflow.floor_enrolment_margin`) is applied to a claim whose measured CPU includes page-refault cost that is a property of the RUN's memory pressure and of TOUCH ORDER, not of the claim.",
 
     "HARM: which claim is billed is an ordering accident, so the ceiling refuses an arbitrary subject; PRs red at random on a fold that is progressing correctly; and the reading cannot be used to rank claims by cost because it does not measure the claim.",
 
@@ -26,12 +26,17 @@ data admitted_reclaim_charged_by_first_touch: RecurringFailureMode = RecurringFa
 
     "NEXT-RUNG TRIGGER, naming the CAPABILITY: per-claim CPU ceilings consume a reading from which admitted reclaim has already been attributed to the RUN -- the subject `memory_stall_refusal` already names -- sufficient that a first-touch refault cannot inhabit the claim's ceiling. A trigger that names `record_shared_artifact_fill_cpu`, a pre-warm loop, a narrowed scan, or an exemption of the warm 24ms does not discharge this: those are artifacts that would contribute to a different class, and measurement has already retired them here.",
 
+    "WHAT THE SUBJECT OF THIS ROW DID ON 2026-09-12, RECORDED BY THE CHANGE THAT DID IT (gunbc#11195) AND DELIBERATELY NOT ADJUDICATING THIS ROW'S RUNG. The required floor's per-claim CPU ceiling -- `required_floor_claim_cpu_safety_limit_ms`, the constant the INVALID STATE above is stated over -- was DELETED, not raised and not re-attributed. The claim ceiling now gates on eval_steps (`v2.workflow.required_floor` `required_floor_claim_eval_step_budget`, declared policy grounded through a controlled calibration fixture) and CPU is observed-only for every claim (`claim_cost_basis_standing`). THE EVIDENCE THAT CHANGE WAS RULED ON IS THIS ROW'S OWN SPECIMEN, INDEPENDENTLY RE-DERIVED: `affected_set_universe_gate_process` at a byte-identical eval_steps of 2884 reading 34ms, 192ms, 433ms, 455ms and 511ms across five heads of gunbc#11173 that changed no executable source, with the whole 3,775-claim floor drifting 36.7s -> 44.7s of summed CPU. Same identity, same constant eval_steps, same conclusion reached from the other end.",
+
+    "HOW THAT BEARS ON THIS ROW, STATED NARROWLY BECAUSE THE TWO ARE NOT THE SAME STATEMENT. The next-rung trigger above asks that a first-touch refault CANNOT INHABIT THE CLAIM'S CEILING. For the required floor's claim ceiling it now cannot, because that ceiling is no longer denominated in a quantity the kernel can bill a refault to -- eval_steps is a property of the tree. That is discharge BY REMOVAL rather than by the attribution the trigger describes, and it is NOT corpus-wide: the fast lane still caps on CPU, and `v2.workflow.floor_enrolment_margin` still reads a CPU figure to admit a new row. Whether removal satisfies this trigger, whether the rung moves, and whether the row retires are decisions for this row's owner and are NOT taken here; what is taken here is the obligation to say that the cited subject changed underneath it rather than to leave the citation silently pointing at a successor.",
+
     "UNCERTAINTIES CARRIED RATHER THAN ROUNDED OFF. Two runs on ONE runner (srv3-01). The 'neither' 51% bucket includes ~31ms of unsubtracted instrument clock reads. The answering module sitting last in scope precedence (reported as 437/438, 1093/1094) is an observation 2-of-2 whose mechanism was explicitly retracted as unverified inference; this row does not revive that mechanism.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "gunbc.memory_stall_refusal", decl_name: "memory_stall_admitted_under_pressure_receipt_note", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "required_floor_claim_cpu_safety_limit_ms", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "required_floor_claim_eval_step_budget", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "claim_cost_basis_standing", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.recurring_failure_mode.claim_forced_and_unbracketed", decl_name: "claim_forced_and_unbracketed", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.affected_set_universe", decl_name: "affected_set_universe_gate_processes_match_declared_gates", field: WholeDeclaration },
   ],

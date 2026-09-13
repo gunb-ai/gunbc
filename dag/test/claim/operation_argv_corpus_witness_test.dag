@@ -40,7 +40,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE CURRENT COST MODEL, in which every claim identity pays its own full-corpus
 // rematerialization. DESIGN 4b next-rung, measured: witness_duplicate_authority_pairs_are_well_formed
 // hit changed-witness interrupted_before_verdict against the required-floor claim CPU
-// deadline (required_floor_claim_cpu_safety_limit_ms). The obstacle is that second
+// deadline (retired 2026-09-12; the claim ceiling is required_floor_claim_eval_step_budget). The obstacle is that second
 // rematerialization against that deadline, not the analysis and not the absence of a check.
 // Sampling is not a wall. A count or closed roster over pairs is the absorbing fallback.
 // Cite claim_batch's [witness] cpu= line against that deadline function; do not copy

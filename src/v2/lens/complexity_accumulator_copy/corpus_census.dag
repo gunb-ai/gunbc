@@ -92,8 +92,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // lives here are entry points, run by a person, whose output belongs in a run.
 //
 // AND THE PRICE THAT DECIDES THIS IS NOT THE CORPUS -- IT IS ONE SUBJECT, WHICH IS A HARDER FACT
-// THAN THE ONE THIS FILE FIRST RECORDED. The required floor's per-witness CPU line is
-// v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms -- named rather than
+// THAN THE ONE THIS FILE FIRST RECORDED. The required floor's per-witness work envelope is
+// v2.workflow.required_floor required_floor_claim_work_envelope_ms -- 500ms of ordinary
+// interpreted evaluation, the policy the floor's eval-step ceiling is grounded against since
+// 2026-09-12, and the figure these CPU measurements are held beside -- named rather than
 // transcribed, because that module's own prose already carries a stale ten-fold figure for it in
 // nine places and this file will not become the tenth. Interpreted ingest of a FIVE-LINE fixture,
 // and of a four-line String snippet with no filesystem read, both measure several times that line,
@@ -149,8 +151,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // SUFFICIENT FOR -- AND THE MEASUREMENT THAT SETS THE BAR IS THE SMALLEST SUBJECT, NOT THE CORPUS.
 // This is the finding to carry out of this lane and it belongs in the trigger rather than in a
 // discussion: interpreted ingest of a FIVE-LINE fixture, and of a FOUR-LINE String with no
-// filesystem read, both measure several times the required floor's per-witness CPU line
-// (v2.workflow.required_floor required_floor_claim_cpu_safety_limit_ms) -- at the smallest subject
+// filesystem read, both measure several times the required floor's per-witness work envelope
+// (v2.workflow.required_floor required_floor_claim_work_envelope_ms) -- at the smallest subject
 // expressible. So the trigger is not "when the per-claim budget accommodates ingest", which reads
 // as waiting for the ceiling to move: the ceiling did not drift, it was deliberately RESTORED by
 // gunbc#9517, which froze the over-cost population as a monotone debt contract at the same time.

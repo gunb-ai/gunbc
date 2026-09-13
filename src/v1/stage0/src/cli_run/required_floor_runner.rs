@@ -1412,7 +1412,7 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
             None,
             None,
         );
-        floor_required_int(&policy_ctx, "required_floor_claim_cpu_safety_limit_ms")?
+        floor_required_int(&policy_ctx, "required_floor_claim_work_envelope_ms")?
     };
     match v1_interpreter::run_in_context(&ctx, &qualified, false) {
         Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < ceiling_ms => Ok(n as u64),
@@ -1516,9 +1516,26 @@ pub(crate) fn enrolment_margin_standing_for(
             }
         }
         crate::cli_run::ClaimCostReading::RightCensored(reading) => {
-            EnrolmentMarginStanding::CeilingCensored {
-                cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
-                censoring_ceiling_ms: reading.cpu_safety_limit_ms,
+            // WHICH CEILING CENSORED IT, AND THE ARM FOR "NOT A CPU ONE". `CeilingCensored`
+            // reports a CPU lower bound beside the CPU ceiling that stopped it, and since
+            // 2026-09-12 no required-floor claim arms a CPU deadline at all — so a censored row
+            // was stopped by the WALL deadline and there is no CPU ceiling to name. Reporting the
+            // wall limit in a field called `censoring_ceiling_ms`, beside a CPU bound, would be a
+            // clock fusion of exactly the shape `std.measure` `measure_clock_basis_note` exists to
+            // forbid: two magnitudes read from different clocks compared as if they were one.
+            //
+            // `NotMeasured` IS THE HONEST ARM AND NOT A DEGRADATION. Both arms block identically,
+            // and what this row's CPU reading actually is — a lower bound with no ceiling it can be
+            // compared against — is what `NotMeasured`'s cause says. Nothing is widened: the
+            // enrolment question stays unanswered and the row stays refused.
+            EnrolmentMarginStanding::NotMeasured {
+                cause: format!(
+                    "interrupted at cpu_at_least_ms={} by {} with NO CPU ceiling armed (the claim \
+                     ceiling gates on eval_steps since 2026-09-12), so this row has no CPU cost to \
+                     compare against the enrolment margin",
+                    reading.elapsed_cpu_at_least_ms,
+                    reading.raised_by.label()
+                ),
             }
         }
     }
@@ -3671,6 +3688,26 @@ pub(crate) fn floor_required_int(
     }
 }
 
+/// A REQUIRED-FLOOR POLICY STRING, read from the model the same way the numbers are.
+///
+/// AN EMPTY STRING REFUSES. This reads text that goes into a REFUSAL — the remedy a blocked author
+/// is handed — so an empty read is not a lenient default, it is a refusal with its guidance
+/// silently missing at exactly the moment someone needs it.
+pub(crate) fn floor_required_string(
+    ctx: &v1_interpreter::InterpContext,
+    func: &str,
+) -> Result<String, String> {
+    let qualified = format!("v2.workflow.required_floor.{func}");
+    match v1_interpreter::run_in_context(ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a non-empty String, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
 pub(crate) fn floor_decode_list<'a>(
     ctx: &v1_interpreter::InterpContext,
     v: Option<&'a v1_interpreter::Value>,
@@ -4727,8 +4764,8 @@ pub fn run_required_floor(
     // over a token scan of every `.dag` and `.rs` file in the tree, built once; on main runs
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
     // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
-    // corpus_rust_language_has_external_consumer` at 412ms against the 500ms
-    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower, which is the
+    // corpus_rust_language_has_external_consumer` at 412ms against the 500ms CPU safety deadline
+    // standing at the time — red on any runner a fifth slower, which is the
     // class `gunbc.rung_drop floor_cost_claim_qualification_unavailable` now carries with its measurements and
     // its restoration trigger; this comment states the instance and does not restate the class — while its
     // sibling in the same file, reading the identical memo milliseconds later, measured 0ms.
@@ -5045,8 +5082,6 @@ pub fn run_required_floor(
     // Reading all three from separate `.dag` constants is what makes the fusion structurally
     // impossible to reintroduce here — there is no longer a single value a future edit could
     // hand to more than one role by accident.
-    let claim_cpu_safety_limit_ms =
-        floor_required_int(&hermetic, "required_floor_claim_cpu_safety_limit_ms")?;
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
@@ -5261,6 +5296,96 @@ pub fn run_required_floor(
     eprintln!(
         "[floor-cost-debt] roster withholds {} identity(ies) from execution",
         cost_debt_roster.len()
+    );
+
+    // THE GRANDFATHERED ROSTER AND THE TWO CEILINGS (operator ruling via fierce-lark-661,
+    // 2026-09-13). The floor's claim ceiling is two-tier: an identity enrolled when the roster was
+    // cut is judged against the 500ms-equivalent budget it grew up under, and any other identity
+    // against the 100ms-equivalent budget for new work.
+    //
+    // THE TIER IS DERIVED FROM MEMBERSHIP HERE EXACTLY AS THE MODEL DERIVES IT, and there is no
+    // other way in. No flag, no command-line switch, no "legacy" column on the claim: an identity
+    // outside the roster cannot acquire the larger budget by landing, by appearing in the tree, or
+    // by having been accepted once. `v2.workflow.required_floor` `claim_ceiling_tier` is the
+    // authority; this is its mirror, and the two are joined by reading the SAME roster.
+    //
+    // THE BUDGETS ARE READ ONCE AND THE MEMBERSHIP IS CHECKED PER CLAIM. Reading
+    // `claim_eval_step_budget_for_identity` per claim would re-fold a 3,795-row roster 3,795 times
+    // inside the interpreter; reading the two tier budgets once and doing the membership test
+    // against a HashSet is the same answer at O(1) per claim.
+    let grandfathered_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_grandfathered_roster.floor_grandfathered_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_grandfathered_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_grandfathered_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES. The roster is a monotone debt contract whose SIZE is
+                    // the debt; a repeated identity makes that size overstate what is
+                    // grandfathered, and the second copy survives every removal of the first.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_grandfathered_roster: duplicate grandfathered identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_grandfathered_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        // AN EMPTY ROSTER REFUSES, and the asymmetry with the cost-debt roster above is the point.
+        // An empty cost-debt roster means every witness runs under the ceiling — the terminal state
+        // that contract is shrinking toward. An empty GRANDFATHERED roster means every one of the
+        // floor's several thousand claims is reclassified as new work and judged against the
+        // tighter budget at once, which is not a terminal state anyone ruled on: it is what a
+        // failed read, a renamed producer, or a truncated decode looks like. Refusing is the only
+        // honest arm — the alternative silently converts a decode fault into a corpus-wide policy
+        // change (DESIGN §5: a failure arm must refuse, never widen).
+        if out.is_empty() {
+            return Err("REQUIRED-FLOOR REFUSAL cause=GrandfatheredRosterEmpty \
+                 v2.workflow.floor_grandfathered_roster.floor_grandfathered_roster decoded to zero \
+                 identities. An empty roster would reclassify every required claim as new work and \
+                 judge it against the new-witness ceiling in one step, which no ruling authorises; \
+                 it is what a failed read looks like, not a policy."
+                .to_string());
+        }
+        out
+    };
+    let grandfathered_eval_step_budget =
+        floor_required_int(&hermetic, "required_floor_grandfathered_eval_step_budget")?;
+    let new_witness_eval_step_budget =
+        floor_required_int(&hermetic, "required_floor_new_witness_eval_step_budget")?;
+    // THE TIGHTER BUDGET MUST BE TIGHTER. If the two ever read equal or inverted, the tier
+    // distinction has silently stopped existing while every claim still reports a tier — the
+    // inert-wall shape DESIGN §4b names, cited as coverage while deciding nothing.
+    if new_witness_eval_step_budget >= grandfathered_eval_step_budget {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ClaimCeilingTiersNotOrdered new-witness budget \
+             {new_witness_eval_step_budget} is not below the grandfathered budget \
+             {grandfathered_eval_step_budget}; the two tiers would be one."
+        ));
+    }
+    // THE REMEDY TEXT IS READ FROM THE MODEL, NOT SPELLED HERE. `v2.workflow.required_floor`
+    // `new_witness_over_budget_first_remedy` owns it, so the seed cannot drift into offering
+    // different advice from the authority (DESIGN §3: one fact, one home).
+    let new_witness_first_remedy =
+        floor_required_string(&hermetic, "new_witness_over_budget_first_remedy")?;
+    eprintln!(
+        "[floor-claim-ceiling] grandfathered_identities={} grandfathered_budget_steps={} \
+         new_witness_budget_steps={}",
+        grandfathered_roster.len(),
+        grandfathered_eval_step_budget,
+        new_witness_eval_step_budget
     );
 
     // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
@@ -5498,12 +5623,20 @@ pub fn run_required_floor(
                 } else {
                     ChangedWitnessCostPolicy::Ordinary
                 };
+                // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE
+                // (`v2.workflow.required_floor` `claim_ceiling_tier`). Computed before the claim is
+                // built because the identity moves into it.
+                let eval_step_budget = if grandfathered_roster.contains(&identity) {
+                    grandfathered_eval_step_budget
+                } else {
+                    new_witness_eval_step_budget
+                };
                 claims.push(RequiredFloorClaim {
                     qualified: identity,
                     module_path: file.module_path.clone(),
                     function: function.clone(),
                     execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                    cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                    eval_step_budget,
                     wall_safety_limit_ms: claim_wall_safety_limit_ms,
                     cost_line_ms: claim_cost_line_ms,
                     cost_policy,
@@ -5572,12 +5705,18 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 disposition: RequiredFloorDisposition::Planned,
             });
+            // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE.
+            let eval_step_budget = if grandfathered_roster.contains(&identity) {
+                grandfathered_eval_step_budget
+            } else {
+                new_witness_eval_step_budget
+            };
             claims.push(RequiredFloorClaim {
                 qualified: identity,
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
-                cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                eval_step_budget,
                 wall_safety_limit_ms: claim_wall_safety_limit_ms,
                 cost_line_ms: claim_cost_line_ms,
                 cost_policy: ChangedWitnessCostPolicy::Ordinary,
@@ -6644,27 +6783,32 @@ pub fn run_required_floor(
         // complete in the interpreter and simply never switched on here, so a CPU budget stood
         // in for it while printing the wall rule's own error text.
         //
-        // Both clocks are armed deliberately, and INDEPENDENTLY (operator ruling 2026-08-19,
-        // BUDGET POLICY CUT, superseding correction — "DO NOT set CPU and wall to the same
-        // 5000ms"). CPU catches a spin; wall catches a witness that is slow because of what it
-        // reaches for, which CPU cannot see: the worst row measured burned 504 SECONDS of wall
-        // under a 5-second ceiling and returned an ordinary Bool, because its time was
-        // filesystem reads and its CPU never approached the limit. The wall limit is
-        // deliberately looser than the CPU limit so ordinary host scheduling delay on a pure
-        // in-process claim cannot itself trip an interrupt while the claim is still within its
-        // CPU envelope.
+        // ONLY THE WALL CLOCK IS ARMED, and the paragraph that stood here described two. It
+        // read "Both clocks are armed deliberately, and INDEPENDENTLY (operator ruling
+        // 2026-08-19 ... DO NOT set CPU and wall to the same 5000ms)" and then explained that
+        // which clock is armed is the claim's COST POLICY, selected through a
+        // `changed_witness_cpu_deadline` predicate. Both halves are now false: the predicate is
+        // deleted, and no claim arms a CPU deadline.
         //
-        // WHICH CLOCK IS ARMED IS THE CLAIM'S COST POLICY, and only the CPU one moves
-        // (`v2.workflow.required_floor` `changed_witness_cpu_deadline`, FLOOR-CHANGED-COST-0).
-        // Under `ChangedCostDebtVerdictOnly` the CPU deadline is NOT armed, so the interrupt
-        // cannot preempt the verdict the changed set exists to learn; the same 500ms figure is
-        // still carried on the claim and is published against the debt identity below. The wall
-        // budget is armed identically under both policies — a claim that is blocked or stuck
-        // still reaches no verdict, and that is still a red.
-        frame.set_witness_eval_budget(match claim.cost_policy {
-            ChangedWitnessCostPolicy::Ordinary => Some(claim.cpu_safety_limit_ms),
-            ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly => None,
-        });
+        // WHAT SURVIVES FROM IT IS THE WALL CLOCK'S OWN JUSTIFICATION, which is untouched and is
+        // why the next line still arms it: wall catches a witness that is slow because of what it
+        // REACHES FOR, which no amount of counting the claim's own work can see. The worst row
+        // measured burned 504 SECONDS of wall under a 5-second ceiling and returned an ordinary
+        // Bool, because its time was filesystem reads while its CPU never approached the limit.
+        // A claim that is blocked or stuck still reaches no verdict, and that is still a red.
+        //
+        // NO CPU DEADLINE IS ARMED, FOR ANY CLAIM (operator ruling via fierce-lark-661,
+        // 2026-09-12; `v2.workflow.required_floor` `claim_cost_basis_standing` reports
+        // `CpuTimeBasis` as `BasisObservedOnly`). The `match` on `cost_policy` that stood here
+        // armed the deadline for an ordinary changed witness and stood it down for a cost-debt
+        // one; the ruling generalised the stand-down to every claim, so the branch selected
+        // between two identical answers.
+        //
+        // `None` IS PASSED EXPLICITLY rather than the call being deleted, because the interpreter
+        // retains a per-frame CPU budget and a frame that never sets it would be relying on a
+        // default. What replaces the deadline is the completed-claim eval-step comparison below,
+        // and the wall budget on the next line, which is unchanged and still armed.
+        frame.set_witness_eval_budget(None);
         frame.set_witness_wall_budget(Some(claim.wall_safety_limit_ms));
         // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
         // it rather than to nobody. The wall time this row is about to be charged is not
@@ -6723,7 +6867,6 @@ pub fn run_required_floor(
             &result,
             &receipt,
             WitnessSafetyPolicy {
-                cpu_ms: claim.cpu_safety_limit_ms,
                 wall_ms: claim.wall_safety_limit_ms,
             },
         );
@@ -6746,6 +6889,64 @@ pub fn run_required_floor(
             cost_line_ms: claim.cost_line_ms,
             preemption_reachability: preemption_reachability_label(&receipt.opaque_host_call_reach),
         });
+        // ── THE CLAIM CEILING, COMPARED ONCE AGAINST A COMPLETED CLAIM'S WORK ──────────────
+        //
+        // THIS IS THE WALL THAT REPLACED THE CPU DEADLINE (operator ruling via fierce-lark-661,
+        // 2026-09-12; `v2.workflow.required_floor` `claim_eval_step_standing` is the model, and
+        // `claim_eval_step_budget_for_identity` the tier-selected budget it reads). It is a
+        // COMPARISON and not a deadline: nothing preempts a claim on steps, so this cannot miss an
+        // interrupt the way a cooperative poll can. It runs here, immediately after the receipt is
+        // minted and from the SAME receipt the cost row above was minted from, so the summary and
+        // the refusal cannot disagree about how many steps a claim performed.
+        //
+        // THE STEPS ARE THE MARGINAL ONES. `run_claim_measured` subtracts shared-artifact fill from
+        // both the CPU figure and the step count, so a first-touch payer is not charged the work of
+        // a build every later claim reads for free — the same basis the cost row reports.
+        //
+        // IT DOES NOT FIRE ON A CLAIM THAT REACHED NO VERDICT. An interrupted claim's step count is
+        // quantised by whichever poll stopped it and is a lower bound on nothing anyone asked
+        // about; that row is already reported through `interrupted_before_verdict`, and adding a
+        // budget sentence to it would report the same occurrence twice under two remedies.
+        if matches!(terminality, ClaimTerminality::VerdictReached { .. })
+            && receipt.eval_steps > claim.eval_step_budget
+        {
+            // WHICH TIER REFUSED, NAMED IN THE SENTENCE THAT BLOCKS. The two are different facts
+            // with different remedies: a grandfathered row over 500ms-equivalent has grown past the
+            // ceiling it lived under, while a NEW row over 100ms-equivalent has never been inside
+            // one, and telling an author "reduce it" without saying which line it crossed makes
+            // them guess at the target.
+            let (tier_name, tier_remedy) = if grandfathered_roster.contains(&claim.qualified) {
+                (
+                    "grandfathered (enrolled when the roster was cut; judged against the \
+                     500ms-equivalent budget)",
+                    String::new(),
+                )
+            } else {
+                (
+                    "new-witness (not in the grandfathered roster; judged against the \
+                     100ms-equivalent budget for work arriving after the cut)",
+                    format!(" {new_witness_first_remedy}"),
+                )
+            };
+            outcome.completed_over_cost_requirement.push(format!(
+                "{} reached its verdict and performed {} eval steps against a {} budget of {} \
+                 (observed cpu_ms={}, wall_ms={}, recorded and NOT gated on). The budget is \
+                 declared policy — v2.workflow.required_floor \
+                 claim_eval_step_budget_for_identity, grounded through the pinned calibration \
+                 fixture in v2.workflow.floor_eval_step_calibration — so this is a statement about \
+                 the claim's own work and not about the runner it landed on. Reduce what the \
+                 witness reaches for, or enrol it in a lane that declares its own ceiling AND \
+                 names the row as an executing consumer; relocating the file does not discharge \
+                 it.{}",
+                claim.qualified,
+                receipt.eval_steps,
+                tier_name,
+                claim.eval_step_budget,
+                receipt.cpu_nanos / 1_000_000,
+                receipt.wall_nanos / 1_000_000,
+                tier_remedy,
+            ));
+        }
         // PUBLISH THE COST AGAINST THE DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator ruling
         // 2026-08-30). Standing down a gate without putting a measurement in its place is the
         // absorbing-fallback shape DESIGN §5 forbids — the deficit stops being counted at the
@@ -6757,7 +6958,7 @@ pub fn run_required_floor(
             let observation = ChangedWitnessCostObservation {
                 cpu_clock_nanos: receipt.cpu_nanos,
                 wall_clock_nanos: receipt.wall_nanos,
-                cpu_line_ms: claim.cpu_safety_limit_ms,
+                cpu_line_ms: claim.cost_line_ms,
             };
             eprintln!(
                 "[floor-cost-debt-observation] identity={} standing={} marginal_cpu_ms={} \
@@ -8119,7 +8320,10 @@ pub fn run_required_floor(
     // nothing reads `over_cost_line_diagnostic` to fail a run, and a row named here has already
     // been admitted and has already answered. The pairing the operator asked for is a warning at
     // 100ms and a hard error at 500ms, and those are two different mechanisms rather than two
-    // tiers of one: the hard error is `required_floor_claim_cpu_safety_limit_ms`, which refuses.
+    // tiers of one. THE HARD ERROR IS NO LONGER ON THIS CLOCK (2026-09-12): it is the eval-step
+    // comparison against the tier's budget (`claim_eval_step_budget_for_identity`), and the 500ms figure it replaced
+    // survives as `required_floor_claim_work_envelope_ms`, the policy that budget is grounded
+    // against. This 100ms line is unchanged and still decides nothing.
     //
     // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~924 rows
     // on the measured corpus, and this file already carries the receipt for what that does to a

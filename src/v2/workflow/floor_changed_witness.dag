@@ -115,7 +115,7 @@ type ChangedWitnessExecutionStanding =
 // THE LINE IS A `Millisecond` AND THE MEASUREMENTS ARE `Nanosecond`, per
 // `std.measure` `nanosecond_millisecond_projection_note`: nanosecond is the canonical exact
 // elapsed carrier, millisecond is the policy and presentation scale, and this line is policy --
-// it is `required_floor_claim_cpu_safety_limit_ms` verbatim. It travels WITH its basis, because
+// it is `required_floor_claim_work_envelope_ms` verbatim. It travels WITH its basis, because
 // a budget and the figures compared against it are meaningless on different clocks (the same
 // reason `std.observation` `ObservationOutcome.TimedOut` carries one basis over its pair).
 //

@@ -866,7 +866,7 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // verdict roster cannot carry it.
 //
 // THE POPULATION IS BOUNDED AND MEASURED, at identity grain, on the run named above: 44
-// interrupted, all on the CPU clock against `required_floor_claim_cpu_safety_limit_ms`'s 5000ms,
+// interrupted, all on the CPU clock against `required_floor_claim_work_envelope_ms`'s 5000ms,
 // concentrated in live-tree corpus witnesses (13 in
 // `v2.test.claim.enforcement.grammar_coverage_witness`, 6 in
 // `v2.test.claim.enforcement_live_witness`, 6 in

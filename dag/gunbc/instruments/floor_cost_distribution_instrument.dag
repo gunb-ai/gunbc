@@ -80,7 +80,7 @@ import gunbc.floor_cost_distribution {
 // and a run that reads as zero rows is indistinguishable from a run where nothing crossed. That is
 // the absorbing fallback DESIGN section 5 forbids, so the arm below is typed and counted.
 
-// THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`
+// THE CEILING CARRIES ITS UNIT. `v2.workflow.required_floor` `required_floor_claim_work_envelope_ms`
 // is the authority for the value; this row is the analysis-side reading of it, and it is a
 // Millisecond rather than a bare Int so it cannot be compared against a figure read from another
 // clock -- the exact confusion `std.measure` exists to make unwritable.

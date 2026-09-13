@@ -636,7 +636,7 @@ fn row_is_excluded(row: FloorCostRow, excluded_modules: List<String>) -> Bool {
 // ASSERTS IT. A censored row is known only to have cost at least its own bound. Whether that
 // settles the question depends on how the bound compares to the line, and today it always does --
 // the CPU safety ceiling (`v2.workflow.required_floor`
-// `required_floor_claim_cpu_safety_limit_ms`) sits well above the cost line the artifact records,
+// `required_floor_claim_work_envelope_ms`) sits well above the cost line the artifact records,
 // so every censored row genuinely did cross. That is a COINCIDENCE OF TWO CONSTANTS IN DIFFERENT
 // MODULES, not a property of the question: raise the cost line above the safety ceiling, or lower
 // the ceiling, and every censored row would be silently counted as a crossing it never made, with

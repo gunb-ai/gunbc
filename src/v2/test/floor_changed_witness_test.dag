@@ -31,9 +31,10 @@ import v2.workflow.required_floor {
   required_floor_disposition_with_changed_selection,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
   changed_witness_cost_policy,
-  ClaimCpuDeadline, CpuDeadlineArmed, CpuDeadlineObservedOnly,
-  changed_witness_cpu_deadline,
-  required_floor_claim_cpu_safety_limit_ms,
+  ClaimCostBasis, EvalStepBasis, CpuTimeBasis, WallTimeBasis,
+  ClaimCostBasisStanding, BasisGates, BasisObservedOnly,
+  claim_cost_basis_standing, claim_cost_basis_gates,
+  required_floor_claim_work_envelope_ms,
   CostDebtRosterStanding,
   CostDebtWithheld, CostDebtWithholdOverriddenForChangedVerdict,
   CostDebtOutsideThisRunsUniverse, CostDebtUndeclared, CostDebtDeclaredButNotWithheld,
@@ -513,17 +514,31 @@ test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
   ) == "ordinary"
 }
 
-// ONE FIGURE, TWO ARMINGS. The override selects which clock is armed and never a different
-// number: the CPU line stays whatever `required_floor_claim_cpu_safety_limit_ms` says, and this
-// witness asserts the ARMING flips while that authority is untouched.
-test fn the_override_disarms_the_line_it_does_not_raise_it() -> Bool {
-  match changed_witness_cpu_deadline(policy: OrdinaryChangedWitnessCostPolicy {}) {
-    CpuDeadlineArmed =>
-      match changed_witness_cpu_deadline(policy: ChangedCostDebtVerdictOnly {}) {
-        CpuDeadlineObservedOnly => required_floor_claim_cpu_safety_limit_ms() == 500
-        CpuDeadlineArmed => false
-      }
-    CpuDeadlineObservedOnly => false
+// THE OVERRIDE NO LONGER SELECTS A CLOCK, BECAUSE NO CLAIM'S CPU IS GATED (2026-09-12). This
+// witness stood here as `the_override_disarms_the_line_it_does_not_raise_it`, over a
+// changed_witness_cpu_deadline predicate: the cost-debt override disarmed the CPU deadline and an ordinary
+// changed witness kept it armed. Both the predicate and the two-armed `ClaimCpuDeadline` are
+// deleted -- the exception was generalised to every claim, so a function distinguishing the two
+// populations distinguishes nothing.
+//
+// WHAT REPLACES IT IS THE SAME ASSERTION ONE LEVEL UP, AND IT KEEPS THE HALF THAT MATTERED: CPU
+// stopped gating and did NOT stop being published. `BasisObservedOnly` cannot be constructed
+// without naming its publisher, so the arm below asserts a non-empty publisher rather than merely
+// matching the variant -- a standing that gated nothing and published nothing would be the
+// absorbing fallback, and it is exactly what this witness exists to refuse.
+//
+// THE DISCRIMINATING DIRECTION IS BOTH WAYS. Asserting only that CPU is observed-only would pass
+// against a roster that observed EVERYTHING and gated nothing, which is the same failure wearing a
+// different face; so the two gating clocks are asserted to gate in the same fold.
+test fn cpu_is_observed_only_for_every_claim_and_still_published() -> Bool {
+  match claim_cost_basis_standing(basis: CpuTimeBasis {}) {
+    BasisGates => false
+    BasisObservedOnly { published_by: publisher } =>
+      string_contains(s: publisher, pattern: "per-claim cost receipt")
+        && (claim_cost_basis_gates(basis: CpuTimeBasis {}) == false)
+        && claim_cost_basis_gates(basis: EvalStepBasis {})
+        && claim_cost_basis_gates(basis: WallTimeBasis {})
+        && (required_floor_claim_work_envelope_ms() == 500)
   }
 }
 

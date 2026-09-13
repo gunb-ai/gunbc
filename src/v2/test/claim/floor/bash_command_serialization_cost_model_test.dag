@@ -51,7 +51,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // K STOPS AT 8 BECAUSE THIS FILE MAY NOT CREATE COST DEBT. `v2.workflow.floor_cost_debt` is a
 // shrink-only contract, and an instrument that enrolled its own rows on it would be buying its
 // measurement with the budget it exists to measure. Eight distinct commands sit inside
-// `required_floor_claim_cpu_safety_limit_ms`; the slope is already determined by four points, and
+// `required_floor_claim_work_envelope_ms`; the slope is already determined by four points, and
 // extending K to buy a longer lever would cross the ceiling and put this file on the roster.
 //
 // AND THE ROWS ARE A REGRESSION CONTROL, not a one-off reading. Any change that memoizes this path

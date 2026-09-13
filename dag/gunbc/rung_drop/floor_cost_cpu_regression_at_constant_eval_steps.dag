@@ -1,0 +1,62 @@
+module gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the class the eval-step ceiling CANNOT see (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHAT CHANGED AND WHY IT IS A LOSS AND NOT ONLY A FIX. The required floor's per-claim ceiling
+// moved from CPU milliseconds onto eval steps, and CPU became observed-only for every claim
+// (operator ruling via fierce-lark-661, 2026-09-12). That closes a real defect -- the CPU line was
+// refusing on which runner dequeued the job -- and it is an unambiguous improvement for the class
+// it was aimed at. It also GIVES SOMETHING UP, and the give-up is declared here rather than
+// carried in the improvement's shadow: a ceiling on steps refuses a claim that does MORE WORK, and
+// it cannot refuse a claim that does the SAME WORK MORE EXPENSIVELY.
+//
+// THE POPULATION IS REAL AND THIS REPOSITORY HAS HIT IT. Two shapes: a host-realized primitive
+// getting slower (the eval-step count is blind to what a step costs, because a step is a unit of
+// interpreter structure and not a unit of time), and an invariant-step realization seam -- a
+// realization swapped underneath a modeled operation with the step count unchanged, which is the
+// shape gunbc#11121's hash-to-scan seam has. Under the previous ceiling a large enough regression
+// of either kind eventually crossed 500ms and reddened. Under the new one nothing refuses; the CPU
+// figure is still measured and still published per claim, so the regression is VISIBLE and nothing
+// stops the line on it.
+//
+// WHY THE PREVIOUS RUNG WAS NEVER HIGHER THAN MECHANICALLY PREVENTABLE. The CPU line was a
+// threshold over a measurement, executed per run, with the invalid state fully writable -- a claim
+// could always be authored whose steps cost more. It caught the class noisily and late, which is
+// exactly rung 2, and the noise is what retired it.
+//
+// WHAT THIS ROW IS NOT. It is not a declaration that CPU regressions are acceptable, and it does
+// not authorize one. It is not a licence to enrol the affected identities as cost-debt rows: that
+// move is refused on this class by the same ruling, because a debt roster freezes identities and
+// says nothing about the mechanism. And it is not retired by a run in which a regression happens
+// not to occur -- absence of an occurrence is not the capability.
+data floor_cost_cpu_regression_at_constant_eval_steps: RungDrop = RungDrop {
+  identity: "floor_cost_cpu_regression_at_constant_eval_steps" as NonEmptyStr,
+
+  subject: "CPU-time regressions at CONSTANT eval_steps, ACROSS BOTH TIERS of the claim ceiling (the grandfathered 500ms-equivalent budget and the new-witness 100ms-equivalent budget -- the loss is a property of the CLOCK, so splitting the ceiling in two did not split it and neither tier refuses this class) -- a step getting more expensive rather than a claim performing more steps. The required floor's per-claim ceiling now gates on eval_steps and observes CPU only, so this class has no refusing wall on the acceptance path",
+
+  declared: "2026-09-12",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "per-step cost gated by construction: std.realization_cost_fidelity executing over the floor's primitive population on the acceptance path" },
+    population: [
+      "host-realized primitive cost: any v1_interpreter primitive whose Rust realization gets slower while the interpreted step count over it is unchanged -- the eval-step clock is blind to it by construction, because a step counts interpreter structure and not time",
+      "invariant-step realization seams: a realization swapped underneath a modeled operation with the step count preserved, the shape gunbc#11121's hash-to-scan seam has",
+      "v2.workflow.required_floor claim_safety_outcome (the deciding consumer: it compares eval steps and wall, and takes no CPU limit)",
+      "v2.workflow.required_floor claim_ceiling_tier / claim_ceiling_eval_step_budget (BOTH TIERS are in the dropped population: an identity judged against the 100ms-equivalent new-witness budget is as blind to a step getting more expensive as one judged against the 500ms-equivalent grandfathered budget, because the blindness is the clock's and not the ceiling's)",
+      "MEASURED INSTANCE, found inside this very change rather than predicted: a map-backed membership fold over 3,795 identities (v2.std.collection empty_map/map_insert/map_lookup) reported 39,940 eval steps -- FEWER than the 43,583 of the short-circuiting descent it replaced -- while costing 36,000ms of CPU against that descent's 76ms. It would pass either tier's eval-step ceiling comfortably. The realization defect behind it is filed at gunbc.recurring_failure_mode nested_membership_scan_where_a_map_primitive_exists",
+      "v2.workflow.required_floor claim_cost_basis_standing (the declaration that CpuTimeBasis is observed-only for every claim, with its publisher named)",
+      "src/v1/stage0/src/cli_run/required_floor_runner.rs (the seed realization of the same comparison)",
+    ],
+    restoration_trigger: "PER-STEP COST IS GATED BY CONSTRUCTION, not by a threshold over a wall-clock reading. The capability: std.realization_cost_fidelity's report (landed by gunbc#11026) EXECUTING over the floor's primitive population on the acceptance path, with CostFidelity contradiction and quadratic-realization arms REFUSING a run rather than being rendered. WHAT THAT REPORT MUST BE SUFFICIENT FOR, stated because a trigger naming an artifact that contributes to a capability is satisfied while the capability stays dead: it must (i) cover every primitive the floor's claims actually reach, not a hand-chosen subset, with a missing primitive a typed refusal rather than an omission; (ii) decide fidelity from the MODELED cost bound against the REALIZED one, so a realization swapped underneath a modeled operation is caught by the comparison and not by anyone noticing the milliseconds; (iii) refuse on the acceptance path, so a contradiction stops the line rather than appearing in an artifact a reader may or may not open. A report that runs, renders, and gates nothing is the inert lens DESIGN section 4b names, and does NOT retire this row. WHY THE CPU LINE IS NOT THE RESTORATION, and this is the half a later author will be tempted by: re-arming a CPU ceiling would restore a wall that refuses on the environment rather than on the claim, which is the defect that caused this drop. The evidence, re-derived rather than transcribed from the ruling: on gunb-ai/gunbc#11173 (branch session/smart-swift-109), three heads that changed no executable source measured the same 3,775-claim floor at summed observed_cpu_ms of 36,718 (run 34692482393), 40,822 (run 34703087198) and 44,721 (run 34706991347), and the single identity v2.test.claim.affected_set_universe.affected_set_universe_gate_process, at an IDENTICAL eval_steps of 2884 in all three, read 34ms, 455ms and 511ms; two further runs on the same branch (34701129407 at 40,269 / 192ms and 34700917652 at 42,522 / 433ms) sit inside the same band. PRODUCER: the required-floor-claim-cost artifact (required_floor_claim_cost.tsv, columns observed_cpu_ms and eval_steps) published by the required-witnesses-floor lane of gunbc.witness_floor_workflow, one per run. THE FIGURES ARE INLINE RATHER THAN CITED BY PRODUCER ALONE, deliberately and against DESIGN section 6's ordinary rule, because that rule assumes the instrument outlives the citation and here it does not: GitHub Actions artifacts on this repository expire 2026-09-26, after which the producer name re-derives nothing and only the numbers remain",
+  }
+}
