@@ -337,6 +337,60 @@ pub struct TransitionAdmission {
     pub label: &'static str,
     pub subject: AdmissionSubject,
     pub disposition: NamespaceDeltaDisposition,
+    /// The pull request that deletes this row once its own merge has consumed it, authored by the
+    /// row's owner BEFORE the owning change is enqueued.
+    pub deletion_follow_up: DeletionFollowUp,
+}
+
+/// WHO OWES THE DELETION, AUTHORED WHERE THE DEBT IS CREATED.
+///
+/// A row used to admit its own change's base->candidate delta is satisfied at the candidate by
+/// construction (the head check in `adjudicate` proves exactly that), so its consumption on landing
+/// is KNOWN at the owner's own merge-queue run. That is the instant to charge the deletion: the
+/// owner's `merge_group` run refuses a used row whose follow-up is `NotAuthored`
+/// (`OwnerFollowUpAbsent` in `wave_admission_refusal`). Charging it anywhere later bills a
+/// bystander -- the externalized degradation gunbc#9824 removed -- and charging it at the owner's
+/// pull_request run would refuse before the follow-up can reasonably exist.
+///
+/// RUNG, STATED HONESTLY: the wall establishes that a follow-up NUMBER is authored. Whether that
+/// number names an OPEN pull request that deletes these rows is checked by the landing tally before
+/// enqueue, not by this binary, which reads no forge. A fabricated number passes this wall and is
+/// caught there; if it slips past both, the bypass backstop refuses the next composition by name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeletionFollowUp {
+    NotAuthored,
+    PullRequest(u32),
+}
+
+/// THE CI EVENT WHOSE SUBJECT THIS RUN ADJUDICATES. The consumption obligation differs by subject,
+/// so the verdict needs the event as an input rather than inferring it from the shape of the diff:
+/// a `merge_group` composition is the tree about to BECOME the default branch, so it is where the
+/// owner's follow-up is charged and where a base-consumed row can only mean that charge was
+/// bypassed. `Local` is a run with no CI event at all (an author's machine); it takes the
+/// pull_request policy. An event name this enum does not model is refused by
+/// `adjudication_event_from_name` rather than defaulted to either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdjudicationEvent {
+    PullRequest,
+    MergeGroup,
+    Push,
+    WorkflowDispatch,
+    Local,
+}
+
+pub fn adjudication_event_from_name(name: Option<&str>) -> Result<AdjudicationEvent, String> {
+    match name {
+        None => Ok(AdjudicationEvent::Local),
+        Some("pull_request") => Ok(AdjudicationEvent::PullRequest),
+        Some("merge_group") => Ok(AdjudicationEvent::MergeGroup),
+        Some("push") => Ok(AdjudicationEvent::Push),
+        Some("workflow_dispatch") => Ok(AdjudicationEvent::WorkflowDispatch),
+        Some(other) => Err(format!(
+            "GITHUB_EVENT_NAME `{other}` is not an event the wave-admission consumption policy \
+             models, so which obligation this run owes is unknown; refusing rather than applying \
+             the pull_request policy to it"
+        )),
+    }
 }
 
 /// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
@@ -1809,6 +1863,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             ],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
+        deletion_follow_up: DeletionFollowUp::PullRequest(11240),
     },
     TransitionAdmission {
         label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
@@ -1819,6 +1874,7 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             expected_candidates: &["extdeps.filesystem.filesystem_io"],
         },
         disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
+        deletion_follow_up: DeletionFollowUp::PullRequest(11240),
     },
 ];
 
@@ -1849,6 +1905,10 @@ pub struct WaveAdmissionReport {
     /// not match a delta" — a row provable against neither side stays an UnmatchedAdmission
     /// refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
+    /// Rows USED to admit a delta in this run whose owner authored no deletion follow-up. Each is
+    /// satisfied at the candidate, so it will be consumed when the candidate lands; on a
+    /// merge_group run that is the owner's refusal.
+    pub used_without_follow_up: Vec<String>,
 }
 
 /// The wall's verdict: every delta is either auto-admitted or named by an admission.
@@ -2288,6 +2348,20 @@ pub fn adjudicate(
     // resident on main — the capability that makes a stale-able row unwritable. Until that
     // carrier exists, consumed rows persist as typed receipts and their deletion is enforced on
     // the roster file's own next touch.
+    let used_without_follow_up = used
+        .iter()
+        .map(|&i| &admissions[i])
+        .filter(|a| a.deletion_follow_up == DeletionFollowUp::NotAuthored)
+        .map(|a| {
+            format!(
+                "{} ({} {}) is used by this candidate and will be consumed when it lands, but \
+                 its owner authored no deletion follow-up (follow-up PR absent)",
+                a.label,
+                disposition_label(a.disposition),
+                admission_subject_render(&a.subject)
+            )
+        })
+        .collect::<Vec<_>>();
     let mut stale_admissions = Vec::new();
     let mut consumed_admissions = Vec::new();
     for (i, a) in admissions.iter().enumerate() {
@@ -2302,10 +2376,14 @@ pub fn adjudicate(
         match satisfaction {
             Ok(()) => consumed_admissions.push(format!(
                 "{} ({} {}) already satisfied at the base — consumed by its own merge; deletion \
-                 is owed on landing or the roster's next touch",
+                 is owed on landing or the roster's next touch; {}",
                 a.label,
                 disposition_label(a.disposition),
-                admission_subject_render(&a.subject)
+                admission_subject_render(&a.subject),
+                match a.deletion_follow_up {
+                    DeletionFollowUp::NotAuthored => "no deletion follow-up authored".to_string(),
+                    DeletionFollowUp::PullRequest(n) => format!("deletion follow-up gunbc#{n}"),
+                }
             )),
             Err(mismatch) => stale_admissions.push(format!(
                 "{} ({} {}) has no valid admission in this run: {mismatch}",
@@ -2321,6 +2399,7 @@ pub fn adjudicate(
         deltas,
         stale_admissions,
         consumed_admissions,
+        used_without_follow_up,
     }
 }
 
@@ -2574,6 +2653,8 @@ pub enum WaveAdmissionOutcome {
         /// Whether this diff touches the roster source. Consumed rows come due here
         /// and on main (base == head); stale rows refuse regardless of this flag.
         roster_touched: bool,
+        /// The CI event whose subject this run adjudicated.
+        event: AdjudicationEvent,
     },
 }
 
@@ -2593,7 +2674,15 @@ pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_ad
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
 /// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
-/// (base == head) or on a roster-source edit. Lifecycle is derived from the candidate-set
+/// (base == head) or on a roster-source edit. On a `merge_group` composition two more arms hold:
+/// a row the composition USES whose owner authored no `deletion_follow_up` refuses
+/// (`OwnerFollowUpAbsent`, the owner's charge, known at the owner's own queue run because a used
+/// row is satisfied at the candidate), and a base-consumed row on a composition that does not touch
+/// the roster refuses as `ConsumedRowOwnerChargeBypassed`, naming each owing change and follow-up
+/// so the blocked author reads whose debt it is. The second arm cannot fire while the first holds;
+/// a bystander red is the evidence that it did not. Lane ruling (fierce-lark-661, 2026-09-13):
+/// the merge queue moved the required verdict off the push to the default branch, and with it the
+/// only run where base == head. Lifecycle is derived from the candidate-set
 /// proof, never predicted by an authored row. Policy authority:
 /// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
@@ -2607,14 +2696,48 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             head,
             report,
             roster_touched,
+            event,
         } => {
             let unadjudicated = report_unadjudicated(report);
             let roster_due = base == head || *roster_touched;
+            let composition = *event == AdjudicationEvent::MergeGroup;
+            // THE OWNER'S CHARGE: a row this composition uses will be consumed when it lands, so a
+            // merge_group run refuses it unless its owner authored the deletion follow-up.
+            let owner_follow_up_due = composition && !report.used_without_follow_up.is_empty();
+            // THE BACKSTOP: a base-consumed row on a composition that does not touch the roster
+            // cannot exist if the owner's charge held, so it refuses AND says the charge was
+            // bypassed -- the blocked author is told the debt is not theirs and whose it is.
+            let bypass_due = composition && !roster_due && !report.consumed_admissions.is_empty();
             let consumed_due = roster_due && !report.consumed_admissions.is_empty();
             let stale_due = !report.stale_admissions.is_empty();
-            if unadjudicated.is_empty() && !stale_due && !consumed_due {
+            if unadjudicated.is_empty()
+                && !stale_due
+                && !consumed_due
+                && !bypass_due
+                && !owner_follow_up_due
+            {
                 return None;
             }
+            let owner_clause = if owner_follow_up_due {
+                format!(
+                    "; OwnerFollowUpAbsent: author each row's deletion_follow_up (the open pull \
+                     request that deletes it after this change lands) before enqueueing: {}",
+                    report.used_without_follow_up.join("; ")
+                )
+            } else {
+                String::new()
+            };
+            let bypass_clause = if bypass_due {
+                format!(
+                    "; ConsumedRowOwnerChargeBypassed: this debt is NOT this change's -- the rows \
+                     below were consumed by a PRIOR merge whose owner's merge_group charge was \
+                     bypassed; each names its owing change and deletion follow-up, and that \
+                     follow-up must land before this composition can: {}",
+                    report.consumed_admissions.join("; ")
+                )
+            } else {
+                String::new()
+            };
             let remedy = if stale_due || consumed_due {
                 let rows = report
                     .stale_admissions
@@ -2632,7 +2755,8 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){}){remedy}",
+                 consumed admission(s){}, {} used row(s) without a deletion follow-up){remedy}\
+                 {owner_clause}{bypass_clause}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
@@ -2640,7 +2764,8 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
                     " due for correction or deletion"
                 } else {
                     ""
-                }
+                },
+                report.used_without_follow_up.len(),
             ))
         }
     }
@@ -2812,6 +2937,7 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
 /// whole graphs, since an unmoved module's subject or bindings can be moved by one that did.
 pub fn run_required_wave_admission(
     head_index: &DeclarationIndex,
+    event: AdjudicationEvent,
 ) -> Result<WaveAdmissionOutcome, String> {
     let workspace = workspace_root();
     let head = git_stdout(&workspace, &["rev-parse", "HEAD"])?;
@@ -2838,6 +2964,7 @@ pub fn run_required_wave_admission(
             head,
             report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
             roster_touched: false,
+            event,
         });
     }
 
@@ -2955,5 +3082,6 @@ pub fn run_required_wave_admission(
         head,
         report,
         roster_touched,
+        event,
     })
 }
