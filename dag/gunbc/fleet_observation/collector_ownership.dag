@@ -106,6 +106,26 @@ fn ownership_generation(lease: HeldLease) -> Int {
   lease.epoch.generation
 }
 
+// DECLARED FRONTIER FOR acquire_ownership AND release_ownership, WITH ITS TRIGGER.
+//
+// These two have no production caller in this closure, and they are the folds that carry the Mt.
+// Collins receipt most directly -- a stale collector of the observer's own held the console session
+// and the replacement never started, so the capture believed to be watching a reset was watching
+// nothing. Every other unconsumed declaration in this change states its frontier; these two did not,
+// and an unstated one reads as an oversight rather than a decision (DESIGN section 3c).
+//
+// CONSUMER: the enrolled collector service's attach and detach steps -- the thing that actually takes
+// the endpoint before a stimulus and hands it back after, which is the realization this slice
+// deliberately does not build. TRIGGER, STATED AS THE CAPABILITY: that service performing attach and
+// release through these folds against a real controller session, sufficient that a stale session
+// observed on the endpoint produces ForeignInteractiveSessionNotStolen from a real observation rather
+// than from a fixture, and that a release which is not the holder's refuses against a real lease.
+//
+// WHAT IS ALREADY TRUE WITHOUT THAT SERVICE, and worth separating from the frontier: the refusals are
+// total and witnessed here, so no caller -- present or future -- can obtain an ownership change
+// without one of the four observed transitions or a typed refusal. The frontier is about who calls
+// them, not about whether they can be bypassed.
+
 // NEVER SILENTLY STEAL A FOREIGN INTERACTIVE SESSION. LeasePortForeign is the observed state in
 // which some other client holds the endpoint, and the ONLY answer to it is a typed refusal naming
 // what was observed. This is the arm that the three lost captures needed and did not have.

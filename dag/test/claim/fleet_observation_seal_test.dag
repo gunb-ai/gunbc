@@ -1,11 +1,6 @@
 module test.claim.fleet_observation_seal
 
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_count_at_key,
-}
+import gunbc.compile_census_probe { blocking_subject_count_for }
 import std.types { String, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -41,20 +36,22 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // OBTAINED through an admitted mint whose own input is caller-authored -- which they can, because
 // std.durable_compare_and_set leaves CasSlotVersion unsealed. That is the open half of the rung split
 // recorded at gunbc.fleet_observation_capture_chunk, and it is a different proposition.
-fn census_of(source: String) -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(source)
-}
-
-fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
-  match census_of(source: source) {
-    CensusObserved { rows: rows } =>
-      census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
-}
-
+// THE COUNT COMES FROM THE DECLARED HOME, NOT FROM A LOCAL COPY. An earlier version of this file
+// declared census_of / keyed_count / seal_violations -- "compile this source string and count the
+// blocking diagnostics of class C at subject S, -1 when the census did not run" -- which is exactly
+// gunbc.compile_census_probe blocking_subject_count_for, down to the -1-never-0 rule and the reason
+// for it. That module's own header says it is THE SINGLE HOME for this fact and that copying it makes
+// one concept answer from two authorities. Four witnesses already consume it; this is the fifth. The
+// local trio was the second-instance drift the census module documents, written while DFS-ing
+// carefully before minting StreamPosition and not at all before minting this.
 fn seal_violations(source: String, subject: String) -> Int {
-  keyed_count(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+  blocking_subject_count_for(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+// RAN AT ALL, read through the home's own sentinel rather than a second census call: the contract is
+// that a census which did not run answers -1 and never 0, so a non-negative count IS the ran-check.
+fn census_ran(source: String) -> Bool {
+  seal_violations(source: source, subject: "SoleConstructorViolation") >= 0
 }
 
 // ── RED 1: the durable-commit proof ────────────────────────────────────────────────────────────
@@ -129,7 +126,8 @@ test fn the_sanctioned_silence_route_draws_no_violation() -> Bool {
   seal_violations(source: sanctioned_silence_source, subject: "SilenceProof") == 0
 }
 
-// BOTH ARMS MUST ACTUALLY HAVE COMPILED. keyed_count returns -1 on CensusNotRunnable, so a probe that
+// BOTH ARMS MUST ACTUALLY HAVE COMPILED. blocking_subject_count_for returns -1 on a census that did
+// not run, never 0, so a probe that
 // never ran would otherwise be indistinguishable from one that ran and found nothing.
 test fn every_probe_in_this_file_actually_compiled() -> Bool {
   census_ran(source: forged_commit_proof_source)
@@ -142,9 +140,3 @@ test fn every_probe_in_this_file_actually_compiled() -> Bool {
   && census_ran(source: sanctioned_silence_source)
 }
 
-fn census_ran(source: String) -> Bool {
-  match census_of(source: source) {
-    CensusObserved { rows: _ } => true
-    CensusNotRunnable { cause: _ } => false
-  }
-}
