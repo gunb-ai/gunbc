@@ -65,7 +65,8 @@ import gunbc.heal_revalidation {
   heal_author_commit_required_token,
   heal_push_refused_token,
   superseded_by_author_head_token,
-  superseded_by_healed_head_token
+  superseded_by_healed_head_token,
+  superseded_by_healed_head_approve_remedy
 }
 import gunbc.heal_push_plan {
   auto_push_eligible_committed_artifact_paths,
@@ -929,11 +930,6 @@ data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunSt
   function: "converge",
 }
 
-data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/ci_heal_dispatch.dag",
-  function: "main",
-}
-
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
 // why targets are declared here rather than inline: a new call site that re-inlines a literal pair
 // is outside the join.
@@ -995,8 +991,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
-    gunbc_ci_heal_repo_local_git_config_target,
-    gunbc_ci_heal_dispatch_target
+    gunbc_ci_heal_repo_local_git_config_target
   ]
 }
 
@@ -2113,28 +2108,6 @@ fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   )
 }
 
-fn gunbc_ci_heal_dispatch_invoke() -> String {
-  gunbc_run_invocation_script_with_env(
-    env: [
-      EnvSet { name: "GUNBC_HEALED_HEAD", value: "\"$HEALED_HEAD\"" },
-      EnvSet { name: "GUNBC_HEAL_BRANCH_REF", value: "\"$\{{ github.head_ref || github.ref_name \}}\"" }
-    ],
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_dispatch_target.entry,
-    function: gunbc_ci_heal_dispatch_target.function,
-    claim_run: false
-  )
-}
-
-// After a successful push the heal invokes tools.ci_heal_dispatch, which binds the modeled
-// github.Workflows.CreateDispatch operation. The moving branch ref and immutable HEALED_HEAD are
-// distinct inputs. The dispatched run binds the branch resolution recorded in github.sha and its
-// checkout head to that immutable input before any witness can count. The workflow RunStep projects
-// github.token into its GITHUB_TOKEN environment because GitHub Actions does not inject the
-// installation token as a process variable by default; CreateDispatch auth_source reads that env
-// var. A transport refusal makes the gunbc invocation nonzero; the heal script classifies
-// HealDispatchRefused, keeps revalidation required, and fails loudly. Deliberately no fallback to
-// the ordinary push event and no silent retry.
 // RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard this note describes is DELETED and no
 // function implements it. What follows is the incident record that produced it, kept because the
 // receipt outlives the mechanism; read it in the past tense. THE PAIRING THE HEAL JOB NEVER MODELED
@@ -2334,39 +2307,24 @@ fn ci_heal_shell_lines() -> List<String> {
   )
 }
 
-// THE PUSHED HEAD IS NOW REVALIDATED, AND THE JOB STILL EXITS NONZERO. READ THE PARAGRAPH BELOW
-// IN THE PAST TENSE FOR THE GAP, AND THIS ONE FOR WHAT CLOSES IT. A healed head H1 must be judged
-// on its own tree, and used to arrive carrying only H0's receipts. The precise form of the premise
-// -- GitHub CREATES a run for that push and withholds its EXECUTION, so nothing judges H1
-// automatically -- and its measurement live once, on gunbc.witness_floor_workflow
-// ci_heal_expected_healed_sha_input, and are not restated here. The dispatch invocation below
-// runs INSIDE the produced-a-heal arm, immediately after the push and before the nonzero exit,
-// because $HEALED_HEAD is a variable of this script and the immutable subject is the whole point:
-// tools.ci_heal_dispatch sends the branch ref (the only thing GitHub's endpoint accepts) and that
-// sha as separate inputs, and gunbc.witness_floor_workflow ci_heal_expected_healed_sha_input is
-// the head every dispatched lane binds its own github.sha and checkout against before a witness
-// counts. A dispatch that could not name its head would report a verdict about a tree it cannot
-// identify, which is why the binding landed first and this wire depends on it.
+// AUTO-DISPATCH OF THE HEALED HEAD IS DELETED FROM THIS ARM. A bot-pushed head still creates a
+// pull_request run that GitHub HOLDS (action_required, zero jobs). Auto-dispatch was the only
+// route that executed without a human (gunbc.rung_drop.floor_cut_heal) and is deleted because it
+// cannot APPROVE that gated run and shadows GitHub's name-keyed PR rollup. The named loss is
+// gunbc.rung_drop.heal_healed_head_executed_verdict_without_human, not this annotation. The class
+// of same-named check-runs is gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_compares.
+// gunbc.witness_floor_workflow ci_heal_expected_healed_sha_input remains for GitHub UI dispatch.
 //
-// THE NONZERO EXIT IS NOT SOFTENED BY THE DISPATCH, and that is deliberate. This run judged
-// PRIOR_HEAD; it has no standing to speak for H1 whatever it dispatched. So SupersededByHealedHead
-// still prints and this job still fails -- the verdict on H1 belongs to the run now starting, not
-// to this one. A dispatch refusal makes the gunbc invocation nonzero under FailFast, so the
-// transport failure surfaces as a red step rather than as an unremarked absence of a run.
-//
-// PAST TENSE FROM HERE. That gap and the arm below were the fail-closed answer to it: the job
-// printed SupersededByHealedHead naming both revisions and EXITED NONZERO, so the healed head
-// arrived with a red job whose text said why, and a human or a re-run decided. It did not exit
-// zero on a head nothing had judged. gunbc.ci_spec gunbc_ci_heal_dispatch_target and
-// tools.ci_heal_dispatch stayed unconsumed here because the workflow they named (`ci.yml`) did not
-// exist and witnesses.yml declared no dispatch inputs.
+// THE NONZERO EXIT STAYS. This run judged PRIOR_HEAD; it has no standing to speak for H1. So
+// SupersededByHealedHead still prints and this job still fails. There is no executed verdict until
+// a human approves the gated pull_request run. The notice below names that remedy.
 fn gunbc_ci_heal_commit_push_script() -> String {
   join(
     [
       gunbc_invoke_root_stamp_script(),
       fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
-      concat("  ", concat(gunbc_ci_heal_dispatch_invoke(), "\n")),
       concat("  echo \"", concat(superseded_by_healed_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n")),
+      concat("  echo \"::notice::", concat(superseded_by_healed_head_token, concat(" healed_head=$HEALED_HEAD ", concat(superseded_by_healed_head_approve_remedy, "\"\n")))),
       "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
       concat(concat("    echo \"::error::", concat(heal_author_commit_required_token, " head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=")), concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
       "  fi\n  exit 1\nfi\n"
