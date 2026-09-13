@@ -8,6 +8,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   qualified_name_from_symbol_segments,
 }
+import v2.compiler.reference_site_collector { collect_module_reference_sites }
 import v2.lens.module_graph {
   LocatedModuleRoot,
   ModuleDependencyEdge,
@@ -95,8 +96,27 @@ fn ca_pair_edge_count_from_trees(
   }
 }
 
+data ca_provided_value_dotted: String = "test.fixture.reference_derived_graph.provider.provided_value"
+
+data ca_provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
+
+fn ca_parse_site_count(consumer_path: String, needle: String) -> Int {
+  match xl4_fixture_trees().parsed {
+    Rejected { diagnostics: _ } => ca_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match xl4_item_at(items: items, path: consumer_path) {
+        Absent => ca_ingest_refused_count
+        Present { value: item } =>
+          length(
+            xs: collect_module_reference_sites(root: item.root).sites
+              |> filter(site => qualified_name_to_dotted_string(qn: site.spelling) == needle)
+          )
+      }
+  }
+}
+
 fn ca_parse_call_arg_edge_count() -> Int {
-  ca_pair_edge_count_from_trees(trees: xl4_fixture_trees().parsed, consumer_path: consumer_call_only_path)
+  ca_parse_site_count(consumer_path: consumer_call_only_path, needle: ca_provided_value_dotted)
 }
 
 fn ca_normalized_call_arg_edge_count() -> Int {
@@ -104,7 +124,7 @@ fn ca_normalized_call_arg_edge_count() -> Int {
 }
 
 fn ca_parse_type_pos_edge_count() -> Int {
-  ca_pair_edge_count_from_trees(trees: xl4_fixture_trees().parsed, consumer_path: consumer_type_only_path)
+  ca_parse_site_count(consumer_path: consumer_type_only_path, needle: ca_provided_marker_dotted)
 }
 
 fn ca_normalized_type_pos_edge_count() -> Int {
@@ -112,7 +132,7 @@ fn ca_normalized_type_pos_edge_count() -> Int {
 }
 
 fn ca_parse_body_value_edge_count() -> Int {
-  ca_pair_edge_count_from_trees(trees: xl4_fixture_trees().parsed, consumer_path: consumer_body_value_path)
+  ca_parse_site_count(consumer_path: consumer_body_value_path, needle: ca_provided_value_dotted)
 }
 
 fn ca_normalized_body_value_edge_count() -> Int {
@@ -248,10 +268,6 @@ fn ca_collect_non_import_qn_sites(module_root: Node) -> Outcome<List<QualifiedNa
       )
   }
 }
-
-data ca_provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
-
-data ca_provided_value_dotted: String = "test.fixture.reference_derived_graph.provider.provided_value"
 
 fn ca_parse_qn_walk_site_count(consumer_path: String, needle: String) -> Int {
   match xl4_fixture_trees().parsed {
