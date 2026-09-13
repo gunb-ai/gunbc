@@ -139,16 +139,14 @@ data switch_catalog_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data printer_catalog_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.printing.bambu_lab_a1_mini",
-  decl_name: "a1_mini_build_envelope",
-  field: WholeDeclaration,
+data printer_catalog: LotCatalogIdentity = CatalogRowUnread {
+  observed_family: "Bambu Lab A1 mini" as NonEmptyStr,
+  read_obligation: "Model and cite an upstream product catalog row; a1_mini_build_envelope describes only build volume, not catalog identity" as NonEmptyStr,
 }
 
-data ams_catalog_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.printing.bambu_lab_ams_lite",
-  decl_name: "ams_lite_feed_path_suitability",
-  field: WholeDeclaration,
+data ams_catalog: LotCatalogIdentity = CatalogRowUnread {
+  observed_family: "Bambu Lab AMS Lite" as NonEmptyStr,
+  read_obligation: "Model and cite an upstream product catalog row; ams_lite_feed_path_suitability describes feed-path suitability, not catalog identity" as NonEmptyStr,
 }
 
 data pdu_catalog_ref: DeclarationRef = DeclarationRef {
@@ -198,21 +196,21 @@ data switch_01_lot: ProcurementLot = private_received_lot(
 
 data printer_01_lot: ProcurementLot = private_received_lot(
   identity: printer_01_lot_identity,
-  catalog: CatalogRowExact { row: printer_catalog_ref },
+  catalog: printer_catalog,
   display_label: "Bambu Lab A1 mini printer-01 acquisition" as NonEmptyStr,
   quantity_acquired: 1,
 )
 
 data printer_02_lot: ProcurementLot = private_received_lot(
   identity: printer_02_lot_identity,
-  catalog: CatalogRowExact { row: printer_catalog_ref },
+  catalog: printer_catalog,
   display_label: "Bambu Lab A1 mini printer-02 acquisition" as NonEmptyStr,
   quantity_acquired: 1,
 )
 
 data ams_01_lot: ProcurementLot = private_received_lot(
   identity: ams_lot_identity,
-  catalog: CatalogRowExact { row: ams_catalog_ref },
+  catalog: ams_catalog,
   display_label: "Bambu Lab AMS Lite acquisition" as NonEmptyStr,
   quantity_acquired: 1,
 )
