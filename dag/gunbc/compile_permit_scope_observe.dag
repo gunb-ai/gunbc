@@ -235,9 +235,9 @@ fn observe_fleet_compile_cancellation_standing() -> FleetCompileCancellationStan
   )
 }
 
-// WET ENTRY. Hermetic evaluation of this func classifies mock ssh stdout as unreadable, which is
+// WET ENTRY. Hermetic evaluation of this fn classifies mock ssh stdout as unreadable, which is
 // NotSafe. A session with fleet SSH identity reaches the live units. Do not bind this into
 // fleet_compile_cancellation_standing: that row is consumed by witnesses.yml emit.
-func observe_fleet_compile_permit_scope() -> FleetCompileCancellationStanding {
+fn observe_fleet_compile_permit_scope() -> FleetCompileCancellationStanding {
   observe_fleet_compile_cancellation_standing()
 }
