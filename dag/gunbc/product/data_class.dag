@@ -46,7 +46,11 @@ import product.data_category {
 // that construction is SoleConstructorViolation -- the same executed wall the guarantee probe
 // corpus establishes for every sealed record (sole_constructor_cross_module_class). That is a
 // capability model, not a trick: revealing classified data requires a capability only the
-// admission fold holds.
+// admission fold holds -- and the fold admits only against a DataHandlingMap that is itself a
+// sealed authority (see the map note), so the policy it reveals under cannot be authored by the
+// caller either. What remains open is the posture argument (CompliancePostureRevision is an open
+// record of product.fabric.provider_route); it can only make an admitting row STALE, never admit
+// one, so it is not a reveal route.
 //
 // ACCEPTANCE. The only ways a value leaves its category are (1) the admitted effect, which takes a
 // DataEffectPermit minted by admit_data_effect and by nothing else, and (2) the typed erasure,
@@ -209,10 +213,29 @@ type DataHandlingRow {
   posture: CompliancePostureRevision
 }
 
-type DataHandlingMap {
+// THE MAP IS A SEALED AUTHORITY, NOT A VALUE THE CALLER WRITES (review 65282). With the map an
+// open record, the "only the fold can reveal" claim was false one hop out: any importer could
+// author a one-row map admitting its own category to its own sink, hand the same posture as
+// active, and read the payload off the permit -- a caller-authored policy is exactly the "proceed
+// as if the refusal had not fired" toggle DESIGN 5 forbids. So DataHandlingMap is sole_constructor
+// and its one mint is admit_callers-sealed to the declarations that ARE policy authorities: the
+// private data map (gunbc-private strategy.data_map, whose rows are the product's policy and which
+// this tree names but cannot see), and the admission witness's own sealed fixture builder, which
+// is in turn admit_callers-sealed to the witness tests that exercise the fold. A module outside
+// that list that spells the record refuses as SoleConstructorViolation and one that calls the mint
+// refuses as ConstructorCallAdmissionRefused; both are enrolled in
+// test.probe.self_authored_map_probe. The empty public map below is constructed in this module.
+type DataHandlingMap sole_constructor {
   authority: DeclarationRef
   rows: List<DataHandlingRow>
 }
+
+fn data_handling_map(authority: DeclarationRef, rows: List<DataHandlingRow>) -> DataHandlingMap
+  admit_callers: [
+    decl_ref(module_path: "strategy.data_map", decl_name: "data_handling_map_rows"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fx_map"),
+  ]
+  = DataHandlingMap { authority: authority, rows: rows }
 
 // THE PUBLIC MAP IS EMPTY, WHICH IS THE FAIL-CLOSED DEFAULT AND NOT A PLACEHOLDER. A run in this
 // tree with no private rows admits no data effect at all: the fabric canary refuses with

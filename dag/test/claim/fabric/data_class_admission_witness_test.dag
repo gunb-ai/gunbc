@@ -16,7 +16,7 @@ import product.data_class {
   RouteNotPermittedForCategory, PostureRevisionStale,
   DataErasureStanding, ErasureApplied, Redacted,
   admit_data_effect, durable_origin_sink, log_channel_sink, build_output_category, personal_identity_category,
-  classified_map, classified_category, redact, public_fabric_map, public_fabric_posture,
+  classified_map, classified_category, redact, public_fabric_map, public_fabric_posture, data_handling_map,
 }
 import gunbc.fabric_m0_origin_commit {
   job_output_bytes, fabric_durable_origin_route, origin_write_permit_standing,
@@ -70,13 +70,26 @@ fn fx_row(category: DeclarationRef, sink: SinkKind, posture: CompliancePostureRe
   }
 }
 
-fn fx_map(rows: List<DataHandlingRow>) -> DataHandlingMap {
-  DataHandlingMap { authority: fx_ref(name: "fixture_map"), rows: rows }
-}
+// THE FIXTURE MAP BUILDER IS SEALED TO THE TESTS THAT USE IT. It is an admitted caller of the map
+// mint, so an exported fixture builder anyone could call would re-open the self-authored-map
+// route one hop out; its own admit_callers list is the tests below, and nothing else.
+fn fx_map(rows: List<DataHandlingRow>) -> DataHandlingMap
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "fx_admitting_map"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_category_with_rows_for_another_sink_only_is_refused_at_the_sink"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_durable_row_on_another_route_is_refused_at_the_route"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_map_is_read"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "admitted_permit_for"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "the_standard_claims_survive_classification_intact"),
+  ]
+  = data_handling_map(authority: fx_ref(name: "fixture_map"), rows: rows)
 
-fn fx_admitting_map() -> DataHandlingMap {
-  fx_map(rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())])
-}
+fn fx_admitting_map() -> DataHandlingMap
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_build_output_is_admitted_to_the_durable_origin_under_a_row_naming_the_route"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_row_under_a_superseded_posture_is_stale_not_admitting"),
+  ]
+  = fx_map(rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())])
 
 fn fx_output() -> Classified<BuildOutput, FilePath> {
   job_output_bytes(local_path: "dag/test/fixture/fabric_m0_origin_readback/other_object.txt" as FilePath)
@@ -224,9 +237,13 @@ test fn a_redacted_value_keeps_the_category_and_the_basis_and_nothing_else() -> 
 // only, so the write judges the permit's sink and operation before touching the transport: the
 // fleet-route durable permit authorises; a log-channel permit for the same category, and a
 // transmit permit on the right route, refuse -- each with the arm that names what was wrong.
-fn admitted_permit_for(sink: Sink<BuildOutput>, operation: DataOperation, rows: List<DataHandlingRow>) -> DataEffectAdmission<BuildOutput, FilePath> {
-  admit_data_effect(classified: fx_output(), sink: sink, operation: operation, handling_map: fx_map(rows: rows), posture: fx_posture())
-}
+fn admitted_permit_for(sink: Sink<BuildOutput>, operation: DataOperation, rows: List<DataHandlingRow>) -> DataEffectAdmission<BuildOutput, FilePath>
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "the_fleet_route_durable_permit_authorises_the_origin_write"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_log_channel_permit_for_build_output_does_not_authorise_the_origin_write"),
+    decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: "a_transmit_permit_on_the_fleet_route_does_not_authorise_a_durable_store"),
+  ]
+  = admit_data_effect(classified: fx_output(), sink: sink, operation: operation, handling_map: fx_map(rows: rows), posture: fx_posture())
 
 test fn the_fleet_route_durable_permit_authorises_the_origin_write() -> Bool {
   match admitted_permit_for(sink: fx_output_sink(), operation: StoreDurably, rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())]) {

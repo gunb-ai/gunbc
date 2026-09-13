@@ -139,6 +139,15 @@ test fn an_unwrap_helper_cannot_be_written_outside_the_module() -> Bool {
   blocking_count_for_class_and_subject(c: census_of(source: probe_source(name: "classified_unwrap_helper_probe")), wanted: "SoleConstructorViolation", subject: "DataRevealKey") >= 1
 }
 
+// THE SELF-AUTHORED MAP (review 65282). The literal refuses on the sealed record; the mint call
+// and the fixture-builder call refuse on their admit_callers lists -- two ConstructorCall
+// refusals, one per unadmitted call.
+test fn a_policy_map_cannot_be_authored_or_minted_outside_its_authorities() -> Bool {
+  let c = census_of(source: probe_source(name: "self_authored_map_probe"))
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "DataHandlingMap") >= 1
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") >= 2
+}
+
 // EXPECTING-RED HOLE, see the module note. Zero blocking rows at the two probed arguments is the
 // measured state of the interpretation path today; this assertion is the tripwire that flips when
 // the marker wall lands.
