@@ -506,6 +506,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ebay/marketplace_account_deletion.dag",
   "dag/extdeps/google/workspace.dag",
   "dag/extdeps/google/sheets.dag",
+  "dag/extdeps/common_paper/cloud_service_agreement.dag",
+  "dag/extdeps/bonterms/cloud_terms.dag",
   "dag/extdeps/moonshot/kimi_code.dag"
 ]
 

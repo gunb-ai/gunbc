@@ -39,7 +39,7 @@ import std.materialization_ladder { string_list_contains }
 fn item_kind_text(kind: ItemKind) -> String {
   match kind {
     FnItem => "fn"
-    FuncItem => "func"
+    FuncItem => "fn"
     TypeItem => "type"
     DataItem => "data"
     ServiceItem => "service"
@@ -56,7 +56,7 @@ fn item_kind_text(kind: ItemKind) -> String {
 // NEXT-RUNG TRIGGER: variant constructors carried as their own facts, at which point this bound is
 // deleted rather than widened here -- widening it here would rebuild the constructor index a second
 // time, which is the fork this lens exists to find.
-data bare_name_fork_lens_coverage_bound: String = "top-level declarations only, per the ItemKind vocabulary: fn, func, type, data, service, other. Variant constructor names are NOT in this population and can fork undetected. Next-rung trigger: variant constructors carried as decl facts."
+data bare_name_fork_lens_coverage_bound: String = "top-level declarations only, per the ItemKind vocabulary: fn, type, data, service, other. Variant constructor names are NOT in this population and can fork undetected. Next-rung trigger: variant constructors carried as decl facts."
 
 type BareNameStanding
   = BareNameSoleDeclarer { name: String, kind: ItemKind }

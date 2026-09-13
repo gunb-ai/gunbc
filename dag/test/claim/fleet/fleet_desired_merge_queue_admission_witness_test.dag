@@ -1,0 +1,342 @@
+module test.claim.fleet_desired_merge_queue_admission_witness_test
+
+import std.types { String, Bool, Int, List, CommitSha, NonEmptyStr }
+import std.contract_identity { ContractEpoch }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
+import extdeps.github.workflow_runs {
+  WorkflowRun, WorkflowRunList, WorkflowRunStatus, WorkflowRunConclusion,
+  Completed, InProgress, Queued, Success, Failure, Cancelled, TimedOut,
+}
+import extdeps.github.push_event { PushRefUpdate, push_ref_update_from_event_json, PushRefUpdateObserved, PushRefUpdateMemberAbsent }
+import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
+import gunbc.fleet_revision_acceptance {
+  RequiredCiAdmission, RequiredCiAdmitted, RequiredCiRefused,
+  RequiredCiMergeGroupRunAbsent, RequiredCiMergeGroupRunsTruncated, RequiredCiMergeGroupRunUnconcluded,
+  RequiredCiMergeGroupRunsNotSuccess, RequiredCiContradictoryRuns, CiContractEpochMismatch,
+  RequiredCiRunsNotEventScoped, RequiredCiRunAttemptHistoryUnestablished,
+  DefaultBranchAdmitted, DefaultBranchRefused, BranchRefIsNotTheDefaultBranch, BranchRepositoryNotThisRepository,
+  accept_required_ci_merge_group_runs, observe_default_branch_push, required_ci_refusal_message,
+}
+import gunbc.fleet_desired_admission {
+  FleetDesiredRevisionAccepted, FleetDesiredRevisionRefused,
+  fleet_desired_accepted_from_push,
+}
+import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MERGE-QUEUE ROUTE OF FLEET ADMISSION, exercised through fleet_desired_accepted_from_push --
+// the same pure composition admit_fleet_desired_from_push_wet runs between its payload read and
+// its forge read. One builder per carrier, and every row breaks exactly one fact.
+
+data sha_r: String = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+
+data sha_other: String = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+
+fn epoch_match() -> RequiredCiEpochObservation {
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch }
+}
+
+fn push_to(ref: String, after: String) -> PushRefUpdate {
+  PushRefUpdate { ref: ref, after: after, repository_full_name: "gunb-ai/gunbc" }
+}
+
+fn main_push(after: String) -> PushRefUpdate {
+  push_to(ref: "refs/heads/main", after: after)
+}
+
+fn run(id: Int, event: String, head_sha: String, status: WorkflowRunStatus, conclusion: WorkflowRunConclusion?) -> WorkflowRun {
+  WorkflowRun {
+    id: id,
+    name: Present { value: "witnesses" },
+    path: Present { value: artifact_path(a: WitnessFloorYamlArtifact) },
+    head_sha: head_sha as CommitSha,
+    head_branch: Present { value: "gh-readonly-queue/main/pr-1-deadbeef" },
+    event: event,
+    status: status,
+    conclusion: conclusion,
+    workflow_id: 900001,
+    run_number: id,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/1" as NonEmptyStr,
+    created_at: "2026-09-13T00:00:00Z",
+    updated_at: "2026-09-13T00:30:00Z",
+    pull_requests: [],
+  }
+}
+
+fn mg(id: Int, conclusion: WorkflowRunConclusion) -> WorkflowRun {
+  run(id: id, event: "merge_group", head_sha: sha_r, status: Completed, conclusion: Present { value: conclusion })
+}
+
+fn runs(rs: List<WorkflowRun>) -> WorkflowRunList {
+  WorkflowRunList { total_count: length(rs), workflow_runs: rs }
+}
+
+fn admits(push: PushRefUpdate, rs: WorkflowRunList) -> Bool {
+  match fleet_desired_accepted_from_push(push: push, runs: rs, observed_epoch: epoch_match()) {
+    FleetDesiredRevisionAccepted { accepted: a } =>
+      match git_object_id_from_untagged_hex(hex: push.after) {
+        Present { value: expected } => git_object_id_eq(left: a.revision, right: expected)
+        none => false
+      }
+    FleetDesiredRevisionRefused { cause: _ } => false
+  }
+}
+
+fn revision_r() -> GitObjectId? { git_object_id_from_untagged_hex(hex: sha_r) }
+
+fn ci_on_r(rs: WorkflowRunList) -> RequiredCiAdmission<NonEmptyStr>? {
+  match revision_r() {
+    Present { value: r } => Present { value: accept_required_ci_merge_group_runs(revision: r, runs: rs, observed_epoch: epoch_match()) }
+    none => none
+  }
+}
+
+// POSITIVE CONTROL, load-bearing: nearly every other row is a refusal, which a route that refused
+// everything would satisfy. This one reds when the wall is too strict.
+test fn a_queue_push_whose_merge_group_run_succeeded_admits_the_pushed_revision() -> Bool {
+  admits(push: main_push(after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Success)]))
+}
+
+// Two observations of one computation that agree are one fact observed twice.
+test fn two_completed_successes_for_one_revision_admit() -> Bool {
+  admits(push: main_push(after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Success), mg(id: 12, conclusion: Success)]))
+}
+
+// A cancelled run is not a verdict; it neither blocks nor supports the success beside it.
+test fn a_cancelled_run_beside_a_success_admits() -> Bool {
+  admits(push: main_push(after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Cancelled), mg(id: 12, conclusion: Success)]))
+}
+
+// THE CONTRADICTION. Nothing picks one: the refusal carries both id sets so an operator reads both logs.
+test fn a_success_and_a_failure_on_one_revision_refuse_carrying_both_run_ids() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg(id: 11, conclusion: Success), mg(id: 12, conclusion: Failure)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiContradictoryRuns { revision: _, success_run_ids: ok, non_success_run_ids: bad } } } =>
+      ok == [11] && bad == [12]
+    _ => false
+  }
+    && !admits(push: main_push(after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Success), mg(id: 12, conclusion: Failure)]))
+}
+
+// ORDER INDEPENDENCE of the contradiction: the failure listed first must not win by position.
+test fn a_failure_listed_before_a_success_is_still_a_contradiction() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg(id: 12, conclusion: TimedOut), mg(id: 11, conclusion: Success)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiContradictoryRuns { revision: _, success_run_ids: ok, non_success_run_ids: bad } } } =>
+      ok == [11] && bad == [12]
+    _ => false
+  }
+}
+
+test fn only_failed_merge_group_runs_refuse_as_not_success() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg(id: 12, conclusion: Failure)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunsNotSuccess { revision: _, run_ids: ids } } } => ids == [12]
+    _ => false
+  }
+}
+
+// A PUSH WITH NO MERGE-GROUP RUN: the admin-bypass / direct push. The designed loud refusal.
+test fn a_push_with_no_merge_group_run_refuses_as_absent() -> Bool {
+  match ci_on_r(rs: runs(rs: [])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunAbsent { revision: _ } } } => true
+    _ => false
+  }
+    && !admits(push: main_push(after: sha_r), rs: runs(rs: []))
+}
+
+// A pull_request run of the floor on the same revision genuinely passed, and is still not a
+// merge-group observation: it proves the tree passed, not that the queue proved the landing.
+test fn a_pull_request_run_offered_for_the_revision_is_not_a_merge_group_run() -> Bool {
+  match ci_on_r(rs: runs(rs: [run(id: 13, event: "pull_request", head_sha: sha_r, status: Completed, conclusion: Present { value: Success })])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [13]
+    _ => false
+  }
+}
+
+// THE EVENT SCOPE, CHECKED ON THE RESPONSE. A qualifying merge_group success beside an unrelated
+// push run on the same revision is what an event-unscoped read returns; it refuses rather than
+// judging completeness or agreement over a population that includes runs of another event.
+test fn a_qualifying_success_beside_a_push_run_refuses_as_an_unscoped_read() -> Bool {
+  match ci_on_r(rs: runs(rs: [
+    mg(id: 11, conclusion: Success),
+    run(id: 21, event: "push", head_sha: sha_r, status: Completed, conclusion: Present { value: Failure }),
+  ])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiRunsNotEventScoped { run_ids: ids } } } => ids == [21]
+    _ => false
+  }
+}
+
+fn mg_attempt(id: Int, attempt: Int, conclusion: WorkflowRunConclusion) -> WorkflowRun {
+  let r = mg(id: id, conclusion: conclusion)
+  WorkflowRun {
+    id: r.id, name: r.name, path: r.path, head_sha: r.head_sha, head_branch: r.head_branch,
+    event: r.event, status: r.status, conclusion: r.conclusion, workflow_id: r.workflow_id,
+    run_number: r.run_number, run_attempt: attempt, actor: r.actor, triggering_actor: r.triggering_actor,
+    html_url: r.html_url, created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
+}
+
+// THE SAME-RUN DIFFERENT-ATTEMPT DISCRIMINATOR. Run K's attempt 1 failed and attempt 2 succeeded;
+// the list carries only attempt 2, so it looks like one success. It refuses: the earlier verdict is
+// unobserved, and the agreement policy cannot be applied to evidence the input already discarded.
+test fn a_rerun_success_whose_earlier_attempt_is_unobserved_refuses() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg_attempt(id: 11, attempt: 2, conclusion: Success)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [11]
+    _ => false
+  }
+    && !admits(push: main_push(after: sha_r), rs: runs(rs: [mg_attempt(id: 11, attempt: 2, conclusion: Success)]))
+}
+
+// A LATER CANCELLED ATTEMPT CAN HIDE AN EARLIER FAILURE THE SAME WAY, and a cancelled snapshot is
+// dropped as a non-verdict -- so attempt history is decided BEFORE that drop. Beside a success on
+// another run this would otherwise admit.
+test fn a_later_cancelled_attempt_is_judged_before_non_verdicts_are_dropped() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg(id: 12, conclusion: Success), mg_attempt(id: 11, attempt: 2, conclusion: Cancelled)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiRunAttemptHistoryUnestablished { revision: _, run_ids: ids } } } => ids == [11]
+    _ => false
+  }
+}
+
+// A merge_group success on ANOTHER revision is not evidence for this one.
+test fn a_merge_group_success_on_another_revision_does_not_admit_this_push() -> Bool {
+  !admits(push: main_push(after: sha_r), rs: runs(rs: [run(id: 14, event: "merge_group", head_sha: sha_other, status: Completed, conclusion: Present { value: Success })]))
+}
+
+test fn a_run_of_another_workflow_is_not_the_floor() -> Bool {
+  let other = WorkflowRun {
+    id: 15, name: Present { value: "fleet-converge" }, path: Present { value: ".github/workflows/fleet-converge.yml" },
+    head_sha: sha_r as CommitSha, head_branch: none, event: "merge_group", status: Completed,
+    conclusion: Present { value: Success }, workflow_id: 1, run_number: 1, run_attempt: 1, actor: none,
+    triggering_actor: none, html_url: "https://github.com/gunb-ai/gunbc/actions/runs/15" as NonEmptyStr,
+    created_at: "2026-09-13T00:00:00Z", updated_at: "2026-09-13T00:00:00Z", pull_requests: [],
+  }
+  match ci_on_r(rs: runs(rs: [other])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunAbsent { revision: _ } } } => true
+    _ => false
+  }
+}
+
+// MATCHING RUNS SUPPLY NO USABLE VERDICT UNDER THIS POLICY: an in-progress run and a cancelled run on
+// the revision, and nothing else. No wait, no retry: a typed refusal naming the runs.
+test fn merge_group_runs_with_no_verdict_refuse_as_unconcluded() -> Bool {
+  match ci_on_r(rs: runs(rs: [
+    run(id: 16, event: "merge_group", head_sha: sha_r, status: InProgress, conclusion: none),
+    mg(id: 17, conclusion: Cancelled),
+  ])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunUnconcluded { revision: _, run_ids: ids } } } => ids == [16, 17]
+    _ => false
+  }
+}
+
+// A partial page is ignorance: judging absence from it would be the absorbing fallback.
+test fn a_truncated_run_page_refuses_before_judging() -> Bool {
+  match ci_on_r(rs: WorkflowRunList { total_count: 101, workflow_runs: [mg(id: 11, conclusion: Success)] }) {
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunsTruncated { observed: o, total: t } } } => o == 1 && t == 101
+    _ => false
+  }
+}
+
+test fn a_merge_group_success_under_another_contract_epoch_refuses_as_that_epoch() -> Bool {
+  match revision_r() {
+    Present { value: r } =>
+      match accept_required_ci_merge_group_runs(
+        revision: r,
+        runs: runs(rs: [mg(id: 11, conclusion: Success)]),
+        observed_epoch: RequiredCiEpochObserved { epoch: "epoch-that-is-not-required" as ContractEpoch },
+      ) {
+        RequiredCiRefused { cause: CiContractEpochMismatch { observed: o, required: _ } } => o == "epoch-that-is-not-required"
+        _ => false
+      }
+    none => false
+  }
+}
+
+// A MERGE-GROUP SUCCESS WITHOUT A PUSH TO THE DEFAULT BRANCH: the queue proved R, but the delivered
+// push moved another ref. The branch fact refuses, and the CI success never stands in for it.
+test fn a_merge_group_success_with_a_push_to_another_ref_refuses_on_the_branch_fact() -> Bool {
+  match observe_default_branch_push(push: push_to(ref: "refs/heads/gh-readonly-queue/main/pr-1-deadbeef", after: sha_r), evidence: "e") {
+    DefaultBranchRefused { cause: BranchRefIsNotTheDefaultBranch { observed: o, required: q } } =>
+      o == "refs/heads/gh-readonly-queue/main/pr-1-deadbeef" && q == "refs/heads/main"
+    _ => false
+  }
+    && !admits(push: push_to(ref: "refs/heads/gh-readonly-queue/main/pr-1-deadbeef", after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Success)]))
+}
+
+// The ref is compared fully qualified: a bare branch name is not the wire form and must not pass.
+test fn a_bare_branch_name_in_ref_is_not_the_default_branch_ref() -> Bool {
+  match observe_default_branch_push(push: push_to(ref: "main", after: sha_r), evidence: "e") {
+    DefaultBranchRefused { cause: BranchRefIsNotTheDefaultBranch { observed: _, required: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_push_in_another_repository_refuses() -> Bool {
+  match observe_default_branch_push(
+    push: PushRefUpdate { ref: "refs/heads/main", after: sha_r, repository_full_name: "someone/fork" },
+    evidence: "e",
+  ) {
+    DefaultBranchRefused { cause: BranchRepositoryNotThisRepository { observed: o, required: _ } } => o == "someone/fork"
+    _ => false
+  }
+}
+
+// The payload reader: the three members the branch fact needs, and a located refusal when one is missing.
+test fn the_push_payload_decodes_ref_after_and_repository() -> Bool {
+  match push_ref_update_from_event_json(text: "{\"ref\":\"refs/heads/main\",\"before\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"after\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"}}") {
+    PushRefUpdateObserved { update: u } =>
+      u.ref == "refs/heads/main" && u.after == sha_r && u.repository_full_name == "gunb-ai/gunbc"
+    _ => false
+  }
+}
+
+test fn a_push_payload_without_after_refuses_naming_the_member() -> Bool {
+  match push_ref_update_from_event_json(text: "{\"ref\":\"refs/heads/main\",\"repository\":{\"full_name\":\"gunb-ai/gunbc\"}}") {
+    PushRefUpdateMemberAbsent { member: m } => m == "after"
+    _ => false
+  }
+}
+
+// THE EMITTED TRIGGER AND ROUTING. The push route exists in the workflow only if the emission says
+// so; both triggers are present during the transition, each decide step runs its own entry, and only
+// the push step carries the forge token.
+test fn the_emitted_fleet_desired_workflow_routes_push_and_workflow_run_to_their_own_entries() -> Bool {
+  match expected_fleet_desired_yml() {
+    FleetDesiredGenerated { content: y } =>
+      contains(y, "workflow_run:")
+        && contains(y, "push:")
+        && contains(y, "if: github.event_name == 'push'")
+        && contains(y, "--function admit_fleet_desired_from_push_wet")
+        && contains(y, "if: github.event_name == 'workflow_run'")
+        && contains(y, "--function admit_fleet_desired_from_floor_event_wet")
+        && contains(y, "actions: read")
+    FleetDesiredGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE REFUSAL TEXT RENDERS ONLY WHAT THE PREDICATE ESTABLISHED. Absence of a qualifying run is not a
+// diagnosis of queue bypass, a missing verdict is not a temporal claim about the push, and a
+// non-merge_group run in the response is not a diagnosis of the request. Restoring any earlier
+// phrasing reds this row.
+test fn the_absent_unconcluded_and_unscoped_refusals_claim_only_what_they_establish() -> Bool {
+  match revision_r() {
+    Present { value: r } => {
+      let absent = required_ci_refusal_message(cause: RequiredCiMergeGroupRunAbsent { revision: r })
+      let unconcluded = required_ci_refusal_message(cause: RequiredCiMergeGroupRunUnconcluded { revision: r, run_ids: [16] })
+      let unscoped = required_ci_refusal_message(cause: RequiredCiRunsNotEventScoped { run_ids: [21] })
+      contains(absent, "in the complete queried result; this producer cannot establish the required CI proposition")
+        && !contains(absent, "queue")
+        && !contains(absent, "bypass")
+        && contains(unconcluded, "supply no usable verdict under this policy; admission remains unproved")
+        && !contains(unconcluded, "arrived before")
+        && contains(unscoped, "The returned run list contains non-merge_group runs (IDs 21), contrary to the merge_group-only response required by this producer; admission remains unproved.")
+        && !contains(unscoped, "was not scoped")
+        && !contains(unscoped, "says nothing about")
+    }
+    none => false
+  }
+}

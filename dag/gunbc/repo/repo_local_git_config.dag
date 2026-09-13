@@ -301,7 +301,7 @@ fn repo_local_git_config_converge_actuate() -> Reconciliation<List<RepoLocalGitC
   repo_local_git_config_converge_actuate_at(repo: root.path)
 }
 
-func converge() -> ProcessExit {
+fn converge() -> ProcessExit {
   match repo_local_git_config_converge_actuate() {
     Converged { evidence: _, applied: _ } => ExitSuccess
     NotConverged { reason: r, applied: _ } =>

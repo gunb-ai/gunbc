@@ -204,7 +204,7 @@ type DurableOriginStanding
   = DurableOriginAllocated { bucket: DurableOriginBucket }
   | DurableOriginUnallocated { purpose: BucketPurpose }
 
-// DEFAULT JURISDICTION, STATED RATHER THAN DEFAULTED. R2JurisdictionEu and R2JurisdictionFedramp are
+// DEFAULT JURISDICTION, STATED RATHER THAN DEFAULTED. Eu, Us, Fedramp, and FedrampHigh are
 // data-residency commitments this fleet has not made and cannot honour, and picking one would assert
 // a compliance boundary nothing enforces.
 fn fabric_durable_origin_standing() -> DurableOriginStanding {

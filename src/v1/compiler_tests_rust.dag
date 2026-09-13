@@ -978,6 +978,7 @@ fn ct_pipeline_test() -> String {
     "                    std::rc::Rc::new(expected_source_indices),\n",
     "                    crate::v1_std_core::empty_intern_table(),\n",
     "                    crate::std_occurrence_identity::occurrence_id_allocator_initial(),\n",
+    "                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),\n",
     "                );\n",
     "                assert!(expected_left.result.error.is_none());\n",
     "                let resolved = crate::v1_compiler_compile::compile_to_resolved(\n",

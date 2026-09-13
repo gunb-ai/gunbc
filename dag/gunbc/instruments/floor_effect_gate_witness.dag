@@ -37,46 +37,46 @@ import tools.generated_artifact_gate { generated_artifact_drift_failure_receipt 
 // the _passes witness. Frontier counts are hand-authored prose debt — dissolve-on: derived
 // projection from this entry's declarations (see loudness_witness_note sequencing note).
 
-func emit_host_gate_passes() -> Bool {
+fn emit_host_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: EmitHostGate))
 }
 
-func cheap_claim_pool_gate_passes() -> Bool {
+fn cheap_claim_pool_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: CheapClaimPoolGate))
 }
 
-func extdeps_external_authority_gate_passes() -> Bool {
+fn extdeps_external_authority_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: ExtdepsExternalAuthorityGate))
 }
 
-func dag_compile_clean_gate_passes() -> Bool {
+fn dag_compile_clean_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: DagCompileCleanGate))
 }
 
-func generated_artifact_drift_gate_passes() -> Bool {
+fn generated_artifact_drift_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
 }
 
-func extdeps_scope_placement_gate_passes() -> Bool {
+fn extdeps_scope_placement_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: ExtdepsScopePlacementGate))
 }
 
-func extdeps_scope_placement_gate_failure_receipt() -> String {
+fn extdeps_scope_placement_gate_failure_receipt() -> String {
   tools.extdeps_scope_placement_gate.scope_placement_failure_receipt()
 }
 
-func prose_row_introduction_gate_passes() -> Bool {
+fn prose_row_introduction_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: ProseRowIntroductionGate))
 }
 
-func prose_row_introduction_gate_failure_receipt() -> String {
+fn prose_row_introduction_gate_failure_receipt() -> String {
   tools.prose_row_introduction_gate.prose_row_gate_failure_receipt()
 }
 
-func dag_compile_clean_gate_failure_receipt() -> String {
+fn dag_compile_clean_gate_failure_receipt() -> String {
   dag_compile_clean_failure_receipt()
 }
 
-func generated_artifact_drift_gate_failure_receipt() -> String {
+fn generated_artifact_drift_gate_failure_receipt() -> String {
   generated_artifact_drift_failure_receipt()
 }
