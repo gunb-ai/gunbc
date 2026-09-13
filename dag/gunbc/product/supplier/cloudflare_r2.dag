@@ -152,13 +152,6 @@ fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
   }
 }
 
-fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
-  match cloudflare_r2_durable_origin_route_standing() {
-    CloudflareR2RouteRegionUnobserved { obligation } => [],
-    CloudflareR2RouteObserved { route } => [cloudflare_r2_facts(route: route)],
-  }
-}
-
 // THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION. Nobody has stated that we are
 // willing to place work on this vendor's default-jurisdiction R2 under a named posture. Writing a
 // roster row here to make the module look complete would be the fabricated authority the gate exists
@@ -171,3 +164,9 @@ fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
 // been read and cleared. TRIGGER: that producer, SUFFICIENT FOR this route to be included or
 // omitted by matching these facts rather than by a dashboard label. Until then the executing
 // consumer is the witness.
+fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
+  match cloudflare_r2_durable_origin_route_standing() {
+    CloudflareR2RouteRegionUnobserved { obligation } => [],
+    CloudflareR2RouteObserved { route } => [cloudflare_r2_facts(route: route)],
+  }
+}
