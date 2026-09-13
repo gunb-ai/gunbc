@@ -99,3 +99,11 @@ data generic_argument_branch_source: String = "module probe_generic_argument_bra
 test fn generic_argument_branch_binds() -> Bool {
   callback_inference_error_count(source: generic_argument_branch_source) == 0
 }
+
+// Consumed by the seed collection-constraint repair: preserves the nested accumulator
+// flow of v2.compiler.compile.native_lane_universe_after_ownership.
+data nested_empty_fold_source: String = "module probe_nested_empty_fold\nimport std.types { Int, List, String }\nimport v2.std.algebra { fold_list, list_snoc_item }\ntype Module { module: String, declarations: List<String> }\ntype Source { modules: List<Module> }\nfn modules_for_source(source: Source) -> List<Module> { source.modules }\nfn asks(sources: List<Source>) -> Int {\n  let modules = fold_list(\n    xs: sources,\n    empty: [],\n    cons: fn(acc, source) {\n      fold_list(\n        xs: modules_for_source(source: source),\n        empty: acc,\n        cons: fn(inner, m) { list_snoc_item(xs: inner, item: m) }\n      )\n    }\n  )\n  fold_list(xs: modules, empty: 0, cons: fn(acc, m) { acc + count(m.declarations) })\n}\n"
+
+test fn nested_empty_fold_element_binds() -> Bool {
+  callback_inference_error_count(source: nested_empty_fold_source) == 0
+}
