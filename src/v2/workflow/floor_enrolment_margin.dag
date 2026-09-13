@@ -106,11 +106,19 @@ fn floor_enrolment_margin_envelope_permille() -> Int {
 // witness and a renderer and decided nothing, which is the dangling declaration DESIGN section 3c
 // exists to catch. Consuming it IS the payment; minting a second statistic beside it would be the
 // section 3 fork.
-// THE CEILING AUTHORITY IT CONSUMES WAS RENAMED UNDER IT, AND THE NUMBER DID NOT MOVE (2026-09-12).
-// `required_floor_claim_work_envelope_ms` was deleted when the required floor's claim ceiling
+// THE CEILING AUTHORITY IT CONSUMES CHANGED UNDER IT, AND THE NUMBER DID NOT MOVE (2026-09-12).
+// `required_floor_claim_cpu_safety_limit_ms` was DELETED when the required floor's claim ceiling
 // moved onto eval steps and CPU became observed-only; the 500ms policy it carried survives as
 // `required_floor_claim_work_envelope_ms`, stated as milliseconds of work rather than as a CPU
-// deadline. This derivation is unchanged because its subject is unchanged: it asks what CPU figure
+// deadline.
+//
+// IT IS A REPLACEMENT AND NOT A RENAME, and an earlier revision of this annotation said "renamed"
+// while naming ONE symbol as both the deleted and the surviving side -- a blanket rename swept the
+// dead spelling out of the sentence that existed to record that it died (review 65462). The two are
+// materially different contracts, which is why they are two names (DESIGN section 3): the deleted
+// one was a CPU DEADLINE that could stop a claim mid-flight, and the survivor is a POLICY IN
+// MILLISECONDS OF WORK that no clock enforces and that reaches a verdict only after conversion into
+// eval steps. Only the magnitude is shared. This derivation is unchanged because its subject is unchanged: it asks what CPU figure
 // an author may enrol at so that a p90-inflated runner still lands under the policy envelope.
 //
 // A DIVERGENCE STATED RATHER THAN SMUGGLED (DESIGN section 3b). This gate still reads a CPU

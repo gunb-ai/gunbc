@@ -2,7 +2,7 @@ module tools.floor_cost_distribution_instrument
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count, eval_step_count_value }
 import std.types { Bool, Int, String, NonEmptyStr }
 import v2.workflow.floor_eval_step_calibration {
   SpecimenStepsGrounding,
@@ -1153,7 +1153,7 @@ fn calibration_specimen_grounding_line(g: CalibrationSpecimenGrounding) -> Strin
   match g {
     SpecimenJoined { grounding: gr } => match gr {
       SpecimenStepsMatchThePin =>
-        concat("[calibration-specimen] PINNED steps=", to_string(calibration_specimen_eval_steps(calibration: floor_eval_step_calibration)))
+        concat("[calibration-specimen] PINNED steps=", to_string(eval_step_count_value(s: calibration_specimen_eval_steps(calibration: floor_eval_step_calibration))))
       SpecimenStepsDiffer { declared_steps: d, observed_steps: o } =>
         concat("[calibration-specimen] REFUSED declared=", concat(to_string(d), concat(" observed=", to_string(o))))
     }

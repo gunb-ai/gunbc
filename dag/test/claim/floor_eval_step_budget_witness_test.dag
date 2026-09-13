@@ -6,7 +6,7 @@ import v2.std.collection { List }
 import v2.std.integer { Int, int_add, int_mul, int_gt }
 import v2.std.text { String }
 import std.types { NonEmptyStr }
-import std.measure { Millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond_count, EvalStepCount, eval_step_count_value }
 import v2.workflow.required_floor {
   ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,
   ClaimPreemptionReachability, CooperativelyPollable,
@@ -410,7 +410,9 @@ test fn the_observed_specimen_step_count_matching_the_pin_holds() -> Bool {
   specimen_steps_grounding_holds(
     grounding: specimen_steps_grounding(
       calibration: floor_eval_step_calibration,
-      observed_eval_steps: calibration_specimen_eval_steps(calibration: floor_eval_step_calibration),
+      observed_eval_steps: eval_step_count_value(
+        s: calibration_specimen_eval_steps(calibration: floor_eval_step_calibration)
+      ),
     )
   )
 }
@@ -423,7 +425,9 @@ test fn an_observed_specimen_step_count_that_moved_refuses() -> Bool {
     grounding: specimen_steps_grounding(
       calibration: floor_eval_step_calibration,
       observed_eval_steps: int_add(
-        a: calibration_specimen_eval_steps(calibration: floor_eval_step_calibration),
+        a: eval_step_count_value(
+          s: calibration_specimen_eval_steps(calibration: floor_eval_step_calibration)
+        ),
         b: 1,
       ),
     )
