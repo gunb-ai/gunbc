@@ -1743,14 +1743,37 @@ pub struct TransitionAdmission {
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// THIRTY-SEVENTH DISSOLUTION (2026-09-13, gunbc#10970). #10940 merged as 6c7b081961e, and the
-/// required floor on this branch (run 34690826219) reported all 181 of its `v2-native-route
-/// policy split` rows as `CONSUMED ADMISSION ... already satisfied at the base`. Every target
-/// they named is now where the base authors it, so the deltas they admitted have stopped being
-/// producible. A consumed row's deletion comes due on the roster's next touch; this change touches
-/// the roster, so the debt is paid here. The rows and the description that motivated them are
-/// deleted together -- the description was an argument for admitting a delta that no longer
-/// exists, and keeping it beside an empty roster would read as the record of a live claim.
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-12). The 181 `v2-native-route module split` and
+/// `v2-native-route policy split` rows are deleted, and the four paragraphs that described them
+/// go with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT WAS CHECKED BY IDENTITY RATHER THAN INFERRED FROM THE REFUSAL.
+/// The block above them authored `DISSOLVE-ON: this PR merging, after which the base binds these
+/// spellings to exactly these targets and the rows read as consumed`. #10940 merged as
+/// `6c7b081961` ("v2-native route: closure-scoped ingest and native adjudication over a
+/// seed-prepared artifact"), verified with `git log --oneline 6c7b081961` before this paragraph
+/// was written. So the base carries the four module splits, the deltas stopped being producible,
+/// and the required floor on this branch reported all 181 as `CONSUMED ADMISSION ... already
+/// satisfied at the base -- consumed by its own merge`. That is the trigger discharging the debt,
+/// not a wall being tidied: the THIRTY-SIXTH entry above records why that distinction is worth
+/// paying attention to, and the same discipline is applied here.
+///
+/// THE PARTITION, so the count is not one number standing for a population nobody enumerated.
+/// All 181 carry a `v2-native-route ` label prefix: 175 `module split` rows over the four moved
+/// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
+/// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
+/// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
+/// Main's roster held exactly these 181 rows and nothing else, so the array is empty of inherited
+/// rows after this deletion and carries only this change's own two.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THIRTY-EIGHTH DISSOLUTION (2026-09-13, gunbc#10970). #11156 merged as d7b7ab96c1f and its two
+/// rows' own trigger -- "these rows go when #11156 merges" -- has fired: the base carries the named
+/// imports, the deltas they admitted have stopped being producible, and a consumed row's deletion
+/// comes due on the roster's next touch. This change is that touch. Checked by identity (the merge
+/// commit is an ancestor of origin/main) rather than inferred.
 ///
 /// EMPTY IS THE RESTING STATE, NOT A WEAKENED WALL. An empty roster admits nothing: any delta no
 /// row names still refuses as UNADJUDICATED.
