@@ -143,10 +143,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     r2_get_bucket_authority,
   ]
 }
+// THE FIVE ARMS ARE THE CREATE/GET BUCKET JURISDICTION VALUE SET (r2_create_bucket_location_hint_reading,
+// r2_get_bucket_location_reading). Host suffixes follow the same wire token as eu/us/fedramp.
 type R2Jurisdiction
   = R2JurisdictionDefault
   | R2JurisdictionEu
   | R2JurisdictionFedramp
+  | R2JurisdictionFedrampHigh
   | R2JurisdictionUs
 
 fn r2_jurisdiction_wire(jurisdiction: R2Jurisdiction) -> String {
@@ -154,6 +157,7 @@ fn r2_jurisdiction_wire(jurisdiction: R2Jurisdiction) -> String {
     R2JurisdictionDefault => "default"
     R2JurisdictionEu => "eu"
     R2JurisdictionFedramp => "fedramp"
+    R2JurisdictionFedrampHigh => "fedramp-high"
     R2JurisdictionUs => "us"
   }
 }
@@ -168,6 +172,7 @@ fn r2_s3_endpoint_host(endpoint: R2S3Endpoint) -> String {
     R2JurisdictionDefault => join([endpoint.account_id, ".r2.cloudflarestorage.com"], "")
     R2JurisdictionEu => join([endpoint.account_id, ".eu.r2.cloudflarestorage.com"], "")
     R2JurisdictionFedramp => join([endpoint.account_id, ".fedramp.r2.cloudflarestorage.com"], "")
+    R2JurisdictionFedrampHigh => join([endpoint.account_id, ".fedramp-high.r2.cloudflarestorage.com"], "")
     R2JurisdictionUs => join([endpoint.account_id, ".us.r2.cloudflarestorage.com"], "")
   }
 }

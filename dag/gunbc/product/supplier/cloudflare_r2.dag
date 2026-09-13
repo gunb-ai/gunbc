@@ -2,6 +2,8 @@ module product.supplier.cloudflare_r2
 
 import std.types { List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.content_hash { as_content_hash_structural, content_hash_atom, content_hash_combine_structural, Fnv1a64Structural }
 import product.fabric.provider_route {
   ProviderRoute, ProviderRouteFacts,
@@ -180,12 +182,16 @@ fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
 // to close. Production standing is ProviderRouteRegionUnobserved; this function projects that
 // standing to an empty facts list. admit_provider_use is not invoked here. The witness mints a
 // synthetic ProviderRegionRead route and calls admit_provider_use on that pair.
-//
-// DECLARED FRONTIER (DESIGN section 3c). The production consumer is a posture producer that mints a
-// CompliancePostureRevision whose permitted_jurisdictions enumerate only routes whose facts have
-// been read and cleared. TRIGGER: that producer, SUFFICIENT FOR this origin to be included or
-// omitted by matching these facts rather than by a dashboard label. Until then the executing
-// consumer of the admission pair is the witness.
+data cloudflare_r2_supplier_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_route_facts_population"),
+    reason: "production does not consume this population; the executing consumer of the admission pair is the witness",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: a posture producer that mints a CompliancePostureRevision whose permitted_jurisdictions include or omit this origin by matching these facts. SUFFICIENT FOR: this population is read on an executing production path, not only by a witness."
+    )
+  )
+]
+
 fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
   match cloudflare_r2_durable_origin_route_standing() {
     ProviderRouteRegionUnobserved { obligation } => [],
