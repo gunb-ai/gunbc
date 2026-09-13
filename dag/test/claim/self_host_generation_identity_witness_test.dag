@@ -63,13 +63,14 @@ fn gi_baseline() -> GenerationIdentity {
     target_model: gi_digest(label: "target-model-baseline"),
     toolchain: gi_digest(label: "toolchain-baseline"),
     build_configuration: gi_digest(label: "build-configuration-baseline"),
+    required_lens_contract: gi_digest(label: "required-lens-contract-baseline"),
     materialized_artifact: gi_artifact(hex: gi_artifact_baseline_hex)
   }
 }
 
-// One perturbation per axis. Each moves EXACTLY one fact and holds the other five
-// fixed, so a carrier that folded the six into a single scalar would be unable to
-// tell these six apart — which is precisely what the per-axis assertions below
+// One perturbation per axis. Each moves EXACTLY one fact and holds every other
+// fixed, so a carrier that folded the axes into a single scalar would be unable to
+// tell them apart — which is precisely what the per-axis assertions below
 // falsify.
 fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
   let base = gi_baseline()
@@ -81,6 +82,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         target_model: base.target_model,
         toolchain: base.toolchain,
         build_configuration: base.build_configuration,
+        required_lens_contract: base.required_lens_contract,
         materialized_artifact: base.materialized_artifact
       }
     SourceClosureAxis =>
@@ -90,6 +92,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         target_model: base.target_model,
         toolchain: base.toolchain,
         build_configuration: base.build_configuration,
+        required_lens_contract: base.required_lens_contract,
         materialized_artifact: base.materialized_artifact
       }
     TargetModelAxis =>
@@ -99,6 +102,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         target_model: gi_digest(label: "target-model-MOVED"),
         toolchain: base.toolchain,
         build_configuration: base.build_configuration,
+        required_lens_contract: base.required_lens_contract,
         materialized_artifact: base.materialized_artifact
       }
     ToolchainAxis =>
@@ -108,6 +112,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         target_model: base.target_model,
         toolchain: gi_digest(label: "toolchain-MOVED"),
         build_configuration: base.build_configuration,
+        required_lens_contract: base.required_lens_contract,
         materialized_artifact: base.materialized_artifact
       }
     BuildConfigurationAxis =>
@@ -117,6 +122,17 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         target_model: base.target_model,
         toolchain: base.toolchain,
         build_configuration: gi_digest(label: "build-configuration-MOVED"),
+        required_lens_contract: base.required_lens_contract,
+        materialized_artifact: base.materialized_artifact
+      }
+    RequiredLensContractAxis =>
+      GenerationIdentity {
+        producer_compiler: base.producer_compiler,
+        source_closure: base.source_closure,
+        target_model: base.target_model,
+        toolchain: base.toolchain,
+        build_configuration: base.build_configuration,
+        required_lens_contract: gi_digest(label: "required-lens-contract-MOVED"),
         materialized_artifact: base.materialized_artifact
       }
     MaterializedArtifactAxis =>
@@ -126,6 +142,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         target_model: base.target_model,
         toolchain: base.toolchain,
         build_configuration: base.build_configuration,
+        required_lens_contract: base.required_lens_contract,
         materialized_artifact: gi_artifact(hex: gi_artifact_moved_hex)
       }
   }
@@ -136,8 +153,8 @@ test fn generation_identity_agrees_with_itself() -> Bool {
   generation_identity_agrees(left: gi_baseline(), right: gi_baseline())
 }
 
-// THE KEYSTONE DISCRIMINATING RED, stated as a conjunction rather than six separate greens so a
-// silently-dropped arm cannot pass unnoticed. For each of the six axes, perturbing it alone must
+// THE KEYSTONE DISCRIMINATING RED, stated as a conjunction over the roster rather than one green per
+// axis so a silently-dropped arm cannot pass unnoticed. For each axis, perturbing it alone must
 // (a) break overall agreement, (b) report exactly ONE mismatched axis, and (c) name THAT axis.
 // Clause (c) is what a single opaque compiler_identity scalar cannot satisfy — it fails (b) and
 // (c) together with an undifferentiated mismatch.
@@ -168,10 +185,10 @@ test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
   )
 }
 
-// The five axes NOT perturbed must still agree, so a perturbation cannot be reported
+// The axes NOT perturbed must still agree, so a perturbation cannot be reported
 // as a whole-identity smear. Without this, an implementation that marked every axis
 // mismatched on any change would pass the naming assertion above by accident.
-test fn perturbing_one_axis_leaves_the_other_five_agreeing() -> Bool {
+test fn perturbing_one_axis_leaves_the_others_agreeing() -> Bool {
   for_all(
     xs: generation_axes,
     predicate: fn(moved_axis) {
@@ -200,6 +217,7 @@ fn gi_unbuilt() -> GenerationIdentity {
     target_model: base.target_model,
     toolchain: base.toolchain,
     build_configuration: base.build_configuration,
+    required_lens_contract: base.required_lens_contract,
     materialized_artifact: ArtifactNotMaterialized
   }
 }
@@ -332,11 +350,18 @@ test fn empty_member_identity_refuses() -> Bool {
   }
 }
 
-// The six axis symbols must be pairwise distinct. If two axes shared a symbol, the
+// The axis symbols must be pairwise distinct. If two axes shared a symbol, the
 // naming assertion above would still pass while a stale refusal pointed a reader at
 // the wrong fact — the defect this whole carrier exists to prevent.
+// THE LITERAL IS A COMPLETENESS PROXY, AND IT MOVES WITH THE COPRODUCT. It is here because the pairwise-distinctness fold below passes perfectly well over a SHORT
+// roster: a coproduct arm omitted from `generation_axes` is invisible to every check that folds the
+// roster, and the language cannot enumerate a coproduct's arms to derive the expected size. So the
+// count stands in for "the roster covers the type", and it is grounded in a closed authored
+// coproduct rather than measured from the corpus -- which is the narrow case DESIGN section 5 admits
+// a literal for. Bumping it is part of adding an axis, not an afterthought: an author who adds an
+// arm and not a roster row learns it here.
 test fn axis_symbols_are_pairwise_distinct() -> Bool {
-  length(xs: generation_axes) == 6
+  length(xs: generation_axes) == 7
     && for_all(
       xs: generation_axes,
       predicate: fn(left) {

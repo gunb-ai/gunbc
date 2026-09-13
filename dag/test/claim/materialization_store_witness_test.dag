@@ -9,7 +9,7 @@ import std.materialization_provider {
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
-  request_key, request_kind, request_required_outputs,
+  request_key, request_kind, request_required_outputs, request_declared_inputs,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
@@ -88,7 +88,8 @@ fn generation_axes() -> PreMaterializationIdentity {
     source_closure: h(v: "closure-1"),
     target_model: h(v: "rust"),
     toolchain: h(v: "rustc-1.93.0"),
-    build_configuration: h(v: "release")
+    build_configuration: h(v: "release"),
+    required_lens_contract: h(v: "lens-contract-1")
   }
 }
 
@@ -383,25 +384,72 @@ test fn an_unreadable_object_fault_names_the_host_kind() -> Bool {
 }
 
 // EVERY CAUSAL AXIS OF THE GENERATION IS LOAD-BEARING ON THE COMPILER REQUEST KEY, and the axes are
-// v2.compiler.self_host.generation's, not a second list: perturbing any one of the five moves the
-// key, and the five perturbations are pairwise distinct, so no two axes are being folded into one
+// v2.compiler.self_host.generation's, not a second list: perturbing any one of the six moves the
+// key, and the six perturbations are pairwise distinct, so no two axes are being folded into one
 // position. The earlier shape keyed only the closure, the toolchain and the target, so a changed
 // producer compiler or build configuration left the key fixed.
+//
+// THE SIXTH IS THE REQUIRED-LENS CONTRACT, AND ITS PERTURBATION IS THE WHOLE REASON THAT AXIS IS IN
+// THE PRE-MATERIALIZATION PROJECTION. Without this variant the claim that one contract's artifact
+// cannot serve a request made under another would have no executing evidence -- the axis would be in
+// the digest and nothing would establish that the digest moves with it.
+//
+// THE COUNT LITERAL IS THE COMPLETENESS PROXY and it moves with the roster: the pairwise-distinctness
+// check above passes perfectly well over a SHORT variant list, so an axis added to the type and not
+// to this list would be invisible here. That is exactly how this witness read 5 while the type had
+// six axes, which review 64579 caught on this PR.
 test fn every_generation_causal_axis_is_load_bearing_on_the_compiler_key() -> Bool {
   let base = generation_axes()
   let k = request_key(req: compiler_req())
   let variants = [
-    PreMaterializationIdentity { producer_compiler: h(v: "tree-2"), source_closure: base.source_closure, target_model: base.target_model, toolchain: base.toolchain, build_configuration: base.build_configuration },
-    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: h(v: "closure-2"), target_model: base.target_model, toolchain: base.toolchain, build_configuration: base.build_configuration },
-    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: h(v: "wasm"), toolchain: base.toolchain, build_configuration: base.build_configuration },
-    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: base.target_model, toolchain: h(v: "rustc-1.94.0"), build_configuration: base.build_configuration },
-    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: base.target_model, toolchain: base.toolchain, build_configuration: h(v: "debug") },
+    PreMaterializationIdentity { producer_compiler: h(v: "tree-2"), source_closure: base.source_closure, target_model: base.target_model, toolchain: base.toolchain, build_configuration: base.build_configuration, required_lens_contract: base.required_lens_contract },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: h(v: "closure-2"), target_model: base.target_model, toolchain: base.toolchain, build_configuration: base.build_configuration, required_lens_contract: base.required_lens_contract },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: h(v: "wasm"), toolchain: base.toolchain, build_configuration: base.build_configuration, required_lens_contract: base.required_lens_contract },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: base.target_model, toolchain: h(v: "rustc-1.94.0"), build_configuration: base.build_configuration, required_lens_contract: base.required_lens_contract },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: base.target_model, toolchain: base.toolchain, build_configuration: h(v: "debug"), required_lens_contract: base.required_lens_contract },
+    PreMaterializationIdentity { producer_compiler: base.producer_compiler, source_closure: base.source_closure, target_model: base.target_model, toolchain: base.toolchain, build_configuration: base.build_configuration, required_lens_contract: h(v: "lens-contract-2") },
   ]
   let keys = variants |> map(g => request_key(req: NativeCompilerArtifactRequest { generation: g }))
   let same_again = request_key(req: NativeCompilerArtifactRequest { generation: generation_axes() }) == k
   let all_apart = (keys |> any(x => x == k)) == false
   let pairwise_apart = (keys |> any(x => (keys |> filter(y => y == x) |> count()) > 1)) == false
-  same_again && all_apart && pairwise_apart && (variants |> count()) == 5
+  same_again && all_apart && pairwise_apart && (variants |> count()) == 6
+}
+
+// THE DECLARED-INPUT PROJECTION IS A SECOND CONSUMER OF THE SAME IDENTITY, AND THE AGGREGATE KEY
+// CANNOT SPEAK FOR IT. `request_declared_inputs` projects the generation's axes one named row at a
+// time, and `local_request_key` folds those rows -- so a row omitted from the projection is invisible
+// to the key-perturbation witness above, which moves anyway because `pre_materialization_digest`
+// carries the whole identity. That is exactly how the required-lens contract was left out of the
+// native_compiler arm while every key control passed. This control reads the projection DIRECTLY:
+// the named row is present carrying the identity's own digest, and moving only the contract moves
+// only that row.
+test fn the_declared_input_projection_carries_the_required_lens_contract() -> Bool {
+  let base = generation_axes()
+  let moved = PreMaterializationIdentity {
+    producer_compiler: base.producer_compiler,
+    source_closure: base.source_closure,
+    target_model: base.target_model,
+    toolchain: base.toolchain,
+    build_configuration: base.build_configuration,
+    required_lens_contract: h(v: "lens-contract-2")
+  }
+  let inputs = request_declared_inputs(req: NativeCompilerArtifactRequest { generation: base })
+  let inputs_moved = request_declared_inputs(
+    req: NativeCompilerArtifactRequest { generation: moved }
+  )
+  let named_present = (inputs |> filter(i =>
+    i.ref == "generation.required_lens_contract" && i.digest == base.required_lens_contract
+  ) |> count()) == 1
+  let named_moved = (inputs_moved |> filter(i =>
+    i.ref == "generation.required_lens_contract" && i.digest == moved.required_lens_contract
+  ) |> count()) == 1
+  let others_unmoved = (inputs |> filter(i =>
+    i.ref != "generation.required_lens_contract"
+      && (inputs_moved |> filter(j => j.ref == i.ref && j.digest == i.digest) |> count()) != 1
+  ) |> count()) == 0
+  let same_row_count = (inputs |> count()) == (inputs_moved |> count())
+  named_present && named_moved && others_unmoved && same_row_count
 }
 
 // AND THE PROVIDER IS NOT IN THAT KEY. The same compiler request served from two different stores
