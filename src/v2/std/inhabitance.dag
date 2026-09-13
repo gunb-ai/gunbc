@@ -18,12 +18,17 @@ import v2.std.find_witness {
   find_witness
 }
 import v2.std.node {
+  Arrow,
+  Atom,
   Cardinality,
+  ComputationNode,
   Conj,
+  Disj,
   Edge,
   Instantiation,
   Named,
   Node,
+  NodeKind,
   Symbol,
   TypeNode
 }
@@ -85,23 +90,30 @@ fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
   }
 }
 
+fn inhabitance_connective_undecidable_reason(
+  kind: NodeKind
+) -> Optional<InhabitanceUndecidableReason> {
+  match kind {
+    TypeNode { connective: c } =>
+      match c {
+        Cardinality => optional_present(value: UndecidableOptionalCarrier)
+        Instantiation => optional_present(value: UndecidableGenericFormal)
+        Atom { identity: _ } => Absent
+        Conj => Absent
+        Disj => Absent
+        Arrow => Absent
+      }
+    ComputationNode { behavior: _ } => Absent
+  }
+}
+
 fn inhabitance_pair_undecidable_reason(
   declared: Node,
   produced: Node
 ) -> Optional<InhabitanceUndecidableReason> {
-  match declared.kind {
-    TypeNode { connective: Cardinality } =>
-      optional_present(value: UndecidableOptionalCarrier)
-    TypeNode { connective: Instantiation } =>
-      optional_present(value: UndecidableGenericFormal)
-    _ =>
-      match produced.kind {
-        TypeNode { connective: Cardinality } =>
-          optional_present(value: UndecidableOptionalCarrier)
-        TypeNode { connective: Instantiation } =>
-          optional_present(value: UndecidableGenericFormal)
-        _ => Absent
-      }
+  match inhabitance_connective_undecidable_reason(kind: declared.kind) {
+    Present { value: reason } => optional_present(value: reason)
+    Absent => inhabitance_connective_undecidable_reason(kind: produced.kind)
   }
 }
 

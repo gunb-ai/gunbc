@@ -219,7 +219,10 @@ test fn infer_incompatible_argument_refuses_holds() -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
-      nds.head.reason == ^application_argument_does_not_inhabit
+      inhabitance_diagnostics_has_reason(
+        d: Some { diagnostics: nds },
+        reason: ^application_argument_does_not_inhabit
+      )
   }
 }
 
