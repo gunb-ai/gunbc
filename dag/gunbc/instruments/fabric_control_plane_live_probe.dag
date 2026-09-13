@@ -1847,13 +1847,12 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
 }
 
 fn cp_probe_roster(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkKey>) -> List<FabricCellCandidate> {
-  fold(
+  flat_map(
     cp_probe_field(executor: executor, work: work).admitted,
-    init: [],
-    f: (acc, c) =>
+    c =>
       match bind_fabric_cell_candidate(slot: cp_probe_slot(), candidate: c) {
-        CellCandidateBound { bound: b } => acc + [b]
-        OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => acc
+        CellCandidateBound { bound: b } => [b]
+        OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => []
       },
   )
 }

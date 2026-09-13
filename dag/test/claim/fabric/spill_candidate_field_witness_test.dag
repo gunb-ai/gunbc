@@ -446,8 +446,9 @@ fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
 }
 
 fn s_excluded_keys(field: CandidateField<NonEmptyStr>, tag: String) -> List<NonEmptyStr> {
-  fold(field.excluded, init: [], f: (acc, x) =>
-    if s_exclusion_tag(c: x.cause) == tag { concat(acc, [(x.offer.key as NonEmptyStr)]) } else { acc })
+  map(
+    filter(field.excluded, x => s_exclusion_tag(c: x.cause) == tag),
+    x => (x.offer.key as NonEmptyStr))
 }
 
 fn s_admitted_keys(field: CandidateField<NonEmptyStr>) -> List<NonEmptyStr> {
