@@ -2296,6 +2296,75 @@ fn an_owned_consumed_row_is_a_receipt_on_a_bystanders_merge_group_run_not_a_refu
     );
 }
 
+/// THE RECEIPT IS NOT A VERDICT, ON THE TWO ARMS X DID NOT TOUCH (ruling A, fierce-lark-661,
+/// 2026-09-13). The retained roster-touch and `base == head` rules refuse on `consumed_admissions`
+/// regardless of ownership, so on those two runs the SAME owned row yields a typed receipt AND a
+/// refusal. The printer must therefore never say "not refused" -- this fixture is the executed
+/// counterexample to that sentence, and it pins the retained arms so widening X to them would go
+/// red here rather than silently.
+#[test]
+fn an_owned_consumed_rows_receipt_coexists_with_the_retained_roster_and_base_equals_head_refusals()
+{
+    let sides = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let expected_receipt = vec![ConsumedRowReceipt {
+        label: "gunbc#77777 fixture transition".to_string(),
+        owner_pull_request: 77777,
+        deletion_follow_up_pull_request: 77778,
+    }];
+
+    let roster_touched_report = compare_with(
+        "owned_consumed_roster_touched",
+        &sides,
+        &sides,
+        &used_row(DeletionFollowUp::PullRequest(77778)),
+    );
+    assert_eq!(
+        roster_touched_report.owned_consumed_receipts, expected_receipt,
+        "fixture precondition: the row is owned, so it is a receipt on both arms"
+    );
+    let roster_touched = WaveAdmissionOutcome::Adjudicated {
+        base: "base".to_string(),
+        head: "head".to_string(),
+        report: Box::new(roster_touched_report),
+        roster_touched: true,
+        event: AdjudicationEvent::MergeGroup,
+    };
+    let roster_refusal = wave_admission_refusal(&roster_touched)
+        .expect("the retained roster-touch rule still refuses an owned consumed row (gunbc#9824)");
+    assert!(
+        roster_refusal.contains("gunbc#77777 fixture transition"),
+        "the retained refusal must still name the row: {roster_refusal}"
+    );
+
+    let base_equals_head_report = compare_with(
+        "owned_consumed_base_equals_head",
+        &sides,
+        &sides,
+        &used_row(DeletionFollowUp::PullRequest(77778)),
+    );
+    assert_eq!(
+        base_equals_head_report.owned_consumed_receipts, expected_receipt,
+        "fixture precondition: the row is owned, so it is a receipt on both arms"
+    );
+    let base_equals_head = WaveAdmissionOutcome::Adjudicated {
+        base: "same".to_string(),
+        head: "same".to_string(),
+        report: Box::new(base_equals_head_report),
+        roster_touched: false,
+        event: AdjudicationEvent::MergeGroup,
+    };
+    let base_refusal = wave_admission_refusal(&base_equals_head)
+        .expect("the retained base == head rule still refuses an owned consumed row (gunbc#9824)");
+    assert!(
+        base_refusal.contains("gunbc#77777 fixture transition"),
+        "the retained refusal must still name the row: {base_refusal}"
+    );
+}
+
 /// THE GENUINE BYPASS STILL REFUSES: the same consumed row with NO authored follow-up, on the same
 /// bystander composition, refuses and names the owing change -- so X narrowed the backstop to its
 /// true subject rather than deleting it. And off the queue the same bystander stays admitted.

@@ -347,7 +347,9 @@ pub struct TransitionAdmission {
 
 /// ONE OWNED CONSUMED ROW, AS A TYPED AND LOCATED RECEIPT (lane ruling X, fierce-lark-661,
 /// 2026-09-13). A row consumed at the base whose owner authored a deletion follow-up is a declared
-/// frontier, not a refusal: the owner has dispatched the deletion, and refusing the next unrelated
+/// frontier, not a refusal: the owner has DECLARED a deletion follow-up number -- this module reads
+/// no forge, so nothing here establishes that the referenced pull request exists, is open, or
+/// deletes these rows -- and refusing the next unrelated
 /// composition while that follow-up is still open would bill a bystander for the owner's window --
 /// the §5 externalization review 65313 found the previous arms still committed. Every run that sees
 /// the row prints this receipt, so the window is visible per run.
@@ -355,7 +357,10 @@ pub struct TransitionAdmission {
 /// WHAT THIS BINARY CANNOT SEE, AND WHO DOES. Whether the follow-up is OPEN (frontier), CLOSED
 /// UNMERGED (the row is an orphan and must refuse at its next touch), or MERGED with the row still
 /// present (the deletion landed without deleting, and must refuse) is forge state, and this module
-/// reads no forge. The landing tally reads it and is the named consumer of that residual.
+/// reads no forge. The landing tally reads it and is the named consumer of that residual. A receipt
+/// is also not a verdict: the retained roster-touch and `base == head` rules still refuse runs that
+/// carry owned rows, so a printed receipt and a refusal on the same run are the expected
+/// coexistence, not a contradiction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsumedRowReceipt {
     pub label: String,
@@ -376,7 +381,11 @@ pub struct ConsumedRowReceipt {
 /// RUNG, STATED HONESTLY: the wall establishes that a follow-up NUMBER is authored. Whether that
 /// number names an OPEN pull request that deletes these rows is checked by the landing tally before
 /// enqueue, not by this binary, which reads no forge. A fabricated number passes this wall and is
-/// caught there; if it slips past both, the bypass backstop refuses the next composition by name.
+/// caught there. The bypass backstop covers the ABSENCE of an authored follow-up number -- it reads
+/// `consumed_without_follow_up`, and any `PullRequest(n)`, valid or fabricated, enters the owned
+/// population instead -- so it does NOT cover the invalidity or lifecycle of a number that WAS
+/// authored. Reference verification is the landing tally's, and its failure is not independently
+/// caught here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeletionFollowUp {
     NotAuthored,
@@ -386,8 +395,10 @@ pub enum DeletionFollowUp {
 /// THE CI EVENT WHOSE SUBJECT THIS RUN ADJUDICATES. The consumption obligation differs by subject,
 /// so the verdict needs the event as an input rather than inferring it from the shape of the diff:
 /// a `merge_group` composition is the tree about to BECOME the default branch, so it is where the
-/// owner's follow-up is charged and where a base-consumed row can only mean that charge was
-/// bypassed. `Local` is a run with no CI event at all (an author's machine); it takes the
+/// owner's follow-up is charged. A base-consumed row seen there does NOT by itself mean that charge
+/// was bypassed -- review 65313 disproved that inference -- since it may equally be an owned row
+/// inside its declared deletion window, which is why `adjudicate` partitions on the authored
+/// follow-up rather than refusing on consumption alone. `Local` is a run with no CI event at all (an author's machine); it takes the
 /// pull_request policy. An event name this enum does not model is refused by
 /// `adjudication_event_from_name` rather than defaulted to either.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
