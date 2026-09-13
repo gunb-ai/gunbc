@@ -16,21 +16,26 @@ import gunbc.witness_floor_workflow {
   ci_heal_expected_healed_sha_input_name,
   ci_heal_checkout_ref_expression,
   heal_generated_artifacts_job,
+  heal_commit_push_step,
   witness_floor_lane_jobs,
   witness_floor_triggers
 }
-import gunbc.ci_spec { gunbc_ci_heal_commit_push_script, gunbc_ci_heal_dispatch_invoke }
-import gunbc.heal_revalidation { superseded_by_author_head_token, heal_push_refused_token }
+import gunbc.ci_spec { gunbc_ci_heal_commit_push_script }
+import gunbc.heal_revalidation {
+  superseded_by_author_head_token,
+  heal_push_refused_token,
+  superseded_by_healed_head_token,
+  superseded_by_healed_head_approve_remedy
+}
 import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_root_stamp_script }
 import gunbc.ci_heal_credential { ci_heal_job_permissions }
-import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_name }
-import tools.ci_heal_dispatch { ci_heal_dispatch_workflow_id }
 
-// THE SUBJECT IS THE BINDING, NOT THE FEATURE AROUND IT. A heal that repairs a branch pushes a new
-// head and dispatches a revalidation of it; a dispatched run that cannot say WHICH head it got
-// would report a verdict about a tree it cannot identify. Every row here is one half of making
-// that unwritable: the input exists, the checkout selects it, the comparison runs before any
-// witness in every witness-bearing lane, and the dispatcher names the workflow that carries them.
+// THE SUBJECT IS THE BINDING FOR A NAMED DISPATCH, NOT AN AUTO-DISPATCH FROM HEAL. A heal
+// that repairs a branch pushes a new head; GitHub creates a GATED pull_request run on that
+// head. Auto-dispatching a second run under the same job names shadows the PR rollup (see
+// gunbc.ci_spec gunbc_ci_heal_commit_push_script). The input, checkout selection, and
+// preflight remain so a *manual* dispatch can still name the head it claims. Every row here
+// is one half of making a fabricated revalidation unwritable.
 //
 // WHAT THESE CANNOT SAY, stated so the green is not over-read: these read the MODELED workflow and
 // the EMITTED script text. They establish the shape CI is asked to run. Whether a real dispatched
@@ -217,55 +222,36 @@ test fn the_ordinary_checkout_selects_the_expected_head_when_one_is_named() -> B
     == "$\{\{ inputs.expected_healed_sha || github.sha \}\}"
 }
 
-// THE DISPATCH IS INSIDE THE PRODUCED-A-HEAL ARM AND BEFORE THE NONZERO EXIT, asserted as ORDERED
-// ADJACENCY rather than as two `contains` calls. Membership alone would stay green with the
-// invocation after the exit, where it can never run.
+// THE HEAL TERMINAL MUST NOT AUTO-DISPATCH. A workflow_dispatch on the healed SHA lands
+// same-named check-runs beside the gated pull_request run; GitHub's PR rollup is name-keyed
+// and stays BLOCKED on the empty gated entries.
 //
 // THE ROOT STAMP ARM IS HERE BECAUSE IT ALREADY FAILED ONCE, in this cut, on the first emission:
 // $ROOT is a per-step variable and this step never stamped it, so the composed invocation resolved
 // to `/target/release/gunbc` -- a path that exists nowhere. The emitted yaml looked entirely
 // plausible, which is exactly the shape a witness is for.
-test fn the_heal_terminal_dispatches_the_healed_head_before_it_exits_nonzero() -> Bool {
+test fn the_heal_terminal_does_not_dispatch_the_healed_head() -> Bool {
   let script = gunbc_ci_heal_commit_push_script()
-  string_contains(
-    s: script,
-    pattern: concat(
-      gunbc_ci_heal_dispatch_invoke(),
-      "\n  echo \"SupersededByHealedHead"
+  !string_contains(s: script, pattern: "ci_heal_dispatch.dag")
+    && string_contains(s: script, pattern: "  echo \"SupersededByHealedHead")
+    && string_contains(
+      s: script,
+      pattern: concat(
+        concat("::notice::", superseded_by_healed_head_token),
+        concat(" healed_head=$HEALED_HEAD ", superseded_by_healed_head_approve_remedy)
+      )
     )
-  )
+    && string_contains(s: script, pattern: "POST /actions/runs/<id>/approve")
     && string_contains(s: script, pattern: "  exit 1\nfi\n")
     && string_contains(s: script, pattern: concat(gunbc_invoke_root_stamp_script(), "git config user.name"))
 }
 
-// The dispatch carries the immutable subject and the moving ref as SEPARATE inputs. One of them
-// standing in for the other is the fabricated revalidation this whole cut exists to prevent.
-test fn the_heal_dispatch_binds_the_healed_head_and_the_branch_ref_separately() -> Bool {
-  let invoke = gunbc_ci_heal_dispatch_invoke()
-  string_contains(s: invoke, pattern: "GUNBC_HEALED_HEAD=\"$HEALED_HEAD\"")
-    && string_contains(s: invoke, pattern: "GUNBC_HEAL_BRANCH_REF=")
-    && string_contains(
-      s: invoke,
-      pattern: "--entry dag/gunbc/instruments/ci_heal_dispatch.dag --function main"
-    )
-}
-
-// THE WORKFLOW IS NAMED BY ITS ARTIFACT VARIANT. The literal this replaces read "ci.yml" for a
-// fortnight after that workflow was deleted, because a string cannot go stale loudly. The negative
-// clause carries the content: an equality against the variant would also hold if someone re-typed
-// the same spelling as a literal, so the row that a DELETED name has not come back is asserted too.
-test fn the_dispatcher_names_the_emission_that_carries_the_heal_job() -> Bool {
-  ci_heal_dispatch_workflow_id == artifact_name(a: WitnessFloorYamlArtifact)
-    && ci_heal_dispatch_workflow_id == "witnesses.yml"
-    && ci_heal_dispatch_workflow_id != "ci.yml"
-}
-
-// The grant is spent, not held. `actions: write` is what GitHub authorizes the workflow-dispatches
-// POST on, and it landed with the invocation above rather than in anticipation of one.
-test fn the_heal_job_grant_admits_the_dispatch_and_widens_nothing_else() -> Bool {
+// The grant is spent, not held. Auto-dispatch is gone, so `actions` is PermNone rather than a
+// write capability nobody in this job exercises. `contents: write` remains the push.
+test fn the_heal_job_grant_does_not_admit_dispatch_and_widens_nothing_else() -> Bool {
   match ci_heal_job_permissions.actions {
     Present { value: level } =>
-      match level { PermWrite => true  PermRead => false  PermNone => false }
+      match level { PermNone => true  PermRead => false  PermWrite => false }
     Absent => false
   }
     && match ci_heal_job_permissions.contents {
@@ -276,6 +262,22 @@ test fn the_heal_job_grant_admits_the_dispatch_and_widens_nothing_else() -> Bool
     && match ci_heal_job_permissions.pull_requests { Absent => true  Present { value: _ } => false }
     && match ci_heal_job_permissions.issues { Absent => true  Present { value: _ } => false }
     && match ci_heal_job_permissions.id_token { Absent => true  Present { value: _ } => false }
+}
+
+// THE STEP TOKEN WAS THE DISPATCH'S AUTH. After CreateDispatch left this script, injecting
+// GITHUB_TOKEN would be a grant no statement spends -- the same shape as a dormant actions: write.
+test fn the_heal_commit_push_step_carries_no_github_token_env() -> Bool {
+  match heal_commit_push_step() {
+    RunStep {
+      name: _, id: _, run: _, shell: _, env, working_directory: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } =>
+      match env { Absent => true  Present { value: _ } => false }
+    UsesStep {
+      name: _, id: _, uses: _, with: _, env: _,
+      if_condition: _, continue_on_error: _, timeout_minutes: _
+    } => false
+  }
 }
 
 fn preflight_step_script() -> String {

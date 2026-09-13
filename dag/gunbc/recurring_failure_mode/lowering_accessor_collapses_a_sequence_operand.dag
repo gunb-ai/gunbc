@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data lowering_accessor_collapses_a_sequence_operand: RecurringFailureMode = RecurringFailureMode {
+  identity: "lowering_accessor_collapses_a_sequence_operand" as NonEmptyStr,
+
+  receipts: [
+    "a lowering accessor that silently narrows a MULTI-ELEMENT operand to its first element: the caller asks what an argument is and receives a proper part of it, with no refusal and nothing counted, so every consumer downstream reasons about a subset of the program the source actually wrote (DESIGN section 5 -- a failure arm must refuse, never widen)",
+    "SPECIMEN AND SYMBOL, 2026-09-12. `v2.compiler.body_lowering_fold` `body_lower_operand_ref_optional`, reached from `body_lower_named_arg_value_optional` via `body_lower_arg_operand_optional`: on a node that is a sugar sequence pair it recurses into `pair.left` ALONE. For the argument `left: seed + acc` it returns the operand for `seed` and drops `acc` entirely. The narrowing is unconditional and unreported -- no diagnostic, no counter, no typed arm distinguishing `this is the whole operand` from `this is the first of several`.",
+    "HOW IT SURFACED, WHICH IS THE PART WORTH KEEPING: not in the compiler, but in a CONSUMER that happened to need the whole answer. The accumulator-copy lens censuses the identifiers an argument mentions. Its first repair reached the same shape by a different route (a first-match DFS for the argument's first `^dag_surface_primary_expr`) and inherited the identical narrowing, which review 64393 caught: `left: seed + acc` censused as `[seed]`, one identifier, so a `BindsFresh` `seed` resolved the port to `PortPureLiteral` and a COPIED ACCUMULATOR CLASSIFIED CLEAN with the carrier invisible. Two independent implementations of `the argument's value` converged on the same wrong answer, which is the evidence that the defect is in the shared fact rather than in either caller.",
+    "WHY NO EXISTING WITNESS HELD IT, stated as a property of the corpus: every fixture in the accumulator-copy suite used a single-identifier or single-call argument, where narrowing to the first element and returning the whole operand agree. The class is only observable at arity two or more on one port, and nothing in the suite wrote that until the review asked for it. A collapse that is invisible on every fixture in the suite is not a tail case -- it is an unexercised axis.",
+    "RUNG FOUND AT: below the floor, because the loss is SILENT -- `values inhabit declared types` and `applications bind in exact bijection` are floor sentences, and an operand silently replaced by a proper part of itself is neither refused nor recorded. CEILING: structurally guaranteed, and reachable -- the operand carrier cannot be narrowed without a typed refusal once the accessor returns a shape that can represent a multi-element operand, at which point dropping an element has no constructor. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: `body_lower_named_arg_value_optional` preserves the full sequence an argument names, so a caller asking for an argument's value receives all of it or a located refusal -- not its first element. A diagnostic variant, a counter, or a second accessor beside it retires nothing; the narrowing itself must become unwritable. When it lands, `v2.lens.complexity_accumulator_copy.analyze` `arg_value_node` dissolves into that accessor and its stated-divergence annotation deletes with it.",
+  ],
+
+  evidence: [],
+}

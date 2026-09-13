@@ -1,0 +1,350 @@
+module gunbc.review_sheet_operator
+
+import std.types { NonEmptyStr, String, Bool }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  DeviceOnce,
+  NoDischargeSiteModeled,
+  DischargedAt,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy }
+import gunbc.gcp_service_enablement {
+  ServiceEnablementDesire,
+  ServiceDesiredEnabled,
+  ServiceEnablementObservation,
+  EnableApiPlan,
+  decide_service_enablement,
+}
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.google.sheets { sheets_serviceusage_api_id }
+import extdeps.google.workspace { google_workspace_product }
+import gunbc.gcp_estate_observation {
+  sheets_calling_home,
+  SheetsCallingHomeUnresolved,
+}
+
+// Sheets API project and calling identity are the estate fact sheets_calling_home.
+// This module does not keep a second standing that can stay AwaitingIdentification after
+// that home resolves.
+
+data serviceusage_services_enable_permission: NonEmptyStr = "serviceusage.services.enable"
+
+fn sheets_api_desired_enablement(project: GcpProjectId) -> ServiceEnablementDesire {
+  ServiceDesiredEnabled { project: project, service_id: sheets_serviceusage_api_id }
+}
+
+fn sheets_api_enablement_decision(
+  policy: EnsurePolicy,
+  project: GcpProjectId,
+  observed: ServiceEnablementObservation,
+) -> UpsertDecision<EnableApiPlan> {
+  decide_service_enablement(
+    policy: policy,
+    desired: sheets_api_desired_enablement(project: project),
+    observed: observed,
+  )
+}
+
+fn serviceusage_enable_iam_grant_intervention(
+  project: GcpProjectId,
+  writer: ServiceAccountEmail,
+) -> HumanIntervention {
+  HumanIntervention {
+    identity: join(
+      [
+        "gcp-serviceusage-enable-iam-",
+        project as String,
+        "-",
+        writer as String,
+      ],
+      "",
+    ) as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: project as String,
+    instruction: join(
+      [
+        "Grant ",
+        writer as String,
+        " ",
+        serviceusage_services_enable_permission as String,
+        " on project ",
+        project as String,
+        ". One grant per project covers every API enablement converge on it; this is not a per-API click and it is not zero human steps.",
+      ],
+      "",
+    ),
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+type BuyerReviewSpreadsheet
+  = SpreadsheetAwaitingCreation
+  | SpreadsheetIdentified { spreadsheet_id: NonEmptyStr, owner: NonEmptyStr }
+
+data buyer_review_spreadsheet: BuyerReviewSpreadsheet = SpreadsheetAwaitingCreation
+
+type ReviewSheetAccountTenancy
+  = AccountTenancyUnobserved
+  | ReviewSheetWorkspaceDomain
+  | ReviewSheetPlainGoogleAccount
+
+data buyer_review_account_tenancy: ReviewSheetAccountTenancy = ReviewSheetWorkspaceDomain
+
+type WorkspaceDomainSharingPolicy
+  = DomainSharingPolicyUnobserved
+  | DomainSharingForbidsExternalPrincipals
+  | DomainSharingAllowsServiceAccountShare
+
+// Operator read, 2026-09-11: Drive sharing is the three-way OFF / allowlisted domains / ON.
+// A writer SA is <name>@<project>.iam.gserviceaccount.com, outside gunb.ai, so an Editor grant
+// is this setting, not a GCP one. ON admits that grant. Allowlisted domains would not, unless
+// gserviceaccount.com were allowlisted wholesale — broader than one principal, so not a near-miss.
+// Warn-on-external-share and guest-account sub-options were not read; this arm does not depend on
+// them. ON also permits anyone-with-the-link; if the setting is tightened, the surviving route is
+// an in-domain Shared Drive with the SA as a member, or domain-wide delegation, not an external
+// principal share.
+type BuyerReviewWorkspaceSharingReading {
+  policy: WorkspaceDomainSharingPolicy
+  read_on: NonEmptyStr
+  source: NonEmptyStr
+  quoted_selection: NonEmptyStr
+}
+
+data buyer_review_workspace_sharing_reading: BuyerReviewWorkspaceSharingReading = {
+  policy: DomainSharingAllowsServiceAccountShare,
+  read_on: "2026-09-11" as NonEmptyStr,
+  source: "Google Admin console, Apps > Google Workspace > Drive and Docs > Sharing settings, applied at gunb.ai" as NonEmptyStr,
+  quoted_selection: "ON - Files owned by users or shared drives in gunb.ai can be shared outside of gunb.ai" as NonEmptyStr,
+}
+
+fn buyer_review_workspace_domain_sharing() -> WorkspaceDomainSharingPolicy {
+  buyer_review_workspace_sharing_reading.policy
+}
+
+fn spreadsheet_create_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "buyer-review-spreadsheet-create" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "buyer review spreadsheet",
+    instruction: "Create the buyer review Google Sheet, then replace buyer_review_spreadsheet with SpreadsheetIdentified carrying its spreadsheet_id and the operator who owns it. The id is a declared fact, not a caller string.",
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn spreadsheet_share_intervention(spreadsheet_id: NonEmptyStr, writer: ServiceAccountEmail) -> HumanIntervention {
+  HumanIntervention {
+    identity: join(
+      [
+        "buyer-review-spreadsheet-share-",
+        spreadsheet_id as String,
+        "-",
+        writer as String,
+      ],
+      "",
+    ) as HumanInterventionIdentity,
+    frequency: DeviceOnce,
+    subject: spreadsheet_id,
+    instruction: join(
+      [
+        "Share spreadsheet ",
+        spreadsheet_id as String,
+        " with ",
+        writer as String,
+        " as Editor. A service account is a distinct principal and cannot see the sheet until this share exists; being in the owner's Workspace is not enough. Recurs for every new sheet.",
+      ],
+      "",
+    ),
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+type ReviewSheetOperatorAdmission
+  = ReviewSheetOperatorAdmitted { spreadsheet_id: NonEmptyStr }
+  | ReviewSheetAwaitingHuman { intervention: HumanIntervention }
+  | ReviewSheetNeedsApiEnable { plan: EnableApiPlan }
+  | ReviewSheetEstateUnresolved { subject: NonEmptyStr, reason: NonEmptyStr }
+  | ReviewSheetOperatorRefused { reason: NonEmptyStr }
+
+fn review_sheet_estate_unresolved_calling_home() -> ReviewSheetOperatorAdmission {
+  match sheets_calling_home() {
+    SheetsCallingHomeUnresolved {
+      refused_api_surface_project: surface,
+      refused_writer: writer,
+      candidate_writer_in_secrets: _,
+      kitchen_sink_project: _,
+      pool_host_without_sts: _,
+      sts_host_without_sheets: _,
+    } =>
+      ReviewSheetEstateUnresolved {
+        subject: "sheets_calling_home" as NonEmptyStr,
+        reason: join(
+          [
+            "Sheets calling home unresolved; refused API surface ",
+            surface as String,
+            " refused writer ",
+            writer as String,
+            "; no selected project",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+  }
+}
+
+fn admit_identified_spreadsheet_share(
+  spreadsheet_id: NonEmptyStr,
+  writer: ServiceAccountEmail,
+  share: HumanIntervention,
+) -> ReviewSheetOperatorAdmission {
+  let expected = spreadsheet_share_intervention(spreadsheet_id: spreadsheet_id, writer: writer)
+  if (share.identity as String) == (expected.identity as String) {
+    match share.completion_evidence {
+      DischargedAt { evidence: _ } =>
+        ReviewSheetOperatorAdmitted { spreadsheet_id: spreadsheet_id }
+      NoDischargeSiteModeled =>
+        ReviewSheetAwaitingHuman { intervention: expected }
+    }
+  } else {
+    ReviewSheetOperatorRefused {
+      reason: join(
+        [
+          "share intervention is not for spreadsheet ",
+          spreadsheet_id as String,
+          " writer ",
+          writer as String,
+        ],
+        "",
+      ) as NonEmptyStr
+    }
+  }
+}
+
+fn admit_review_sheet_after_enablement_ready(
+  spreadsheet: BuyerReviewSpreadsheet,
+  writer: ServiceAccountEmail,
+  share: HumanIntervention,
+  sharing_policy: WorkspaceDomainSharingPolicy,
+  tenancy: ReviewSheetAccountTenancy,
+) -> ReviewSheetOperatorAdmission {
+  match spreadsheet {
+    SpreadsheetAwaitingCreation =>
+      ReviewSheetAwaitingHuman { intervention: spreadsheet_create_intervention() }
+    SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
+      match tenancy {
+        AccountTenancyUnobserved =>
+          ReviewSheetOperatorRefused {
+            reason: "Google account tenancy unread" as NonEmptyStr
+          }
+        ReviewSheetPlainGoogleAccount =>
+          admit_identified_spreadsheet_share(
+            spreadsheet_id: id,
+            writer: writer,
+            share: share,
+          )
+        ReviewSheetWorkspaceDomain =>
+          match sharing_policy {
+            DomainSharingPolicyUnobserved =>
+              ReviewSheetOperatorRefused {
+                reason: concat(
+                  google_workspace_product as String,
+                  " domain sharing policy unread; the operator is admin and the policy is readable",
+                ) as NonEmptyStr
+              }
+            DomainSharingForbidsExternalPrincipals =>
+              ReviewSheetOperatorRefused {
+                reason: concat(
+                  google_workspace_product as String,
+                  " domain sharing policy forbids sharing with a service-account principal",
+                ) as NonEmptyStr
+              }
+            DomainSharingAllowsServiceAccountShare =>
+              admit_identified_spreadsheet_share(
+                spreadsheet_id: id,
+                writer: writer,
+                share: share,
+              )
+          }
+      }
+  }
+}
+
+fn admit_serviceusage_enable_iam_for_apply(
+  project: GcpProjectId,
+  writer: ServiceAccountEmail,
+  serviceusage_enable_iam: HumanIntervention,
+  plan: EnableApiPlan,
+) -> ReviewSheetOperatorAdmission {
+  let expected = serviceusage_enable_iam_grant_intervention(project: project, writer: writer)
+  if (serviceusage_enable_iam.identity as String) == (expected.identity as String) {
+    match serviceusage_enable_iam.completion_evidence {
+      NoDischargeSiteModeled =>
+        ReviewSheetAwaitingHuman { intervention: expected }
+      DischargedAt { evidence: _ } => ReviewSheetNeedsApiEnable { plan: plan }
+    }
+  } else {
+    ReviewSheetOperatorRefused {
+      reason: join(
+        [
+          "serviceusage enable iam intervention is not for project ",
+          project as String,
+          " writer ",
+          writer as String,
+        ],
+        "",
+      ) as NonEmptyStr
+    }
+  }
+}
+
+fn admit_review_sheet_operator(
+  project: GcpProjectId,
+  writer: ServiceAccountEmail,
+  enablement: ServiceEnablementObservation,
+  enablement_policy: EnsurePolicy,
+  spreadsheet: BuyerReviewSpreadsheet,
+  serviceusage_enable_iam: HumanIntervention,
+  share: HumanIntervention,
+  sharing_policy: WorkspaceDomainSharingPolicy,
+  tenancy: ReviewSheetAccountTenancy,
+) -> ReviewSheetOperatorAdmission {
+  match sheets_api_enablement_decision(
+    policy: enablement_policy,
+    project: project,
+    observed: enablement,
+  ) {
+    Refuse { reason: r } => ReviewSheetOperatorRefused { reason: r }
+    Apply { plan: plan } =>
+      admit_serviceusage_enable_iam_for_apply(
+        project: project,
+        writer: writer,
+        serviceusage_enable_iam: serviceusage_enable_iam,
+        plan: plan,
+      )
+    Noop =>
+      admit_review_sheet_after_enablement_ready(
+        spreadsheet: spreadsheet,
+        writer: writer,
+        share: share,
+        sharing_policy: sharing_policy,
+        tenancy: tenancy,
+      )
+  }
+}
+
+fn share_intervention_for_spreadsheet(
+  spreadsheet: BuyerReviewSpreadsheet,
+  writer: ServiceAccountEmail,
+) -> HumanIntervention {
+  match spreadsheet {
+    SpreadsheetAwaitingCreation => spreadsheet_create_intervention()
+    SpreadsheetIdentified { spreadsheet_id: id, owner: _ } =>
+      spreadsheet_share_intervention(spreadsheet_id: id, writer: writer)
+  }
+}
+
+fn fleet_review_sheet_operator_admission() -> ReviewSheetOperatorAdmission {
+  review_sheet_estate_unresolved_calling_home()
+}

@@ -1712,51 +1712,86 @@ pub struct TransitionAdmission {
 /// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
 /// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
 ///
-/// gunbc#11137 sha256sum names Filesystem instead of reaching it (2026-09-12). The row below is a
-/// DIFFERENT delta that this change produces, not that one restored: empty is the resting state
-/// and one change authoring a row back into it is the ordinary motion.
-///
-/// WHAT THE CHANGE DID. `extdeps.tools.sha256sum` called `Filesystem.Write` while importing
-/// `extdeps.filesystem.filesystem_io` with NO name list. A bare module import drags the whole
-/// module into the candidate set for every name it declares, so filesystem_io's copy of
-/// `extdeps_external_authority_anchor` -- the per-module convention row some 315 modules each
-/// author -- was a candidate at this site. The import now names `{ Filesystem }`.
-///
-/// WHY `TargetChanged` IS THE CORRECT CLASSIFICATION. The spelling is authored on both sides and
-/// what moved is which declarations it admits: base `{extdeps.filesystem.filesystem_io,
-/// extdeps.shell, extdeps.tools.sha256sum}`, head `{extdeps.shell, extdeps.tools.sha256sum}`.
-///
-/// WHAT MAKES IT SAFE TO ADMIT, adjudicated rather than asserted. NO RESOLUTION CHANGES.
-/// `extdeps.tools.sha256sum` authors its own `extdeps_external_authority_anchor`, and a module's
-/// own declaration wins inside the authored region, so the site resolved to sha256sum's row at the
-/// base and resolves to sha256sum's row at the head -- the removed candidate could not have won
-/// either way. What narrowed is the SET, from three modules to two, which is the qualification's
-/// whole purpose: the resolution stopped depending on a module the author never named. That no
-/// consumer changed behaviour is the required floor's verdict on this head, re-derived by
-/// `claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
-/// and read off its own `required-floor:` verdict line -- named rather than transcribed, because a
-/// copied count rots without anyone touching either end (DESIGN §6).
-///
-/// WHY THE `String` REQUALIFICATION IN THE SAME CHANGE NEEDS NO ROW, which is a fair question to
-/// ask of a diff that moves ten import lines onto `std.string_type`. It is not this adjudication's
-/// assertion; it is the wave phase's own measurement. That phase compares the binding table on both
-/// sides, and on this head it reported exactly ONE `TargetChanged binding` delta -- the row below --
-/// and none for `String`. The ten `String` sites appear instead as
-/// `ExplicitlyEvaluatedZeroDelta membership <module> -> std.string_type ... reached by a name this
-/// module authors`: explicitly evaluated, zero delta. The reason is that `std.types` declares no
-/// `String` at all, so `import std.types { String }` bound nothing and the read fell through to the
-/// shared slot, where scope precedence already answered `std.string_type`. Naming that module
-/// changes the read's AUTHORIZATION -- from an accident of precedence to something the author
-/// wrote -- without changing which declaration answers it. A delta row adjudicates a changed
-/// binding; there is no changed binding here to adjudicate.
-///
-/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
-/// CONSUMED outcome is authored here. The old sentence predicted CONSUMED for a two-member
-/// result that the singleton proof could never accept.
+/// THIRTY-SIXTH DISSOLUTION (2026-09-12). #11137 merged. The required floor on gunbc#11121
+/// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
 /// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
-/// The EMPTY DOES NOT MEAN PERMISSIVE rule above makes this shrink fail-closed. This is the
-/// same instance deletion carried by the other cleanup PRs; the landing-incidence repair
-/// must itself discharge the roster debt it now enforces.
+/// Empty is the resting state; this touch deletes the row rather than inheriting it.
+/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
+/// CONSUMED outcome is authored here.
+/// THE SAME DISSOLUTION, WITH THE DISPOSITION WRITTEN DOWN -- a continuation of the paragraph
+/// above rather than a second ordinal for one event. Main recorded the retirement and cited the
+/// floor run that reported the row stale; what follows is why the disposition was nearly the
+/// wrong one, which is the part that generalises. The `gunbc#11137
+/// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
+/// description that stood above it goes with it. Its trigger, authored as "this row goes when
+/// #11137 merges", FIRED: #11137 merged as 34d2a8db32 ("Qualify the extdeps.tools bare-name reads
+/// by their declaring module"), so the base carries the named import, the delta stopped being
+/// producible, and the row became CONSUMED.
+///
+/// THE DISTINCTION IS WORTH WRITING DOWN BECAUSE IT NEARLY WENT THE OTHER WAY. The row was
+/// reported as matching no delta on any open PR, and the required floor refused
+/// `namespace-wave-admission` on every branch carrying it, which makes DELETING IT look like
+/// roster hygiene -- an unmatched entry swept up by whoever the wall stopped. That is a different
+/// disposition from the one recorded here, and DESIGN section 4b(3) turns on exactly that
+/// difference: a declared row is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a deletion
+/// performed for the convenience of a green wall, written up as a trigger firing, would launder an
+/// unpaid debt into a discharged one and leave the next such row unprotected. The merge was
+/// checked by identity (`git log --oneline 34d2a8db32`) before this paragraph was written, not
+/// inferred from the refusal. Had #11137 still been open, the honest record here would have said
+/// the row was deleted unmatched, and the debt would have stayed visible.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-12). The 181 `v2-native-route module split` and
+/// `v2-native-route policy split` rows are deleted, and the four paragraphs that described them
+/// go with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT WAS CHECKED BY IDENTITY RATHER THAN INFERRED FROM THE REFUSAL.
+/// The block above them authored `DISSOLVE-ON: this PR merging, after which the base binds these
+/// spellings to exactly these targets and the rows read as consumed`. #10940 merged as
+/// `6c7b081961` ("v2-native route: closure-scoped ingest and native adjudication over a
+/// seed-prepared artifact"), verified with `git log --oneline 6c7b081961` before this paragraph
+/// was written. So the base carries the four module splits, the deltas stopped being producible,
+/// and the required floor on this branch reported all 181 as `CONSUMED ADMISSION ... already
+/// satisfied at the base -- consumed by its own merge`. That is the trigger discharging the debt,
+/// not a wall being tidied: the THIRTY-SIXTH entry above records why that distinction is worth
+/// paying attention to, and the same discipline is applied here.
+///
+/// THE PARTITION, so the count is not one number standing for a population nobody enumerated.
+/// All 181 carry a `v2-native-route ` label prefix: 175 `module split` rows over the four moved
+/// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
+/// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
+/// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
+/// Main's roster held exactly these 181 rows and nothing else, so the array is empty of inherited
+/// rows after this deletion and carries only this change's own two.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// description that stood above them goes with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
+/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
+/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
+/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
+/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
+/// from a row swept up by whoever the wall stopped.
+///
+/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
+/// next touch, and on main it is the FIRST of those: main's push runs fail
+/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
+/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
+/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
+/// else. Both rows are this author's, which is why this lane pays rather than passing an
+/// unexamined deletion to whoever next touched the file.
+///
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the transition present at the base there is no delta left for these to admit, so deleting
+/// them removes nothing that could still fire.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

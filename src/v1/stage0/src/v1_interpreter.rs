@@ -7490,7 +7490,8 @@ macro_rules! v1_map_grounding_arms {
         $cb! {
             $fname;
             arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
-            arm "map_grounding.map_insert" { "map_insert" } => "map_insert",
+            arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
+            arm "map_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
         }
     };
 }
@@ -7559,13 +7560,12 @@ fn try_v2_std_collection_map_primitive_grounding(
     let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
-        Ok(None) if builtin_name == "empty_map" => Some(Err(InterpError::TypeError {
+        Ok(None) => Some(Err(InterpError::TypeError {
             msg: format!(
-                "{V2_STD_COLLECTION_MODULE}.{}: native HAMT primitive missing from eval_builtin (host misconfiguration)",
+                "{V2_STD_COLLECTION_MODULE}.{}: native map primitive refused this argument shape (host misconfiguration, or a non-native map carrier reached a HostRealizedSeam)",
                 fn_node.name
             ),
         })),
-        Ok(None) => None,
         Err(e) => Some(Err(e)),
     }
 }
@@ -12122,6 +12122,44 @@ fn compile_diagnostic_census_value(
             variant_name: ctx.sym("CensusNotRunnable"),
             fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
         },
+    }
+}
+
+/// Projects a host CLAIM SCOPE fixture outcome into the `tools.multi_module_compile_fixture`
+/// coproduct. Four arms, kept distinct for the reason the compile projection keeps three: a
+/// refusal about the HOST PROCESS (`ClaimScopeInstrumentRefused`) and one about the SUBJECT
+/// (`ClaimScopeRefused`) must not wear each other's verdict, and a manifest that never reached
+/// scope construction must arrive as `ClaimScopeCompileRefused` carrying its diagnostics rather
+/// than as a bare non-acceptance (DESIGN §5 — could-not-measure conflated with a verdict).
+fn claim_scope_fixture_value(
+    outcome: crate::cli_run::ClaimScopeFixtureOutcome,
+    ctx: &InterpContext,
+) -> Value {
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("ClaimScopeFixtureOutcome"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match outcome {
+        crate::cli_run::ClaimScopeFixtureOutcome::InstrumentRefused { cause } => variant(
+            "ClaimScopeInstrumentRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::CompileRefused { diagnostics } => variant(
+            "ClaimScopeCompileRefused",
+            vec![(
+                ctx.sym("blocking_count"),
+                Value::Int(diagnostics.iter().filter(|row| row.blocking).count() as i64),
+            )],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::ScopeRefused { cause } => variant(
+            "ClaimScopeRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::ClaimScopeFixtureOutcome::ScopeAccepted { module_count } => variant(
+            "ClaimScopeAccepted",
+            vec![(ctx.sym("module_count"), Value::Int(module_count))],
+        ),
     }
 }
 
@@ -18668,6 +18706,16 @@ macro_rules! v1_builtin_arms {
                 let entry = expect_str($positional.get(2).copied(), $name)?;
                 Ok(Some(multi_module_compile_fixture_value(
                     crate::cli_run::compile_dag_multi_module_fixture(&paths, &contents, &entry),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.claim_scope_dag_multi_module_fixture" { "claim_scope_dag_multi_module_fixture" } => {
+                let paths = expect_str_list($positional.first().copied(), $name)?;
+                let contents = expect_str_list($positional.get(1).copied(), $name)?;
+                let entry = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(claim_scope_fixture_value(
+                    crate::cli_run::claim_scope_dag_multi_module_fixture(&paths, &contents, &entry),
                     $ctx,
                 )))
             },

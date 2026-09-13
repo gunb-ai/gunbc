@@ -54,10 +54,12 @@ import gunbc.fabric_m0_origin_readback {
   origin_reading_digest,
   read_origin_staged_file,
 }
+import std.process { exit_ok }
 import gunbc.fabric_m0_job_ending {
   JobEnding,
   end_required_job,
   check_conclusion_of_publication,
+  process_exit_of_job_ending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -369,4 +371,39 @@ test fn an_unreadable_roster_concludes_failure_rather_than_action_required() -> 
       unresolved: [],
     }
   ) == Failure
+}
+
+// THE PROCESS EXIT FOLLOWS THE ENDING. A concluded Success exits zero; a pending ending exits
+// NON-ZERO -- a process cannot stay in progress, and zero would be green over unread bytes.
+test fn a_successful_ending_exits_zero_and_a_pending_one_does_not() -> Bool {
+  match read_outcome() {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } =>
+      let green = end_required_job(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: origin_read(r: r),
+      )
+      let pending = end_required_job(
+        work: the_work(),
+        attempt: the_attempt(),
+        computation: ComputationSucceeded,
+        committed: committed_both(r: r),
+        observations: object_reads(r: r),
+        namespace: the_namespace(),
+        manifest_digest: digest_a(r: r),
+        members: members_both(r: r),
+        transport: answered(),
+        observed: cache_manifest_read(provider: "local-store"),
+      )
+      exit_ok(e: process_exit_of_job_ending(ending: green))
+        && (exit_ok(e: process_exit_of_job_ending(ending: pending)) == false)
+  }
 }

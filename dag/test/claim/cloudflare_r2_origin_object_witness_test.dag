@@ -60,7 +60,10 @@ import gunbc.cloudflare.r2_origin_object {
   OriginTargetReady,
   OriginTargetRefused,
   resolve_origin_target,
-  put_with_credential_residue,
+  OriginPut,
+  WriteCredentialShredded,
+  WriteCredentialResidueRemains,
+  put_is_clean,
 }
 import gunbc.fabric_m0_origin_readback {
   OriginReading,
@@ -248,18 +251,16 @@ test fn origin_put_classifies_stored_present_refused_and_unknown() -> Bool {
        }
 }
 
-// A CREDENTIAL THAT COULD NOT BE SHREDDED DEMOTES EVEN A STORED VERDICT. The stored fact is not
-// lost -- the fetch re-establishes it -- but a caller must not read a clean success off a run that
-// left a write token on disk.
-test fn origin_put_with_credential_residue_never_reports_a_clean_success() -> Bool {
-  match put_with_credential_residue(verdict: OriginObjectStored { key: "k" }) {
-    OriginPutRefused { key: _, cause: c } => string_contains(s: c as String, pattern: "credential material may remain")
-    other => false
-  }
-    && match put_with_credential_residue(verdict: OriginPutOutcomeUnknown { key: "k", cause: "x" }) {
-         OriginPutOutcomeUnknown { key: _, cause: c } => string_contains(s: c as String, pattern: "credential material may remain")
-         other => false
-       }
+// A CREDENTIAL THAT COULD NOT BE SHREDDED IS NEVER CLEAN, WHATEVER THE STORE SAID -- and the
+// store's verdict is not demoted to say so. The earlier shape folded the residue into the verdict's
+// cause string; a consumer that then confirmed the object by fetch published success over a leaked
+// token (gunbc#11157 review 64512). Custody is its own field, and a stored verdict stays stored.
+test fn origin_put_with_credential_residue_is_never_clean_and_keeps_its_verdict() -> Bool {
+  let leaked = OriginPut { verdict: OriginObjectStored { key: "k" }, credential: WriteCredentialResidueRemains { cause: "left on disk" } }
+  let clean = OriginPut { verdict: OriginObjectStored { key: "k" }, credential: WriteCredentialShredded }
+  (put_is_clean(put: leaked) == false)
+    && put_is_clean(put: clean)
+    && (match leaked.verdict { OriginObjectStored { key: _ } => true  other => false })
 }
 
 fn fetch_of(answer: S3TransferAnswer) -> OriginFetchVerdict {

@@ -10,10 +10,10 @@ import v2.workflow.realization_attempt {
   entry_witness_source
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.workflow.floor_discovery_producer {
+import v2.workflow.floor_discovery_producer { floor_discovery_walk_dir }
+import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryWalkState,
-  floor_discovery_walk_state_zero,
-  floor_discovery_walk_dir
+  floor_discovery_walk_state_zero
 }
 import gunbc.explicit_witness_admission { explicit_witness_admissions }
 import gunbc.ci_layer_roots { falsifier_substrate_long_lane_rows }

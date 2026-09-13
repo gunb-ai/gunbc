@@ -284,8 +284,8 @@ test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
 // THE BOUNDARY CONTROL FOR THE LENGTH REPAIR, AND THE ONE THAT PROVES THE GATE IS REGISTRY
 // MEMBERSHIP RATHER THAN "ROSTER ROW MEANS DECLARATION". empty_map has a roster row AND a
 // registry row, so it must still lower to the bridge. A repair that had simply routed every
-// ModeledProjection to its declaration would go red here -- and would also emit
-// v2.std.collection map_insert's `Map { lookup: fn .. }` body against an Rc<BTreeMap> carrier.
+// ModeledProjection to its declaration would go red here -- and would also have emitted
+// v2.std.collection map_insert's former `Map { lookup: fn .. }` body against an Rc map carrier.
 test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.bridged_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",

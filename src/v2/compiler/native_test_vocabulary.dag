@@ -1,0 +1,43 @@
+module v2.compiler.native_test_vocabulary
+
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
+
+// THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
+//
+// The route that MINTS these values is the SourceRootEvalDriver fold in v2.compiler.compile; the
+// authority that JUDGES them is gunbc.witness_v2_native_route, whose admission the emitted native
+// compiler now evaluates over its own receipt — so v2.compiler.compile imports that authority, and
+// the authority can no longer import v2.compiler.compile without a cycle. One vocabulary, two
+// readers, one home (DESIGN section 3): re-declaring the verdict beside the authority would be the
+// nickname the authority's own header already refuses.
+
+type NativeTestStage
+  = NativeTestStageContext
+  | NativeTestStagePrepare
+  | NativeTestStageEntry
+  | NativeTestStageEval
+
+type NativeTestVerdict
+  = NativeTestPassed
+  | NativeTestReturnedFalse
+  | NativeTestReturnedOther
+  | NativeTestRefused { stage: NativeTestStage, reason: Symbol }
+
+type NativeTestObservation {
+  module: QualifiedName
+  declaration: Symbol
+  verdict: NativeTestVerdict
+}
+
+// ONE SOURCE'S FRONT-END REFUSAL, AT THE TWO GRAINS THE CLASSIFICATION NEEDS. The rejection's
+// diagnostic list prepends non-fatal pending advisories (rejected_with_pending), so the head
+// reason and the fatal (last) reason are different observations of one refusal — the door
+// ledger's cause-ownership table is keyed by exactly this grain distinction, and the lane's
+// classifier asks both questions of every row.
+type NativeTestFileRefusal {
+  path: Symbol
+  head_reason: Symbol
+  fatal_reason: Symbol
+}
+

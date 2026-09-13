@@ -100,6 +100,7 @@ pub enum EvalBuiltinArm {
     FreeCallCompileDagRustEmitCheck,
     FreeCallCompileDagDiagnosticCensus,
     FreeCallCompileDagMultiModuleFixture,
+    FreeCallClaimScopeDagMultiModuleFixture,
     FreeCallCompileDagReferenceOccurrenceBindingCensus,
     FreeCallObserveDeclaredImportClosureSymbolBinding,
     FreeCallClassBImportClosureGateNotAffectedSkip,
@@ -238,6 +239,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
         "compile_dag_diagnostic_census" => Some(EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus),
         "compile_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture),
+        "claim_scope_dag_multi_module_fixture" => Some(EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture),
         "compile_dag_reference_occurrence_binding_census" => Some(EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus),
         "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
         "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
@@ -374,6 +376,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };
     ("free_call.compile_dag_diagnostic_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus };
     ("free_call.compile_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagMultiModuleFixture };
+    ("free_call.claim_scope_dag_multi_module_fixture") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClaimScopeDagMultiModuleFixture };
     ("free_call.compile_dag_reference_occurrence_binding_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagReferenceOccurrenceBindingCensus };
     ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
     ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
@@ -663,6 +666,7 @@ macro_rules! eval_call_bridge__v2_std_data_index_arm {
 pub enum TryV2StdCollectionMapPrimitiveGroundingArm {
     MapGroundingEmptyMap,
     MapGroundingMapInsert,
+    MapGroundingLookup,
 }
 
 #[rustfmt::skip]
@@ -671,6 +675,9 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
         "empty_map_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap),
         "empty_map" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap),
         "map_insert" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
+        "map_insert_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert),
+        "map_lookup_primitive_delegate" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
+        "map_lookup" => Some(TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup),
         _ => None,
     }
 }
@@ -679,6 +686,7 @@ pub fn lookup_try_v2_std_collection_map_primitive_grounding(spelling: &str) -> O
 macro_rules! try_v2_std_collection_map_primitive_grounding_arm {
     ("map_grounding.empty_map") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingEmptyMap };
     ("map_grounding.map_insert") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert };
+    ("map_grounding.lookup") => { $crate::v1_interpreter_dispatch_generated::TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingLookup };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
