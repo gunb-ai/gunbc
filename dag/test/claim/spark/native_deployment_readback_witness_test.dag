@@ -20,6 +20,11 @@ import gunbc.spark.native_deployment_readback {
 }
 
 data subject: NonEmptyStr = "the native four-rank deployment on fabric cage 2" as NonEmptyStr
+// THIS IS THE STOCK RUNTIME, AND IT IS NOW THE WRONG-IMAGE VALUE RATHER THAN THE FAITHFUL ONE. Every
+// fixture below used to report it as the image a healthy rank is running, while the plan pins the runtime
+// this fleet derived -- so each of them silently varied the image DIMENSION as well as the one its name
+// claims, and a test asserting exactly one deviation was asserting it about two. A rank that pulled the
+// stock image instead of the derived one is the realistic failure this value now discriminates.
 data pinned_digest: NonEmptyStr = "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
 data pinned_model_path: NonEmptyStr = "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
 
@@ -39,11 +44,31 @@ fn plan() -> ArmLaunchPlan {
   glm_native_tp4_launch_plan(envelope: readback_fixture_envelope)
 }
 
+// A FAITHFUL OBSERVATION MUST BE SHAPED LIKE ONE THE OBSERVER COULD ACTUALLY RETURN. This read `l.argv`,
+// the whole "docker run ..." line, and handed it to the assessor as the words a running container reports.
+// No container reports those words -- the daemon consumed them at creation -- so the fixture agreed with the
+// plan about a list the production reader never produces, and the positive control stayed green across every
+// revision in which the real comparison could not pass. The engine argv is the half that survives creation.
 fn planned_argv_for(rank: Nat) -> List<String> {
   match plan() {
     ArmLaunchRefused { cause: _ } => []
     ArmLaunchPlanned { lines: ls, master: _ } =>
-      join_argv(items: map(filter(ls, l => l.node.node_rank == rank), l => l.argv))
+      join_argv(items: map(filter(ls, l => l.node.node_rank == rank), l => l.engine_argv))
+  }
+}
+
+// AND THE IMAGE A FAITHFUL RANK REPORTS IS THE ONE THE PLAN PINNED, not a literal transcribed beside it.
+// `pinned_digest` still spells the STOCK reference while this plan pins the runtime this fleet derived, so
+// a positive control built on the literal asserts agreement with an image the arm does not launch. It stays
+// below as the DIVERGENT value, which is the only role a second image reference should play here.
+fn planned_image_for(rank: Nat) -> NonEmptyStr {
+  match plan() {
+    ArmLaunchRefused { cause: _ } => pinned_digest
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match filter(ls, l => l.node.node_rank == rank).first() {
+        Absent => pinned_digest
+        Present { value: l } => l.image_reference
+      }
   }
 }
 
@@ -57,7 +82,7 @@ fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
   rank_observation(
     host: host,
     node_rank: rank,
-    image_digest: pinned_digest,
+    image_digest: planned_image_for(rank: rank),
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: rank),
     selected_fabric_interface: Present { value: fabric_rail_interface_name },
@@ -106,7 +131,7 @@ data one_rank_wrong_digest: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv12,
     node_rank: 2,
-    image_digest: "vllm/vllm-openai@sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    image_digest: pinned_digest,
     model_path: pinned_model_path,
     argv: planned_argv_for(rank: 2),
     selected_fabric_interface: Present { value: fabric_rail_interface_name },
@@ -129,7 +154,7 @@ data one_rank_wrong_revision: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv10,
     node_rank: 1,
-    image_digest: pinned_digest,
+    image_digest: planned_image_for(rank: 1),
     model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/0000000000000000000000000000000000000000" as NonEmptyStr,
     argv: planned_argv_for(rank: 1),
     selected_fabric_interface: Present { value: fabric_rail_interface_name },
@@ -171,7 +196,7 @@ test fn a_missing_rank_is_rejected() -> Bool {
 data interface_unread: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv9, node_rank: 0,
-    image_digest: pinned_digest, model_path: pinned_model_path,
+    image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0), selected_fabric_interface: none,
   ),
   faithful_rank(host: operator_host_srv10, rank: 1),
@@ -192,7 +217,7 @@ test fn an_unread_fabric_interface_is_unverified_rather_than_accepted() -> Bool 
 data interface_wrong: List<RankObservation> = [
   rank_observation(
     host: operator_host_srv9, node_rank: 0,
-    image_digest: pinned_digest, model_path: pinned_model_path,
+    image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: planned_argv_for(rank: 0),
     selected_fabric_interface: Present { value: "wlan0" as NonEmptyStr },
   ),
@@ -256,7 +281,7 @@ fn argv_with_one_word_changed(rank: Nat) -> List<String> {
 
 data one_word_changed_ranks: List<RankObservation> = [
   rank_observation(
-    host: operator_host_srv9, node_rank: 0, image_digest: pinned_digest, model_path: pinned_model_path,
+    host: operator_host_srv9, node_rank: 0, image_digest: planned_image_for(rank: 0), model_path: pinned_model_path,
     argv: argv_with_one_word_changed(rank: 0),
     selected_fabric_interface: Present { value: fabric_rail_interface_name },
   ),
@@ -285,7 +310,7 @@ fn argv_reversed(rank: Nat) -> List<String> {
 data reordered_ranks: List<RankObservation> = [
   faithful_rank(host: operator_host_srv9, rank: 0),
   rank_observation(
-    host: operator_host_srv10, node_rank: 1, image_digest: pinned_digest, model_path: pinned_model_path,
+    host: operator_host_srv10, node_rank: 1, image_digest: planned_image_for(rank: 1), model_path: pinned_model_path,
     argv: argv_reversed(rank: 1),
     selected_fabric_interface: Present { value: fabric_rail_interface_name },
   ),

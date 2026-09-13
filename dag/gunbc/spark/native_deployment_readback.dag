@@ -116,12 +116,16 @@ fn observation_for_rank(observed: List<RankObservation>, rank: Nat) -> RankObser
   filter(observed, o => o.node_rank == rank).first()
 }
 
+// THE PLANNER STATES THE IMAGE; THIS NO LONGER GUESSES IT FROM THE WORDS. The previous body filtered the
+// launch line for a word containing "@sha256:" and joined the matches, which returned "" for an arm pinned
+// by a bare content id -- and an empty join coerced to NonEmptyStr without complaint, so a rank whose image
+// was exactly right refused against a planned value that was not there to read.
 fn argv_image_digest(l: ArmNodeLaunch) -> NonEmptyStr {
-  join(filter(l.argv, w => string_contains(s: w, pattern: "@sha256:")), "") as NonEmptyStr
+  l.image_reference
 }
 
 fn argv_model_path(l: ArmNodeLaunch) -> NonEmptyStr {
-  join(filter(l.argv, w => string_contains(s: w, pattern: "/snapshots/") || w == "/model"), "") as NonEmptyStr
+  join(filter(l.engine_argv, w => string_contains(s: w, pattern: "/snapshots/") || w == "/model"), "") as NonEmptyStr
 }
 
 // ── ORDERED ARGV COMPARISON, WALKED IN STEP ────────────────────────────────────────────────────
@@ -191,11 +195,11 @@ fn rank_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<De
         observed: observed.model_path,
       }]
     }),
-    if argv_equal(a: desired.argv, b: observed.argv) { [] } else {
+    if argv_equal(a: desired.engine_argv, b: observed.argv) { [] } else {
       [RankArgvDiffers {
         node_rank: desired.node.node_rank,
-        first_difference_position: argv_first_difference(a: desired.argv, b: observed.argv, position: 0),
-        desired_word_count: count(desired.argv),
+        first_difference_position: argv_first_difference(a: desired.engine_argv, b: observed.argv, position: 0),
+        desired_word_count: count(desired.engine_argv),
         observed_word_count: count(observed.argv),
       }]
     })

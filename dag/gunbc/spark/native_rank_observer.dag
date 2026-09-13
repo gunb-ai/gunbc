@@ -43,8 +43,13 @@ fn rank_image_digest_argv() -> List<String> {
   ["docker", "inspect", "-f", go_template_action(body: ".Config.Image"), glm_native_container_name as String]
 }
 
+// .Config.Cmd IS THE HALF OF THE LAUNCH LINE THE CONTAINER ACTUALLY KEEPS. This read .Args, which is the
+// argument vector handed to the image's ENTRYPOINT -- measured on the derived image, whose entrypoint is
+// ["vllm","serve"], .Args therefore begins with the word "serve" that no planned line contains, while
+// .Config.Cmd is exactly the words passed after the image reference. The daemon consumed the "docker run"
+// half at creation and no observation can recover it, so that half is compared by other means or not at all.
 fn rank_argv_json_argv() -> List<String> {
-  ["docker", "inspect", "-f", go_template_action(body: "json .Args"), glm_native_container_name as String]
+  ["docker", "inspect", "-f", go_template_action(body: "json .Config.Cmd"), glm_native_container_name as String]
 }
 
 fn rank_running_argv() -> List<String> {

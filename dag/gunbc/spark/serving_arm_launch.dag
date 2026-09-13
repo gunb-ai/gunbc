@@ -400,6 +400,19 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
     "-v", join([arm_mount_plan(row: crow).host_dir as String, ":", arm_mount_plan(row: crow).container_dir as String, ":ro"], ""),
     runtime_artifact_wire(a: rrow.artifact) as String,
+  ], arm_engine_argv(node: node, master: master, crow: crow, ranks: ranks, profile: profile, utilization_basis_points: utilization_basis_points))
+}
+
+// ── THE ENGINE'S OWN ARGUMENTS, NAMED APART FROM THE DOCKER LINE THAT CARRIES THEM ─────────────
+//
+// THESE ARE TWO DIFFERENT LISTS AND A READBACK THAT CONFUSES THEM CANNOT EVER AGREE. The full launch line
+// begins "docker run -d --name ..." and ends with the engine's arguments; a running container remembers
+// only the second half, because the first half was consumed by the daemon that created it. A previous
+// revision compared the WHOLE line against what the container reports and refused every healthy rank with
+// "argv differs first at word 0 (planned 63 words, observed 36)" -- word zero being "docker" against the
+// model path. Splitting the list here gives the comparison a referent the observation can actually hold.
+fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> List<String> {
+  concat([
     arm_mount_plan(row: crow).model_path as String,
     "--served-model-name", profile.served_alias as String,
     "--tensor-parallel-size", to_string(ranks),
@@ -507,9 +520,17 @@ type ArmLaunchPlan
   = ArmLaunchPlanned { lines: List<ArmNodeLaunch>, master: Ipv4Address }
   | ArmLaunchRefused { cause: NonEmptyStr }
 
+// THE LINE CARRIES WHAT IT KNOWS RATHER THAN LETTING A READER RE-DERIVE IT FROM WORDS. The readback used
+// to recover the image and the engine arguments by SNIFFING this list -- filtering for a word containing
+// "@sha256:" and comparing the whole docker line against a container's own arguments. Both readings were
+// wrong for this arm: it pins a BARE content id with no "@", so the filter selected nothing and joined an
+// EMPTY string, which then printed as `is not the planned ` with the planned value simply missing. A
+// planner that already holds the image reference and the engine argument list should state them.
 type ArmNodeLaunch sole_constructor {
   node: ArmNode
   argv: List<String>
+  engine_argv: List<String>
+  image_reference: NonEmptyStr
 }
 
 // THE ARM WALL COMES FIRST AND THE ROSTER SECOND, because an inadmissible arm has no launch to plan on
@@ -582,6 +603,8 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
                   lines: map(ns, n => ArmNodeLaunch {
                     node: n,
                     argv: arm_container_argv(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points),
+                    engine_argv: arm_engine_argv(node: n, master: m, crow: crow, ranks: serving_topology_rank_count(t: topology), profile: profile, utilization_basis_points: utilization_basis_points),
+                    image_reference: runtime_artifact_wire(a: rrow.artifact),
                   }),
                   master: m,
                 },
