@@ -23,7 +23,10 @@ import product.supplier.hetzner {
   hetzner_helsinki_route_facts, hetzner_nuremberg_route_facts,
   hetzner_helsinki_downstream, hetzner_route_facts_population,
 }
-import extdeps.cloud.hetzner { hetzner_subcontractors_for_server_location, hetzner_subcontractor_finland }
+import extdeps.cloud.hetzner {
+  hetzner_subcontractors_for_server_location, hetzner_subcontractor_finland,
+  hetzner_subcontractor_us_server_rental,
+}
 
 // WHAT THESE ROWS ARE FOR. product.supplier.hetzner answers the nine-path closure for two rented
 // routes and BOTH refuse, so the whole module is a claim about refusals -- and a compliance gate
@@ -245,8 +248,10 @@ test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool {
 }
 
 // POSITIVE CONTROL. The same route, the same roster, the same posture and the same scope, with that
-// one path resolved, ADMITS -- and the permit names the route it was admitted for and the facts
-// revision it read, so this row cannot be satisfied by a permit about something else.
+// one path resolved, ADMITS -- and the permit is checked to name THIS ROUTE'S REGION and THIS SCOPE'S
+// CUSTOMER PROFILE, so the row cannot be satisfied by a permit about another route or another
+// customer. It does NOT check the facts revision: an earlier version of this comment said it did,
+// which review 65087 caught, and the narrow true statement is the one worth keeping.
 test fn the_same_route_admits_once_that_path_is_resolved() -> Bool {
   match t_decide(facts: t_helsinki_facts_with_support(support: t_resolved())) {
     ProviderUseDenied { decision, cause } => false,
@@ -293,8 +298,11 @@ test fn a_resolved_closure_with_an_unread_downstream_still_refuses() -> Bool {
 //
 // EVERY HETZNER ROUTE THIS REPOSITORY CARRIES REFUSES, ASSERTED OVER THE POPULATION RATHER THAN
 // ROUTE BY ROUTE. A per-route row says nothing about a route added tomorrow; folding the population
-// means a third region cannot be added without either resolving its paths or reddening this row,
-// which is what stops the census from quietly acquiring an admitting member nobody looked at.
+// means a third region REDS THIS ROW, full stop. The cardinality conjunct is == 2, so resolving the
+// new route's paths does NOT keep it green -- an earlier version of this comment offered that as an
+// alternative and review 65087 caught it, because the count rejects every third row whatever its
+// paths say. The author is sent here deliberately: adding a region is a decision this census should
+// make someone state, not one it should absorb.
 fn t_refuses(a: ProviderUseAdmission<NonEmptyStr>) -> Bool {
   match a {
     ProviderUseAdmitted { permit } => false,
@@ -333,25 +341,58 @@ test fn every_hetzner_route_in_the_population_refuses() -> Bool {
 // authority checks that the name RESOLVES; nothing here checks that the resolved declaration is the
 // value this row reads. A rename that moved both together stays green, correctly; a declaration that
 // kept its name while changing what it means would not be caught by this row.
-test fn the_finland_subcontractor_the_route_cites_is_the_one_upstream_publishes() -> Bool {
-  let published = hetzner_subcontractors_for_server_location(location: "Finland" as NonEmptyStr)
-  let route_cites_that_declaration = match hetzner_helsinki_downstream() {
+fn t_finland_expected_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_subcontractor_finland")
+}
+
+// The predicate is factored so the WRONG-BUT-RESOLVING case can be handed a population this module
+// builds, rather than being argued about. hetzner_helsinki_downstream() is a fixed producer; a red
+// that cannot be constructed is the decoration this file exists to refuse.
+fn t_downstream_cites_only(population: DownstreamProviderPopulation, expected: DeclarationRef) -> Bool {
+  match population {
     DownstreamProvidersEnumerated { first, further, coverage } =>
-      count(further) == 0
-        && declaration_ref_eq(
-             a: first,
-             b: decl_ref(
-                  module_path: "extdeps.cloud.hetzner",
-                  decl_name: "hetzner_subcontractor_finland",
-                ),
-           ),
+      count(further) == 0 && declaration_ref_eq(a: first, b: expected),
     NoDownstreamProviders { evidence } => false,
     DownstreamProvidersUnread { obligation } => false,
   }
-  route_cites_that_declaration
-    && count(published) == 1
+}
+
+fn t_published_finland_matches_cited() -> Bool {
+  let published = hetzner_subcontractors_for_server_location(location: "Finland" as NonEmptyStr)
+  count(published) == 1
     && count(filter(
          published,
          s => s.entity.legal_name == hetzner_subcontractor_finland.entity.legal_name,
        )) == 1
+}
+
+test fn the_finland_subcontractor_the_route_cites_is_the_one_upstream_publishes() -> Bool {
+  t_downstream_cites_only(
+    population: hetzner_helsinki_downstream(),
+    expected: t_finland_expected_ref(),
+  )
+    && t_published_finland_matches_cited()
+}
+
+// RED -- A RESOLVING REFERENCE TO THE WRONG SUBCONTRACTOR MUST REFUSE. This is the counterexample
+// review 65087 named: repoint the Helsinki downstream at hetzner_subcontractor_us_server_rental and
+// every OTHER signal stays green -- the citation resolves, the vendor table is untouched, and the
+// admission outcomes do not move -- because nothing was reading what the route cites. The population
+// is built here rather than by mutating the producer, so the refusal is exercised rather than argued.
+test fn a_resolving_reference_to_the_wrong_subcontractor_refuses() -> Bool {
+  !t_downstream_cites_only(
+    population: DownstreamProvidersEnumerated {
+      first: decl_ref(
+        module_path: "extdeps.cloud.hetzner",
+        decl_name: "hetzner_subcontractor_us_server_rental",
+      ),
+      further: [],
+      coverage: decl_ref(
+        module_path: "extdeps.cloud.hetzner",
+        decl_name: "hetzner_subcontractor_appendix_reading",
+      ),
+    },
+    expected: t_finland_expected_ref(),
+  )
+    && t_published_finland_matches_cited()
 }
