@@ -130,6 +130,8 @@ fn t_later_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
     revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.spark.serving-someone-else.later" as NonEmptyStr)),
+    permitted_jurisdictions: spark_first_party_posture.permitted_jurisdictions,
+    jurisdiction_drop_enrollments: spark_first_party_posture.jurisdiction_drop_enrollments,
   }
 }
 
