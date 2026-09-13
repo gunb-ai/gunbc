@@ -19,6 +19,8 @@ import gunbc.roadmap_authority {
   AcceptedRoadmapNodeIdsProjected,
   AcceptedRoadmapNodeIdsProjectionRefused,
   withheld_node_ids_from_live_history,
+  WithheldNodeIdsProjected,
+  WithheldNodeIdsProjectionRefused,
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
@@ -28,6 +30,7 @@ import gunbc.roadmap_authority {
   projected_roadmap_dependency_edges_projection,
   ProjectedRoadmapDependencyEdgesProjected,
   ProjectedRoadmapDependencyEdgesProjectionRefused,
+  startable_nodes_missing_closing_contract_for_accepted,
 }
 import gunbc.roadmap_spawner {
   roadmap_rendered_ghost_count,
@@ -124,20 +127,22 @@ fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
 fn active_nodes() -> List<RoadmapNode> {
   match live_accepted_node_ids() {
     Present { value: accepted } =>
-      active_roadmap_nodes_for_accepted(
-        accepted: accepted,
-        withheld: withheld_node_ids_from_live_history(),
-      )
+      match live_withheld_node_ids() {
+        Present { value: withheld } =>
+          active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+        Absent => []
+      }
     Absent => []
   }
 }
 fn active_edges() -> List<RoadmapEdge> {
   match live_accepted_node_ids() {
     Present { value: accepted } =>
-      active_roadmap_edges_for_accepted(
-        accepted: accepted,
-        withheld: withheld_node_ids_from_live_history(),
-      )
+      match live_withheld_node_ids() {
+        Present { value: withheld } =>
+          active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
+        Absent => []
+      }
     Absent => []
   }
 }
@@ -146,6 +151,13 @@ fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: ids } => Present { value: ids }
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => Absent
+  }
+}
+
+fn live_withheld_node_ids() -> List<RoadmapNodeId>? {
+  match withheld_node_ids_from_live_history() {
+    WithheldNodeIdsProjected { ids: ids } => Present { value: ids }
+    WithheldNodeIdsProjectionRefused { detail: _ } => Absent
   }
 }
 
@@ -343,9 +355,13 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
         && (accepted |> any(a => a == "2-claim-indexed-evidence"))
         && (accepted |> any(a => a == "2-scm-compatibility-shape"))
         && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
-        && count(active_nodes()) == count(nodes()) - count(accepted) - count(withheld_node_ids_from_live_history())
-        && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
-        && all(active_nodes(), n => !(withheld_node_ids_from_live_history() |> any(w => w == n.node)))
+        && match live_withheld_node_ids() {
+          Absent => false
+          Present { value: withheld } =>
+            count(active_nodes()) == count(nodes()) - count(accepted) - count(withheld)
+              && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+              && all(active_nodes(), n => !(withheld |> any(w => w == n.node)))
+        }
         && all(accepted, a => id_exists(id: a))
   }
 }
@@ -384,7 +400,11 @@ test fn witness_live_receipt_on_superseded_line_refuses_with_typed_cause() -> Bo
 
 test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool {
   !active_id_exists(id: tnid(s: "entry-graph-union-construction"))
-    && (withheld_node_ids_from_live_history() |> any(w => w == tnid(s: "entry-graph-union-construction")))
+    && match live_withheld_node_ids() {
+      Absent => false
+      Present { value: withheld } =>
+        withheld |> any(w => w == tnid(s: "entry-graph-union-construction"))
+    }
 }
 
 test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
@@ -948,19 +968,41 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      match projected_roadmap_dependency_edges_projection() {
-        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-          fold(
-            active_roadmap_edges_for_accepted(
-              accepted: accepted,
-              withheld: withheld_node_ids_from_live_history(),
-            ),
-            init: true,
-            f: fn(acc, edge) {
-            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
-          })
-        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+      match live_withheld_node_ids() {
+        Absent => false
+        Present { value: withheld } =>
+          match projected_roadmap_dependency_edges_projection() {
+            ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+              fold(
+                active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
+                init: true,
+                f: fn(acc, edge) {
+                  acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+                }
+              )
+            ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+          }
       }
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
+  }
+}
+
+test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> Bool {
+  match live_accepted_node_ids() {
+    Absent => false
+    Present { value: accepted } =>
+      let unfiltered = startable_nodes_missing_closing_contract_for_accepted(
+        accepted: accepted,
+        withheld: [],
+      )
+      if count(unfiltered) == 0 {
+        false
+      } else {
+        let victim = first(unfiltered)
+        !(startable_nodes_missing_closing_contract_for_accepted(
+          accepted: accepted,
+          withheld: [victim.node],
+        ) |> any(x => x.node == victim.node))
+      }
   }
 }

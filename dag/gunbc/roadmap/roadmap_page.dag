@@ -30,6 +30,7 @@ import gunbc.roadmap_authority {
   AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
   declared_roadmap_nodes,
   ClosingContractTaskPair, closing_contract_task_pairs_for_accepted, closing_contract_family_claim,
+  withheld_node_ids_from_live_history, WithheldNodeIdsProjected, WithheldNodeIdsProjectionRefused,
 }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
@@ -1034,8 +1035,11 @@ fn live_work_family_decls() -> List<WorkFamilyDecl> {
   [ WorkFamilyDecl { id: closing_contract_family_id(), claim: closing_contract_family_claim } ]
 }
 
-fn live_work_family_members_for_accepted(accepted: List<RoadmapNodeId>) -> List<WorkFamilyMemberFact> {
-  closing_contract_task_pairs_for_accepted(accepted: accepted) |> map(p => WorkFamilyMemberFact {
+fn live_work_family_members_for_accepted(
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<WorkFamilyMemberFact> {
+  closing_contract_task_pairs_for_accepted(accepted: accepted, withheld: withheld) |> map(p => WorkFamilyMemberFact {
     family_id: closing_contract_family_id(),
     task_node: p.task.node as String,
     subject: p.subject,
@@ -1050,6 +1054,7 @@ fn daily_workspace_view_of_for_accepted(
   doc: RoadmapDocument,
   merged: List<Int>,
   accepted_ids: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
   standings: RoadmapStandings,
@@ -1073,13 +1078,14 @@ fn daily_workspace_view_of_for_accepted(
     program: Present { value: v1_exit_program_progress_view_for_accepted(accepted_ids: accepted_ids, ready_count: ready_count) },
     observation: observation,
     families: live_work_family_decls(),
-    members: live_work_family_members_for_accepted(accepted: accepted_ids))
+    members: live_work_family_members_for_accepted(accepted: accepted_ids, withheld: withheld))
 }
 
 fn roadmap_daily_workspace_page_impl_for_accepted(
   doc: RoadmapDocument,
   merged: List<Int>,
   accepted_ids: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
   main_prefix: List<Fragment>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
@@ -1090,6 +1096,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     doc: doc,
     merged: merged,
     accepted_ids: accepted_ids,
+    withheld: withheld,
     attempts: attempts,
     attempts_refused: attempts_refused, standings: standings,
     launch: launch,
@@ -1274,11 +1281,11 @@ fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: 
 // own "the event carrier is not consulted" already claimed and did not deliver.
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render())
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch_host_unobserved_static_render())
 }
 
 fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
-  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
+  roadmap_daily_workspace_page_impl_for_accepted(doc: doc, merged: merged, accepted_ids: [], withheld: [], main_prefix: [], attempts: [], attempts_refused: none, standings: StandingsUnobserved { reason: "static render: the event carrier is not consulted" }, launch: launch)
 }
 
 // The served daily workspace consumes the OBSERVED attempt evidence at render (the tick decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The plan is a parameter because the caller that renders it is the caller that chose it.
@@ -1295,6 +1302,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
         merged: [],
         accepted_ids: [],
+        withheld: [],
         main_prefix: [
           dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),
@@ -1305,18 +1313,37 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         launch: launch,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
-      roadmap_daily_workspace_page_impl_for_accepted(
-        doc: doc,
-        merged: authored_merged_prs(),
-        accepted_ids: accepted,
-        main_prefix: [
-          dashboard_instance_banner(),
-        ],
-        attempts: attempts,
-        attempts_refused: attempts_refused,
-        standings: standings,
-        launch: launch,
-      )
+      match withheld_node_ids_from_live_history() {
+        WithheldNodeIdsProjectionRefused { detail: withheld_detail } =>
+          roadmap_daily_workspace_page_impl_for_accepted(
+            doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+            merged: [],
+            accepted_ids: [],
+            withheld: [],
+            main_prefix: [
+              dashboard_instance_banner(),
+              roadmap_authority_refusal_markup(detail: withheld_detail),
+            ],
+            attempts: attempts,
+            attempts_refused: attempts_refused,
+            standings: standings,
+            launch: launch,
+          )
+        WithheldNodeIdsProjected { ids: withheld } =>
+          roadmap_daily_workspace_page_impl_for_accepted(
+            doc: doc,
+            merged: authored_merged_prs(),
+            accepted_ids: accepted,
+            withheld: withheld,
+            main_prefix: [
+              dashboard_instance_banner(),
+            ],
+            attempts: attempts,
+            attempts_refused: attempts_refused,
+            standings: standings,
+            launch: launch,
+          )
+      }
   }
 }
 

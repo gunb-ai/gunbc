@@ -6,7 +6,7 @@ import gunbc.roadmap_spawner { node_is_sized }
 import gunbc.roadmap_model { RoadmapNode }
 
 test fn an_unsized_node_mints_no_closing_contract_task() -> Bool {
-  let candidates = startable_nodes_missing_closing_contract_for_accepted(accepted: [])
+  let candidates = startable_nodes_missing_closing_contract_for_accepted(accepted: [], withheld: [])
   let has_unsized_declared = any(declared_roadmap_nodes(), n => !node_is_sized(n: n))
   has_unsized_declared && all(candidates, n => node_is_sized(n: n))
 }

@@ -15,6 +15,8 @@ import gunbc.roadmap_authority {
   AcceptedRoadmapNodeIdsProjected,
   AcceptedRoadmapNodeIdsProjectionRefused,
   withheld_node_ids_from_live_history,
+  WithheldNodeIdsProjected,
+  WithheldNodeIdsProjectionRefused,
   roadmap_focus_selection,
 }
 import gunbc.roadmap_focus {
@@ -49,23 +51,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn all_nodes() -> List<RoadmapNode> {
   match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_nodes_for_accepted(
-        accepted: accepted,
-        withheld: withheld_node_ids_from_live_history(),
-      )
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      match withheld_node_ids_from_live_history() {
+        WithheldNodeIdsProjectionRefused { detail: _ } => []
+        WithheldNodeIdsProjected { ids: withheld } =>
+          active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+      }
   }
 }
 
 fn active_roadmap_edges() -> List<RoadmapEdge> {
   match accepted_roadmap_node_ids_projection() {
-    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
-      active_roadmap_edges_for_accepted(
-        accepted: accepted,
-        withheld: withheld_node_ids_from_live_history(),
-      )
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => []
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      match withheld_node_ids_from_live_history() {
+        WithheldNodeIdsProjectionRefused { detail: _ } => []
+        WithheldNodeIdsProjected { ids: withheld } =>
+          active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
+      }
   }
 }
 

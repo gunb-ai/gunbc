@@ -44,6 +44,7 @@ import gunbc.roadmap_authority {
   active_roadmap_nodes_for_accepted,
   active_roadmap_edges_for_accepted,
   withheld_node_ids_from_live_history,
+  WithheldNodeIdsProjected, WithheldNodeIdsProjectionRefused,
   RoadmapAuthorityProjection, roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   roadmap_acceptance_receipts,
@@ -874,22 +875,21 @@ fn roadmap_schedule_forecast_over(
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: detail }] }
     RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
-      let builds = roadmap_cycle_time_observation_builds()
-      schedule_forecast(
-        nodes: active_roadmap_nodes_for_accepted(
-          accepted: accepted,
-          withheld: withheld_node_ids_from_live_history(),
-        ),
-        edges: active_roadmap_edges_for_accepted(
-          accepted: accepted,
-          withheld: withheld_node_ids_from_live_history(),
-        ),
-        observations: accepted_cycle_time_observations(builds: builds),
-        history_refusals: cycle_time_history_refusals(builds: builds),
-        population_exclusions: cycle_time_population_exclusions(builds: builds),
-        assumptions: assumptions,
-        anchor: anchor,
-      )
+      match withheld_node_ids_from_live_history() {
+        WithheldNodeIdsProjectionRefused { detail: withheld_detail } =>
+          ScheduleForecastRefused { refusals: [ForecastRoadmapAuthorityRefused { detail: withheld_detail }] }
+        WithheldNodeIdsProjected { ids: withheld } =>
+          let builds = roadmap_cycle_time_observation_builds()
+          schedule_forecast(
+            nodes: active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
+            edges: active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
+            observations: accepted_cycle_time_observations(builds: builds),
+            history_refusals: cycle_time_history_refusals(builds: builds),
+            population_exclusions: cycle_time_population_exclusions(builds: builds),
+            assumptions: assumptions,
+            anchor: anchor,
+          )
+      }
   }
 }
 
