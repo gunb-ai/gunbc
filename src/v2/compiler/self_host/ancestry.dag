@@ -386,7 +386,7 @@ data native_generation_succession_host_writer_frontier: DissolutionCondition = u
 // report (review 65238). Distinct from native_generation_succession_host_writer_frontier
 // (N+1 write) and genesis_migration_deletion_trigger (deleting GenesisFromSeed).
 data native_generation_read_back_self_report_frontier: DissolutionCondition = unbound_dissolution(
-  description: "production ReadBackReported on a stored NativeGeneration: the built artifact reports its own identity after cargo, and native_generation_from_store / native_generation_mint_admission observe that report. Unbound: the trigger is that self-report executing, not a host hash of the store file and not a fixture minting ReadBackReported. Until then every acquire from store is NativeAncestorUnverified via ancestry_read_back_unperformed." as NonEmptyStr
+  description: "production ReadBackReported on a stored NativeGeneration: the built artifact reports its own identity after cargo, and native_generation_from_store / native_generation_mint_admission observe that report. Unbound: the trigger is that self-report executing, not a host hash of the store file and not a fixture minting ReadBackReported. Until then every acquire from store is NativeAncestorUnverified via ancestry_read_back_unperformed. The loss of --v2-native-route's executed green is gunbc.rung_drop v2_native_route_acquire_unverified_until_read_back, not this row." as NonEmptyStr
 )
 
 // ACQUISITION OF THE ONLY ADMISSIBLE PRODUCER. See native_route_acquisition_frontier.

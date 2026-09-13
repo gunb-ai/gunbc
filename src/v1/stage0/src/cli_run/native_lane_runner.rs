@@ -6,6 +6,8 @@
 //! path; the route survives as an operator-invoked instrument under the declared drop
 //! `gunbc.rung_drop` `v2_native_route_off_the_merge_path`, whose restoration trigger is a required
 //! native-route job designed against an operator-agreed contract rather than this one re-added.
+//! The operator instrument's executed green after genesis is a separate drop:
+//! `gunbc.rung_drop` `v2_native_route_acquire_unverified_until_read_back`.
 //!
 //! WHAT THIS ROUTE CLAIMS. Native universe derivation, evaluation, receipt construction and
 //! admission over an ACQUIRED native compiler artifact. `prepare_emitted_compiler` evaluates
@@ -802,8 +804,9 @@ fn available_generation(
 /// store wrote, not a hardcoded zero: a SucceedsNative row would otherwise be unverified as
 /// "not the generation expected". The host writer of N+1 is
 /// `native_generation_succession_host_writer_frontier`. Read-back stays Unperformed until
-/// `native_generation_read_back_self_report_frontier`. `compile_entry_emission` is not
-/// reachable from this function.
+/// `native_generation_read_back_self_report_frontier`. The loss of this route's executed green
+/// is `gunbc.rung_drop` `v2_native_route_acquire_unverified_until_read_back`.
+/// `compile_entry_emission` is not reachable from this function.
 fn acquire_native_compiler(
     workspace: &Path,
     source_roots: &[String],
