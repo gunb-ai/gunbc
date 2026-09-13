@@ -21,7 +21,7 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/declaration_fork_census.dag --function census
 //
-// WHAT IT COUNTS. `decl_facts` carries TOP-LEVEL declarations (fn, func, type, data, service, other),
+// WHAT IT COUNTS. `decl_facts` carries TOP-LEVEL declarations (fn, type, data, service, other),
 // the same vocabulary the deleted lens read. A name is FORKED when more than one fact carries it;
 // `forked_rows` is the number of facts under forked names. Variant constructors are not facts here
 // and are not counted; the read-side detector sees them through the resolver instead.

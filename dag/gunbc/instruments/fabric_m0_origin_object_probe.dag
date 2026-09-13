@@ -88,7 +88,7 @@ type ProbeCredential
   = ProbeCredentialReady { source: AccessTokenSource }
   | ProbeCredentialUnavailable { cause: NonEmptyStr }
 
-func probe_token_source() -> ProbeCredential {
+fn probe_token_source() -> ProbeCredential {
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: cause } =>
       ProbeCredentialUnavailable { cause: concat("NO GCP ACCESS TOKEN: ", cause as String) as NonEmptyStr }
@@ -97,7 +97,7 @@ func probe_token_source() -> ProbeCredential {
   }
 }
 
-func fetch_absent() -> ProcessExit uses net: Network {
+fn fetch_absent() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } =>
@@ -137,7 +137,7 @@ fn put_cause(put: OriginPut) -> String {
   }
 }
 
-func roundtrip() -> ProcessExit uses net: Network {
+fn roundtrip() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
@@ -233,7 +233,7 @@ fn canary_object_key() -> NonEmptyStr {
   commit_slot_key(namespace: (canary_namespace + "/objects") as CommitNamespace, attempt: canary_attempt as AttemptIdentity)
 }
 
-func canary_ending() -> ProcessExit uses net: Network {
+fn canary_ending() -> ProcessExit uses net: Network {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
