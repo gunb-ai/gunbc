@@ -2212,32 +2212,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
-    TransitionAdmission {
-        label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            expected_candidates: &[
-                "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-                "extdeps.shell",
-                "extdeps.tools.grep",
-                "extdeps.tools.sed",
-                "extdeps.tools.xorriso",
-            ],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "Filesystem",
-            expected_candidates: &["extdeps.filesystem.filesystem_io"],
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
 ];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
