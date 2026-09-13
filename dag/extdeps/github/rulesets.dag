@@ -6,7 +6,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
-import std.measure { Minute, minute, MergeQueueEntryCount, merge_queue_entry_count }
+import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import v2.std.collection { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -650,11 +650,11 @@ fn required_status_checks_rule(
 fn merge_queue_rule(
   grouping_strategy: MergeQueueGroupingStrategy,
   merge_method: MergeQueueMergeMethod,
-  check_response_timeout_minutes: Int,
-  max_entries_to_build: Int,
-  max_entries_to_merge: Int,
-  min_entries_to_merge: Int,
-  min_entries_to_merge_wait_minutes: Int,
+  check_response_timeout: Minute,
+  max_entries_to_build: MergeQueueEntryCount,
+  max_entries_to_merge: MergeQueueEntryCount,
+  min_entries_to_merge: MergeQueueEntryCount,
+  min_entries_to_merge_wait: Minute,
 ) -> RulesetRuleWire {
   RulesetRuleWire {
     type: ruleset_rule_type_wire_label(t: MergeQueueRule),
@@ -662,13 +662,13 @@ fn merge_queue_rule(
       strict_required_status_checks_policy: none,
       do_not_enforce_on_create: none,
       required_status_checks: none,
-      check_response_timeout_minutes: Present { value: check_response_timeout_minutes },
+      check_response_timeout_minutes: Present { value: minute_count(check_response_timeout) },
       grouping_strategy: Present { value: merge_queue_grouping_strategy_wire_label(g: grouping_strategy) },
-      max_entries_to_build: Present { value: max_entries_to_build },
-      max_entries_to_merge: Present { value: max_entries_to_merge },
+      max_entries_to_build: Present { value: merge_queue_entry_count_value(max_entries_to_build) },
+      max_entries_to_merge: Present { value: merge_queue_entry_count_value(max_entries_to_merge) },
       merge_method: Present { value: merge_queue_merge_method_wire_label(m: merge_method) },
-      min_entries_to_merge: Present { value: min_entries_to_merge },
-      min_entries_to_merge_wait_minutes: Present { value: min_entries_to_merge_wait_minutes },
+      min_entries_to_merge: Present { value: merge_queue_entry_count_value(min_entries_to_merge) },
+      min_entries_to_merge_wait_minutes: Present { value: minute_count(min_entries_to_merge_wait) },
     },
   }
 }

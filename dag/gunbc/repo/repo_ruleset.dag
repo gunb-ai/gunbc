@@ -229,11 +229,11 @@ fn merge_queue_rule_from_policy(policy: MergeQueuePolicy) -> RulesetRuleWire {
   merge_queue_rule(
     grouping_strategy: policy.grouping_strategy,
     merge_method: policy.merge_method,
-    check_response_timeout_minutes: minute_count(policy.check_response_timeout),
-    max_entries_to_build: merge_queue_entry_count_value(policy.max_entries_to_build),
-    max_entries_to_merge: merge_queue_entry_count_value(policy.max_entries_to_merge),
-    min_entries_to_merge: merge_queue_entry_count_value(policy.min_entries_to_merge),
-    min_entries_to_merge_wait_minutes: minute_count(policy.min_entries_to_merge_wait),
+    check_response_timeout: policy.check_response_timeout,
+    max_entries_to_build: policy.max_entries_to_build,
+    max_entries_to_merge: policy.max_entries_to_merge,
+    min_entries_to_merge: policy.min_entries_to_merge,
+    min_entries_to_merge_wait: policy.min_entries_to_merge_wait,
   )
 }
 
