@@ -61,6 +61,12 @@ fn pre_os_chunk_continuity(envelope: ObservationEnvelope) -> ContinuityCoverage 
   continuity_covers(continuity: envelope.continuity, through: range_end(range: envelope.chunk.range))
 }
 
+// Persistence evidence is MITIGATABLE at this consumer boundary. This fold
+// checks supplied receipt binding; it does not prove that a store was contacted.
+// The carrier counterexample and next-rung trigger belong to
+// gunbc.fleet_observation_capture_chunk committed_chunk: the commit-producing
+// realization must perform CAS without accepting a caller-authored outcome.
+// Production replay consumes supplied continuity and never manufactures it.
 fn pre_os_commit_binds_chunk(envelope: ObservationEnvelope) -> Bool {
   match commit_attests_chunk(standing: envelope.local_commit, chunk: envelope.chunk) {
     CommitAttestsThisChunk => true

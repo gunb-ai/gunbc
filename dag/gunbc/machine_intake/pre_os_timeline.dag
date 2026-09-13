@@ -211,9 +211,12 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
 }
 
 // The published view is derived, never a second handwritten ledger authority.
+// Expose the carrier boundary beside retention so a supplied commit standing
+// cannot be published as structural proof of durable storage.
 fn pre_os_timeline_view(rows: List<PreOsTimelineRow>) -> String {
   join(map(rows, row => concat(to_string(row.observation.envelope), "\nassociation=", to_string(row.association),
     "\nretention=", to_string(row.retention),
+    "\npersistence_evidence=mitigatable; supplied commit and continuity do not structurally prove stored bytes",
     "\nsel=", to_string(row.sel), "\ncycles=", to_string(row.cycles), "\nboot=", to_string(row.boot), "\ntraining=", to_string(row.training),
     "\nconfiguration=", to_string(row.configuration), "\npresent_admission=", to_string(row.present_admission))), "\n\n")
 }
