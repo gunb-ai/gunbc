@@ -31,7 +31,6 @@ test fn w_four_real_captures_retain_statement_inventory_and_missing_receipts() -
             && reading.script_exit_footer_present == (contains(spec.path as String, "3ds-mixture") || contains(spec.path as String, "socket0-reseated"))
             && match reading.firmware { TrainingRefusedByFirmware { statement, locus: _ } => contains(statement as String, spec.completion as String) _ => false }
             && match reading.inventory { ObservationEstablished { observed: configuration } => configuration == reading.spec.configuration _ => false }
-            && match reading.continuous_collection { ObservationRefused { cause: _ } => true _ => false }
         }
       })
   }

@@ -70,7 +70,6 @@ type PreOsArchiveReading {
   banner_present: Bool
   script_exit_footer_present: Bool
   inventory: ObservationAttempt<MemoryConfiguration, NonEmptyStr>
-  continuous_collection: ObservationAttempt<Bool, NonEmptyStr>
 }
 
 fn pre_os_archive_inventory_question(spec: PreOsArchiveSpec) -> PreOsInventoryQuestion {
@@ -88,7 +87,6 @@ fn pre_os_archive_classify(spec: PreOsArchiveSpec, payload: String) -> PreOsArch
   PreOsArchiveReading { spec: spec, firmware: firmware_console_report(lines: split(s: payload, delimiter: "\n")),
     banner_present: pre_os_has_banner(text: payload),
     script_exit_footer_present: contains(payload, "[COMMAND_EXIT_CODE=\"0\"]"), inventory: inventory,
-    continuous_collection: ObservationRefused { cause: "archive has no independent live-client, SEL watermark and flush receipts; wrapper lifetime is not evidence" },
   }
 }
 
@@ -150,8 +148,14 @@ func replay_pre_os_selection_archive() -> ObservationAttempt<PreOsFirmwareSelect
   }
 }
 
+// Archive replay has no acquisition receipts to assess. The frontier is the
+// independently observed live-client, source-cursor and persistence receipts
+// supplied to pre_os_machine_timeline by machine-scoped collection. A script
+// footer or elapsed wrapper lifetime cannot discharge that obligation.
+data pre_os_archive_collection_frontier: NonEmptyStr = "Historical archives carry no independent live-client, SEL watermark or flush receipts; continuous collection is unestablished and wrapper lifetime is not evidence."
+
 func replay_pre_os_archive_ledger() -> String {
-  concat("Historical archive observations; firmware-attempt association is unestablished.\n", to_string(replay_pre_os_archives()),
+  concat("Historical archive observations; firmware-attempt association is unestablished.\n", pre_os_archive_collection_frontier as String, "\n", to_string(replay_pre_os_archives()),
     "\nWithdrawn quiet-SEL control:\n", to_string(replay_pre_os_quiet_archive()),
     "\nHost-produced OS milestone; population scope is carried in the assessment:\n", to_string(replay_pre_os_host_archive()),
     "\nFirmware selection rerun; not an OS milestone:\n", to_string(replay_pre_os_selection_archive()))
