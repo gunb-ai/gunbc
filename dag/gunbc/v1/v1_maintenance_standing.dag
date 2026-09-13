@@ -734,10 +734,11 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 //               condition two is an outstanding obligation with a due date.
 //   Discharged  the follow-up landed and removed the rows. Both conditions Met; the boundary is
 //               spent.
-//   Failed      condition one was not met at the eligibility decision, or the follow-up closed
-//               unmerged, or it landed without deleting the rows, OR THE RUNWAY EXPIRED -- the
-//               roster was touched after the carrier landed while the rows were still present.
-//               Only Failed returns the rows to the refused class.
+//   Failed      carries WHICH of the four causes obtained, as `BoundaryFailureCause`:
+//               ConditionOneUnmetAtEligibility, FollowUpClosedUnmerged,
+//               FollowUpLandedWithoutDeletingRows, or RunwayExpired (the roster was touched after
+//               the carrier landed while the rows were still present). Any of them returns the
+//               rows to the refused class; they differ in what to do about it.
 //
 // SO Pending IS BOUNDED AND NOT MERELY UNFAILED. Without the runway a deletion PR left open
 // forever would hold the admission forever, which is the permanent admission this boundary
@@ -754,11 +755,33 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 // one -- the gunbc#11214 specimen, Eligible. The gunbc#10940 and gunbc#11156 specimens carry
 // PredatesBoundary and are in no state at all. So this lifecycle has never completed a traversal,
 // which is the same fact as prescribes-rather-than-adjudicates said in the vocabulary the row owns.
+// WHY Failed CARRIES ITS CAUSE. The runway change widened this arm to FOUR materially different
+// situations, and a bare arm cannot say which obtained -- so the distinction would live only in
+// prose a reader must parse, which is the defect this row has now fixed twice elsewhere
+// (`CarrierStanding` replacing an empty-string sentinel, `BoundarySpecimenStanding` keeping "not
+// in the machine" out of the machine). §3 calls one name covering materially different meanings a
+// MEANING FORK, and these four differ in remedy and in blame:
+//
+//   ConditionOneUnmetAtEligibility     the follow-up was authored too late; nothing went wrong
+//                                      mid-flight, the admission was never eligible
+//   FollowUpClosedUnmerged             the promise was abandoned; someone must author a new one
+//   FollowUpLandedWithoutDeletingRows  the follow-up was wrong; a corrected deletion is owed
+//   RunwayExpired                      THE ONLY CAUSE THAT FIRES WHILE EVERYONE BEHAVED CORRECTLY
+//                                      up to that point -- the deletion simply did not land before
+//                                      the roster's next touch. Pooling it with a promise that was
+//                                      never authored would assign the same blame to two opposite
+//                                      situations.
+type BoundaryFailureCause =
+    ConditionOneUnmetAtEligibility
+  | FollowUpClosedUnmerged
+  | FollowUpLandedWithoutDeletingRows
+  | RunwayExpired
+
 type TransitionAdmissionLifecycleState =
     Eligible
   | Pending
   | Discharged
-  | Failed
+  | Failed { cause: BoundaryFailureCause }
 
 // AND WHETHER A SPECIMEN IS IN THE LIFECYCLE AT ALL IS A DIFFERENT QUESTION FROM WHICH STATE IT IS
 // IN. Adding an `OutsideLifecycle` arm to the states above would put "not in the machine" inside the
@@ -872,7 +895,7 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
 
   pending_runway: OwedByRosterNextTouch,
 
-  on_condition_failure: "FAILING EITHER CONDITION LEAVES THE ROWS IN THE REFUSED CLASS -- where FAILING means the `Failed` arm of `TransitionAdmissionLifecycleState` and never `Eligible` or `Pending`, because a condition that is not yet due has not been failed. This boundary does not weaken NewEscapeHatchOrAdmissionRow; it states which shape the class was never about, and a shape that does not meet both conditions is not that shape. PERMANENT admissions stay refused, unconditionally and without a boundary to argue about." as NonEmptyStr,
+  on_condition_failure: "FAILING EITHER CONDITION LEAVES THE ROWS IN THE REFUSED CLASS -- where FAILING means the `Failed` arm of `TransitionAdmissionLifecycleState` -- which carries WHICH of the four `BoundaryFailureCause` arms obtained -- and never `Eligible` or `Pending`, because a condition that is not yet due has not been failed. This boundary does not weaken NewEscapeHatchOrAdmissionRow; it states which shape the class was never about, and a shape that does not meet both conditions is not that shape. PERMANENT admissions stay refused, unconditionally and without a boundary to argue about." as NonEmptyStr,
 
   enforcement: "A PARTIAL CLIMB, SIZED FROM gunbc#11250'S OWN SOURCE RATHER THAN FROM ITS TITLE. #11250 checks ONE thing: that an applicable used row carries a deletion_follow_up declaration, as NotAuthored or PullRequest(n). Its own source leaves forge state -- open, closed unmerged, merged with the row still present -- to the landing tally. So when it lands it mechanizes the MISSING-DECLARATION case and nothing else: it does not establish that the number names the right deletion PR, that the follow-up was authored before enqueue, that it lands, that it deletes the intended rows, or that the classification is correct. All of those stay with the merger's tally check and with reviewers. Until #11250 lands, the tally check applies the adjudication in full. SO NOTHING MECHANIZES CONDITION ONE, BEFORE OR AFTER #11250 LANDS, and no established practice underwrites it either -- every measured specimen fails it as chronology. A condition with neither a mechanism nor a precedent is carried by the tally and by reviewers, and nothing absorbs a lapse; that is the honest size of this boundary today and is why it prescribes rather than codifies. Enforcement is therefore a PERSON today and a mechanism when #11250 lands -- said plainly rather than described as automatic, because a boundary whose enforcement is overstated is how a condition becomes ceremony." as NonEmptyStr,
 
