@@ -1177,6 +1177,10 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
+    // Deletion obligation: gunbc.parsed_import_statement_bridge_seed_growth
+    // parsed_import_statement_bridge_seed_growth_justification, enrolled by
+    // gunbc.seed_growth_admission. This exception-only arm is deleted, never migrated,
+    // when the native context fold supplies the acquired inventory to the census.
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.floor_discovery_source_inventory" },
       form: FreeCall,
