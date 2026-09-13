@@ -4,6 +4,7 @@ import std.types { Bool, Int, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.std.decl_index { DeclFact, ItemKind, TypeItem, decl_facts }
+import v2.std.algebra { filter, list_snoc_item }
 import gunbc.bare_name_fork_lens { BareNameDeclaration, bare_name_declarations_of }
 import std.materialization_ladder { string_list_contains }
 
