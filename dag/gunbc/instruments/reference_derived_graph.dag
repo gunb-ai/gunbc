@@ -165,7 +165,19 @@ fn main() -> ProcessExit {
         reason: "tools.reference_derived_graph.report refused over the fixture source root"
       )
     Accepted { value: r, diagnostics: _ } =>
-      if diffs_include_import_only(
+      if !(diffs_include_reference_only(
+        diffs: r.diffs,
+        path: consumer_reference_only_path,
+        target: provider_module
+      ) || diffs_include_shared(
+        diffs: r.diffs,
+        path: consumer_reference_only_path,
+        target: provider_module
+      )) {
+        exit_failure(
+          reason: "positive control absent: the reference-only fixture produced no reference-derived edge, so every negative check below would pass on an empty edge set"
+        )
+      } else if diffs_include_import_only(
         diffs: r.diffs,
         path: consumer_reference_only_path,
         target: provider_module

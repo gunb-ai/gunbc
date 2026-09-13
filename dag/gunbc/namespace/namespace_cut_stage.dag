@@ -163,15 +163,12 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
   ReferenceGraphInstrumentDelivered,
 ]
 
-// Empty of rehearsal delivery: XL-2's instrument is not yet delivered. XL-4's row lands when
-// the reference-graph instrument is discriminated.
-data held_stage_delivery_receipts: List<StageDeliveryReceipt> = [
-  StageDeliveryReceipt {
-    kind: ReferenceGraphInstrumentDelivered,
-    producer: "tools.reference_derived_graph.report" as NonEmptyStr,
-    discriminated_by: "v2.test.claim.reference_derived_graph_witness.reference_only_module_has_edge_and_unused_import_does_not" as NonEmptyStr,
-  }
-]
+// Empty: neither instrument is delivered. XL-4's reference-graph instrument exists, but on the
+// production ingest route it emits no reference-derived edge for any fixture, so it has no accepted
+// positive control there (review 64925 on gunbc#11202). A receipt discriminated only over hand-built
+// roots would inflate the rung (DESIGN 4b(1)). The row lands when tools.reference_derived_graph main
+// exits success on the production route, which requires its positive control.
+data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
   required_stage_delivery_evidence_kinds
