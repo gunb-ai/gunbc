@@ -18,7 +18,7 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   SellerArmLinuxOffer,
-  CurrentlyAcceptingCustomers,
+  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -135,7 +135,5 @@ data circleci_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   silicon: ArmSiliconUnread,
   capacity: CapacityChannelUnread,
   list_price: ArmCreditsPerMinute { per_minute: credits_per_minute(count: 13) },
-  standing: CurrentlyAcceptingCustomers {
-    status_surface: "circleci.com/pricing Free plan includes Arm Docker resource classes (read 2026-09-13).",
-  },
+  standing: OfferStandingUnread,
 }

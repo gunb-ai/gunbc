@@ -161,7 +161,12 @@ fn expected_not_accepting_identities() -> List<DeclarationRef> {
 }
 
 fn expected_unread_standing_identities() -> List<DeclarationRef> {
-  [semaphore_provider_identity, google_cloud_build_provider_identity]
+  [
+    depot_provider_identity,
+    circleci_provider_identity,
+    semaphore_provider_identity,
+    google_cloud_build_provider_identity,
+  ]
 }
 
 test fn every_expected_seller_is_surveyed() -> Bool {
@@ -207,7 +212,7 @@ test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool {
     )
 }
 
-test fn unread_standing_join_is_semaphore_and_cloud_build() -> Bool {
+test fn unread_standing_join_is_price_page_or_sku_unread() -> Bool {
   all(expected_unread_standing_identities(), p => unread_standing_includes_provider(provider: p))
     && all(
       unread_standing_arm_linux_offers(),
