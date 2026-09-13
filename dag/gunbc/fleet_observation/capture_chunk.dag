@@ -94,21 +94,34 @@ fn chunk_occurrence_eq(a: ChunkOccurrence, b: ChunkOccurrence) -> Bool {
   && (a.receive_sequence == b.receive_sequence)
 }
 
-// chunk_occurrence_eq IS CONSUMED AND ITS FRONTIER IS CLOSED. The interpretation lane's replay calls
-// it to decide whether two received chunks are one occurrence or two, and carries enrolled regression
-// witnesses for equal-payload-distinct-occurrences and for repeated delivery. That is the exact site
-// where deduplicating on digest would resurrect the seven-identical-captures defect, so the law is
-// enforced where it matters rather than only stated here.
+// DECLARED FRONTIER FOR chunk_occurrence_eq, AND IT IS OPEN, NOT CLOSED.
 //
-// relate_chunks USED TO SIT HERE AND IS DELETED. It folded occurrence-then-payload into a four-armed
-// ChunkRelation, and it read well, but it had no production caller: the consumer reached past it to
-// chunk_occurrence_eq and composed the payload comparison itself. An earlier version of this comment
-// claimed both were consumed by that replay -- that was wrong, and the consuming lane said so rather
-// than letting it stand. A declaration is red when nothing calls it REGARDLESS of how well modelled it
-// is (DESIGN section 3c), and a frontier naming a consumer that does not consume it is worse than no
-// frontier, because it reads as closed.
-
-
+// AN EARLIER VERSION OF THIS ANNOTATION SAID THE FRONTIER WAS CLOSED, because the interpretation lane
+// reported consuming it in its replay. That lane does -- on ITS branch. In THIS tree the only callers
+// are the definition, this annotation, and the witnesses, so "closed" described a tree that does not
+// exist yet. It is
+// gunbc.recurring_failure_mode.unlanded_citation_indistinguishable_at_the_citing_end arriving through
+// a peer's MESSAGE rather than through a symbol: "it is consumed" becomes true the moment a lane
+// authors the caller, and is heard as "the tree carries it". The rule that survives is to say consumed
+// WHERE. The previous annotation even carried the warning that a frontier naming a non-consuming
+// consumer reads as closed, three lines from the claim it was describing -- which is the strongest
+// evidence available that the warning has to be mechanical rather than remembered.
+//
+// CONSUMER: the interpretation lane's replay, which decides whether two received chunks are one
+// occurrence or two -- the site where deduplicating on digest would resurrect the
+// seven-identical-captures defect. TRIGGER, AS THE CAPABILITY: that replay landing ON MAIN with
+// idempotent application BY OCCURRENCE, sufficient that two chunks carrying equal payloads at
+// different receive sequences are retained as two events rather than collapsed into one.
+//
+// THE SAME FOR continuity_from_committed_chunks, which also has no production caller in this closure:
+// the value it produces is what fills ObservationEnvelope.continuity, and envelopes are built by the
+// collector realization, which is not in this slice. What the seal establishes TODAY, and it is worth
+// separating from the frontier: ContinuityEstablished carries a sole_constructor ContinuityReach
+// minted at exactly one site, inside that derivation, so an envelope's continuity cannot be authored
+// by a caller even while no caller exists. TRIGGER: that realization deriving each envelope's
+// continuity from its own committed run, sufficient that no envelope reaches a consumer carrying a
+// continuity its bytes do not support.
+//
 // WHY A CHUNK COULD NOT BE DURABLY KEPT, each an explicit typed outcome with its own remedy. None
 // of these may silently change an observation's semantic result: a collector that cannot keep its
 // bytes reports a coverage gap, it does not report the source as quiet.
@@ -447,7 +460,6 @@ fn continuity_walk(
       }
   }
 }
-
 
 // WHETHER CONTINUITY ANSWERS FOR A RANGE, AS ONE TYPED RESULT rather than two Bool projections a
 // caller must re-match to recover the cause it already had. The earlier shape asked
