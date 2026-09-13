@@ -70,8 +70,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // type rather than in a reader's memory; the standing of everything here is "witness input, read
 // obligation outstanding", and the obligation is named. Nobody may cite this file as evidence that
 // Hetzner's execution path is located where this file puts it - the whole point of the file is that
-// the corpus has not read those paths for three of four providers, and it has not properly read
-// them for the fourth either.
+// the corpus has not read those paths for three of four providers.
+//
+// THE FOURTH IS A DIFFERENT STATE AND THE DIFFERENCE MATTERS, because writing it down wrongly is
+// how somebody is sent to do a read that has already been done. A Hetzner read EXISTS and is owned:
+// six dated published-source readings, one of them a NEGATIVE reading recording what the vendor's
+// technical-and-organizational-measures page does not say. It is UNLANDED rather than missing, and
+// deliberately so - it is sequenced behind a carrier change that widens ProviderPathUnread with a
+// consulted slot, so that an unread path can cite the documents that were consulted and failed to
+// answer. Carrier first, census conforms. This witness therefore does not reach for those readings
+// because they are not in this tree yet, not because nobody has done the work.
 //
 // WHY THE ONE MODELED ROUTE IS ALSO THE DEAREST. Scaleway is priced lowest and Hetzner highest, so
 // the surviving offer is the one that loses on every economic axis. If compliance were a conjunct
@@ -110,7 +118,7 @@ data spill_google_service: NonEmptyStr = "Google Compute Engine N2 on-demand, na
 data spill_google_region: NonEmptyStr = "GCP region as named by the spill roster, unread."
 
 // ── THE WITNESS'S DECLARED INPUTS, EACH CARRYING ITS OWN STANDING ─────────────────────────────
-data spill_witness_read_obligation: NonEmptyStr = "OUTSTANDING READ. Nobody in this corpus has read this provider's data-path closure - execution, durable storage, backups, logs, telemetry, control plane, support access, administrative access and spill - nor enumerated its downstream providers. Until that read lands and is cited to the provider's own published representations, every path standing in this witness is an INPUT TO A TEST and is not a fact about the provider."
+data spill_witness_read_obligation: NonEmptyStr = "OUTSTANDING IN THIS TREE. No route facts in this tree state this provider's data-path closure - execution, durable storage, backups, logs, telemetry, control plane, support access, administrative access and spill - nor enumerate its downstream providers. For one of the four providers such a read has been performed and is awaiting a carrier change before it lands; for the other three none exists. Either way it is not HERE, so until a real reading lands and is cited to the provider's own published representations, every path standing in this witness is an INPUT TO A TEST and is not a fact about any provider."
 data spill_witness_operator: NonEmptyStr = "The operating entity a located path names. Witness input; see spill_witness_read_obligation."
 data spill_witness_jurisdiction: NonEmptyStr = "The jurisdiction a located path names. Witness input; see spill_witness_read_obligation."
 data spill_witness_no_spill_path: NonEmptyStr = "A spill path declared absent. Witness input; see spill_witness_read_obligation."
