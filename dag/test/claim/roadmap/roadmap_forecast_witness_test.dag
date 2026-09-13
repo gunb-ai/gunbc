@@ -66,6 +66,7 @@ import gunbc.roadmap_forecast {
   ScheduleForecast,
   ScheduleForecastKnown,
   ScheduleForecastRefused,
+  ForecastRefusal,
   ForecastGraphEmpty,
   DependencyCycle,
   NodeUnsized,
@@ -160,7 +161,10 @@ fn fixture_observations() -> List<CycleTimeObservation> {
 // stub, so observation_for_link reaches its sizing check with no assignment and refuses every
 // remaining link as HistoryNodeUnsized. Asserting that refusal is not bookkeeping: it is the
 // discriminating control that the loss is TOTAL and LOUD rather than partial and quiet, and it
-// goes red the day a link joins again -- which is this drop retiring.
+// goes red the day a link joins again. That is INVALIDATION of a stub-era expectation, which
+// obliges reassessing this witness; it is NOT the restoration trigger firing. One link joining
+// establishes neither derivation from the task nor end-to-end calibration, and the drop retires
+// only on its own stated trigger.
 //
 // TOTAL IS AN IDENTITY JOIN AND THE POPULATION IS READ, NOT TRANSCRIBED. An earlier form of this
 // witness asserted count(builds) == 10 and merely that SOME refusal existed and every refusal was
@@ -511,17 +515,56 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 //
 // What is asserted now: the refusal names EVERY node of the live active graph and NO node outside
 // it, joined by identity in both directions, and the result is a refusal at all -- so there is no
-// forecast, hence no surviving population to shorten. It goes red the day the deriver answers,
-// which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring.
-// THE EXPECTED POPULATION IS READ OFF THE SAME PLAN THE FORECAST IS HANDED, not derived a second
-// time from the public carrier. gunbc#10987 made the plan a parameter precisely because a second
-// read answers about the PUBLIC roadmap while the nodes come from the caller's, and a control that
-// re-derived its own expectation would reintroduce exactly that split one layer up. The witness
-// therefore folds the projection ONCE and hands that value to both sides, so the two populations
-// are the same value rather than two reads that happen to agree -- a plan of someone else's would
-// move both together. Binding it twice also folded the authority projection twice inside one claim
-// body, which is the authored duplication DESIGN 2 names rather than an unavoidable recurrence.
-// THE IDENTITY JOIN IS MAP-BACKED SO IT DOES NOT COST n^2. Both directions and the count are
+// forecast, hence no surviving population to shorten. It goes red once the deriver answers for any
+// active node -- INVALIDATION of a stub-era expectation, obliging a reassessment of this witness.
+// That is NOT the same event as gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring: a
+// partial deriver can size one node while the forecast stays unavailable, and a constant answer can
+// red this witness while failing the trigger's discrimination requirement outright. The drop
+// retires on its trigger and on nothing else.
+// WHAT THE SINGLE FOLD ACTUALLY SHARES IS THE ACCEPTED SET, AND NOTHING MORE. Binding the
+// projection once and passing it to both sides removes a second derivation of the same value --
+// the authored duplication DESIGN 2 names, since both folds sat inside one claim body. It does NOT
+// make the two populations one value: active_node_ids_for_plan and roadmap_schedule_forecast_over
+// both match RoadmapAuthorityProjected { doc: _, accepted }, DISCARD the doc, and select from
+// declared_roadmap_nodes() -- the PUBLIC authority -- using that accepted set. Two projected plans
+// with identical accepted ids and different docs are indistinguishable to both. So the scope of
+// this witness is the public declared population selected by the captured accepted set, which is
+// what it should be read as asserting. Threading a caller-supplied population through the forecast
+// and the oracle together is a real rewire and belongs to whoever owns that seam, not here.
+// THE COMPLETE REPORTED UNSIZED POPULATION, GATHERED ACROSS EVERY ARM. An earlier form asked
+// `any(refusals, ...)` whether SOME NodeUnsized payload equalled the expected population, which is
+// a weaker sentence than the one the claim makes: refusals [NodeUnsized{A,B}, NodeUnsized{X}] with
+// expected [A,B] satisfies it while X is also reported unsized, and a duplicated correct payload
+// escapes the count check for the same reason -- the check never sees the other payload. Gathering
+// first makes the count and both memberships range over everything reported, so an extra payload
+// and a repeated one both red. Other refusal CLASSES may legitimately coexist; this says nothing
+// about them, only that the unsized population is complete.
+fn reported_unsized_ids(refusals: List<ForecastRefusal>) -> List<RoadmapNodeId> {
+  fold(refusals, init: [], f: fn(acc, refusal) {
+    match refusal {
+      NodeUnsized { nodes } => concat(acc, nodes)
+      NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => acc
+      ForecastGraphEmpty => acc
+      DependencyCycle { nodes: _ } => acc
+      DependencyEndpointUnknown { nodes: _ } => acc
+      CycleTimeObservationNonPositive { nodes: _ } => acc
+      WorkerConcurrencyCapInvalid { declared_cap: _ } => acc
+      CalibrationHistoryRefused { refusals: _ } => acc
+      ForecastRoadmapAuthorityRefused { detail: _ } => acc
+      ForecastBuildRefused { node: _ } => acc
+      SizingAssignmentRefused { refusals: _ } => acc
+    }
+  })
+}
+
+// THE MEMBERSHIP TESTS ARE MAP-BACKED; THE CONSTRUCTIONS ARE NOT FREE. Each lookup is a primitive
+// call rather than a scan, which is what removes the nested all/any pair. It does NOT make the join
+// costless: map_insert returns a NEW map, so folding p ids into one retains worst-case host work
+// proportional to p^2 inside that construction, and this witness builds two -- one per side, of the
+// reported and expected populations respectively. That copying is a cost-shape defect in the
+// PRIMITIVE, owned there and not repaired by this PR; a bulk constructor is the root fix. Nothing
+// here prices it against a population, because the figures available to this branch were measured
+// on other compositions. Both directions and the count are
 // unchanged -- this is the same proposition, not a weaker one: every expected id is reported, every
 // reported id was expected, and the counts agree, so a dropped node and an extra node both still
 // red. Each side's set is built ONCE here rather than inside a lambda, because rebuilding it per
@@ -553,25 +596,32 @@ fn active_node_ids_for_plan(plan: RoadmapAuthorityProjection) -> List<RoadmapNod
   }
 }
 
+// THE CONTROL FOR THE GATHER ITSELF, because the repair above is only as good as its discriminator.
+// The positive half is the shape the live witness expects; the negative half is the exact escape the
+// old `any` form admitted -- a second NodeUnsized arm naming a node outside the expected population,
+// which the first arm used to hide. Both halves run on fixtures, so this reds on the logic rather
+// than on whatever the live graph happens to contain today.
+test fn witness_an_extra_unsized_payload_is_not_hidden_by_a_correct_one() -> Bool {
+  let a = fixture_node(id: "gather-a").node
+  let b = fixture_node(id: "gather-b").node
+  let x = fixture_node(id: "gather-x").node
+  let expected = [a, b]
+  let exact = [NodeUnsized { nodes: [a, b] }]
+  let with_extra = [NodeUnsized { nodes: [a, b] }, NodeUnsized { nodes: [x] }]
+  let duplicated = [NodeUnsized { nodes: [a, b] }, NodeUnsized { nodes: [a] }]
+  node_id_sets_agree(reported: reported_unsized_ids(refusals: exact), expected: expected)
+    && !node_id_sets_agree(reported: reported_unsized_ids(refusals: with_extra), expected: expected)
+    && !node_id_sets_agree(reported: reported_unsized_ids(refusals: duplicated), expected: expected)
+}
+
 test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
   let plan = roadmap_authority_projection()
   let expected = active_node_ids_for_plan(plan: plan)
   count(expected) > 0
     && match roadmap_schedule_forecast_over(plan: plan, assumptions: assumptions(), anchor: anchor()) {
       ScheduleForecastKnown { forecast: _ } => false
-      ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-        NodeUnsized { nodes } => node_id_sets_agree(reported: nodes, expected: expected)
-        NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
-        ForecastGraphEmpty => false
-        DependencyCycle { nodes: _ } => false
-        DependencyEndpointUnknown { nodes: _ } => false
-        CycleTimeObservationNonPositive { nodes: _ } => false
-        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
-        CalibrationHistoryRefused { refusals: _ } => false
-        ForecastRoadmapAuthorityRefused { detail: _ } => false
-        ForecastBuildRefused { node: _ } => false
-        SizingAssignmentRefused { refusals: _ } => false
-      })
+      ScheduleForecastRefused { refusals } =>
+        node_id_sets_agree(reported: reported_unsized_ids(refusals: refusals), expected: expected)
     }
 }
 

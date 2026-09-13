@@ -89,8 +89,11 @@ test fn witness_subject_without_an_exit_criterion_is_absent_not_empty() -> Bool 
 }
 
 // THE STUB REFUSES AND NAMES ITS GAP. This is the discriminating RED for "the stub does not lie":
-// it goes red the moment derive_task_sizing starts answering through SizingDerived, which is
-// exactly when the declared drop gunbc.rung_drop.roadmap_sizing_authored_to_derived retires.
+// it goes red the moment derive_task_sizing answers through SizingDerived at all. That is
+// INVALIDATION of a stub-era expectation and obliges reassessing this witness; it is NOT the
+// declared drop retiring. A function returning a constant cell reds this and still fails
+// gunbc.rung_drop.roadmap_sizing_authored_to_derived's trigger, which requires derivation from the
+// task, a discriminating control over materially different subjects, and end-to-end calibration.
 test fn witness_stub_deriver_refuses_rather_than_fabricating_a_cell() -> Bool {
   match derive_task_sizing(subject: node_sizing_subject(rn: fixture_node())) {
     SizingDerived { subject: _, sizing: _ } => false

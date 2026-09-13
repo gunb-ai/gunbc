@@ -49,7 +49,9 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // them meanwhile is one control that IS authorable and does the load-bearing job:
 // test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub
 // executes the live authority and refuses -- it goes red the day the graph renders a forecast,
-// which is either this drop retiring or a regression that would otherwise be silent. The history
+// which obliges a reassessment: that is either progress toward this drop's trigger or a regression
+// that would otherwise be silent, and the two are told apart by the trigger and not by the red. A
+// forecast rendering is not by itself the restoration condition stated below. The history
 // join keeps its own live control for the same reason:
 // test.claim.roadmap_forecast_witness.witness_cited_acceptance_pr_history_refuses_every_link_as_unsized
 // asserts that EVERY cited acceptance/pull link refuses as HistoryNodeUnsized, so the loss is
