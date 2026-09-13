@@ -1,0 +1,189 @@
+module test.claim.fabric.common_paper_csa_agreement_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
+import product.fabric.provider_route {
+  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  DownstreamProviderPopulation, NoDownstreamProviders,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
+  ProviderUseAdmitted, ProviderUseDenied, ProviderUseRefusal,
+  ProviderRouteUnclassified, ProviderRouteFactsIncomplete, DownstreamProviderUnassessed,
+  PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
+  RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
+  DispositionStanding, DispositionCleared, admit_provider_use,
+}
+import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1, common_paper_csa_v2_1_ref }
+import gunbc.upstream_document_carriage { UpstreamFactCarriage, upstream_fact_carriage, carriage_permits_facts }
+
+// THE PINNED CONTRACT STANDARD, CONSUMED BY THE GATE THAT NEEDS IT. extdeps.common_paper.
+// cloud_service_agreement pins the Common Paper CSA Standard Terms v2.1 as the one cited
+// agreement authority; product.fabric.provider_admission carries the sanction field that names an
+// agreement and the refusal arm for a scope that presents another. This witness joins the two BY
+// EXECUTION: a roster whose one sanction requires the pinned declaration, a scope that presents
+// it (admitted, and the permit's evidence carries that same reference), and a scope that presents
+// a different agreement authority (RequiredAgreementAuthorityAbsent, locating the pinned
+// declaration as the one the sanction accepts). Both arms run through admit_provider_use with
+// every other input held identical, so the only thing that differs between green and red is the
+// agreement the scope cites - which is what makes the red discriminating rather than incidental.
+//
+// The inputs are built here rather than borrowed from test.claim.fabric.provider_use_fixture for
+// the reason that fixture states itself: a convenience fixture must not be able to weaken the
+// discriminating reds of the gate it is a convenience for.
+
+data acme: NonEmptyStr = "acme"
+data contract_terms: NonEmptyStr = "contract-terms"
+data cx: NonEmptyStr = "cx"
+data decision_receipt: NonEmptyStr = "decision-receipt"
+data evidence: NonEmptyStr = "evidence"
+data export_cleared: NonEmptyStr = "export-cleared"
+data jurisdiction_one: NonEmptyStr = "jurisdiction-one"
+data no_spill_configured: NonEmptyStr = "no-spill-configured"
+data operator: NonEmptyStr = "operator"
+data ordinary_build_source: NonEmptyStr = "ordinary-build-source"
+data posture_authority: NonEmptyStr = "posture-authority"
+data prohibited_use_cleared: NonEmptyStr = "prohibited-use-cleared"
+data provider_declares_none: NonEmptyStr = "provider-declares-none"
+data region_one: NonEmptyStr = "region-one"
+data sanctions_cleared: NonEmptyStr = "sanctions-cleared"
+data us_business_pilot: NonEmptyStr = "us-business-pilot"
+
+// THE OTHER AGREEMENT. A real declaration in this module, so the red presents a resolvable
+// reference that is simply not the one the sanction requires - not a malformed or missing one.
+data bespoke_pilot_agreement: NonEmptyStr = "bespoke-pilot-agreement"
+
+fn here(decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.common_paper_csa_agreement_witness", decl_name: decl_name)
+}
+
+fn hash_of(seed: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: seed))
+}
+
+fn posture(seed: String) -> CompliancePostureRevision {
+  CompliancePostureRevision { authority: here(decl_name: "posture_authority"), revision: hash_of(seed: seed) }
+}
+
+fn route() -> ProviderRoute {
+  ProviderRoute {
+    provider: here(decl_name: "acme"),
+    service: here(decl_name: "cx"),
+    region: here(decl_name: "region_one"),
+  }
+}
+
+fn located() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: here(decl_name: "operator"),
+    jurisdiction: here(decl_name: "jurisdiction_one"),
+    evidence: here(decl_name: "evidence"),
+  }
+}
+
+fn closure_all_located() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(),
+    durable_storage: located(),
+    backups: located(),
+    logs: located(),
+    telemetry: located(),
+    control_plane: located(),
+    support_access: located(),
+    administrative_access: located(),
+    spill: ProviderPathAbsent { evidence: here(decl_name: "no_spill_configured") },
+  }
+}
+
+fn route_facts() -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route(),
+    contract_terms: here(decl_name: "contract_terms"),
+    data_paths: closure_all_located(),
+    downstream: NoDownstreamProviders { evidence: here(decl_name: "provider_declares_none") },
+    observed_at: "2026-09-12T00:00:00Z",
+    facts_revision: hash_of(seed: "facts-r1"),
+  }
+}
+
+fn roster_requiring_common_paper_csa() -> List<RouteScopeSanction> {
+  [
+    RouteScopeSanction {
+      route: route(),
+      posture: posture(seed: "posture-r1"),
+      customer_profile: here(decl_name: "us_business_pilot"),
+      data_handling_profile: here(decl_name: "ordinary_build_source"),
+      requires_agreement: common_paper_csa_v2_1_ref,
+    },
+  ]
+}
+
+fn scope_presenting(agreement: DeclarationRef) -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: FabricIdentity { principal: "tenant-a", key: "demand-1" as DemandKey },
+    work: FabricIdentity { principal: "tenant-a", key: "work-1" as WorkKey },
+    customer_profile: here(decl_name: "us_business_pilot"),
+    data_handling_profile: here(decl_name: "ordinary_build_source"),
+    agreement: agreement,
+    prohibited_use_disposition: DispositionCleared { evidence: here(decl_name: "prohibited_use_cleared") },
+    sanctions_disposition: DispositionCleared { evidence: here(decl_name: "sanctions_cleared") },
+    export_disposition: DispositionCleared { evidence: here(decl_name: "export_cleared") },
+  }
+}
+
+fn decide(agreement: DeclarationRef) -> ProviderUseAdmission<NonEmptyStr> {
+  admit_provider_use(
+    roster: roster_requiring_common_paper_csa(),
+    facts: route_facts(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_presenting(agreement: agreement),
+    offer: FabricIdentity { principal: "tenant-a", key: "offer-1" as OfferKey },
+    decision_receipt: here(decl_name: "decision_receipt"),
+  )
+}
+
+fn accepted_of(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation } => [],
+    DownstreamProviderUnassessed { obligation } => [],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [],
+    DataHandlingUnsupported { cause } => [],
+    RequiredAgreementAuthorityAbsent { accepted } => accepted,
+    ProhibitedUseNotCleared { obligation } => [],
+    SanctionsNotCleared { obligation } => [],
+    ExportNotCleared { obligation } => [],
+  }
+}
+
+// GREEN: the scope presents the pinned standard, the sanction requires it, the permit carries it.
+test fn w_scope_presenting_common_paper_csa_v2_1_is_admitted() -> Bool {
+  match decide(agreement: common_paper_csa_v2_1_ref) {
+    ProviderUseAdmitted { permit } => declaration_ref_eq(a: permit.evidence.agreement, b: common_paper_csa_v2_1_ref),
+    ProviderUseDenied { decision, cause } => false,
+  }
+}
+
+// RED: the scope presents a different agreement authority than the sanction requires. The refusal
+// must be RequiredAgreementAuthorityAbsent - not a pass and not some other arm - and its accepted
+// list must be exactly the pinned standard, so the refusal locates what would have been admitted.
+test fn w_RED_scope_presenting_other_agreement_refuses_required_agreement_authority_absent() -> Bool {
+  match decide(agreement: here(decl_name: "bespoke_pilot_agreement")) {
+    ProviderUseAdmitted { permit } => false,
+    ProviderUseDenied { decision, cause } =>
+      count(accepted_of(c: cause)) == 1
+        && count(filter(accepted_of(c: cause), r => declaration_ref_eq(a: r, b: common_paper_csa_v2_1_ref))) == 1,
+  }
+}
+
+// THE RECORD ITSELF IS READ BY THE CARRIAGE RULE, not merely named by the reference above: whether
+// this repository may carry the document's facts at all is gunbc.upstream_document_carriage's
+// decision over the publication status the extdeps record declares (CC BY 4.0), and this is that
+// decision executing over that row.
+test fn w_common_paper_csa_v2_1_facts_may_be_carried() -> Bool {
+  carriage_permits_facts(carriage: upstream_fact_carriage(status: common_paper_csa_v2_1.publication_status))
+}
