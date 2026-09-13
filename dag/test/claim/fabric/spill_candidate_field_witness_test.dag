@@ -101,37 +101,60 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // no per-region DECLARATION to name, and DESIGN section 3 requires citing a symbol rather than a
 // position, so there is presently nothing upstream to point at. TRIGGER: a per-region declaration in
 // extdeps.cloud.hetzner, at which point this row is deleted and the citation moves upstream.
-data spill_hetzner_helsinki_region: NonEmptyStr = "Hetzner Cloud region Helsinki (hel1), named here because extdeps.cloud.hetzner models its regions as coproduct arms rather than as one declaration per region."
-data spill_hetzner_nuremberg_region: NonEmptyStr = "Hetzner Cloud region Nuremberg (nbg1), the sibling region used by the route-mismatch red below."
+data spill_hetzner_helsinki_region: NonEmptyStr = "spill-hetzner-region-helsinki"
+data spill_hetzner_nuremberg_region: NonEmptyStr = "spill-hetzner-region-nuremberg"
 
-// The three providers with no modeled route. These rows exist so the OFFERS can name the route they
-// claim to run on - an offer must state its route or the facts row could never be found to disagree
-// with it - and they deliberately carry NO facts. That is the population's actual state.
-data spill_scaleway_provider: NonEmptyStr = "Scaleway SAS. NO ROUTE FACTS ARE MODELED FOR THIS PROVIDER in this corpus: no data-path closure, no downstream population, no contract terms. This row names the provider so an offer can cite it; it establishes nothing about the provider."
-data spill_scaleway_service: NonEmptyStr = "Scaleway Elastic Metal / Instances AMP2 line, named for the offer identity only."
-data spill_scaleway_region: NonEmptyStr = "Scaleway region as named by the spill roster, unread."
-data spill_oracle_provider: NonEmptyStr = "Oracle Corporation (OCI). NO ROUTE FACTS ARE MODELED FOR THIS PROVIDER in this corpus."
-data spill_oracle_service: NonEmptyStr = "OCI Compute Ampere A1 shape, named for the offer identity only."
-data spill_oracle_region: NonEmptyStr = "OCI region as named by the spill roster, unread."
-data spill_google_provider: NonEmptyStr = "Google LLC (Google Cloud). NO ROUTE FACTS ARE MODELED FOR THIS PROVIDER in this corpus."
-data spill_google_service: NonEmptyStr = "Google Compute Engine N2 on-demand, named for the offer identity only."
-data spill_google_region: NonEmptyStr = "GCP region as named by the spill roster, unread."
+// THE THREE PROVIDERS WITH NO MODELED ROUTE. NO ROUTE FACTS ARE MODELED FOR ANY OF THESE THREE
+// ANYWHERE IN THIS CORPUS: no data-path closure, no downstream population, no contract terms. That
+// is the population's actual state and is the subject of this file, not an omission in it.
+//
+// The rows exist so the OFFERS can name the route they claim to run on - an offer must state its
+// route or a facts row could never be found to disagree with it - and they deliberately carry no
+// facts. Naming a provider here establishes nothing whatever about that provider.
+//
+// THE VALUES ARE IDENTIFIERS AND THE PROSE IS HERE, which is DESIGN section 4c rather than a style
+// choice: an ordinary String declaration whose purpose is commentary is misplaced data, mechanically
+// indistinguishable from program data, and "//" is the quarantine boundary the corpus settled on
+// after sweeping 215 such rows. The sibling rows this file sits beside - the live probe's
+// probe_customer_profile, the admission fixture's fixture_provider - are identifier-shaped for the
+// same reason.
+data spill_scaleway_provider: NonEmptyStr = "spill-provider-scaleway"
+data spill_scaleway_service: NonEmptyStr = "spill-service-scaleway-amp2"
+data spill_scaleway_region: NonEmptyStr = "spill-region-scaleway-unread"
+data spill_oracle_provider: NonEmptyStr = "spill-provider-oracle"
+data spill_oracle_service: NonEmptyStr = "spill-service-oci-ampere-a1"
+data spill_oracle_region: NonEmptyStr = "spill-region-oci-unread"
+data spill_google_provider: NonEmptyStr = "spill-provider-google"
+data spill_google_service: NonEmptyStr = "spill-service-gce-n2-on-demand"
+data spill_google_region: NonEmptyStr = "spill-region-gcp-unread"
 
-// ── THE WITNESS'S DECLARED INPUTS, EACH CARRYING ITS OWN STANDING ─────────────────────────────
-data spill_witness_read_obligation: NonEmptyStr = "OUTSTANDING IN THIS TREE. No route facts in this tree state this provider's data-path closure - execution, durable storage, backups, logs, telemetry, control plane, support access, administrative access and spill - nor enumerate its downstream providers. For one of the four providers such a read has been performed and is awaiting a carrier change before it lands; for the other three none exists. Either way it is not HERE, so until a real reading lands and is cited to the provider's own published representations, every path standing in this witness is an INPUT TO A TEST and is not a fact about any provider."
-data spill_witness_operator: NonEmptyStr = "The operating entity a located path names. Witness input; see spill_witness_read_obligation."
-data spill_witness_jurisdiction: NonEmptyStr = "The jurisdiction a located path names. Witness input; see spill_witness_read_obligation."
-data spill_witness_no_spill_path: NonEmptyStr = "A spill path declared absent. Witness input; see spill_witness_read_obligation."
-data spill_witness_no_downstream: NonEmptyStr = "A downstream provider population declared empty. Witness input; see spill_witness_read_obligation."
-data spill_witness_contract_terms: NonEmptyStr = "The agreement a route's facts row cites. Witness input; see spill_witness_read_obligation."
-data spill_witness_posture_authority: NonEmptyStr = "The authority whose compliance posture revision this witness evaluates against. Witness input; see spill_witness_read_obligation."
-data spill_witness_customer_profile: NonEmptyStr = "The customer profile the use is admitted for. Witness input."
-data spill_witness_data_handling_profile: NonEmptyStr = "The data-handling profile the use is admitted for. Witness input."
-data spill_witness_agreement: NonEmptyStr = "The agreement the sanction requires and the scope brings. Witness input."
-data spill_witness_prohibited_use_cleared: NonEmptyStr = "Prohibited-use program clearance. Witness input."
-data spill_witness_sanctions_cleared: NonEmptyStr = "Sanctions program clearance. Witness input."
-data spill_witness_export_cleared: NonEmptyStr = "Export program clearance. Witness input."
-data spill_witness_decision_receipt: NonEmptyStr = "The receipt the admission decision is recorded against. Witness input."
+// ── THE WITNESS'S DECLARED INPUTS ─────────────────────────────────────────────────────────────
+//
+// THE READ IS OUTSTANDING IN THIS TREE. No route facts here state any of these providers' data-path
+// closures - execution, durable storage, backups, logs, telemetry, control plane, support access,
+// administrative access and spill - nor enumerate their downstream providers. For one of the four
+// providers such a read has been performed and is awaiting a carrier change before it lands; for
+// the other three none exists. Either way it is not HERE, so until a real reading lands and is
+// cited to the provider's own published representations, every path standing built from these rows
+// is an INPUT TO A TEST and is not a fact about any provider.
+//
+// spill_witness_read_obligation is what every ProviderPathLocated arm below cites as its evidence,
+// so the obligation is not a note beside the data - it is the DeclarationRef the typed carrier
+// points at, reachable from any path standing this witness constructs.
+data spill_witness_read_obligation: NonEmptyStr = "spill-witness-read-obligation"
+data spill_witness_operator: NonEmptyStr = "spill-witness-operator"
+data spill_witness_jurisdiction: NonEmptyStr = "spill-witness-jurisdiction"
+data spill_witness_no_spill_path: NonEmptyStr = "spill-witness-no-spill-path"
+data spill_witness_no_downstream: NonEmptyStr = "spill-witness-no-downstream"
+data spill_witness_contract_terms: NonEmptyStr = "spill-witness-contract-terms"
+data spill_witness_posture_authority: NonEmptyStr = "spill-witness-posture-authority"
+data spill_witness_customer_profile: NonEmptyStr = "spill-witness-customer-profile"
+data spill_witness_data_handling_profile: NonEmptyStr = "spill-witness-data-handling-profile"
+data spill_witness_agreement: NonEmptyStr = "spill-witness-agreement"
+data spill_witness_prohibited_use_cleared: NonEmptyStr = "spill-witness-prohibited-use-cleared"
+data spill_witness_sanctions_cleared: NonEmptyStr = "spill-witness-sanctions-cleared"
+data spill_witness_export_cleared: NonEmptyStr = "spill-witness-export-cleared"
+data spill_witness_decision_receipt: NonEmptyStr = "spill-witness-decision-receipt"
 
 fn s_hash(seed: String) -> ContentHash {
   as_content_hash_structural(structural: content_hash_atom(value: seed))
