@@ -208,3 +208,28 @@ test fn cited_unique_but_non_coproduct_spelling_refuses_rather_than_diverging() 
     )
   )
 }
+
+// THE AMBIGUITY RED AT THE QUALIFIED GRAIN, which review 65678 found the claim family missing.
+// Removing the bare-uniqueness conjunct from the citation route was right; leaving ZERO as its only
+// refusal was not, because every non-zero multiplicity then reached an accept path that takes the
+// HEAD of the keyed read -- first match without a diagnostic, one grain down from the bare spelling
+// this module exists to fix.
+//
+// IT IS AUTHORABLE FROM THE REAL CORPUS, which is the part worth recording, because the obvious
+// reading is that one module cannot declare one name twice and therefore the state is
+// unconstructible. The collision is not within a module, it is BETWEEN two modules that share a
+// LOGICAL qualified name: logical_qualified_name_from_module strips a leading `v2.`, so
+// v2.std.integer and std.integer both answer to `std.integer`, and each declares Int. Eighteen such
+// names exist across twelve colliding module pairs, so this is a live state and not a fixture.
+test fn cited_ambiguous_qualified_name_refuses_rather_than_taking_the_head() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.integer",
+        decl_name: "Int",
+        field: WholeDeclaration
+      }
+    )
+  )
+}

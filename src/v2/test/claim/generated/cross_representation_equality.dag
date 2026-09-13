@@ -1,6 +1,9 @@
 module v2.test.generated.cross_representation_equality
 
-import v2.std.node_reflection { coproduct_arm_keys }
+import v2.std.node_reflection { coproduct_arm_keys_checked }
+
+// THE ROOTS THE REFLECTION READ CONSULTS, named so the population is re-derivable.
+data cross_representation_pool_roots: List<String> = ["dag", "src/v2"]
 
 
 fn reference_cross_representation_equality_anchor() -> GeneratedAnchorKey {
@@ -50,7 +53,13 @@ fn roster_covers_straddle(modeled: Symbol, native: Symbol) -> Bool {
 }
 
 fn roster_covers_genuine_straddle(modeled: Symbol, native: Symbol) -> Bool {
-  (length(xs: coproduct_arm_keys(type_name: modeled)) > 0)
+  (match coproduct_arm_keys_checked(
+     pool_roots: cross_representation_pool_roots,
+     type_name: modeled
+   ) {
+     Rejected { diagnostics: _ } => false
+     Accepted { value: arms, diagnostics: _ } => length(xs: arms) > 0
+   })
     && roster_covers_straddle(modeled: modeled, native: native)
 }
 

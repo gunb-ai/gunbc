@@ -231,6 +231,15 @@ fn coproduct_arm_keys_at(
 // scoped type identity is minted here. When PR #11264 lands its occurrence bindings, this is the
 // declaration whose parameter becomes that binding: the citation is refined in place, not forked.
 //
+// IT REFUSES MULTIPLICITY AT ITS OWN GRAIN TOO, which review 65678 caught me missing. Removing the
+// bare-uniqueness conjunct was right; leaving the ZERO case as the only refusal was not, because it
+// sent every non-zero multiplicity into the accept path, and that path takes the head of the keyed
+// read. Two declarations under ONE logical qualified name would then have been answered from
+// whichever row came first -- the same first-match-without-a-diagnostic shape this module exists to
+// close, moved one grain down from bare spelling to qualified name. This module's own seed-growth
+// receipt states the law that forbids it: two rows under one logical qualified name is an ambiguous
+// citation, and collapsing it silently RESOLVES one, which is a wrong answer and not a cost defect.
+//
 // IT ASKS ONLY WHETHER THE CITED NAME RESOLVES, and review 65649 is why that is worth stating. An
 // earlier revision also required the BARE spelling to be globally unique, and refused otherwise on
 // an invariant naming the bare host seam. That prohibition was true when the accept path still
@@ -253,6 +262,13 @@ fn resolve_type_node_at(pool_roots: List<String>, ref: DeclarationRef) -> Outcom
       d: scoped_type_reflection_diagnostic(
         type_name: type_name,
         invariant: ^cited_type_declaration_absent
+      )
+    )
+  } else if length(xs: scoped) > 1 {
+    outcome_rejected(
+      d: scoped_type_reflection_diagnostic(
+        type_name: type_name,
+        invariant: ^cited_type_qualified_name_ambiguous
       )
     )
   } else {
