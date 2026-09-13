@@ -48,6 +48,7 @@ import gunbc.fleet_asset_identity {
 //
 // The inline copies elsewhere in this tree - fleet_physical_inventory and fleet_fan_wiring - are
 // the same debt and not a precedent for adding more; they are a separate cleanup, not cover.
+import gunbc.fleet_physical_inventory { installed_cooler_containments }
 import gunbc.fleet_acquisition_census {
   altrad8ud_board_lot_identity,
   fleet_ledger_identities,
@@ -227,8 +228,9 @@ data srv_assembly_components: List<AssembledComponent> = [
 ]
 
 // Cooler-to-host containments for srv3/srv4 already live in gunbc.fleet_physical_inventory
-// installed_cooler_containments. They are not restated here.
-data srv_assembly_containments: List<PhysicalContainment> = [
+// installed_cooler_containments. CONSUME those same edges here rather than merely noting they
+// exist elsewhere, so the join actually checks the cooler rows against the authority owning them.
+data srv_assembly_containments: List<PhysicalContainment> = concat([
   ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv1 },
   ChassisContainsHost { chassis: chassis_srv2, host: operator_host_srv2 },
   ChassisContainsHost { chassis: chassis_srv3, host: operator_host_srv3 },
@@ -253,7 +255,7 @@ data srv_assembly_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv2, component: drive_srv2 },
   HostContainsComponent { host: operator_host_srv3, component: drive_srv3 },
   HostContainsComponent { host: operator_host_srv4, component: drive_srv4 },
-]
+], installed_cooler_containments)
 
 // ADMISSION IS A QUESTION FOR THE CENSUS, NOT A LIST TYPED HERE. This predicate used to answer it
 // by comparing against three hand-named lot identities, which is a second source for a fact
@@ -311,10 +313,6 @@ data srv_assembly_component_roster: List<PhysicalAssetIdentity> = [
   cooler_srv3, cooler_srv4,
 ]
 
-fn is_cooler_asset(id: PhysicalAssetIdentity) -> Bool {
-  physical_asset_identity_eq(a: id, b: cooler_srv3) || physical_asset_identity_eq(a: id, b: cooler_srv4)
-}
-
 fn containment_has_chassis(containments: List<PhysicalContainment>, chassis: PhysicalAssetIdentity, host: HostIdentity) -> Bool {
   containments.any(c =>
     match c {
@@ -352,8 +350,17 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
 // ASSERTED SOMETHING FALSE, that the host contains its own enclosure. So the fold now accepts
 // EITHER direction, and a chassis discharges through the edge it actually has.
 //
-// The cooler arm is different and stays different: a cooler is exempt because no containment edge
-// is modeled for it at all, not because its edge points the other way.
+// THE COOLER EXEMPTION IS GONE BECAUSE ITS STATED REASON HAD BECOME FALSE. It read "a cooler is
+// exempt because no containment edge is modeled for it at all", and gunbc.fleet_physical_inventory
+// installed_cooler_containments models exactly those edges - HostContainsComponent for the srv3
+// and srv4 coolers - which the comment above srv_assembly_containments already pointed at. A
+// divergence admitted under DESIGN section 3b stays admitted only while its stated reason holds;
+// this one outlived its condition, and an exemption whose justification has quietly expired reads
+// as considered while checking nothing. The consequence was not theoretical: is_cooler_asset was
+// the FIRST disjunct of the row fold, so it short-circuited, and a cooler recorded against the
+// wrong host discharged without its edge ever being read. The edges are now in the join and
+// coolers pass through it like every other component. (review 65292 raised this as non-blocking;
+// the expired reason is why it is fixed rather than left.)
 fn assembly_containments_join(rows: List<AssembledComponent>, containments: List<PhysicalContainment>) -> Bool {
   containment_has_chassis(containments: containments, chassis: chassis_srv1, host: operator_host_srv1)
     && containment_has_chassis(containments: containments, chassis: chassis_srv2, host: operator_host_srv2)
@@ -361,8 +368,7 @@ fn assembly_containments_join(rows: List<AssembledComponent>, containments: List
     && containment_has_chassis(containments: containments, chassis: chassis_srv4, host: operator_host_srv4)
     && fold(rows, init: true, f: fn(acc, row) {
       acc && (
-        is_cooler_asset(id: row.component)
-          || containment_has_component(containments: containments, host: row.host, component: row.component)
+        containment_has_component(containments: containments, host: row.host, component: row.component)
           || containment_has_chassis(containments: containments, chassis: row.component, host: row.host)
       )
     })
@@ -374,11 +380,10 @@ fn assembly_containments_join(rows: List<AssembledComponent>, containments: List
             || (physical_asset_identity_eq(a: ch, b: chassis_srv3) && host_identity_eq(a: h, b: operator_host_srv3))
             || (physical_asset_identity_eq(a: ch, b: chassis_srv4) && host_identity_eq(a: h, b: operator_host_srv4))
         HostContainsComponent { host: h, component: comp } =>
-          !is_cooler_asset(id: comp)
-            && rows.any(row =>
-              host_identity_eq(a: row.host, b: h)
-                && physical_asset_identity_eq(a: row.component, b: comp)
-            )
+          rows.any(row =>
+            host_identity_eq(a: row.host, b: h)
+              && physical_asset_identity_eq(a: row.component, b: comp)
+          )
         SiteContainsRoom { site: _, room: _ } => false
         RoomContainsRack { room: _, rack: _ } => false
         RackContainsPlacement { rack: _, asset: _ } => false
