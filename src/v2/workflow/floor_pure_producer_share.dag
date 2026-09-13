@@ -409,6 +409,42 @@ import v2.std.collection { List }
 // the three test files> [witness] lines, and this run's [floor-shared-fill] ledger, which must
 // show the eight fills landing at preparation with disposition=Stored and the former interrupted
 // claims serving hits.
+// THE META-PROCESS ROW IS THE RUN'S OWN CENSUS LINE, NOT AN INFERENCE FROM A SLOW CLAIM
+// (fierce-lark-661 from gunbc#11239's landing run). The floor prints, in its own words:
+// `[cross-claim-demand] producer=meta_processes claims=2 evals=4 total_ms=3149
+// cross_claim_ms=1574` -- HALF the producer's whole cost is the second claim re-deriving what the
+// first already derived. The recurrence is named by the census at producer grain, so this row does
+// not rest on attributing a claim's wall time to a guess about what inside it was slow.
+//
+// WHAT MADE IT VISIBLE WAS A REFUSAL THAT IS NOT WHAT IT LOOKS LIKE.
+// `affected_set_universe_includes_meta_self` refused at 705ms on eval_steps=235 -- a CPU-per-step
+// ratio about fifteen times the enrolled straddler's. A row that expensive at that few steps is not
+// doing interpreted work; it is paying for something derived outside its own step count. THE
+// ANSWER IS NOT A STRADDLE ENROLMENT, and that is the whole reason this row is here instead:
+// enrolling it as cost debt would freeze a claim whose cost is a DEMAND-GRAPH defect, leaving the
+// second derivation in place and withdrawing the coverage as well. DESIGN section 2 rules on this
+// directly -- minimize the demand graph before materializing its answers, and a repeated
+// computation whose demands share a least common ancestor is authored duplication rather than a
+// cache obligation.
+//
+// THE SHARE POINT AND WHY IT CLEARS THE SERVE BOUNDARY. `v2.lens.affected_set` `meta_processes` is
+// nullary and pure: it folds `coproduct_arm_keys` over one reflected type into
+// `RepoProcess { kind: RepoProcessKind, identity: Symbol }`. Every field is a nullary coproduct arm
+// or a Symbol -- NO Closure and NO OriginBoundNode at any depth -- so the stored value is portable
+// into a consuming claim frame. That check is not ceremony here: this module's own history carries
+// a netting that succeeded at the fill and failed at CONSUMPTION, and the long-module rung drop
+// records a claim of exactly that shape being withdrawn. The value is a handful of two-field
+// records, so serve is below recompute by inspection rather than by argument.
+//
+// WARM, NEVER CLAIM-FORCED, by the same ceiling arithmetic as every row above: the fill is cheap
+// enough to land at preparation and cannot die mid-fold the way a fill costing more than a claim's
+// whole budget can.
+//
+// THE RED IS THE FLOOR'S OWN LINE, CITED BY PRODUCER NAME rather than by a transcribed figure:
+// after this row lands, `[cross-claim-demand] producer=meta_processes` must read
+// `cross_claim_ms=0`. The control is that both consuming claims reach the SAME verdicts they
+// reached before -- a share that changed an answer would be a defect wearing a cost saving. No new
+// counter is added, no identity is enrolled as cost debt, and no roster outside this list moves.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -436,7 +472,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.where_refinement_clause_parse.where_refinement_bare_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
-  "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed"
+  "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
+  "v2.lens.affected_set.meta_processes"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
