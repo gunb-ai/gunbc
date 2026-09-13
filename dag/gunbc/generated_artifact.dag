@@ -55,12 +55,13 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
 
+// CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
+// resolves (gunbc.whole_corpus_compile_demand_projection).
 type RepoConsumer
   = GitProtocol
   | GithubActionsWorkflow
   | ProjectDocumentation
   | HostReconciler
-  // The compiler reads the file as a declared input at arm time, before any source resolves.
   | CompilerRunInput
 
 type CommitPolicy
