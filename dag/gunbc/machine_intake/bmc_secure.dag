@@ -541,14 +541,26 @@ fn adjudicate_published_probe(
   }
 }
 
-fn later_int(a: Int, b: Int) -> Int {
-  if a < b { b } else { a }
+type LaterAdmittedProbeTime
+  = TakePrevious
+  | TakeObserved
+
+fn later_admitted_probe_time_choice(prev_i: Int, observed_i: Int) -> LaterAdmittedProbeTime {
+  if prev_i < observed_i {
+    TakeObserved
+  } else {
+    TakePrevious
+  }
 }
 
 fn later_admitted_probe_at(previous: EpochMs?, observed_at: EpochMs) -> EpochMs {
   match previous {
     Absent => observed_at
-    Present { value: prev } => later_int(a: prev as Int, b: observed_at as Int) as EpochMs
+    Present { value: prev } =>
+      match later_admitted_probe_time_choice(prev_i: prev as Int, observed_i: observed_at as Int) {
+        TakePrevious => prev
+        TakeObserved => observed_at
+      }
   }
 }
 
