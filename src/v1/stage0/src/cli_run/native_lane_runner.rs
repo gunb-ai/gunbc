@@ -388,6 +388,27 @@ fn acquisition_refusal(cause: &str, expected_generation: i64, detail: &str) -> S
     format!("V2-NATIVE REFUSAL cause={cause} expected_generation={expected_generation} — {detail}")
 }
 
+fn observed_symbol_lexeme(
+    ctx: &v1_interpreter::InterpContext,
+    value: &Value,
+) -> Result<String, String> {
+    match value {
+        Value::Str(s) => Ok(s.to_string()),
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Symbol") || ctx.sym_eq(*variant_name, "Atom") => {
+            match record_field(ctx, fields, "identity")? {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err("Symbol.identity is not a string".to_string()),
+            }
+        }
+        Value::Variant { variant_name, .. } => Ok(ctx.resolve(*variant_name)),
+        _ => Err("cause is not a Symbol".to_string()),
+    }
+}
+
 fn interpret_acquisition(
     ctx: &v1_interpreter::InterpContext,
     workspace: &Path,
@@ -420,10 +441,15 @@ fn interpret_acquisition(
             Value::Int(n) => *n,
             _ => ANCESTRY_GENERATION_ZERO as i64,
         };
+        let cause = match record_field(ctx, fields, "cause") {
+            Ok(value) => observed_symbol_lexeme(ctx, value)
+                .unwrap_or_else(|e| format!("NativeAncestorUnverified.cause unreadable: {e}")),
+            Err(_) => "NativeAncestorUnverified.cause was not present".to_string(),
+        };
         return Err(acquisition_refusal(
             "NativeAncestorUnverified",
             expected,
-            "native_generation_mint_admission refused the stored ancestor",
+            &cause,
         ));
     }
     if !ctx.sym_eq(*variant_name, "NativeAncestorAcquired") {
