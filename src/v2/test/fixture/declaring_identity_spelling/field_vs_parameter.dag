@@ -1,0 +1,9 @@
+module v2.test.fixture.declaring_identity_spelling.field_vs_parameter
+
+type ParamOnly {}
+
+type FieldOnly {}
+
+fn uses(x: ParamOnly) -> Int { 0 }
+
+type Wrapper { f: FieldOnly }
