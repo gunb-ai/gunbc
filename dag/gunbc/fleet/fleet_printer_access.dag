@@ -349,7 +349,7 @@ fn classify_container_observation(
 // than PrinterCredentialObservationRefused. One says our declaration is missing or malformed and the
 // remedy is to fix this repository; the other says the remote did not answer and the remedy is out
 // there. Merging them would send an operator to debug Secret Manager for a row nobody wrote.
-func observe_printer_secret_container(
+fn observe_printer_secret_container(
   printer: PhysicalAssetIdentity,
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
