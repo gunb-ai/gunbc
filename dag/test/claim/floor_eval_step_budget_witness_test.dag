@@ -452,22 +452,39 @@ test fn an_observed_specimen_step_count_that_moved_refuses() -> Bool {
 //
 // THIS IS THE CONSTRUCTION THAT REPLACES THE TWO PARAGRAPHS THAT SAID IT COULD NOT HAPPEN. Both the
 // roster header and the calibration header asserted the rule while the mechanism broke it, which is
-// precisely why DESIGN section 5 prefers a wall to prose. It goes red if a later re-cut of the
+// precisely why DESIGN section 5 prefers a wall to prose. Each goes red if a later re-cut of the
 // roster takes a run that post-dates a lane's own additions again.
 //
-// THE SPECIMEN IS THE SHARPEST PROBE OF THE THREE, so it is named rather than folded into a set: it
-// is deliberately the most expensive claim this lane adds, so it is the one an accidental
-// grandfathering would most flatter.
-test fn this_lane_s_own_new_witnesses_are_not_grandfathered() -> Bool {
-  (floor_grandfathered_holds(
-     name: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work",
-   ) == false)
-    && (floor_grandfathered_holds(
-          name: "test.claim.floor_eval_step_budget_witness_test.the_eval_step_standing_carries_both_figures_in_its_refusing_arm",
-        ) == false)
-    && (floor_grandfathered_holds(
-          name: "test.claim.floor_eval_step_budget_witness_test.the_cpu_observation_is_still_carried_when_another_limit_fires",
-        ) == false)
+// ONE IDENTITY PER WITNESS, AND THE SPLIT IS THE CEILING'S OWN DOING RATHER THAN A DODGE. A single
+// witness asserting all three refused at 114,570 eval steps against the 72,300-step new-witness
+// budget: `floor_grandfathered_holds` is a short-circuiting descent, so an ABSENT name is the worst
+// case and visits every row of the roster, and three absences are three full scans. The budget is
+// per claim and one membership probe is the natural unit of this question, so three probes are three
+// claims -- which is what the refusal text itself asks for ("reduce what the witness reaches for").
+// Folding them into one claim to save a scan is what produced the refusal, not what cures it.
+//
+// THAT REFUSAL IS ALSO THE CONTROL NOBODY HAD TO AUTHOR: the tier this lane built judged this lane's
+// own new witness, on its own work, and named the remedy. It is recorded here because a ceiling that
+// has refused its author once is better evidence than a fixture.
+test fn the_calibration_specimen_is_not_grandfathered() -> Bool {
+  floor_grandfathered_holds(
+    name: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work",
+  ) == false
+}
+
+// THE SPECIMEN ABOVE IS THE SHARPEST OF THE THREE -- it is deliberately the most expensive claim this
+// lane adds, so it is the one an accidental grandfathering would most flatter. These two are the
+// other rows the cut captured, kept as their own claims for the budget reason stated above.
+test fn the_eval_step_standing_witness_is_not_grandfathered() -> Bool {
+  floor_grandfathered_holds(
+    name: "test.claim.floor_eval_step_budget_witness_test.the_eval_step_standing_carries_both_figures_in_its_refusing_arm",
+  ) == false
+}
+
+test fn the_cpu_observation_witness_is_not_grandfathered() -> Bool {
+  floor_grandfathered_holds(
+    name: "test.claim.floor_eval_step_budget_witness_test.the_cpu_observation_is_still_carried_when_another_limit_fires",
+  ) == false
 }
 
 // AND THEY FACE THE NEW TIER RATHER THAN NO TIER, which is the other half: a name absent from the

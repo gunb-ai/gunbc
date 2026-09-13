@@ -1222,6 +1222,16 @@ fn memory_controller_count_value(c: MemoryControllerCount) -> Nat {
 // First consumer: gunbc.model.ollama_choice, where prefill rate is a serving-admission floor. It is a rate
 // and not a TokenCount because a count answers "how many" and a rate answers "how fast"; assigning
 // one to the other is the class this family exists to make unwritable.
+type TokensPerSecond = Measure<Frequency, One, Nat>
+
+fn tokens_per_second(count: Nat) -> TokensPerSecond {
+  Measure { count: count }
+}
+
+fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+  measure_count(r)
+}
+
 // EVAL STEPS PER MILLISECOND -- the conversion the required floor's claim ceiling is denominated
 // through. Frequency family, period marker in the type, exactly as `EventsPerMinute` and
 // `MegatransfersPerSecond` are.
@@ -1251,16 +1261,6 @@ fn eval_steps_per_millisecond(count: Nat) -> EvalStepsPerMillisecond {
 }
 
 fn eval_steps_per_millisecond_count(r: EvalStepsPerMillisecond) -> Nat {
-  measure_count(r)
-}
-
-type TokensPerSecond = Measure<Frequency, One, Nat>
-
-fn tokens_per_second(count: Nat) -> TokensPerSecond {
-  Measure { count: count }
-}
-
-fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
   measure_count(r)
 }
 
