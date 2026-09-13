@@ -934,9 +934,10 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     let materialized_hex = sha512_file(&binary_path)?;
     let readback_hex = sha512_file(&stored)?;
     if materialized_hex != readback_hex {
-        return Err(format!(
+        return Err(
             "V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — cargo-target digest and stored-compiler digest disagree (copy is not the built artifact)"
-        ));
+                .to_string(),
+        );
     }
     write_ancestry_text(
         &ancestry_artifact_digest_path(&workspace),
