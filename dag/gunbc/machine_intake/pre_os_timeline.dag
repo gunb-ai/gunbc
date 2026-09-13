@@ -112,10 +112,17 @@ fn pre_os_cycle_anchor(chunks: List<PreOsReplayObservation>, at: StreamPosition)
     Present { value: chunk } => match compare_positions(a: chunk.envelope.chunk.range.first, b: at) {
       PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
       PositionAfter => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
-      _ => match compare_positions(a: at, b: range_end(range: chunk.envelope.chunk.range)) {
+      PositionBefore => match compare_positions(a: at, b: range_end(range: chunk.envelope.chunk.range)) {
         PositionBefore => ObservationEstablished { observed: PreOsCapturedCycleAnchor { occurrence: chunk.envelope.chunk.occurrence, stream_offset: at } }
         PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
-        _ => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
+        PositionSame => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
+        PositionAfter => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
+      }
+      PositionSame => match compare_positions(a: at, b: range_end(range: chunk.envelope.chunk.range)) {
+        PositionBefore => ObservationEstablished { observed: PreOsCapturedCycleAnchor { occurrence: chunk.envelope.chunk.occurrence, stream_offset: at } }
+        PositionIncomparable { left, right } => ObservationRefused { cause: to_string(PositionIncomparable { left: left, right: right }) as NonEmptyStr }
+        PositionSame => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
+        PositionAfter => pre_os_cycle_anchor(chunks: chunks.skip(n: 1), at: at)
       }
     }
   }
