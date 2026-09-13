@@ -1,0 +1,155 @@
+module gunbc.machine_intake_pre_os_observation_capabilities
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.content_hash { ContentHash }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.boards.types { BaseboardModel }
+
+// WHAT A PLATFORM LETS AN OBSERVER SEE BEFORE AN OPERATING SYSTEM EXISTS, one profile per
+// (baseboard, controller firmware release). Every field is a MEASURED capability standing, not a
+// hope: a reader deciding what a bring-up verdict may claim consults this profile first, and a
+// claim the profile says cannot be seen has no constructor downstream.
+//
+// WHY THIS IS A PROFILE AND NOT A LIST OF BOOLEANS. Each axis answers in its own vocabulary, and
+// most have a middle state a Bool would absorb toward the permissive side
+// (gunbc.recurring_failure_mode.upstream_non_affirmation_consumed_as_permission): a console that
+// is PRESENT AND SILENT is neither "SOL: yes" nor "SOL: no", and reading it as yes is exactly how
+// silence got promoted to a firmware verdict on 2026-09-11.
+
+// THE CONSOLE, WITH THE EVIDENCE THAT ESTABLISHED IT. A console capability is not a property of a
+// baseboard-plus-firmware pair on its own: it was established under particular conditions -- a
+// held session, a host state, a console routing -- so every arm carries the declaration of the
+// capture that established it, and a row with nothing to point at cannot be written. Two laws
+// follow (eager-owl-205, 2026-09-12): a later collector that fails to hold the session does not
+// erase a demonstrated capability, because the capability points at ITS evidence and not at the
+// latest attempt; and a demonstrated capability certifies no later attempt, because what an
+// attempt covered and received is the per-attempt carrier's subject
+// (gunbc.machine_intake_sol_collector_observation, gunbc#11127), never this profile's.
+//
+// SolPresentSilent -- the session activates and a HELD collector receives no host bytes -- is a
+// scoped arm with no instance in this corpus: the one observation that ever populated it was a
+// collector exiting at stdin EOF, and it is retracted. It survives as an arm a future held-session
+// capture could establish, not as one the corpus implies was seen.
+type ConsoleObservationCapability
+  = SolAbsent { established_by: DeclarationRef }
+  | SolPresentSilent { established_by: DeclarationRef }
+  | SolPresentEmitting { established_by: DeclarationRef }
+
+// THE EVENT LOG, three rungs. Raw records readable; standard (section 42.2) sensor events decoded
+// by the controller's renderer; and OEM records, which section 32.2 hands to the manufacturer.
+type SelReadCapability
+  = SelUnreadable
+  | SelRawOnly
+  | SelStandardDecoded
+
+// WHETHER THE MANUFACTURER'S OWN REALIZATION DECODES ITS OEM RECORDS. ControllerDeclaredUnknown is
+// a MEASURED answer -- the controller was asked and answered "unknown" -- and it is distinct from
+// OemDecodeNotProbed, where nobody asked. Only OemDecodeAvailable licenses a downstream decode, and
+// it must name the declaration that carries the decode table so the citation is checkable.
+// OemDecodeRenderedUncited is the fourth state: the controller's surface rendered SOME description
+// for OEM records, but no cited decode table stands behind it, so it licenses nothing either --
+// a rendering is not an authority (DESIGN section 4d).
+type OemSelDecodeCapability
+  = OemDecodeAvailable { decode_authority: DeclarationRef }
+  | OemDecodeControllerDeclaredUnknown
+  | OemDecodeRenderedUncited { rendering: NonEmptyStr }
+  | OemDecodeNotProbed
+
+// WHAT A CONTROLLER'S WEB EVENT LOG WAS OBSERVED TO DECODE, as the receipt the OEM-decode axis is
+// DERIVED from rather than authored beside. There is no separate web-log axis on the profile: the
+// receipt itself carries what the surface served, and a two-arm available/absent summary of it
+// would have no consumer and would read an empty log as an absent one (review 64534). A surface that renders one uniform description for
+// every record and carries no OEM data bytes has offered no decode; only a surface that carries a
+// decode table an authority can be cited for licenses OemDecodeAvailable, and that arm is not
+// derivable from this receipt at all -- it must come from the cited table.
+type WebEventLogDecodeObservation {
+  artifact_path: NonEmptyStr
+  digest: ContentHash
+  records_served: Int
+  oem_records_served: Int
+  advanced_event_description_uniformly: NonEmptyStr
+  oem_sel_data_empty: Bool
+}
+
+// THE RENDERING THAT MEANS "NO DECODE" ON THIS SURFACE, as a row so the string the derivation turns
+// on is nameable.
+data web_event_log_unknown_rendering: NonEmptyStr = "unknown"
+
+// DERIVED FROM THE FIELDS, NOT FROM THE COUNT (review 64251): no OEM records served is not a probe;
+// a uniform "unknown" description WITH empty OEM bytes is the controller declining; anything else
+// the surface rendered is carried as an uncited rendering, which licenses no decode.
+fn oem_sel_decode_capability_of_web_log(observation: WebEventLogDecodeObservation) -> OemSelDecodeCapability {
+  if observation.oem_records_served == 0 {
+    OemDecodeNotProbed
+  } else if observation.advanced_event_description_uniformly == web_event_log_unknown_rendering && observation.oem_sel_data_empty {
+    OemDecodeControllerDeclaredUnknown
+  } else {
+    OemDecodeRenderedUncited { rendering: observation.advanced_event_description_uniformly }
+  }
+}
+
+// WHETHER THE PLATFORM CAN NAME A DIMM SLOT AS THE SUBJECT OF A PRE-OS FAULT. When it cannot, a
+// remediation verdict may say "physical remediation required" and may NOT say which slot; deriving
+// a slot from timing or from an opaque payload is forbidden, and the downstream carrier has no
+// constructor for a slot when this arm is LocalizationUnavailableFromExposedTelemetry. The Exposed
+// arm carries the declaration that exposes the per-slot evidence -- a pointer to what would be
+// read, never a slot -- because localizing is a later consumer's fold over that source.
+type DimmLocalizationCapability
+  = LocalizationUnavailableFromExposedTelemetry
+  | PerSlotLocalizationExposed { source: DeclarationRef }
+
+// AGGREGATE MEMORY POWER, WITH THE SENSOR ROWS THAT ESTABLISHED IT. The Exposed arm names the
+// controller's sensor spellings for the per-socket memory power figure and the digest-bound
+// capture they were read from; a profile with no such capture to point at cannot claim the arm
+// (review 64494). Temperatures and rail voltages are not a power figure and do not establish it.
+type MemoryPowerTelemetryCapability
+  = AggregateMemoryPowerExposed { sensor_names: List<NonEmptyStr>, established_by: DeclarationRef }
+  | MemoryPowerNotExposed
+
+// MANAGED AC CARRIES NO OUTLET. This fleet has no managed PDU, and authoring an arm that names an
+// outlet would be DESIGN section 3c's dangling declaration -- a constructor no realization
+// reaches. The other arm, like PerSlotLocalizationExposed, carries only the DECLARATION of the
+// realization that would perform the cycle, never the hardware; it exists so a platform that
+// gains an actuator can say so without this type growing a PDU model, and the attempt module
+// keeps AcPowerCycle a typed human-attended barrier until such a realization lands with its own
+// executed receipt.
+type ManagedAcActuationCapability
+  = NoManagedAcActuator
+  | ManagedAcActuatorDeclared { realization: DeclarationRef }
+
+// A HOST CALLBACK -- the delivered image phoning home -- is the subject-originating attestation
+// gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect names as the only
+// thing that can construct a subject-level terminal. IntendedNotDemonstrated is the state of this
+// fleet today: the mechanism is designed and has not executed end to end, so no verdict may lean
+// on it yet.
+type HostCallbackCapability
+  = HostCallbackDemonstrated
+  | HostCallbackIntendedNotDemonstrated
+  | HostCallbackAbsent
+
+type PreOsObservationCapabilities {
+  baseboard: BaseboardModel
+  controller_firmware: BmcFirmwareReleaseIdentity
+  console: ConsoleObservationCapability
+  sel: SelReadCapability
+  oem_sel_decode: OemSelDecodeCapability
+  dimm_localization: DimmLocalizationCapability
+  memory_power: MemoryPowerTelemetryCapability
+  managed_ac: ManagedAcActuationCapability
+  host_callback: HostCallbackCapability
+}
+
+// TWO AXES ARE CARRIED FOR A CONSUMER THAT IS NOT IN THIS CHANGE, AND THIS ROW SAYS SO (DESIGN
+// section 3c). memory_power is the post-boot qualification's input -- whether a soak can read an
+// aggregate memory power figure -- and post-boot qualification is the explicitly separate second
+// change. host_callback is what gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect
+// names as the constructor input of a subject-level boot terminal; the boot-delivery model that
+// takes a host-originating attestation as a constructor argument is that row's own next-rung
+// trigger, and it is the consumer of this arm. Neither axis is read by a fold here, and neither
+// is invented: both were measured on 2026-09-11 and would otherwise be re-measured by the change
+// that consumes them.
+data pre_os_profile_deferred_axes_frontier: DissolutionCondition = unbound_dissolution(
+  description: "the post-boot memory qualification fold that reads memory_power, and the boot-delivery model that takes a host-originating attestation as a constructor argument and reads host_callback -- SUFFICIENT FOR every axis of PreOsObservationCapabilities to have an executing consumer",
+)

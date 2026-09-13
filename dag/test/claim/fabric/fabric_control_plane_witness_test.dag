@@ -1,6 +1,6 @@
 module test.claim.fabric_control_plane_witness
 
-import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for }
+import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for, fixture_permit_for }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.durable_compare_and_set {
   CasUnreadableReadRefused, ExpectSlotAbsent,
@@ -254,7 +254,7 @@ fn cp_candidate_sized(executor: NonEmptyStr, threads: Int) -> List<CandidateOffe
         rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
         receipt: "gunbc.observation.power-1",
       },
-      opportunity: NoFeasibleAlternativeUse,
+      opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.alternative-uses-1" },
     },
   ) {
     CandidateBound { candidate: c } => [c]
@@ -670,31 +670,42 @@ fn cp_grant_lease() -> LeaseIdentity {
   }
 }
 
-fn cp_grant() -> ExecutionGrant<NonEmptyStr> {
-  ExecutionGrant {
-    id: FabricIdentity { principal: "gunbc", key: "grant-1" },
-    object: FabricGrantObject {
-      offer: cp_offer_id(key: "offer-1"),
-      quote: cp_offer_for(executor: "srv3-06").quote,
-    },
-    context: FabricGrantContext {
-      demand: cp_demand_id(key: "demand-7"),
-      work: FabricIdentity { principal: "gunbc", key: "work-7" },
-      attempt: FabricIdentity { principal: "gunbc", key: "attempt-1" },
-      executor: "srv3-06",
-      lease: cp_grant_lease(),
-      issued_at: "2026-08-28T01:00:00Z",
-      maximum_liability: money_amount_micro(count: 1000),
-    },
-    evidence: FabricGrantEvidence {
-      fungibility_receipt: "gunbc.observation.fungibility-1",
-      offer_authority: "gunbc.observation.offer-1",
-      resource_conservation: "gunbc.observation.resource-1",
-      budget_conservation: "gunbc.observation.budget-1",
-      principal_authority: "gunbc.observation.principal-1",
-    },
-    resource_reservations: [],
-    money_reservation: "demand-7|offer-1" as ReservationRef,
+fn cp_grant() -> ExecutionGrant<NonEmptyStr>? {
+  match fixture_permit_for(
+    route: fixture_route(),
+    offer: cp_offer_id(key: "offer-1"),
+    demand: cp_demand_id(key: "demand-7"),
+    work: FabricIdentity { principal: "gunbc", key: "work-7" },
+  ) {
+    Absent => none
+    Present { value: permit } => Present {
+      value: ExecutionGrant {
+        id: FabricIdentity { principal: "gunbc", key: "grant-1" },
+        object: FabricGrantObject {
+          offer: cp_offer_id(key: "offer-1"),
+          quote: cp_offer_for(executor: "srv3-06").quote,
+        },
+        context: FabricGrantContext {
+          demand: cp_demand_id(key: "demand-7"),
+          work: FabricIdentity { principal: "gunbc", key: "work-7" },
+          attempt: FabricIdentity { principal: "gunbc", key: "attempt-1" },
+          executor: "srv3-06",
+          lease: cp_grant_lease(),
+          issued_at: "2026-08-28T01:00:00Z",
+          maximum_liability: money_amount_micro(count: 1000),
+        },
+        evidence: FabricGrantEvidence {
+          fungibility_receipt: "gunbc.observation.fungibility-1",
+          offer_authority: "gunbc.observation.offer-1",
+          resource_conservation: "gunbc.observation.resource-1",
+          budget_conservation: "gunbc.observation.budget-1",
+          principal_authority: "gunbc.observation.principal-1",
+        },
+        permit: permit,
+        resource_reservations: [],
+        money_reservation: "demand-7|offer-1" as ReservationRef,
+      }
+    }
   }
 }
 
@@ -715,31 +726,46 @@ fn cp_spend_payload() -> ReceiptPayload {
   }
 }
 
-fn cp_admission(r: Receipt<NonEmptyStr>) -> CellSettlementAdmission {
-  admit_cell_settlement(receipt: r, grant: cp_grant())
-}
-
-fn cp_admission_is_admitted(a: CellSettlementAdmission) -> Bool {
-  match a {
-    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => true
-    SettlementReceiptRefused { admission: _ } => false
-    SettlementReceiptCarriesNoSpend { detail: _ } => false
+fn cp_admission(r: Receipt<NonEmptyStr>) -> CellSettlementAdmission? {
+  match cp_grant() {
+    Absent => none
+    Present { value: g } => Present { value: admit_cell_settlement(receipt: r, grant: g) }
   }
 }
 
-fn cp_admission_carries_no_spend(a: CellSettlementAdmission) -> Bool {
+fn cp_admission_is_admitted(a: CellSettlementAdmission?) -> Bool {
   match a {
-    SettlementReceiptCarriesNoSpend { detail: _ } => true
-    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
-    SettlementReceiptRefused { admission: _ } => false
+    Absent => false
+    Present { value: adm } =>
+      match adm {
+        SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => true
+        SettlementReceiptRefused { admission: _ } => false
+        SettlementReceiptCarriesNoSpend { detail: _ } => false
+      }
   }
 }
 
-fn cp_admission_receipt_refused(a: CellSettlementAdmission) -> Bool {
+fn cp_admission_carries_no_spend(a: CellSettlementAdmission?) -> Bool {
   match a {
-    SettlementReceiptRefused { admission: _ } => true
-    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
-    SettlementReceiptCarriesNoSpend { detail: _ } => false
+    Absent => false
+    Present { value: adm } =>
+      match adm {
+        SettlementReceiptCarriesNoSpend { detail: _ } => true
+        SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
+        SettlementReceiptRefused { admission: _ } => false
+      }
+  }
+}
+
+fn cp_admission_receipt_refused(a: CellSettlementAdmission?) -> Bool {
+  match a {
+    Absent => false
+    Present { value: adm } =>
+      match adm {
+        SettlementReceiptRefused { admission: _ } => true
+        SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
+        SettlementReceiptCarriesNoSpend { detail: _ } => false
+      }
   }
 }
 
