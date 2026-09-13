@@ -672,279 +672,143 @@ data v1_maintenance_excess_field_floor_admission_note: String = "AN ADMISSION UN
 
 data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT AUTHORIZED EXCEPTION UNDER THE 2026-08-20 PURPOSE TEST -- deliberately NOT a new admission category. THE AUTHORIZER: bright-ram-778 (XL-N manager), 2026-09-02, relayed to the authoring session; the relay is the record and this row is the citation. THE EXACT SUBJECT, named rather than described so this row cannot be stretched: the single declaration ct_function_value_adapter_bound_alignment_control_test in v1.compiler.compiler_tests_rust, a regression control asserting that the function-value adapter is emitted exactly where the impl Fn bound is emitted and NOT at a bare type-variable parameter.\n\nWHY NO NEW ADMISSION VARIANT, and this reverses the authorizer's own first instruction. The first form of this ruling added an EvidenceEnrollment variant to MaintenanceAdmissionInstance with prose saying every section 4b(4) climb in v1 has this shape. THAT IS A CATEGORY EXEMPTION ARRIVING AS A COPRODUCT ROW rather than as a sentence -- the very move the same ruling had just declined, because a category never comes up for review again while one exception does. Checked rather than assumed: the four existing instances were all introduced in ONE commit when this carrier was authored (f1f9dd8a07, gunbc#9671), so there is no practice of growing that list per admission, and a fifth would be a new row on a growth surface this carrier names three lines below it -- putting NewEscapeHatchOrAdmissionRow in play on top of the PublicSurfaceGrowth question. One declaration is authorized. No vocabulary is widened.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM. The adapter/bound alignment is an emission property v2 must preserve, and nothing else in the tree would notice a fork in it -- the adapter's predicate and the bound's predicate are one expression on one node today, and this control is what fails if they are ever separated. Section 4b(4) requires that a class's discriminating evidence REMAIN ENROLLED after a climb, so enrolling it is an obligation the design document places on us rather than a discretionary addition.\n\nTHE FIVE REFUSED CLASSES. Four are untouched: no semantic change, no compatibility obligation, no escape hatch or admission row, and the seed is no more capable after it. PUBLICSURFACEGROWTH FIRES LITERALLY AND IS AUTHORIZED ANYWAY, stated plainly rather than argued away -- AND THE AUTHORING CARRIER READS PERMISSIVE HERE, WHICH IS THE TRAP: compiler_tests_rust.dag spells this and all 45 of its declarations as bare `fn`, with zero `pub fn` anywhere, so reading the .dag would say the class does not fire. It does. PublicSurfaceGrowth is a diff over THE EMITTED SEED'S exported declarations, and stage0 emits `pub fn ct_function_value_adapter_bound_alignment_control_test` -- THE EMITTER ADDS THE VISIBILITY. The exception is authorized because the class exists to stop the seed ACCUMULATING CAPABILITY, and a test emitter accumulates none: nothing is expressible after this change that was not expressible before, and the declaration's entire content is evidence about behavior that already exists. This cites the RcStr row's statement of WHAT THE CLASS IS FOR and explicitly NOT its outcome -- it is not 'RcStr was admitted, so this is'.\n\nTHE REVIEW THAT FORCED THIS ROW, and the separation that matters. Reviews 58359 and 58380 refused this change for lacking a hand-Rust receipt -- a deleted scaffold path, a census shrink, or a deferral naming a lane and a concrete ROADMAP row -- citing DESIGN.md as the authority. DESIGN.md contains no such rule; verified against origin/main by the authoring session and independently by the authorizer. THE RULE IS REAL BUT ITS PROVENANCE IS FALSE: it lives in the REVIEW PROMPT owned by gunb-ai/ctrl (scripts/chatgpt-reviewer/prompts/gunbc.md), which states it verbatim and ATTRIBUTES IT TO gunbc's DESIGN.md, and whose stricter form is still scoped to 'v3 hand-Rust' although v3 was removed and migrated into v1. So the class is AUTHORITY SUBSTITUTION IN A REVIEW PROMPT, not provider invention, and its repair belongs to ctrl. Correspondingly the two refusals are NOT two independent sightings: they are two executions of ONE shared prompt, one producer, corroborating nothing about each other. AND NONE OF THAT MAKES THE CHANGE ADMISSIBLE -- the review's authority citation is false and the v1 admission obligation is independently real, which is why this row exists at all.\n\nWHY THE RECEIPT COULD NOT LAND IN THE SCAFFOLD INDEX. gunbc.language_source_scaffold_index carries LanguageSourceScaffoldRow with exactly carrier_module, blob_decl and disposition, and Disposition is a Terminal carrying a reason, or a Scaffold carrying a dissolves_to and a bind. No field a lane or a ROADMAP row could occupy exists, and none of its rows names either; authoring them in as prose would be the section 4c violation of putting commentary into a typed carrier.\n\nTHE SCOPE LIMIT. THIS AUTHORIZES THIS DECLARATION ONLY. It does NOT resolve whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- that boundary is recorded as unresolved above and stays unresolved. It establishes NO category for section 4b(4) evidence in v1: a later control needs its own authorization. Citing this row for either would be the authority-substitution failure DESIGN names, which this row also documents one level out.\n\nTHE COUNTER-ARGUMENT, preserved so whoever overturns this need not reconstruct it: a new exported fn in the emitted seed is exactly what the class names; the capability-versus-evidence distinction is authored rather than derived; and nothing mechanically holds it. WHO CAN OVERTURN IT: the classification is authored, at the mitigatable rung this carrier already declares, so it is a reviewer's or the operator's to reject. It is written to be easy to overturn."
 
-// A REFUSAL-CLASS BOUNDARY: what a refused class does NOT reach, carried as structure rather than
-// as a sentence.
+// A refusal-class boundary adjudicated by fierce-lark-661, relayed through eager-raven-113
+// on 2026-09-13. This changes how NewEscapeHatchOrAdmissionRow is applied, without adding
+// an arm to MaintenanceRefusal or MaintenanceAdmissionInstance. It is a policy change.
+// Its occasion is gunbc#11214's exact transition rows; permanent admissions remain refused.
 //
-// WHY THIS IS A NEW RECORD TYPE AND NOT A NEW ARM. The obvious spellings are both refused by this
-// carrier's own history. An arm on MaintenanceRefusal or MaintenanceAdmissionInstance would WIDEN a
-// closed vocabulary, which is the move `v1_maintenance_adapter_alignment_control_exception_note` declined in its own words --
-// "a category exemption arriving as a coproduct row rather than as a sentence... a category never
-// comes up for review again while one exception does" -- reversing an authorizer's first
-// instruction to do exactly that. And a `data ...: String` commentary row is the section 4c
-// violation this carrier exists to avoid. A standalone record adds no member to either closed
-// coproduct: the five refused classes are exactly as they were, and this says where ONE of them
-// stops.
+// Eligibility is a decision made before enqueue. No exception exists on main then, and no
+// deletion obligation has begun. Queue residence changes neither the historical decision nor
+// that fact. Only the carrier's merge starts the separate deletion obligation. No queue arm
+// is needed in either vocabulary.
 //
-// AND NOT WIDENING THE ENUM IS NOT THE SAME AS NOT CHANGING POLICY -- said here rather than left
-// for a reviewer to extract, because the weaker claim is the one an author reaches for. THIS ROW
-// CHANGES HOW A REFUSED CLASS IS APPLIED. A shape that was being refused under
-// NewEscapeHatchOrAdmissionRow on the face of this standing is, under two conditions, not that
-// class; that is a policy change and it is the entire purpose of writing it down. What the
-// standalone record buys is narrower and worth exactly what it is: no growth on this carrier's
-// closed vocabularies, so the next author who needs an exception cannot cite a precedent for
-// adding an arm. It buys nothing about whether the policy change itself is right, which is
-// fierce-lark-661's call and is attributed to them in this row's own adjudication header.
-//
-// THE CONDITIONS ARE SEPARATELY NAMED FIELDS, AND THEIR VALUES ARE STILL PROSE. An earlier draft
-// of this comment said "THE CONDITIONS ARE FIELDS, NOT PROSE, because a condition written as
-// narrative is one a later reader satisfies by paraphrase" -- which is false about this row, as
-// review 65393 noticed and declined to file. `condition_authored_before_enqueue` and
-// `condition_follow_up_lands` are `NonEmptyStr` paragraphs: the split makes the two conditions
-// separately citable and separately falsifiable, and it does NOT close the paraphrase gap the
-// sentence claimed to close. A reader can still satisfy either by restating it.
-//
-// WHAT WOULD CLOSE IT is a condition whose satisfaction is DECIDABLE from the repository -- an
-// authored-before timestamp compared against an enqueue timestamp, which is exactly the pair this
-// row's own specimens were corrected by. That is not modelled here because nothing consumes it
-// yet, and modelling ahead of a consumer is the dangling declaration DESIGN section 3c refuses.
-// It is named as what the next rung looks like rather than promised.
-//
-// Both conditions must hold. FAILING EITHER LEAVES THE ROWS IN THE REFUSED CLASS -- a disposition
-// that cannot fail is an exemption wearing a condition's clothes, which is the whole objection
-// this boundary exists to answer rather than to repeat.
-// THE LIFECYCLE STATES, DECLARED RATHER THAN NARRATED. Review 65444: a closed four-state machine
-// written into a `NonEmptyStr` is §4c's misplaced status -- "any invariant, receipt, event, ruling,
-// citation, STATUS, count, or dissolution condition belongs in a typed carrier" -- and the prose
-// channel is the quarantine that rule exists to keep status OUT of. The row was already consuming
-// these names in `on_condition_failure` and in every specimen, so the §3c "nothing consumes it yet"
-// defence that defers the CONDITION fields does not reach them.
-//
-// NOT-YET-DUE IS NOT FAILED is now structural rather than a sentence a reader satisfies by
-// paraphrase, which is the correctness point this row exists to make.
-// WHAT EACH STATE MEANS AND WHEN IT IS DECIDED, carried here as rationale rather than as a data
-// field: §4c puts prose in `//` and keeps `String` rows for program data, so an explanation that
-// used to sit in a `lifecycle: NonEmptyStr` field belongs in this block now that the states
-// themselves are declared.
-//
-//   Eligible    before the carrying PR is enqueued. Condition one is decidable here and is the
-//               gate; condition two CANNOT have happened yet, so its absence is NotYetDue and not
-//               a failure. A rule demanding it here would refuse the exact sequence this boundary
-//               exists to permit -- which an earlier draft of this row did.
-//   Pending     the carrier has landed and the rows read as consumed. Condition one is settled;
-//               condition two is an outstanding obligation with a due date.
-//   Discharged  the follow-up landed and removed the rows. Both conditions Met; the boundary is
-//               spent.
-//   Failed      carries WHICH of the four causes obtained, as `BoundaryFailureCause`:
-//               ConditionOneUnmetAtEligibility, FollowUpClosedUnmerged,
-//               FollowUpLandedWithoutDeletingRows, or RunwayExpired (the roster was touched after
-//               the carrier landed while the rows were still present). Any of them returns the
-//               rows to the refused class; they differ in what to do about it.
-//
-// SO Pending IS BOUNDED AND NOT MERELY UNFAILED. Without the runway a deletion PR left open
-// forever would hold the admission forever, which is the permanent admission this boundary
-// refuses by name -- an exception whose escape is "not yet" rather than "never".
-//
-// AND Eligible NEEDS NO RUNWAY, which is the neighbouring question and is asymmetric for a
-// reason rather than by oversight: a carrier may sit Eligible indefinitely, but during Eligible
-// NO ADMISSION ROWS ARE ON MAIN. There is no exception being preserved, nothing is exempted from
-// anything, and the carrier is simply a PR nobody has enqueued. The runway exists to bound an
-// exception that EXISTS, and one only exists once the rows have landed -- which is exactly the
-// Eligible/Pending boundary. Discharged and Failed are terminal and bound nothing.
-//
-// WHO IS IN THIS LIFECYCLE: carriers adjudicated UNDER this boundary, and today that is exactly
-// one -- the gunbc#11214 specimen, Eligible. The gunbc#10940 and gunbc#11156 specimens carry
-// PredatesBoundary and are in no state at all. So this lifecycle has never completed a traversal,
-// which is the same fact as prescribes-rather-than-adjudicates said in the vocabulary the row owns.
-// WHY Failed CARRIES ITS CAUSE. The runway change widened this arm to FOUR materially different
-// situations, and a bare arm cannot say which obtained -- so the distinction would live only in
-// prose a reader must parse, which is the defect this row has now fixed twice elsewhere
-// (`CarrierStanding` replacing an empty-string sentinel, `BoundarySpecimenStanding` keeping "not
-// in the machine" out of the machine). §3 calls one name covering materially different meanings a
-// MEANING FORK, and these four differ in remedy and in blame:
-//
-//   ConditionOneUnmetAtEligibility     the follow-up was authored too late; nothing went wrong
-//                                      mid-flight, the admission was never eligible
-//   FollowUpClosedUnmerged             the promise was abandoned; someone must author a new one
-//   FollowUpLandedWithoutDeletingRows  the follow-up was wrong; a corrected deletion is owed
-//   RunwayExpired                      THE ONLY CAUSE THAT FIRES WHILE EVERYONE BEHAVED CORRECTLY
-//                                      up to that point -- the deletion simply did not land before
-//                                      the roster's next touch. Pooling it with a promise that was
-//                                      never authored would assign the same blame to two opposite
-//                                      situations.
+// The consumer of these vocabularies is review diligence under v1_seed_standing, at its
+// declared mitigatable rung (DESIGN 3c). No executing consumer reads the post-merge obligation;
+// this row claims no gate. The observation-producer lane is the trigger for a further climb:
+// it must supply fresh forge observations AND an executing consumer that applies chronology,
+// merge and actual row-deletion evidence. A declaration naming a follow-up proves none of those.
+// Conditions below remain prose for reviewers; they are not an executable adjudicator.
+type TransitionAdmissionEligibility =
+    EligibilityEstablished
+  | ConditionOneUnmetAtEligibility
+
+// These causes exist only after merge. Failing eligibility never enters this lifecycle.
+// Pending ends by the roster's next touch after the carrier merges; an open follow-up cannot
+// preserve the exception indefinitely. The namespace instrument independently derives consumed
+// rows from candidate sets; that is not execution of this review-diligence lifecycle.
 type BoundaryFailureCause =
-    ConditionOneUnmetAtEligibility
-  | FollowUpClosedUnmerged
+    FollowUpClosedUnmerged
   | FollowUpLandedWithoutDeletingRows
   | RunwayExpired
 
-type TransitionAdmissionLifecycleState =
-    Eligible
-  | Pending
+type TransitionAdmissionDeletionObligation =
+    Pending
   | Discharged
   | Failed { cause: BoundaryFailureCause }
 
-// AND WHETHER A SPECIMEN IS IN THE LIFECYCLE AT ALL IS A DIFFERENT QUESTION FROM WHICH STATE IT IS
-// IN. Adding an `OutsideLifecycle` arm to the states above would put "not in the machine" inside the
-// machine, which is exactly the conflation this row spent a head repairing in prose. A carrier
-// adjudicated before this boundary existed was never Eligible, never entered Pending, and is not
-// Failed -- not because it behaved well but because the lifecycle does not range over it.
-type BoundarySpecimenStanding =
-    InLifecycle { state: TransitionAdmissionLifecycleState }
-  | PredatesBoundary
-
-// WHETHER THE CARRIER HAS MERGED AT ALL, as a coproduct rather than as empty strings in fields
-// typed CommitSha and Timestamp. Review 65450: an earlier head wrote `carrier_merged_as: ""` and
-// `carrier_merged_at: ""` for a carrier that has not merged and DEFENDED it in a note, which is
-// the dual of the conflation this row had just fixed one field over -- "not in the machine" was
-// pulled out of the machine while "not merged" stayed inside the merge fields as a sentinel.
-// DESIGN §5: "Stronger than CATCHING a wrong state is making it UNWRITABLE -- correctness by
-// construction, not validation." A sentinel is validation; this has no constructor for the
-// invalid state.
-type CarrierStanding =
-    Merged { as: CommitSha, at: Timestamp }
-  | NotEnqueued
-
-// HOW LONG Pending MAY LAST, because an exception with no runway is not an exception. Review
-// 65465: Pending was excluded from failure and given no due event, so a deletion PR left open
-// indefinitely would preserve the admission indefinitely -- which contradicts this same row's
-// refusal of PERMANENT admissions. DESIGN §4b(3): "A compatibility exemption is not bootstrap
-// glue; it is a visible safety regression with a FINITE RUNWAY."
-//
-// THE DUE EVENT IS NOT AN INVENTED DEADLINE, it is the rule the roster already states and the
-// floor already executes: "deletion is owed on landing or the roster's NEXT TOUCH". That event
-// happens, is observed, and is reported -- every run whose base carries consumed rows prints them
-// as due for correction or deletion. Both closed specimens were in fact collected by it. Choosing
-// a wall-clock number instead would be a literal with no independent referent (§5), while this
-// bound is already enforced by an executing mechanism.
-//
-// ONE ARM, BECAUSE THERE IS ONE POLICY. An earlier head declared a second,
-// `OwedByDeadline { at: Timestamp }`, justified as "a later policy may want the other one" -- which
-// names no consumer and no trigger, so it was the dangling declaration §3c refuses, and this same
-// block refuses it two paragraphs up for the condition fields. Same test, opposite answer, same
-// file (review 65483). Deleted: the arm count follows the inhabitants, not the imagination, and a
-// policy that wants a deadline adds the arm together with the consumer that reads it.
-//
-// The type survives the deletion rather than collapsing into prose, because the runway is a STATUS
-// of this boundary and §4c puts status in a typed carrier -- it is citable, matchable, and
-// growable, which a sentence is not. Spelled with the LEADING PIPE, the form `std.content_hash`
-// `HashFamily` uses: without it a one-variant declaration parses as a type ALIAS to an undefined
-// name, which is what the first attempt at this deletion produced.
-type PendingRunway =
-  | OwedByRosterNextTouch
-
-// A CONDITION'S VERDICT, with the three answers kept apart. `NotYetDue` is the arm whose absence
-// made an earlier draft of this row forbid its own sequence.
-type BoundaryConditionVerdict =
-    Met
-  | FailsAsChronology
-  | NotYetDue
-
-// ONE SPECIMEN, DECOMPOSED. §2: "Nothing is opaque that is not genuinely atomic... a `String` leaf
-// hiding named parts is anemic modeling." The chronology is this row's only measured evidence and
-// was the one part that should not have been a blob: carrier, its merge commit and timestamp, the
-// deletion follow-up and the timestamp it was AUTHORED at, and the two verdicts. The interval
-// between the two timestamps is now derivable and is no longer transcribed -- §6, "name the
-// instrument, never transcribe its output".
-type BoundarySpecimen {
+// A dated receipt says what was observed then, forever. It does not promise that the carrier
+// remains outside the queue. The follow-up's PR creation time is distinct from commit authorship.
+type EligibilityObservation {
+  observed_at: Timestamp
   carrier: NonEmptyStr
-  rows: Int
-  carrier_standing: CarrierStanding
+  carrier_head: CommitSha
+  observation: PreEnqueueObservation
   deletion_follow_up: NonEmptyStr
   deletion_authored_at: Timestamp
-  condition_one: BoundaryConditionVerdict
-  condition_two: BoundaryConditionVerdict
-  standing: BoundarySpecimenStanding
-  note: NonEmptyStr
+  decision: TransitionAdmissionEligibility
+}
+
+type PreEnqueueObservation =
+  | CarrierObservedNotEnqueued
+
+// Old specimens demonstrate cleanup, not compliance with the later pre-enqueue condition.
+// They never entered the boundary's deletion lifecycle. Their chronology can be re-derived
+// from the carrier merge and deletion PR creation times, without transcribing elapsed durations.
+type PriorDeletionReceipt {
+  carrier: NonEmptyStr
+  carrier_merged_as: CommitSha
+  carrier_merged_at: Timestamp
+  deletion_follow_up: NonEmptyStr
+  deletion_authored_at: Timestamp
+}
+
+// A reviewer records an obligation only after the carrier has merged. There is deliberately no
+// such receipt for gunbc#11214: its eligibility observation creates no post-merge obligation.
+type PostMergeDeletionReceipt {
+  carrier: NonEmptyStr
+  carrier_merged_as: CommitSha
+  observed_at: Timestamp
+  obligation: TransitionAdmissionDeletionObligation
 }
 
 type RefusalClassBoundary {
   class_bounded: MaintenanceRefusal
-  excluded_shape: NonEmptyStr
-  disposition: NonEmptyStr
-  condition_authored_before_enqueue: NonEmptyStr
-  condition_follow_up_lands: NonEmptyStr
-  pending_runway: PendingRunway
-  on_condition_failure: NonEmptyStr
-  enforcement: NonEmptyStr
-  consumer: NonEmptyStr
-  specimens: List<BoundarySpecimen>
-  authorship_disclosure: NonEmptyStr
+  eligibility_observations: List<EligibilityObservation>
+  prior_deletions: List<PriorDeletionReceipt>
+  post_merge_receipts: List<PostMergeDeletionReceipt>
 }
 
-// THE ADJUDICATION, fierce-lark-661, relayed through eager-raven-113 on 2026-09-13.
+// Eligible shape: one measured namespace delta named by exact identity (module,
+// in_declaration, spelling) and expected candidate set, produced by the carrier's change.
+// An exact row lets that otherwise non-auto-admitted delta pass adjudicate; it does alter
+// that refusal. Other deltas are still adjudicated. This is not an assertion that no refusal
+// is suppressed, or that typing a boundary makes its policy correct.
 //
-// IT PRESCRIBES ITS FIRST CONDITION RATHER THAN DESCRIBING ESTABLISHED PRACTICE, and that is
-// stated at the top because a reader who takes it the other way will size its enforcement wrongly.
-// The gunbc#10940 and gunbc#11156 specimens FAIL condition one as chronology: in each, the rows
-// were noticed as CONSUMED by a
-// floor refusal after the carrying change had already landed, and the deletion was written in
-// response -- by 1h09m in one case and 2h24m in the other. That is precisely the practice the
-// condition exists to end. The disposition (a consumed ledger entry, not an escape hatch) IS
-// established by those specimens; the pre-enqueue requirement is not. THE PRE-ENQUEUE CONDITION IS
-// CARRIED BY THE MERGER/REVIEWER TALLY. gunbc#11250 mechanizes the narrower prerequisite that a
-// deletion-follow-up declaration EXIST; it does not establish its timing -- a declaration can exist
-// and have been authored too late, so the existence half cannot carry a temporal predicate.
+// Condition one: the deletion follow-up PR must be authored before the carrier is enqueued.
+// A failure is ConditionOneUnmetAtEligibility and leaves the rows in the refused class.
+// Condition two begins only after merge: the follow-up must land and actually remove the
+// rows by the roster's next touch. Discharged records that deletion. Failed names abandonment,
+// an ineffective deletion, or expiry of that runway; each returns the rows to the refused class.
+// Pending is the bounded outstanding obligation, not evidence that deletion has occurred.
 //
-// Its occasion:
-// royal-eagle's side chat refused gunbc#11214's fifteen NAMESPACE_TRANSITION_ADMISSIONS rows as
-// NewEscapeHatchOrAdmissionRow on the face of this standing, while the fleet's practice treats
-// those rows as transient. Both readings were defensible on the text, which is why the boundary is
-// now written down instead of re-argued per PR.
+// This prescribes pre-enqueue practice rather than codifying it: both prior specimens below
+// had their follow-ups authored after merge. They demonstrate cleanup but cannot establish
+// eligibility under a boundary that did not yet exist. witty-moth-510 authored both deletions
+// and gunbc#11156's two transition rows; the specimens are not independent corroboration of
+// that author's practice. The adjudication is fierce-lark-661's, not the specimen author's.
+//
+// Re-derive the subject with namespace_wave_admission::adjudicate, binding_disposition and
+// disposition_auto_admitted, reached by run_required_wave_admission. gunbc#11165 replaced
+// admission lifecycle predictions with admission_satisfied_at over exact candidate sets;
+// it did not auto-admit TargetChanged. gunbc#11214 at the observed head still moves the
+// read_supplied_access_token / SuppliedTokenReady / SuppliedTokenUnavailable bindings from
+// gunbc.auth.gcp_secret_access to gunbc.auth.access_token_source in its five existing callers.
+// The table's present population is an instrument result, not a count maintained by this row.
+//
+// Observation source for the eligibility receipt: GitHub repository.pullRequest queried on
+// 2026-09-13, returning #11214 state OPEN and mergeQueueEntry null, and #11259 createdAt.
+// The old 09:07:38 value was commit authorship; 09:07:58 is the follow-up PR's creation.
+// The accompanying complete merge-queue event query returned no enqueue or removal events.
+// This supports the authored eligibility decision, but supplies no fresh evidence for a later
+// enqueue decision; review diligence must establish that chronology then.
 data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalClassBoundary {
   class_bounded: NewEscapeHatchOrAdmissionRow,
-
-  excluded_shape: "A row in NAMESPACE_TRANSITION_ADMISSIONS: one measured namespace delta, named by exact identity (module, in_declaration, spelling) with its expected candidate set, produced by a change this PR makes." as NonEmptyStr,
-
-  disposition: "A CONSUMED LEDGER ENTRY, not an exemption. It ADJUDICATES one delta -- says this exact rebinding was intended and was measured -- WHAT IT DOES AFFECT, stated rather than waved past: an exact matching row is precisely what lets one otherwise non-auto-admitted measured delta pass adjudication, so it DOES change the refusing outcome for that delta. What it does NOT do is disarm the wall -- the check still runs, every other delta is judged exactly as before, the admission is keyed to one identity and its candidate set, and the seed is no more capable with the row than without it. An earlier draft said it EXEMPTS nothing and that no refusal is suppressed, which overstates in the direction that flatters the row. It is consumed by the realizing merge, at which point the delta stops being producible and the row's deletion is owed. That is the opposite of an escape hatch, which by construction outlives the change that needed it." as NonEmptyStr,
-
-  condition_authored_before_enqueue: "The deletion follow-up PR is AUTHORED BEFORE the carrying PR is enqueued. Before, not after: a follow-up written once the rows are already on main is indistinguishable from a cleanup somebody may or may not get to, and the obligation has to exist while the carrying change can still be refused for lacking it." as NonEmptyStr,
-
-  condition_follow_up_lands: "That follow-up LANDS. An authored-but-unlanded deletion discharges nothing -- the rows sit on main exactly as a permanent admission would, and the only difference is a promise. AND THE PROMISE HAS A RUNWAY: see `pending_runway`. The deletion is owed by the roster's NEXT TOUCH after the carrier lands, which is the rule the roster already states and the floor already reports on every run whose base carries consumed rows. A follow-up still open at that point has not merely not-yet-landed; it is overdue, and the specimen is Failed." as NonEmptyStr,
-
-
-  pending_runway: OwedByRosterNextTouch,
-
-  on_condition_failure: "FAILING EITHER CONDITION LEAVES THE ROWS IN THE REFUSED CLASS -- where FAILING means the `Failed` arm of `TransitionAdmissionLifecycleState` -- which carries WHICH of the four `BoundaryFailureCause` arms obtained -- and never `Eligible` or `Pending`, because a condition that is not yet due has not been failed. This boundary does not weaken NewEscapeHatchOrAdmissionRow; it states which shape the class was never about, and a shape that does not meet both conditions is not that shape. PERMANENT admissions stay refused, unconditionally and without a boundary to argue about." as NonEmptyStr,
-
-  enforcement: "A PARTIAL CLIMB, SIZED FROM gunbc#11250'S OWN SOURCE RATHER THAN FROM ITS TITLE. #11250 checks ONE thing: that an applicable used row carries a deletion_follow_up declaration, as NotAuthored or PullRequest(n). Its own source leaves forge state -- open, closed unmerged, merged with the row still present -- to the landing tally. So when it lands it mechanizes the MISSING-DECLARATION case and nothing else: it does not establish that the number names the right deletion PR, that the follow-up was authored before enqueue, that it lands, that it deletes the intended rows, or that the classification is correct. All of those stay with the merger's tally check and with reviewers. Until #11250 lands, the tally check applies the adjudication in full. SO NOTHING MECHANIZES CONDITION ONE, BEFORE OR AFTER #11250 LANDS, and no established practice underwrites it either -- every measured specimen fails it as chronology. A condition with neither a mechanism nor a precedent is carried by the tally and by reviewers, and nothing absorbs a lapse; that is the honest size of this boundary today and is why it prescribes rather than codifies. Enforcement is therefore a PERSON today and a mechanism when #11250 lands -- said plainly rather than described as automatic, because a boundary whose enforcement is overstated is how a condition becomes ceremony." as NonEmptyStr,
-
-  consumer: "DESIGN section 3c, answered rather than left dangling. Read TODAY by the merger's tally check, which is the route that applies this adjudication when a PR carrying transition rows comes up for landing, and by reviewers classifying such a PR against this standing -- the same review-diligence route DESIGN declares for v1_seed_standing itself, at the same honest rung. ONE PART of it becomes executed when gunbc#11250's owner charge lands -- the missing-declaration case, and only that. The rest stays read rather than executed, so #11250 is a PARTIAL trigger and the rung after it is still mitigatable. Calling it the trigger that makes this row executed would claim a climb the mechanism does not deliver." as NonEmptyStr,
-
-  specimens: [
-    BoundarySpecimen {
-      carrier: "gunbc#10940" as NonEmptyStr,
-      rows: 181,
-      carrier_standing: Merged { as: "6c7b081961", at: "2026-09-12T22:45:52Z" },
-      deletion_follow_up: "gunbc#11156" as NonEmptyStr,
-      deletion_authored_at: "2026-09-12T23:55:07Z",
-      condition_one: FailsAsChronology,
-      condition_two: Met,
-      standing: PredatesBoundary,
-      note: "The 181 v2-native-route rows, consumed by their own merge. The deletion was authored AFTER the carrier merged, so condition one fails as chronology; the interval is derivable from the two timestamps rather than transcribed. Condition two is met: the deletion landed." as NonEmptyStr,
-    },
-    BoundarySpecimen {
-      carrier: "gunbc#11156" as NonEmptyStr,
-      rows: 2,
-      carrier_standing: Merged { as: "d7b7ab96c1f", at: "2026-09-13T02:50:04Z" },
-      deletion_follow_up: "gunbc#11240" as NonEmptyStr,
-      deletion_authored_at: "2026-09-13T05:14:49Z",
-      condition_one: FailsAsChronology,
-      condition_two: Met,
-      standing: PredatesBoundary,
-      note: "The two Filesystem/Clock rows, consumed by their own merge. Same shape as the gunbc#10940 specimen: the deletion was authored after the carrier merged, and it landed at 6e70be25146." as NonEmptyStr,
-    },
-    BoundarySpecimen {
+  eligibility_observations: [
+    EligibilityObservation {
+      observed_at: "2026-09-13T22:48:31Z",
       carrier: "gunbc#11214" as NonEmptyStr,
-      rows: 15,
-      carrier_standing: NotEnqueued,
+      carrier_head: "3fbcc03767b874ad5575f47694356ebe678ad5e3",
+      observation: CarrierObservedNotEnqueued,
       deletion_follow_up: "gunbc#11259" as NonEmptyStr,
-      deletion_authored_at: "2026-09-13T09:07:38Z",
-      condition_one: Met,
-      condition_two: NotYetDue,
-      standing: InLifecycle { state: Eligible },
-      note: "Its deletion follow-up is authored while the carrier has not yet been enqueued, so condition one is satisfied at the eligibility decision and condition two is neither satisfied nor failed. If the carrier lands, this specimen becomes Pending until the follow-up lands and removes the rows. Its follow-up is gunbc#11259, authored at commit bc5b6b4808 -- MEASURED for this row rather than asserted, because condition_one: Met is a claim about that timestamp against the carrier's enqueue and an earlier head made it with the evidence field empty." as NonEmptyStr,
+      deletion_authored_at: "2026-09-13T09:07:58Z",
+      decision: EligibilityEstablished,
     },
   ],
-
-  authorship_disclosure: "THE TWO SPECIMENS THIS AUTHOR CONTRIBUTED ARE THE TWO THAT FAIL CONDITION ONE, which is the disclosure that matters more than the authorship itself: the practice this row would have been read as codifying is this author's own practice, and it does not meet the condition. TWO OF THE THREE SPECIMENS ARE THIS AUTHOR'S OWN WORK: witty-moth-510 authored gunbc#11156's two rows and gunbc#11240's deletion of them, and authored the deletion of gunbc#10940's 181. A boundary whose evidence is mostly its author's own practice should say so where a reader meets it, because the alternative is a rule that looks corroborated and is largely self-cited. The adjudication is fierce-lark-661's; the specimens are not independent of the person recording them." as NonEmptyStr,
+  prior_deletions: [
+    PriorDeletionReceipt {
+      carrier: "gunbc#10940" as NonEmptyStr,
+      carrier_merged_as: "6c7b081961",
+      carrier_merged_at: "2026-09-12T22:45:52Z",
+      deletion_follow_up: "gunbc#11156" as NonEmptyStr,
+      deletion_authored_at: "2026-09-12T23:55:07Z",
+    },
+    PriorDeletionReceipt {
+      carrier: "gunbc#11156" as NonEmptyStr,
+      carrier_merged_as: "d7b7ab96c1f",
+      carrier_merged_at: "2026-09-13T02:50:04Z",
+      deletion_follow_up: "gunbc#11240" as NonEmptyStr,
+      deletion_authored_at: "2026-09-13T05:14:49Z",
+    },
+  ],
+  post_merge_receipts: [],
 }
