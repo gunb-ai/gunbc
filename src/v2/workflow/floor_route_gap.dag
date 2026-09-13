@@ -980,8 +980,8 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// Fixture compile-clean perturb receipts: hermetic first gap is Mktemp (DirWithTemplate under
-// workspace target/, Dir for the enrolled outside-root RED). Enrolled as the same triple as
+// Fixture compile-clean perturb receipts plus the live-tree seam standing: hermetic first gap is
+// Mktemp DirWithTemplate (Dir for the enrolled outside-root RED). Enrolled as the same triple as
 // chunk_09: this expectation, WetScheduledClaim rows, LocalRepoWetLane exclusion.
 fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
   Cons {
@@ -998,7 +998,10 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_does_not_satisfy_expected_failure", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_invoke_is_cli_not_executed", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_seam_witness.cross_shard_seam_preservation_holds_on_live_tree", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }

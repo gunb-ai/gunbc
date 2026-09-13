@@ -606,6 +606,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
       function: "under_workspace_root_green_fixture_reaches_subject",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_seam_witness", function: "cross_shard_seam_preservation_holds_on_live_tree" },
+      entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag",
+      function: "cross_shard_seam_preservation_holds_on_live_tree",
+      expectation: ExpectedToHold {}
     }
   ]
 }
