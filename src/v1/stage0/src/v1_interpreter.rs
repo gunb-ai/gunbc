@@ -18292,6 +18292,20 @@ macro_rules! v1_builtin_arms {
                 )?))
             },
 
+            arm "free_call.type_declarer_qualified_names" { "type_declarer_qualified_names" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "type_declarer_qualified_names")?;
+                let bare_name =
+                    expect_value_str($positional.get(1).copied(), "type_declarer_qualified_names")?;
+                Ok(Some(
+                    crate::coproduct_reflection::eval_type_declarer_qualified_names(
+                        $ctx,
+                        &pool_roots,
+                        bare_name.as_str(),
+                    )?,
+                ))
+            },
+
             arm "free_call.module_declaration_facts_at" { "module_declaration_facts_at" } => {
                 let pool_roots =
                     expect_str_list($positional.first().copied(), "module_declaration_facts_at")?;

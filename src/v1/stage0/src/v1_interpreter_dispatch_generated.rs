@@ -73,6 +73,7 @@ pub enum EvalBuiltinArm {
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
     FreeCallDeclFactsAt,
+    FreeCallTypeDeclarerQualifiedNames,
     FreeCallModuleDeclarationFacts,
     FreeCallModuleDeclarationFactsAt,
     FreeCallFactCardinalityDeclFacts,
@@ -212,6 +213,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
         "decl_facts_at" => Some(EvalBuiltinArm::FreeCallDeclFactsAt),
+        "type_declarer_qualified_names" => Some(EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames),
         "module_declaration_facts" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFacts),
         "module_declaration_facts_at" => Some(EvalBuiltinArm::FreeCallModuleDeclarationFactsAt),
         "fact_cardinality_decl_facts" => Some(EvalBuiltinArm::FreeCallFactCardinalityDeclFacts),
@@ -349,6 +351,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
     ("free_call.decl_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsAt };
+    ("free_call.type_declarer_qualified_names") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTypeDeclarerQualifiedNames };
     ("free_call.module_declaration_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFacts };
     ("free_call.module_declaration_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallModuleDeclarationFactsAt };
     ("free_call.fact_cardinality_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFactCardinalityDeclFacts };

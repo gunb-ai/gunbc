@@ -144,3 +144,22 @@ test fn unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Boo
     )
   )
 }
+
+// THE SAME SPECIMEN ON THE CITATION ROUTE, which review 65571 found uncovered. The shape arm was
+// added to the spelling route and the citation route kept its own accept, so a cited RECORD still
+// reached the bare seam and answered with an untyped host error. Both routes now accept only
+// through v2.std.node_reflection accept_sole_declaration, and this claim is what would go red if
+// either grew a second accept again -- which is the divergence that produced the finding, not just
+// the missing check.
+test fn cited_unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Bool {
+  outcome_is_rejected(
+    o: resolve_type_node_at(
+      pool_roots: scoped_reflection_pool_roots,
+      ref: DeclarationRef {
+        module_path: "v2.std.decl_index",
+        decl_name: "DeclFact",
+        field: WholeDeclaration
+      }
+    )
+  )
+}
