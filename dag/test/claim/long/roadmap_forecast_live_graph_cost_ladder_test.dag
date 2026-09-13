@@ -1,0 +1,246 @@
+module test.claim.long.roadmap_forecast_live_graph_cost_ladder
+
+import std.measure {
+  millisecond,
+  positive_measure_count,
+}
+import std.types { Map }
+import v2.std.collection { empty_map, map_insert, map_lookup, Present, Absent }
+import gunbc.roadmap_belt { BeltCapacity }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_authority {
+  roadmap_authority_projection,
+  RoadmapAuthorityProjection,
+  RoadmapAuthorityProjected,
+  RoadmapAuthorityProjectionRefused,
+  active_roadmap_nodes_for_accepted,
+  active_roadmap_edges_for_accepted,
+  declared_roadmap_nodes,
+  declared_roadmap_edges,
+  roadmap_acceptance_receipts,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
+}
+import gunbc.roadmap_forecast {
+  ForecastAnchorObservation,
+  ReviewCycleCount,
+  OperatorMergeLatencyAssumption,
+  end_to_end_belt_slot_occupancy_assumption,
+  ScheduleForecastAssumptions,
+  ScheduleForecastKnown,
+  ScheduleForecastRefused,
+  NodeUnsized,
+  NoCalibrationSample,
+  ForecastGraphEmpty,
+  DependencyCycle,
+  CycleTimeObservationNonPositive,
+  WorkerConcurrencyCapInvalid,
+  CalibrationHistoryRefused,
+  DependencyEndpointUnknown,
+  ForecastRoadmapAuthorityRefused,
+  ForecastBuildRefused,
+  SizingAssignmentRefused,
+  roadmap_schedule_forecast_over,
+  roadmap_cycle_time_observation_builds,
+  accepted_cycle_time_observations,
+  cycle_time_history_refusals,
+  cycle_time_population_exclusions,
+  derived_node_sizings,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// COST LADDER FOR test.claim.roadmap_forecast_witness.witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub, not a relocation of that witness. Placement of the enrolled row stays with floor cost policy. Adjacent rungs are successively larger subsets of that body so a marginal is a difference, not a guess. Re-derive: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/long/roadmap_forecast_live_graph_cost_ladder_test.dag --function <one rung>, one process per rung (eval-frame memo dies at the claim boundary; a shared process first-touches). GUNBC_INTERP_PROFILE=1 makes node-evals the eval_steps clock; the n_* functions return Int and claim_batch prints the value as NotBool. Remote amd64 needs GUNBC_BIND_MEMORY_CGROUP_BYTES below machine memory and a runner above the 7GiB default (resolve peaks ~8.4GiB).
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn assumptions() -> ScheduleForecastAssumptions {
+  ScheduleForecastAssumptions {
+    worker_concurrency_cap: BeltCapacity { max_concurrent: 3 },
+    review_cycle_count: ReviewCycleCount { count: positive_measure_count(predecessor: 0) },
+    operator_merge_latency: OperatorMergeLatencyAssumption { duration: millisecond(count: 5) },
+    belt_slot_occupancy: end_to_end_belt_slot_occupancy_assumption,
+  }
+}
+
+fn anchor() -> ForecastAnchorObservation {
+  ForecastAnchorObservation { observed_at: 1000 }
+}
+
+fn node_id_set(ids: List<RoadmapNodeId>) -> Map<String, Bool> {
+  fold(ids, init: empty_map(), f: fn(m, id) { map_insert(m: m, key: id as String, value: true) })
+}
+
+fn node_id_present(m: Map<String, Bool>, id: RoadmapNodeId) -> Bool {
+  match map_lookup(m: m, key: id as String) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn node_id_sets_agree(reported: List<RoadmapNodeId>, expected: List<RoadmapNodeId>) -> Bool {
+  let reported_set = node_id_set(ids: reported)
+  let expected_set = node_id_set(ids: expected)
+  count(reported) == count(expected)
+    && all(expected, id => node_id_present(m: reported_set, id: id))
+    && all(reported, id => node_id_present(m: expected_set, id: id))
+}
+
+fn active_node_ids_for_plan(plan: RoadmapAuthorityProjection) -> List<RoadmapNodeId> {
+  match plan {
+    RoadmapAuthorityProjectionRefused { detail: _ } => []
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+      active_roadmap_nodes_for_accepted(accepted: accepted) |> map(n => n.node)
+  }
+}
+
+fn receipts_count() -> Int {
+  match roadmap_acceptance_receipts() {
+    RoadmapAcceptanceReceiptsProjected { receipts } => count(receipts)
+    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => 0
+  }
+}
+
+fn accepted_count_from_plan(plan: RoadmapAuthorityProjection) -> Int {
+  match plan {
+    RoadmapAuthorityProjectionRefused { detail: _ } => 0
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } => count(accepted)
+  }
+}
+
+fn forecast_refused(plan: RoadmapAuthorityProjection) -> Bool {
+  match roadmap_schedule_forecast_over(plan: plan, assumptions: assumptions(), anchor: anchor()) {
+    ScheduleForecastKnown { forecast: _ } => false
+    ScheduleForecastRefused { refusals } => count(refusals) > 0
+  }
+}
+
+fn n_declared_nodes() -> Int {
+  count(declared_roadmap_nodes())
+}
+
+fn n_declared_edges() -> Int {
+  count(declared_roadmap_edges())
+}
+
+fn n_acceptance_receipts() -> Int {
+  receipts_count()
+}
+
+fn n_accepted_ids() -> Int {
+  accepted_count_from_plan(plan: roadmap_authority_projection())
+}
+
+fn n_active_nodes() -> Int {
+  count(active_node_ids_for_plan(plan: roadmap_authority_projection()))
+}
+
+fn n_active_edges() -> Int {
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: _ } => 0
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+      count(active_roadmap_edges_for_accepted(accepted: accepted))
+  }
+}
+
+fn n_observation_builds() -> Int {
+  count(roadmap_cycle_time_observation_builds())
+}
+
+test fn rung00_trivial() -> Bool {
+  true
+}
+
+test fn rung01_declared_nodes() -> Bool {
+  count(declared_roadmap_nodes()) > 0
+}
+
+test fn rung02_declared_edges() -> Bool {
+  count(declared_roadmap_edges()) > 0
+}
+
+test fn rung03_acceptance_receipts_once() -> Bool {
+  receipts_count() > 0
+}
+
+test fn rung04_acceptance_receipts_twice() -> Bool {
+  let first = receipts_count()
+  let second = receipts_count()
+  first > 0 && second == first
+}
+
+test fn rung05_authority_projection() -> Bool {
+  accepted_count_from_plan(plan: roadmap_authority_projection()) > 0
+}
+
+test fn rung06_projection_plus_active_nodes() -> Bool {
+  let plan = roadmap_authority_projection()
+  accepted_count_from_plan(plan: plan) > 0
+    && count(active_node_ids_for_plan(plan: plan)) > 0
+}
+
+test fn rung07_projection_plus_active_nodes_and_edges() -> Bool {
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
+      count(accepted) > 0
+        && count(active_roadmap_nodes_for_accepted(accepted: accepted)) > 0
+        && count(active_roadmap_edges_for_accepted(accepted: accepted)) >= 0
+  }
+}
+
+test fn rung08_projection_plus_derived_sizings() -> Bool {
+  match roadmap_authority_projection() {
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
+    RoadmapAuthorityProjected { doc: _, accepted: accepted } => {
+      let nodes = active_roadmap_nodes_for_accepted(accepted: accepted)
+      let adaptation = derived_node_sizings(nodes: nodes)
+      count(nodes) > 0 && count(adaptation.assignments) == 0
+    }
+  }
+}
+
+test fn rung09_observation_builds_alone() -> Bool {
+  count(roadmap_cycle_time_observation_builds()) > 0
+}
+
+test fn rung10_projection_plus_builds() -> Bool {
+  let plan = roadmap_authority_projection()
+  accepted_count_from_plan(plan: plan) > 0
+    && count(roadmap_cycle_time_observation_builds()) > 0
+}
+
+test fn rung11_projection_plus_builds_and_three_folds() -> Bool {
+  let plan = roadmap_authority_projection()
+  let builds = roadmap_cycle_time_observation_builds()
+  accepted_count_from_plan(plan: plan) > 0
+    && count(builds) > 0
+    && count(accepted_cycle_time_observations(builds: builds)) >= 0
+    && count(cycle_time_history_refusals(builds: builds)) >= 0
+    && count(cycle_time_population_exclusions(builds: builds)) >= 0
+}
+
+test fn rung12_projection_plus_forecast_over() -> Bool {
+  let plan = roadmap_authority_projection()
+  accepted_count_from_plan(plan: plan) > 0 && forecast_refused(plan: plan)
+}
+
+test fn rung13_full_witness_identity_join() -> Bool {
+  let plan = roadmap_authority_projection()
+  let expected = active_node_ids_for_plan(plan: plan)
+  count(expected) > 0
+    && match roadmap_schedule_forecast_over(plan: plan, assumptions: assumptions(), anchor: anchor()) {
+      ScheduleForecastKnown { forecast: _ } => false
+      ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
+        NodeUnsized { nodes } => node_id_sets_agree(reported: nodes, expected: expected)
+        NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
+        ForecastGraphEmpty => false
+        DependencyCycle { nodes: _ } => false
+        DependencyEndpointUnknown { nodes: _ } => false
+        CycleTimeObservationNonPositive { nodes: _ } => false
+        WorkerConcurrencyCapInvalid { declared_cap: _ } => false
+        CalibrationHistoryRefused { refusals: _ } => false
+        ForecastRoadmapAuthorityRefused { detail: _ } => false
+        ForecastBuildRefused { node: _ } => false
+        SizingAssignmentRefused { refusals: _ } => false
+      })
+    }
+}
