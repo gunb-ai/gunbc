@@ -35,9 +35,20 @@ import product.fabric.selection {
 // consolidation that adds the authority and leaves the N-th copy in place has made the fork worse,
 // not better.
 //
-// It imports NO money: not std.measure, not a currency, not an offer quote reader. So "compliance entered a selection cost" is not a rule stated in prose here, it is
-// a thing that cannot be written without first adding an import that has no reason to exist. An
-// offer whose use is not admitted is not ranked and beaten on price - it is not in the list the
+// It imports NO money: not std.measure, not a currency, not an offer quote reader.
+//
+// SAY EXACTLY WHAT THAT BUYS AND NOT ONE WORD MORE, because a claim one notch stronger than its
+// evidence, sitting in an annotation, is the defect this corpus keeps having to retract. Money is
+// reachable TRANSITIVELY: SupplierOffer carries a quote and this module imports SupplierOffer, so a
+// value in scope here HAS a price hanging off it. What is absent is anything to INTERPRET it with -
+// no OfferQuote import, no accessor, no comparison. So the property is NOT "a price comparison is
+// unwritable here". It is that a price comparison here CANNOT ARRIVE QUIETLY: writing one requires
+// adding an import, and an import-list change is exactly where a reviewer looks. That is a weaker
+// wall than construction and a far stronger one than a sentence asking people not to do it, and
+// stating it at its real strength is what stops the first person who writes offer.quote in this
+// file from concluding the wall was never real.
+//
+// An offer whose use is not admitted is not ranked and beaten on price - it is not in the list the
 // ranker receives, and its absence carries a typed, located cause rather than silence.
 //
 // THE EXCLUSIONS ARE RETURNED, NOT DROPPED. A field that returned only its survivors would make
