@@ -1,6 +1,6 @@
 module v2.std.node
 
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic, OccurrenceIdAllocator }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -11,6 +11,19 @@ import std.content_hash {
 
 type Symbol
 type Hash = Fnv1a64Structural
+
+// The result of producing node structure together with the allocator after that
+// production. body_lowering_fold, normalize and namespace_graft thread this state
+// through child production before allocating a parent. T also admits a produced
+// edge list or optional node, so declining strategies retain their existing
+// Optional/Outcome distinctions. OccurrenceIdAllocResult is the single-id mint;
+// this carrier retains the result of a computation that can mint many nodes.
+// The causing ScopedOccurrenceRef is an explicit producer input, not recovered
+// by walking a finished tree. symbol_index_fill consumes the resulting identities.
+type NodeProduction<T> {
+  value: T
+  alloc: OccurrenceIdAllocator
+}
 
 type Connective
   = Atom { identity: Symbol }

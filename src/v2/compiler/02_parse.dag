@@ -1,5 +1,7 @@
 module v2.compiler.parse
 
+import std.content_hash { Fnv1a64Structural }
+
 import v2.compiler.parse_engine_hooks {
   parse_engine_expr_production,
   parse_engine_match_arm_body_production,
@@ -147,9 +149,15 @@ type ParseProvenanceState {
   index: v2.std.provenance.SpanIndex
 }
 
+// normalize consumes the parser's remaining allocator and the exact parsed-graph
+// scope when producing OccurrenceProjected nodes. Scope addresses the ordered
+// occurrence-bearing graph, not its commutative semantic Node content hash; it
+// never derives an ordinal or uses a filename as allocator identity.
 type ParseArtifact {
   tree: ParseTree
   span_index: v2.std.provenance.SpanIndex
+  alloc: OccurrenceIdAllocator
+  scope: Fnv1a64Structural
 }
 
 data authored_parse_artifact_note: String = "The parse-layer twin of LexArtifact: the semantic parse result PLUS what the annotation channel captured, now bound to subjects. `authored_parse_semantic` is the erasure boundary — a consumer projecting through it sees exactly the ParseArtifact it saw before this channel existed, which is what lets every existing semantic consumer stay untouched while annotation-aware machinery reads the whole thing.

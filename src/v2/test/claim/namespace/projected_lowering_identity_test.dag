@@ -1,0 +1,75 @@
+module v2.test.claim.namespace.projected_lowering_identity
+
+import v2.compiler.compile { NativeTestContext, native_test_context_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Named, TypeNode, node_subtree_nodes }
+import std.occurrence_identity { OccurrenceProjected, occurrence_id_eq }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Shared authored parse-to-normalize prerequisite for the identity and structural
+// controls. The floor warm roster retains it across their separate claim frames.
+fn projected_lowering_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [DagSourceReadWitness {
+    source: Medium {
+      carried: "module projected_lowering_subject\n\nimport v2.std.logic { Bool }\n\nfn identity_subject() -> Bool { true }\n",
+      fidelity: Lossless
+    },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^projected_lowering_source,
+      file_path: "src/v2/test/fixture/namespace/projected_lowering_subject.dag"
+    },
+    compilation_unit: ^projected_lowering_compilation_unit,
+    source_root: DagTree
+  }])
+}
+
+// Both claims require the authored declaration to survive normalization. The
+// identity claim additionally checks its endpoint and wrapper are distinct
+// projected occurrences, so a missing declaration cannot pass vacuously.
+fn projected_lowering_function_survives(require_projected: Bool) -> Bool {
+  match projected_lowering_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      fold(context.roots, init: false, f: fn(found, tree) {
+        found || fold(node_subtree_nodes(root: tree.root), init: false, f: fn(found_node, node) {
+          found_node || fold(node.children, init: false, f: fn(found_edge, edge) {
+            found_edge || match edge.label {
+              Named { name: name } => if name == ^identity_subject {
+                match edge.target.kind {
+                  TypeNode { connective: Arrow } => if require_projected {
+                    match node.occurrence_id {
+                      OccurrenceProjected { id: wrapper_id, caused_by: _ } =>
+                        match edge.target.occurrence_id {
+                          OccurrenceProjected { id: arrow_id, caused_by: _ } =>
+                            !occurrence_id_eq(left: wrapper_id, right: arrow_id)
+                          _ => false
+                        }
+                      _ => false
+                    }
+                  } else { true }
+                  _ => false
+                }
+              } else { false }
+              _ => false
+            }
+          })
+        })
+      })
+  }
+}
+
+test fn authored_function_arrow_reaches_normalized_graph() -> Bool {
+  projected_lowering_function_survives(require_projected: false)
+}
+
+test fn authored_function_wrapper_and_arrow_have_projected_identities() -> Bool {
+  projected_lowering_function_survives(require_projected: true)
+}
