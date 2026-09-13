@@ -1786,11 +1786,20 @@ fn step_membership_effects(
   )
 }
 
+// THE CAP AUTHORIZATION IS A PARAMETER ALL THE WAY UP, NOT A DEFAULT BURIED AT THE BOTTOM.
+//
+// An earlier revision hardcoded `CapConvergeWithheld` inside this function. That was safe and
+// INVISIBLE: a reader of the deploy boundary could not tell that cap application was gated, and
+// whoever eventually wires a live observation had no compiler-enforced place to put it. Threading
+// the decision to the boundary makes the gap a signature rather than a comment -- the withheld
+// default now lives at exactly one visible call site, and supplying a real decision means changing
+// an argument rather than finding a literal.
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
   access: DeployAccess,
   plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
 ) -> Pipeline {
   Pipeline {
     steps: concat(
@@ -1806,12 +1815,7 @@ fn apply_intent_from_effects(
       concat(
         deploy_apply_preamble_steps(access: access, spec: spec),
         concat(
-          deploy_memory_cap_apply_steps(
-            spec: spec,
-            authorization: CapConvergeWithheld {
-              cause: "no live surplus-slot observation is wired to this deploy path; gunbc.runner_slot_population_census produces one but has no converge call site",
-            },
-          ),
+          deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
           concat(
             flat_map(spec.steps, step => apply_step_effects(step: step, effects: effects, spec: spec, plan: plan)),
             [
@@ -1903,7 +1907,11 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   )
 }
 
-fn live_deploy_apply_script_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
+fn live_deploy_apply_script_for(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+) -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessJobPrincipalRefused { refusal: r } =>
       deploy_access_job_principal_refused_emit_poison(refusal: r)
@@ -1911,7 +1919,13 @@ fn live_deploy_apply_script_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -
       match membership_effects(plan: deployment_apply_plan(spec: spec)) {
         EffectsReady { effects: es } =>
           emit_pipeline_or_poison(
-            p: apply_intent_from_effects(spec: spec, effects: es, access: access, plan: plan),
+            p: apply_intent_from_effects(
+              spec: spec,
+              effects: es,
+              access: access,
+              plan: plan,
+              cap_authorization: cap_authorization,
+            ),
             refused: live_deploy_apply_emit_refused_poison
           )
         ApplyRefused { refusals: rs } =>
