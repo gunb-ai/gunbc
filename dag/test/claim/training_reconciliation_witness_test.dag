@@ -63,6 +63,7 @@ import product.training.resolution {
   resolve_training, training_work_for, admit_training_run_desired,
   resolved_training_manifest, TrainingResolvedManifest,
 }
+import test.claim.fabric.provider_use_fixture { fixture_route, fixture_permit_for }
 import product.fabric.execution {
   Attempt, ExecutionAttemptLineage,
   InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
@@ -84,7 +85,7 @@ import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
 import product.fabric.identity {
-  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, OfferKey, fabric_identity_eq,
 }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
 import extdeps.currency.currency { Usd }
@@ -423,38 +424,49 @@ fn grant_for(
   s: TrainingRunSubject<NonEmptyStr>,
   key: NonEmptyStr,
   attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
-) -> ExecutionGrant<NonEmptyStr> {
-  ExecutionGrant {
-    id: FabricIdentity { principal: "gunbai", key: key },
-    object: FabricGrantObject {
-      offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
-      quote: QuotedFlatPerGrant(MoneyOnce {
-        amount: money_amount_micro(count: 1000),
-        currency: Usd,
-      }),
-    },
-    context: FabricGrantContext {
-      demand: s.demand,
-      work: s.work,
-      attempt: attempt,
-      executor: "spark-1",
-      lease: LeaseIdentity {
-        lease_key: "lease-1",
-        resource_fingerprint: h(s: "slice-1"),
-        generation: 9,
-      },
-      issued_at: "2026-08-28T01:00:00Z",
-      maximum_liability: money_amount_micro(count: 1000000),
-    },
-    evidence: FabricGrantEvidence {
-      fungibility_receipt: "fungibility-1",
-      offer_authority: "offer-authority-1",
-      resource_conservation: "resource-conservation-1",
-      budget_conservation: "budget-conservation-1",
-      principal_authority: "principal-authority-1",
-    },
-    resource_reservations: ["reservation-gpu-1"],
-    money_reservation: "reservation-money-1",
+) -> ExecutionGrant<NonEmptyStr>? {
+  match fixture_permit_for(
+    route: fixture_route(),
+    offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
+    demand: s.demand,
+    work: s.work,
+  ) {
+    Absent => none
+    Present { value: permit } => Present {
+      value: ExecutionGrant {
+        id: FabricIdentity { principal: "gunbai", key: key },
+        object: FabricGrantObject {
+          offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
+          quote: QuotedFlatPerGrant(MoneyOnce {
+            amount: money_amount_micro(count: 1000),
+            currency: Usd,
+          }),
+        },
+        context: FabricGrantContext {
+          demand: s.demand,
+          work: s.work,
+          attempt: attempt,
+          executor: "spark-1",
+          lease: LeaseIdentity {
+            lease_key: "lease-1",
+            resource_fingerprint: h(s: "slice-1"),
+            generation: 9,
+          },
+          issued_at: "2026-08-28T01:00:00Z",
+          maximum_liability: money_amount_micro(count: 1000000),
+        },
+        evidence: FabricGrantEvidence {
+          fungibility_receipt: "fungibility-1",
+          offer_authority: "offer-authority-1",
+          resource_conservation: "resource-conservation-1",
+          budget_conservation: "budget-conservation-1",
+          principal_authority: "principal-authority-1",
+        },
+        permit: permit,
+        resource_reservations: ["reservation-gpu-1"],
+        money_reservation: "reservation-money-1",
+      }
+    }
   }
 }
 
@@ -475,14 +487,18 @@ fn claim_for(
   cause: TrainingStartCause<NonEmptyStr>,
   k: NonEmptyStr,
 ) -> TrainingExecutionClaim<NonEmptyStr>? {
-  claim_of(a: admit_start_claim(
-    observed_generation: 4,
-    ledger_generation: 4,
-    existing: existing,
-    transition: TrainingStartTransitionKey { demand: s.demand, work: s.work, cause: cause },
-    attempt: attempt_id(k: k),
-    grant: grant_for(s: s, key: k, attempt: attempt_id(k: k)),
-  ))
+  match grant_for(s: s, key: k, attempt: attempt_id(k: k)) {
+    Absent => none
+    Present { value: g } =>
+      claim_of(a: admit_start_claim(
+        observed_generation: 4,
+        ledger_generation: 4,
+        existing: existing,
+        transition: TrainingStartTransitionKey { demand: s.demand, work: s.work, cause: cause },
+        attempt: attempt_id(k: k),
+        grant: g,
+      ))
+  }
 }
 
 // THE CLAIMS THE ORDINARY FIXTURE CARRIES: one per attempt the graph holds, each on its own

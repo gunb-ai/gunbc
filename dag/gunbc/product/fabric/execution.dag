@@ -6,6 +6,8 @@ import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual, C
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, GrantKey, OfferKey, ReceiptKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.supply { OfferQuote }
+import product.fabric.provider_route { ProviderRoute }
+import product.fabric.provider_admission { ProviderUsePermit }
 
 // An Attempt is one concrete try at a Work. Retries create attempts; they never
 // create new Work and never mutate a failed attempt back into a pending one.
@@ -114,13 +116,33 @@ type FabricGrantEvidence {
   principal_authority: ObservationReceiptRef
 }
 
+// THE PERMIT IS A FIELD OF THE GRANT, NOT A SIXTH OPAQUE RECEIPT. FabricGrantEvidence already
+// carries five ObservationReceiptRef rows the issuer does not interpret; a sixth string standing
+// beside them would be a positional convention where a sealed type already exists, which
+// product.fabric.provider_route ruled out for the route itself. The permit is the admission
+// decision's own carrier, so an auditor reading an ExecutionGrant alone can re-derive the
+// admitting posture revision, the route-facts revision and the route without consulting the
+// candidate that produced it.
 type ExecutionGrant<P> {
   id: FabricIdentity<P, GrantKey>
   object: FabricGrantObject<P>
   context: FabricGrantContext<P>
   evidence: FabricGrantEvidence
+  permit: ProviderUsePermit<P>
   resource_reservations: List<ReservationRef>
   money_reservation: ReservationRef
+}
+
+fn grant_admitting_posture_revision<P>(g: ExecutionGrant<P>) -> ContentHash {
+  g.permit.evidence.posture_revision
+}
+
+fn grant_admitting_route_facts_revision<P>(g: ExecutionGrant<P>) -> ContentHash {
+  g.permit.evidence.route_facts_revision
+}
+
+fn grant_admitting_route<P>(g: ExecutionGrant<P>) -> ProviderRoute {
+  g.permit.route
 }
 
 // Every reservation a grant requires is applied tentatively and committed only
