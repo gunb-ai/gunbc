@@ -6,6 +6,11 @@ import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_see
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
 import gunbc.ambiguity_ban_admission { ambiguity_ban_seed_growth_justification }
 import gunbc.decl_facts_shared_memo_seed_growth { decl_facts_shared_memo_seed_growth_justification }
+import gunbc.decl_facts_authored_string_attach_seed_growth {
+  collect_authored_string_literals_seed_growth_justification,
+  authored_string_literal_edge_seed_growth_justification,
+  with_authored_string_literals_seed_growth_justification
+}
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
@@ -253,6 +258,9 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     regen_convergence_seed_growth_justification,
     dag_artifact_identity_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
+    collect_authored_string_literals_seed_growth_justification,
+    authored_string_literal_edge_seed_growth_justification,
+    with_authored_string_literals_seed_growth_justification,
     keyed_declaration_read_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,

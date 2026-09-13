@@ -8,33 +8,22 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-// WHAT THIS FILE MEASURES, and why it is enrolled red rather than written green.
-//
-// A consumer that asks "which declarations name v1" keys on the AUTHORED STRING VALUE of a
-// declaration — a row spelling "v1-compiler" or "v1.compiler.emit_rust" is the thing it is
-// looking for. The route such a consumer takes is v2.std.decl_index decl_facts_at composed
-// with v2.std.fn_index atom_identities_in_node over the returned DeclFact node.
-//
-// That route carries no authored string value at all. Measured on the tree at ec1571e892a by
-// the three pairs below: each pair differs ONLY in the value its rows author, and each pair
-// projects the IDENTICAL atom population. So every lexeme-keyed reader over declaration facts
-// answers the same thing for a row that names v1 and a row that names nothing — and it answers
-// it without refusing, which makes a discovery gate over this route green by construction on
-// exactly the population it exists to find. That is the false-negative class filed at
-// gunbc.recurring_failure_mode.projection_drops_the_value_its_consumer_keys_on.
-//
+// WHAT THIS FILE MEASURES. A consumer that asks "which declarations name v1" keys on the
+// AUTHORED STRING VALUE of a declaration. The route is v2.std.decl_index decl_facts_at
+// composed with v2.std.fn_index atom_identities_in_node. That route used to drop those
+// values (class gunbc.recurring_failure_mode.projection_drops_the_value_its_consumer_keys_on).
+// DataItem decl_facts now carry parse-tree LitStr atoms, so the three pairs below must
+// project DIFFERENT atom populations. They stay executing as regression controls.
 // THE PAIRS ARE VALUE-ONLY, AND THE COMPARISON DOES NOT GUESS A SPELLING. An earlier probe
 // asked whether a particular lexeme was present and could not distinguish "the value is
 // absent" from "I guessed the wrong spelling for an atom". Comparing two populations against
 // EACH OTHER removes that variable: if the projection carried authored values at all, two rows
 // with different values could not project the same atoms, whatever the spelling.
 //
-// ENROLLED EXPECTED-RED (v2.workflow.floor_expected_red). The three same_atoms assertions are
-// written as the behaviour that SHOULD hold — different values project different atoms — so
-// they are red today and go green exactly when the projection carries values. They are the
-// acceptance red for that change and flip to permanent regression controls when it lands
-// (DESIGN section 4b(4): the evidence stays enrolled). The positive control below is NOT
-// enrolled, and is what separates "the projection drops values" from "the reader is broken".
+// REGRESSION CONTROLS (no longer expected-red). The three same_atoms assertions are
+// the behaviour that holds now that the projection carries authored values — different
+// values project different atoms. They stay executing (DESIGN section 4b(4): the
+// evidence stays enrolled). The positive control below was never expected-red.
 
 data value_projection_roots: List<String> = ["dag", "src/v2"]
 
@@ -85,10 +74,10 @@ data rec_a: String = "test.fixture.decl_fact_value_projection.specimens.specimen
 
 data rec_b: String = "test.fixture.decl_fact_value_projection.specimens.specimen_record_beta"
 
-// POSITIVE CONTROL — NOT enrolled expected-red, and it must stay green. It establishes that
+// POSITIVE CONTROL — never expected-red, and it must stay green. It establishes that
 // decl_facts_at resolves all six qualified names and that every projected node yields a
-// non-empty atom population, so the three reds below report a projection that DROPS VALUES
-// rather than a lookup that found nothing or a reader that returns nothing.
+// non-empty atom population, so the three regression controls below report whether the
+// projection DISTINGUISHES VALUES rather than a lookup that found nothing.
 test fn every_specimen_resolves_and_projects_a_nonempty_atom_population() -> Bool {
   for_all(
     xs: [bare_a, bare_b, list_a, list_b, rec_a, rec_b],
@@ -99,12 +88,12 @@ test fn every_specimen_resolves_and_projects_a_nonempty_atom_population() -> Boo
   )
 }
 
-// EXPECTED RED 1 — bare String initializer position.
+// REGRESSION CONTROL 1 — bare String initializer position.
 test fn bare_string_rows_with_different_values_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: bare_a, b: bare_b)
 }
 
-// EXPECTED RED 2 — list-literal element position. Both specimens hold TWO elements and share
+// REGRESSION CONTROL 2 — list-literal element position. Both specimens hold TWO elements and share
 // their second, so arity and element count are held fixed and only the first element's characters
 // differ; an earlier revision paired a two-element list against an EMPTY one, which a projection
 // carrying cardinality alone could have greened (review 64012).
@@ -112,7 +101,7 @@ test fn list_rows_with_different_elements_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: list_a, b: list_b)
 }
 
-// EXPECTED RED 3 — string values inside a record initializer, constructor held fixed.
+// REGRESSION CONTROL 3 — string values inside a record initializer, constructor held fixed.
 test fn record_rows_with_different_string_fields_project_different_atoms() -> Bool {
   distinct_values_project_distinct_atoms(a: rec_a, b: rec_b)
 }

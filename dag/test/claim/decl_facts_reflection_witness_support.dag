@@ -9,6 +9,7 @@ import test.fixture.decl_facts_reflection.witness_support {
   decl_facts_reflection_fixture_facts,
 }
 import v2.std.decl_index { DeclFact }
+import std.types { List }
 import std.algebra { Empty }
 import v2.std.optional { optional_present, optional_absent }
 import v2.std.data_initializer_identity {
