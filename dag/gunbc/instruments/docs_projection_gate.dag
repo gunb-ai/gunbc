@@ -28,7 +28,7 @@ fn write_docs_projection(path: String, content: String) -> ProcessExit {
 // files: is_compared_generated_basename is ends_with .rs. That ownership gap is the motive.
 // regen writes both ledger paths locally. main agrees only the committed rung-drop ledger:
 // agreeing DesignFailureModesArtifact would be permanently green (NotCommitted).
-func regen() -> ProcessExit {
+fn regen() -> ProcessExit {
   let first = write_docs_projection(
     path: artifact_path(a: DesignFailureModesArtifact),
     content: expected_design_failure_modes_md()
@@ -57,7 +57,7 @@ fn agree_one(path: String, expected: String) -> ProcessExit {
 // DesignFailureModesArtifact: that would be permanently green. Regen still writes a local copy.
 // Requiring a checkout of docs/design-failure-modes.md would restore the 1.19MB merge surface.
 
-func main() -> ProcessExit {
+fn main() -> ProcessExit {
   agree_one(
     path: artifact_path(a: DesignRungDropsArtifact),
     expected: expected_design_rung_drops_md()
