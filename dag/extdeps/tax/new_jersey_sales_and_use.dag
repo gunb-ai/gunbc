@@ -54,7 +54,6 @@ data nj_statewide_sales_tax: StatutoryRate = StatutoryRate {
   },
 }
 
-data nj_statewide_sales_tax_rate: PartsPerMillion = statutory_rate_value(r: nj_statewide_sales_tax)
 
 // Half the statewide rate under N.J.S.A. 52:27H-80, published as 3.3125 percent.
 //
@@ -69,4 +68,3 @@ data nj_uez_reduced_sales_tax: StatutoryRate = StatutoryRate {
   },
 }
 
-data nj_uez_reduced_sales_tax_rate: PartsPerMillion = statutory_rate_value(r: nj_uez_reduced_sales_tax)

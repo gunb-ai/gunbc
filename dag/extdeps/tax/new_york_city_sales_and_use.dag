@@ -54,4 +54,3 @@ data nyc_combined_sales_tax: StatutoryRate = StatutoryRate {
   },
 }
 
-data nyc_combined_sales_tax_rate: PartsPerMillion = statutory_rate_value(r: nyc_combined_sales_tax)
