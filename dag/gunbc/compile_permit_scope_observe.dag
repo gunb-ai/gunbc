@@ -6,6 +6,7 @@ import std.disposition { Disposition, SingleAuthority }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import product.placement_supply { HostIdentity }
 import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty }
+import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import extdeps.jobserver { jobserver_fifo_path_from_makeflags }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
@@ -29,7 +30,6 @@ import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host_converge { gunbc_runner_jobserver_service }
-import gunbc.runner_slot_allocation { gunbc_runner_cores_per_slot, CoresPerSlotResolved, CoresPerSlotUnresolved }
 
 data compile_permit_scope_observe_scope_disposition: Disposition = SingleAuthority
 
@@ -105,18 +105,17 @@ fn read_wants(
 }
 
 fn local_jobs_from_environment(tokens: List<String>) -> HardwareThreadCount? {
-  match env_assignment_value(tokens: tokens, key: "CARGO_BUILD_JOBS") {
+  match env_assignment_value(
+    tokens: tokens,
+    key: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String,
+  ) {
     Present { value: raw } =>
       match parse_int(s: raw) {
         Present { value: n } =>
           if n >= 1 { Present { value: hardware_thread_count(count: n) } } else { none }
         Absent => none
       }
-    Absent =>
-      match gunbc_runner_cores_per_slot() {
-        CoresPerSlotResolved { threads: t } => Present { value: t }
-        CoresPerSlotUnresolved { cause: _ } => none
-      }
+    Absent => none
   }
 }
 

@@ -84,6 +84,17 @@ test fn w_fifo_unit_text_is_borrower_held_host_fifo() -> Bool {
   }
 }
 
+test fn w_absent_fifo_and_absent_jobs_is_unreadable_not_invocation_local() -> Bool {
+  match realization_from_unit_text(
+    environment: "APP_ID=1",
+    after: "network-online.target",
+    wants: "network-online.target",
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 test fn w_absent_fifo_evidence_with_cargo_jobs_is_invocation_local() -> Bool {
   match realization_from_unit_text(
     environment: local_environment(),
