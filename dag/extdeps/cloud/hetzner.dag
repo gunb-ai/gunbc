@@ -18,6 +18,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// Published-page URIs only. Whether those pages answer a data-path question is a receipt in
+// product.supplier.hetzner_path_reading, not an Unobserved arm on this module.
+data hetzner_technical_organizational_measures_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/"
+  }
+}
+
+data hetzner_data_protection_overview_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/"
+  }
+}
+
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
@@ -271,6 +287,3 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
   [ cax11_listed, cax21_listed, cax31_listed, cax41_listed,
     cx23_listed, cx33_listed, cx43_listed, cx53_listed ]
 }
-
-
-
