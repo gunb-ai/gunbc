@@ -986,6 +986,36 @@ fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
   money_rate_micros(q: q)
 }
 
+// Vendor account credits are scrip, not CurrencyCode. AccountCredit names the issuer the
+// same way MoneyRate carries currency: CreditRate<P> stays period-parameterized, and two
+// sellers' credits are not the same quantity because their AccountCredit values differ.
+type AccountCredit {
+  issuer: NonEmptyStr
+}
+
+type CreditRate<P> {
+  count: Nat
+  credit: AccountCredit
+}
+
+type CreditsPerMinute = CreditRate<PerMinute>
+
+fn account_credit(issuer: NonEmptyStr) -> AccountCredit {
+  AccountCredit { issuer: issuer }
+}
+
+fn credits_per_minute(count: Nat, credit: AccountCredit) -> CreditsPerMinute {
+  CreditRate { count: count, credit: credit }
+}
+
+fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+  r.count
+}
+
+fn credits_per_minute_issuer(r: CreditsPerMinute) -> NonEmptyStr {
+  r.credit.issuer
+}
+
 fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
   MoneyPerHour {
     amount: money_amount_micro(count: money_per_minute_micros(q: q) * minutes_per_hour()),

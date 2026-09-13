@@ -1,7 +1,7 @@
 module test.claim.arm_ci_seller_census_witness
 
 import std.types { Bool, List, NonEmptyStr }
-import std.measure { hardware_thread_count }
+import std.measure { credits_per_minute_count, credits_per_minute_issuer, hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types {
@@ -9,7 +9,6 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   ArmListPriceStanding,
   ArmCreditsPerMinute,
-  credits_per_minute_count,
   RunnerCatalogAvailability,
   RunnerShapeRow,
   RunnerShapesCited,
@@ -266,10 +265,10 @@ test fn later_consumer_frontier_is_enrolled_in_the_census_closure() -> Bool {
 
 test fn circleci_arm_credits_are_issuer_scoped_and_counted() -> Bool {
   match circleci_arm_list_price {
-    ArmCreditsPerMinute { per_minute, priced_label, issuer } =>
+    ArmCreditsPerMinute { per_minute, priced_label } =>
       credits_per_minute_count(r: per_minute) == 13
         && priced_label == "arm.medium"
-        && declaration_ref_eq(a: issuer, b: circleci_provider_identity)
+        && credits_per_minute_issuer(r: per_minute) == "extdeps.ci_runner.circleci"
     _ => false
   }
 }

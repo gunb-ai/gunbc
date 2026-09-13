@@ -1040,6 +1040,42 @@ pub fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
     money_rate_micros(q.clone())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AccountCredit {
+    pub issuer: NonEmptyStr,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CreditRate<P> {
+    pub count: Nat,
+    pub credit: Rc<AccountCredit>,
+    pub _phantom: std::marker::PhantomData<P>,
+}
+
+pub type CreditsPerMinute = Rc<CreditRate<PerMinute>>;
+
+pub fn account_credit(issuer: NonEmptyStr) -> Rc<AccountCredit> {
+    Rc::new(AccountCredit {
+        issuer: issuer.clone(),
+    })
+}
+
+pub fn credits_per_minute(count: Nat, credit: Rc<AccountCredit>) -> CreditsPerMinute {
+    Rc::new(CreditRate {
+        count: count.clone(),
+        credit: credit.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn credits_per_minute_count(r: CreditsPerMinute) -> Nat {
+    r.count.clone()
+}
+
+pub fn credits_per_minute_issuer(r: CreditsPerMinute) -> NonEmptyStr {
+    r.credit.issuer.clone()
+}
+
 pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
     Rc::new(MoneyRate {
         amount: money_amount_micro((money_per_minute_micros(q.clone()) * minutes_per_hour())),
