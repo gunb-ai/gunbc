@@ -1,6 +1,8 @@
 module extdeps.ssh
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List, Bool }
+import std.nat { Nat }
+import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -76,4 +78,110 @@ fn ssh_public_key_line(k: SshPublicKey) -> String {
     concat(ssh_key_algorithm_token(a: k.algorithm) as String, " "),
     concat(k.material as String, concat(" ", k.comment)),
   )
+}
+
+// ── THE LINE READ BACKWARD, WHICH IS THE SAME ROWS AS THE LINE WRITTEN FORWARD ─────────────────
+//
+// `ssh_public_key_line` RENDERS; NOTHING READ. So every consumer that wanted to know what a host's
+// authorized_keys actually contains had to either hand-author an observation -- which is what
+// gunbc.host_authorized_keys_reconcile does today, carrying point-in-time reads an operator took from a
+// laptop in July as `data` rows -- or compare whole lines as opaque strings, which cannot tell a
+// comment-only drift from a different key.
+//
+// DESIGN SECTION 4 SAYS THIS IS ONE PROCEDURE ASKED IN TWO DIRECTIONS, so the parser lives beside the
+// renderer and selects from the SAME facts: the algorithm token registry decides the first field, and a
+// token this module does not spell is refused rather than guessed. A second parser elsewhere -- in a Spark
+// module, say, next to the consumer that needed it first -- would be a second authority for the wire form
+// of an OpenSSH key, and the algorithm roster would then have two places to be wrong.
+//
+// THE ALGORITHM IS RESOLVED THROUGH THE TOKEN FUNCTION RATHER THAN A SECOND MATCH, which is what keeps the
+// two directions from drifting: adding an algorithm to SshKeyAlgorithm forces its token, and the parser
+// picks it up with no edit here.
+data ssh_key_algorithms_parsed: List<SshKeyAlgorithm> = [Ed25519, Rsa, EcdsaP256]
+
+fn ssh_key_algorithm_of_token(token: String) -> SshKeyAlgorithm? {
+  filter(ssh_key_algorithms_parsed, a => (ssh_key_algorithm_token(a: a) as String) == token).first()
+}
+
+// A LINE IS THREE FIELDS AND THE THIRD IS OPTIONAL, which is the OpenSSH form: algorithm, base64 material,
+// then an optional free-text comment that may itself contain spaces. So the comment is the REMAINDER after
+// the second field rather than the third whitespace-separated token -- taking the third token would silently
+// truncate `briansrls@srv1 (rotated 2026-07)` to `briansrls@srv1` and make two different lines compare equal
+// on value.
+//
+// AND AN OPTIONS PREFIX IS REFUSED RATHER THAN MISREAD. authorized_keys permits a leading options field
+// (`command="..." ,no-pty ssh-ed25519 AAAA... x`), and a line carrying one does not begin with an algorithm
+// token, so it parses as Absent and reaches the caller as an unreadable line. That is the honest answer: an
+// options-bearing key grants something this model does not represent, and treating it as a bare key would
+// drop the restriction while claiming the key is present.
+type SshAuthorizedKeyLine
+  = SshKeyLineParsed { key: SshPublicKey }
+  | SshKeyLineUnreadable { raw: String, because: NonEmptyStr }
+
+fn parse_ssh_public_key_line(raw: String) -> SshAuthorizedKeyLine {
+  let line = trim(s: raw)
+  let fields = filter(split(s: line, delimiter: " "), f => f != "")
+  match fields.first() {
+    Absent => SshKeyLineUnreadable { raw: raw, because: "the line is empty" as NonEmptyStr }
+    Present { value: token } =>
+      match ssh_key_algorithm_of_token(token: token) {
+        Absent => SshKeyLineUnreadable {
+          raw: raw,
+          because: join([
+            "the first field is not an algorithm token this module spells: ", token,
+            ". A comment line, a blank-padded line, or an authorized_keys OPTIONS prefix all arrive here, and",
+            " an options-bearing key is deliberately unreadable rather than read as a bare key -- the options",
+            " restrict what the key may do, and dropping them would widen the grant while reporting the key",
+          ], "") as NonEmptyStr,
+        }
+        Present { value: algorithm } =>
+          match fields.skip(n: 1).first() {
+            Absent => SshKeyLineUnreadable {
+              raw: raw,
+              because: join(["the line names algorithm ", token, " and carries no key material"], "") as NonEmptyStr,
+            }
+            Present { value: material } => SshKeyLineParsed {
+              key: SshPublicKey {
+                algorithm: algorithm,
+                material: material as NonEmptyStr,
+                comment: join(fields.skip(n: 2), " "),
+              },
+            }
+          }
+      }
+  }
+}
+
+// THE ROUND TRIP IS THE PROPERTY THAT MAKES THIS ONE GRAMMAR RATHER THAN TWO FUNCTIONS. Rendering a key and
+// parsing the result must return the same key; a parser that quietly normalised the comment, or a renderer
+// that spelled the algorithm differently, would break it. Its witness is the discriminating control.
+fn ssh_public_key_eq(a: SshPublicKey, b: SshPublicKey) -> Bool {
+  (ssh_key_algorithm_token(a: a.algorithm) as String) == (ssh_key_algorithm_token(a: b.algorithm) as String)
+    && (a.material as String) == (b.material as String)
+    && a.comment == b.comment
+}
+
+// ── A WHOLE FILE, AND AN UNREADABLE LINE IS CARRIED RATHER THAN DROPPED ───────────────────────
+//
+// DROPPING THEM WOULD BE THE ABSORBING FALLBACK DESIGN SECTION 5 FORBIDS. A reconcile that received only the
+// lines it could parse would compute a plan against a SUBSET of what is on the host -- and the ownership wall
+// that refuses to tear down a key the fleet does not own would then never see the keys it exists to protect.
+// Silently narrowing the observed set makes every teardown look safe.
+type SshAuthorizedKeysReading sole_constructor {
+  keys: List<SshPublicKey>
+  unreadable: List<SshAuthorizedKeyLine>
+}
+
+fn parse_ssh_authorized_keys(text: String) -> SshAuthorizedKeysReading {
+  let parsed = map(filter(split(s: text, delimiter: "\n"), l => trim(s: l) != ""), l => parse_ssh_public_key_line(raw: l))
+  SshAuthorizedKeysReading {
+    keys: fold(parsed, init: [], f: (acc, p) => match p {
+      SshKeyLineParsed { key: k } => concat(acc, [k])
+      SshKeyLineUnreadable { raw: _, because: _ } => acc
+    }),
+    unreadable: filter(parsed, p => match p {
+      SshKeyLineUnreadable { raw: _, because: _ } => true
+      SshKeyLineParsed { key: _ } => false
+    }),
+  }
 }

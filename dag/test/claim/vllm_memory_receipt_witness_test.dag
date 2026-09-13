@@ -6,7 +6,8 @@ import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.serving_deployment_selection { ServingExecutionProfile }
-import gunbc.spark.glm_canary_converge { glm_canary_arm, glm_canary_execution_profile }
+import gunbc.spark.serving_compatibility { glm_exl3_on_gitcommit90_sm121_tp1 }
+import gunbc.spark.serving_arm_launch { selected_execution_profile }
 import gunbc.fleet_intent_network { operator_host_srv9 }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
 import extdeps.vllm.log_lines {
@@ -56,8 +57,13 @@ fn w_launch(invocation: String) -> VllmServingLaunch {
 // succeeded, because `profile` was a parameter passed beside the launch rather than a fact joined to
 // it. The subject is now the canary's own profile, derived from the same arm the launch line is
 // rendered from.
+// AND ITS PRODUCER MOVED WHEN THE CANARY'S CONVERGENCE MODULE WAS RETIRED. The profile used to be derived by
+// a function that existed only inside that module, so deleting the EXL3 route would have deleted this
+// witness's subject -- the tell that the fact was homed in a consumer. It is now derived from the
+// COMPATIBILITY SUBJECT for the same tuple: the same checkpoint, runtime, topology and launch profile the
+// captured line below was produced by, reached through the one producer any selected deployment uses.
 fn w_profile() -> ServingExecutionProfile? {
-  glm_canary_execution_profile(arm: glm_canary_arm)
+  selected_execution_profile(s: glm_exl3_on_gitcommit90_sm121_tp1)
 }
 
 data w_revision: VllmSourceRevision = vllm_source_revision(
@@ -210,11 +216,19 @@ test fn captures_of_different_text_carry_different_digests() -> Bool {
 //
 // THE FINDING THIS FILE EXISTS TO CLOSE. The witness previously admitted the canary's captured line
 // against the native GLM artifact and the shared production parameters. The profile now comes from
-// the canary arm, so this asserts the identity is the canary's own -- and it would go red the moment
-// somebody reintroduced a borrowed profile, which is exactly how the defect arrived.
+// the canary's own compatibility subject, so this asserts the identity is that subject's -- and it would go
+// red the moment somebody reintroduced a borrowed profile, which is exactly how the defect arrived.
+//
+// AND IT ASSERTS THE ARTIFACT, WHICH IS THE AXIS THAT WAS ACTUALLY WRONG. A previous revision of this row
+// checked a `parameters_digest` field the type does not have -- so this module did not compile, and a
+// control nobody could run had been reported as the closure of the finding. The artifact reference is what
+// distinguishes the requantised EXL3 weights from the native checkpoint, which is the substitution that
+// happened.
 test fn the_receipt_carries_the_canarys_own_execution_profile() -> Bool {
   match w_profile() {
     Absent => false
-    Present { value: p } => (p.tensor_parallel_degree == 1) && !(p.parameters_digest == "witness-fixture")
+    Present { value: p } =>
+      (p.tensor_parallel_degree == 1)
+        && ((p.artifact.decl_name as String) == "artifact_glm_53_flash_2bit")
   }
 }

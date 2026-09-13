@@ -1,0 +1,136 @@
+module gunbc.plans.fleet_identity_convergence_conformance
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
+
+fn fleet_identity_convergence_conformance_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** conformance census, executed against the live tree 2026-09-12 · **the carriers remain the authority** — this is an audit and a sequencing, not a fact ledger (DESIGN §6, no parallel-ledger docs). Each row dissolves into a mark on its carrier (a deleted module, a re-pointed import, a provider gaining a handler) when it lands."),
+    p(text: "**The question.** DESIGN §3b asks, for every concept domain a change touches, whether the change inhabits the model that already owns that domain — and where it diverges, whether it says why. This census asks it of two *existing* paths rather than of a diff: the Spark bootstrap path (A) and the srvN convergence path (B) both converge host identity and access, and the answer is that they share their DESIRED state and share almost nothing else."),
+    p(text: "**The shape of the answer.** A owns every EXECUTOR and every READBACK; B owns every declared ROSTER. So neither path is a superset: A can create an account and prove a session but does not know which principals the fleet wants, and B declares the roster, the key set and the sudo grants and cannot create, observe or converge any of them. Eight facts have two authorities. A ninth — group membership — has *zero*: the desired set is undeclared and the provider is explicitly unimplemented."),
+    p(text: "**Why this is a replacement migration and not a refactor.** §3's standing rule: where two structures answer one semantic question and one is intended to disappear, the change cuts at the root. The root here is *which authority answers \"is this host's identity converged\"* — and B has no such verdict at all, while A has four per-concern standings. The cut is therefore not \"merge two verdicts\" but \"give the shared authority the one verdict, and let both paths reach it through a locus.\""),
+    ThematicBreak,
+
+    h2(text: "1. The fork census — eight facts, two authorities each"),
+    p(text: "Read left to right: the fact, who answers it on each path, and the disposition. \"Survives\" names the authority the other side re-points to; it is not always A's."),
+    TableBlock {
+      header: row(cells: [cell(text: "fact"), cell(text: "PATH A — Spark bootstrap"), cell(text: "PATH B — srvN convergence"), cell(text: "survives"), cell(text: "disposition")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [
+          cell(text: "**which POSIX principals should exist**"),
+          cell(text: "none — `spark_managed_login = \"gunbc-automation\"` as a bare string literal"),
+          cell(text: "`gunbc.fleet_posix_accounts` — `FleetPosixAccountKey` closed roster, `GroundedPosixPrincipal`, `fleet_posix_principal`"),
+          cell(text: "**B**"),
+          cell(text: "**NOT merely a nickname, and not mechanical — this was under-read twice.** `FleetAccountAutomation`'s declared `automation_name_requirements` carry `allocation_policy.method = ExplicitAllocation` with `intent.uniformity = IndependentPerOccurrence`, so the local name is allocated EXPLICITLY PER HOST. A single global `\"gunbc-automation\"` therefore contradicts the principal's declared name policy, not just its roster key. And `spark_automation_allocation_standing` answers `AccountUnallocated` for every Spark today, with its own annotation saying that is \"the honest starting standing, not a placeholder waiting to be filled with a static name\" — which is exactly what A filled it with. **Fixing this is an ALLOCATION DECISION (which local name on which host), which is the operator's, not a re-point.**"),
+        ]),
+        row(cells: [
+          cell(text: "**does account X exist on host H**"),
+          cell(text: "live readback — `PosixAccountReadback`, `realize_managed_account`, `ManagedPosixAccountReady`"),
+          cell(text: "authored claim — `PosixAccountDeclaredProbe`, `fleet_posix_account_exists`, plus an OPEN declared-vs-reported contradiction (`fleet_ci_runner_reported_contradiction`)"),
+          cell(text: "**A**"),
+          cell(text: "B's declared probe is a claim where an observation belongs; its own contradiction row is the evidence. B re-points at the account provider. The contradiction then resolves by measurement rather than by adjudication."),
+        ]),
+        row(cells: [
+          cell(text: "**which keys belong in authorized_keys**"),
+          cell(text: "one rendered line — `fleet_authorized_key_line`"),
+          cell(text: "the set — `fleet_ssh_access.fleet_authorized_keys` (operator + automation)"),
+          cell(text: "**B**"),
+          cell(text: "**CORRECTED: these are two POLICIES, not one policy implemented twice.** `fleet_authorized_keys` holds the operator's MacBook key AND the fleet-automation key, and `host_authorized_keys_reconcile` takes that whole population as desired for the `ubuntu` account. Pushing that set into an automation account would authorize HUMAN LOGIN to a service principal -- so A's single line is not an undeclared narrowing, it is the right answer for a different subject. The common subject is (host, semantic principal, account allocation) -> desired key bindings. The credential is shared; WHERE it is authorized is what consolidates."),
+        ]),
+        row(cells: [
+          cell(text: "**who writes authorized_keys, who reads it back**"),
+          cell(text: "writes and reads — `install_authorized_key_script`, `install_authorized_key_readback_script`, `realize_managed_authorized_key`, `AuthorizedKeyReadback`"),
+          cell(text: "writes ONCE at install — `gunbc.os_install` autoinstall `ssh_authorized_keys`; reads back nothing (observed side is a July operator fixture)"),
+          cell(text: "**A** for convergence, **B** for seeding"),
+          cell(text: "Two writers of one file is only a fork for the CONVERGING write. Install-time seeding is a different occasion and stays. What must not stay is a converger that exists on one path only."),
+        ]),
+        row(cells: [
+          cell(text: "**desired vs observed authorized_keys as a plan**"),
+          cell(text: "no plan — appends one hardcoded line"),
+          cell(text: "`gunbc.host_authorized_keys_reconcile` — `MembershipPlan<SshPublicKey, …>`, ownership-gated teardown, and **no executor anywhere**"),
+          cell(text: "**B**"),
+          cell(text: "The sharpest fork: B plans exactly what A executes, and neither knows about the other. A's provider consumes the plan; the plan gets a RECURRING executing consumer. **CORRECTION, and it is the more useful finding:** an earlier revision of this row said the srv3 drift was open since 2026-07-24. It is not. `gunbc.fleet_reach` records that fleet-automation was ADDED to ubuntu@srv3 on 2026-07-25 and that the reconcile's srv3 upsert executed live over the srv2 nested hop. So the plan HAS been applied once, by hand, and what is missing is RECURRENCE -- and two annotations in this corpus disagree about srv3's current state, which is the defect a reader inherits."),
+        ]),
+        row(cells: [
+          cell(text: "**sudoers drop-in path and content**"),
+          cell(text: "`managed_grant_reconcile.spark_managed_grant_dropin_path` / `_content`; install via `managed_grant_install`"),
+          cell(text: "`gunbc.ci.ci_deploy_sudoers`, `ci_deploy_access`; desired grants in `fleet_posix_accounts.PosixSudoGrant`"),
+          cell(text: "**B** for desired, **A** for install+readback"),
+          cell(text: "The desired grants are already B's and richly modelled per principal. A re-authors its own `SparkManagedGrant` vocabulary. A's grant provider takes `PosixSudoGrant`; the two renderers collapse into one."),
+        ]),
+        row(cells: [
+          cell(text: "**which principal we log in as to mutate a host**"),
+          cell(text: "two-leg by design — `spark_operator_bootstrap_login` (password) then `spark_managed_login` (key)"),
+          cell(text: "`host_identity_access.host_identity_ssh_access` binds `fleet_posix_operator_principal()`"),
+          cell(text: "**neither, yet**"),
+          cell(text: "A's two-leg split is CORRECT and is the thing B lacks: B logs in as the operator to mutate, which is the bootstrap principal doing converged work. `RealizationLocus` already distinguishes a managed principal on a host from the host itself; what is missing is B declaring which locus its slices run at."),
+        ]),
+        row(cells: [
+          cell(text: "**is this host's identity converged**"),
+          cell(text: "four per-concern standings — `SparkManagedAccessStanding`, `spark_apply_converged`, `spark_managed_grants_converged`, `ManagedAccessRealization`"),
+          cell(text: "**no identity verdict.** `ConvergeSlice = GunbcSlice \\| RunnerSlice \\| SessionsSlice`; `host_identity_converge` is hostname-only"),
+          cell(text: "**new**"),
+          cell(text: "Neither side's verdict survives as-is. A's four standings are per-concern and Spark-shaped; B has none. The shared authority already carries the cells — `cap_posix_account`, `cap_authorized_key`, `cap_membership`, `cap_privileged_principal` — so the verdict is a closure over those, not a fifth standing."),
+        ]),
+      ],
+    },
+
+    h3(text: "1a. What the new vertical rebuilt instead of consuming"),
+    p(text: "**`fleet_posix_accounts` is not a username roster, and this census under-read it.** It already separates `FleetPosixAccountKey` (semantic principal), `FleetPrincipalIntent` (login policy and required grants), `PosixAccountOccurrence` (host × semantic principal), `PosixAccountAllocation` (local username, UID, GID), `PosixAccountObservation` (observed account, execution receipt, time) and `ground_posix_principal` (the allocation/observation join). It states outright that an SSH key comment is not a username."),
+    p(text: "**`ManagedPosixAccountReady` carries a string host, a string principal, a home and a smaller readback, and its admission compares the reported name and a nonempty home.** That is account identity rebuilt one layer down from an authority that already models occurrence, allocation and observation. The capability it adds -- a PROVEN USABLE SESSION -- is genuinely new and must survive; the identity underneath it should be consumed, not re-derived."),
+    p(text: "**AND THE AUTHORITY IS ALREADY WAITING FOR EXACTLY WHAT THE NEW PROVIDER PRODUCES.** The publication helper's row states the division: \"the name is the modeled one; the uid is host-assigned by useradd --system at first deploy, so the allocation standing is AccountUnallocated until the six-state grounding observes what the host chose -- the account is persistent by policy and its number is a fact the host owns.\" So the provider's readback is not a competing observer; it is the observation `ground_posix_principal` is written to consume, and `PosixAccountObservation` is its shape."),
+    p(text: "**THE MISSING FOLD IS ADOPTION, AND IT IS THE REAL LANE A GAP.** `ground_posix_principal` returns `PrincipalUnallocated` for an `AccountUnallocated` standing REGARDLESS of whether an observation was supplied, so nothing in the corpus folds *unallocated + observation -> allocated*. Every Spark automation occurrence is unallocated; a first deploy therefore produces an observation the grounding cannot use, and the account can never become grounded by the ordinary route. `gunbc.host_identity_adopt` is the nearest precedent, for hostnames. **This is a modeling obligation (§6) and it blocks Lane A's terminal: until adoption exists, the provider can observe an account and cannot ground it.**"),
+    p(text: "**And the old authority has a defect that must not be inherited.** `ground_host_access` carries `observed_authorized_keys` and declares a `HostAccessKeyPopulationDrifted` arm, and its body never compares the keys: it checks account grounding, password refusal and privilege, then returns `HostAccessGrounded`. That positive arm is a control that cannot fail, which is the class rostered at `gunbc.recurring_failure_mode.a_control_that_could_not_fail`. Reusing the authority means repairing that arm, not adopting it."),
+    ThematicBreak,
+
+    h3(text: "1b. The ninth fact, which has no authority at all"),
+    p(text: "**Group membership.** `GroundedPosixPrincipal` carries `posix` + `sudo_grants` + `declared_probe` and has **no groups field**, so the desired set is undeclared. `gunbc.managed_principal_provider` already says the executor side outright: `ManagedMembershipProvider` answers `managed_provider_has_handler => false`, and the live route passes `required_groups: []`. This is the honest state and it is *visible* rather than implied — a graph requiring a membership RESOLVES and is refused execution, naming the provider that cannot run."),
+    p(text: "**It is a modeling obligation, not a conformance row** (§3b's own admission rule: a domain whose home does not exist yet is §6 work). The obligation has two halves and they are separable: a `groups` field on `GroundedPosixPrincipal` (declaration), and a membership upsert with its own readback (execution). The declaration is cheap and unblocks the requirement; the upsert flips the handler arm."),
+    ThematicBreak,
+
+    h2(text: "2. The two dimensions, and why they do not merge into one"),
+    p(text: "The operator's framing — tie these together in both the convergence dimension and the identity dimension — is load-bearing, because the two dimensions fork differently and a single merge would get one of them wrong."),
+    ul(items: [
+      li(text: "**Identity dimension** — *which principals, keys and grants should exist.* Here B is already the authority and A is the deviant: A re-authors a login name, narrows a key set to one line, and mints a parallel grant vocabulary. Every disposition points at B. This dimension is a **re-pointing**, and it is mostly mechanical."),
+      li(text: "**Convergence dimension** — *what runs, in what order, as whom, and with what readback.* Here A is the authority and B is absent: A has providers, readbacks, unattempted-versus-refused, and a two-leg credential split; B has three slices that converge a deployed tree as an already-trusted principal and no identity slice at all. This dimension is an **extension of B**, and it is not mechanical, because it needs a locus declaration per slice."),
+    ]),
+    p(text: "**So the tie is one subject reached from two entry points, not one path absorbing the other.** `gunbc.managed_principal_session`, `_provider`, `_probe` and `_command` is already host-agnostic and already carries the capability cells; it is consumed only by A today."),
+    p(text: "**CORRECTION to an earlier framing: Spark versus srvN is NOT the locus distinction.** An earlier revision of this census said the tie was \"one authority, two loci\", pairing Spark with ManagedPrincipalOnHost and srvN with RemoteHost. That is wrong: BOTH fleet members need a host-and-account-scoped session, and both loci appear in EITHER member's dependency graph. `RemoteHost` describes host-level work; `ManagedPrincipalOnHost` describes principal-scoped work. The distinction is the KIND OF WORK, not which fleet the host belongs to."),
+    ThematicBreak,
+
+    h2(text: "3. Sequencing — cheapest first, and each step independently landable"),
+    ol(items: [
+      li(text: "**Bind A's subject to the authority's subject, and escalate the name.** `ManagedPosixAccountReady` carries `PosixAccountOccurrence` (host × `FleetPosixAccountKey`) instead of two bare strings — that is the cheap, correct half and it closes the subject fork. The LOCAL NAME is not re-pointed, because `ExplicitAllocation` + `IndependentPerOccurrence` means there is no single name to point at: choosing per-host names is an operator allocation. Until then the Spark path's global name is a STATED divergence rather than an accidental one, which is the §3b middle value."),
+      li(text: "**Add the adoption fold.** *unallocated occurrence + observation -> allocation*, so a first deploy's observed name and host-assigned uid become the allocation instead of being discarded. Without it every Spark automation account stays permanently ungroundable by the ordinary route, and Lane A cannot terminate."),
+      li(text: "**A's key provider consumes `MembershipPlan`.** `host_authorized_keys_reconcile` gains its executing consumer, A stops narrowing the set to one line, and the ownership-gated teardown wall stops being permanently degenerate. Requires the wholesale-versus-siblings-continue policy call the reconcile module explicitly reserves to a human: a foreign key's refusal must not block our owned upsert."),
+      li(text: "**A's authorized-keys readback becomes the reconcile's observed side.** `extdeps.ssh.parse_ssh_authorized_keys` already exists for this and is unconsumed; the July operator fixtures retire when a live read replaces them."),
+      li(text: "**A's grant provider consumes `PosixSudoGrant`.** The two sudoers renderers collapse; `SparkManagedGrant` dissolves into the roster's per-principal grants."),
+      li(text: "**B's entry consumes the session capability as a DEPENDENCY, not as a fourth slice.** **CORRECTED:** an earlier revision proposed growing `ConvergeSlice` a fourth `IdentitySlice` arm. Two things make that the wrong first move. The three variants are the host-knob/deployed-tree model and are NOT an exhaustive inventory of fleet convergence -- `fleet_converge_cli` already composes another capability-convergence route outside that list -- and access is a PREREQUISITE of effects that need it rather than a sibling task that happens to run first. So the rule is: an operation that requires managed-principal access resolves that requirement, observes or realizes it, consumes the ready handle, and runs. Not: run an identity slice and hope the later slices benefit."),
+      li(text: "**Bootstrap access is resolved from the host's declared binding, not from a username.** The session selector currently chooses password authentication for one global bootstrap login and key authentication for every other string. That models neither a host whose bootstrap account is `ubuntu` nor one reached through an already-enrolled bootstrap key -- and `fleet_posix_accounts` already identifies host-administrator accounts as host-specific. Access repair must not depend on the managed session whose absence requires the repair."),
+      li(text: "**Groups: declare, then converge.** A `groups` field on `GroundedPosixPrincipal`, then a membership upsert with readback, which flips `ManagedMembershipProvider`'s handler arm and makes `required_groups` non-empty on the live route."),
+    ]),
+    p(text: "**Steps 1–4 are re-pointings inside the identity dimension and can land in any order.** Step 5 is the convergence-dimension extension and is the only one that needs a design decision. Step 6 is the modeling obligation. Nothing here requires a new closure authority: `std.realization_dependency` already resolves the graph, refuses zero and multiple providers, detects cycles, and separates a resolved graph from an executable one."),
+    ThematicBreak,
+
+    h2(text: "4. What this census deliberately does not claim"),
+    ul(items: [
+      li(text: "**That A is correct and B should follow.** Five of eight dispositions point at B. A's contributions are the convergence machinery and the two-leg credential split; its identity facts are the deviant ones."),
+      li(text: "**That the forks are defects of inattention.** The Spark path was built where no host-convergence identity slice existed, and building one would have been the larger change at the time. The divergence is admissible under §3b; what it lacked was a stated reason, which is what this census supplies retroactively."),
+      li(text: "**That the srv3 drift is fixed.** It is diagnosed, and step 2 closes it. Today `host_authorized_keys_reconcile` still computes the right plan and nothing executes it."),
+      li(text: "**That the shared authority is proven on B.** It is consumed only by A, and its witnesses exercise Spark-shaped fixtures. A locus over srvN is a claim this census proposes and does not evidence."),
+    ]),
+  ]
+}
+
+data fleet_identity_convergence_conformance_plan: Plan = Plan {
+  slug: "fleet-identity-convergence-conformance",
+  title: "Fleet identity convergence — conformance between the Spark bootstrap path and the srvN convergence path",
+  body: fleet_identity_convergence_conformance_body(),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Delete this census when every row's disposition has landed on its carrier: A's login literal re-pointed at the roster, A's key provider consuming host_authorized_keys_reconcile's MembershipPlan with a live observed side, A's grant provider consuming PosixSudoGrant, B carrying an identity slice with a declared locus, and GroundedPosixPrincipal carrying groups with a converging upsert behind them -- at which point one authority answers each of the nine facts and the fork census has no rows."),
+  },
+  projection: PlanProjectsCommittedMarkdown,
+}

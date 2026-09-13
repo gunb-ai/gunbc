@@ -1,0 +1,136 @@
+module test.claim.extdeps.simple_repository_api_witness_test
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import extdeps.python.simple_repository_api {
+  strip_html_comments, extract_file_link_hrefs, href_value_of,
+  resolve_against_index, index_origin, index_directory,
+  locator_filename, locator_names_file,
+}
+
+// ── THE CONTROLS THE PREVIOUS SUITE DID NOT HAVE ──────────────────────────────────────────────
+//
+// THE OLD WITNESSES REJECTED A NEIGHBOURING VERSION AND AN x86 WHEEL and were cited as evidence that
+// the filename match was exact. Both of those fail a SUBSTRING test too, so they discriminated nothing
+// about the claim they were attached to -- they exercised the easy cases of a property whose hard cases
+// were the entire point. These are the hard cases.
+
+data w_wheel_name: NonEmptyStr = "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr
+
+// ── 1. SUFFIX, QUERY AND PARENT-DIRECTORY NEAR-MISSES ─────────────────────────────────────────
+//
+// `.metadata` IS THE ONE THAT MATTERS IN PRACTICE: package indexes publish it right beside the wheel,
+// so a substring matcher meets this on the very first real listing it reads.
+test fn a_metadata_sibling_is_not_the_wheel() -> Bool {
+  !locator_names_file(
+    locator: "https://example.invalid/x/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl.metadata" as NonEmptyStr,
+    filename: w_wheel_name)
+}
+
+test fn the_name_appearing_in_a_query_value_is_not_the_wheel() -> Bool {
+  !locator_names_file(
+    locator: "https://example.invalid/other-file?description=flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    filename: w_wheel_name)
+}
+
+test fn the_name_as_a_parent_directory_is_not_the_wheel() -> Bool {
+  !locator_names_file(
+    locator: "https://example.invalid/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl/another-file" as NonEmptyStr,
+    filename: w_wheel_name)
+}
+
+// AND THE REAL LINK STILL MATCHES, WITH ITS DIGEST FRAGMENT ATTACHED -- which is how a package index
+// actually publishes it, so a matcher that forgot to strip the fragment would reject every genuine link.
+test fn the_real_link_with_a_digest_fragment_matches() -> Bool {
+  locator_names_file(
+    locator: "https://github.com/flashinfer-ai/flashinfer/releases/download/nightly-v0.7.0-20260910/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=b5ae2fc0631bdf9416767fe1c41300819111e2f435af8c53487e7074465d4ae7" as NonEmptyStr,
+    filename: w_wheel_name)
+}
+
+// ── 2. A URL IN A COMMENT IS NOT AN OFFER ─────────────────────────────────────────────────────
+//
+// THIS IS THE CASE THAT BROKE THE "CANNOT WIDEN SELECTION" ARGUMENT. With one spurious matching URL and
+// no genuine one, "reject all but one" selects the spurious URL -- so the extraction has to exclude it,
+// because no downstream matcher can recover that it came from prose.
+data w_commented_index: String = "<html><body><!-- https://evil.invalid/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl --><p>nothing here</p></body></html>"
+
+test fn a_url_inside_a_comment_is_not_a_file_link() -> Bool {
+  count(extract_file_link_hrefs(document: w_commented_index)) == 0
+}
+
+// AND A COMMENT CONTAINING AN ANCHOR TAG IS ALSO NOT AN OFFER, which is why comments are stripped BEFORE
+// the scan rather than filtered after: a commented-out entry is exactly the shape an index leaves behind
+// when a build is withdrawn.
+data w_commented_anchor_index: String = "<html><!-- <a href=\"https://evil.invalid/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl\">old</a> --></html>"
+
+test fn a_commented_out_anchor_is_not_a_file_link() -> Bool {
+  count(extract_file_link_hrefs(document: w_commented_anchor_index)) == 0
+}
+
+// ── 3. A LEGITIMATE RELATIVE LINK IS FOUND AND RESOLVED ───────────────────────────────────────
+//
+// AN ABSOLUTE-ONLY READER OMITS THESE SILENTLY, and the result is the most misleading one available: a
+// successfully read index that appears to hold nothing, reported as a withdrawn pin.
+data w_relative_index: String = "<html><a href=\"../../files/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=abc\">wheel</a></html>"
+
+test fn a_relative_file_link_is_extracted() -> Bool {
+  count(extract_file_link_hrefs(document: w_relative_index)) == 1
+}
+
+test fn a_relative_link_resolves_against_the_index_directory() -> Bool {
+  match resolve_against_index(index: "https://flashinfer.ai/whl/nightly/flashinfer-python/" as NonEmptyStr, href: "../../files/w.whl") {
+    Present { value: r } => (r as String) == "https://flashinfer.ai/whl/nightly/flashinfer-python/../../files/w.whl"
+    Absent => false
+  }
+}
+
+// A ROOT-RELATIVE LINK REPLACES THE PATH RATHER THAN APPENDING TO IT, which is the one case where
+// joining to the directory would silently produce a wrong and plausible URL.
+test fn a_root_relative_link_resolves_against_the_origin() -> Bool {
+  match resolve_against_index(index: "https://flashinfer.ai/whl/nightly/flashinfer-python/" as NonEmptyStr, href: "/whl/other/w.whl") {
+    Present { value: r } => (r as String) == "https://flashinfer.ai/whl/other/w.whl"
+    Absent => false
+  }
+}
+
+test fn an_absolute_link_passes_through_unchanged() -> Bool {
+  match resolve_against_index(index: "https://flashinfer.ai/whl/nightly/flashinfer-python/" as NonEmptyStr, href: "https://github.com/x/y.whl") {
+    Present { value: r } => (r as String) == "https://github.com/x/y.whl"
+    Absent => false
+  }
+}
+
+// ── 4. THE EXTRACTION FINDS A GENUINE ANCHOR BESIDE NOISE ─────────────────────────────────────
+//
+// A REAL LISTING IS NOT A CLEAN DOCUMENT: it carries a generator banner, prose, and other packages'
+// links. The scan must find the one offer among them rather than everything that looks like an address.
+data w_mixed_index: String = "<html><!-- generated by an indexer, see https://example.invalid/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl --><body><p>Mentioned: https://text.invalid/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl</p><a href=\"https://real.invalid/pkgs/flashinfer_python-0.7.0.dev20260910-py3-none-any.whl#sha256=aa\">wheel</a></body></html>"
+
+test fn the_anchor_is_found_and_the_prose_and_comment_are_not() -> Bool {
+  let hrefs = extract_file_link_hrefs(document: w_mixed_index)
+  count(hrefs) == 1
+    && any(hrefs, h => string_contains(s: h, pattern: "real.invalid"))
+    && !any(hrefs, h => string_contains(s: h, pattern: "text.invalid"))
+    && !any(hrefs, h => string_contains(s: h, pattern: "example.invalid"))
+}
+
+// ── 5. THE FILENAME READER'S OWN BEHAVIOUR ────────────────────────────────────────────────────
+
+test fn the_fragment_and_query_are_stripped_before_the_name_is_read() -> Bool {
+  locator_filename(locator: "https://h.invalid/a/b/w.whl?x=1#sha256=zz" as NonEmptyStr) == "w.whl"
+}
+
+// A PERCENT-ENCODED PLUS IS DECODED, because a local version segment is spelled either way by different
+// indexes and the wheel this fleet needs carries one.
+test fn a_percent_encoded_plus_is_decoded() -> Bool {
+  locator_filename(locator: "https://h.invalid/flashinfer_jit_cache-0.7.0.dev20260910%2Bcu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr)
+    == "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl"
+}
+
+// ── 6. COMMENT STRIPPING DOES NOT EAT THE DOCUMENT ────────────────────────────────────────────
+//
+// THE LEGITIMATE EMPTY THIS RULE MUST NOT BREAK: a document with no comments must survive intact, and a
+// stripper that returned "" on that input would make every index look empty.
+test fn a_document_without_comments_is_unchanged() -> Bool {
+  strip_html_comments(document: "<html><a href=\"x\">y</a></html>") == "<html><a href=\"x\">y</a></html>"
+}

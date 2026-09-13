@@ -70,6 +70,7 @@ type VllmImageSourceBinding sole_constructor {
 type ModelledVllmDefaultsRevision
   = Vllm487ecf187
   | Vllm1967a5627
+  | Vllm8d09804
 
 fn defaults_source_revision(r: ModelledVllmDefaultsRevision) -> VllmSourceRevision {
   match r {
@@ -80,6 +81,13 @@ fn defaults_source_revision(r: ModelledVllmDefaultsRevision) -> VllmSourceRevisi
     Vllm1967a5627 => vllm_source_revision(
       repository: "github.com/vllm-project/vllm" as NonEmptyStr,
       full_revision: "1967a5627bc3710b680bbec24ecb99aaddedf22b" as NonEmptyStr,
+    )
+    // THE REVISION THE DERIVED NoPE RUNTIME SELF-REPORTS, read from inside the image on srv9 2026-09-13:
+    // vllm.__version__ is 0.1.dev1+g8d09804c8, whose trailing token is this commit. That is the image
+    // saying which tree it was built from; it is not a comparison of its bytes against that tree.
+    Vllm8d09804 => vllm_source_revision(
+      repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+      full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
     )
   }
 }
@@ -109,13 +117,18 @@ fn defaults_gpu_utilization(r: ModelledVllmDefaultsRevision) -> BasisPoint {
   match r {
     Vllm487ecf187 => basis_point(count: 9200)
     Vllm1967a5627 => basis_point(count: 9200)
+    Vllm8d09804 => basis_point(count: 9200)
   }
 }
 
+// ABSENT HERE MEANS THE REVISION DECLARES NO EXPLICIT BYTE OVERRIDE. It does not mean a zero-byte cache,
+// and it does not mean the field went unread: for 8d09804 the dataclass default was inspected inside the
+// derived image and found to be None, which is the successful observation of an optional field's absence.
 fn defaults_kv_cache_memory_bytes(r: ModelledVllmDefaultsRevision) -> ByteSize? {
   match r {
     Vllm487ecf187 => none
     Vllm1967a5627 => none
+    Vllm8d09804 => none
   }
 }
 
@@ -125,14 +138,36 @@ fn defaults_kv_cache_memory_bytes(r: ModelledVllmDefaultsRevision) -> ByteSize? 
 // managed ingress and nobody who may bypass one. Those are the facts a tenancy claim needs, and a
 // Boolean that cannot express any of them cannot assert them. The partition question has its own type
 // below and its own honest starting value.
-fn defaults_prefix_caching(r: ModelledVllmDefaultsRevision) -> Bool {
+// WHAT AN OMITTED FLAG BECOMES IS NOT ALWAYS A PROPERTY OF THE REVISION ALONE, and a Bool here said it
+// was. At 8d09804 the CLI path does not read CacheConfig's declared default: EngineArgs starts the field
+// at None and resolves it through the MODEL configuration -- measured inside the derived image on srv9,
+// 2026-09-13, where zai-org/GLM-5.3-Flash reports runner_type=generate, is_hybrid=True,
+// is_attention_free=False, is_encoder_decoder=False and is_prefix_caching_supported=True. A revision-keyed
+// Bool cannot express "it depends on the model", so it would have had to assert a constant that is true
+// for this checkpoint and unknown for the next one.
+//
+// THE THREE ARMS ARE THE THREE HONEST ANSWERS. A revision whose omission rule really is fixed says so; a
+// revision that defers to model characteristics says THAT, and cannot be resolved without a model
+// reading; a revision nobody has read says neither.
+//
+// THE OLDER TWO ROWS KEEP THE ANSWER THEY WERE RECORDED WITH, and that is a deliberate limit rather than
+// a claim: `true` is what was observed for those runtimes, and whether their upstream resolves through
+// the same model-dependent path was NOT re-read here. Reclassifying them from this revision's source
+// would be inferring two measurements from a third.
+type VllmOmittedPrefixCachingRule
+  = OmittedPrefixCachingFixed { enabled: Bool }
+  | OmittedPrefixCachingFromModelSupport
+  | OmittedPrefixCachingUnestablished { cause: NonEmptyStr }
+
+fn defaults_prefix_caching(r: ModelledVllmDefaultsRevision) -> VllmOmittedPrefixCachingRule {
   match r {
-    Vllm487ecf187 => true
-    Vllm1967a5627 => true
+    Vllm487ecf187 => OmittedPrefixCachingFixed { enabled: true }
+    Vllm1967a5627 => OmittedPrefixCachingFixed { enabled: true }
+    Vllm8d09804 => OmittedPrefixCachingFromModelSupport
   }
 }
 
-data vllm_modelled_revisions: List<ModelledVllmDefaultsRevision> = [Vllm487ecf187, Vllm1967a5627]
+data vllm_modelled_revisions: List<ModelledVllmDefaultsRevision> = [Vllm487ecf187, Vllm1967a5627, Vllm8d09804]
 
 // AN UNMODELLED REVISION REFUSES RATHER THAN BORROWING A NEIGHBOUR'S DEFAULTS. The two rows above
 // agree on every field today, which is exactly the coincidence that would make a fallback look
@@ -448,9 +483,25 @@ fn resolve_vllm_prefix_caching(
             ], "") as NonEmptyStr,
           }
         VllmDefaultsKnown { revision: rev } =>
-          PrefixCachingResolved {
-            enabled: defaults_prefix_caching(r: rev),
-            origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: EnablePrefixCachingField },
+          match defaults_prefix_caching(r: rev) {
+            OmittedPrefixCachingFixed { enabled: e } =>
+              PrefixCachingResolved {
+                enabled: e,
+                origin: ExpectedFromClaimedSourceRevision { source_revision: defaults_source_revision(r: rev), field: EnablePrefixCachingField },
+              }
+            // A MODEL-DEPENDENT RULE CANNOT BE RESOLVED FROM A REVISION, and this refusal is the useful
+            // half of modelling it: the caller is told to ask explicitly rather than handed a constant
+            // that happens to be right for one checkpoint. An explicit request needs no default at all,
+            // which is the arm above this match.
+            OmittedPrefixCachingFromModelSupport =>
+              PrefixCachingUnresolvable {
+                cause: join([
+                  "prefix caching is omitted and revision ",
+                  (defaults_source_revision(r: rev)).full_revision as String,
+                  " resolves it from the model configuration rather than from the revision, so it is unestablished until the request names a value or a model reading is supplied",
+                ], "") as NonEmptyStr,
+              }
+            OmittedPrefixCachingUnestablished { cause: c } => PrefixCachingUnresolvable { cause: c }
           }
       }
   }

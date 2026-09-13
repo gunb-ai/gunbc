@@ -149,6 +149,47 @@ data vllm_07b75534_aarch64_release_recipe: VllmContainerBuildRecipe = VllmContai
   nvcc_threads: 8,
 }
 
+// ── THE REVISION THAT REPAIRS THE NoPE CACHE WRITER ───────────────────────────────────────────
+//
+// vllm#55277's HEAD, WHICH IS ONE PIN AND NOT A PATCH SET. The pull request contains two commits and the
+// head contains both: 0fa2b33 relaxes the compiled cache writer to accept a zero-width RoPE section and
+// zeroes the reserved tail of the 656-byte row instead of reading a k_pe that does not exist, and 8d09804
+// sizes the sparse page table by the converted buffer width rather than by index_topk, which GLM-5.3-Flash
+// widens from 2048 to 2176 with its kpool tail. Asking the remote for `refs/pull/55277/head` returns
+// 8d09804, so a build takes one revision and applies nothing.
+//
+// IT IS AN OPEN PULL REQUEST AND THAT IS CARRIED, not smoothed over: this is not a released vLLM and not
+// a merged commit on main. The evidence upstream reports for it is NVFP4 at TP4 on SM120 with a 65,536
+// context, which is a different quantisation and a different context ceiling from this fleet's native FP8
+// at 262,144 on GB10 -- so it establishes that the repair approach works and nothing about this tuple.
+// THE REPOSITORY FIELD IS SCHEME-FREE AND THAT IS A CONTRACT, NOT A STYLE. `vllm_clone_url` prepends
+// "https://", so a row carrying the scheme composes to `https://https://github.com/...`. The cited V4.1
+// row above spells it scheme-free, and this one did not -- a divergence that no reader would catch by
+// looking at either row alone, and that the older path masks because it never clones from the new one.
+data vllm_glm53_nope_repair_revision: VllmSourceRevision = vllm_source_revision(
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+  full_revision: "8d09804c877c48165c6ba69bc9dc02d09bae0b83" as NonEmptyStr,
+)
+
+// THE RECIPE IS UPSTREAM'S aarch64 RELEASE ROW WITH THE SOURCE MOVED AND NOTHING ELSE, which is the point
+// of writing it this way: CUDA, base images, python and torch are read off the cited row, so the only
+// divergence a reader must check is the revision. The architecture list and parallelism are the fleet
+// overrides the existing targeting function already applies.
+data vllm_glm53_nope_aarch64_recipe: VllmContainerBuildRecipe = VllmContainerBuildRecipe {
+  source: vllm_glm53_nope_repair_revision,
+  dockerfile_path: vllm_07b75534_aarch64_release_recipe.dockerfile_path,
+  build_target: vllm_07b75534_aarch64_release_recipe.build_target,
+  cuda_version: vllm_07b75534_aarch64_release_recipe.cuda_version,
+  build_base_image: vllm_07b75534_aarch64_release_recipe.build_base_image,
+  final_base_image: vllm_07b75534_aarch64_release_recipe.final_base_image,
+  python_version: vllm_07b75534_aarch64_release_recipe.python_version,
+  torch_version: vllm_07b75534_aarch64_release_recipe.torch_version,
+  flashinfer_version: vllm_07b75534_aarch64_release_recipe.flashinfer_version,
+  torch_cuda_arch_list: vllm_07b75534_aarch64_release_recipe.torch_cuda_arch_list,
+  max_jobs: vllm_07b75534_aarch64_release_recipe.max_jobs,
+  nvcc_threads: vllm_07b75534_aarch64_release_recipe.nvcc_threads,
+}
+
 // A FLEET BUILD IS UPSTREAM'S RECIPE WITH DECLARED OVERRIDES, AND THE OVERRIDE POINT IS HERE.
 //
 // The record is sole_constructor so a caller cannot assemble a recipe field by field and call the

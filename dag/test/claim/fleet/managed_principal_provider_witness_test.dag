@@ -1,0 +1,443 @@
+module test.claim.fleet.managed_principal_provider_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.ssh { SshPublicKey, ssh_public_key_line }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_posix_accounts { PosixAccountOccurrence, FleetAccountAutomation }
+import std.realization_dependency {
+  CapabilityRequirement, requirement_key,
+  CapabilityProvider,
+  DependencyClosureStanding, DependencyClosureResolved,
+  RequirementWithoutProvider, RequirementWithMultipleProviders, DependencyCycle,
+  resolve_dependency_closure,
+  ProviderExecutionStanding, ProviderScheduleExecutable, ProviderHandlerMissing,
+}
+import gunbc.managed_principal_session {
+  FleetCredentialIdentity, fleet_declared_credential_identity, fleet_credential_identity,
+  PosixAccountReadback, AuthorizedKeyReadback,
+  ManagedPosixAccountReady, ManagedAuthorizedKeyReady,
+  managed_principal_providers, principal_session_requirement, membership_requirement,
+  managed_account_provider_identity, fleet_private_key_provider_identity,
+  managed_membership_provider_identity, managed_session_provider_identity,
+}
+import gunbc.managed_principal_provider {
+  ManagedProviderKind,
+  BootstrapAdministratorSessionProvider, FleetPrivateKeyBindingProvider,
+  ManagedAccountProvider, ManagedAuthorizedKeyProvider,
+  ManagedMembershipProvider, ManagedPrincipalSessionProvider,
+  managed_provider_kind_label, managed_provider_has_handler,
+  managed_provider_kinds, managed_provider_bindings_for, managed_provider_kind_at,
+  provider_row_has_handler_for, admit_managed_schedule_for, managed_provider_roster_is_total,
+  managed_provider_identity_for, managed_provider_kind_eq, distinct_provider_kinds,
+  ManagedProviderBinding, ManagedProviderKindLookup,
+  ProviderKindUnique, ProviderKindUnbound, ProviderKindAmbiguous, managed_provider_kind_lookup,
+  ManagedProviderOutcome, ProviderRealized, ProviderRefused, ProviderUnattempted,
+  provider_outcome_kind, provider_outcome_realized, provider_outcome_label,
+  AccountProviderTerminal, realize_managed_account,
+  KeyProviderTerminal, realize_managed_authorized_key,
+}
+
+data w_host: NonEmptyStr = "192.168.1.225" as NonEmptyStr
+data w_principal: NonEmptyStr = "gunbc-automation" as NonEmptyStr
+data w_admin: NonEmptyStr = "briansrls" as NonEmptyStr
+data w_group: NonEmptyStr = "docker" as NonEmptyStr
+
+// A SECOND GROUP, because one membership row cannot show that memberships are keyed per group.
+data w_second_group: NonEmptyStr = "sudo" as NonEmptyStr
+
+fn w_declared() -> FleetCredentialIdentity { fleet_declared_credential_identity() }
+
+fn w_good_account_readback() -> PosixAccountReadback {
+  PosixAccountReadback {
+    observed_principal: w_principal,
+    observed_home: "/home/gunbc-automation" as NonEmptyStr,
+    observed_shell: "/bin/bash" as NonEmptyStr,
+    instrument: "getent passwd after creation" as NonEmptyStr,
+  }
+}
+
+fn w_unread_account_readback() -> PosixAccountReadback {
+  PosixAccountReadback {
+    observed_principal: "<unread>" as NonEmptyStr,
+    observed_home: "<unread>" as NonEmptyStr,
+    observed_shell: "<unread>" as NonEmptyStr,
+    instrument: "the script produced no parseable readback" as NonEmptyStr,
+  }
+}
+
+fn w_key_readback(line: String, owner: String, mode: String) -> AuthorizedKeyReadback {
+  AuthorizedKeyReadback {
+    observed_line: line as NonEmptyStr,
+    observed_owner: owner as NonEmptyStr,
+    observed_mode: mode as NonEmptyStr,
+    instrument: "grep and stat after the install" as NonEmptyStr,
+  }
+}
+
+fn w_good_key_readback() -> AuthorizedKeyReadback {
+  w_key_readback(line: ssh_public_key_line(k: fleet_automation_ssh_key), owner: "gunbc-automation", mode: "600")
+}
+
+fn w_account_terminal(bootstrap_realized: Bool, apply_succeeded: Bool, readback: PosixAccountReadback) -> AccountProviderTerminal {
+  realize_managed_account(
+    occurrence: PosixAccountOccurrence { host: w_host as HostIdentity, principal: FleetAccountAutomation },
+    expected_local_name: w_principal,
+    bootstrap_realized: bootstrap_realized,
+    apply_succeeded: apply_succeeded,
+    apply_detail: "the account script exited non-zero" as NonEmptyStr,
+    readback: readback,
+  )
+}
+
+fn w_key_terminal(account: AccountProviderTerminal, apply_succeeded: Bool, readback: AuthorizedKeyReadback) -> KeyProviderTerminal {
+  realize_managed_authorized_key(
+    account_ready: account.ready,
+    credential: w_declared(),
+    expected_key: fleet_automation_ssh_key,
+    apply_succeeded: apply_succeeded,
+    apply_detail: "the key script exited non-zero" as NonEmptyStr,
+    readback: readback,
+  )
+}
+
+// ── THE POSITIVE CHAIN, WITHOUT WHICH EVERY UNATTEMPTED ROW PASSES VACUOUSLY ───────────────────
+test fn an_observed_account_and_an_observed_key_both_realize() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: true, apply_succeeded: true, readback: w_good_account_readback())
+  let key = w_key_terminal(account: account, apply_succeeded: true, readback: w_good_key_readback())
+  provider_outcome_realized(o: account.outcome) && provider_outcome_realized(o: key.outcome)
+}
+
+// ── CONTROL 5: A FAILED ACCOUNT LEAVES THE KEY UNATTEMPTED, NOT FAILED ────────────────────────
+//
+// THE ROW THE OLD APPLY COULD NOT PRODUCE. Four legs evaluated and aggregated meant a refused account creation
+// still ran the key install, which then reported ITS OWN failure -- so one cause surfaced as two findings and a
+// reader saw a host broken in two ways.
+test fn a_refused_account_leaves_the_key_provider_unattempted() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: true, apply_succeeded: false, readback: w_unread_account_readback())
+  let key = w_key_terminal(account: account, apply_succeeded: true, readback: w_good_key_readback())
+  match key.outcome {
+    ProviderUnattempted { kind: k, blocked_by: b } =>
+      match b {
+        ManagedAccountProvider => true
+        BootstrapAdministratorSessionProvider => false
+        FleetPrivateKeyBindingProvider => false
+        ManagedAuthorizedKeyProvider => false
+        ManagedMembershipProvider => false
+        ManagedPrincipalSessionProvider => false
+      }
+    ProviderRealized { kind: _, detail: _ } => false
+    ProviderRefused { kind: _, cause: _ } => false
+  }
+}
+
+// AND THE KEY PROVIDER PRODUCES NO HANDLE, which is what makes the next link unattemptable in turn rather than
+// merely advised against.
+test fn a_refused_account_leaves_the_key_handle_absent() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: true, apply_succeeded: false, readback: w_unread_account_readback())
+  let key = w_key_terminal(account: account, apply_succeeded: true, readback: w_good_key_readback())
+  match key.ready {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND AN UNREALIZED BOOTSTRAP SESSION LEAVES THE ACCOUNT UNATTEMPTED, so the chain's first edge is structural
+// too rather than assumed by the order the wet route happens to call things in.
+test fn an_unrealized_bootstrap_leaves_the_account_unattempted() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: false, apply_succeeded: true, readback: w_good_account_readback())
+  match account.outcome {
+    ProviderUnattempted { kind: _, blocked_by: b } =>
+      match b {
+        BootstrapAdministratorSessionProvider => true
+        FleetPrivateKeyBindingProvider => false
+        ManagedAccountProvider => false
+        ManagedAuthorizedKeyProvider => false
+        ManagedMembershipProvider => false
+        ManagedPrincipalSessionProvider => false
+      }
+    ProviderRealized { kind: _, detail: _ } => false
+    ProviderRefused { kind: _, cause: _ } => false
+  }
+}
+
+// ── CONTROL 6: THE WRITE SUCCEEDED AND THE READBACK DISAGREES ─────────────────────────────────
+//
+// THE CASE `grep -c .` REPORTED AS CONVERGED. The install exits zero having appended the line; the file is
+// group-writable, so sshd ignores it and the key authenticates nothing. The write and the readback are separate
+// facts and only the second produces a handle.
+test fn a_successful_write_with_a_group_writable_file_refuses_and_mints_nothing() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: true, apply_succeeded: true, readback: w_good_account_readback())
+  let key = w_key_terminal(
+    account: account, apply_succeeded: true,
+    readback: w_key_readback(line: ssh_public_key_line(k: fleet_automation_ssh_key), owner: "gunbc-automation", mode: "660"),
+  )
+  match key.outcome {
+    ProviderRefused { kind: _, cause: c } => string_contains(s: c as String, pattern: "cannot authenticate")
+    ProviderRealized { kind: _, detail: _ } => false
+    ProviderUnattempted { kind: _, blocked_by: _ } => false
+  }
+}
+
+// AND A SUCCESSFUL WRITE WHOSE LINE IS SOMEBODY ELSE'S KEY IS ALSO A REFUSAL, with the write's own success
+// named in the cause so a reader is not sent looking for a failed command.
+test fn a_successful_write_of_the_wrong_line_refuses() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: true, apply_succeeded: true, readback: w_good_account_readback())
+  let key = w_key_terminal(
+    account: account, apply_succeeded: true,
+    readback: w_key_readback(line: "ssh-ed25519 AAAASOMEONEELSE other@host", owner: "gunbc-automation", mode: "600"),
+  )
+  match key.outcome {
+    ProviderRefused { kind: _, cause: c } => string_contains(s: c as String, pattern: "the write succeeded")
+    ProviderRealized { kind: _, detail: _ } => false
+    ProviderUnattempted { kind: _, blocked_by: _ } => false
+  }
+}
+
+// AND AN UNPARSEABLE READBACK AFTER A SUCCESSFUL ACCOUNT SCRIPT IS A REFUSAL, because the sentinel cannot pass
+// the admission -- which is the point of a located sentinel rather than an empty string.
+test fn a_successful_account_script_with_an_unread_readback_refuses() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: true, apply_succeeded: true, readback: w_unread_account_readback())
+  match account.outcome {
+    ProviderRefused { kind: _, cause: c } => string_contains(s: c as String, pattern: "readback disagrees")
+    ProviderRealized { kind: _, detail: _ } => false
+    ProviderUnattempted { kind: _, blocked_by: _ } => false
+  }
+}
+
+// ── CONTROL 4 AT THE DOMAIN GRAIN: THE MEMBERSHIP PROVIDER HAS NO HANDLER TODAY ───────────────
+//
+// THE ROW THAT KEEPS STANDING TWO FROM BEING DECORATIVE. Nothing in this repository upserts a supplementary
+// group, so a graph that requires one RESOLVES and is NOT executable -- and this asserts the honest answer
+// rather than a blanket yes. When a membership upsert with its own readback lands, this row flips and the
+// dissolution is visible.
+test fn the_membership_provider_reports_no_handler() -> Bool {
+  !managed_provider_has_handler(k: ManagedMembershipProvider)
+}
+
+test fn every_other_provider_reports_a_handler() -> Bool {
+  managed_provider_has_handler(k: BootstrapAdministratorSessionProvider)
+    && managed_provider_has_handler(k: FleetPrivateKeyBindingProvider)
+    && managed_provider_has_handler(k: ManagedAccountProvider)
+    && managed_provider_has_handler(k: ManagedAuthorizedKeyProvider)
+    && managed_provider_has_handler(k: ManagedPrincipalSessionProvider)
+}
+
+// SO A GRAPH REQUIRING A MEMBERSHIP RESOLVES AND IS REFUSED EXECUTION, naming the provider that cannot run.
+// This is the two standings visibly separate on one subject.
+test fn a_graph_requiring_a_membership_resolves_but_is_not_executable() -> Bool {
+  let standing = resolve_dependency_closure(
+    providers: managed_principal_providers(host: w_host, principal: w_principal, admin_principal: w_admin, credential: w_declared(), required_groups: [w_group]),
+    roots: [principal_session_requirement(host: w_host, principal: w_principal, credential: w_declared())],
+  )
+  match standing {
+    DependencyClosureResolved { bindings: _, batches: _ } =>
+      match admit_managed_schedule_for(standing: standing, host: w_host, principal: w_principal, credential: w_declared(), groups: [w_group]) {
+        Present { value: e } =>
+          match e {
+            ProviderHandlerMissing { provider_identity: id, requirement_key: _ } =>
+              string_contains(s: id as String, pattern: "managed-membership-upsert")
+            ProviderScheduleExecutable { batches: _, provider_identities: _ } => false
+          }
+        Absent => false
+      }
+    RequirementWithoutProvider { requirement: _, demanded_by: _ } => false
+    RequirementWithMultipleProviders { requirement: _, provider_identities: _ } => false
+    DependencyCycle { unresolved_keys: _ } => false
+  }
+}
+
+// AND THE SAME GRAPH WITHOUT A MEMBERSHIP IS EXECUTABLE, so the row above is not passing because the schedule
+// admission refuses everything.
+test fn the_same_graph_without_a_membership_is_executable() -> Bool {
+  let standing = resolve_dependency_closure(
+    providers: managed_principal_providers(host: w_host, principal: w_principal, admin_principal: w_admin, credential: w_declared(), required_groups: []),
+    roots: [principal_session_requirement(host: w_host, principal: w_principal, credential: w_declared())],
+  )
+  match admit_managed_schedule_for(standing: standing, host: w_host, principal: w_principal, credential: w_declared(), groups: []) {
+    Present { value: e } =>
+      match e {
+        ProviderScheduleExecutable { batches: b, provider_identities: ids } => count(b) == 4 && count(ids) == 5
+        ProviderHandlerMissing { provider_identity: _, requirement_key: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// ── AN UNRECOGNISED PROVIDER ROW HAS NO HANDLER, WHICH KEEPS THE WALL FAIL-CLOSED ─────────────
+//
+// A provider authored elsewhere must not borrow executability from the fact that this module has never seen its
+// name. This is the arm that would otherwise let a foreign row into a schedule this executor cannot run.
+test fn an_unrecognised_provider_identity_has_no_kind_and_no_handler() -> Bool {
+  match managed_provider_kind_at(
+    bindings: w_bindings(),
+    provider_identity: "some-provider-nobody-modelled" as NonEmptyStr,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND AN IDENTITY THAT MERELY CONTAINS A KIND'S NAME IS NOT THAT KIND, which is the control the two previous
+// lookup shapes would both have failed: a substring search matched anywhere in the string, and a prefix split
+// matched a host or principal whose text happened to begin with a kind's name. Exact equality against an
+// identity the domain itself constructed is the only comparison that refuses this.
+test fn an_identity_containing_a_kinds_name_is_not_that_kind() -> Bool {
+  match managed_provider_kind_at(
+    bindings: w_bindings(),
+    provider_identity: "authorized-keys-reconcile-but-not-ours@somewhere/else" as NonEmptyStr,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND THE IDENTITY THE DOMAIN BUILDS FOR A KIND RESOLVES BACK TO THAT KIND, so the row above is not passing
+// because the lookup never matches anything.
+test fn the_identity_built_for_a_kind_resolves_back_to_it() -> Bool {
+  match managed_provider_kind_at(
+    bindings: w_bindings(),
+    provider_identity: managed_account_provider_identity(host: w_host, principal: w_principal),
+  ) {
+    Present { value: k } => managed_provider_has_handler(k: k)
+    Absent => false
+  }
+}
+
+test fn the_kind_roster_is_total() -> Bool {
+  managed_provider_roster_is_total() && count(managed_provider_kinds) == 6
+}
+
+// AND THE RECEIPT LABEL DISTINGUISHES THE THREE OUTCOMES, because the receipt is what a person reads and
+// "REFUSED" on a leg that never ran is how one cause becomes several findings.
+test fn the_unattempted_label_names_the_blocking_provider_rather_than_itself() -> Bool {
+  let account = w_account_terminal(bootstrap_realized: true, apply_succeeded: false, readback: w_unread_account_readback())
+  let key = w_key_terminal(account: account, apply_succeeded: true, readback: w_good_key_readback())
+  let label = provider_outcome_label(o: key.outcome)
+  string_contains(s: label, pattern: "unattempted")
+    && string_contains(s: label, pattern: "managed-posix-account-upsert")
+    && !string_contains(s: label, pattern: "REFUSED")
+}
+
+// ── PAIR 6: BINDING UNIQUENESS, AND WHAT AMBIGUITY IS ABOUT ───────────────────────────────────
+//
+// `.first()` ANSWERS THE SAME WAY FOR ONE BINDING AND FOR THREE, which is the identical defect this module's own
+// closure authority refuses at the graph level: zero is unbound, many is a POLICY gap, and resolving by position
+// is a resolution that looks like a decision.
+//
+// A FIRST VERSION OF THIS PAIR HAND-ASSEMBLED TWO COLLIDING BINDINGS AND THE SUBSTRATE REFUSED IT, because
+// ManagedProviderBinding is sole_constructor. That refusal was right twice over: a caller must not be able to
+// call an arbitrary kind-to-identity pair a binding, and the fixture was asking a question about a state the real
+// producer cannot emit. Rewriting it through the producer is what turned up the actual defect -- the collision IS
+// reachable, just not the way the fixture imagined.
+//
+// TWO HOSTS' ROSTERS SHARE THE FLEET KEY'S IDENTITY, because `fleet-private-key-binding@runner` carries no host:
+// the runner's private key is one fact for the whole fleet. So this input is authorable through nothing but the
+// module's own producer, called twice.
+data w_other_host: NonEmptyStr = "192.168.1.226" as NonEmptyStr
+
+fn w_bindings() -> List<ManagedProviderBinding> {
+  managed_provider_bindings_for(host: w_host, principal: w_principal, credential: w_declared(), groups: [])
+}
+
+fn w_two_host_bindings() -> List<ManagedProviderBinding> {
+  concat(
+    w_bindings(),
+    managed_provider_bindings_for(host: w_other_host, principal: w_principal, credential: w_declared(), groups: []),
+  )
+}
+
+// THE RED THIS PAIR NOW OWNS. Counting MATCHES made this Ambiguous, which yielded no kind, which yielded no
+// handler -- so asking about two hosts at once refused a capability that asking about either alone admits. Two
+// rows naming one kind are one fact stated twice, not a question about which handler to run.
+test fn one_kind_appearing_twice_is_unique_rather_than_ambiguous() -> Bool {
+  match managed_provider_kind_lookup(
+    bindings: w_two_host_bindings(),
+    provider_identity: fleet_private_key_provider_identity(credential: w_declared()),
+  ) {
+    ProviderKindUnique { kind: k } => managed_provider_kind_eq(a: k, b: FleetPrivateKeyBindingProvider)
+    ProviderKindAmbiguous { kinds: _ } => false
+    ProviderKindUnbound => false
+  }
+}
+
+// AND THE CONSEQUENCE IS ASSERTED WHERE IT BIT, not only at the lookup: the handler question is the one that
+// refused a live capability, so it is the one that must answer yes.
+test fn the_fleet_key_provider_keeps_its_handler_across_two_hosts() -> Bool {
+  match managed_provider_kind_at(
+    bindings: w_two_host_bindings(),
+    provider_identity: fleet_private_key_provider_identity(credential: w_declared()),
+  ) {
+    Present { value: k } => managed_provider_has_handler(k: k)
+    Absent => false
+  }
+}
+
+// A HOST-SCOPED IDENTITY STAYS HOST-SCOPED, which is the other half of the same fact: the account provider's
+// identity DOES carry the host, so merging two rosters must not make it ambiguous either -- it must still match
+// exactly one row, the one for the host asked about.
+test fn a_host_scoped_identity_resolves_to_its_own_host_in_a_merged_roster() -> Bool {
+  match managed_provider_kind_lookup(
+    bindings: w_two_host_bindings(),
+    provider_identity: managed_account_provider_identity(host: w_other_host, principal: w_principal),
+  ) {
+    ProviderKindUnique { kind: k } => managed_provider_kind_eq(a: k, b: ManagedAccountProvider)
+    ProviderKindAmbiguous { kinds: _ } => false
+    ProviderKindUnbound => false
+  }
+}
+
+// AND GENUINE AMBIGUITY STILL FIRES, which is what keeps the correction from being a blanket widening. This is
+// the one case the arm exists for -- two DISTINCT kinds claiming one identity -- and it is reachable only by a
+// caller merging rows this module did not derive. `distinct_provider_kinds` is the operative half, so it is what
+// is exercised: a caller that hands the lookup two kinds under one name must get a refusal, not a dispatch.
+test fn two_distinct_kinds_under_one_identity_remain_ambiguous() -> Bool {
+  count(distinct_provider_kinds(kinds: [ManagedAccountProvider, ManagedAuthorizedKeyProvider])) == 2
+    && count(distinct_provider_kinds(kinds: [ManagedAccountProvider, ManagedAccountProvider])) == 1
+    && count(distinct_provider_kinds(kinds: [])) == 0
+}
+
+// ── THE ASSUMPTION KIND EQUALITY RESTS ON, MADE INTO A CONTROL ─────────────────────────────────
+//
+// `managed_provider_kind_eq` COMPARES LABELS. The exhaustive match guarantees a new variant gets a label; it does
+// NOT guarantee two variants never render the same one, and if two did, equality would fuse them and the
+// ambiguity arm would stop firing for the only case it exists to catch. So injectivity is executed here rather
+// than assumed, over the roster the module publishes.
+test fn every_provider_kind_label_is_distinct() -> Bool {
+  count(distinct_provider_kinds(kinds: managed_provider_kinds)) == count(managed_provider_kinds)
+}
+
+// AND EVERY KIND'S IDENTITY IS DISTINCT FOR ONE SUBJECT, which is the property that makes the whole lookup a
+// lookup against constructed values rather than a name parse. Within one host and principal, no two kinds may
+// claim one identity -- that is what `ProviderKindAmbiguous` being unreachable through the producer MEANS.
+test fn no_two_kinds_share_an_identity_for_one_subject() -> Bool {
+  let ids = map(
+    managed_provider_bindings_for(host: w_host, principal: w_principal, credential: w_declared(), groups: [w_group, w_second_group]),
+    b => b.provider_identity as String,
+  )
+  let uniq = fold(ids, init: [], f: (acc, i) => if any(acc, seen => seen == i) { acc } else { concat(acc, [i]) })
+  count(uniq) == count(ids)
+}
+
+// AND A SINGLE BINDING IS UNIQUE, so the row above is not passing because the lookup never resolves.
+test fn a_single_binding_for_one_identity_is_unique() -> Bool {
+  match managed_provider_kind_lookup(
+    bindings: w_bindings(),
+    provider_identity: managed_account_provider_identity(host: w_host, principal: w_principal),
+  ) {
+    ProviderKindUnique { kind: _ } => true
+    ProviderKindUnbound => false
+    ProviderKindAmbiguous { kinds: _ } => false
+  }
+}
+
+// AND AN UNBOUND IDENTITY IS DISTINCT FROM AN AMBIGUOUS ONE, because the work owed differs: one needs a binding
+// authored, the other needs a duplicate removed.
+test fn unbound_and_ambiguous_are_different_lookups() -> Bool {
+  match managed_provider_kind_lookup(bindings: w_two_host_bindings(), provider_identity: "nobody-declared-this" as NonEmptyStr) {
+    ProviderKindUnbound => true
+    ProviderKindUnique { kind: _ } => false
+    ProviderKindAmbiguous { kinds: _ } => false
+  }
+}

@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.a_host_intercepted_primitive_read_as_a_source_defect
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_host_intercepted_primitive_read_as_a_source_defect: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_host_intercepted_primitive_read_as_a_source_defect" as NonEmptyStr,
+
+  receipts: [
+    "**a host-intercepted primitive read as a source defect** (a declaration whose body is a deliberate placeholder -- because the host intercepts it by NAME and never evaluates the body -- is read by an interpreter that predates the interception. The body runs, misbehaves exactly as its shape predicts, and the diagnostic points at the source. Every cheap check agrees with the wrong conclusion. ",
+
+    "THE INSTANCE (2026-09-12). A regeneration refused with `unbounded recursion at fn map_lookup_primitive_delegate`. The source reads:\\n\\n    fn map_lookup_primitive_delegate<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\\n      map_lookup_primitive_delegate(m: m, key: key)\\n    }\\n\\nwhich is self-recursive, and the diagnostic was correct about what it executed. ",
+
+    "THE EVIDENCE THEN POINTED CONSISTENTLY AT THE WRONG ANSWER. A diff against the upstream branch was EMPTY, so the local merge was demonstrably not the cause. The function had arrived with the newest upstream commit, whose title described exactly this area. Two independent facts, both true, both consistent with `upstream is broken` -- which was the next sentence about to be written. ",
+
+    "THE ACTUAL CAUSE WAS THE INSTRUMENT. The interpreter intercepts that name and never evaluates the body; the local binary was built thirty hours before the commit that added the interception. Rebuilding it resolved the failure. The placeholder body is not a defect, it is how the host binding is expressed in the source language. ",
+
+    "WHY THE SHAPE IS PARTICULARLY DECEPTIVE: a host-intercepted primitive's body is written to be UNREACHABLE, so it is free to be nonsense -- and the most convenient nonsense is a call to itself, which produces the single most legible runtime failure there is. The source therefore looks like a textbook bug to a reader, and looks like a textbook bug to the interpreter that runs it, and is neither. ",
+
+    "RECOGNITION RULE: BEFORE REPORTING THAT SHARED SOURCE IS BROKEN, ESTABLISH THAT THE INSTRUMENT POSTDATES THE SOURCE. Compare the binary's build time against the commit that introduced the implicated declaration, and check whether the host binds that declaration's NAME. A self-recursive or otherwise impossible body in a declaration named as a primitive, a delegate, an intrinsic or a builtin is the tell that its meaning lives in the host and not in the file. ",
+
+    "AND THE GENERAL FORM IS ALREADY IN THIS REPOSITORY'S MEMORY TWICE -- verify the instrument before citing it, verify the local lane binary -- which is the evidence that knowing the rule is not the mechanism. What is specific here is the sub-case: the failure is not a stale result or a phantom finding, it is a REAL execution of source that was never meant to execute, which is why it survives the checks that catch ordinary staleness. ",
+
+    "RUNG FOUND AT: mitigatable. It was caught by asking why the source would be written that way, which is one question past the point where the evidence had already converged. Nothing refused it: the interpreter's diagnostic is accurate about what it did. ",
+
+    "ATTAINABLE CEILING: mechanically preventable. The set of host-intercepted names is a fact the interpreter carries, so a refusal that fires INSIDE a declaration the running host does not intercept -- but whose shape marks it as a primitive binding -- can say so: `this body was evaluated and is a host binding; this binary may predate its interception`. That converts the most misleading diagnostic in the class into a located one. It does not reach structural guarantee, because a binary cannot know about an interception that was added after it was built -- but it can know that it evaluated a body shaped like a binding it does not have. ",
+
+    "NEXT TRIGGER: a diagnostic arm on the interpreter's unbounded-recursion refusal that names the primitive-binding suspicion when the recursing declaration is a self-call with no other body, together with the binary's own build identity in the message. Until then this row is review diligence, and the recognition rule above is the whole of it.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode", field: WholeDeclaration },
+  ],
+}

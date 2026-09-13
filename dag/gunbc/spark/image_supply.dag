@@ -1,0 +1,271 @@
+module gunbc.spark.image_supply
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity, host_identity_eq }
+
+// ── WHERE A RUNTIME IMAGE CAN BE OBTAINED, AS SUPPLY RATHER THAN AS A ROUTE SOMEBODY REMEMBERED ──
+//
+// THE DEPLOYMENT'S QUESTION IS "MAKE THIS EXACT RUNTIME AVAILABLE ON THESE HOSTS", and it has no business
+// naming which machine to copy from. Until this module the source was spelled at the call site -- srv5,
+// because that is where a person happened to build it -- which makes every later distribution depend on
+// a fact about the past rather than on what is available now. After one transfer the same bytes sit on
+// two hosts and the second is often the better source; a hardcoded origin cannot notice that.
+//
+// AN IMAGE LISTING IS NOT AN OFFER, AND THE DIFFERENCE IS THE WHOLE POINT OF THIS FILE. `docker images`
+// establishes that a daemon HOLDS something. It says nothing about whether a consumer can OBTAIN it, and
+// a selector fed possession alone will happily choose a host nothing can copy from. So possession and
+// deliverability are separate facts here, and only their conjunction is selectable.
+type ImagePossession sole_constructor {
+  host: HostIdentity
+  reference: NonEmptyStr
+  image_id: NonEmptyStr
+}
+
+// AN EXPORT THAT ALREADY EXISTS IS THE ONLY COST DIFFERENCE THIS MODULE CAN CURRENTLY READ. Producing one
+// is a `docker save` of the whole image -- about a minute for the twenty-gigabyte GLM base, measured
+// 2026-09-13 -- so a provider holding a verified archive starts a transfer that much sooner. That is a
+// real, funded difference between two offers, and it is deliberately the ONLY one this module ranks on.
+//
+// THE ARCHIVE DIGEST IS NOT THE IMAGE IDENTITY AND MUST NOT BE READ AS ONE. It says which bytes travel;
+// the destination readback says which image was loaded. gunbc.spark.vllm_runtime_image_build keeps the
+// same three identities apart -- runtime image, registry manifest where one applies, export archive --
+// and an offer that conflated them would let a correct archive vouch for the wrong image.
+type ExportStanding
+  = ExportRetained { archive_path: NonEmptyStr, archive_sha256: NonEmptyStr }
+  | ExportMustBeProduced
+
+// ONE ROUTE EXISTS TODAY AND IT IS NAMED RATHER THAN ASSUMED. The controller-mediated copy is what
+// gunbc.spark.vllm_runtime_image_build relocate_image performs: source to controller to destination, two
+// hops, because neither Spark can authenticate to the other and giving one that ability would be a
+// standing capability added to discharge a one-off move.
+//
+// A DIRECT PEER ROUTE IS NOT LISTED HERE BECAUSE IT DOES NOT EXIST, which is a different statement from
+// it being slower. The fleet's rail may well carry bytes faster than the management endpoints this route
+// uses, and that is a reason to MODEL a direct realization -- it is not a measurement of one. Adding the
+// arm before the transport exists would let a selector compare a measured route against an imagined one.
+// NEXT-RUNG TRIGGER: a modelled peer-to-peer transfer performer with its own authentication capability,
+// at which point this becomes a two-arm coproduct and the policy below has something to weigh.
+// IT IS A RECORD NAMING ITS REALIZATION RATHER THAN A ONE-ARM COPRODUCT, which this corpus does not
+// admit -- every coproduct here carries at least two arms. That is a happier shape anyway: the route
+// carries WHICH performer moves the bytes, so a receipt says what actually ran instead of naming a
+// variant whose meaning lives in a comment. A second route becomes a second row, and a genuine choice
+// between them turns this into the coproduct the policy below is waiting for.
+type ImageDeliveryRoute sole_constructor {
+  performer: NonEmptyStr
+}
+
+data controller_mediated_copy: ImageDeliveryRoute = ImageDeliveryRoute {
+  performer: "gunbc.spark.vllm_runtime_image_build relocate_image: source to controller to destination, two scp hops over the management endpoints" as NonEmptyStr,
+}
+
+type ImageOffer sole_constructor {
+  possession: ImagePossession
+  export: ExportStanding
+  route: ImageDeliveryRoute
+}
+
+// POSSESSION WITHOUT A ROUTE IS DISCOVERY EVIDENCE, NOT SUPPLY, and it is kept rather than dropped
+// because the two answers send an operator to different places: "nobody has this image" means build or
+// fetch it, and "three hosts have it and none can deliver it" means bind a transfer performer.
+type ImageSupply
+  = SupplyOffered { offer: ImageOffer }
+  | PossessionWithoutRoute { possession: ImagePossession, cause: NonEmptyStr }
+
+// ── CONSTRUCTION BELONGS TO THIS MODULE ───────────────────────────────────────────────────────
+//
+// THE TYPES ABOVE ARE sole_constructor, SO THEY CANNOT BE ASSEMBLED BY A CALLER, and these are the doors.
+// That is the point rather than a formality: a possession is supposed to RECORD A READING taken from a
+// daemon, and a caller free to assemble one field by field can mint a possession for an image nobody
+// looked at. The name says which reading each one is a record of, so a future caller that has no such
+// reading has nothing to call.
+fn image_possession_observed(host: HostIdentity, reference: NonEmptyStr, image_id: NonEmptyStr) -> ImagePossession {
+  ImagePossession { host: host, reference: reference, image_id: image_id }
+}
+
+// AN OFFER IS A POSSESSION PLUS A WAY TO GET IT, and it is built in one place so the two can never drift
+// apart into a possession that acquired a route by assignment.
+fn image_offer_for(possession: ImagePossession, export: ExportStanding, route: ImageDeliveryRoute) -> ImageOffer {
+  ImageOffer { possession: possession, export: export, route: route }
+}
+
+fn image_requirement_for(reference: NonEmptyStr, image_id: NonEmptyStr, hosts: List<HostIdentity>) -> ImageRequirement {
+  ImageRequirement { reference: reference, image_id: image_id, hosts: hosts }
+}
+
+// ── WHAT THE CONSUMER ASKS FOR ────────────────────────────────────────────────────────────────
+//
+// THE REQUIREMENT NAMES THE EXACT IMAGE AND THE EXACT HOSTS. A reference alone is not a requirement: a
+// tag is a mutable name, and a source whose tag matches while its image id does not is precisely the
+// substitution this fleet must never make -- a stock vLLM image is not a fallback for a derived NoPE
+// runtime because both are called GLM.
+type ImageRequirement sole_constructor {
+  reference: NonEmptyStr
+  image_id: NonEmptyStr
+  hosts: List<HostIdentity>
+}
+
+type OfferRejection
+  = OfferImageIdentityDiffers { host: HostIdentity, observed: NonEmptyStr, required: NonEmptyStr }
+  | OfferIsTheDestination { host: HostIdentity }
+  | OfferHasNoDeliveryRoute { host: HostIdentity, cause: NonEmptyStr }
+
+type OfferAdmission
+  = OfferAdmitted { offer: ImageOffer }
+  | OfferRefused { rejection: OfferRejection }
+
+// THE IDENTITY TEST IS ON THE IMAGE ID AND NEVER ON THE REFERENCE, for the reason stated above. The
+// reference is carried so a transfer can name something the far side resolves; what makes an offer the
+// RIGHT offer is the id.
+fn admit_offer(requirement: ImageRequirement, destination: HostIdentity, supply: ImageSupply) -> OfferAdmission {
+  match supply {
+    PossessionWithoutRoute { possession: p, cause: c } =>
+      OfferRefused { rejection: OfferHasNoDeliveryRoute { host: p.host, cause: c } }
+    SupplyOffered { offer: o } =>
+      if (o.possession.image_id as String) != (requirement.image_id as String) {
+        OfferRefused { rejection: OfferImageIdentityDiffers {
+          host: o.possession.host, observed: o.possession.image_id, required: requirement.image_id } }
+      } else if host_identity_eq(a: o.possession.host, b: destination) {
+        OfferRefused { rejection: OfferIsTheDestination { host: o.possession.host } }
+      } else {
+        OfferAdmitted { offer: o }
+      }
+  }
+}
+
+// ── CHOOSING AMONG ADMISSIBLE OFFERS ──────────────────────────────────────────────────────────
+//
+// WHY THIS DOES NOT ROUTE THROUGH std.decision select_realization TODAY, stated because the omission is
+// deliberate and has a trigger. That authority takes a closed DecisionAssessment -- sensitivities,
+// constraint dispositions, a physical and a causal model -- and DESIGN section 3d is explicit that
+// SelectedWithin may not be minted over an incomplete closure. This module can fund exactly ONE axis: an
+// export that already exists versus one that must be produced. Transfer time per peer is unmeasured, and
+// there is only one route to compare anyway, so presenting this as a priced multi-axis selection would
+// dress a single readable fact as a decision the evidence does not support.
+//
+// IT DOES NOT ROUTE THROUGH product.fabric.selection select_supply EITHER, and for a sharper reason: that
+// selector prices candidates in MONEY -- buy orders, currency, a valuation per second of delay -- which
+// is right for renting a machine and wrong here. The cost of copying a file across a LAN this fleet owns
+// has no authored price, and inventing one would put a literal at the centre of the comparison.
+// NEXT-RUNG TRIGGER: a closed decision subject for image delivery, whose funded axes are preparation,
+// transfer and verification time with real readings per route, at which point this fold is replaced by a
+// call into select_realization and the policy below becomes that call's SelectionPolicy.
+//
+// SO THE POLICY IS SMALL, DECLARED, AND REFUSES WHEN IT CANNOT DECIDE. A retained export beats one that
+// must be produced, because that is the one difference the evidence supports. Two offers the policy
+// cannot separate are NOT broken by roster order -- answering with whichever happened to be first makes
+// the result depend on discovery order, which is the shape std.pareto's tie refusal exists to prevent.
+type SourceSelection
+  = SourceSelected { offer: ImageOffer, reason: NonEmptyStr }
+  | NoAdmissibleSource { rejections: List<OfferRejection> }
+  | SourceNeedsPolicy { survivors: List<ImageOffer> }
+
+fn offer_has_retained_export(o: ImageOffer) -> Bool {
+  match o.export {
+    ExportRetained { archive_path: _, archive_sha256: _ } => true
+    ExportMustBeProduced => false
+  }
+}
+
+fn select_image_source(requirement: ImageRequirement, destination: HostIdentity, supplies: List<ImageSupply>) -> SourceSelection {
+  let admissions = map(supplies, s => admit_offer(requirement: requirement, destination: destination, supply: s))
+  let admitted = flat_map(admissions, a => match a {
+    OfferAdmitted { offer: o } => [o]
+    OfferRefused { rejection: _ } => []
+  })
+  let rejections = flat_map(admissions, a => match a {
+    OfferAdmitted { offer: _ } => []
+    OfferRefused { rejection: r } => [r]
+  })
+  if count(admitted) == 0 {
+    NoAdmissibleSource { rejections: rejections }
+  } else {
+    let prepared = filter(admitted, o => offer_has_retained_export(o: o))
+    let field = if count(prepared) > 0 { prepared } else { admitted }
+    if count(field) > 1 {
+      SourceNeedsPolicy { survivors: field }
+    } else {
+      match field.first() {
+        Absent => NoAdmissibleSource { rejections: rejections }
+        Present { value: o } =>
+          SourceSelected {
+            offer: o,
+            reason: if offer_has_retained_export(o: o) {
+              "the only admissible offer holding a verified export" as NonEmptyStr
+            } else {
+              "the only admissible offer; its export must be produced" as NonEmptyStr
+            },
+          }
+      }
+    }
+  }
+}
+
+// ── WHAT THE POPULATION NEEDS, WHICH IS NOT ALWAYS A TRANSFER ─────────────────────────────────
+//
+// A HOST THAT ALREADY HOLDS THE EXACT IMAGE NEEDS NOTHING, and saying so is the difference between a
+// distribution that resumes and one that repeats itself. The split is on the image id, never the tag,
+// for the same reason admission is.
+//
+// AND THE EXPORT IS SHARED PREPARATION RATHER THAN PER-DESTINATION WORK. Two hosts missing the image are
+// two acquisitions of ONE export, not two exports -- the materialization law applied to a demand that is
+// now genuinely repeated rather than hypothetically so.
+// NOTHING TO DO IS ITS OWN ARM AND NOT A SELECTION OVER AN EMPTY NEED. A first draft of this type gave
+// the plan a single constructor with a `source` field, which forced the every-host-already-has-it case to
+// invent an offer to put in it -- a fabricated value standing where the honest answer is that no source
+// was consulted. The arms below cannot express that: a plan with nothing to transfer has no source field
+// to fill.
+type DistributionPlan
+  = NoTransferNeeded { present: List<HostIdentity> }
+  | TransferPlanned { present: List<HostIdentity>, needing: List<HostIdentity>, source: SourceSelection }
+
+fn host_already_holds(possessions: List<ImagePossession>, requirement: ImageRequirement, host: HostIdentity) -> Bool {
+  any(possessions, p =>
+    host_identity_eq(a: p.host, b: host)
+      && (p.image_id as String) == (requirement.image_id as String))
+}
+
+// THE SOURCE IS CHOSEN ONCE FOR THE POPULATION, NOT ONCE PER DESTINATION, which is what makes the export
+// shared preparation rather than per-host work. The destination passed to admission is the first host
+// needing the image, and it is there for exactly one purpose: a provider may not be its own destination.
+// A provider that happens to be a DIFFERENT needing host is still a legitimate source for the others --
+// it holds the bytes -- and excluding it would discard real supply.
+fn plan_distribution(
+  requirement: ImageRequirement,
+  possessions: List<ImagePossession>,
+  supplies: List<ImageSupply>,
+) -> DistributionPlan {
+  let present = filter(requirement.hosts, h => host_already_holds(possessions: possessions, requirement: requirement, host: h))
+  let needing = filter(requirement.hosts, h => !host_already_holds(possessions: possessions, requirement: requirement, host: h))
+  match needing.first() {
+    Absent => NoTransferNeeded { present: present }
+    Present { value: first_needing } =>
+      TransferPlanned {
+        present: present,
+        needing: needing,
+        source: select_image_source(requirement: requirement, destination: first_needing, supplies: supplies),
+      }
+  }
+}
+
+fn plan_requires_transfer(p: DistributionPlan) -> Bool {
+  match p {
+    NoTransferNeeded { present: _ } => false
+    TransferPlanned { present: _, needing: _, source: _ } => true
+  }
+}
+
+// AND A PLAN IS ONLY ACTIONABLE WHEN ITS SOURCE RESOLVED. A caller that read `needing` and started
+// copying without asking this would be acting on a plan whose source arm says the fleet has no
+// admissible provider, or that the policy could not choose between two.
+fn plan_is_actionable(p: DistributionPlan) -> Bool {
+  match p {
+    NoTransferNeeded { present: _ } => true
+    TransferPlanned { present: _, needing: _, source: s } =>
+      match s {
+        SourceSelected { offer: _, reason: _ } => true
+        NoAdmissibleSource { rejections: _ } => false
+        SourceNeedsPolicy { survivors: _ } => false
+      }
+  }
+}

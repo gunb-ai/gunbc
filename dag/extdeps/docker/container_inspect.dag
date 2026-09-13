@@ -1,6 +1,6 @@
 module extdeps.docker.container_inspect
 
-import std.types { Timestamp, String, Int, FilePath }
+import std.types { Timestamp, String, Int, FilePath, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond_count }
 import extdeps.docker.endpoint { docker_default_endpoint }
@@ -234,3 +234,28 @@ fn container_state_wire_label(state: ContainerState) -> String {
 data structural_coverage_gap_container_state_codec_hand_rolled: List<String> = [
   "closure:consolidate_variant_string_mapping|parse_container_state and container_state_wire_label hand-roll the SnakeCase mapping already declared in container_state_wire_contract. Dissolve when the codec-from-contract bridge derives decode and encode from CoproductWireContract rows directly."
 ]
+
+// ── THE FORMAT STRING'S OWN SYNTAX, BECAUSE ITS DELIMITERS COLLIDE WITH THIS LANGUAGE'S ─────────
+//
+// `docker inspect -f` takes a Go template, whose actions are delimited by doubled braces. This repository
+// interpolates on a SINGLE brace, so a literal Go action is read as an interpolation of its body -- which in
+// practice broke a string and surfaced as an unterminated function body hundreds of lines away. There is no
+// escape for the collision, so the braces are assembled from declared constants instead: a foreign syntax
+// whose delimiters collide with the host's is emitted as DATA, which keeps the collision visible rather than
+// hiding it in a literal that only happens to parse.
+//
+// IT LIVES HERE BECAUSE IT IS A FACT ABOUT `docker inspect`, and it spent this session in
+// gunbc.spark.glm_canary_converge -- a product module for one engine's convergence route -- where three
+// unrelated consumers imported it. When that module was retired the function had to move or the retirement
+// could not happen, which is the ordinary tell that a fact was homed in the wrong layer: its lifetime was
+// bound to a consumer rather than to the thing it describes.
+data go_template_open_brace: NonEmptyStr = "{" as NonEmptyStr
+data go_template_close_brace: NonEmptyStr = "}" as NonEmptyStr
+
+fn go_template_action(body: String) -> String {
+  join([
+    go_template_open_brace as String, go_template_open_brace as String,
+    body,
+    go_template_close_brace as String, go_template_close_brace as String,
+  ], "")
+}

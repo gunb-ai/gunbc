@@ -40,6 +40,7 @@ import gunbc.spark.serving_arm {
   serving_topology_rank_count,
   ServingArmVerdict, ServingArmAdmitted, ServingArmRefused,
   serving_arm_admits, serving_checkpoint_row, serving_runtime_row,
+  runtime_artifact_wire, CheckpointQuantization, checkpoint_quantization_on_argv,
 }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotRole, SnapshotSeed,
@@ -276,7 +277,7 @@ fn glm_canary_convergence_text(v: GlmCanaryConvergence) -> String {
 fn glm_canary_reasoning_projection(arm: GlmCanaryArm) -> ReasoningResponseProjection? {
   match serving_runtime_row(r: arm.runtime) {
     Absent => none
-    Present { value: row } => Present { value: row.reasoning_projection }
+    Present { value: row } => row.reasoning_projection
   }
 }
 
@@ -299,7 +300,7 @@ fn glm_canary_acquisition_executor(arm: GlmCanaryArm) -> SnapshotAcquisitionExec
       container_path: "/out" as NonEmptyStr,
     }
     Present { value: rrow } => ContainerizedCli {
-      image: rrow.image_reference,
+      image: runtime_artifact_wire(a: rrow.artifact),
       cli_path: rrow.hub_cli_path,
       host_path: glm_canary_host_path(arm: arm),
       container_path: "/out" as NonEmptyStr,
@@ -353,6 +354,23 @@ fn glm_canary_host_path(arm: GlmCanaryArm) -> NonEmptyStr {
 // served sixteen hours; the model's job is first to REPRODUCE that line, not to replace it. Only once
 // rendered and running agree is a convergence that restarts the engine an operation with a known
 // outcome rather than a twelve-minute experiment on a healthy server.
+// THE FLAG IS ABSENT, NOT EMPTY, WHERE THE CHECKPOINT RESOLVES ITS OWN QUANTIZATION. This line used to
+// read `crow.quantization_wire`, a field every checkpoint row carried; the merged model makes it a
+// coproduct because the distinction is load-bearing on exactly this argv. GLM's native FP8 checkpoint
+// carries quant_method fp8 in its own config.json together with a weight_block_size and a 1509-entry
+// modules_to_not_convert list, and passing a bare `--quantization fp8` OVERRIDES that structure with a
+// scheme name -- so the flag being present is worse than useless for this artifact, not merely redundant.
+//
+// RENDERING IT WITH AN EMPTY VALUE WOULD BE THE FABRICATED-OUTPUT SHAPE DESIGN SECTION 5 FORBIDS: a flag
+// on the line with nothing after it is not "no flag", it is an argument the engine will try to parse.
+// The pair joins the argv through the same concat the other conditional fragments already use.
+fn glm_canary_quantization_argv(q: CheckpointQuantization) -> List<String> {
+  match checkpoint_quantization_on_argv(q: q) {
+    Present { value: w } => ["--quantization", w as String]
+    Absent => []
+  }
+}
+
 fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
   match serving_checkpoint_row(c: arm.checkpoint) {
     Absent => none
@@ -364,17 +382,18 @@ fn glm_canary_serve_argv(arm: GlmCanaryArm) -> List<String>? {
             [
               "serve", "/model",
               "--served-model-name", arm.served_model_alias as String,
-              "--quantization", crow.quantization_wire as String,
               "--tensor-parallel-size", to_string(serving_topology_rank_count(t: arm.topology)),
               "--kv-cache-dtype", glm_5_3_flash_vllm_kv_cache_dtype_wire as String,
               "--max-model-len", to_string(token_count_value(t: arm.max_model_len)),
               "--max-num-seqs", to_string(glm_canary_seq_bound(b: arm.max_num_seqs)),
             ],
             concat(
+              glm_canary_quantization_argv(q: crow.quantization),
+            concat(
               glm_canary_batched_token_argv(p: arm.max_num_batched_tokens),
               concat(
                 vllm_memory_request_argv(r: arm.memory_request),
-                vllm_prefix_caching_argv(r: arm.prefix_caching_request))),
+                vllm_prefix_caching_argv(r: arm.prefix_caching_request)))),
           ),
           concat(
             [
@@ -430,8 +449,9 @@ fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
       executor: ExecutorMpProfile,
       kv_layout: KvFp8Layout,
       speculative: glm_canary_speculative_policy(p: arm.speculation),
+      enable_prefix_caching: true,
       runtime: runtime_revision(
-        image: rrow.image_reference,
+        image: runtime_artifact_wire(a: rrow.artifact),
         vllm_revision: (defaults_source_revision(r: rrow.claimed_defaults_revision)).full_revision),
     ) }
   }
@@ -616,7 +636,7 @@ fn glm_canary_run_argv(arm: GlmCanaryArm) -> List<String>? {
           "--network", "host",
           "--ipc", "host",
           "-v", join([glm_canary_host_path(arm: arm) as String, ":/model:ro"], ""),
-          rrow.image_reference as String,
+          runtime_artifact_wire(a: rrow.artifact) as String,
         ], serve.skip(n: 1)) }
       }
   }
@@ -972,7 +992,7 @@ fn glm_canary_checkpoint_wire(arm: GlmCanaryArm) -> String {
 fn glm_canary_runtime_wire(arm: GlmCanaryArm) -> String {
   match serving_runtime_row(r: arm.runtime) {
     Absent => "(unmodelled)"
-    Present { value: r } => r.image_reference as String
+    Present { value: r } => runtime_artifact_wire(a: r.artifact) as String
   }
 }
 

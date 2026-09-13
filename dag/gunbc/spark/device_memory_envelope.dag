@@ -1,0 +1,691 @@
+module gunbc.spark.device_memory_envelope
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat, nat_min, parse_nat }
+import std.algebra { trim }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.resources { Network }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_for, arm_node_roster,
+  ArmNodeRoster, ArmNodesResolved, ArmNodeRosterRefused,
+}
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, VllmOpenaiGlm53Flash, FourSparkTp4, ArmBoundedExperiment,
+  serving_topology_rank_count, vllm_openai_glm53_flash_row, ArmNormalServing, runtime_artifact_wire,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.serving_compatibility {
+  SelectedServingDeployment, SelectedDeploymentAuthorization, SelectionAdmission,
+  SelectionAdmitted, SelectionRefused, select_serving_deployment,
+  selected_identity_of, authorization_covers, authorize_selection,
+  glm_native_on_official_sm121_tp4, glm_native_official_sm121_tp4_standing,
+}
+
+// ── THE MEMORY ENVELOPE IS RESOLVED AGAINST OBSERVED SUPPLY, NOT DECIDED AGAINST CAPACITY ──────
+//
+// THE PRECEDING MODEL ASKED THE WRONG INSTRUMENT AND THE ANSWER WAS PLAUSIBLE. A single row named a
+// fraction -- 0.90 -- and the launch multiplied it by the device's TOTAL memory to reason about fit. The
+// engine does not admit against total; it reads FREE device memory at startup and refuses if its budget
+// exceeds it. Those two readings differ by whatever else the machine is holding, and on this hardware the
+// difference is large and moves: on 2026-09-10 two of four ranks reported 106.82 GiB free of 121.69 GiB
+// total and refused a 109.52 GiB budget, while the host's own `free` reported about 117 GB available.
+// Three instruments, three numbers, and the launch had consulted the only one with no authority over the
+// decision. The class is rostered as
+// gunbc.recurring_failure_mode.host_available_memory_read_as_device_admission.
+//
+// SO THE FRACTION IS NOT A VALUE ANY MODULE CARRIES. It is the RESULT of a fold over one fresh reading per
+// planned rank, and the policy carries only what a policy can carry: a ceiling the operator will not
+// exceed, a floor below which the arm is not worth launching, and a reserve between the budget and the
+// supply. Everything between those is arithmetic over observations.
+//
+// THE CORRECTION WAS NEVER "USE A SMALLER NUMBER", AND THE FROZEN PROFILE IS NOT THAT EITHER. A tuned
+// constant substituted for this model would be the same defect with a smaller value: green on the machine
+// that produced it, wrong on the next one or on the same one an hour later.
+//
+// SO THIS MODULE ANSWERS TWO DIFFERENT QUESTIONS AND KEEPS THEM APART. RESOLUTION asks what the most a
+// population can carry is, and is the authority for that; ADMISSION asks whether every rank can carry a
+// fraction someone has already decided. The initial normal deployment uses the second, at an operator's
+// 0.84 -- and the observation, the completeness join and every refusal are identical in both. What a
+// decided fraction removes is the derivation, not the evidence: no rank is assumed, and a rank that cannot
+// admit 0.84 refuses rather than quietly launching at whatever it could have taken.
+type DeviceMemoryEnvelopePolicy sole_constructor {
+  maximum_fraction_basis_points: Nat
+  minimum_fraction_basis_points: Nat
+  startup_reserve_bytes: ByteSize
+  granularity_basis_points: Nat
+}
+
+// THE CEILING IS THE OPERATOR'S AND IT IS BELOW THE IMAGE'S DEFAULT. Read from the pinned digest on
+// 2026-09-10, `gpu_memory_utilization: float = Field(default=0.92, gt=0, le=1)`; 0.90 is a deliberate and
+// slightly more conservative maximum (operator, 2026-09-10). It is a CEILING here rather than a request,
+// which is the only change that matters: nothing may resolve above it, and resolving below it is ordinary.
+//
+// THE FLOOR IS GROUNDED IN THE ONLY MEASURED REQUIREMENT THIS ARM HAS. 76.45 GiB of weights per rank
+// against 121.69 GiB of device memory is 0.628 of the pool, and a full-window KV requirement of roughly
+// 1.4 GiB for the whole group adds almost nothing. What is NOT measured is the activation, graph-capture
+// and workspace peak, so the floor is the measured weight fraction plus a declared margin rather than a
+// derived minimum -- 0.80 leaves about 21 GiB per rank above the weights. A launch resolved below that
+// would be admitting a budget that has never been shown to hold a forward pass, and refusing is the
+// honest arm: DERIVATION TRIGGER for replacing this margin with a measurement is the first startup memory
+// profile captured from a rank that actually serves.
+//
+// THE RESERVE COVERS THE DRIFT BETWEEN THIS OBSERVATION AND THE ENGINE'S OWN ADMISSION, and it is now
+// MEASURED rather than guessed. That is the whole of its job: the supply is read here, the engine reads it
+// again moments later, and the launch itself changes the number in between.
+//
+// 4 GiB WAS BELOW THE DRIFT IT EXISTS TO ABSORB, and attempt 5 on 2026-09-11 is the receipt. Per host:
+// releasing page cache gave 117 GiB free; this module's probe container reported 113.5 GiB; a 4 GiB reserve
+// resolved (113.5 - 4) / 121.69 = 0.9002, which caps to the ceiling and renders 0.90 for a budget of 109.52
+// GiB; and the engine then refused at 106.7 GiB free. The arithmetic was exact and the answer was 2.8 GiB too
+// high, because between the two readings the container's own startup -- vLLM's modules, the model config, the
+// safetensors index -- refilled page cache and took the device figure back down.
+//
+// THE DRIFT MEASURED DIRECTLY IS 6.8 GiB (113.5 observed here, 106.7 at the engine's check), taken on an idle
+// host with caches released. 8 GiB carries that with 1.2 GiB to spare, which is the reserve's whole job.
+//
+// A FIRST REPAIR SET IT TO 12 GiB AND THAT WOULD HAVE REFUSED THE FROZEN PROFILE. 12 was the measured drift
+// plus margin chosen when this reserve fed a RESOLUTION -- where a larger number only means a more
+// conservative fraction. Under a DECIDED fraction the reserve stops being a tuning knob and becomes an
+// admission threshold: at 12 GiB a released host resolves a cap of 8300 basis points, which is below the
+// decided 8400, so every rank would have refused a launch that fits. Arithmetic caught it before a
+// displacement window did. The reserve must cover the drift and nothing more, because whatever it covers
+// beyond that is subtracted from a budget an operator has already decided.
+//
+// IT IS NOT SLACK FOR THE MODEL, and the two must not be confused. The CUDA context, the NCCL communicator
+// buffers and the loader's transient allocations also live outside the fraction and draw on the same pool;
+// what makes this figure large is the observation-to-admission drift, not those.
+//
+// NEXT DERIVATION: the drift is re-measurable on demand -- release, probe, start a container, read the
+// engine's reported figure -- so this row's trigger is an observed drift per attempt rather than a standing
+// number, at which point the reserve becomes another produced reading and this constant deletes.
+//
+// THE GRANULARITY IS A PROPERTY OF THE WIRE. `--gpu-memory-utilization` is rendered as a two-digit decimal
+// fraction, so a resolution of 8449 basis points cannot be expressed and must floor to 8400. Flooring is
+// the safe direction and saying so here keeps the renderer from silently truncating a value the fold
+// believed it had chosen.
+data glm_native_device_memory_policy: DeviceMemoryEnvelopePolicy = DeviceMemoryEnvelopePolicy {
+  maximum_fraction_basis_points: 9000,
+  minimum_fraction_basis_points: 8000,
+  startup_reserve_bytes: byte_size(count: 8589934592),
+  granularity_basis_points: 100,
+}
+
+// ── ONE READING PER RANK, TAKEN THROUGH THE ENGINE'S OWN INSTRUMENT ────────────────────────────
+//
+// THE OBSERVATION CARRIES THE IMAGE AND THE ATTEMPT BECAUSE BOTH CAN MAKE IT WORTHLESS. A reading taken in
+// a different image is a reading of a different allocator's view of the device, and a reading taken before
+// the previous attempt's containers were removed describes memory that is no longer held. Neither
+// mismatch is visible in the number itself, so the number is not allowed to travel without them.
+type RankDeviceMemoryObservation sole_constructor {
+  host: HostIdentity
+  node_rank: Nat
+  runtime_image: NonEmptyStr
+  attempt: NonEmptyStr
+  free_bytes: ByteSize
+  total_bytes: ByteSize
+}
+
+// THE READING'S CONSTRUCTOR IS EXPORTED FOR THE SAME REASON THE RANK'S IS. The resolution's whole value is
+// which populations it REFUSES, and a witness that cannot author a population -- a stale attempt, a foreign
+// digest, a rank short of the floor -- cannot establish any of those refusals. So the observation is
+// constructible from outside; what is NOT constructible from outside is a RankEnvelopeStanding, which remains
+// derived from a reading by this module alone.
+fn rank_device_memory_reading(
+  host: HostIdentity, node_rank: Nat, runtime_image: NonEmptyStr, attempt: NonEmptyStr,
+  free_bytes: ByteSize, total_bytes: ByteSize,
+) -> RankDeviceMemoryReading {
+  DeviceMemoryRead {
+    observation: RankDeviceMemoryObservation {
+      host: host, node_rank: node_rank, runtime_image: runtime_image,
+      attempt: attempt, free_bytes: free_bytes, total_bytes: total_bytes,
+    },
+  }
+}
+
+type RankDeviceMemoryReading
+  = DeviceMemoryRead { observation: RankDeviceMemoryObservation }
+  | DeviceMemoryUnread { host: HostIdentity, node_rank: Nat, cause: String }
+
+// THE PROBE RUNS INSIDE THE EXACT LAUNCH IMAGE AND ASKS `torch.cuda.mem_get_info`, WHICH IS THE FUNCTION
+// THE ENGINE ITSELF CALLS. Every cheaper source was available and every one of them answers a different
+// question: `free` and /proc/meminfo report host reclaimability, `nvidia-smi --query-gpu=memory.free`
+// answers [N/A] on the GB10, and a value copied from an earlier run answers about an earlier moment. The
+// cost of the honest instrument is one container start per rank, which is the cheapest part of a launch
+// that loads 76 GiB of weights four times.
+//
+// THE ENTRYPOINT IS OVERRIDDEN BECAUSE THE IMAGE'S IS `vllm serve`. Running the image unmodified would
+// start an engine, which is the thing this check exists to decide about.
+fn device_memory_probe_argv(image: NonEmptyStr) -> List<String> {
+  [
+    "docker", "run", "--rm", "--gpus", "all", "--ipc", "host",
+    "--entrypoint", "python3",
+    image as String,
+    "-c", "import torch;f,t=torch.cuda.mem_get_info();print(f);print(t)",
+  ]
+}
+
+// TWO LINES, EACH A BARE RUN OF DIGITS, AND ANYTHING ELSE IS UNREAD. The probe prints free and total on
+// separate lines so the reading needs no delimiter convention, and std.nat parse_nat refuses on anything
+// that is not exactly digits -- so a warning line, an empty output, or a traceback becomes
+// DeviceMemoryUnread rather than a number. A partial-prefix parse here would turn "0 MiB free, see
+// warning" into a zero, and a zero free reading and an unreadable one demand opposite actions.
+type DeviceMemoryPair sole_constructor {
+  free_bytes: Nat
+  total_bytes: Nat
+}
+
+fn read_probe_pair(lines: List<String>) -> DeviceMemoryPair? {
+  match lines.first() {
+    Absent => none
+    Present { value: free_line } =>
+      match lines.skip(n: 1).first() {
+        Absent => none
+        Present { value: total_line } =>
+          match parse_nat(s: trim(s: free_line)) {
+            Absent => none
+            Present { value: f } =>
+              match parse_nat(s: trim(s: total_line)) {
+                Absent => none
+                Present { value: t } => Present { value: DeviceMemoryPair { free_bytes: f, total_bytes: t } }
+              }
+          }
+      }
+  }
+}
+
+fn classify_device_memory_reading(
+  node: ArmNode, image: NonEmptyStr, attempt: NonEmptyStr, execution: SparkRemoteRun,
+) -> RankDeviceMemoryReading {
+  match execution {
+    RemoteUnreachable { host: h, cause: cz } =>
+      DeviceMemoryUnread { host: h, node_rank: node.node_rank, cause: cz }
+    RemoteRan { host: h, exit_code: _, stdout: _, stderr: _ } =>
+      if !remote_run_succeeded(r: execution) {
+        DeviceMemoryUnread { host: h, node_rank: node.node_rank, cause: remote_run_text(r: execution) }
+      } else {
+        match read_probe_pair(lines: split(s: trim(s: remote_run_stdout(r: execution)), delimiter: "\n")) {
+          Absent => DeviceMemoryUnread {
+            host: h, node_rank: node.node_rank,
+            cause: join(["probe output is not two digit runs: ", remote_run_text(r: execution)], ""),
+          }
+          Present { value: pair } => DeviceMemoryRead {
+            observation: RankDeviceMemoryObservation {
+              host: node.host,
+              node_rank: node.node_rank,
+              runtime_image: image,
+              attempt: attempt,
+              free_bytes: byte_size(count: pair.free_bytes),
+              total_bytes: byte_size(count: pair.total_bytes),
+            },
+          }
+        }
+      }
+  }
+}
+
+func observe_rank_device_memory(
+  ctx: SparkRemoteExecutionContext, node: ArmNode, image: NonEmptyStr, attempt: NonEmptyStr,
+) -> RankDeviceMemoryReading
+  uses net: Network
+{
+  classify_device_memory_reading(
+    node: node, image: image, attempt: attempt,
+    execution: spark_exec(ctx: ctx, host: node.host, argv: device_memory_probe_argv(image: image)),
+  )
+}
+
+func observe_device_memory_population(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, image: NonEmptyStr, attempt: NonEmptyStr,
+) -> List<RankDeviceMemoryReading>
+  uses net: Network
+{
+  map(nodes, n => observe_rank_device_memory(ctx: ctx, node: n, image: image, attempt: attempt))
+}
+
+// ── EVERY RANK'S STANDING IS PRODUCED, NOT ASSERTED ────────────────────────────────────────────
+//
+// THIS IS THE HALF A CALLER-AUTHORED PRECONDITION ENUM CANNOT DO. An earlier cutover roster let the caller
+// hand in a list of satisfied precondition tokens, which means the strongest statement the transaction
+// could make was that somebody had typed the token. A standing that is DERIVED from an observation cannot
+// be typed: it exists only if the reading exists, names the rank it came from, and carries the digest and
+// attempt it was taken under.
+type RankEnvelopeStanding
+  = RankEnvelopeSupplies { node_rank: Nat, host: HostIdentity, cap_basis_points: Nat, free_bytes: ByteSize }
+  | RankEnvelopeBelowFloor { node_rank: Nat, host: HostIdentity, cap_basis_points: Nat, floor_basis_points: Nat }
+  | RankEnvelopeUnread { node_rank: Nat, host: HostIdentity, cause: String }
+  | RankEnvelopeForeignImage { node_rank: Nat, host: HostIdentity, observed_image: NonEmptyStr, expected_image: NonEmptyStr }
+  | RankEnvelopeStaleAttempt { node_rank: Nat, host: HostIdentity, observed_attempt: NonEmptyStr, expected_attempt: NonEmptyStr }
+
+// THE CAP IS FLOORED TWICE AND BOTH FLOORS ARE DELIBERATE. Once to basis points, because the fraction of a
+// supply is not generally a terminating decimal, and once to the wire's granularity, because a value that
+// cannot be rendered cannot be launched. Both floor DOWN: rounding up would resolve a budget the rank has
+// already been shown not to have.
+//
+// A RESERVE LARGER THAN THE FREE READING PRODUCES ZERO, NOT AN UNDERFLOW. A rank with less free memory
+// than the reserve supplies nothing, and saying that with a zero cap lets it fail the floor check like any
+// other insufficient rank rather than through a separate arm.
+fn rank_cap_basis_points(o: RankDeviceMemoryObservation, policy: DeviceMemoryEnvelopePolicy) -> Nat {
+  let free = byte_size_count(b: o.free_bytes)
+  let total = byte_size_count(b: o.total_bytes)
+  let reserve = byte_size_count(b: policy.startup_reserve_bytes)
+  if total == 0 || free <= reserve {
+    (total - total)
+  } else {
+    let raw = ((free - reserve) * 10000) / total
+    (raw / policy.granularity_basis_points) * policy.granularity_basis_points
+  }
+}
+
+fn rank_envelope_standing(
+  reading: RankDeviceMemoryReading, policy: DeviceMemoryEnvelopePolicy,
+  expected_image: NonEmptyStr, expected_attempt: NonEmptyStr,
+) -> RankEnvelopeStanding {
+  match reading {
+    DeviceMemoryUnread { host: h, node_rank: r, cause: cz } =>
+      RankEnvelopeUnread { node_rank: r, host: h, cause: cz }
+    DeviceMemoryRead { observation: o } =>
+      if (o.runtime_image as String) != (expected_image as String) {
+        RankEnvelopeForeignImage {
+          node_rank: o.node_rank, host: o.host,
+          observed_image: o.runtime_image, expected_image: expected_image,
+        }
+      } else if (o.attempt as String) != (expected_attempt as String) {
+        RankEnvelopeStaleAttempt {
+          node_rank: o.node_rank, host: o.host,
+          observed_attempt: o.attempt, expected_attempt: expected_attempt,
+        }
+      } else {
+        let cap = rank_cap_basis_points(o: o, policy: policy)
+        if cap < policy.minimum_fraction_basis_points {
+          RankEnvelopeBelowFloor {
+            node_rank: o.node_rank, host: o.host,
+            cap_basis_points: cap, floor_basis_points: policy.minimum_fraction_basis_points,
+          }
+        } else {
+          RankEnvelopeSupplies {
+            node_rank: o.node_rank, host: o.host,
+            cap_basis_points: cap, free_bytes: o.free_bytes,
+          }
+        }
+      }
+  }
+}
+
+fn rank_envelope_standing_text(s: RankEnvelopeStanding) -> String {
+  match s {
+    RankEnvelopeSupplies { node_rank: r, host: h, cap_basis_points: c, free_bytes: f } =>
+      join(["rank ", to_string(r), " on ", h as String, " supplies ", to_string(c),
+            " bp (", to_string(byte_size_count(b: f)), " bytes free)"], "")
+    RankEnvelopeBelowFloor { node_rank: r, host: h, cap_basis_points: c, floor_basis_points: fl } =>
+      join(["rank ", to_string(r), " on ", h as String, " supplies only ", to_string(c),
+            " bp, below the arm floor of ", to_string(fl), " bp"], "")
+    RankEnvelopeUnread { node_rank: r, host: h, cause: cz } =>
+      join(["rank ", to_string(r), " on ", h as String, " device memory UNREAD: ", cz], "")
+    RankEnvelopeForeignImage { node_rank: r, host: h, observed_image: oi, expected_image: ei } =>
+      join(["rank ", to_string(r), " on ", h as String, " observed under ", oi as String,
+            " not ", ei as String], "")
+    RankEnvelopeStaleAttempt { node_rank: r, host: h, observed_attempt: oa, expected_attempt: ea } =>
+      join(["rank ", to_string(r), " on ", h as String, " observation belongs to attempt ", oa as String,
+            " not ", ea as String], "")
+  }
+}
+
+fn rank_standing_cap(s: RankEnvelopeStanding) -> Nat? {
+  match s {
+    RankEnvelopeSupplies { node_rank: _, host: _, cap_basis_points: c, free_bytes: _ } => Present { value: c }
+    RankEnvelopeBelowFloor { node_rank: _, host: _, cap_basis_points: _, floor_basis_points: _ } => none
+    RankEnvelopeUnread { node_rank: _, host: _, cause: _ } => none
+    RankEnvelopeForeignImage { node_rank: _, host: _, observed_image: _, expected_image: _ } => none
+    RankEnvelopeStaleAttempt { node_rank: _, host: _, observed_attempt: _, expected_attempt: _ } => none
+  }
+}
+
+fn rank_standing_rank(s: RankEnvelopeStanding) -> Nat {
+  match s {
+    RankEnvelopeSupplies { node_rank: r, host: _, cap_basis_points: _, free_bytes: _ } => r
+    RankEnvelopeBelowFloor { node_rank: r, host: _, cap_basis_points: _, floor_basis_points: _ } => r
+    RankEnvelopeUnread { node_rank: r, host: _, cause: _ } => r
+    RankEnvelopeForeignImage { node_rank: r, host: _, observed_image: _, expected_image: _ } => r
+    RankEnvelopeStaleAttempt { node_rank: r, host: _, observed_attempt: _, expected_attempt: _ } => r
+  }
+}
+
+// ── THE POPULATION STANDING IS A COMPLETENESS JOIN, NOT A COUNT ────────────────────────────────
+//
+// EVERY PLANNED RANK EXACTLY ONCE, MATCHED BY IDENTITY. A count equality would be satisfied by four
+// readings of one host, which is the shape a fold over a mis-built node list actually produces -- and it
+// is precisely the reading population that would have declared the 2026-09-10 launch admissible, because
+// the rank that had memory was observed and the two that did not were not.
+type StartupEnvelopePopulationStanding
+  = EnvelopePopulationComplete { standings: List<RankEnvelopeStanding> }
+  | EnvelopePopulationIncomplete { standings: List<RankEnvelopeStanding>, missing_ranks: List<Nat>, cause: NonEmptyStr }
+
+fn standing_for_rank(standings: List<RankEnvelopeStanding>, r: Nat) -> List<RankEnvelopeStanding> {
+  filter(standings, s => rank_standing_rank(s: s) == r)
+}
+
+fn ranks_not_observed_exactly_once(nodes: List<ArmNode>, standings: List<RankEnvelopeStanding>) -> List<Nat> {
+  map(
+    filter(nodes, n => count(standing_for_rank(standings: standings, r: n.node_rank)) != 1),
+    n => n.node_rank,
+  )
+}
+
+fn envelope_population_standing(
+  nodes: List<ArmNode>, standings: List<RankEnvelopeStanding>,
+) -> StartupEnvelopePopulationStanding {
+  let missing = ranks_not_observed_exactly_once(nodes: nodes, standings: standings)
+  if count(nodes) == 0 {
+    EnvelopePopulationIncomplete {
+      standings: standings, missing_ranks: [],
+      cause: "no planned ranks: an envelope over an empty population would admit anything" as NonEmptyStr,
+    }
+  } else if count(missing) != 0 {
+    EnvelopePopulationIncomplete {
+      standings: standings, missing_ranks: missing,
+      cause: "some planned rank was not observed exactly once" as NonEmptyStr,
+    }
+  } else if count(standings) != count(nodes) {
+    EnvelopePopulationIncomplete {
+      standings: standings, missing_ranks: [],
+      cause: "a standing was produced for a rank that is not in the plan" as NonEmptyStr,
+    }
+  } else {
+    EnvelopePopulationComplete { standings: standings }
+  }
+}
+
+// ── THE RESOLUTION ─────────────────────────────────────────────────────────────────────────────
+//
+// THE GROUP'S ENVELOPE IS THE WEAKEST RANK'S, CAPPED BY THE OPERATOR'S CEILING. A tensor-parallel group is
+// one allocation decision made four times with the same number, so a fraction any member cannot hold is a
+// fraction the group cannot hold -- and the member that cannot hold it is the one that refuses, nine
+// minutes before the rank that can notices.
+//
+// THE RESOLUTION NAMES ITS BINDING RANK. Without it the receipt says only which number was chosen, and the
+// next question -- why this low -- has no answer but a re-run.
+type ResolvedDeviceMemoryEnvelope
+  = ResolvedForAttempt {
+      basis_points: Nat,
+      binding_node_rank: Nat,
+      policy: DeviceMemoryEnvelopePolicy,
+      attempt: NonEmptyStr,
+      standings: List<RankEnvelopeStanding>,
+    }
+  | NoFeasibleDeviceMemoryEnvelope { cause: NonEmptyStr, standings: List<RankEnvelopeStanding> }
+
+type EnvelopeMinAccum sole_constructor {
+  cap: Nat
+  node_rank: Nat
+  any: Bool
+}
+
+fn envelope_min_step(acc: EnvelopeMinAccum, s: RankEnvelopeStanding) -> EnvelopeMinAccum {
+  match rank_standing_cap(s: s) {
+    Absent => acc
+    Present { value: c } =>
+      if !acc.any || c < acc.cap {
+        EnvelopeMinAccum { cap: c, node_rank: rank_standing_rank(s: s), any: true }
+      } else { acc }
+  }
+}
+
+// A NON-SUPPLYING STANDING REFUSES THE WHOLE RESOLUTION RATHER THAN BEING SKIPPED. The minimum fold above
+// ignores standings with no cap, which is correct arithmetic and would be catastrophic policy on its own:
+// the minimum over the ranks that happened to answer is exactly the number that made 2026-09-10 look
+// admissible. So the resolution requires every standing to supply before it consults the minimum.
+fn unsupplied_standings(ss: List<RankEnvelopeStanding>) -> List<RankEnvelopeStanding> {
+  filter(ss, s => match rank_standing_cap(s: s) {
+    Absent => true
+    Present { value: _ } => false
+  })
+}
+
+fn resolve_device_memory_envelope(
+  nodes: List<ArmNode>, standings: List<RankEnvelopeStanding>,
+  policy: DeviceMemoryEnvelopePolicy, attempt: NonEmptyStr,
+) -> ResolvedDeviceMemoryEnvelope {
+  match envelope_population_standing(nodes: nodes, standings: standings) {
+    EnvelopePopulationIncomplete { standings: ss, missing_ranks: _, cause: c } =>
+      NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss }
+    EnvelopePopulationComplete { standings: ss } => {
+      let unsupplied = unsupplied_standings(ss: ss)
+      if count(unsupplied) != 0 {
+        NoFeasibleDeviceMemoryEnvelope {
+          cause: join(["a planned rank does not supply the arm floor or was not readable: ",
+                       join(map(unsupplied, s => rank_envelope_standing_text(s: s)), "; ")], "") as NonEmptyStr,
+          standings: ss,
+        }
+      } else {
+        let m = fold(ss, init: EnvelopeMinAccum { cap: 0, node_rank: 0, any: false }, f: (acc, s) => envelope_min_step(acc: acc, s: s))
+        let resolved = nat_min(a: m.cap, b: policy.maximum_fraction_basis_points)
+        if resolved < policy.minimum_fraction_basis_points {
+          NoFeasibleDeviceMemoryEnvelope {
+            cause: join(["resolved ", to_string(resolved), " bp is below the arm floor of ",
+                         to_string(policy.minimum_fraction_basis_points), " bp"], "") as NonEmptyStr,
+            standings: ss,
+          }
+        } else {
+          ResolvedForAttempt {
+            basis_points: resolved,
+            binding_node_rank: m.node_rank,
+            policy: policy,
+            attempt: attempt,
+            standings: ss,
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE INITIAL NORMAL DEPLOYMENT DECIDES THE FRACTION AND VERIFIES IT, RATHER THAN DERIVING IT ─
+//
+// A DECIDED FRACTION AND A RESOLVED ONE ANSWER DIFFERENT QUESTIONS, AND THE FIRST NORMAL DEPLOYMENT WANTS
+// THE FIRST. Resolution asks "what is the most this population can carry", which is the right question for
+// an envelope that must not exceed supply and the wrong one for a launch an operator has already specified.
+// 0.84 is an operator decision for the initial normal deployment (2026-09-11): conservative, known to clear
+// the worst startup guard reading observed on this fleet, and explicitly not a claim of optimality.
+//
+// SO THE FRACTION LEAVES THE CRITICAL PATH AND THE OBSERVATION DOES NOT. Every planned rank is still read
+// fresh, in the launch image, under the exact digest and attempt, with the same completeness join and the
+// same refusals -- what changes is the question asked of those readings: not "what is the minimum cap" but
+// "does every rank admit the decided fraction". A rank that cannot is a refusal, not a renegotiation, and
+// the launch does not quietly drop to what that rank could have taken.
+//
+// THE FIRST LAUNCH IS WHAT RETIRES THIS ROW. A serving deployment produces a real startup memory profile,
+// and a fraction derived from that profile is better than either a decided or a supply-resolved one. Until a
+// rank has served, there is no such profile, which is why this is decided rather than derived and says so.
+data glm_native_decided_basis_points: Nat = 8400
+
+// THE DECIDED VALUE MUST BE EXPRESSIBLE AND WITHIN POLICY, and both are checked here rather than assumed by
+// the caller: a decided fraction above the operator's own ceiling, below the arm's floor, or off the wire's
+// granularity is a specification error and refuses before any rank is consulted.
+fn decided_fraction_is_well_formed(decided: Nat, policy: DeviceMemoryEnvelopePolicy) -> Bool {
+  decided <= policy.maximum_fraction_basis_points
+    && decided >= policy.minimum_fraction_basis_points
+    && (decided / policy.granularity_basis_points) * policy.granularity_basis_points == decided
+}
+
+fn ranks_below_decided(ss: List<RankEnvelopeStanding>, decided: Nat) -> List<RankEnvelopeStanding> {
+  filter(ss, s => match rank_standing_cap(s: s) {
+    Absent => true
+    Present { value: c } => c < decided
+  })
+}
+
+fn admit_decided_envelope(
+  nodes: List<ArmNode>, standings: List<RankEnvelopeStanding>,
+  policy: DeviceMemoryEnvelopePolicy, attempt: NonEmptyStr, decided: Nat,
+) -> ResolvedDeviceMemoryEnvelope {
+  if !decided_fraction_is_well_formed(decided: decided, policy: policy) {
+    NoFeasibleDeviceMemoryEnvelope {
+      cause: join(["the decided fraction ", to_string(decided),
+                   " bp is outside this arm's policy or off the wire's granularity"], "") as NonEmptyStr,
+      standings: standings,
+    }
+  } else {
+    match envelope_population_standing(nodes: nodes, standings: standings) {
+      EnvelopePopulationIncomplete { standings: ss, missing_ranks: _, cause: c } =>
+        NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss }
+      EnvelopePopulationComplete { standings: ss } => {
+        let short = ranks_below_decided(ss: ss, decided: decided)
+        if count(short) != 0 {
+          NoFeasibleDeviceMemoryEnvelope {
+            cause: join(["a planned rank cannot admit the decided fraction of ", to_string(decided), " bp: ",
+                         join(map(short, s => rank_envelope_standing_text(s: s)), "; ")], "") as NonEmptyStr,
+            standings: ss,
+          }
+        } else {
+          ResolvedForAttempt {
+            basis_points: decided,
+            binding_node_rank: 0,
+            policy: policy,
+            attempt: attempt,
+            standings: ss,
+          }
+        }
+      }
+    }
+  }
+}
+
+func resolve_envelope_from_fleet(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, image: NonEmptyStr,
+  attempt: NonEmptyStr, policy: DeviceMemoryEnvelopePolicy,
+) -> ResolvedDeviceMemoryEnvelope
+  uses net: Network
+{
+  let readings = observe_device_memory_population(ctx: ctx, nodes: nodes, image: image, attempt: attempt)
+  admit_decided_envelope(
+    nodes: nodes,
+    standings: map(readings, r => rank_envelope_standing(
+      reading: r, policy: policy, expected_image: image, expected_attempt: attempt)),
+    policy: policy,
+    attempt: attempt,
+    decided: glm_native_decided_basis_points,
+  )
+}
+
+// ── THE NATIVE ARM'S PLAN IS PRODUCED FROM A RESOLVED ENVELOPE AND FROM NOTHING ELSE ───────────
+//
+// THIS IS WHERE THE WALL IS STRUCTURAL RATHER THAN PROCEDURAL. gunbc.spark.serving_arm_launch renders argv
+// from a fraction it receives, and this is the only named producer of the native four-rank plan -- so the
+// fraction a launch carries cannot exist without a ResolvedForAttempt, and a ResolvedForAttempt cannot
+// exist without one fresh supplying reading per planned rank. The previous shape had a data row in the
+// renderer, which any caller could reach and every caller did.
+//
+// THE NODE ROSTER IS READ TWICE AND THAT IS NOT REDUNDANT WORK. The observation population must be the
+// PLANNED ranks, so the roster is needed before the plan exists; the plan then derives its own roster from
+// the same function over the same group, so the two agree by construction rather than by a check. What
+// would be redundant is carrying the first roster into the second, which would make the plan's ranks a
+// parameter and let a caller plan for hosts it did not observe.
+fn glm_native_tp4_nodes() -> ArmNodeRoster {
+  arm_node_roster(group: FabricGroupB, expected_ranks: serving_topology_rank_count(t: FourSparkTp4))
+}
+
+// ── THE PLAN IS BUILT FROM A SELECTED VALUE AND AN AUTHORISATION THAT COVERS IT ────────────────
+//
+// A PREVIOUS REVISION CONSTRUCTED THE TUPLE HERE, naming the checkpoint, runtime, topology and intent inline.
+// That made this function a fourth author of the deployment: the decision parameters described one engine,
+// the launch renderer another, and this constructed a third, all agreeing by coincidence. A review named it
+// the central authority break -- changing the selected runtime had no necessary effect on the image launched.
+//
+// SO THE SUBJECT ARRIVES ALREADY SELECTED AND ALREADY AUTHORISED, and this function contributes exactly one
+// thing the selection cannot: the memory fraction, which is resolved per attempt from observed supply and
+// therefore cannot live in a profile whose identity must stay stable.
+//
+// THE AUTHORISATION IS CHECKED AGAINST THE SELECTION'S STRUCTURAL IDENTITY, so one minted for a different
+// checkpoint, runtime, topology, accelerator, profile or intent does not cover this launch. The durable claim
+// the transaction takes is a MUTEX and answers a different question entirely -- whether another attempt is
+// mid-flight -- which is why it cannot stand in for this.
+fn glm_native_tp4_launch_plan_for(
+  selected: SelectedServingDeployment,
+  authorization: SelectedDeploymentAuthorization,
+  envelope: ResolvedDeviceMemoryEnvelope,
+) -> ArmLaunchPlan {
+  if !authorization_covers(a: authorization, s: selected) {
+    ArmLaunchRefused {
+      cause: join([
+        "the authorisation does not cover this selection: granted for ",
+        authorization.selected_identity as String, ", asked for ", selected_identity_of(s: selected) as String,
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match envelope {
+      NoFeasibleDeviceMemoryEnvelope { cause: c, standings: _ } => ArmLaunchRefused {
+        cause: join(["no feasible device memory envelope, so there is no plan: ", c as String], "") as NonEmptyStr,
+      }
+      ResolvedForAttempt { basis_points: bp, binding_node_rank: _, policy: _, attempt: _, standings: _ } =>
+        plan_arm_launch_for(
+          checkpoint: selected.subject.checkpoint,
+          runtime: selected.subject.runtime,
+          topology: selected.subject.topology,
+          group: FabricGroupB,
+          intent: if selected.intent_is_normal_serving { ArmNormalServing } else { ArmBoundedExperiment },
+          profile: selected.subject.profile,
+          utilization_basis_points: bp,
+        )
+    }
+  }
+}
+
+// THE NATIVE ARM'S OWN SELECTION, produced through the admission fold rather than constructed, so a subject
+// the compatibility roster refuses cannot reach a plan even here. It asks for a bounded experiment because no
+// execution has shown this subject serving -- which is exactly what select_serving_deployment enforces, and
+// today this subject is ExecutionIncompatible, so the selection refuses and there is no plan at all.
+fn glm_native_tp4_selection() -> SelectionAdmission {
+  select_serving_deployment(
+    subject: glm_native_on_official_sm121_tp4,
+    standing: glm_native_official_sm121_tp4_standing,
+    intent_is_normal_serving: false,
+  )
+}
+
+fn glm_native_tp4_launch_plan(envelope: ResolvedDeviceMemoryEnvelope) -> ArmLaunchPlan {
+  match glm_native_tp4_selection() {
+    SelectionRefused { cause: c } => ArmLaunchRefused { cause: c }
+    SelectionAdmitted { selected: sel } =>
+      glm_native_tp4_launch_plan_for(
+        selected: sel,
+        authorization: authorize_selection(s: sel, granted_for_normal_serving: false),
+        envelope: envelope,
+      )
+  }
+}
+
+// THE IMAGE THE PROBE RUNS IS THE IMAGE THE LAUNCH RUNS, READ FROM THE ARM'S OWN ROW. Passing it as a
+// caller argument would let an observation be taken under one digest and a launch performed under another,
+// which is the mismatch RankEnvelopeForeignImage exists to catch -- and a check is a poor substitute for
+// there being only one place the value comes from.
+fn glm_native_tp4_runtime_image() -> NonEmptyStr {
+  runtime_artifact_wire(a: vllm_openai_glm53_flash_row.artifact)
+}
+
+func glm_native_tp4_resolve_envelope(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>, attempt: NonEmptyStr,
+) -> ResolvedDeviceMemoryEnvelope
+  uses net: Network
+{
+  resolve_envelope_from_fleet(
+    ctx: ctx, nodes: nodes, image: glm_native_tp4_runtime_image(),
+    attempt: attempt, policy: glm_native_device_memory_policy,
+  )
+}
+
+fn resolved_envelope_text(e: ResolvedDeviceMemoryEnvelope) -> String {
+  match e {
+    NoFeasibleDeviceMemoryEnvelope { cause: c, standings: ss } =>
+      join(["NO FEASIBLE ENVELOPE: ", c as String, "\n",
+            join(map(ss, s => rank_envelope_standing_text(s: s)), "\n")], "")
+    ResolvedForAttempt { basis_points: bp, binding_node_rank: r, policy: _, attempt: a, standings: ss } =>
+      join(["resolved ", to_string(bp), " bp for attempt ", a as String,
+            " bound by rank ", to_string(r), "\n",
+            join(map(ss, s => rank_envelope_standing_text(s: s)), "\n")], "")
+  }
+}

@@ -1,0 +1,182 @@
+module test.claim.spark.serving_compatibility_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, Glm53Exl3_205, VllmOpenaiGlm53Flash, Gitcommit90Sm121Exl3,
+  FourSparkTp4, SparkPairTp2, ArmBoundedExperiment, ArmNormalServing,
+  glm_native_initial_profile, glm_exl3_canary_profile,
+  ServingLaunchProfile, profile_with_memory_basis_points, vllm_openai_glm53_flash_row, runtime_artifact_wire,
+}
+import gunbc.spark.serving_compatibility {
+  ServingCompatibilitySubject, compatibility_subject_text, compatibility_subject_eq,
+  measured_subject_refuses, glm_native_on_official_sm121_tp4,
+  subject_with_profile, subject_with_accelerator,
+  KernelShapePrediction, KernelShapeWouldRefuse, KernelShapeWouldAdmit, KernelShapeUnpredictable,
+  predict_fp8_ds_mla_writer, glm53_nope_repair_candidate, glm53_nope_conformance_probes,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_for,
+}
+
+// ── THE REFUSAL GATE, EXERCISED THROUGH THE PRODUCT PRODUCER ──────────────────────────────────
+//
+// THESE ROWS CALL `plan_arm_launch_for` AND NOT THE ROSTER, which is the whole point. A control that asked
+// `compatibility_admits` directly would establish that the standing says AdmitsNothing and nothing about
+// whether a launch can still be planned -- the same shape as the readback control that authored its own
+// endpoint alias and thereby hid an unreachable acceptance through nine attempts.
+//
+// THE MIDDLE ROW IS THE ONE THAT MATTERS MOST. A roster that refused on the image or the checkpoint alone
+// would also satisfy the first row, and would block the actual repair: a patched image is a different
+// runtime, and a different rank count is a different subject. Over-refusing is the failure mode that would
+// make this wall worse than its absence.
+//
+// AND THE THIRD ROW IS WHY THE FIRST TWO MEAN ANYTHING. A gate that refused every subject would pass the
+// first row vacuously.
+//
+// The refused subject must have no plan at all.
+test fn the_refused_native_subject_cannot_be_planned() -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8, runtime: VllmOpenaiGlm53Flash, topology: FourSparkTp4,
+    group: FabricGroupB, intent: ArmBoundedExperiment, profile: glm_native_initial_profile, utilization_basis_points: 8400,
+  ) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// A DIFFERENT topology of the same pair is a different subject and must remain reachable, so the
+// roster cannot be refusing on the image or the checkpoint alone.
+test fn a_different_topology_is_not_covered_by_the_refusal() -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8, runtime: VllmOpenaiGlm53Flash, topology: SparkPairTp2,
+    group: FabricGroupB, intent: ArmBoundedExperiment, profile: glm_native_initial_profile, utilization_basis_points: 8400,
+  ) {
+    ArmLaunchRefused { cause: c } => !string_contains(s: c as String, pattern: "already been refused by execution")
+    ArmLaunchPlanned { lines: _, master: _ } => true
+  }
+}
+
+// And the compatible subject is still plannable, so the gate has not simply refused everything.
+test fn the_compatible_exl3_subject_is_still_plannable() -> Bool {
+  match plan_arm_launch_for(
+    checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4,
+    group: FabricGroupB, intent: ArmNormalServing, profile: glm_exl3_canary_profile, utilization_basis_points: 8400,
+  ) {
+    ArmLaunchPlanned { lines: _, master: _ } => true
+    ArmLaunchRefused { cause: _ } => false
+  }
+}
+
+// ── THE MUTATION CONTROLS THAT WOULD HAVE CAUGHT THE THREE-FIELD GATE ─────────────────────────
+//
+// THE ROWS ABOVE DISCRIMINATE ON TOPOLOGY, AND THAT IS WHY THE DEFECT SURVIVED THEM. `standing_refuses_tuple`
+// compared checkpoint, runtime and topology; a control that varies topology passes against a three-field gate
+// and a five-field gate alike, so it certified a comparison that was ignoring two of its own dimensions. A
+// review found this by reading the subject type beside the gate rather than by reading the tests, which is
+// the honest order: a test cannot report a dimension nobody varied.
+//
+// SO EACH ROW BELOW VARIES EXACTLY ONE FIELD AND HOLDS THE OTHER FOUR -- and it does so through the named
+// field-at-a-time mints rather than by respelling the subject, because a row that respells all five could
+// differ in a SECOND field by typo and still pass, reporting a discrimination it never made.
+//
+// THEIR RED IS AUTHORABLE FOREVER: delete any clause from `compatibility_subject_text` and the row for that
+// field goes green while every other row stays green, which names the missing dimension rather than
+// reporting a vague failure.
+
+// A DIFFERENT LAUNCH PROFILE IS A DIFFERENT SUBJECT, and this is the row with live consequences. The repair
+// this fleet is waiting on is a native launch at a different profile on a patched image; with the profile
+// uncompared, the refusal measured at the initial profile would have refused it before it ran, and the
+// refusal would have looked principled.
+test fn a_profile_only_change_is_not_covered_by_the_refusal() -> Bool {
+  !compatibility_subject_eq(
+    a: glm_native_on_official_sm121_tp4,
+    b: subject_with_profile(s: glm_native_on_official_sm121_tp4, profile: glm_exl3_canary_profile))
+}
+
+// AND THE PROFILE KEY IS STRUCTURAL, so varying ONE FIELD of a profile is enough. This is the row that would
+// have gone red on the hand-authored identity string: the old EXL3 label said "tp4 ... 32seq" while the
+// engine ran tp1 with one sequence, so two materially different profiles could have shared a label and
+// therefore a subject.
+test fn one_changed_profile_field_changes_the_subject() -> Bool {
+  !compatibility_subject_eq(
+    a: glm_native_on_official_sm121_tp4,
+    b: subject_with_profile(
+      s: glm_native_on_official_sm121_tp4,
+      profile: profile_with_memory_basis_points(p: glm_native_initial_profile, decided_gpu_memory_basis_points: 8000)))
+}
+
+// AN ACCELERATOR-ONLY CHANGE IS A DIFFERENT SUBJECT. The refusal is a KERNEL SHAPE refusal on SM121; the
+// same vLLM on SM120 is what upstream's own TP4 evidence ran on, so silently covering another accelerator
+// would let this fleet's measurement refuse a machine it never touched.
+test fn an_accelerator_only_change_is_not_covered_by_the_refusal() -> Bool {
+  !compatibility_subject_eq(
+    a: glm_native_on_official_sm121_tp4,
+    b: subject_with_accelerator(s: glm_native_on_official_sm121_tp4, accelerator: "nvidia-rtx-pro-6000-sm120" as NonEmptyStr))
+}
+
+// THE RUNTIME IS COMPARED BY ITS BYTES, NOT BY ITS NAME. `VllmOpenaiGlm53Flash` is an enum variant; what
+// refused is a digest. If the derived NoPE runtime were introduced by repointing that variant at new bytes,
+// a name-based comparison would carry the old refusal onto an image nobody ran -- which is precisely the
+// repair path, so the defect would have fired on the first attempt to fix the outage.
+//
+// ITS RED IS AUTHORABLE AND CHEAP: drop the runtime_bytes clause from compatibility_subject_text and this
+// row goes green while every other row here stays green.
+test fn the_subject_is_keyed_by_the_runtimes_bytes_not_its_variant_name() -> Bool {
+  string_contains(
+    s: compatibility_subject_text(s: glm_native_on_official_sm121_tp4),
+    pattern: runtime_artifact_wire(a: vllm_openai_glm53_flash_row.artifact) as String)
+}
+
+// AND THE GATE CONSUMES THAT COMPARISON, which is the row that joins the identity to the behaviour. The
+// measured subject refuses; the same tuple under a different profile does not.
+test fn the_gate_refuses_the_measured_subject_and_not_its_profile_variant() -> Bool {
+  measured_subject_refuses(subject: glm_native_on_official_sm121_tp4)
+    && !measured_subject_refuses(
+      subject: subject_with_profile(s: glm_native_on_official_sm121_tp4, profile: glm_exl3_canary_profile))
+}
+
+// ── THE PREDICTION AND THE RECEIPT MUST AGREE ─────────────────────────────────────────────────
+//
+// THIS IS THE ROW THAT MAKES THE DERIVED GEOMETRY WORTH CARRYING. The measured standing says execution
+// refused this subject on a kernel shape; the prediction says the same thing from two integers in the
+// checkpoint's config at its pinned revision. Asserting only one of them would leave the other free to rot:
+// a receipt with no derivation cannot explain itself before a transfer, and a derivation with no receipt is
+// a guess about somebody else's kernel.
+//
+// ITS RED IS AUTHORABLE FROM EITHER SIDE, WHICH IS THE POINT. Change the pinned revision's recorded
+// qk_rope_head_dim to 64, or change vllm_fp8_ds_mla_required_rope_dim to 0, and the prediction flips while
+// the receipt stands -- and this row names the disagreement instead of quietly continuing to predict what
+// used to be true.
+test fn the_predicted_kernel_refusal_matches_what_execution_recorded() -> Bool {
+  match predict_fp8_ds_mla_writer(c: Glm53NativeFp8) {
+    KernelShapeWouldRefuse { checkpoint_rope_dim: c, kernel_required_rope_dim: k } =>
+      c == 0 && k == 64 && measured_subject_refuses(subject: glm_native_on_official_sm121_tp4)
+    KernelShapeWouldAdmit { checkpoint_rope_dim: _ } => false
+    KernelShapeUnpredictable { because: _ } => false
+  }
+}
+
+// AN UNREAD GEOMETRY IS UNPREDICTABLE, NOT COMPATIBLE. The discriminating negative for the absent arm: a
+// checkpoint whose config this repository has never read must not render as "the writer accepts it". This is
+// the same distinction the compatibility roster draws between CompatibilityUnknown and ExecutionCompatible,
+// applied one layer down, and it is the arm that would silently license the wrong thing if it defaulted.
+test fn a_checkpoint_with_no_modelled_geometry_is_unpredictable_rather_than_admitted() -> Bool {
+  match predict_fp8_ds_mla_writer(c: Glm53Exl3_205) {
+    KernelShapeUnpredictable { because: _ } => true
+    KernelShapeWouldAdmit { checkpoint_rope_dim: _ } => false
+    KernelShapeWouldRefuse { checkpoint_rope_dim: _, kernel_required_rope_dim: _ } => false
+  }
+}
+
+// AND THE CANDIDATE REPAIR IS RECORDED AS A CANDIDATE, NEVER AS A STANDING. The row this session nearly got
+// wrong: upstream's TP4 evidence for the NoPE writer is NVFP4 on SM120, and this subject is native FP8 on
+// SM121. The candidate must therefore carry BOTH backported commits and a FlashInfer requirement, and must
+// not appear anywhere in the measured roster -- because appearing there is what would make it selectable
+// before anything ran it.
+test fn the_repair_candidate_names_both_halves_and_is_not_a_measured_standing() -> Bool {
+  count(glm53_nope_repair_candidate.backported_commits) == 2
+    && count(glm53_nope_conformance_probes) == 3
+    && measured_subject_refuses(subject: glm_native_on_official_sm121_tp4)
+}

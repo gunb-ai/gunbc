@@ -1,0 +1,224 @@
+module gunbc.spark.serving_group_exclusivity
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_hosts }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
+}
+
+// ── A POINT-IN-TIME OBSERVATION CANNOT EXCLUDE A PRODUCER ──────────────────────────────────────
+//
+// THE CUTOVER HAD TEN PRECONDITIONS AND NONE OF THEM COULD HAVE CAUGHT THIS. `NoStaleNativeContainers`
+// asks whether a container exists right now. It cannot ask whether something will CREATE one a minute from
+// now, and on 2026-09-11 something did: a `gunbc-spark-pair` container appeared on two Group B hosts while
+// a native transaction was mid-flight, between its own preflight and its own readback.
+//
+// THE PRODUCER IS A SYSTEMD UNIT, WHICH IS WHY REMOVING CONTAINERS NEVER HELD THE GROUP.
+// `gunbc-spark-pair-worker.service` -- "gunbc Spark pair worker: Ray rank holder, never routed to
+// directly" -- is ENABLED and ACTIVE, with the container carrying `restart=unless-stopped`. A transaction
+// that removes the container has removed an effect and left its cause enabled, so the container returns on
+// the unit's terms rather than the transaction's.
+//
+// AND IT IS NOT UNIFORM ACROSS THE GROUP, which is the fact that makes a fleet-wide assertion useless.
+// Measured on all four Group B hosts (2026-09-11): the unit is ENABLED and ACTIVE on srv10, srv11 and
+// srv12, and NOT-FOUND on srv9, whose pair container is five-day-old residue with no unit behind it. A
+// check that asked one host, or that assumed the group answers alike, would have been right three times
+// and wrong once with no way to tell which.
+//
+// WHAT IT CURRENTLY RUNS IS INERT, AND THAT IS RECORDED SEPARATELY FROM WHETHER IT MAY RUN. The container's
+// command is `sleep infinity`, it holds no GPU memory, and no host in the group has a listener on the
+// serving, canary or rendezvous ports. So it did not cause the 2026-09-11 rank failures. Both halves matter
+// and conflating them is how this went unnoticed: INERT TODAY is why it is not the failure's cause, and
+// ENABLED is why it must be excluded before another launch. A second authority that can mutate the group
+// makes every per-rank observation provisional, whether or not it has yet.
+//
+// AND THE POSITIVE ARM IS NAMED FOR WHAT IT ACTUALLY ESTABLISHES, WHICH IS LESS THAN EXCLUSIVITY. It used
+// to be called ServingGroupExclusivelyHeld, and a review was right that nothing here holds anything: what
+// this performs is a suppression of ONE KNOWN PRODUCER -- the pair worker unit -- verified per host by
+// re-reading its state, at ONE INSTANT. It takes no lease, carries no deadline, fences nothing, and says
+// nothing about a second producer nobody has enumerated or about an operator who enables the unit a second
+// after the read. A name promising exclusivity would license a launch to treat every later observation as
+// authoritative on that basis, which is exactly the point-in-time-observation failure rostered at
+// gunbc.recurring_failure_mode.point_in_time_observation_used_to_exclude_a_producer.
+//
+// NEXT-RUNG TRIGGER: a lease with a declared deadline and a resource fence, whose vocabulary
+// std.temporal_effect already owns -- at which point the positive arm can name a held lease rather than a
+// suppression receipt, and this annotation retires with the name.
+//
+// SO SUPPRESSION IS PERFORMED, NOT ASSERTED. The unit is disabled and stopped on every planned host, the
+// absence is verified per host rather than assumed from the group, and only then may a transaction claim
+// the group. gunbc.spark.pair_serving_desired already withdrew Group B from the pair-serving ROSTER --
+// `spark_pair_serving_groups = [FabricGroupA]` -- so this module removes the running authority that the
+// roster withdrawal did not reach. A roster that stops desiring something does not stop it.
+type ServingGroupMutationStanding
+  = KnownCompetingProducersSuppressed { group: FabricGroup, holder: NonEmptyStr, receipts: List<NonEmptyStr> }
+  | CompetingServingAuthorityObserved { group: FabricGroup, actor: NonEmptyStr, receipts: List<NonEmptyStr> }
+  | ServingGroupOwnershipUnread { group: FabricGroup, cause: NonEmptyStr }
+
+fn mutation_standing_text(s: ServingGroupMutationStanding) -> String {
+  match s {
+    KnownCompetingProducersSuppressed { group: _, holder: h, receipts: rs } =>
+      join(["group exclusively held by ", h as String, ": ", join(map(rs, r => r as String), "; ")], "")
+    CompetingServingAuthorityObserved { group: _, actor: a, receipts: rs } =>
+      join(["a competing serving authority can mutate this group: ", a as String, ": ",
+            join(map(rs, r => r as String), "; ")], "")
+    ServingGroupOwnershipUnread { group: _, cause: c } =>
+      join(["group ownership UNREAD, so exclusivity is unknown rather than absent: ", c as String], "")
+  }
+}
+
+fn known_competing_producers_are_suppressed(s: ServingGroupMutationStanding) -> Bool {
+  match s {
+    KnownCompetingProducersSuppressed { group: _, holder: _, receipts: _ } => true
+    CompetingServingAuthorityObserved { group: _, actor: _, receipts: _ } => false
+    ServingGroupOwnershipUnread { group: _, cause: _ } => false
+  }
+}
+
+// THE UNIT IS NAMED ONCE. Its spelling is a fact about the fleet's pair-serving realization, and a second
+// copy of the string is a second authority for which unit this is.
+data pair_worker_unit: NonEmptyStr = "gunbc-spark-pair-worker.service" as NonEmptyStr
+data pair_worker_container: NonEmptyStr = "gunbc-spark-pair" as NonEmptyStr
+
+// ── THE PER-HOST STANDING ─────────────────────────────────────────────────────────────────────
+//
+// A HOST WHERE THE UNIT DOES NOT EXIST IS NOT THE SAME AS ONE WHERE IT IS DISABLED, and both are
+// acceptable while a third state is not. `not-found` is srv9's answer and it is a stronger guarantee than
+// disabled; `disabled` is what the other three become. `enabled` in any form -- enabled, static, alias --
+// means the group can be mutated and refuses.
+type HostExclusionStanding
+  = HostUnitAbsent { host: HostIdentity }
+  | HostUnitDisabled { host: HostIdentity, detail: String }
+  | HostUnitStillEnabled { host: HostIdentity, detail: String }
+  | HostExclusionUnread { host: HostIdentity, cause: String }
+
+fn host_exclusion_text(s: HostExclusionStanding) -> NonEmptyStr {
+  match s {
+    HostUnitAbsent { host: h } =>
+      join([h as String, ": pair worker unit absent"], "") as NonEmptyStr
+    HostUnitDisabled { host: h, detail: d } =>
+      join([h as String, ": pair worker disabled and stopped (", d, ")"], "") as NonEmptyStr
+    HostUnitStillEnabled { host: h, detail: d } =>
+      join([h as String, ": pair worker STILL ENABLED (", d, ")"], "") as NonEmptyStr
+    HostExclusionUnread { host: h, cause: c } =>
+      join([h as String, ": pair worker state UNREAD: ", c], "") as NonEmptyStr
+  }
+}
+
+fn host_is_excluded(s: HostExclusionStanding) -> Bool {
+  match s {
+    HostUnitAbsent { host: _ } => true
+    HostUnitDisabled { host: _, detail: _ } => true
+    HostUnitStillEnabled { host: _, detail: _ } => false
+    HostExclusionUnread { host: _, cause: _ } => false
+  }
+}
+
+// DISABLE AND STOP IN ONE INVOCATION, THEN REMOVE THE CONTAINER, THEN RE-READ. The order is the whole
+// content: stopping before disabling leaves a window where the unit restarts what was just stopped, and
+// removing the container before disabling the unit removes the effect while its cause is still armed. The
+// re-read is what makes the outcome an observation rather than a hope -- `systemctl disable` can succeed on
+// a unit whose stop failed.
+//
+// `not-found` IS A SUCCESSFUL OUTCOME AND `disable` REPORTS IT AS A FAILURE, which is why the exit code is
+// not the verdict. srv9 has no such unit, and a host with nothing to disable is exactly as excluded as one
+// that has been disabled -- so the final `is-enabled`/`is-active` read decides, and the disable attempt's
+// own status is only detail.
+fn exclusion_argv() -> List<String> {
+  ["sh", "-c", join([
+    "systemctl disable --now ", pair_worker_unit as String, " >/dev/null 2>&1;",
+    " docker rm -f ", pair_worker_container as String, " >/dev/null 2>&1;",
+    " printf 'enabled=%s active=%s' \"$(systemctl is-enabled ", pair_worker_unit as String,
+    " 2>&1)\" \"$(systemctl is-active ", pair_worker_unit as String, " 2>&1)\"",
+  ], "")]
+}
+
+// THE READ-BACK IS PARSED FOR THE TWO STATES THAT MEAN EXCLUDED AND NOTHING ELSE IS ASSUMED SAFE. A
+// spelling this function does not recognise is HostExclusionUnread rather than excluded, because systemd's
+// vocabulary is larger than the two answers expected here and a new one must not arrive as agreement.
+fn classify_exclusion(host: HostIdentity, r: SparkRemoteRun) -> HostExclusionStanding {
+  match r {
+    RemoteUnreachable { host: h, cause: c } => HostExclusionUnread { host: h, cause: c }
+    RemoteRan { host: _, exit_code: _, stdout: _, stderr: _ } => {
+      let out = remote_run_stdout(r: r)
+      if string_contains(s: out, pattern: "enabled=not-found") {
+        HostUnitAbsent { host: host }
+      } else if string_contains(s: out, pattern: "enabled=disabled") && !string_contains(s: out, pattern: "active=active") {
+        HostUnitDisabled { host: host, detail: out }
+      } else if string_contains(s: out, pattern: "enabled=enabled") || string_contains(s: out, pattern: "active=active") {
+        HostUnitStillEnabled { host: host, detail: out }
+      } else {
+        HostExclusionUnread {
+          host: host,
+          cause: join(["unrecognised systemd state, so exclusivity is unknown rather than held: ", remote_run_text(r: r)], ""),
+        }
+      }
+    }
+  }
+}
+
+func exclude_host(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> HostExclusionStanding
+  uses net: Network
+{
+  classify_exclusion(host: host, r: spark_exec(ctx: ctx, host: host, argv: exclusion_argv()))
+}
+
+// ── THE GROUP FOLD ────────────────────────────────────────────────────────────────────────────
+//
+// EVERY PLANNED HOST, AND ONE NOT-EXCLUDED HOST REFUSES THE GROUP. Three excluded hosts and one still
+// enabled is not three quarters of an exclusion; it is a group that can be mutated, because the rank on
+// that host is the one whose container a unit may replace. The fold therefore reports the population and
+// the verdict is a conjunction over it.
+func exclude_serving_group(
+  ctx: SparkRemoteExecutionContext, group: FabricGroup, holder: NonEmptyStr,
+) -> ServingGroupMutationStanding
+  uses net: Network
+{
+  let hosts = fabric_group_hosts(g: group)
+  if count(hosts) == 0 {
+    ServingGroupOwnershipUnread {
+      group: group,
+      cause: "this group has no observed members, so there is nothing whose ownership could be held" as NonEmptyStr,
+    }
+  } else {
+    let standings = map(hosts, h => exclude_host(ctx: ctx, host: h))
+    let receipts = map(standings, s => host_exclusion_text(s: s))
+    let unread = filter(standings, s => match s {
+      HostExclusionUnread { host: _, cause: _ } => true
+      HostUnitAbsent { host: _ } => false
+      HostUnitDisabled { host: _, detail: _ } => false
+      HostUnitStillEnabled { host: _, detail: _ } => false
+    })
+    let enabled = filter(standings, s => match s {
+      HostUnitStillEnabled { host: _, detail: _ } => true
+      HostUnitAbsent { host: _ } => false
+      HostUnitDisabled { host: _, detail: _ } => false
+      HostExclusionUnread { host: _, cause: _ } => false
+    })
+    if count(unread) != 0 {
+      ServingGroupOwnershipUnread {
+        group: group,
+        cause: join(["a planned host's pair worker state could not be read: ",
+                     join(map(receipts, r => r as String), "; ")], "") as NonEmptyStr,
+      }
+    } else if count(enabled) != 0 {
+      CompetingServingAuthorityObserved {
+        group: group,
+        actor: pair_worker_unit,
+        receipts: receipts,
+      }
+    } else {
+      KnownCompetingProducersSuppressed { group: group, holder: holder, receipts: receipts }
+    }
+  }
+}
+
+func hold_group_b_for(ctx: SparkRemoteExecutionContext, holder: NonEmptyStr) -> ServingGroupMutationStanding
+  uses net: Network
+{
+  exclude_serving_group(ctx: ctx, group: FabricGroupB, holder: holder)
+}

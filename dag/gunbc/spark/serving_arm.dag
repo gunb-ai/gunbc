@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest, glm_manifest_gibibytes, glm_5_3_flash_vllm_published_min_version, glm_5_3_flash_vllm_prerelease_image_nvidia }
 import extdeps.vllm.runtime_defaults { ModelledVllmDefaultsRevision, Vllm487ecf187, Vllm1967a5627 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 {
   sparkrun_vllm_ds4_gb10_pinned_reference, sparkrun_vllm_ds4_gb10_vllm_version,
@@ -45,6 +46,7 @@ type ServingRuntime
   = GunbcSparkrunVllmDs4Gb10
   | Gitcommit90Sm121Exl3
   | Tonyd2wildSm121Nvfp4
+  | VllmOpenaiGlm53Flash
 
 type ServingTopology
   = SingleSparkTp1
@@ -100,6 +102,36 @@ fn serving_topology_aggregate_pool_gib(t: ServingTopology) -> Nat {
 // arm genuinely needs one checkpoint in two locations -- a staging copy beside a serving copy -- that
 // is a second checkpoint row with its own identity and provenance, not a placement field that has
 // quietly stopped being a function of the thing it names.
+// ── WHO SPELLS THE QUANTISATION: THE LAUNCH, OR THE CHECKPOINT ────────────────────────────────
+//
+// THIS WAS A `NonEmptyStr` BESIDE A BOOL ABOUT SOMETHING ELSE, and the two got joined by accident. The
+// launch renderer decided whether to pass `--quantization` by reading
+// `requires_upstream_glm53_integration` -- a fact about what the RUNTIME must support -- because the native
+// checkpoint happened to be the only row where both answers coincided. Two independent facts sharing one
+// carrier means the first row where they disagree silently renders the wrong argv.
+//
+// SO THE SCHEME AND ITS DECLARER ARE ONE VALUE. `exl3` must be spelled, because nothing in that checkpoint's
+// config tells the engine to load an EXL3 kernel; `fp8` must NOT be, because the checkpoint's config already
+// carries the scheme together with the block size and exclusion list that a bare flag would discard. That is
+// not a preference about verbosity: it changes which weights the engine builds.
+//
+// AND IT IS WHAT THE CONVERGENCE ASSESSOR NEEDS. An observed line missing `--quantization` used to read as
+// an UNKNOWN, which made the native deployment permanently unrecognisable -- the arm could never converge
+// because its own correct argv looked incomplete. With the declarer modelled, "the line spells no scheme" is
+// a state the desired identity can also be in, and the two match.
+type CheckpointQuantization
+  = QuantizationSpelledOnArgv { wire: NonEmptyStr }
+  | QuantizationResolvedFromCheckpointConfig { wire: NonEmptyStr, because: NonEmptyStr }
+
+// PRESENT ONLY WHERE THE LAUNCH ITSELF SAYS IT. This is the one projection both the renderer and the
+// convergence identity read, so they cannot disagree about whether a flag is on the line.
+fn checkpoint_quantization_on_argv(q: CheckpointQuantization) -> NonEmptyStr? {
+  match q {
+    QuantizationSpelledOnArgv { wire: w } => Present { value: w }
+    QuantizationResolvedFromCheckpointConfig { wire: _, because: _ } => none
+  }
+}
+
 type ServingCheckpointRow {
   checkpoint: ServingCheckpoint
   repo: HubRepoId
@@ -107,7 +139,7 @@ type ServingCheckpointRow {
   placement: SnapshotPlacement
   architecture: NonEmptyStr
   weight_gib: Nat
-  quantization_wire: NonEmptyStr
+  quantization: CheckpointQuantization
   provenance: NonEmptyStr
 }
 
@@ -118,7 +150,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
   architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
   weight_gib: 80,
-  quantization_wire: "exl3" as NonEmptyStr,
+  quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
   provenance: "revision resolved and fetched 2026-09-08: the Hub model API reported 24 files totalling 85.23 GB for this revision, and the engine read the materialised tree back as 79.30 GiB across 12 safetensors shards; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
@@ -128,9 +160,9 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
-  weight_gib: 306,
-  quantization_wire: "fp8" as NonEmptyStr,
-  provenance: "revision resolved from the Hub model API on 2026-09-07; weight figure is the vLLM recipe's published size for this checkpoint and is NOT measured on this fleet -- nothing here has fetched it; the architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
+  weight_gib: glm_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
 }
 
 fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
@@ -171,13 +203,152 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
 // evidence that the image contains that revision's bytes: nothing here has compared them, and
 // extdeps.vllm.runtime_defaults keeps that question in its own binding type rather than folding it
 // into the value.
+// -- WHETHER AN ENGINE CAN LOAD THIS CHECKPOINT'S TENSOR LAYOUT --------------------------------
+//
+// THE WALL THIS FLEET LEARNED BY LOSING A SERVICE, AND IT IS NOT A ROW FIELD. `registers_glm5_next` answers
+// whether the architecture is in the registry and the quantisation roster answers whether fp8 is
+// implemented; BOTH were true of the image that failed on 2026-09-10, which loaded the native FP8 checkpoint
+// far enough to form a four-rank NCCL group and then died with
+// KeyError 'layers.0.self_attn.k_proj.weight'. The loader expected a plain k_proj that this architecture does
+// not have -- it uses fused_qkvbfg_a_proj and conv1d projections, with 1509 modules held out of quantisation
+// -- so the missing fact was the WEIGHT MAPPING, which neither per-row wall asks about.
+//
+// AND IT CANNOT BE ASKED PER ROW, WHICH IS WHY THE ATTEMPT TO IS GONE. "Does this runtime carry the GLM-5.3
+// integration" has no answer independent of the checkpoint being loaded and the kernel path it takes: the
+// official image carries the loader and refuses the NoPE MLA kernel, the community image serves NoPE MLA and
+// cannot map the weights. A Bool on a checkpoint row joined to a standing on a runtime row could express
+// neither. gunbc.spark.serving_compatibility asks it at the grain that has an answer.
+// THE PER-IMAGE NATIVE STANDING WAS DELETED HERE, BECAUSE IT WAS THE SAME FACT TWICE.
+//
+// This row used to carry `native_runtime_standing: NativeRuntimeStanding` -- three arms saying whether an
+// IMAGE carried the GLM-5.3 loader integration -- and gunbc.spark.serving_compatibility was then added
+// carrying the same question as a RELATION over checkpoint x runtime x topology x accelerator x profile. Both
+// authorities survived the same commit, which is the fork DESIGN section 3 exists to prevent: an image is
+// refuted FOR A CHECKPOINT, and the standing stored on the row could not say which, so it answered for every
+// checkpoint at once. That is exactly why the EXL3 arm needed a sentence inside its own refusal cause
+// explaining that the refutation was "of this checkpoint on this image, not of the image".
+//
+// EVERY FACT THOSE ARMS CARRIED SURVIVES AS A MEASURED STANDING. The gitcommit90 weight-mapping failure is
+// glm_native_on_gitcommit90_standing; the official image's kernel refusal is
+// glm_native_official_sm121_tp4_standing; the EXL3 success is glm_exl3_on_gitcommit90_standing. Nothing was
+// dropped -- the same receipts now sit at the grain that can name their subject.
+//
+// AND THE INTENT SPLIT MOVED WITH THEM. StaticIntegrationObserved existed so that an inspected-but-unrun
+// image could carry a bounded experiment and not normal serving; that asymmetry is now
+// select_serving_deployment over CompatibilityUnknown/StaticallyPlausible/ExecutionCompatible, which is
+// where a SELECTION belongs rather than inside a per-row admission check.
+// WHAT AN ARM IS BEING ASKED FOR, because the same tuple is admissible for one and not the other. An
+// experiment may run on a statically-inspected image precisely so that the feasibility receipt can
+// exist; ordinary serving may not, because a bounded trial and a service carry different consequences
+// for anyone depending on the endpoint.
+type ArmIntent
+  = ArmBoundedExperiment
+  | ArmNormalServing
+
+// ── A RUNTIME IS IDENTIFIED BY ITS BYTES AND ITS LINEAGE, NOT BY A STRING ──────────────────────
+//
+// `image_reference: NonEmptyStr` WAS DOING THREE JOBS AT ONCE. It was the thing docker pulls, the thing a
+// compatibility subject is keyed by, and the only record of where the image came from -- and one of the three
+// rows in this module does not even carry a digest: the DeepSeek image reads
+// "aidendle94/sparkrun-vllm-ds4-gb10 (digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10)", a
+// sentence about a pin rather than a pin. Comparing that as if it were bytes is the same defect a review just
+// found one level up, where a subject was keyed by an enum variant name.
+//
+// SO THE PIN IS ITS OWN QUESTION AND HAS TWO HONEST ANSWERS. A digest-pinned reference IS the bytes and can
+// be compared as an identity; a reference pinned somewhere else names its authority and must not be treated
+// as one, because a tag is mutable and two pulls of it are not the same artifact.
+type RuntimeArtifactPin
+  = PinnedByDigest { reference: NonEmptyStr }
+  | PinnedElsewhere { reference: NonEmptyStr, pin_authority: NonEmptyStr }
+
+fn runtime_pin_reference(p: RuntimeArtifactPin) -> NonEmptyStr {
+  match p {
+    PinnedByDigest { reference: r } => r
+    PinnedElsewhere { reference: r, pin_authority: _ } => r
+  }
+}
+
+// AND THE BYTES-AS-IDENTITY PROJECTION IS AN OPTIONAL, so a caller keying a subject on it cannot silently
+// accept a mutable tag. This is the fail-closed half: an unpinned runtime has no identity to compare, and
+// saying so is different from saying the tag is one.
+fn runtime_pin_as_identity(p: RuntimeArtifactPin) -> NonEmptyStr? {
+  match p {
+    PinnedByDigest { reference: r } => Present { value: r }
+    PinnedElsewhere { reference: _, pin_authority: _ } => none
+  }
+}
+
+// THE LINEAGE IS MODELLED BECAUSE THE NEXT RUNTIME THIS FLEET NEEDS IS A DERIVATIVE. The repair for the NoPE
+// MLA refusal is an image built from a named upstream vLLM revision with two commits backported and a
+// FlashInfer revision pinned -- and a derived image whose row recorded only a digest would be
+// indistinguishable from an official one, so nothing could say WHICH patch set a receipt was measured
+// against. `patch_set` is empty for an image taken as published, which is a fact rather than an absence.
+type RuntimeArtifactIdentity sole_constructor {
+  pin: RuntimeArtifactPin
+  source_revision: NonEmptyStr
+  patch_set: List<NonEmptyStr>
+  provenance: NonEmptyStr
+}
+
+fn runtime_artifact_identity(
+  pin: RuntimeArtifactPin,
+  source_revision: NonEmptyStr,
+  patch_set: List<NonEmptyStr>,
+  provenance: NonEmptyStr,
+) -> RuntimeArtifactIdentity {
+  RuntimeArtifactIdentity {
+    pin: pin, source_revision: source_revision, patch_set: patch_set, provenance: provenance,
+  }
+}
+
+// WHAT DOCKER IS GIVEN, which is a different question from what a subject is keyed by: a launch can pull an
+// unpinned tag, and a receipt must not claim that pull was an identity.
+fn runtime_artifact_wire(a: RuntimeArtifactIdentity) -> NonEmptyStr {
+  runtime_pin_reference(p: a.pin)
+}
+
+// WHAT A SUBJECT IS KEYED BY. The patch set is part of it: the same base revision with and without the NoPE
+// writer backport are different artifacts, and a key that dropped the patch set would let a measurement taken
+// on stock bytes refuse the patched image -- which is the entire repair.
+fn runtime_artifact_key(a: RuntimeArtifactIdentity) -> String {
+  match runtime_pin_as_identity(p: a.pin) {
+    Absent => join(["<unpinned:", runtime_pin_reference(p: a.pin) as String, ">"], "")
+    Present { value: digest } =>
+      join([
+        digest as String, " src=", a.source_revision as String,
+        " patches=", if count(a.patch_set) == 0 { "none" } else { join(a.patch_set, ",") },
+      ], "")
+  }
+}
+
+// AN IMAGE NOBODY HAS PROBED HAS NO READING, AND THAT IS NOT AN EMPTY REGISTRY. `registry_reading`
+// arrived from the other side of a merge as a REQUIRED record, which is right for every row that side
+// carried -- each was probed inside its own digest. This branch adds a row for the STOCK upstream image,
+// whose registry has not been read by anyone here, and the three ways to make an unprobed image fit a
+// required shape are all lies: an empty architecture list asserts a measured negative, a copied list
+// asserts a reading taken somewhere else, and a reference that deliberately mismatches games the
+// currency check into refusing for the wrong reason. Absent is the fourth option and the only true one,
+// and it is fail-closed at both readers: an unprobed image registers nothing and its reading is never
+// current.
+// HOW REASONING COMES BACK IS OBSERVED FROM A LAUNCHED ENGINE, SO AN UNLAUNCHED RUNTIME HAS NO ANSWER.
+// This field was required, and a required field forces every new row to assert something: the model
+// authority's member name (which this file already records as WRONG for the community image -- it returns
+// `reasoning`, not `reasoning_content`), or a neighbour's observed value, or a guess dressed as a
+// default. Those are the same three lies the registry_reading annotation below enumerates, and the same
+// fourth option is the only true one.
+//
+// IT IS THEREFORE OPTIONAL, AND ABSENT IS FAIL-CLOSED AT ITS READERS. A runtime that has never served
+// cannot say how its reasoning comes back, and must not be made to. The ordering this admits is the one
+// the fleet actually has: a row exists so a launch can be PLANNED -- the launch argv reads only the
+// artifact and the defaults revision, never this field -- and the projection is filled in from the
+// completion that launch produces.
 type ServingRuntimeRow {
   runtime: ServingRuntime
-  image_reference: NonEmptyStr
+  artifact: RuntimeArtifactIdentity
   hub_cli_path: NonEmptyStr
   vllm_version: NonEmptyStr
-  registry_reading: ArchitectureRegistryReading
-  reasoning_projection: ReasoningResponseProjection
+  registry_reading: ArchitectureRegistryReading?
+  reasoning_projection: ReasoningResponseProjection?
   provenance: NonEmptyStr
   claimed_defaults_revision: ModelledVllmDefaultsRevision
 }
@@ -195,24 +366,71 @@ type ReasoningResponseProjection
 
 data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: Gitcommit90Sm121Exl3,
-  image_reference: gitcommit90_glm_53_one_spark_pinned_reference(),
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: "ghcr.io/gitcommit90/glm-5.3-one-spark@sha256:ba6db0547b24162854948fb16cda68dd4408360e03aeba480edb8d3d876eaeef" as NonEmptyStr },
+    source_revision: "487ecf187d3dfe74d2cf6119a92881dba403c219" as NonEmptyStr,
+    patch_set: [],
+    provenance: "a community image taken as published; the revision is what it self-reports as its vLLM build, not a comparison of its bytes against that tree" as NonEmptyStr,
+  ),
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: gitcommit90_glm_53_one_spark_vllm_version,
-  registry_reading: gitcommit90_glm_53_one_spark_registry_reading,
-  reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
+  registry_reading: Present { value: gitcommit90_glm_53_one_spark_registry_reading },
+  reasoning_projection: Present { value: ParsedReasoningField { field: "reasoning" as NonEmptyStr } },
   provenance: "registry probe executed inside this exact digest on 2026-09-08 returned SUPPORTED: True for Glm5NextForConditionalGeneration alongside Glm5NextForCausalLM and Glm5NextMTPModel; a completion against the launched engine returned message members including `reasoning` and no `reasoning_content`. The full registry carried here was re-read inside the same digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 377 entries, the three Glm5Next entries among them and DeepseekV41ForCausalLM not" as NonEmptyStr,
   claimed_defaults_revision: Vllm487ecf187,
 }
 
 data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcSparkrunVllmDs4Gb10,
-  image_reference: sparkrun_vllm_ds4_gb10_pinned_reference(),
+  artifact: runtime_artifact_identity(
+    pin: PinnedElsewhere {
+      reference: "aidendle94/sparkrun-vllm-ds4-gb10" as NonEmptyStr,
+      pin_authority: "extdeps.docker.images.sparkrun_vllm_ds4_gb10" as NonEmptyStr,
+    },
+    source_revision: "1967a5627bc3" as NonEmptyStr,
+    patch_set: [],
+    provenance: "this row previously carried the sentence \"digest pinned in extdeps.docker.images.sparkrun_vllm_ds4_gb10\" INSIDE the reference string, which read as a pin and was prose about one. The pin lives in that module; this row names it rather than restating it" as NonEmptyStr,
+  ),
   hub_cli_path: "/opt/env/bin/hf" as NonEmptyStr,
   vllm_version: sparkrun_vllm_ds4_gb10_vllm_version,
-  registry_reading: sparkrun_vllm_ds4_gb10_registry_reading,
-  reasoning_projection: InlineReasoning { end_token: "</think>" as NonEmptyStr },
+  registry_reading: Present { value: sparkrun_vllm_ds4_gb10_registry_reading },
+  reasoning_projection: Present { value: InlineReasoning { end_token: "</think>" as NonEmptyStr } },
   provenance: "registry probe executed inside the running container on the group A head 2026-09-08 returned SUPPORTED: False for Glm5NextForConditionalGeneration, with thirteen GLM architectures present and none of them Glm5; vllm/reasoning/ holds twenty parser modules and none is GLM, while vllm/tool_parsers/glm47_moe_tool_parser.py IS present. The full registry carried here was read inside the pinned digest on spark-a3ee (compute capability 12.1) on 2026-09-11: 361 entries, no Glm5 entry and no DeepseekV41ForCausalLM" as NonEmptyStr,
   claimed_defaults_revision: Vllm1967a5627,
+}
+
+// THE IMAGE UPSTREAM PRESCRIBES FOR THIS MODEL, PINNED TO WHAT THE FLEET ACTUALLY PULLED. It is its
+// own runtime rather than a relabelling of the EXL3 one, because it is a different artifact with a
+// different loader, and reusing that variant would have made the refuted row and the candidate row the
+// same row.
+//
+// ITS STANDING IS STATIC, NOT FEASIBLE, AND THAT IS THE WHOLE POINT OF THE SPLIT. What has been
+// established by inspection on this hardware: the digest resolves identically on the group's hosts, the
+// platform is linux/arm64, the entrypoint is ["vllm","serve"], all three Glm5Next architectures are
+// registered, the multi-node mp fields (nnodes, node_rank, master_addr, master_port) are present,
+// FlashInfer is 0.6.18 -- which clears the 0.6.18 sparse-MLA floor and not merely the 0.6.17
+// prerequisite -- and a bf16 matmul EXECUTES on the GB10 at compute capability 12.1 despite
+// TORCH_CUDA_ARCH_LIST stopping at 12.0, which is CUDA 13 family compatibility rather than an
+// assumption.
+//
+// WHAT IS NOT ESTABLISHED IS THAT IT LOADS THIS CHECKPOINT. The previous attempt proved how far an
+// image can get while being unable to: architecture registered, fp8 implemented, four ranks joined, and
+// then a KeyError in the weight loader. So this row may authorise a bounded experiment and may not
+// support serving until a run says otherwise.
+data vllm_openai_glm53_flash_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: VllmOpenaiGlm53Flash,
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr },
+    source_revision: "385dce36bcee42309924a5ece951a96db3dce7f2" as NonEmptyStr,
+    patch_set: [],
+    provenance: "the image upstream prescribes for this model, pinned to the digest the group's hosts actually resolved on 2026-09-10. NO patches: this is the stock artifact, which is why its NoPE MLA refusal is a fact about upstream rather than about a local build" as NonEmptyStr,
+  ),
+  hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
+  vllm_version: "0.28.1rc1.dev580+g385dce36b" as NonEmptyStr,
+  registry_reading: none,
+  reasoning_projection: ParsedReasoningField { field: "reasoning" as NonEmptyStr },
+  provenance: "pulled by tag vllm/vllm-openai:glm53-flash on the group B hosts 2026-09-10 and pinned here to the digest that tag resolved to; recipes.vllm.ai/zai-org/GLM-5.3-Flash directs NVIDIA deployments to this image for this checkpoint" as NonEmptyStr,
+  claimed_defaults_revision: Vllm487ecf187,
 }
 
 fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
@@ -220,6 +438,7 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
     Gitcommit90Sm121Exl3 => Present { value: gitcommit90_sm121_exl3_row }
     GunbcSparkrunVllmDs4Gb10 => Present { value: gunbc_sparkrun_ds4_row }
     Tonyd2wildSm121Nvfp4 => none
+    VllmOpenaiGlm53Flash => Present { value: vllm_openai_glm53_flash_row }
   }
 }
 
@@ -232,17 +451,22 @@ type ServingArmVerdict
   = ServingArmAdmitted
   | ServingArmRefused { cause: NonEmptyStr }
 
-// THE FOOTPRINT ALLOWANCE IS DELIBERATELY NOT A UTILISATION FRACTION. Weights are not the whole
-// requirement: the engine also needs KV, activations and graph memory, and the recipe's own runtime
-// minimum for native FP8 exceeds its weight size by a quarter. A checkpoint is admitted only when
-// the aggregate pool exceeds the weights with headroom, and the headroom is stated rather than
-// tuned away.
+
+
 data serving_arm_headroom_numerator: Nat = 5
 data serving_arm_headroom_denominator: Nat = 4
 
 fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
   serving_topology_aggregate_pool_gib(t: t) * serving_arm_headroom_denominator
     >= c.weight_gib * serving_arm_headroom_numerator
+}
+
+// THE INTENT PARAMETER IS GONE WITH THE STANDING THAT NEEDED IT. This verdict now answers only the two
+// questions a ROW can answer -- does the image register the architecture, does the checkpoint fit the pool --
+// and both give the same answer for an experiment and for a service. Whether a tuple may carry NORMAL
+// SERVING is a question about measured compatibility and is decided by select_serving_deployment.
+fn serving_arm_admits_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, intent: ArmIntent) -> ServingArmVerdict {
+  serving_arm_admits(checkpoint: checkpoint, runtime: runtime, topology: topology)
 }
 
 // A CHECKPOINT LOADS WHEN THE RUNTIME REGISTERS ITS ARCHITECTURE, WHICH IS A MEMBERSHIP QUESTION.
@@ -258,14 +482,22 @@ fn serving_arm_fits(c: ServingCheckpointRow, t: ServingTopology) -> Bool {
 // have to be restated in prose beside it. A miss is then a measured negative with a date on it
 // rather than an absence of modelling, and the membership test itself is the receipt's own fold.
 fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool {
-  registry_reading_contains(r: rrow.registry_reading, architecture: architecture)
+  match rrow.registry_reading {
+    Present { value: r } => registry_reading_contains(r: r, architecture: architecture)
+    Absent => false
+  }
 }
 
 // THE ROW'S DESIRED IMAGE AND ITS READING'S OBSERVED IMAGE ARE TWO FACTS, AND A REPIN SEPARATES THEM.
-// `image_reference` is what this arm intends to run and comes from the image module; the reading is
+// The artifact's PIN is what this arm intends to run; the reading is
 // what someone executed a registry call inside, frozen at the digest it was taken in. They agree
 // today. The moment extdeps repins the image, they stop agreeing, and the old architecture list
 // stops being evidence about the thing this arm would launch.
+//
+// AND THE PIN IS ONLY PART OF THE IDENTITY, which is what this branch added underneath the same check:
+// a wire reference answers "which bytes does docker pull", while the artifact also carries the source
+// revision and the patch set those bytes were built from. The currency question is still asked of the
+// reference, because that is what a registry probe was executed against.
 //
 // SO THE ARM REFUSES RATHER THAN INHERITING. The alternative -- carrying the reading forward onto a
 // digest nobody probed -- is the shape of every silent-wrongness failure this repository files: the
@@ -273,9 +505,16 @@ fn runtime_registers(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> Bool
 // it has moved. A refusal here costs one probe; the other arm costs an engine that will not start
 // and a receipt claiming it should.
 fn runtime_reading_is_current(rrow: ServingRuntimeRow) -> Bool {
-  reading_applies_to(r: rrow.registry_reading, desired_reference: rrow.image_reference)
+  match rrow.registry_reading {
+    Present { value: r } => reading_applies_to(r: r, desired_reference: runtime_artifact_wire(a: rrow.artifact))
+    Absent => false
+  }
 }
 
+// TWO WAYS TO FAIL THE CURRENCY CHECK AND THEY OWE DIFFERENT WORK. A reading taken inside another digest
+// means someone probed and then the image moved; no reading at all means nobody has looked. Both refuse,
+// and a receipt that could not tell them apart would send a reader to re-probe an image that was never
+// probed, or to hunt a repin that never happened -- so this fold names which one it hit.
 fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology) -> ServingArmVerdict {
   match serving_checkpoint_row(c: checkpoint) {
     Absent => ServingArmRefused { cause: "no checkpoint row: this checkpoint's repo, revision and footprint are unmodelled, so neither fit nor acquisition can be decided" as NonEmptyStr }
@@ -284,19 +523,29 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
         Absent => ServingArmRefused { cause: "no runtime row: this image's architecture registry has not been probed, so whether it can load the checkpoint is unknown" as NonEmptyStr }
         Present { value: rrow } =>
           if !runtime_reading_is_current(rrow: rrow) {
-            ServingArmRefused { cause: join([
-              "the runtime's architecture reading was taken inside ",
-              rrow.registry_reading.image_reference as String,
-              " and this arm now names ", rrow.image_reference as String,
-              ": the image was repinned without a new registry probe, so nothing here has looked inside the image this arm would launch",
-            ], "") as NonEmptyStr }
+            match rrow.registry_reading {
+              Absent => ServingArmRefused { cause: join([
+                "no registry reading exists for ", runtime_artifact_wire(a: rrow.artifact) as String,
+                ": nothing here has read this image's architecture registry inside its own digest, so whether it can load ",
+                crow.architecture as String, " is unknown rather than false. One probe inside that digest settles it",
+              ], "") as NonEmptyStr }
+              Present { value: r } => ServingArmRefused { cause: join([
+                "the runtime's architecture reading was taken inside ",
+                r.image_reference as String,
+                " and this arm now names ", runtime_artifact_wire(a: rrow.artifact) as String,
+                ": the image was repinned without a new registry probe, so nothing here has looked inside the image this arm would launch",
+              ], "") as NonEmptyStr }
+            }
           } else if !runtime_registers(rrow: rrow, architecture: crow.architecture) {
-            ServingArmRefused { cause: join([
-              "the runtime does not register ", crow.architecture as String, " (vLLM ",
-              rrow.vllm_version as String, " answered for ", to_string(length(rrow.registry_reading.architectures)),
-              " architectures when its registry was read on ", rrow.registry_reading.observed_at as String,
-              " and this is not one of them); no amount of weight transfer makes this tuple start",
-            ], "") as NonEmptyStr }
+            match rrow.registry_reading {
+              Absent => ServingArmRefused { cause: "unreachable: an absent reading is never current, so this arm is guarded above" as NonEmptyStr }
+              Present { value: r } => ServingArmRefused { cause: join([
+                "the runtime does not register ", crow.architecture as String, " (vLLM ",
+                rrow.vllm_version as String, " answered for ", to_string(length(r.architectures)),
+                " architectures when its registry was read on ", r.observed_at as String,
+                " and this is not one of them); no amount of weight transfer makes this tuple start",
+              ], "") as NonEmptyStr }
+            }
           } else if !serving_arm_fits(c: crow, t: topology) {
             ServingArmRefused { cause: join([
               "the checkpoint does not fit the topology: ", to_string(crow.weight_gib),
@@ -310,3 +559,135 @@ fn serving_arm_admits(checkpoint: ServingCheckpoint, runtime: ServingRuntime, to
       }
   }
 }
+
+// ── THE LAUNCH PROFILE IS A VALUE, NOT A SCATTER OF ROWS IN THE RENDERER ───────────────────────
+//
+// THE ARGV WAS ASSEMBLED FROM MODULE-LEVEL CONSTANTS IN gunbc.spark.serving_arm_launch, so the deployment
+// being DECIDED and the deployment being LAUNCHED were two independently authored profiles that happened to
+// describe the same engine. The decision named a Ray executor, 0.82, thirty-two sequences and an fp8 KV
+// request; the renderer separately fixed mp, one sequence and an auto KV request. Nothing made a change to
+// either follow the other, which is the authority break a review found: changing the selected runtime had no
+// necessary effect on the image launched.
+//
+// SO THE PROFILE IS ONE VALUE THAT TRAVELS. A compatibility subject names it, a selection carries it, and the
+// renderer reads argv out of it -- which makes "same subject" and "same argv" the same question instead of
+// two that have to be kept in agreement by hand.
+//
+// IT CARRIES THE WIRE VALUES AND NOT THE POLICY THAT CHOSE THEM. The memory fraction here is the DECIDED one
+// for the initial normal deployment; a fraction resolved per attempt from observed supply overrides it at
+// plan time, and gunbc.spark.device_memory_envelope owns that. Storing a resolved value in a profile would
+// make the profile's identity change every time a machine's free memory did.
+type ServingLaunchProfile sole_constructor {
+  max_model_len: Nat
+  max_num_batched_tokens: Nat
+  max_num_seqs: Nat
+  decided_gpu_memory_basis_points: Nat
+  kv_cache_dtype_wire: NonEmptyStr
+  speculation_enabled: Bool
+  serve_port: Nat
+  served_alias: NonEmptyStr
+}
+
+// THE FROZEN INITIAL NORMAL PROFILE FOR THE NATIVE ARM, every value an operator decision rather than a
+// derivation, and the identity string is what a compatibility receipt names. Changing any field here changes
+// the identity, which changes the subject, which means a refusal recorded against the old profile does not
+// silently cover the new one.
+// THE PROFILE'S IDENTITY IS DERIVED FROM ITS FIELDS, NEVER AUTHORED BESIDE THEM. It used to be a
+// hand-written `identity` string, and the two drifted immediately: the EXL3 row said "tp4 ... 32seq" while
+// the running engine was tp1 with one sequence, so the very carrier introduced to stop a borrowed profile
+// carried a label describing a different launch. A review named this correctly -- a hand-authored identity is
+// a second authority for what the record already says.
+//
+// SO THE KEY IS A FOLD OVER EVERY FIELD THAT REACHES THE WIRE. Change any of them and the key changes, which
+// changes the compatibility subject, which means a refusal recorded against one profile cannot silently
+// cover another. Nothing can edit the label to make two different launches compare equal, because there is
+// no label.
+// THE SEAL STAYS AND A NAMED MINT IS ADDED, which is the distinction the seal exists to make. Sealing
+// stopped a caller from spelling a profile with fields it invented -- but the profile is an ordinary value
+// that witnesses and future callers legitimately build, so the answer is one constructor here rather than a
+// record literal in every module. A caller still cannot omit a field or reorder the meaning of one.
+fn serving_launch_profile(
+  max_model_len: Nat,
+  max_num_batched_tokens: Nat,
+  max_num_seqs: Nat,
+  decided_gpu_memory_basis_points: Nat,
+  kv_cache_dtype_wire: NonEmptyStr,
+  speculation_enabled: Bool,
+  serve_port: Nat,
+  served_alias: NonEmptyStr,
+) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    max_model_len: max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype_wire: kv_cache_dtype_wire,
+    speculation_enabled: speculation_enabled,
+    serve_port: serve_port,
+    served_alias: served_alias,
+  }
+}
+
+// AND A FIELD-AT-A-TIME VARIANT, because the thing a caller actually wants is "this profile but one value
+// different" -- a mutation control, a retry at a lower fraction. Spelling seven fields to change one is how
+// a copy drifts from its original, which is the failure the profile type was introduced to end.
+fn profile_with_memory_basis_points(p: ServingLaunchProfile, decided_gpu_memory_basis_points: Nat) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    max_model_len: p.max_model_len,
+    max_num_batched_tokens: p.max_num_batched_tokens,
+    max_num_seqs: p.max_num_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype_wire: p.kv_cache_dtype_wire,
+    speculation_enabled: p.speculation_enabled,
+    serve_port: p.serve_port,
+    served_alias: p.served_alias,
+  }
+}
+
+fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
+  join([
+    "len=", to_string(p.max_model_len),
+    " batch=", to_string(p.max_num_batched_tokens),
+    " seqs=", to_string(p.max_num_seqs),
+    " util_bp=", to_string(p.decided_gpu_memory_basis_points),
+    " kv=", p.kv_cache_dtype_wire as String,
+    " spec=", if p.speculation_enabled { "on" } else { "off" },
+    " port=", to_string(p.serve_port),
+    " alias=", p.served_alias as String,
+  ], "")
+}
+
+data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
+  max_model_len: 262144,
+  max_num_batched_tokens: 2048,
+  max_num_seqs: 1,
+  decided_gpu_memory_basis_points: 8400,
+  kv_cache_dtype_wire: "auto" as NonEmptyStr,
+  speculation_enabled: false,
+  serve_port: 30000,
+  served_alias: "glm-5.3-flash" as NonEmptyStr,
+}
+
+// THE EXL3 ARM'S PROFILE IS ITS OWN, and giving this subject the native one would make the receipt below
+// assert something that was never measured. The canary is retired; this row exists so its EVIDENCE stays
+// accurate, which is the only reason a retired route's facts are worth keeping at all.
+// THE CANARY'S PROFILE IS READ OFF THE ENGINE THAT RAN, NOT ASSEMBLED FROM WHAT WAS DECIDED. A first
+// revision of this row carried tp=4, 32 sequences and 2048 batched tokens -- the shared production decision
+// parameters -- while the container on spark-0c75 was running tp=1, ONE sequence and 7168 batched tokens, as
+// `docker inspect` reported on 2026-09-10 and as the fixture in
+// test.claim.spark.serving_arm_convergence_witness_test still carries verbatim. That is the borrowed-profile
+// substitution this profile type exists to stop, committed inside the type itself.
+//
+// THE MEMORY FRACTION IS THE ENGINE'S DEFAULT, BECAUSE THE LINE NAMES NONE. Recording a decided 0.82 here
+// would claim an argument the launch never sent.
+data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
+  max_model_len: 262144,
+  max_num_batched_tokens: 7168,
+  max_num_seqs: 1,
+  decided_gpu_memory_basis_points: 9000,
+  kv_cache_dtype_wire: "fp8" as NonEmptyStr,
+  speculation_enabled: false,
+  serve_port: 30001,
+  served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
+}
+

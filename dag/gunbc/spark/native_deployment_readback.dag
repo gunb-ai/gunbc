@@ -1,0 +1,333 @@
+module gunbc.spark.native_deployment_readback
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import v2.std.algebra { non_empty_to_list }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
+import std.goal_assessment {
+  ObservationAttempt, ObservationEstablished, ObservationRefused,
+  GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
+  GoalInspection, GoalInspected, GoalObservationRefused,
+  inspect_goal, assess_by_deviations_and_unknowns,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused,
+  ArmNodeLaunch, ArmNode,
+  fabric_rail_interface_name,
+}
+
+// ── WHY THE THREE-FIELD ARM IDENTITY IS NOT A DEPLOYMENT RECEIPT ───────────────────────────────
+//
+// gunbc.spark.serving_arm_convergence identifies a served arm by alias, quantisation word and rank
+// count, and that is the right grain for ITS question -- WHICH PRODUCT ARM is serving, decided against a
+// running engine's own launch line, deliberately ignoring tuning so a batched-token drift cannot read as
+// a different model. It is not the right grain for accepting a cutover.
+//
+// TWO DEPLOYMENTS CAN AGREE ON ALL THREE AND DIFFER IN EVERYTHING THAT MATTERS: a different image
+// digest, a different checkpoint revision, half the context window, a tenfold sequence budget, a
+// different cache policy, absent parsers, speculation on, or collectives on the wrong interface. Every
+// one of those is a fact somebody would want to know before believing the fleet serves what was
+// authorised, and none of them changes the coarse identity.
+//
+// THE GOAL IS DERIVED FROM THE PLAN THAT LAUNCHED, WHICH IS THE POINT. This module does not restate the
+// desired profile -- it reads the ArmLaunchPlan and compares the world to THAT. A readback whose
+// expectations were spelled again beside the launcher would be a second authority for one fact, free to
+// drift from the argv it claims to verify, and the drift would be invisible precisely because both
+// sides would agree with themselves.
+//
+// AND IT ASSESSES RATHER THAN DECIDES. std.goal_assessment owns the remedy-free relation; whether a
+// divergence should roll back, retry or be accepted belongs to the transaction that reads this.
+
+// ── WHAT IS READ FROM ONE RANK ─────────────────────────────────────────────────────────────────
+//
+// THE ARGV IS ORDERED AND CARRIED WHOLE, because the flags that decide behaviour are exactly the ones a
+// summary would drop. It is read from the running container rather than derived, so this type describes
+// a MEASUREMENT and every field can disagree with the plan.
+//
+// THE FABRIC INTERFACE IS OPTIONAL AND THAT IS DELIBERATE. Which interface NCCL selected is printed by
+// the engine at start-up, and a reader that did not capture it has NOT established it -- inferring the
+// interface from the environment the launch requested would make the check agree with itself, since the
+// launch is what set the variable. An unread interface is an unknown, not a pass.
+type RankObservation sole_constructor {
+  host: HostIdentity
+  node_rank: Nat
+  image_digest: NonEmptyStr
+  model_path: NonEmptyStr
+  argv: List<String>
+  selected_fabric_interface: NonEmptyStr?
+}
+
+fn rank_observation(
+  host: HostIdentity,
+  node_rank: Nat,
+  image_digest: NonEmptyStr,
+  model_path: NonEmptyStr,
+  argv: List<String>,
+  selected_fabric_interface: NonEmptyStr?,
+) -> RankObservation {
+  RankObservation {
+    host: host,
+    node_rank: node_rank,
+    image_digest: image_digest,
+    model_path: model_path,
+    argv: argv,
+    selected_fabric_interface: selected_fabric_interface,
+  }
+}
+
+type NativeDeploymentObserved
+  = DeploymentRanksRead { ranks: List<RankObservation>, endpoint_alias: NonEmptyStr? }
+  | DeploymentNothingRunning { detail: NonEmptyStr }
+
+type DeploymentDeviation
+  = RankAbsent { expected_rank: Nat, expected_host: NonEmptyStr }
+  | RankOnWrongHost { node_rank: Nat, expected_host: NonEmptyStr, observed_host: NonEmptyStr }
+  | RankImageDigestDiffers { node_rank: Nat, desired: NonEmptyStr, observed: NonEmptyStr }
+  | RankModelPathDiffers { node_rank: Nat, desired: NonEmptyStr, observed: NonEmptyStr }
+  | RankArgvDiffers { node_rank: Nat, first_difference_position: Nat, desired_word_count: Nat, observed_word_count: Nat }
+  | RankFabricInterfaceDiffers { node_rank: Nat, desired: NonEmptyStr, observed: NonEmptyStr }
+  | DeploymentNotServing { detail: NonEmptyStr }
+  | EndpointAliasDiffers { desired: NonEmptyStr, observed: NonEmptyStr }
+
+type DeploymentUnknown
+  = FabricInterfaceUnread { node_rank: Nat }
+  | EndpointAliasUnread
+
+type DeploymentReceipt sole_constructor {
+  ranks_agreed: Nat
+  image_digest: NonEmptyStr
+  model_path: NonEmptyStr
+}
+
+// A PLAN THAT REFUSED IS A MALFORMED QUESTION HERE, not a divergence: there is no desired deployment to
+// compare the world against, so any verdict would certify a comparison that never ran.
+type DeploymentAssessRefusal
+  = NoPlanToVerify { cause: NonEmptyStr }
+
+fn plan_lines(plan: ArmLaunchPlan) -> List<ArmNodeLaunch> {
+  match plan {
+    ArmLaunchPlanned { lines: ls, master: _ } => ls
+    ArmLaunchRefused { cause: _ } => []
+  }
+}
+
+fn observation_for_rank(observed: List<RankObservation>, rank: Nat) -> RankObservation? {
+  filter(observed, o => o.node_rank == rank).first()
+}
+
+fn argv_image_digest(l: ArmNodeLaunch) -> NonEmptyStr {
+  join(filter(l.argv, w => string_contains(s: w, pattern: "@sha256:")), "") as NonEmptyStr
+}
+
+fn argv_model_path(l: ArmNodeLaunch) -> NonEmptyStr {
+  join(filter(l.argv, w => string_contains(s: w, pattern: "/snapshots/") || w == "/model"), "") as NonEmptyStr
+}
+
+// ── ORDERED ARGV COMPARISON, WALKED IN STEP ────────────────────────────────────────────────────
+//
+// THIS WAS A WORD COUNT AND THAT WAS NOT GOOD ENOUGH. The previous revision compared list LENGTHS and
+// declared the gap honestly, which is better than hiding it and still admits the case that matters: a
+// running command with the same number of words and one changed value passed the check. Argument ORDER
+// was one of the things this program has already paid to preserve -- the whole reason the launch line is
+// carried as a list rather than a string -- so a comparison that cannot see a reordering is not a
+// comparison of it.
+//
+// THE RECURSION IS THE COMPARISON, and it descends on both tails at once, which is the shape a list-zip
+// primitive would have provided. Heads equal, compare tails; one list empty and the other not, different;
+// heads differ, different AT THIS POSITION -- and the position is what the deviation carries, because
+// "the argv differs" sends a reader to diff two 58-word lines by eye.
+fn argv_equal(a: List<String>, b: List<String>) -> Bool {
+  match a.first() {
+    Absent =>
+      match b.first() {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: ah } =>
+      match b.first() {
+        Absent => false
+        Present { value: bh } =>
+          if ah == bh { argv_equal(a: a.skip(n: 1), b: b.skip(n: 1)) } else { false }
+      }
+  }
+}
+
+// THE FIRST DIFFERING POSITION, counted from zero. A trailing extra word reports at the length of the
+// shorter list, which is where a reader should look.
+fn argv_first_difference(a: List<String>, b: List<String>, position: Nat) -> Nat {
+  match a.first() {
+    Absent => position
+    Present { value: ah } =>
+      match b.first() {
+        Absent => position
+        Present { value: bh } =>
+          if ah == bh { argv_first_difference(a: a.skip(n: 1), b: b.skip(n: 1), position: position + 1) } else { position }
+      }
+  }
+}
+
+// ── ONE RANK'S DEVIATIONS ──────────────────────────────────────────────────────────────────────
+fn rank_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentDeviation> {
+  concat(concat(concat(
+    if host_identity_eq(a: desired.node.host, b: observed.host) { [] } else {
+      [RankOnWrongHost {
+        node_rank: desired.node.node_rank,
+        expected_host: desired.node.host as NonEmptyStr,
+        observed_host: observed.host as NonEmptyStr,
+      }]
+    },
+    if (argv_image_digest(l: desired) as String) == (observed.image_digest as String) { [] } else {
+      [RankImageDigestDiffers {
+        node_rank: desired.node.node_rank,
+        desired: argv_image_digest(l: desired),
+        observed: observed.image_digest,
+      }]
+    }),
+    if (argv_model_path(l: desired) as String) == (observed.model_path as String) { [] } else {
+      [RankModelPathDiffers {
+        node_rank: desired.node.node_rank,
+        desired: argv_model_path(l: desired),
+        observed: observed.model_path,
+      }]
+    }),
+    if argv_equal(a: desired.argv, b: observed.argv) { [] } else {
+      [RankArgvDiffers {
+        node_rank: desired.node.node_rank,
+        first_difference_position: argv_first_difference(a: desired.argv, b: observed.argv, position: 0),
+        desired_word_count: count(desired.argv),
+        observed_word_count: count(observed.argv),
+      }]
+    })
+}
+
+fn rank_interface_deviations(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentDeviation> {
+  match observed.selected_fabric_interface {
+    Absent => []
+    Present { value: iface } =>
+      if (iface as String) == (fabric_rail_interface_name as String) { [] } else {
+        [RankFabricInterfaceDiffers {
+          node_rank: desired.node.node_rank,
+          desired: fabric_rail_interface_name,
+          observed: iface,
+        }]
+      }
+  }
+}
+
+fn rank_unknowns(desired: ArmNodeLaunch, observed: RankObservation) -> List<DeploymentUnknown> {
+  match observed.selected_fabric_interface {
+    Present { value: _ } => []
+    Absent => [FabricInterfaceUnread { node_rank: desired.node.node_rank }]
+  }
+}
+
+fn line_deviations(observed: List<RankObservation>, l: ArmNodeLaunch) -> List<DeploymentDeviation> {
+  match observation_for_rank(observed: observed, rank: l.node.node_rank) {
+    Absent => [RankAbsent { expected_rank: l.node.node_rank, expected_host: l.node.host as NonEmptyStr }]
+    Present { value: o } => concat(rank_deviations(desired: l, observed: o), rank_interface_deviations(desired: l, observed: o))
+  }
+}
+
+fn line_unknowns(observed: List<RankObservation>, l: ArmNodeLaunch) -> List<DeploymentUnknown> {
+  match observation_for_rank(observed: observed, rank: l.node.node_rank) {
+    Absent => []
+    Present { value: o } => rank_unknowns(desired: l, observed: o)
+  }
+}
+
+fn deployment_deviations(plan: ArmLaunchPlan, observed: NativeDeploymentObserved) -> List<DeploymentDeviation> {
+  match observed {
+    DeploymentNothingRunning { detail: d } => [DeploymentNotServing { detail: d }]
+    DeploymentRanksRead { ranks: rs, endpoint_alias: ep } =>
+      concat(
+        flat_map(plan_lines(plan: plan), l => line_deviations(observed: rs, l: l)),
+        match ep {
+          Absent => []
+          Present { value: a } =>
+            if (a as String) == "glm-5.3-flash" { [] } else {
+              [EndpointAliasDiffers { desired: "glm-5.3-flash" as NonEmptyStr, observed: a }]
+            }
+        })
+  }
+}
+
+fn deployment_unknowns(plan: ArmLaunchPlan, observed: NativeDeploymentObserved) -> List<DeploymentUnknown> {
+  match observed {
+    DeploymentNothingRunning { detail: _ } => []
+    DeploymentRanksRead { ranks: rs, endpoint_alias: ep } =>
+      concat(
+        flat_map(plan_lines(plan: plan), l => line_unknowns(observed: rs, l: l)),
+        match ep {
+          Present { value: _ } => []
+          Absent => [EndpointAliasUnread]
+        })
+  }
+}
+
+fn deployment_receipt(plan: ArmLaunchPlan, observed: NativeDeploymentObserved) -> DeploymentReceipt {
+  match plan_lines(plan: plan).first() {
+    Absent => DeploymentReceipt {
+      ranks_agreed: 0,
+      image_digest: "no planned line" as NonEmptyStr,
+      model_path: "no planned line" as NonEmptyStr,
+    }
+    Present { value: l } => DeploymentReceipt {
+      ranks_agreed: count(plan_lines(plan: plan)),
+      image_digest: argv_image_digest(l: l),
+      model_path: argv_model_path(l: l),
+    }
+  }
+}
+
+fn assess_native_deployment(plan: ArmLaunchPlan, observed: NativeDeploymentObserved) -> GoalAssessment<DeploymentReceipt, DeploymentDeviation, DeploymentUnknown, DeploymentAssessRefusal> {
+  match plan {
+    ArmLaunchRefused { cause: c } => GoalAssessmentRefused { cause: NoPlanToVerify { cause: c } }
+    ArmLaunchPlanned { lines: _, master: _ } => assess_by_deviations_and_unknowns(
+      evidence: deployment_receipt(plan: plan, observed: observed),
+      deviations: deployment_deviations(plan: plan, observed: observed),
+      unknowns: deployment_unknowns(plan: plan, observed: observed),
+    )
+  }
+}
+
+type NativeDeploymentInspection = GoalInspection<NonEmptyStr, ArmLaunchPlan, NativeDeploymentObserved, NativeDeploymentObserved, DeploymentReceipt, DeploymentDeviation, DeploymentUnknown, NonEmptyStr, DeploymentAssessRefusal>
+
+fn observe_deployment(subject: NonEmptyStr, reading: NativeDeploymentObserved) -> ObservationAttempt<NativeDeploymentObserved, NonEmptyStr> {
+  ObservationEstablished { observed: reading }
+}
+
+fn inspect_native_deployment(subject: NonEmptyStr, plan: ArmLaunchPlan, reading: NativeDeploymentObserved) -> NativeDeploymentInspection {
+  inspect_goal(
+    subject: subject,
+    goal: plan,
+    request: reading,
+    observe: observe_deployment,
+    assess: assess_native_deployment,
+  )
+}
+
+// ── WHETHER A CUTOVER MAY BE ACCEPTED ──────────────────────────────────────────────────────────
+//
+// ACCEPTANCE REQUIRES AGREEMENT AND NOTHING WEAKER. An indeterminate readback is not an acceptable
+// deployment: it means a fact the receipt promises was never established, and a transaction that
+// completed on it would record a claim nobody checked. That is the same precedence std.goal_assessment
+// gives unknowns over deviations, applied to the decision this readback exists to inform.
+type DeploymentAcceptance
+  = DeploymentAccepted { receipt: DeploymentReceipt }
+  | DeploymentRejected { deviations: List<DeploymentDeviation> }
+  | DeploymentUnverified { unknowns: List<DeploymentUnknown> }
+  | DeploymentUnverifiable { cause: NonEmptyStr }
+
+fn accept_deployment(inspection: NativeDeploymentInspection) -> DeploymentAcceptance {
+  match inspection {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause: c } => DeploymentUnverifiable { cause: c }
+    GoalInspected { subject: _, goal: _, request: _, observed: _, assessment: a } =>
+      match a {
+        GoalAssessmentRefused { cause: _ } => DeploymentUnverifiable { cause: "no planned deployment to verify against" as NonEmptyStr }
+        GoalSatisfied { evidence: r } => DeploymentAccepted { receipt: r }
+        GoalIndeterminate { known_deviations: _, unknowns: us } => DeploymentUnverified { unknowns: non_empty_to_list(xs: us) }
+        GoalDiverged { deviations: ds } => DeploymentRejected { deviations: non_empty_to_list(xs: ds) }
+      }
+  }
+}

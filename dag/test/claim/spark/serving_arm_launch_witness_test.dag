@@ -1,0 +1,372 @@
+module test.claim.spark.serving_arm_launch_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat, nat_range_inclusive }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, Glm53Exl3_205, Glm53Nvfp4CompressedTensors,
+  Gitcommit90Sm121Exl3, GunbcSparkrunVllmDs4Gb10,
+  SingleSparkTp1, FourSparkTp4,
+  ServingArmVerdict, ServingArmAdmitted, ServingArmRefused, serving_arm_admits,
+  ServingLaunchProfile, glm_native_initial_profile,
+}
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch,
+  render_utilization_fraction, parse_utilization_fraction, utilization_basis_points_in_argv,
+  ArmNodeLaunch, ArmNode,
+  arm_node_roster, ArmNodeRoster, ArmNodesResolved, ArmNodeRosterRefused,
+}
+
+// THE FRACTION IS A FIXTURE VALUE AND EVERY CALL BELOW PASSES THE SAME ONE, so an argv difference between two
+// arms is a difference in the arm rather than in the memory policy. It is 8400 because that is what the
+// envelope policy resolved to against the readings taken on 2026-09-10; the launcher does not care.
+// THE PROFILE IS THE NATIVE ARM'S OWN, SHARED BY EVERY ROW, for the same reason the fraction is: a
+// difference in a rendered line must be a difference in the ARM, not in two fixtures that drifted. Rows that
+// plan the EXL3 checkpoint use it too -- what they exercise is the LAUNCHER's composition (the rank fan-out,
+// the master address, the entrypoint), which is a property of the launcher and not of the profile it
+// carries. A row that cared which profile it held would say so by taking a different one.
+data witness_launch_profile: ServingLaunchProfile = glm_native_initial_profile
+
+data witness_fraction_basis_points: Nat = 8400
+
+// ── THE WIRE FORM OF A FRACTION, INCLUDING THE RANGE THAT WAS WRONG ───────────────────────────
+//
+// THE FIRST TWO ROWS WOULD HAVE PASSED BEFORE THE PAD LANDED AND THE THIRD IS THE DISCRIMINATING ONE.
+// `"0." + bp/100` renders 900 basis points as "0.9" -- ten times the intended 0.09 -- and no caller had
+// reached that range, so the defect was latent rather than absent. A budget ten times larger than intended
+// arrives as an inexplicably large request, not as an error.
+test fn the_wire_fraction_is_two_digits() -> Bool {
+  render_utilization_fraction(basis_points: 8400) == "0.84"
+}
+
+test fn the_ceiling_renders_as_written() -> Bool {
+  render_utilization_fraction(basis_points: 9000) == "0.90"
+}
+
+test fn a_single_digit_percentage_is_padded_rather_than_shifted() -> Bool {
+  render_utilization_fraction(basis_points: 900) == "0.09"
+}
+
+// ── THE FRACTION SURVIVES A ROUND TRIP, WHICH IS WHAT MAKES THE READBACK EXACT ────────────────
+//
+// THE IDEMPOTENCE CHECK RECOVERS THE RUNNING FRACTION FROM THE RUNNING ARGV AND REBUILDS A PLAN FROM IT, so
+// the parse and the render must be inverses over the whole range the resolution can produce. If they drift,
+// a converged deployment reads as divergent and the transaction withholds against a healthy endpoint --
+// which is precisely the weakening a ceiling-built comparison plan had, and the reason it was replaced.
+test fn the_fraction_survives_a_round_trip_at_every_wire_value() -> Bool {
+  count(filter(
+    nat_range_inclusive(lo: 1, hi: 100),
+    pct => match parse_utilization_fraction(s: render_utilization_fraction(basis_points: pct * 100)) {
+      Absent => true
+      Present { value: bp } => bp != pct * 100
+    })) == 0
+}
+
+// SPELLINGS THIS REPOSITORY DOES NOT WRITE ARE NOT RECOVERED. Each of these would produce a plan built at a
+// fraction nobody chose, and comparing an observed deployment against such a plan is worse than not comparing:
+// it would report agreement or divergence about the wrong subject.
+test fn a_one_digit_fraction_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "0.9") { Absent => true, Present { value: _ } => false }
+}
+
+test fn a_three_digit_fraction_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "0.900") { Absent => true, Present { value: _ } => false }
+}
+
+test fn a_leading_dot_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: ".840") { Absent => true, Present { value: _ } => false }
+}
+
+test fn a_non_digit_body_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "0.ab") { Absent => true, Present { value: _ } => false }
+}
+
+// THE TOP OF THE DOMAIN IS A REAL VALUE AND THE FIRST TWO RENDERERS BOTH GOT IT WRONG. 10000 basis points is
+// 1.00, and the round trip above is what found that it was being emitted as "0.100" -- a value the parser then
+// refused, which is how the pair caught itself. Neither the typecheck nor reading the function found it.
+test fn the_whole_fraction_renders_and_recovers() -> Bool {
+  render_utilization_fraction(basis_points: 10000) == "1.00"
+    && match parse_utilization_fraction(s: "1.00") {
+      Absent => false
+      Present { value: bp } => bp == 10000
+    }
+}
+
+// ABOVE 1.00 IS REFUSED BECAUSE THE ENGINE'S OWN FIELD IS `le=1`, so such a line could not have been accepted
+// by any engine and recovering one would mean believing a deployment that cannot exist.
+test fn a_fraction_above_one_is_not_recovered() -> Bool {
+  match parse_utilization_fraction(s: "2.00") { Absent => true, Present { value: _ } => false }
+}
+
+// ── FINDING THE FLAG IN A REAL LINE ───────────────────────────────────────────────────────────
+//
+// THE VALUE IS TAKEN FROM THE ACTUAL LAUNCH ARGV THIS MODULE RENDERS, not from a hand-typed list, so the
+// scanner is exercised against the line it will really meet -- including the fact that the flag is nowhere
+// near the front of it.
+test fn the_fraction_is_recovered_from_the_rendered_launch_line() -> Bool {
+  match admissible_tp4_plan() {
+    ArmLaunchRefused { cause: _ } => false
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      match ls.first() {
+        Absent => false
+        Present { value: l } =>
+          match utilization_basis_points_in_argv(argv: l.argv) {
+            Absent => false
+            Present { value: bp } => bp == witness_fraction_basis_points
+          }
+      }
+  }
+}
+
+// A LINE WITHOUT THE FLAG YIELDS NOTHING RATHER THAN A DEFAULT, and a line ENDING in the flag is malformed
+// rather than defaulted -- the scan runs off the end instead of reaching for whatever is nearby.
+test fn an_argv_without_the_flag_recovers_nothing() -> Bool {
+  match utilization_basis_points_in_argv(argv: ["vllm", "serve", "--max-num-seqs", "1"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_trailing_flag_recovers_nothing() -> Bool {
+  match utilization_basis_points_in_argv(argv: ["vllm", "serve", "--gpu-memory-utilization"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE SHAPE CONTROLS RUN ON AN ADMISSIBLE ARM, AND THAT IS A CONSEQUENCE OF THE WALL LANDING.
+//
+// They used to run on the native four-rank plan, which planned lines because nothing yet asked
+// whether the runtime could load the checkpoint. It cannot, so that plan now refuses and every
+// control reading its lines would read an empty list -- passing vacuously or failing for a reason
+// unrelated to its subject. Neither is acceptable, and marking the image as supporting the
+// integration to keep them green would be writing a known falsehood into the corpus to protect a
+// test.
+//
+// SO THE LAUNCH MACHINERY IS EXERCISED ON THE ARM THAT IS ACTUALLY ADMISSIBLE: the EXL3 checkpoint,
+// which needs no upstream integration and has been serving on this image for days, spread over the
+// same four hosts. Everything these rows assert -- rank assignment, the rendezvous address, the
+// absence of a management address, the entrypoint composition -- is a property of the LAUNCHER and
+// not of which checkpoint it carries, so the coverage is unchanged. What the native arm keeps is the
+// one control that is genuinely about it: that it refuses.
+fn admissible_tp4_plan() -> ArmLaunchPlan {
+  plan_arm_launch(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB, profile: witness_launch_profile, utilization_basis_points: witness_fraction_basis_points)
+}
+
+fn planned_lines(p: ArmLaunchPlan) -> List<ArmNodeLaunch> {
+  match p {
+    ArmLaunchPlanned { lines: ls, master: _ } => ls
+    ArmLaunchRefused { cause: _ } => []
+  }
+}
+
+fn argv_has(argv: List<String>, word: String) -> Bool {
+  count(filter(argv, w => w == word)) > 0
+}
+
+// ── THE WALL THAT A PREVIOUS REVISION WALKED PAST ──────────────────────────────────────────────
+//
+// The pair-serving route once pointed at GLM while running the DeepSeek image, and nothing refused,
+// because no check joined the checkpoint to the image's architecture registry. This is that check, and
+// its red is authorable from a fixture forever: the DeepSeek image is recorded with
+// registers_glm5_next = false, so a native GLM arm on it must refuse before any line renders.
+test fn a_native_arm_on_an_image_that_cannot_load_it_refuses() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: GunbcSparkrunVllmDs4Gb10, topology: FourSparkTp4, group: FabricGroupB, profile: witness_launch_profile, utilization_basis_points: witness_fraction_basis_points) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, so the refusal rows are not passing because everything refuses. An admissible
+// arm plans one line per rank.
+//
+// THIS ROW ONCE ASSERTED THAT THE NATIVE ARM PLANS FOUR LINES ON "THE GLM-CAPABLE IMAGE", and that
+// name was the error: the image registers the architecture and implements fp8, which is what I had
+// measured, and I wrote "capable" as though those two facts settled loading. They did not. The row
+// was green while asserting something false about the world, which is the most expensive kind of
+// green, and it went red the moment a wall encoded what was actually true.
+test fn an_admissible_arm_plans_one_line_per_rank() -> Bool {
+  count(planned_lines(p: admissible_tp4_plan())) == 4
+}
+
+// ── A ONE-SPARK TOPOLOGY CANNOT HOLD THIS CHECKPOINT ──────────────────────────────────────────
+//
+// 306 GiB of weights against a 121 GiB unified pool is refused by the arm wall on the fit bound, which is
+// the reason four ranks is a minimum rather than a preference.
+test fn the_native_arm_refuses_a_single_spark() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1, group: FabricGroupB, profile: witness_launch_profile, utilization_basis_points: witness_fraction_basis_points) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// A ROSTER THAT CANNOT SUPPLY THE ARM'S RANKS REFUSES RATHER THAN SHRINKING. Asking a four-rank arm for
+// two ranks must not yield a two-rank launch: the degree is a property of the arm, and an engine started
+// with fewer peers than it expects waits forever for one nobody launched.
+test fn a_roster_short_of_the_arms_ranks_refuses() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 8) {
+    ArmNodeRosterRefused { cause: _ } => true
+    ArmNodesResolved { nodes: _, master: _ } => false
+  }
+}
+
+test fn the_group_supplies_exactly_four_ranks() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 4) {
+    ArmNodesResolved { nodes: ns, master: _ } => count(ns) == 4
+    ArmNodeRosterRefused { cause: _ } => false
+  }
+}
+
+// ── RANKS MUST BE DISTINCT AND START AT ZERO ──────────────────────────────────────────────────
+//
+// TWO HOSTS SHARING A RANK IS A HUNG GROUP, NOT A DEGRADED ONE, and so is a group with no rank zero --
+// rank zero is the rendezvous the other three dial. These are the cheapest possible checks on the most
+// expensive possible failure: an engine that never answers and reports nothing wrong.
+test fn every_rank_is_distinct_and_covers_zero_to_three() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 4) {
+    ArmNodeRosterRefused { cause: _ } => false
+    ArmNodesResolved { nodes: ns, master: _ } =>
+      count(filter(ns, n => n.node_rank == 0)) == 1
+        && count(filter(ns, n => n.node_rank == 1)) == 1
+        && count(filter(ns, n => n.node_rank == 2)) == 1
+        && count(filter(ns, n => n.node_rank == 3)) == 1
+  }
+}
+
+// THE HEAD HOLDS RANK ZERO AND IS THE MASTER, so the address the other three dial is the host the group
+// declares as its head rather than whichever member the roster happened to list first.
+test fn the_head_holds_rank_zero_and_is_the_master() -> Bool {
+  match arm_node_roster(group: FabricGroupB, expected_ranks: 4) {
+    ArmNodeRosterRefused { cause: _ } => false
+    ArmNodesResolved { nodes: ns, master: m } =>
+      count(filter(ns, n => n.node_rank == 0 && (render_ipv4_address(addr: n.rail) as String) == (render_ipv4_address(addr: m) as String))) == 1
+  }
+}
+
+// ── THE COLLECTIVES CROSS THE FABRIC, NOT THE WIRELESS LAN ────────────────────────────────────
+//
+// THIS IS THE ROW WITH NO ERROR MESSAGE BEHIND IT. Every rank dials --master-addr on every forward pass;
+// if it named a management address the group would still come up and still serve, over the wifi the
+// management network runs on, while a 200G switched fabric sat idle. Nothing would report a fault -- the
+// engine would simply be slow, and the cause would be invisible in every log. So the launch line is
+// asserted to carry a rail address, which on this fleet is 192.168.110.0/24.
+test fn every_rank_dials_the_master_on_the_fabric_rail() -> Bool {
+  count(filter(planned_lines(p: admissible_tp4_plan()), l =>
+    argv_has(argv: l.argv, word: "--master-addr") && argv_has(argv: l.argv, word: "192.168.110.17"))) == 4
+}
+
+// AND NO LINE NAMES A MANAGEMENT ADDRESS, which is the negative half: the row above would still pass if a
+// line carried both, and a line carrying both is a line somebody edited halfway.
+test fn no_launch_line_names_a_management_address() -> Bool {
+  count(filter(planned_lines(p: admissible_tp4_plan()), l =>
+    argv_has(argv: l.argv, word: "192.168.1.236") || argv_has(argv: l.argv, word: "192.168.1.237")
+      || argv_has(argv: l.argv, word: "192.168.1.238") || argv_has(argv: l.argv, word: "192.168.1.239"))) == 0
+}
+
+// ── THE LINE DESCRIBES ITS OWN ARTIFACT ───────────────────────────────────────────────────────
+//
+// gunbc.spark.serving_arm_convergence reads the running argv to decide whether the desired arm is
+// serving, and it refuses to infer an omitted quantisation. So a launch that let the engine resolve fp8
+// from the checkpoint config unaided would produce an engine whose own line cannot say what it loaded,
+// and every convergence read would withhold. This row is the join between the launcher and the assessor.
+test fn every_line_names_its_quantisation_and_rank_count() -> Bool {
+  count(filter(planned_lines(p: admissible_tp4_plan()), l =>
+    argv_has(argv: l.argv, word: "--quantization") && argv_has(argv: l.argv, word: "exl3")
+      && argv_has(argv: l.argv, word: "--tensor-parallel-size") && argv_has(argv: l.argv, word: "4")
+      && argv_has(argv: l.argv, word: "--nnodes"))) == 4
+}
+
+// THE MEMORY ENVELOPE IS SPELLED, and it is spelled as a fraction rather than omitted. On this hardware an
+// omitted flag is not a harmless default: NVML answers [N/A] for memory, which is the same absence that
+// produced the 2048 batched-token budget.
+//
+// AND THE EXPECTED WORD IS RENDERED FROM THE FIXTURE, NOT SPELLED BESIDE IT. This row asserted the literal
+// "0.90" while the fixture it plans from has been 8400 basis points -- so it was RED, and it was red at every
+// revision of this file including the one a review inspected. Two spellings of one number drift the moment
+// either moves, which is the transcribed-measurement failure at test grain: the instrument that turns basis
+// points into a wire word is exercised by four other rows in this very module, and this one wrote the answer
+// out by hand instead of calling it.
+test fn every_line_spells_the_memory_envelope() -> Bool {
+  count(filter(planned_lines(p: admissible_tp4_plan()), l =>
+    argv_has(argv: l.argv, word: "--gpu-memory-utilization")
+      && argv_has(argv: l.argv, word: render_utilization_fraction(basis_points: witness_fraction_basis_points)))) == 4
+}
+
+// THE MODEL PATH COMES FROM THE CHECKPOINT'S PLACEMENT. This arm is placed as a local checkout, so its
+// line names the checkout mount; a Hub-cache arm names the revision path under the cache. The row
+// exists because an earlier renderer derived the Hub path for BOTH, which would have pointed a local
+// checkout at a directory that does not exist on the host.
+test fn every_line_serves_the_pinned_revision() -> Bool {
+  count(filter(planned_lines(p: admissible_tp4_plan()), l =>
+    argv_has(argv: l.argv, word: "/model"))) == 4
+}
+
+// AND NO LINE SPELLS THE SUBCOMMAND, because the image entrypoint already supplies `vllm serve`. A line
+// carrying "serve" would reach the engine as `vllm serve serve <path>`. Verified against the running
+// canary, whose container reports Path=vllm with Args[0]=serve.
+test fn no_line_repeats_the_serve_subcommand() -> Bool {
+  count(filter(planned_lines(p: admissible_tp4_plan()), l => argv_has(argv: l.argv, word: "serve"))) == 0
+}
+
+// ── THE WALL THAT WOULD HAVE PREVENTED THE 2026-09-10 OUTAGE ──────────────────────────────────
+//
+// THIS ROW IS THE ONE THIS FILE EXISTS FOR NOW, and it is written from a receipt rather than from
+// foresight. On 2026-09-10 the native FP8 arm was planned against Gitcommit90Sm121Exl3, admitted by
+// every wall then present, the canary was stopped to free its host, four ranks formed a real NCCL
+// group -- and the load died with KeyError 'layers.0.self_attn.k_proj.weight'. The GLM endpoint was
+// down for about ninety minutes for a launch that could never have worked.
+//
+// TWO WALLS PASSED AND BOTH WERE ANSWERING TRUE. The image does register
+// Glm5NextForConditionalGeneration and does implement fp8_per_block; those facts were measured, and
+// they were not sufficient. The fact nobody asked for was whether the engine's WEIGHT LOADER knows
+// this checkpoint's tensor layout, which upstream states as a version floor -- min_vllm_version
+// 0.29.0 with nightly_required true -- in the same recipe this repository already cited for the
+// KV dtype and the parsers. The requirement half of that page was never modelled, so the citation
+// looked complete while missing the field that decides.
+//
+// ITS RED IS AUTHORABLE FOREVER, because it names the real tuple: this exact checkpoint on this exact
+// image. If someone later marks the image as supporting the integration without evidence, this row
+// goes green and the positive control below is what keeps that honest.
+test fn the_native_arm_refuses_on_a_runtime_without_the_upstream_integration() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53NativeFp8, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB, profile: witness_launch_profile, utilization_basis_points: witness_fraction_basis_points) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, AND IT IS NOT DECORATION: the SAME image serving the EXL3 checkpoint must
+// still admit, because that arm has been serving for days. A wall that refused both would have
+// "fixed" the outage by making the fleet unable to run the thing it actually runs.
+//
+// IT ASKS THE ADMISSION WALL DIRECTLY RATHER THAN THE WHOLE PLAN, and the first version of this row
+// did not -- it called plan_arm_launch for a ONE-RANK arm against a FOUR-HOST group, which the node
+// roster refuses on arity long before any wall about images is consulted. So it went red while the
+// wall it was meant to vindicate was innocent, and the red was about the control's own construction.
+// That is worth writing down rather than quietly fixing: a positive control that can fail for a
+// reason unrelated to its subject cannot vindicate anything, and this one nearly sent me looking for
+// a defect in the wall.
+test fn the_exl3_arm_still_admits_on_the_same_runtime() -> Bool {
+  match serving_arm_admits(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1) {
+    ServingArmAdmitted => true
+    ServingArmRefused { cause: _ } => false
+  }
+}
+
+// AND THE ARITY REFUSAL IS ITS OWN ROW, so the fact the control above tripped over is now asserted
+// deliberately instead of being an accident of another row's fixture: a one-rank arm cannot be
+// planned onto a four-host group.
+test fn a_one_rank_arm_is_refused_on_a_four_host_group() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53Exl3_205, runtime: Gitcommit90Sm121Exl3, topology: SingleSparkTp1, group: FabricGroupB, profile: witness_launch_profile, utilization_basis_points: witness_fraction_basis_points) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
+// AN UNMODELLED CHECKPOINT REFUSES rather than planning a line against a repo nobody declared.
+test fn an_unmodelled_checkpoint_refuses() -> Bool {
+  match plan_arm_launch(checkpoint: Glm53Nvfp4CompressedTensors, runtime: Gitcommit90Sm121Exl3, topology: FourSparkTp4, group: FabricGroupB, profile: witness_launch_profile, utilization_basis_points: witness_fraction_basis_points) {
+    ArmLaunchRefused { cause: _ } => true
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}

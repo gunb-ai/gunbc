@@ -1,0 +1,314 @@
+module test.claim.spark.native_deployment_readback_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, ArmNode,
+  fabric_rail_interface_name,
+}
+import gunbc.spark.device_memory_envelope {
+  ResolvedDeviceMemoryEnvelope, ResolvedForAttempt, glm_native_tp4_launch_plan,
+  glm_native_device_memory_policy,
+}
+import gunbc.spark.native_deployment_readback {
+  RankObservation, rank_observation,
+  NativeDeploymentObserved, DeploymentRanksRead, DeploymentNothingRunning,
+  DeploymentAcceptance, DeploymentAccepted, DeploymentRejected, DeploymentUnverified, DeploymentUnverifiable,
+  inspect_native_deployment, accept_deployment,
+}
+
+data subject: NonEmptyStr = "the native four-rank deployment on fabric cage 2" as NonEmptyStr
+data pinned_digest: NonEmptyStr = "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
+data pinned_model_path: NonEmptyStr = "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+
+// THE FIXTURE RESOLUTION IS 8400 BASIS POINTS, WHICH IS WHAT THE POLICY RESOLVED TO ON 2026-09-10 AGAINST
+// THE READINGS THAT REFUSED THE 0.90 LAUNCH. It is written here as a fixture and not as a recommendation:
+// this witness is about argv comparison, and the fraction matters only in that the plan cannot exist without
+// one.
+data readback_fixture_envelope: ResolvedDeviceMemoryEnvelope = ResolvedForAttempt {
+  basis_points: 8400,
+  binding_node_rank: 1,
+  policy: glm_native_device_memory_policy,
+  attempt: "readback-witness-fixture" as NonEmptyStr,
+  standings: [],
+}
+
+fn plan() -> ArmLaunchPlan {
+  glm_native_tp4_launch_plan(envelope: readback_fixture_envelope)
+}
+
+fn planned_argv_for(rank: Nat) -> List<String> {
+  match plan() {
+    ArmLaunchRefused { cause: _ } => []
+    ArmLaunchPlanned { lines: ls, master: _ } =>
+      join_argv(items: map(filter(ls, l => l.node.node_rank == rank), l => l.argv))
+  }
+}
+
+fn join_argv(items: List<List<String>>) -> List<String> {
+  fold(items, init: [] as List<String>, f: (acc, x) => concat(acc, x))
+}
+
+// A FAITHFUL READING OF ONE RANK: the words the plan rendered for that rank, the pinned digest, the
+// pinned revision path, the host the plan named, and the interface the engine reported selecting.
+fn faithful_rank(host: HostIdentity, rank: Nat) -> RankObservation {
+  rank_observation(
+    host: host,
+    node_rank: rank,
+    image_digest: pinned_digest,
+    model_path: pinned_model_path,
+    argv: planned_argv_for(rank: rank),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  )
+}
+
+data all_four_faithful: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+fn acceptance_of(reading: NativeDeploymentObserved) -> DeploymentAcceptance {
+  accept_deployment(inspection: inspect_native_deployment(subject: subject, plan: plan(), reading: reading))
+}
+
+fn served() -> NonEmptyStr? {
+  Present { value: "glm-5.3-flash" as NonEmptyStr }
+}
+
+// ── THE POSITIVE CONTROL ──────────────────────────────────────────────────────────────────────
+//
+// FOUR RANKS AGREEING WITH THE PLAN THAT LAUNCHED THEM IS ACCEPTED, and this row exists so that every
+// rejection below is a discrimination rather than a gate that refuses everything. If the plan itself
+// refuses -- which it does whenever the runtime standing does not admit the arm -- this row goes red,
+// which is the correct coupling: there is nothing to accept when nothing was planned.
+test fn four_faithful_ranks_are_accepted() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: all_four_faithful, endpoint_alias: served() }) {
+    DeploymentAccepted { receipt: r } => r.ranks_agreed == 4
+    DeploymentRejected { deviations: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}
+
+// ── THE ROW THIS MODULE EXISTS FOR ────────────────────────────────────────────────────────────
+//
+// ONE RANK ON A DIFFERENT IMAGE IS REJECTED, AND THE COARSE ARM IDENTITY CANNOT SEE IT. That identity
+// reads the served alias, the quantisation word and the rank count off the running line -- all three of
+// which are unchanged here. A group where three ranks run the audited digest and one runs something else
+// would report as the right arm serving, and this is the check that says otherwise.
+data one_rank_wrong_digest: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  rank_observation(
+    host: operator_host_srv12,
+    node_rank: 2,
+    image_digest: "vllm/vllm-openai@sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    model_path: pinned_model_path,
+    argv: planned_argv_for(rank: 2),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn one_rank_on_a_different_image_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: one_rank_wrong_digest, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+// A RANK ON A DIFFERENT CHECKPOINT REVISION IS REJECTED. Two revisions of one repository produce the same
+// alias and the same quantisation, so this is the second thing the coarse identity cannot distinguish --
+// and it is the difference between serving the audited weights and serving whatever else is on disk.
+data one_rank_wrong_revision: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  rank_observation(
+    host: operator_host_srv10,
+    node_rank: 1,
+    image_digest: pinned_digest,
+    model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/0000000000000000000000000000000000000000" as NonEmptyStr,
+    argv: planned_argv_for(rank: 1),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn one_rank_on_a_different_revision_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: one_rank_wrong_revision, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+// A MISSING RANK IS REJECTED AND NAMED. Three ranks of a four-rank arm is not a smaller deployment: the
+// engine waits for a peer nobody started, and an acceptance that counted only what answered would report
+// a hung group as a healthy one.
+data only_three_ranks: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+]
+
+test fn a_missing_rank_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: only_three_ranks, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+// ── AN UNREAD FACT IS NOT A PASS ──────────────────────────────────────────────────────────────
+//
+// THE INTERFACE NCCL ACTUALLY CHOSE IS THE ONE FACT THIS WHOLE ARRANGEMENT CANNOT INFER, because the
+// launch is what SET the environment variable -- so reading the variable back and calling it agreement
+// would be the check agreeing with itself. A group whose interface was never captured is UNVERIFIED, and
+// a transaction that completed on it would record a claim nobody checked. This is the row that keeps
+// "we did not look" distinct from "we looked and it was right".
+data interface_unread: List<RankObservation> = [
+  rank_observation(
+    host: operator_host_srv9, node_rank: 0,
+    image_digest: pinned_digest, model_path: pinned_model_path,
+    argv: planned_argv_for(rank: 0), selected_fabric_interface: none,
+  ),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn an_unread_fabric_interface_is_unverified_rather_than_accepted() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: interface_unread, endpoint_alias: served() }) {
+    DeploymentUnverified { unknowns: us } => count(us) == 1
+    _ => false
+  }
+}
+
+// AND AN INTERFACE THAT WAS READ AND IS WRONG IS REJECTED, not merely noted. Collectives on the
+// management link serve correctly and slowly, with nothing in any log calling it a fault, so the only
+// place that difference can be caught is a readback that knows which interface was intended.
+data interface_wrong: List<RankObservation> = [
+  rank_observation(
+    host: operator_host_srv9, node_rank: 0,
+    image_digest: pinned_digest, model_path: pinned_model_path,
+    argv: planned_argv_for(rank: 0),
+    selected_fabric_interface: Present { value: "wlan0" as NonEmptyStr },
+  ),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn a_wrong_fabric_interface_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: interface_wrong, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+// NOTHING RUNNING IS REJECTED RATHER THAN UNVERIFIED, because an established absence is a fact the reader
+// SAW. It is the arm not being deployed, which is a divergence from the goal and not a gap in knowledge.
+test fn nothing_running_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentNothingRunning { detail: "no container on any rank" as NonEmptyStr }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+// A RANK ON THE WRONG HOST IS REJECTED. The rank-to-host assignment is what the rendezvous is built from,
+// so two ranks on one host and none on another is a group that cannot form even when the count is right.
+data rank_on_wrong_host: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  faithful_rank(host: operator_host_srv9, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn a_rank_on_the_wrong_host_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: rank_on_wrong_host, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    _ => false
+  }
+}
+
+// ── SAME LENGTH, DIFFERENT MEANING: THE TWO REDS A WORD COUNT CANNOT SEE ───────────────────────
+//
+// A COUNT-BASED COMPARISON ACCEPTS BOTH POPULATIONS BELOW, and both describe an engine nobody asked for.
+// The readback compares exact ordered argv, so these are the rows that say so rather than leaving it to be
+// read off the implementation.
+//
+// THE FIRST CHANGES ONE WORD -- the memory fraction -- which is precisely the parameter this repository
+// spent five attempts learning to get right. A deployment serving at a fraction nobody decided is not the
+// deployment that was planned, and it is the most likely single-word divergence this arm has.
+//
+// THE SWAP IS BY VALUE RATHER THAN BY POSITION, because naming an index would couple this fixture to where
+// the flag happens to sit in the rendered line -- the positional dependence the exact comparison exists to
+// avoid.
+fn swap_word(words: List<String>, target: String, replacement: String) -> List<String> {
+  map(words, w => if w == target { replacement } else { w })
+}
+
+fn argv_with_one_word_changed(rank: Nat) -> List<String> {
+  swap_word(words: planned_argv_for(rank: rank), target: "0.84", replacement: "0.90")
+}
+
+data one_word_changed_ranks: List<RankObservation> = [
+  rank_observation(
+    host: operator_host_srv9, node_rank: 0, image_digest: pinned_digest, model_path: pinned_model_path,
+    argv: argv_with_one_word_changed(rank: 0),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+  faithful_rank(host: operator_host_srv10, rank: 1),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn one_changed_word_at_the_same_length_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: one_word_changed_ranks, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}
+
+// THE SECOND REORDERS THE LINE WITHOUT CHANGING ANY WORD. The count is identical and so is the multiset;
+// only the ORDER differs. vLLM's argv is order-sensitive -- the positional model path and every flag/value
+// pairing depend on it -- so a reordered line is a different command, and an unordered comparison would call
+// it the same one.
+fn argv_reversed(rank: Nat) -> List<String> {
+  reverse(planned_argv_for(rank: rank))
+}
+
+data reordered_ranks: List<RankObservation> = [
+  faithful_rank(host: operator_host_srv9, rank: 0),
+  rank_observation(
+    host: operator_host_srv10, node_rank: 1, image_digest: pinned_digest, model_path: pinned_model_path,
+    argv: argv_reversed(rank: 1),
+    selected_fabric_interface: Present { value: fabric_rail_interface_name },
+  ),
+  faithful_rank(host: operator_host_srv12, rank: 2),
+  faithful_rank(host: operator_host_srv11, rank: 3),
+]
+
+test fn a_reordered_argv_of_the_same_words_is_rejected() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: reordered_ranks, endpoint_alias: served() }) {
+    DeploymentRejected { deviations: ds } => count(ds) == 1
+    DeploymentAccepted { receipt: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}
+
+// AND THE POSITIVE CONTROL THE TWO REDS REQUIRE: the faithful population is ACCEPTED. Without it a readback
+// that rejected everything would satisfy both rows above and establish nothing.
+test fn the_faithful_population_is_accepted() -> Bool {
+  match acceptance_of(reading: DeploymentRanksRead { ranks: all_four_faithful, endpoint_alias: served() }) {
+    DeploymentAccepted { receipt: _ } => true
+    DeploymentRejected { deviations: _ } => false
+    DeploymentUnverified { unknowns: _ } => false
+    DeploymentUnverifiable { cause: _ } => false
+  }
+}

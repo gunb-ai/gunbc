@@ -1,0 +1,106 @@
+module gunbc.spark.post_acquisition_memory_remedy
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.remote_execution {
+  SparkRemoteExecutionContext, SparkRemoteRun, RemoteRan, RemoteUnreachable,
+  spark_exec, remote_run_succeeded, remote_run_text,
+}
+import gunbc.spark.serving_arm_launch { ArmNode }
+
+// ── THIS RELEASES MEMORY THE HOST DID NOT NEED TO RELEASE, AND THAT IS THE HONEST NAME FOR IT ──
+//
+// IT IS A WORKAROUND FOR AN UPSTREAM CHECK, NOT A REPAIR OF A SHORTAGE. An earlier revision of this module
+// argued that a host holding the acquisition's page cache "cannot admit a substantial engine at all" and
+// that releasing the cache was therefore an acquisition obligation. That was measured only half way and the
+// conclusion was wrong.
+//
+// THE MEASUREMENT THAT SETTLED IT (2026-09-11, a Group B host holding 53 GB of page cache). Inside the pinned
+// launch image, `torch.cuda.mem_get_info` reported 62.29 GiB free of 119.69 GiB. A single allocation of 90
+// GiB -- deliberately chosen ABOVE the free figure and BELOW the kernel's available figure -- SUCCEEDED,
+// leaving 1.04 GiB free. The kernel reclaimed the clean page cache on demand, exactly as it would for any
+// other consumer. The memory was never unavailable.
+//
+// SO WHAT REFUSES IS THE ENGINE'S STARTUP ADMISSION CHECK, which reads `mem_get_info` free. On unified
+// memory that figure is the kernel's MemFree and excludes reclaimable cache, so the check compares a budget
+// against a number materially smaller than what the host would actually have given it. A launch that would
+// have worked is refused. This function does not add memory; it makes the host LOOK idle so an
+// over-conservative comparison passes.
+//
+// IT IS KEPT BECAUSE IT IS THE ONLY LEVER ON OUR SIDE OF THAT CHECK, and it is kept under its real name
+// rather than a flattering one (operator ruling, 2026-09-11). The alternatives are worse: an environment
+// variable that skips the check would be the escape hatch DESIGN section 5 forbids, and lowering the
+// requested fraction until it fits the unreclaimed remainder would starve the model to satisfy an
+// instrument.
+//
+// IT DROPS PAGE CACHE ONLY. `echo 3` also discards dentries and inodes, which nothing here measured and
+// nothing here needs; `echo 1` is the narrowest write that moves the number the check reads.
+//
+// AND IT HAS A REAL COST, STATED RATHER THAN LEFT TO BE DISCOVERED: the cache being discarded holds the very
+// snapshot files each rank is about to read, so every rank then loads its 76 GiB of weights from NVMe
+// instead of from RAM. The launch is slower in exchange for passing a check that should not have failed.
+//
+// DISSOLUTION TRIGGER, AND IT IS A CAPABILITY RATHER THAN A PROMISE: an upstream admission check that
+// consults reclaimable memory on unified-memory devices, or a supported way to supply the true available
+// figure to it. When a launch on a cache-warm host is admitted without this call, this module deletes --
+// and the acquisition keeps its cache, which is where it was doing good.
+type MemoryRemedyOutcome
+  = CacheReleased { host: HostIdentity, detail: String }
+  | CacheReleaseFailed { host: HostIdentity, cause: String }
+  | CacheReleaseUnreachable { host: HostIdentity, cause: String }
+
+fn memory_remedy_text(o: MemoryRemedyOutcome) -> String {
+  match o {
+    CacheReleased { host: h, detail: d } =>
+      join([h as String, " released its page cache: ", d], "")
+    CacheReleaseFailed { host: h, cause: c } =>
+      join([h as String, " COULD NOT release its page cache: ", c], "")
+    CacheReleaseUnreachable { host: h, cause: c } =>
+      join([h as String, " UNREACHABLE for the page cache remedy: ", c], "")
+  }
+}
+
+fn memory_remedy_succeeded(o: MemoryRemedyOutcome) -> Bool {
+  match o {
+    CacheReleased { host: _, detail: _ } => true
+    CacheReleaseFailed { host: _, cause: _ } => false
+    CacheReleaseUnreachable { host: _, cause: _ } => false
+  }
+}
+
+// THE SYNC IS NOT DECORATION. drop_caches discards clean pages and leaves dirty ones, so on a host that has
+// just written hundreds of gigabytes the flush is what makes the release actually release -- and omitting it
+// would produce a remedy that reports success and frees a fraction of what it claimed.
+fn cache_release_argv() -> List<String> {
+  ["sh", "-c", "sync; echo 1 > /proc/sys/vm/drop_caches; echo RELEASED"]
+}
+
+func release_host_page_cache(ctx: SparkRemoteExecutionContext, host: HostIdentity) -> MemoryRemedyOutcome
+  uses net: Network
+{
+  let r = spark_exec(ctx: ctx, host: host, argv: cache_release_argv())
+  match r {
+    RemoteUnreachable { host: h, cause: c } => CacheReleaseUnreachable { host: h, cause: c }
+    RemoteRan { host: h, exit_code: _, stdout: _, stderr: _ } =>
+      if remote_run_succeeded(r: r) {
+        CacheReleased { host: host, detail: remote_run_text(r: r) }
+      } else {
+        CacheReleaseFailed { host: host, cause: remote_run_text(r: r) }
+      }
+  }
+}
+
+// EVERY RANK, AND THE RESULT IS A LIST RATHER THAN A VERDICT. Whether a failed remedy should stop a launch is
+// the caller's decision and not this fold's: the envelope observation that follows will refuse on its own
+// terms if a host still cannot supply the floor, so a remedy failure is EVIDENCE and the device reading
+// remains the authority. Collapsing this to a Bool here would put a second admission decision beside the one
+// that actually governs.
+func release_population_page_cache(
+  ctx: SparkRemoteExecutionContext, nodes: List<ArmNode>,
+) -> List<MemoryRemedyOutcome>
+  uses net: Network
+{
+  map(nodes, n => release_host_page_cache(ctx: ctx, host: n.host))
+}

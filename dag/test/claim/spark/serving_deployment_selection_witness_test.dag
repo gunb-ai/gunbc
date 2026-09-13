@@ -3,6 +3,7 @@ module test.claim.spark.serving_deployment_selection_witness_test
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.measure { token_count, basis_point }
 import std.measure { token_count, token_count_value, basis_point, byte_size, byte_size_count }
 import extdeps.vllm.engine_args { VllmMemoryRequest }
 import v2.std.optional { Present, Absent }
@@ -22,12 +23,14 @@ import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
 import gunbc.spark.serving_deployment_selection {
+  ModelArtifact, FootprintReportedExternally, FootprintUnread, DeploymentCandidate, deployment_candidate,
+  ExecutorRayProfile, ExecutorMpProfile, KvFp8Layout, KvFp8DsMlaLayout, SpeculationOff, SpeculationOn,
   ModelArtifact, DeploymentCandidate, deployment_candidate,
   ExecutorRayProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8DsMlaLayout, KvFp8Layout, KvAutoLayout, KvFp4Layout, SpeculationOff, SpeculationOn, SpeculationDraft,
   WeightTreatment, PublishedNativeWeights, RequantisedWeights,
   RuntimeRevision, runtime_revision,
   ServingDecisionParameters, serving_decision_parameters,
-  ServingExecutionProfile, execution_profile_of,
+  ServingExecutionProfile, execution_profile_of, execution_profile_eq, parameters_render,
   ServingQualityReport, serving_quality_report,
   QualityRequirement, quality_requirement,
   ServingQualityAssessment, QualityPassed, QualityFailed, QualityUnobserved, assess_quality,
@@ -56,6 +59,16 @@ import gunbc.spark.serving_deployment_selection {
   v4_1_profile_from_standing, serving_deployment_domain_over_standings, derived_candidates_for,
   serving_evidence_current, id_v4_1_constraint_authority,
   ShapeAdmittedForPlacement, FabricPlacementRequired, admit_shape, compared_candidate_count,
+  glm_decision_input, deepseek_decision_input,
+  serving_parameter_standings, provenance_kind,
+  serving_selection_axes, candidate_gaps, candidate_diagnostics,
+  ax_replica_capacity_share_lost, ax_physical_failure_domains, ax_independent_replicas,
+  ax_accepted_task_goodput, ax_time_to_first_token, ax_cotenant_impact,
+  ExperimentPlanNotAuthorizable, ExperimentAuthorizationRefused, glm_native_tp4_experiment_admission,
+  ExperimentPlanStanding, ExperimentPlanAuthorizable, ExperimentPlanBlocked, launch_critical_obligations,
+  ParameterStandingRow, parameter_row, ParameterUnestablished,
+  ParameterStandingCompleteness, AllParametersHaveStanding, ParametersWithoutStanding,
+  ParametersWithConflictingStandings, parameter_standing_completeness,
   glm_decision_input, deepseek_decision_input, deepseek_v4_1_decision_input,
   deepseek_quality_requirement,
   deepseek_v4_1_selection_policy,
@@ -264,13 +277,14 @@ test fn a_task_score_regression_is_also_a_failure() -> Bool {
 // KV layout, speculative policy and runtime revision. A receipt acquired at one is not transportable
 // to another, which is why quality and runtime feasibility share this exact subject.
 data other_runtime_parameters: ServingDecisionParameters = serving_decision_parameters(
-  max_model_len: token_count(count: 300000),
+  max_model_len: token_count(count: 262144),
   memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorMpProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
+  enable_prefix_caching: true,
   runtime: runtime_revision(image: "a different image" as NonEmptyStr, vllm_revision: "a different revision" as NonEmptyStr),
 )
 
@@ -282,6 +296,7 @@ data wider_context_parameters: ServingDecisionParameters = serving_decision_para
   executor: ExecutorRayProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
+  enable_prefix_caching: true,
   runtime: spark_runtime,
 )
 
@@ -295,13 +310,68 @@ fn evidence_admitting(profiles: List<ServingQualityAssessment>, w: WorkloadDeman
   )
 }
 
+// THE MODULE'S OWN IDENTITY RELATION IS THE ONE ASSERTED ON, not the language's derived record
+// equality. Two notions of "same profile" would be the fork this branch keeps removing, and only
+// execution_profile_eq is the one the projector and the evidence lookups actually consult.
 test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bool {
-  execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
-    != execution_profile_of(c: native_tp4_x2, p: other_runtime_parameters)
-    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
-      != execution_profile_of(c: native_tp4_x2, p: wider_context_parameters)
-    && execution_profile_of(c: native_tp4_x2, p: serving_parameters_current)
-      != execution_profile_of(c: native_tp2_x4, p: serving_parameters_current)
+  !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      b: execution_profile_of(c: native_tp4_x2, p: other_runtime_parameters))
+    && !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      b: execution_profile_of(c: native_tp4_x2, p: wider_context_parameters))
+    && !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: serving_parameters_current),
+      b: execution_profile_of(c: native_tp2_x4, p: serving_parameters_current))
+}
+
+// ── THE DELIMITER COLLISION, WHICH USED TO MAKE TWO PROFILES ONE ──────────────────────────────
+//
+// Identity was a rendered string: the runtime joined an image to a revision with `@` and the
+// parameters joined their fields with `|`. So image "a@b" at revision "c" and image "a" at revision
+// "b@c" rendered IDENTICALLY, and because equality compared renderings they were the same profile --
+// a quality or feasibility receipt acquired under one would have admitted the other. No delimiter
+// choice repairs that: any separator can occur inside a field, and escaping is a second encoding to
+// get wrong.
+//
+// These two runtimes are that exact pair. The row asserts the profiles are DISTINCT, and asserts
+// alongside it that their rendered forms are equal -- because if the renderings ever stop colliding
+// the row would pass for the wrong reason and stop testing anything.
+data collide_left: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 262144),
+  memory_request: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 8200) },
+    kv_cache_bytes: none,
+  },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  enable_prefix_caching: true,
+  runtime: runtime_revision(image: "a@b" as NonEmptyStr, vllm_revision: "c" as NonEmptyStr),
+)
+
+data collide_right: ServingDecisionParameters = serving_decision_parameters(
+  max_model_len: token_count(count: 262144),
+  memory_request: VllmMemoryRequest {
+    utilization: Present { value: basis_point(count: 8200) },
+    kv_cache_bytes: none,
+  },
+  max_num_batched_tokens: token_count(count: 2048),
+  max_num_seqs: 32,
+  executor: ExecutorRayProfile,
+  kv_layout: KvFp8DsMlaLayout,
+  speculative: SpeculationOff,
+  enable_prefix_caching: true,
+  runtime: runtime_revision(image: "a" as NonEmptyStr, vllm_revision: "b@c" as NonEmptyStr),
+)
+
+test fn two_runtimes_that_render_alike_are_not_the_same_profile() -> Bool {
+  !execution_profile_eq(
+      a: execution_profile_of(c: native_tp4_x2, p: collide_left),
+      b: execution_profile_of(c: native_tp4_x2, p: collide_right))
+    && parameters_render(p: collide_left) == parameters_render(p: collide_right)
 }
 
 // ── CONTROL 6: A MEMORY FRACTION ABOVE THE DEVICE REFUSES ─────────────────────────────────────
@@ -309,13 +379,14 @@ test fn a_quality_receipt_is_not_transportable_across_execution_profiles() -> Bo
 // Above 100 percent the lower-bound screen is handed more usable memory than the host has, turning an
 // impossible weight profile into a passing one -- generous in the one direction it must never be.
 data impossible_utilisation: ServingDecisionParameters = serving_decision_parameters(
-  max_model_len: token_count(count: 300000),
+  max_model_len: token_count(count: 262144),
   memory_request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 15000) }, kv_cache_bytes: none },
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 32,
   executor: ExecutorRayProfile,
   kv_layout: KvFp8DsMlaLayout,
   speculative: SpeculationOff,
+  enable_prefix_caching: true,
   runtime: spark_runtime,
 )
 
@@ -408,25 +479,27 @@ test fn a_candidate_outside_the_declared_domain_is_unestablished() -> Bool {
 // ── CONTROL 7: THE DECISION IDENTITY MOVES WITH EVERY LOAD-BEARING INPUT ───────────────────────
 //
 // The previous version passed identities BESIDE values and joined neither, so changing the demand
-// from 300K to 400K produced a different answer under a receipt whose named authorities were
-// byte-identical. This key is derived from the values themselves, so there is no second spelling.
+// produced a different answer under a receipt whose named authorities were byte-identical. This key
+// is derived from the values themselves, so there is no second spelling. Both demands below sit at
+// or under the 262,144-token window, so they exercise the identity without also tripping the
+// context-coverage constraint -- which would test a different thing.
 data established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "established_demand"),
-  required_context: token_count(count: 300000),
+  required_context: token_count(count: 200000),
   population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
-  reserve: context_reserve_policy(retained_context: token_count(count: 200000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+  reserve: context_reserve_policy(retained_context: token_count(count: 120000), reserved_output: token_count(count: 48000), tool_growth_reserve: token_count(count: 32000)),
 }
 
 data wider_established_demand: WorkloadDemandStanding = WorkloadDemandEstablished {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "wider_established_demand"),
-  required_context: token_count(count: 400000),
+  required_context: token_count(count: 262144),
   population: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "suite_ref"),
-  reserve: context_reserve_policy(retained_context: token_count(count: 300000), reserved_output: token_count(count: 64000), tool_growth_reserve: token_count(count: 36000)),
+  reserve: context_reserve_policy(retained_context: token_count(count: 180000), reserved_output: token_count(count: 48000), tool_growth_reserve: token_count(count: 34144)),
 }
 
 data unestablished_demand: WorkloadDemandStanding = WorkloadDemandUnestablished {
   identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "unestablished_demand"),
-  scenario_value: token_count(count: 300000),
+  scenario_value: token_count(count: 200000),
   obligation: "fixture: no derived context population" as NonEmptyStr,
 }
 
@@ -480,6 +553,7 @@ fn profile_with_layout(p: ServingDecisionParameters, k: KvLayoutPolicy) -> Servi
     executor: p.executor,
     kv_layout: k,
     speculative: p.speculative,
+    enable_prefix_caching: p.enable_prefix_caching,
     runtime: p.runtime,
   )
 }
@@ -657,15 +731,85 @@ test fn the_weight_bound_refuses_a_rank_that_cannot_hold_its_share() -> Bool {
   }
 }
 
-// AN EXTERNALLY REPORTED FOOTPRINT CANNOT SUPPORT A FEASIBILITY VERDICT HERE. The 2.05-bpw figure
-// came from someone else's deployment write-up; the previous version typed it identically to a byte
-// count read on a Spark, so it looked exact.
+// AN EXTERNALLY REPORTED FOOTPRINT CANNOT SUPPORT A FEASIBILITY VERDICT HERE, and this control now
+// rides on a CONTROLLED FIXTURE rather than on a production row. It used to point at the 2.05-bpw
+// artifact while that row carried a third-party figure -- but that artifact is on this fleet and its
+// bytes have since been read, so the production row is now fleet-observed and cannot carry this
+// control. Keeping the control on it would have meant leaving a real artifact's provenance wrong in
+// order to keep a test green, which is the tail wagging the dog.
+data fixture_unread_artifact: ModelArtifact = ModelArtifact {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_unread_artifact"),
+  label: "fixture artifact whose bytes nobody has read anywhere" as NonEmptyStr,
+  footprint: FootprintUnread { obligation: "fixture: never weighed" as NonEmptyStr },
+  weight_treatment: RequantisedWeights { distinction: "fixture" as NonEmptyStr },
+}
+
+data fixture_externally_reported_artifact: ModelArtifact = ModelArtifact {
+  identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "fixture_externally_reported_artifact"),
+  label: "fixture artifact whose only footprint is someone else's report" as NonEmptyStr,
+  footprint: FootprintReportedExternally {
+    bytes: byte_size(count: 85230000000),
+    source: "fixture: a third-party deployment write-up, not read on this fleet" as NonEmptyStr,
+  },
+  weight_treatment: RequantisedWeights { distinction: "fixture" as NonEmptyStr },
+}
+
 test fn an_externally_reported_footprint_is_underivable_on_this_fleet() -> Bool {
-  match weight_fit_of(c: cand(name: "ext", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+  match weight_fit_of(c: cand(name: "ext", art: fixture_externally_reported_artifact, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
     WeightFitUnderivable { because: _ } => true
     _ => false
-  } && match weight_fit_of(c: cand(name: "unread", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+  } && match weight_fit_of(c: cand(name: "unread", art: fixture_unread_artifact, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
     WeightFitUnderivable { because: _ } => true
+    _ => false
+  }
+}
+
+// ── THE TOPOLOGY QUESTION FOR THE NATIVE CHECKPOINT NOW HAS AN ANSWER ─────────────────────────
+//
+// The native GLM footprint is upstream-declared at its pinned revision -- 328,337,455,672 bytes over
+// 62 shards -- which is a sound FLOOR even though the bytes are not on any Spark yet. A floor is all
+// the bound needs to disprove, and here it disproves two of the four shapes outright: no single rank
+// and no two-rank replica can hold a 305.8 GiB checkpoint against 99.8 GiB of usable memory per rank.
+//
+// FOUR RANKS IS THEREFORE THE MINIMUM TOPOLOGY THAT CAN SERVE THIS CHECKPOINT AT ALL, not merely the
+// better of several options -- which is why the requantised build exists and why it is the thing
+// currently serving on one Spark. THIS IS NOT AN ADMISSION: quality is unobserved for every profile,
+// runtime feasibility is unobserved, the workload is unestablished and ten performance axes are
+// unfunded, so the GLM subject still returns obligations. What changed is that the SHAPE question is
+// answered from evidence rather than left underivable.
+test fn one_and_two_rank_replicas_cannot_hold_the_native_checkpoint() -> Bool {
+  match weight_fit_of(c: cand(name: "native_tp1", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => true
+    _ => false
+  } && match weight_fit_of(c: cand(name: "native_tp2", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 2, replica_count: 4)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsImpossibleByLowerBound { per_rank_bytes: _, usable_bytes: _ } => true
+    _ => false
+  }
+}
+
+test fn four_ranks_are_not_ruled_out_for_the_native_checkpoint() -> Bool {
+  match weight_fit_of(c: cand(name: "native_tp4", art: artifact_glm_53_flash_native, t: topology_shape(tensor_parallel_degree: 4, replica_count: 2)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
+    _ => false
+  }
+}
+
+// AND THE SUBJECT STILL REFUSES TO CHOOSE, which is the row that keeps the sentence above honest. A
+// shape being physically possible is not a shape being selected.
+test fn a_feasible_topology_does_not_by_itself_settle_the_glm_subject() -> Bool {
+  match select_serving_deployment(input: glm_decision_input) {
+    ServingDeploymentNeedsEvidence { needs: n } => count(n) > 0
+    _ => false
+  }
+}
+
+// AND THE MEASURED 2.05-BPW ARTIFACT IS NOW FEASIBLE AND STILL REFUSED, which is a stronger control
+// than the one it replaces. Its bytes fit one rank with room to spare -- it is the fastest, most
+// isolated shape the GLM field can express -- and the quality wall excludes it anyway, because it is
+// a different set of weights. Feasible-and-refused discriminates where unknown-and-refused could not.
+test fn the_measured_requantised_artifact_is_feasible_and_refused_anyway() -> Bool {
+  match weight_fit_of(c: cand(name: "twobit_fit", art: artifact_glm_53_flash_2bit, t: topology_shape(tensor_parallel_degree: 1, replica_count: 8)), fleet: spark_fleet_snapshot, p: serving_parameters_current) {
+    WeightsNotRuledOutByLowerBound { per_rank_bytes: _, usable_bytes: _, slack_bytes: _ } => true
     _ => false
   }
 }
@@ -986,6 +1130,130 @@ test fn a_report_about_a_different_artifact_cannot_pass_this_requirement() -> Bo
       how: "fixture: a perfect report about the wrong weights" as NonEmptyStr),
     requirement: deepseek_quality_requirement) {
     QualityFailed { subject: _, requirement: _, violations: vs } => count(vs) > 0
+    _ => false
+  }
+}
+
+// ── EVERY FIXED PARAMETER HAS A STANDING, AND FOUR OF THEM ARE STILL OBLIGATIONS ──────────────
+//
+// The join is against field NAMES, so a parameter nobody classified is named rather than merely
+// changing a count. And the complete arm carries the unestablished set, because "every parameter has a
+// standing" and "every parameter is established" are different claims -- a roster of nine obligations
+// would otherwise report as done.
+//
+// THE ASSERTION IS THAT THE SET IS EMPTY, NOT THAT IT HAS A PARTICULAR SIZE. It read `count(u) == 2`
+// while two fields were outstanding, which is the change-detector shape §5 names: the literal had to be
+// hand-edited every time a field was established, and editing it was the only content the row had. The
+// set is empty today because the KV layout resolved to a REQUEST that was read off the live argv and the
+// runtime resolved to a digest whose capability was proven inside the image; if either regresses, or a
+// tenth parameter arrives unclassified, this goes red without anyone maintaining a number.
+test fn every_fixed_parameter_has_exactly_one_standing() -> Bool {
+  match parameter_standing_completeness() {
+    AllParametersHaveStanding { unestablished: u } => join(map(u, f => f as String), ",") == ""
+    ParametersWithoutStanding { fields: _ } => false
+    ParametersWithConflictingStandings { fields: _ } => false
+  }
+}
+
+// A DECIDED VALUE IS NOT A MEASURED ONE, and the vocabulary keeps them apart. The 262,144 window is an
+// operator decision with a stated purpose; the prefix-caching flag was read off a live engine. Under
+// the previous model both were bare fields and indistinguishable.
+test fn a_decided_window_and_an_observed_flag_are_different_kinds_of_fact() -> Bool {
+  (join(map(filter(serving_parameter_standings, r => (r.parameter as String) == "max_model_len"), r => provenance_kind(prov: r.provenance) as String), "") == "decided")
+    && (join(map(filter(serving_parameter_standings, r => (r.parameter as String) == "enable_prefix_caching"), r => provenance_kind(prov: r.provenance) as String), "") == "observed")
+}
+
+// ── REDUNDANCY REACHES NO COMPARISON, AND ASKS FOR NOTHING ────────────────────────────────────
+//
+// Operator ruling 2026-09-09: redundancy has ZERO decision value for this deployment. Two things have
+// to hold for that to be true, and they are different: an excluded dimension must not be RANKED, and
+// it must not produce an OBLIGATION. The second is the one an earlier roster got wrong -- a dimension
+// nobody values sat in the unfunded set asking forever for evidence nobody intended to take, which is
+// the endless tuning re-entering through the back door.
+//
+// These rows go red if anyone re-funds replica capacity share or failure domains, which is the change
+// they exist to catch.
+fn ranked_axis_identities() -> List<String> {
+  map(serving_selection_axes, a => declaration_ref_display_key(ref: a.identity))
+}
+
+test fn no_excluded_dimension_reaches_the_pareto_comparison() -> Bool {
+  !(ranked_axis_identities() |> any(k => k == declaration_ref_display_key(ref: ax_replica_capacity_share_lost)))
+    && !(ranked_axis_identities() |> any(k => k == declaration_ref_display_key(ref: ax_physical_failure_domains)))
+    && !(ranked_axis_identities() |> any(k => k == declaration_ref_display_key(ref: ax_independent_replicas)))
+}
+
+test fn no_excluded_dimension_produces_an_evidence_obligation() -> Bool {
+  let gaps = map(candidate_gaps(c: native_tp4_x2, e: evidence_admitting(profiles: [], w: established_demand), p: serving_parameters_current), g => declaration_ref_display_key(ref: g.axis))
+  !(gaps |> any(k => k == declaration_ref_display_key(ref: ax_replica_capacity_share_lost)))
+    && !(gaps |> any(k => k == declaration_ref_display_key(ref: ax_physical_failure_domains)))
+    && !(gaps |> any(k => k == declaration_ref_display_key(ref: ax_independent_replicas)))
+}
+
+// AND THE FUNDED SERVICE OUTCOMES DO STILL ASK. Excluding redundancy must not have quietly excluded
+// everything: the dimensions the operator DOES value are unmeasured and say so, which is why both real
+// subjects still return obligations.
+test fn the_funded_service_outcomes_still_produce_obligations() -> Bool {
+  let gaps = map(candidate_gaps(c: native_tp4_x2, e: evidence_admitting(profiles: [], w: established_demand), p: serving_parameters_current), g => declaration_ref_display_key(ref: g.axis))
+  (gaps |> any(k => k == declaration_ref_display_key(ref: ax_accepted_task_goodput)))
+    && (gaps |> any(k => k == declaration_ref_display_key(ref: ax_time_to_first_token)))
+    && (gaps |> any(k => k == declaration_ref_display_key(ref: ax_cotenant_impact)))
+}
+
+// REPLICA COUNT SURVIVES AS A DIAGNOSTIC, computed so a reader can see what shape a candidate is,
+// and reaching no comparison. Excluded is not the same as deleted.
+test fn replica_count_is_still_readable_as_a_diagnostic() -> Bool {
+  count(candidate_diagnostics(c: native_tp4_x2)) == 1
+}
+
+// ── AN EXPERIMENT IS NOT A SELECTED DEPLOYMENT ────────────────────────────────────────────────
+//
+// The native four-rank arm is REQUESTED and not approved, so it does not admit. That is the truthful
+// state: nobody has granted a launch that would displace the DeepSeek group. No witness row asserts
+// that an experiment arm cannot become a deployment shape, because no such conversion exists -- its
+// red would be unauthorable and the check would be a decoration.
+//
+// THE BLOCKING ARM IS EXERCISED FROM A FIXTURE, AND THAT IS A REPAIR RATHER THAN A CONVENIENCE. The
+// previous version of this row asserted that the LIVE plan was not authorizable because two
+// launch-critical fields were unestablished. It passed, and it was a trap: the moment those fields were
+// established the row would go green by the roster changing under it, and a control that greens when
+// its subject disappears has stopped discriminating. Worse, one of the two obligations could never have
+// been discharged at all -- the KV layout's resolved format is knowable only BY launching, so a
+// launch-critical gate over the resolved value was unsatisfiable by construction, and this row was
+// quietly asserting that permanent deadlock was correct behaviour.
+//
+// So the wall is now tested where its red stays authorable forever: a roster carrying an unestablished
+// launch-critical field must block, whatever the fleet's real roster says.
+data fixture_unestablished_runtime: List<ParameterStandingRow> = [
+  parameter_row(parameter: "runtime" as NonEmptyStr, provenance: ParameterUnestablished {
+    obligation: "fixture: a runtime nobody has read" as NonEmptyStr }),
+]
+
+test fn a_roster_with_an_unestablished_launch_critical_field_blocks_the_plan() -> Bool {
+  match launch_critical_obligations(rows: fixture_unestablished_runtime) {
+    ExperimentPlanBlocked { obligations: os } => count(os) == 1
+    ExperimentPlanAuthorizable => false
+  }
+}
+
+// THE POSITIVE CONTROL, so the row above is not passing because the gate blocks everything. Both
+// launch-critical fields are now established on the live roster -- the KV layout as the REQUEST that
+// the canary argv was read to confirm, the runtime as an exact digest whose native-architecture support
+// was proven by executing inside that image -- so the live plan clears the gate.
+test fn the_live_roster_clears_the_launch_critical_gate() -> Bool {
+  match launch_critical_obligations(rows: serving_parameter_standings) {
+    ExperimentPlanAuthorizable => true
+    ExperimentPlanBlocked { obligations: _ } => false
+  }
+}
+
+// AND CLEARING THE GATE IS NOT ADMISSION, which is the distinction the whole authorization layer
+// exists for. The plan is now authorizABLE and still does not admit, because no operator grant exists:
+// the refusal moved from the parameter standings to the authorization, which is where it belongs.
+test fn a_gate_clearing_plan_still_refuses_without_a_grant() -> Bool {
+  match glm_native_tp4_experiment_admission() {
+    ExperimentPlanNotAuthorizable { obligations: _ } => false
+    ExperimentAuthorizationRefused { cause: _ } => true
     _ => false
   }
 }

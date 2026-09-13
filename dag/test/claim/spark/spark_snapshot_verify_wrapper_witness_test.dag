@@ -2,7 +2,12 @@ module test.claim.spark_snapshot_verify_wrapper
 
 import std.logic { Bool }
 import std.types { String }
+import std.types { NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.model_snapshot_acquisition { SnapshotSeed, SnapshotRoleUndecidable }
 import gunbc.spark.model_snapshot_materialize {
+  role_refusal, SparkMaterializeOutcome, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused,
   sentinel_command_line, read_instrument,
   InstrumentReading, InstrumentDidNotRun, InstrumentVerified, InstrumentRejectedTheSubject,
   InstrumentContradictedItself,
@@ -128,4 +133,45 @@ test fn wrapper_still_emits_both_sentinels() -> Bool {
 // quoting is evidence, not decoration.
 test fn wrapper_quotes_an_argument_containing_a_space() -> Bool {
   sentinel_command_line(argv: ["hf", "--local-dir", "/home/briansrls/models/a b"]).contains("'/home/briansrls/models/a b'")
+}
+
+// ── AN UNDECIDABLE ROLE REFUSES, AND CARRIES ITS OWN CAUSE ────────────────────────────────────
+//
+// THE COMPILER ALREADY GUARANTEES THE ARM EXISTS. Deleting it makes the match non-exhaustive and the
+// module fails to compile -- which is how exact-head CI found this defect, after every local witness
+// had passed. A row asserting the arm is present would be a decoration: its red is unauthorable in an
+// Accepted program.
+//
+// WHAT IS AUTHORABLE, AND WHAT THIS ROW GUARDS, IS WHAT THE ARM MEANS. Three other mappings
+// type-check perfectly and each is wrong: SparkMaterializeUnpinned says the snapshot has no pin when
+// the pin may be fine and it is the MEMBER'S ROLE that is unknown; treating it as a seed restores the
+// absorbing fallback the third state exists to prevent, at 306 GiB per unresolved member; treating it
+// as a replica invents the peer that is precisely what could not be decided. A mutation to any of
+// those leaves the corpus compiling and turns this row red.
+//
+// AND THE CAUSE MUST SURVIVE, so the row asserts the exact string rather than merely that a refusal
+// occurred. The cause names which member could not be placed and why; replacing it with a sentence of
+// the materializer's own would type-check and lose the distinction a caller needs.
+data undecidable_fixture_host: HostIdentity = "spark-fixture" as HostIdentity
+data undecidable_fixture_cause: NonEmptyStr = "fixture: this member's rail address did not resolve, so it can neither be compared to the seed nor replicate from it" as NonEmptyStr
+
+test fn an_undecidable_role_refuses_and_passes_its_cause_through() -> Bool {
+  match role_refusal(host: undecidable_fixture_host, role: SnapshotRoleUndecidable { because: undecidable_fixture_cause }) {
+    Absent => false
+    Present { value: outcome } =>
+      match outcome {
+        SparkMaterializeRefused { host: _, cause: c } => (c as String) == (undecidable_fixture_cause as String)
+        SparkMaterialized { host: _, outcome: _ } => false
+        SparkMaterializeUnpinned { host: _ } => false
+      }
+  }
+}
+
+// THE PAIRED POSITIVE. A seed role must NOT refuse, or the row above would pass under a classifier
+// that refused everything -- which is the vacuous green this branch has been repeatedly bitten by.
+test fn a_seed_role_does_not_refuse_before_the_attempt() -> Bool {
+  match role_refusal(host: undecidable_fixture_host, role: SnapshotSeed) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }

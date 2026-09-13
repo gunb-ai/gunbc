@@ -1,0 +1,366 @@
+module extdeps.flashinfer.flashinfer
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.python.simple_repository_api { locator_names_file, locator_filename }
+
+// ── FLASHINFER IS ITS OWN UPSTREAM, AND THIS MODULE EXISTS BECAUSE IT WAS NOT ─────────────────
+//
+// UNTIL THIS FILE, FLASHINFER APPEARED IN THIS REPOSITORY AS A FIELD ON SOMEONE ELSE'S RECIPE: a
+// `flashinfer_version: NonEmptyStr` inside extdeps.vllm.source_build's container recipe, because that
+// is where vLLM's Dockerfile spells it. DESIGN section 3's external-upstream rule is explicit that this
+// is the wrong home -- FlashInfer is independently versioned, independently released and independently
+// capable, so it gets its own authority rather than living as a string inside the product that consumes
+// it. A Chrome change must not require editing Safari's module, and a FlashInfer fact must not require
+// editing vLLM's.
+//
+// THE COST OF NOT HAVING THIS MODULE WAS PAID BEFORE IT WAS WRITTEN, twice in one hour. The question
+// "does this dependency support the kernel we need" was answered first from RELEASE DATES and then from
+// a `version.txt` at a git HEAD, and both answers were recorded in a consumer's declaration as a bare
+// version string -- a shape with nowhere to put the evidence, nowhere to put the acquisition route, and
+// no way to be wrong out loud. The failure-mode row is
+// gunbc.recurring_failure_mode.a_capability_established_upstream_but_not_obtainable, and its stated
+// next-rung trigger is exactly this module.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/flashinfer-ai/flashinfer"
+  },
+}
+
+data flashinfer_repository: NonEmptyStr = "https://github.com/flashinfer-ai/flashinfer" as NonEmptyStr
+
+// ── HOW A DEPENDENCY IS OBTAINED IS PART OF WHAT IT IS ────────────────────────────────────────
+//
+// A VERSION STRING CANNOT SAY WHERE IT COMES FROM. `0.6.18.post1`, `0.7.0.dev20260910` and `v0.7.0rc1`
+// are three well-formed spellings that resolve on three different things: a PyPI release, a wheel that
+// exists ONLY on a nightly index, and a git tag that is not a package at all. Carried as one String they
+// are indistinguishable -- and the cost of that is recorded twice in this file, once where a plan was
+// built toward bytes nobody publishes and once where a build was called unobtainable because two indexes
+// were checked and a third was not.
+//
+// SO THE ACQUISITION ROUTE IS THE TYPE, and each arm carries what that route actually needs: a release
+// names the index it resolves against, because "on PyPI" and "on flashinfer.ai/whl/cu130" are different
+// claims and this dependency publishes different packages to each. A source revision names why it is
+// not a release, because that reason is the thing a reader must re-check before the pin can retire --
+// and a pin whose reason has expired is a pin nobody removes.
+// WHICH CHANNEL PUBLISHED IT IS A CLOSED SET, NOT A SENTENCE. A first version of this record carried the
+// index as prose and then asked `does it contain "pypi.org/simple"` to decide whether a build could reach
+// it -- which makes a human-readable locator an execution input, the exact defect this repository has
+// already paid for twice today in provider identities. The locator stays, because a person reading a
+// refusal needs to know where to look; the DISPATCH goes through a variant, so adding a channel is a
+// compile error at every decision instead of a substring that quietly matches or quietly does not.
+type FlashInferChannel
+  = FlashInferPyPi
+  | FlashInferProjectStable
+  | FlashInferProjectNightly
+
+fn flashinfer_channel_key(c: FlashInferChannel) -> NonEmptyStr {
+  match c {
+    FlashInferPyPi => "pypi" as NonEmptyStr
+    FlashInferProjectStable => "flashinfer.ai/whl" as NonEmptyStr
+    FlashInferProjectNightly => "flashinfer.ai/whl/nightly" as NonEmptyStr
+  }
+}
+
+type FlashInferAcquisition
+  = FlashInferPublishedRelease { version: NonEmptyStr, channel: FlashInferChannel, index: NonEmptyStr }
+  | FlashInferSourceRevision { revision: NonEmptyStr, reason_unreleased: NonEmptyStr }
+
+fn flashinfer_acquisition_key(a: FlashInferAcquisition) -> String {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: c, index: _ } =>
+      join(["release:", v as String, "@", flashinfer_channel_key(c: c) as String], "")
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      join(["source:", flashinfer_repository as String, "@", r as String], "")
+  }
+}
+
+// WHAT UPSTREAM'S OWN BUILD ARGUMENT CAN CARRY, WHICH IS ONLY ONE OF THE TWO ARMS. vLLM's Dockerfile
+// takes FLASHINFER_VERSION and hands it to `uv pip install flashinfer-jit-cache==${VERSION}`, so it can
+// express a release and cannot express a revision. Returning an optional rather than a string is the
+// honest shape: a caller holding a source revision learns that this argument cannot say what it means,
+// instead of receiving a spelling that would install something else.
+fn flashinfer_published_version(a: FlashInferAcquisition) -> NonEmptyStr? {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } => Present { value: v }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => none
+  }
+}
+
+// ── THE CITED ROWS ────────────────────────────────────────────────────────────────────────────
+//
+// THE RELEASE THE OFFICIAL IMAGE AND THE FLEET'S OWN BUILD BOTH PIN. Read from PyPI on 2026-09-12:
+// flashinfer-python's latest is 0.6.18.post1 and flashinfer-cubin's is 0.6.13, with no 0.7.x at any
+// pre-release; flashinfer.ai/whl/cu130 publishes only flashinfer-jit-cache.
+data flashinfer_0_6_18_post1: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: "0.6.18.post1" as NonEmptyStr,
+  channel: FlashInferPyPi,
+  index: "pypi.org/simple, with flashinfer-jit-cache from flashinfer.ai/whl/cu130" as NonEmptyStr,
+}
+
+// AND THE BUILD THAT CARRIES THE KERNEL THIS FLEET NEEDS, WHICH IS PUBLISHED AFTER ALL.
+//
+// THIS ROW REPLACES A SOURCE-REVISION ROW THAT SHOULD NEVER HAVE BEEN WRITTEN, and the reason it was is
+// worth more than the row. The kernel was located in tag v0.7.0rc1, PyPI was checked (0.6.18.post1, no
+// 0.7.x at any pre-release), flashinfer.ai/whl/cu130 was checked (only flashinfer-jit-cache), and the
+// conclusion recorded was "no wheel exists for this tag on any CUDA version or architecture". TWO
+// INDEXES ARE NOT EVERY INDEX. This project's own installation document names a third, four lines below
+// the source-build procedure that was read carefully enough to plan against.
+//
+// WHAT IS ACTUALLY PUBLISHED, verified 2026-09-12 by downloading the wheel and reading it rather than by
+// trusting its version string: flashinfer_python-0.7.0.dev20260910-py3-none-any.whl carries
+// `_MODEL_TYPE_GLM53_NOPE = 3`, the `glm53_nope` dispatch branch in the SM120 shape check, and
+// `_DECODE_GLM53_NOPE_TOPK = 2176` -- which is exactly the kpool-widened top-k that vllm#55277's second
+// commit sizes the page table for. The matching flashinfer_jit_cache-0.7.0.dev20260910+cu130 wheel is
+// built for manylinux_2_28_aarch64, so the ahead-of-time kernels arrive PREBUILT and the final image
+// needs no nvcc -- which was the entire reason a source build looked expensive.
+//
+// THE INDEX IS PART OF THE PIN AND THIS ROW IS WHY THAT FIELD EXISTS. `0.7.0.dev20260910` resolves to
+// nothing on PyPI and to nothing on the stable index; it exists only here. A version carried without its
+// index is a pin that cannot be acted on, and the arm that could not say which index it came from is the
+// arm that produced the wrong answer above.
+data flashinfer_0_7_0_dev20260910: FlashInferAcquisition = FlashInferPublishedRelease {
+  version: "0.7.0.dev20260910" as NonEmptyStr,
+  channel: FlashInferProjectNightly,
+  index: "flashinfer.ai/whl/nightly for flashinfer-python and flashinfer-cubin, flashinfer.ai/whl/nightly/cu130 for flashinfer-jit-cache" as NonEmptyStr,
+}
+
+// ── THE THREE WHEELS, BY FILENAME AND DIGEST ──────────────────────────────────────────────────
+//
+// A CHANNEL AND A VERSION ARE STILL A DISCOVERY OPERATION, NOT A RECIPE. "install 0.7.0.dev20260910 from
+// the nightly index" is resolved by asking the index what it holds today, and a nightly index is the one
+// kind that reorganises: builds are added, withdrawn and occasionally rebuilt under the same version. A
+// build that resolves its own inputs at build time cannot be repeated, and its image cannot be explained
+// afterwards -- which is the whole reason this fleet keys images by content.
+//
+// SO THE PIN IS THE ARTIFACT, and the digest is what makes it one. These three were read from the index
+// listings on 2026-09-12; an installer that fetches a file whose sha256 differs is fetching different
+// bytes under a name this fleet already decided about, and it should fail rather than proceed.
+//
+// THE ARCHITECTURE IS PART OF THE JIT-CACHE IDENTITY AND OF NOTHING ELSE HERE. flashinfer-python and
+// flashinfer-cubin are py3-none-any; only the jit-cache wheel is built per CUDA version and machine, and
+// the aarch64 one is the row that matters for a GB10 -- the x86_64 wheel exists beside it at the same
+// version and installing it would be a silent architecture error rather than a refusal.
+type FlashInferWheel sole_constructor {
+  package: NonEmptyStr
+  filename: NonEmptyStr
+  sha256: NonEmptyStr
+}
+
+data flashinfer_0_7_0_dev20260910_wheels: List<FlashInferWheel> = [
+  FlashInferWheel {
+    package: "flashinfer-python" as NonEmptyStr,
+    filename: "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: "b5ae2fc0631bdf9416767fe1c41300819111e2f435af8c53487e7074465d4ae7" as NonEmptyStr,
+  },
+  FlashInferWheel {
+    package: "flashinfer-cubin" as NonEmptyStr,
+    filename: "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+    sha256: "a5fa6ee62652b6e02cef8e2be33a5a3fdc1f2ae70ed2a131beface7594c436bd" as NonEmptyStr,
+  },
+  FlashInferWheel {
+    package: "flashinfer-jit-cache" as NonEmptyStr,
+    filename: "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    sha256: "7c45246d658c9818a4179c2ce81729163112aefcb3bcd1ff63eb5004c0df5422" as NonEmptyStr,
+  },
+]
+
+// ── RESOLVING A FILENAME TO A LOCATOR, WHICH IS AN OPERATION AND NOT A STRING CONCATENATION ───
+//
+// THE MISSING OPERATION IS EXACTLY THE ONE THAT FAILED. The rows above carry a package, a filename and
+// a digest, and nothing that says WHERE those bytes are. A caller holding them still has to turn a
+// filename into a URL, and the obvious way to do that -- join the index URL, the package name and the
+// filename -- is wrong: the simple repository API does not require files to live under the index. Its
+// links may be absolute or relative and may point at another host entirely, which is precisely how
+// this project publishes: the nightly index's own hrefs point at release assets on a different domain.
+//
+// SO THE INDEX'S LINK IS THE DOWNLOAD LOCATION, and resolution is reading that link rather than
+// predicting it. The constructed form returned a 404 page whose bytes failed the digest check, which is
+// the good ending; the same mistake against an index that serves a 200 for unknown paths, or against a
+// package whose digest nobody pinned, ends with the wrong bytes installed.
+//
+// THE OUTCOMES ARE SEPARATE BECAUSE THEY OWE DIFFERENT WORK. An index that cannot be read is a network
+// or availability problem. An index that was read and holds no matching file is a pin that has been
+// withdrawn or misspelled -- and on a nightly channel, withdrawal is expected rather than exceptional.
+// Two different files matching one requirement is a resolution this module must not make silently:
+// `head -1` over candidates that are not the same artifact is a coin flip with a digest check behind it,
+// which turns a wrong choice into a confusing failure instead of a located one.
+type WheelResolution
+  = WheelResolved { filename: NonEmptyStr, locator: NonEmptyStr, expected_sha256: NonEmptyStr }
+  | WheelIndexUnreadable { index: NonEmptyStr, cause: NonEmptyStr }
+  | WheelNotInIndex { index: NonEmptyStr, filename: NonEmptyStr }
+  | WheelCandidatesConflict { filename: NonEmptyStr, locators: List<NonEmptyStr> }
+
+// THE MATCH IS ON THE EXACT FILENAME, and a previous revision SAID that while doing a substring test.
+// `string_contains(href, filename)` accepts `.../F.metadata`, `.../other?description=F` and
+// `.../F/another-file` for a required F -- the first of which package indexes publish routinely, right
+// beside the wheel. The existing witnesses did not catch it because a neighbouring version and an x86
+// wheel fail a substring test too; they exercised the property's easy cases and not its claim.
+//
+// SO THE COMPARISON GOES THROUGH THE INDEX SPEC'S OWN READING: strip the fragment (which is where a
+// package index puts the digest), strip the query, take the last path segment, decode it, compare whole.
+// The architecture, CUDA version and ABI all live in that name, which is why it has to be the name and
+// not a substring of a URL.
+fn wheel_matches_requirement(href: NonEmptyStr, w: FlashInferWheel) -> Bool {
+  locator_names_file(locator: href, filename: w.filename)
+}
+
+// TWO DISTINCT LOCATORS REFUSE, AND THAT IS A POLICY RATHER THAN A PROOF. Two URLs for one filename may
+// be two mirrors of identical bytes or two different artifacts; this resolver cannot tell, and the
+// digest that would settle it is checked after a source has already been chosen. Refusing is the
+// conservative reading and it is deliberately not described as mirror support: an index that legitimately
+// publishes one artifact under several links will be refused here, and the repair at that point is to
+// model mirrors explicitly rather than to relax this test.
+// IDENTICAL LOCATORS LISTED TWICE ARE ONE CANDIDATE, which is why the population is de-duplicated first.
+fn resolve_wheel_from_hrefs(w: FlashInferWheel, index: NonEmptyStr, hrefs: List<NonEmptyStr>) -> WheelResolution {
+  let matching = filter(hrefs, h => wheel_matches_requirement(href: h, w: w))
+  let distinct = fold(matching, init: [], f: (acc, h) =>
+    if any(acc, seen => (seen as String) == (h as String)) { acc } else { concat(acc, [h]) })
+  if count(distinct) == 0 {
+    WheelNotInIndex { index: index, filename: w.filename }
+  } else {
+    if count(distinct) > 1 {
+      WheelCandidatesConflict { filename: w.filename, locators: distinct }
+    } else {
+      match distinct.first() {
+        Present { value: loc } =>
+          WheelResolved { filename: w.filename, locator: loc, expected_sha256: w.sha256 }
+        Absent =>
+          WheelNotInIndex { index: index, filename: w.filename }
+      }
+    }
+  }
+}
+
+// AND A RESOLUTION IS NOT AN ACQUISITION. This says where the bytes are and what they must hash to; it
+// does not fetch, verify or publish them -- gunbc.artifact_acquisition owns that fold, and binding to
+// it is what keeps this module from growing a second download-and-check loop.
+fn wheel_resolution_is_resolved(r: WheelResolution) -> Bool {
+  match r {
+    WheelResolved { filename: _, locator: _, expected_sha256: _ } => true
+    WheelIndexUnreadable { index: _, cause: _ } => false
+    WheelNotInIndex { index: _, filename: _ } => false
+    WheelCandidatesConflict { filename: _, locators: _ } => false
+  }
+}
+
+// THE INDEX EACH PACKAGE IS PUBLISHED TO, which is per-package rather than per-acquisition: this
+// project puts the two pure-python wheels on one nightly index and the CUDA-specific jit-cache on a
+// per-CUDA-version one, so a single index URL on the acquisition would be wrong for at least one of
+// the three.
+fn flashinfer_nightly_index_for(package: NonEmptyStr) -> NonEmptyStr {
+  if (package as String) == "flashinfer-jit-cache" {
+    "https://flashinfer.ai/whl/nightly/cu130/flashinfer-jit-cache/" as NonEmptyStr
+  } else {
+    join(["https://flashinfer.ai/whl/nightly/", package as String, "/"], "") as NonEmptyStr
+  }
+}
+
+// SELECTING ONE WHEEL BY PACKAGE, because a caller wanting the jit-cache should not be indexing into a
+// list by position. The result is optional: a package this acquisition does not carry has no wheel, and
+// that is a question worth being able to ask rather than an impossible state.
+fn flashinfer_wheel_for(wheels: List<FlashInferWheel>, package: NonEmptyStr) -> FlashInferWheel? {
+  (filter(wheels, w => (w.package as String) == (package as String))).first()
+}
+
+// ── WHAT PREBUILT KERNELS DO AND DO NOT ESTABLISH ─────────────────────────────────────────────
+//
+// THE CLAIM WORTH MAKING IS NARROW. A jit-cache wheel built for cu130 aarch64 means the ahead-of-time
+// kernels it covers arrive compiled, which is what removes the need for a CUDA compiler in the serving
+// image for THOSE kernels. It does not establish that every operation this model exercises is covered:
+// this project ships kernels that remain JIT-only, and prebuilt coverage is architecture-dependent by
+// construction.
+//
+// SO THE PROPERTY THIS FLEET ACTUALLY NEEDS IS THE EXECUTABLE ONE -- the chosen bytes are in the final
+// image and the operations this model runs succeed inside it -- and that is settled by the probes and the
+// engine run, not by reasoning about wheel contents. Proving a universal "nothing JITs anywhere" is a
+// different and much larger claim, and nothing here depends on it.
+data flashinfer_prebuilt_coverage_standing: NonEmptyStr = "the cu130 aarch64 jit-cache wheel supplies ahead-of-time kernels for the operations it covers, which is why the serving image needs no CUDA compiler for them. Coverage is NOT total -- upstream ships JIT-only kernels and prebuilt coverage varies by architecture -- so this row claims only that the pinned bytes are installed, and leaves `the operations this model runs succeed in this image` to the probes and the engine run that execute them" as NonEmptyStr
+
+// IT IS A NIGHTLY, AND THAT IS A REAL PROPERTY RATHER THAN A CAVEAT. A dated dev build is published,
+// installable and reproducible by digest, and it is also unsupported, unannounced and removable by its
+// publisher. Recording which release channel a pin came from is the difference between a dependency this
+// fleet chose and one it drifted onto, and the retirement condition is the same as before: when 0.7.x
+// ships to PyPI with cu130 aarch64 artifacts, this row takes that version and this note deletes.
+data flashinfer_nightly_channel_standing: NonEmptyStr = "0.7.0.dev20260910 is a NIGHTLY build, not a release. It is published and installable, and it carries no compatibility promise: the publisher may withdraw it, and no release notes describe what changed between it and the 0.6.18.post1 the rest of the fleet runs. It is pinned to an exact dated version rather than to `latest` so that a rebuild gets the bytes this fleet tested, and it retires when a 0.7.x release publishes cu130 aarch64 artifacts" as NonEmptyStr
+
+// ── THE CAPABILITY THIS FLEET IS ACTUALLY ASKING ABOUT ────────────────────────────────────────
+//
+// WHETHER THE SM120 SPARSE MLA KERNEL ACCEPTS NoPE DIMENSIONS IS A PROPERTY OF A REVISION, and it is
+// the property the whole GLM-5.3-Flash deployment turns on: sm_121 is compute-capability major 12, so
+// every GB10 takes the SM120 backend, and at 0.6.18.post1 that backend has no NoPE variant at all.
+//
+// THE ARMS SEPARATE A MEASURED NEGATIVE FROM AN UNREAD ONE, which is the distinction a Bool would lose
+// and the one that matters here: "we ran it and it refused" and "nobody asked this revision" owe
+// completely different work, and only the first is evidence about the dependency.
+type Sm120NopeSupport
+  = Sm120NopeSupported { evidence: NonEmptyStr }
+  | Sm120NopeAbsent { evidence: NonEmptyStr }
+  | Sm120NopeUnread { obligation: NonEmptyStr }
+
+fn flashinfer_sm120_nope_support(a: FlashInferAcquisition) -> Sm120NopeSupport {
+  match a {
+    FlashInferPublishedRelease { version: v, channel: _, index: _ } =>
+      if (v as String) == "0.7.0.dev20260910" {
+        Sm120NopeSupported {
+          evidence: "read out of the published wheel on 2026-09-12 rather than inferred from its version: flashinfer_python-0.7.0.dev20260910-py3-none-any.whl carries _MODEL_TYPE_GLM53_NOPE = 3, a glm53_nope branch in the SM120 shape check, and _DECODE_GLM53_NOPE_TOPK = 2176. THIS IS STILL A READING AND NOT AN EXECUTION: no engine has served on these bytes on this fleet, and the SM120 NoPE branch additionally requires kv_scale_format arbitrary_fp32, which only a run establishes" as NonEmptyStr,
+        }
+      } else if (v as String) == "0.6.18.post1" {
+        Sm120NopeAbsent {
+          evidence: "executed on a GB10 inside gunbc-vllm-dsv41-gb10:07b75534-sm121 on 2026-09-12: trtllm_batch_decode_with_kv_cache_mla at kv_lora_rank 512 and qk_rope_head_dim 0 refused with `SM120 sparse MLA v32/GLM expects kv_lora_rank=512, qk_rope_head_dim=64, and query head dim 576`. The native NoPE path exists at this version but only for the non-SM120 backends" as NonEmptyStr,
+        }
+      } else {
+        Sm120NopeUnread {
+          obligation: join(["no revision of this repository other than 0.6.18.post1 and v0.7.0rc1 has been read for SM120 NoPE support; ", v as String, " is unasked"], "") as NonEmptyStr,
+        }
+      }
+    FlashInferSourceRevision { revision: r, reason_unreleased: _ } =>
+      Sm120NopeUnread {
+        obligation: join(["revision ", r as String, " has not been read for SM120 NoPE support. No source revision is pinned by this fleet today: the kernel arrives in a published nightly, so this arm exists for a future pin rather than a current one"], "") as NonEmptyStr,
+      }
+  }
+}
+
+fn sm120_nope_is_supported(s: Sm120NopeSupport) -> Bool {
+  match s {
+    Sm120NopeSupported { evidence: _ } => true
+    Sm120NopeAbsent { evidence: _ } => false
+    Sm120NopeUnread { obligation: _ } => false
+  }
+}
+
+// ── WHAT UPSTREAM'S DOCKERFILE CAN AND CANNOT BUILD ───────────────────────────────────────────
+//
+// THE ARGUMENT CARRIES A VERSION AND THE INDEX IS HARDCODED, WHICH IS THE WHOLE CONSTRAINT. vLLM's
+// Dockerfile takes FLASHINFER_VERSION and installs `flashinfer-jit-cache==${FLASHINFER_VERSION}` with
+// `--index-url https://flashinfer.ai/whl/cu$(CUDA_VERSION)`, while requirements/cuda.txt pins
+// flashinfer-python and flashinfer-cubin against `--extra-index-url https://flashinfer.ai/whl/`. Both
+// index URLs are literals in their file. The only machinery that touches those pins is a `sed` that
+// STRIPS them for the Rubin prerelease path, which removes a dependency rather than redirecting one.
+//
+// SO THE QUESTION IS NOT WHICH ARM, IT IS WHICH INDEX -- and a first version of this function got that
+// wrong by answering `true` for every published release. A nightly build IS a published release and is
+// still unreachable here, because the version is the only thing the argument can vary: pointing
+// FLASHINFER_VERSION at 0.7.0.dev20260910 makes the build ask the STABLE index for a wheel that exists
+// only on the nightly one, and get a resolution failure seventy minutes into a build rather than a
+// refusal before it.
+//
+// WHAT A REDIRECTED INDEX NEEDS IS SMALL AND IS NOT A SOURCE BUILD. The published nightly carries
+// prebuilt aarch64 cu130 kernels, so the derived layer installs three wheels from a different index on
+// top of a finished image -- seconds of work in a layer, against the hour this refusal was originally
+// written to protect. The capability is still named rather than assumed, because it still does not exist.
+fn flashinfer_reachable_by_upstream_dockerfile(a: FlashInferAcquisition) -> Bool {
+  match a {
+    FlashInferPublishedRelease { version: _, channel: c, index: _ } =>
+      match c {
+        FlashInferPyPi => true
+        FlashInferProjectStable => true
+        FlashInferProjectNightly => false
+      }
+    FlashInferSourceRevision { revision: _, reason_unreleased: _ } => false
+  }
+}
+
+data flashinfer_redirected_index_missing_capability: NonEmptyStr = "a derived image layer that installs flashinfer-python, flashinfer-cubin and flashinfer-jit-cache from the acquisition's own index on top of the built vLLM image -- vLLM's Dockerfile hardcodes the stable index URLs in requirements/cuda.txt and in the jit-cache install, and parameterises only the version. For a published nightly this is three pip installs and no compilation, because that channel ships prebuilt aarch64 cu130 kernels; for a source revision it would additionally have to build the library and precompile its kernels, since the final stage is a CUDA `base` image with no nvcc" as NonEmptyStr
