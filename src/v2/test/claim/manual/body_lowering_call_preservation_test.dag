@@ -105,6 +105,8 @@ fn call_arg_identity_at(root: Node, callee: Symbol, index: Int) -> Optional<Symb
       }
   }
 }
+
+fn call_args_include_punct(root: Node, callee: Symbol, punct: Symbol) -> Bool {
   match search_call_named(root: root, callee: callee) {
     Absent => false
     Present { value: call } =>
