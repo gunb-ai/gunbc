@@ -14,7 +14,7 @@ import extdeps.bmc.ipmi_channel {
   IpmiLanIpv4Unassigned,
   IpmiNonLanChannelMember,
   ipmi_channel_number_eq,
-  ipmi_channel_privilege_is_no_access,
+  IpmiPrivilegeNoAccess,
 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
@@ -32,7 +32,6 @@ import gunbc.machine_intake_phase {
   QualificationPolicy,
   QualificationRefusalOwner,
   intake_qualification_policy_digest,
-  machine_operating_environment_eq,
 }
 import gunbc.machine_intake_receipt {
   EvidenceRef,
@@ -439,14 +438,6 @@ fn published_account_requires_published_closed(account: PublishedCredentialAccou
   }
 }
 
-fn published_account_retained_by_policy(account: PublishedCredentialAccountObservation) -> Bool {
-  match account {
-    PublishedCredentialRetired { evidence: _, observed_at: _ } => false
-    PublishedCredentialDisabledNotRetired { restore_path: _, evidence: _, observed_at: _ } => false
-    PublishedCredentialRetainedByPolicy { retention: _, evidence: _, observed_at: _ } => true
-  }
-}
-
 fn probe_matches_lan_member(
   probe: PublishedCredentialLanProbe,
   channel: IpmiChannelNumber,
@@ -628,7 +619,7 @@ fn join_census_member(
     CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw } =>
       match member {
         IpmiNonLanChannelMember { channel: ch, medium: _, published_user_access: access } =>
-          if ipmi_channel_privilege_is_no_access(limit: access) {
+          if access == IpmiPrivilegeNoAccess {
             CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
           } else {
             CensusJoinClosed { cause: PublishedCredentialChannelAccessNotClosed { channel: ch } }
@@ -636,7 +627,7 @@ fn join_census_member(
         IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg, published_user_access: access } =>
           match cfg {
             IpmiLanIpv4Unassigned =>
-              if ipmi_channel_privilege_is_no_access(limit: access) {
+              if access == IpmiPrivilegeNoAccess {
                 CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
               } else {
                 CensusJoinClosed { cause: PublishedCredentialLanMemberUnaddressed { channel: ch } }
@@ -707,7 +698,7 @@ fn unmatched_published_probe_cause(
 // IpmiLanIpv4Unassigned as always Open. MUTATION THAT TURNS unaddressed+NO
 // ACCESS GREEN into RED: delete the no-access arm so Unassigned always refuses
 // LanMemberUnaddressed. A parse failure of a mutant is VOID, not a passed red.
-fn adjudicate_published_census(
+fn adjudicate_published_census_join(
   endpoint: BmcControllerEndpoint,
   reference: ManagedCredentialReference,
   applied_at: EpochMs,
@@ -718,12 +709,8 @@ fn adjudicate_published_census(
   census_evidence: EvidenceRef,
   probes: List<PublishedCredentialLanProbe>,
   published_account: PublishedCredentialAccountObservation,
-  environment: MachineOperatingEnvironment,
 ) -> BmcSecureOutcome {
-  if published_account_retained_by_policy(account: published_account)
-      && machine_operating_environment_eq(left: environment, right: Production) {
-    BmcSecureRefused { cause: PublishedCredentialRetainedNotAdmittedForProduction }
-  } else if list_length(items: census.members) == 0 {
+  if list_length(items: census.members) == 0 {
     BmcSecureRefused { cause: PublishedCredentialCensusNotTaken }
   } else {
     let require_closed = published_account_requires_published_closed(account: published_account)
@@ -762,6 +749,66 @@ fn adjudicate_published_census(
           }
         }
     }
+  }
+}
+
+fn adjudicate_published_census(
+  endpoint: BmcControllerEndpoint,
+  reference: ManagedCredentialReference,
+  applied_at: EpochMs,
+  rotation_evidence: EvidenceRef,
+  bootstrap: CredentialProbeOutcome,
+  managed_evidence: EvidenceRef,
+  census: IpmiControllerChannelCensus,
+  census_evidence: EvidenceRef,
+  probes: List<PublishedCredentialLanProbe>,
+  published_account: PublishedCredentialAccountObservation,
+  environment: MachineOperatingEnvironment,
+) -> BmcSecureOutcome {
+  match published_account {
+    PublishedCredentialRetainedByPolicy { retention: _, evidence: _, observed_at: _ } =>
+      match environment {
+        Production => BmcSecureRefused { cause: PublishedCredentialRetainedNotAdmittedForProduction }
+        DevelopmentAndTest =>
+          adjudicate_published_census_join(
+            endpoint: endpoint,
+            reference: reference,
+            applied_at: applied_at,
+            rotation_evidence: rotation_evidence,
+            bootstrap: bootstrap,
+            managed_evidence: managed_evidence,
+            census: census,
+            census_evidence: census_evidence,
+            probes: probes,
+            published_account: published_account,
+          )
+      }
+    PublishedCredentialRetired { evidence: _, observed_at: _ } =>
+      adjudicate_published_census_join(
+        endpoint: endpoint,
+        reference: reference,
+        applied_at: applied_at,
+        rotation_evidence: rotation_evidence,
+        bootstrap: bootstrap,
+        managed_evidence: managed_evidence,
+        census: census,
+        census_evidence: census_evidence,
+        probes: probes,
+        published_account: published_account,
+      )
+    PublishedCredentialDisabledNotRetired { restore_path: _, evidence: _, observed_at: _ } =>
+      adjudicate_published_census_join(
+        endpoint: endpoint,
+        reference: reference,
+        applied_at: applied_at,
+        rotation_evidence: rotation_evidence,
+        bootstrap: bootstrap,
+        managed_evidence: managed_evidence,
+        census: census,
+        census_evidence: census_evidence,
+        probes: probes,
+        published_account: published_account,
+      )
   }
 }
 

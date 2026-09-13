@@ -70,17 +70,6 @@ type IpmiChannelPrivilegeLimit
   | IpmiPrivilegeOem
   | IpmiPrivilegeNoAccess
 
-fn ipmi_channel_privilege_is_no_access(limit: IpmiChannelPrivilegeLimit) -> Bool {
-  match limit {
-    IpmiPrivilegeNoAccess => true
-    IpmiPrivilegeCallback => false
-    IpmiPrivilegeUser => false
-    IpmiPrivilegeOperator => false
-    IpmiPrivilegeAdministrator => false
-    IpmiPrivilegeOem => false
-  }
-}
-
 // Get LAN Configuration Parameters, IPv4 address. 0.0.0.0 is the
 // unspecified address, not a probe target: it is Unassigned rather than
 // Assigned { 0, 0, 0, 0 }, so a later fold cannot treat it as a rejecting host.

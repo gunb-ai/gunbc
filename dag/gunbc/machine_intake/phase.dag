@@ -1,6 +1,6 @@
 module gunbc.machine_intake_phase
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 
 // THREE TRANSACTIONS, ONE LIFECYCLE (machine-intake ruling 2026-08-29 §4). Hardware
@@ -229,20 +229,5 @@ fn intake_qualification_policy_digest(policy: IntakeQualificationPolicy) -> Cont
   match policy.environment {
     DevelopmentAndTest => content_hash_of_value(value: "intake-qualification-policy:development-and-test")
     Production => content_hash_of_value(value: "intake-qualification-policy:production")
-  }
-}
-
-fn machine_operating_environment_eq(left: MachineOperatingEnvironment, right: MachineOperatingEnvironment) -> Bool {
-  match left {
-    DevelopmentAndTest =>
-      match right {
-        DevelopmentAndTest => true
-        Production => false
-      }
-    Production =>
-      match right {
-        DevelopmentAndTest => false
-        Production => true
-      }
   }
 }
