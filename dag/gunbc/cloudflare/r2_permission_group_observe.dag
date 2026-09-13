@@ -62,7 +62,7 @@ type PermissionGroupListing
   = PermissionGroupsListed { rendered: String }
   | PermissionGroupListingRefused { cause: NonEmptyStr }
 
-func observe_account_permission_groups_standing() -> PermissionGroupListing uses net: Network {
+fn observe_account_permission_groups_standing() -> PermissionGroupListing uses net: Network {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: _ } =>
       PermissionGroupListingRefused { cause: "NO CLOUDFLARE ACCOUNT ID: nothing to list permission groups for" as NonEmptyStr }
@@ -263,7 +263,7 @@ data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = 
 // mint's own identical refusal is the same wall one step later and on a path where a Create COULD
 // follow, which is precisely why the evidence is taken here first: a discriminating red is worth
 // more when observing it cannot cost a token.
-func observe_account_permission_groups_wet() -> ProcessExit uses net: Network {
+fn observe_account_permission_groups_wet() -> ProcessExit uses net: Network {
   match observe_account_permission_groups_standing() {
     PermissionGroupListingRefused { cause: cause } => exit_failure(reason: cause as String)
     PermissionGroupsListed { rendered: rendered } => {
