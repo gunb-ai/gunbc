@@ -182,10 +182,30 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // boundary. The surviving population is therefore the part neither XL-0 nor XL-4 has any use for.
 // Stated plainly so no reader mistakes a non-empty site list for a working instrument: over the
 // production route this collector currently sees nothing that either stage needs.
-// RESTORATION TRIGGER for every red-stated row below: the v2 body-lowering repair that stops
-// normalize erasing call expressions (XL-2's finding, gunbc#11207, owned by eager-raven-113). Until
-// it lands, XL-0's denominator is incomplete by exactly these classes and gunbc.namespace_cut_stage
-// StageXL0Denominator must stay NotDerivable.
+// THERE IS NO SINGLE RESTORATION TRIGGER FOR THE ROWS BELOW, AND AN EARLIER REVISION OF THIS NOTE
+// CLAIMED THERE WAS. It said every red-stated row is restored by the v2 body-lowering repair. That
+// is the section 4b(3) grain mismatch stated in DESIGN's own words -- a plural loss under a
+// singular trigger -- and it contradicted the carriers that cite THIS MODULE as the instrument to
+// re-run: gunbc.compiler_frontend_program_status StageXL0Denominator and
+// gunbc.namespace_cut_stage both say body-lowering is NOT XL-0's trigger precisely because the
+// cross-module class would still be missing after it lands.
+//
+// THE LOSSES BELOW ARE THREE CAPABILITIES, NOT ONE, AND NOTHING THAT RESTORES ONE RESTORES ANOTHER:
+//
+//   call argument, callee name          -> the v2 body-lowering repair that stops normalize erasing
+//                                          call expressions (XL-2, gunbc#11207)
+//   qualified / dotted reference        -> the dotted-reference capability: a dotted spelling is
+//     (any position, body or type)         not a qualified-name production in a body at all, so
+//                                          this is not downstream of call lowering. UNDER
+//                                          VERIFICATION, not assigned to a lane.
+//   bare type in FIELD position         -> UNATTRIBUTED. The measurement is reproduced on two
+//                                          routes; the cause is not established, and if the
+//                                          declaration is absent from the tree then no
+//                                          collector-side trigger could ever fire.
+//
+// XL-0's denominator is made of the SECOND row -- references that cross a module boundary -- so
+// StageXL0Denominator stays NotDerivable on the dotted-reference capability and on nothing else.
+// A row here must never be retired by a trigger that does not restore it.
 
 test fn the_call_argument_fixture_ingests_holds() -> Bool {
   fixture_ingest_accepted()
