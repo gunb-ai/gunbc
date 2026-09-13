@@ -1763,63 +1763,21 @@ pub struct TransitionAdmission {
 /// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
 /// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
 /// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
-/// Main's roster held exactly these 181 rows and nothing else, so the array is empty of inherited
-/// rows after this deletion and carries only this change's own two.
+/// Main's roster held exactly these 181 rows and nothing else, so the array was empty of inherited
+/// rows after that deletion.
+///
+/// THE #11156 PAIR IS ALSO GONE, and the same trigger discharged it. Those two rows named their own
+/// retirement condition -- "these rows go when #11156 merges" -- #11156 merged, and the required
+/// floor on this branch reported both as CONSUMED ADMISSION already satisfied at the base. Their
+/// header paragraph went with them rather than being left describing an empty subject, which is the
+/// stale-citation shape DESIGN section 3 forbids: prose naming ROW ONE and ROW TWO when neither row
+/// exists is worse than no prose, because it reads as coverage. What remains below is the #11182
+/// relocation set alone.
 ///
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
-/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
-/// BARE now name `{ Filesystem }` / `{ Clock }`. The floor enumerated eight deltas on that head;
-/// six were a DEFECT and are repaired in source rather than admitted -- names stranded by the
-/// narrowing, which an admission row would have recorded as an intent -- and these two are the
-/// real transitions.
-///
-/// ROW ONE, `extdeps.provisioning.ubuntu_seeded_install_media_remaster`: a bare module import
-/// drags the whole module into the candidate set for every name it declares, so
-/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
-/// per-module convention row some 315 modules each author -- was a candidate here. NO RESOLUTION
-/// CHANGES: this module authors its own anchor and a module's own declaration wins inside the
-/// authored region, so the removed candidate could not have won either way. What narrowed is the
-/// SET, and `expected_candidates` names the whole surviving five rather than the winner.
-///
-/// ROW TWO, `gunbc.srv3_boot_once_cd`, moves in the GOOD direction, which is why it is
-/// `AuthoredReferenceResolution` and not `TargetChanged`: base `{}` -> head
-/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
-/// declaring module under no spelling at all, so the name reached its declaration only through
-/// pool membership. It now names it -- which is what the file's own modeled `DeclarationRef`
-/// already asserted.
-///
-/// TRIGGER: these rows go when #11156 merges. The base then carries the named imports, the deltas
-/// stop being producible, and CONSUMED comes due on the roster's next touch.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
-        subject: AdmissionSubject::Binding {
-            module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-            in_declaration: "extdeps_external_authority_anchor",
-            spelling: "extdeps_external_authority_anchor",
-            expected_candidates: &[
-                "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
-                "extdeps.shell",
-                "extdeps.tools.grep",
-                "extdeps.tools.sed",
-                "extdeps.tools.xorriso",
-            ],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.srv3_boot_once_cd",
-            in_declaration: "srv3_boot_once_cd_resolved",
-            spelling: "Filesystem",
-            expected_candidates: &["extdeps.filesystem.filesystem_io"],
-        },
-        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
-    },
     // gunbc#11182 inventory evidence authority relocation: InventoryLotEvidence and the
     // admission fold moved from product.printed_chassis.filament_supply to product.inventory
     // so the Spark procurement lots and filament supply inhabit one inventory evidence

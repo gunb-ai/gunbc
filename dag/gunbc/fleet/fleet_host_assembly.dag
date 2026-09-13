@@ -2,6 +2,7 @@ module gunbc.fleet_host_assembly
 
 import std.types { List, NonEmptyStr, Bool }
 import std.list { list_cover }
+import product.lot_sales_tax { identities_contain }
 import product.placement_supply {
   HostIdentity,
   PhysicalAssetIdentity,
@@ -49,6 +50,7 @@ import gunbc.fleet_asset_identity {
 // the same debt and not a precedent for adding more; they are a separate cleanup, not cover.
 import gunbc.fleet_acquisition_census {
   altrad8ud_board_lot_identity,
+  fleet_ledger_identities,
   altrad8ud_catalog_ref,
   cooler_catalog_ref,
   cooler_srv3_lot_identity,
@@ -253,10 +255,17 @@ data srv_assembly_containments: List<PhysicalContainment> = [
   HostContainsComponent { host: operator_host_srv4, component: drive_srv4 },
 ]
 
+// ADMISSION IS A QUESTION FOR THE CENSUS, NOT A LIST TYPED HERE. This predicate used to answer it
+// by comparing against three hand-named lot identities, which is a second source for a fact
+// gunbc.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming DESIGN
+// section 3 calls the recurring violation, and section 5's tell that a check is re-stating a
+// constraint the model already carries. The failure was silent and delayed in the worst direction:
+// drop or rename a lot in the census and this kept answering TRUE under a name claiming census
+// admission, with its witness green throughout. The same ratchet this file applies one screen
+// earlier to the catalog refs, which were consumed from the census while the lot membership set
+// was not. (review 65187)
 fn recorded_component_lot_is_admitted(lot: InventoryLotIdentity) -> Bool {
-  inventory_lot_identity_eq(left: lot, right: altrad8ud_board_lot_identity)
-    || inventory_lot_identity_eq(left: lot, right: cooler_srv3_lot_identity)
-    || inventory_lot_identity_eq(left: lot, right: cooler_srv4_lot_identity)
+  identities_contain(lots: fleet_ledger_identities(), lot: lot)
 }
 
 fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {
