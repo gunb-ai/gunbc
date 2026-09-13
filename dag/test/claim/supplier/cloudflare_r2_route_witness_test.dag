@@ -26,11 +26,6 @@ import product.supplier.cloudflare_r2 {
 }
 import extdeps.cloudflare.r2_data_location {
   r2_placement_automatic,
-  r2_jurisdiction_default_standing,
-  r2_jurisdiction_eu,
-  r2_jurisdiction_fedramp,
-  r2_jurisdiction_us,
-  r2_jurisdiction_is_residency_guarantee,
 }
 import extdeps.cloudflare.r2 {
   r2_jurisdiction_wire,
@@ -270,37 +265,9 @@ test fn every_r2_route_in_the_population_refuses() -> Bool {
     })) == 0
 }
 
-test fn automatic_placement_is_not_a_residency_guarantee() -> Bool {
-  !r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_default_standing.jurisdiction)
-    && r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_eu.jurisdiction)
-    && r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_fedramp.jurisdiction)
-    && r2_jurisdiction_is_residency_guarantee(jurisdiction: r2_jurisdiction_us.jurisdiction)
-    && (r2_jurisdiction_wire(jurisdiction: r2_jurisdiction_default_standing.jurisdiction) as String) == "default"
-}
-
-test fn restriction_rows_are_the_existing_jurisdiction_arms() -> Bool {
-  match r2_jurisdiction_eu.jurisdiction {
-    R2JurisdictionEu => true
-    R2JurisdictionDefault => false
-    R2JurisdictionFedramp => false
-    R2JurisdictionUs => false
-  }
-    && match r2_jurisdiction_fedramp.jurisdiction {
-      R2JurisdictionFedramp => true
-      R2JurisdictionDefault => false
-      R2JurisdictionEu => false
-      R2JurisdictionUs => false
-    }
-    && match r2_jurisdiction_us.jurisdiction {
-      R2JurisdictionUs => true
-      R2JurisdictionDefault => false
-      R2JurisdictionEu => false
-      R2JurisdictionFedramp => false
-    }
-    && match r2_jurisdiction_default_standing.jurisdiction {
-      R2JurisdictionDefault => true
-      R2JurisdictionEu => false
-      R2JurisdictionFedramp => false
-      R2JurisdictionUs => false
-    }
+test fn default_jurisdiction_wire_is_not_a_restriction() -> Bool {
+  (r2_jurisdiction_wire(jurisdiction: R2JurisdictionDefault) as String) == "default"
+    && (r2_jurisdiction_wire(jurisdiction: R2JurisdictionEu) as String) == "eu"
+    && (r2_jurisdiction_wire(jurisdiction: R2JurisdictionUs) as String) == "us"
+    && (r2_jurisdiction_wire(jurisdiction: R2JurisdictionFedramp) as String) == "fedramp"
 }

@@ -1,16 +1,9 @@
 module extdeps.cloudflare.r2_data_location
 
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.cloudflare.r2 {
-  R2Jurisdiction,
-  R2JurisdictionDefault,
-  R2JurisdictionEu,
-  R2JurisdictionFedramp,
-  R2JurisdictionUs,
-}
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -119,54 +112,24 @@ data cloudflare_customer_dpa_reading: CloudflarePublishedReading = CloudflarePub
 // a second name for that Vendor row (DESIGN section 3). Address and country from a docs publisher
 // block are not a residency commitment and are not minted as a parallel party. The route's
 // provider slot cites that vendor row.
-
-// JURISDICTIONAL RESTRICTIONS CITE extdeps.cloudflare.r2 R2Jurisdiction, WHICH IS THE CONSUMED
-// AUTHORITY FOR THE FOUR WIRE VALUES. Re-spelling them as NonEmptyStr here would be a second name
-// for one concept (DESIGN section 3). Default is in that coproduct and is NOT a restriction;
-// the guarantee is derived by matching the existing type, so a fifth arm fails to compile rather
-// than silently inheriting a string. Location hints stay in r2_data_location_reading rather than
-// as a coproduct: no production path consults a hint identity, and a constantly-false residency
-// predicate over one would be a permanently-green decoration (DESIGN sections 3c and 4b).
-fn r2_jurisdiction_is_residency_guarantee(jurisdiction: R2Jurisdiction) -> Bool {
-  match jurisdiction {
-    R2JurisdictionDefault => false
-    R2JurisdictionEu => true
-    R2JurisdictionFedramp => true
-    R2JurisdictionUs => true
-  }
-}
-
-type R2JurisdictionRestrictionRow {
-  jurisdiction: R2Jurisdiction
-  reading: CloudflarePublishedReading
-}
-
-data r2_jurisdiction_eu: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
-  jurisdiction: R2JurisdictionEu,
-  reading: r2_data_location_reading,
-}
-
-data r2_jurisdiction_fedramp: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
-  jurisdiction: R2JurisdictionFedramp,
-  reading: r2_data_location_reading,
-}
-
-data r2_jurisdiction_us: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
-  jurisdiction: R2JurisdictionUs,
-  reading: r2_us_jurisdiction_changelog_reading,
-}
-
-data r2_jurisdiction_default_standing: R2JurisdictionRestrictionRow = R2JurisdictionRestrictionRow {
-  jurisdiction: R2JurisdictionDefault,
-  reading: r2_tokens_default_jurisdiction_reading,
-}
+//
+// JURISDICTION TAGS LIVE ON extdeps.cloudflare.r2 R2Jurisdiction. This module does not re-export
+// them, does not wrap them in unused restriction rows, and does not export a Bool over the
+// coproduct. A Bool over that type would be the same attractor product.fabric.provider_admission
+// deleted from path_is_resolved: it discards the arm, so a later caller walks the value again.
+// Location hints stay in r2_data_location_reading rather than as a coproduct: no production path
+// consults a hint identity, and a constantly-false residency predicate over one would be a
+// permanently-green decoration (DESIGN sections 3c and 4b). The same argument forbids a production
+// Bool over R2Jurisdiction. The default wire value is transcribed in
+// r2_tokens_default_jurisdiction_reading; the fleet bucket's jurisdiction is
+// gunbc.cloudflare.r2_origin fabric_durable_origin_standing.
 
 // AUTOMATIC IS A CHOICE MECHANISM, AND THAT IS WHAT THIS ROW RECORDS. It is the region a route
 // cites when a bucket was created without a jurisdictional restriction: not a country, not a
 // data-center park, and not a residency commitment. Treating R2JurisdictionDefault, a dashboard
 // Location label, or a Location Hint as the place the bytes live is the reading this row exists
 // to make unusable as a location fact. Automatic is not an arm of R2Jurisdiction — that type's
-// corresponding non-guarantee is R2JurisdictionDefault, cited above.
+// corresponding non-guarantee is R2JurisdictionDefault, owned by extdeps.cloudflare.r2.
 type R2PlacementModeRow {
   reading: CloudflarePublishedReading
 }
