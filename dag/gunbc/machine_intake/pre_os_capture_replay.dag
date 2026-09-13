@@ -94,7 +94,7 @@ fn pre_os_archive_classify(spec: PreOsArchiveSpec, payload: String) -> PreOsArch
 
 fn pre_os_archive_specs() -> ObservationAttempt<List<PreOsArchiveSpec>, NonEmptyStr> {
   match mt_collins_channel_population_roles {
-    PopulationRolesRefused { causes: _ } => ObservationRefused { cause: "Mt. Collins positions unresolved" }
+    PopulationRolesRefused { refusals: _ } => ObservationRefused { cause: "Mt. Collins positions unresolved" }
     PopulationRolesResolved { roles } => {
       let mixture = mtcollins_3ds_configuration(roles: roles)
       match mixture.population.first() {

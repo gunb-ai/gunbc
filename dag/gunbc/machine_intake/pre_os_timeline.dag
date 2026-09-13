@@ -141,7 +141,7 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
       Absent => ObservationRefused { cause: "no source cursor" }
       Present { value: c } => ObservationEstablished { observed: c }
     }
-    let sel = match o.format {
+    let sel: ObservationAttempt<PreOsSelIngestion, NonEmptyStr> = match o.format {
       PreOsConsoleText => ObservationRefused { cause: "console source is not a SEL snapshot" }
       PreOsSelSnapshot => match association {
         ObservationRefused { cause } => ObservationRefused { cause: cause }

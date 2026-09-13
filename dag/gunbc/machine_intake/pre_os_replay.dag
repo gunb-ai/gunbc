@@ -11,7 +11,7 @@ import gunbc.fleet_observation_capture_chunk {
   chunk_occurrence_eq, range_end, ContinuityCoverage, ContinuityCoversRange, continuity_covers, commit_attests_chunk, CommitAttestsThisChunk,
 }
 import gunbc.machine_intake_sel_stimulus_listener {
-  SelWatermark, sel_read, sel_after, sel_record_id, sel_field, sel_rendered_record,
+  SelWatermark, SelDelta, sel_read, sel_after, sel_record_id, sel_field, sel_rendered_record,
 }
 import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent }
 import gunbc.fleet_observation_collector_ownership { OwnerRecording, ownership_generation }
@@ -109,7 +109,7 @@ fn pre_os_sel_cursor(envelope: ObservationEnvelope, payload: String) -> Observat
 // list returned here is a host-success assessment.
 fn pre_os_ingest_sel(previous: ObservationAttempt<PreOsSelCursor, NonEmptyStr>, envelope: ObservationEnvelope, payload: String) -> PreOsSelIngestion {
   let cursor = pre_os_sel_cursor(envelope: envelope, payload: payload)
-  let delta = match cursor {
+  let delta: ObservationAttempt<SelDelta, NonEmptyStr> = match cursor {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: next } => match previous {
       ObservationRefused { cause: _ } => ObservationRefused { cause: "initial or recovered SEL baseline; historical rows are not a newly observed stimulus" }
