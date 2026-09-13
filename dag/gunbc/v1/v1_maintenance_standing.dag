@@ -677,7 +677,7 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 //
 // WHY THIS IS A NEW RECORD TYPE AND NOT A NEW ARM. The obvious spellings are both refused by this
 // carrier's own history. An arm on MaintenanceRefusal or MaintenanceAdmissionInstance would WIDEN a
-// closed vocabulary, which is the move the adapter-alignment row above declined in its own words --
+// closed vocabulary, which is the move `v1_maintenance_adapter_alignment_control_exception_note` declined in its own words --
 // "a category exemption arriving as a coproduct row rather than as a sentence... a category never
 // comes up for review again while one exception does" -- reversing an authorizer's first
 // instruction to do exactly that. And a `data ...: String` commentary row is the section 4c
@@ -693,7 +693,7 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 // standalone record buys is narrower and worth exactly what it is: no growth on this carrier's
 // closed vocabularies, so the next author who needs an exception cannot cite a precedent for
 // adding an arm. It buys nothing about whether the policy change itself is right, which is
-// fierce-lark-661's call and is recorded above as theirs.
+// fierce-lark-661's call and is attributed to them in this row's own adjudication header.
 //
 // THE CONDITIONS ARE SEPARATELY NAMED FIELDS, AND THEIR VALUES ARE STILL PROSE. An earlier draft
 // of this comment said "THE CONDITIONS ARE FIELDS, NOT PROSE, because a condition written as
@@ -730,12 +730,15 @@ type RefusalClassBoundary {
 //
 // IT PRESCRIBES ITS FIRST CONDITION RATHER THAN DESCRIBING ESTABLISHED PRACTICE, and that is
 // stated at the top because a reader who takes it the other way will size its enforcement wrongly.
-// Both closed specimens below FAIL condition one: in each, the rows were noticed as CONSUMED by a
+// The gunbc#10940 and gunbc#11156 specimens FAIL condition one as chronology: in each, the rows
+// were noticed as CONSUMED by a
 // floor refusal after the carrying change had already landed, and the deletion was written in
 // response -- by 1h09m in one case and 2h24m in the other. That is precisely the practice the
 // condition exists to end. The disposition (a consumed ledger entry, not an escape hatch) IS
-// established by those specimens; the pre-enqueue requirement is not, and nothing underwrites it
-// except gunbc#11250 and the merger.
+// established by those specimens; the pre-enqueue requirement is not. THE PRE-ENQUEUE CONDITION IS
+// CARRIED BY THE MERGER/REVIEWER TALLY. gunbc#11250 mechanizes the narrower prerequisite that a
+// deletion-follow-up declaration EXIST; it does not establish its timing -- a declaration can exist
+// and have been authored too late, so the existence half cannot carry a temporal predicate.
 //
 // Its occasion:
 // royal-eagle's side chat refused gunbc#11214's fifteen NAMESPACE_TRANSITION_ADMISSIONS rows as
@@ -766,7 +769,7 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
     "gunbc#11156's 2 Filesystem/Clock rows: consumed by their own merge (d7b7ab96c1f, merged 2026-09-13T02:50:04Z) and deleted by gunbc#11240. CONDITION ONE FAILS AS CHRONOLOGY (outside the lifecycle, per the `lifecycle` field): #11240's deletion was authored at 2026-09-13T05:14:49Z, two hours and twenty-four minutes AFTER the carrier merged. Condition two met: it landed at 6e70be25146." as NonEmptyStr,
     "gunbc#11214's 15 rows: ELIGIBLE. Its deletion follow-up is authored while the carrier has not yet been enqueued, so condition one is satisfied at the eligibility decision. Condition two is not yet due and therefore is neither satisfied nor failed. If the carrier lands, the specimen becomes PENDING until the deletion follow-up lands and removes the rows. AND IT IS THE ONLY SPECIMEN IN THIS LIFECYCLE AT ALL, which inverts how this list reads: the gunbc#10940 and gunbc#11156 specimens predate the boundary and are outside it, so the open case is the compliant one and the closed ones are not instances of any state." as NonEmptyStr,
     "SO THIS BOUNDARY PRESCRIBES ITS FIRST CONDITION RATHER THAN ADJUDICATING IT, and the specimens are what establish that rather than what hide it. NOT ONE measured specimen authored its deletion before the carrying change was enqueued: in both closed cases the rows were noticed as CONSUMED by a floor refusal after the carrier had already landed, and the follow-up was written in response. That is the practice the condition exists to end, so the evidence here shows the condition is NEW. What the specimens DO establish is condition two -- both deletions landed, promptly and by the authoring lane -- and that the disposition is sound: in both cases the rows were consumed by their own merge and nothing outlived the change that needed them." as NonEmptyStr,
-    "THE CONSEQUENCE FOR ENFORCEMENT, stated here because a reader who takes the specimens as precedent will size it wrongly: a condition with no precedent is carried ENTIRELY by gunbc#11250's owner charge and by the merger until it lands. There is no established practice underwriting condition one, so nothing absorbs a lapse if that charge is not built." as NonEmptyStr,
+    "THE CONSEQUENCE FOR ENFORCEMENT, stated here because a reader who takes the specimens as precedent will size it wrongly: THE PRE-ENQUEUE CONDITION IS CARRIED BY THE MERGER/REVIEWER TALLY. gunbc#11250 mechanizes the narrower prerequisite that a deletion-follow-up declaration EXIST; it does not establish its timing, and necessary evidence existing is not the temporal predicate over that evidence being satisfied -- a declaration can exist and have been authored after the enqueue. So no mechanism underwrites condition one either before or after #11250 lands, there is no established practice underwriting it, and nothing absorbs a lapse." as NonEmptyStr,
   ],
 
   authorship_disclosure: "THE TWO SPECIMENS THIS AUTHOR CONTRIBUTED ARE THE TWO THAT FAIL CONDITION ONE, which is the disclosure that matters more than the authorship itself: the practice this row would have been read as codifying is this author's own practice, and it does not meet the condition. TWO OF THE THREE SPECIMENS ARE THIS AUTHOR'S OWN WORK: witty-moth-510 authored gunbc#11156's two rows and gunbc#11240's deletion of them, and authored the deletion of gunbc#10940's 181. A boundary whose evidence is mostly its author's own practice should say so where a reader meets it, because the alternative is a rule that looks corroborated and is largely self-cited. The adjudication is fierce-lark-661's; the specimens are not independent of the person recording them." as NonEmptyStr,
