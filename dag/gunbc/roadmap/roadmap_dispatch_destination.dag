@@ -1,0 +1,266 @@
+module gunbc.roadmap_dispatch_destination
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.algebra { trim }
+import extdeps.github.github { Repository }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonKeyValue,
+  json_kv,
+  json_string,
+  json_bool,
+  json_object,
+  serialize_json,
+}
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap_model { RoadmapNode, NodeSizing, Sized, Unsized }
+
+// A dispatch's destination is a per-NODE fact. The slug is a String: "gunbc" or owner/name.
+// It is read from NodeSizing.repo. destination_from_sizing matches Sized/Unsized.
+// The resolver itself does not change. After #10994 lands, this fold binds WorkItemDispatch.
+//
+// THIS MODULE NAMES NO PRIVATE REPOSITORY. A node whose work lives elsewhere supplies its
+// own owner/name via the repo slug; the public authority only knows gunbc_repository as an
+// observed Repository. A slug does not carry privacy or default branch: those are GitHub
+// facts (extdeps.github.github.Repository). This path does not call that API.
+
+type DestinationPrivacyStanding
+  = DestinationPrivacyObserved { private: Bool }
+  | DestinationPrivacyUnobserved
+
+type DestinationDefaultBranchStanding
+  = DestinationDefaultBranchObserved { branch: String }
+  | DestinationDefaultBranchUnobserved
+
+type DestinationIdentity {
+  owner: String
+  name: String
+  full_name: String
+  privacy: DestinationPrivacyStanding
+  default_branch: DestinationDefaultBranchStanding
+}
+
+type DispatchDestination
+  = DispatchDestinationResolved { identity: DestinationIdentity }
+  | DispatchDestinationMissing { reason: NonEmptyStr }
+
+fn gunbc_destination_slug_matches(repo: String) -> Bool {
+  repo == gunbc_repository.name || repo == gunbc_repository.full_name
+}
+
+fn gunbc_destination_identity() -> DestinationIdentity {
+  DestinationIdentity {
+    owner: gunbc_repository.owner,
+    name: gunbc_repository.name,
+    full_name: gunbc_repository.full_name,
+    privacy: DestinationPrivacyObserved { private: gunbc_repository.private },
+    default_branch: DestinationDefaultBranchObserved { branch: gunbc_repository.default_branch },
+  }
+}
+
+fn named_destination_identity_from_owner_name(owner: String, name: String) -> DestinationIdentity {
+  DestinationIdentity {
+    owner: owner,
+    name: name,
+    full_name: join([owner, "/", name], ""),
+    privacy: DestinationPrivacyUnobserved,
+    default_branch: DestinationDefaultBranchUnobserved,
+  }
+}
+
+fn destination_is_known_public(identity: DestinationIdentity) -> Bool {
+  match identity.privacy {
+    DestinationPrivacyObserved { private } => !private
+    DestinationPrivacyUnobserved => false
+  }
+}
+
+// Owner and name on a named destination ARE observed from the slug. Privacy and default
+// branch are not. destination_is_known_public reads Unobserved as not known to be public.
+// RoadmapPublicationSubject.repository is still a GitHub Repository (Bool/String, no
+// Unobserved arm). A fill would encode an unobserved fact as an established one (DESIGN §5).
+// The publication path therefore refuses: DestinationGithubRepositoryUnobserved, consumed as
+// PublicationSubjectUnobserved. Do not mint a Repository for Unobserved standing.
+
+type DestinationGithubRepository
+  = DestinationGithubRepositoryObserved { repository: Repository }
+  | DestinationGithubRepositoryUnobserved { reason: NonEmptyStr }
+
+fn destination_github_repository(identity: DestinationIdentity) -> DestinationGithubRepository {
+  match identity.privacy {
+    DestinationPrivacyUnobserved =>
+      DestinationGithubRepositoryUnobserved {
+        reason: join([
+          "destination ",
+          identity.full_name,
+          " has no observed privacy standing, so a publication subject cannot encode GitHub Repository.private",
+        ], "") as NonEmptyStr,
+      }
+    DestinationPrivacyObserved { private } =>
+      match identity.default_branch {
+        DestinationDefaultBranchUnobserved =>
+          DestinationGithubRepositoryUnobserved {
+            reason: join([
+              "destination ",
+              identity.full_name,
+              " has no observed default branch, so a publication subject cannot encode GitHub Repository.default_branch",
+            ], "") as NonEmptyStr,
+          }
+        DestinationDefaultBranchObserved { branch } =>
+          DestinationGithubRepositoryObserved {
+            repository: Repository {
+              owner: identity.owner,
+              name: identity.name,
+              full_name: identity.full_name,
+              private: private,
+              default_branch: branch,
+            },
+          }
+      }
+  }
+}
+
+fn destination_slug_not_owner_name(slug: String) -> DispatchDestination {
+  DispatchDestinationMissing {
+    reason: join([
+      "destination slug ",
+      slug,
+      " is not owner/name, so it cannot become a publication repository",
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn repository_from_repo_slug(repo: String) -> DispatchDestination {
+  let slug = trim(repo)
+  if slug == "" {
+    DispatchDestinationMissing {
+      reason: "the node declares an empty destination slug, so there is no repository to publish to" as NonEmptyStr,
+    }
+  } else if gunbc_destination_slug_matches(repo: slug) {
+    DispatchDestinationResolved { identity: gunbc_destination_identity() }
+  } else {
+    let segments = split(s: slug, delimiter: "/") |> map(p => trim(p)) |> filter(p => p != "")
+    if count(segments) != 2 {
+      destination_slug_not_owner_name(slug: slug)
+    } else {
+      DispatchDestinationResolved {
+        identity: named_destination_identity_from_owner_name(
+          owner: segments.first(),
+          name: segments.skip(n: 1).first(),
+        ),
+      }
+    }
+  }
+}
+
+fn destination_from_sizing(sizing: NodeSizing) -> DispatchDestination {
+  match sizing {
+    Unsized =>
+      DispatchDestinationMissing {
+        reason: "the node carries no dispatch binding, so it has no destination repository" as NonEmptyStr,
+      }
+    Sized { repo, intricacy: _, volume: _, acceptance: _ } =>
+      repository_from_repo_slug(repo: repo)
+  }
+}
+
+fn node_dispatch_destination(node: RoadmapNode) -> DispatchDestination {
+  destination_from_sizing(sizing: node.sizing)
+}
+
+// Destination identity and spawn actuation are different facts. repository_from_repo_slug
+// resolves any well-formed owner/name so publication can name that repository. This
+// instance still creates worktrees in instance.repo_root against dispatch_git_remote_ref
+// (gunbc_merge_target_ref). Admitting a resolved non-gunbc destination onto that tree
+// would work in gunbc and publish elsewhere — DESIGN section 5 widen. Until spawn binds
+// worktree and remote to the destination, actuation is only the known-public gunbc tree.
+// TRIGGER to retire this refuse: worktree-add and the merge remote are taken from the
+// node's destination, not from the instance gunbc constants.
+
+fn destination_is_this_spawn_tree(identity: DestinationIdentity) -> Bool {
+  identity.full_name == gunbc_repository.full_name
+    && destination_is_known_public(identity: identity)
+}
+
+fn destination_not_this_spawn_tree_reason(identity: DestinationIdentity) -> NonEmptyStr {
+  join(
+    [
+      "this instance creates attempts in the public gunbc tree at ",
+      gunbc_repository.full_name,
+      "; destination ",
+      identity.full_name,
+      " is not that tree, so dispatch refuses rather than working in gunbc and publishing to ",
+      identity.full_name,
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+// Recorded at spawn so an attempt can later say which repository and which exact base
+// revision it was branched from. The instance's dispatch_base_ref is a name; the SHA
+// is the fact. Privacy and default branch are recorded as standings, not as GitHub
+// Repository fields, so an unobserved destination cannot mint private:true in this file.
+
+type DispatchSpawnOrigin {
+  identity: DestinationIdentity
+  base_ref: NonEmptyStr
+  base_sha: NonEmptyStr
+}
+
+fn spawn_origin_is_public_gunbc(origin: DispatchSpawnOrigin) -> Bool {
+  destination_is_this_spawn_tree(identity: origin.identity)
+}
+
+fn destination_privacy_json_members(privacy: DestinationPrivacyStanding) -> List<JsonKeyValue> {
+  match privacy {
+    DestinationPrivacyObserved { private } =>
+      [
+        json_kv(key: "privacy", value: json_string(s: "observed")),
+        json_kv(key: "private", value: json_bool(b: private)),
+      ]
+    DestinationPrivacyUnobserved =>
+      [json_kv(key: "privacy", value: json_string(s: "unobserved"))]
+  }
+}
+
+fn destination_default_branch_json_members(
+  standing: DestinationDefaultBranchStanding,
+) -> List<JsonKeyValue> {
+  match standing {
+    DestinationDefaultBranchObserved { branch } =>
+      [
+        json_kv(key: "default_branch_standing", value: json_string(s: "observed")),
+        json_kv(key: "default_branch", value: json_string(s: branch)),
+      ]
+    DestinationDefaultBranchUnobserved =>
+      [json_kv(key: "default_branch_standing", value: json_string(s: "unobserved"))]
+  }
+}
+
+fn dispatch_spawn_origin_json_value(origin: DispatchSpawnOrigin) -> JsonValue {
+  json_object(
+    members: concat(
+      [json_kv(key: "repository", value: json_string(s: origin.identity.full_name))],
+      concat(
+        destination_privacy_json_members(privacy: origin.identity.privacy),
+        concat(
+          destination_default_branch_json_members(standing: origin.identity.default_branch),
+          [
+            json_kv(
+              key: "known_public_gunbc",
+              value: json_bool(b: spawn_origin_is_public_gunbc(origin: origin)),
+            ),
+            json_kv(key: "base_ref", value: json_string(s: origin.base_ref as String)),
+            json_kv(key: "base_sha", value: json_string(s: origin.base_sha as String)),
+          ],
+        ),
+      ),
+    ),
+  )
+}
+
+fn dispatch_spawn_origin_json(origin: DispatchSpawnOrigin) -> String {
+  serialize_json(v: dispatch_spawn_origin_json_value(origin: origin))
+}
+
+data dispatch_spawn_origin_basename: String = "spawn-destination.json"
