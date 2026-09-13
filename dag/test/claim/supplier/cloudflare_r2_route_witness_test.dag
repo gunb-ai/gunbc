@@ -16,11 +16,11 @@ import product.fabric.provider_admission {
   PostureRevisionStale, CustomerScopeUnsupported, DataHandlingUnsupported,
   RequiredAgreementAuthorityAbsent, ProhibitedUseNotCleared, SanctionsNotCleared, ExportNotCleared,
   DispositionCleared,
+  admit_provider_use,
 }
 import product.supplier.cloudflare_r2 {
   cloudflare_r2_route,
   cloudflare_r2_durable_origin_route_standing,
-  cloudflare_r2_route_admission,
   cloudflare_r2_route_facts_population,
   cloudflare_r2_data_paths,
   cloudflare_r2_facts,
@@ -126,9 +126,9 @@ fn t_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
 }
 
 fn t_decide(route: ProviderRoute, facts: ProviderRouteFacts) -> ProviderUseAdmission<NonEmptyStr> {
-  cloudflare_r2_route_admission(
-    facts: facts,
+  admit_provider_use(
     roster: t_roster(route: route),
+    facts: facts,
     active: t_posture(),
     scope: t_scope(),
     offer: t_offer(),

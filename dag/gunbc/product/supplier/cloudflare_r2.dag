@@ -3,14 +3,10 @@ module product.supplier.cloudflare_r2
 import std.types { List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
-import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.provider_route {
-  ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
+  ProviderRoute, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathUnread,
   DownstreamProviderPopulation, DownstreamProvidersUnread,
-}
-import product.fabric.provider_admission {
-  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission, admit_provider_use,
 }
 
 // THE DURABLE-ORIGIN ROUTE THIS REPOSITORY ANSWERS THE NINE-PATH CLOSURE FOR, AND THE ROW REFUSES.
@@ -166,27 +162,12 @@ fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
 // THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION. Nobody has stated that we are
 // willing to place work on this vendor's default-jurisdiction R2 under a named posture. Writing a
 // roster row here to make the module look complete would be the fabricated authority the gate exists
-// to close. The producer takes roster and posture from its caller and supplies only the route facts.
+// to close. The module supplies only the route facts. Callers that need a permit call
+// product.fabric.provider_admission admit_provider_use with those facts; there is no wrapper here
+// because a wrapper with nothing of its own to bind would be a second name for that fold.
 //
 // DECLARED FRONTIER (DESIGN section 3c). The production consumer is a posture producer that mints a
 // CompliancePostureRevision whose permitted_jurisdictions enumerate only routes whose facts have
 // been read and cleared. TRIGGER: that producer, SUFFICIENT FOR this route to be included or
 // omitted by matching these facts rather than by a dashboard label. Until then the executing
 // consumer is the witness.
-fn cloudflare_r2_route_admission<P>(
-  facts: ProviderRouteFacts,
-  roster: List<RouteScopeSanction>,
-  active: CompliancePostureRevision,
-  scope: ProviderUseScope<P>,
-  offer: FabricIdentity<P, OfferKey>,
-  decision_receipt: DeclarationRef,
-) -> ProviderUseAdmission<P> {
-  admit_provider_use(
-    roster: roster,
-    facts: facts,
-    active: active,
-    scope: scope,
-    offer: offer,
-    decision_receipt: decision_receipt,
-  )
-}
