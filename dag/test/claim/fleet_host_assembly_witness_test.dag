@@ -11,6 +11,8 @@ import product.placement_supply {
   physical_asset_identity_eq,
 }
 import gunbc.fleet_host_assembly {
+  AssembledComponent,
+  cooler_srv3,
   chassis_srv1,
   chassis_srv2,
   srv_assembly_components,
@@ -25,7 +27,7 @@ import gunbc.fleet_host_assembly {
   assembly_covers_component_roster,
   assembly_containments_join,
 }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -94,4 +96,33 @@ test fn w_boards_and_processors_are_present() -> Bool {
       ComponentAcquiredFromLot { lot: _ } => true
       ComponentAcquisitionUnrecorded { read_obligation: o } => (o as String).length() > 0
     })
+}
+
+// Change only the cooler's assembly host, retaining its identity, catalog and lot.
+test fn w_cooler_host_must_match_installed_containment() -> Bool {
+  let moved = map(srv_assembly_components, row =>
+    if physical_asset_identity_eq(a: row.component, b: cooler_srv3) {
+      AssembledComponent {
+        host: operator_host_srv1,
+        component: row.component,
+        catalog: row.catalog,
+        acquisition: row.acquisition,
+      }
+    } else { row }
+  )
+  assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
+    && !assembly_containments_join(rows: moved, containments: srv_assembly_containments)
+}
+
+// Keep the assembly unchanged and remove only its installed cooler edge.
+test fn w_missing_installed_cooler_edge_refuses() -> Bool {
+  let missing = srv_assembly_containments.filter(c => match c {
+    HostContainsComponent { host: _, component: comp } => !physical_asset_identity_eq(a: comp, b: cooler_srv3)
+    ChassisContainsHost { chassis: _, host: _ } => true
+    SiteContainsRoom { site: _, room: _ } => true
+    RoomContainsRack { room: _, rack: _ } => true
+    RackContainsPlacement { rack: _, asset: _ } => true
+  })
+  assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
+    && !assembly_containments_join(rows: srv_assembly_components, containments: missing)
 }

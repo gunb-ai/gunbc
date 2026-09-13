@@ -2,7 +2,7 @@ module product.lot_sales_tax
 
 import std.types { Bool, List, Map, NonEmptyStr }
 import std.nat { Nat }
-import std.list { list_member, list_cover }
+import std.list { list_cover }
 import std.measure { PartsPerMillion }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.tax.statutory_rate { StatutoryRate, statutory_rate_jurisdiction }
@@ -144,8 +144,8 @@ type LotTaxPopulationFold {
   repetition: InventoryLotRepetition?
 }
 
-fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
-  let settled = fold(rows, init: LotTaxPopulationFold {
+fn index_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulationFold {
+  fold(rows, init: LotTaxPopulationFold {
     lot_positions: empty_map(),
     repetition: none,
   }, f: fn(acc, row) {
@@ -167,7 +167,10 @@ fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
       }
     }
   })
-  match settled.repetition {
+}
+
+fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
+  match index_lot_tax_population(rows: rows).repetition {
     Present { value: repeated } => LotTaxPopulationRepeatedLot {
       lot: repeated.lot,
       first_ordinal: repeated.first_ordinal,
@@ -179,10 +182,6 @@ fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
 
 fn lot_eq(a: InventoryLotIdentity, b: InventoryLotIdentity) -> Bool {
   inventory_lot_identity_eq(left: a, right: b)
-}
-
-fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
-  list_member(xs: lots, x: lot, eq: lot_eq)
 }
 
 fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<InventoryLotIdentity>) -> Bool {
@@ -225,48 +224,47 @@ fn unread_or_unrecorded_lots(rows: List<LotTaxEvidence>) -> List<InventoryLotIde
   })
 }
 
-fn tax_covers_lot(rows: List<LotTaxEvidence>, lot: InventoryLotIdentity) -> Bool {
-  rows.any(row => lot_eq(a: row.lot, b: lot))
-}
-
 type LotTaxJoin
   = LotTaxJoinCovered { rows: List<LotTaxEvidence> }
   | LedgerMissingTax { lot: InventoryLotIdentity }
   | TaxWithoutLedger { lot: InventoryLotIdentity }
   | LotTaxJoinRepeatedLot { lot: InventoryLotIdentity, first_ordinal: Nat, ledger_ordinal: Nat }
 
-fn first_uncovered_ledger(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
-  fold(lots, init: none, f: fn(hit, id) {
+// Scan requested identities in their original order, with one indexed lookup per identity.
+fn first_uncovered_identity(requested: List<InventoryLotIdentity>, indexed: Map<InventoryLotIdentity, Nat>) -> InventoryLotIdentity? {
+  fold(requested, init: none, f: fn(hit, id) {
     match hit {
-      Present { value: p } => Present { value: p }
-      Absent =>
-        if tax_covers_lot(rows: tax, lot: id) { none } else { Present { value: id } }
-    }
-  })
-}
-
-fn first_orphaned_tax(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> InventoryLotIdentity? {
-  fold(tax, init: none, f: fn(hit, row) {
-    match hit {
-      Present { value: p } => Present { value: p }
-      Absent =>
-        if identities_contain(lots: lots, lot: row.lot) { none } else { Present { value: row.lot } }
+      Present { value: _ } => hit
+      Absent => match lookup(indexed, id) {
+        Present { value: _ } => none
+        Absent => Present { value: id }
+      }
     }
   })
 }
 
 fn lot_tax_covers_ledgers(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence>) -> LotTaxJoin {
-  match admit_lot_tax_population(rows: tax) {
-    LotTaxPopulationRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b } =>
-      LotTaxJoinRepeatedLot { lot: l, first_ordinal: a, ledger_ordinal: b }
-    LotTaxPopulationComplete { rows: rows } =>
-      match first_uncovered_ledger(lots: lots, tax: rows) {
-        Present { value: lot } => LedgerMissingTax { lot: lot }
-        Absent =>
-          match first_orphaned_tax(lots: lots, tax: rows) {
-            Present { value: lot } => TaxWithoutLedger { lot: lot }
-            Absent => LotTaxJoinCovered { rows: rows }
+  let indexed_tax = index_lot_tax_population(rows: tax)
+  match indexed_tax.repetition {
+    Present { value: repeated } => LotTaxJoinRepeatedLot {
+      lot: repeated.lot,
+      first_ordinal: repeated.first_ordinal,
+      ledger_ordinal: repeated.ledger_ordinal,
+    }
+    Absent => match first_uncovered_identity(requested: lots, indexed: indexed_tax.lot_positions) {
+      Present { value: lot } => LedgerMissingTax { lot: lot }
+      Absent => {
+        let ledger_positions: Map<InventoryLotIdentity, Nat> = fold(lots, init: empty_map(), f: fn(acc, id) {
+          match lookup(acc, id) {
+            Present { value: _ } => acc
+            Absent => map_insert(acc, id, acc.length())
           }
+        })
+        match first_uncovered_identity(requested: map(tax, row => row.lot), indexed: ledger_positions) {
+          Present { value: lot } => TaxWithoutLedger { lot: lot }
+          Absent => LotTaxJoinCovered { rows: tax }
+        }
       }
+    }
   }
 }

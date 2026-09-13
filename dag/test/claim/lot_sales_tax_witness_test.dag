@@ -314,3 +314,60 @@ test fn w_equal_length_is_not_tax_coverage() -> Bool {
       LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
     }
 }
+
+// Coverage is order-independent, but the returned tax evidence keeps its input order.
+test fn w_indexed_tax_join_covers_reordered_and_empty_ledgers() -> Bool {
+  match lot_tax_covers_ledgers(
+    lots: [lot_unrecorded, lot_attested_ny, lot_marketplace, lot_spark_uez, lot_mt_collins],
+    tax: fixture_population,
+  ) {
+    LotTaxJoinCovered { rows: rows } => rows.length() == 5 && match rows.first() {
+      Absent => false
+      Present { value: row } => inventory_lot_identity_eq(left: row.lot, right: lot_mt_collins)
+    }
+    LedgerMissingTax { lot: _ } => false
+    TaxWithoutLedger { lot: _ } => false
+    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+  }
+  && match lot_tax_covers_ledgers(lots: [], tax: []) {
+    LotTaxJoinCovered { rows: rows } => rows.length() == 0
+    LedgerMissingTax { lot: _ } => false
+    TaxWithoutLedger { lot: _ } => false
+    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+  }
+}
+
+// Missing-ledger evidence takes precedence over orphan tax evidence; within each
+// refusal class the first identity comes from the input order, not map ordering.
+test fn w_indexed_tax_join_preserves_missing_and_orphan_order() -> Bool {
+  match lot_tax_covers_ledgers(
+    lots: [lot_unrecorded, lot_attested_ny],
+    tax: fixture_population.take(n: 3),
+  ) {
+    LedgerMissingTax { lot: l } => inventory_lot_identity_eq(left: l, right: lot_unrecorded)
+    LotTaxJoinCovered { rows: _ } => false
+    TaxWithoutLedger { lot: _ } => false
+    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+  }
+  && match lot_tax_covers_ledgers(lots: [lot_unrecorded], tax: fixture_population) {
+    TaxWithoutLedger { lot: l } => inventory_lot_identity_eq(left: l, right: lot_mt_collins)
+    LotTaxJoinCovered { rows: _ } => false
+    LedgerMissingTax { lot: _ } => false
+    LotTaxJoinRepeatedLot { lot: _, first_ordinal: _, ledger_ordinal: _ } => false
+  }
+}
+
+test fn w_indexed_tax_join_retains_duplicate_priority_and_ordinals() -> Bool {
+  match lot_tax_covers_ledgers(lots: [], tax: concat(fixture_population, [
+    LotTaxEvidence {
+      lot: lot_spark_uez,
+      standing: SalesTaxTreatmentUnrecorded { read_obligation: "duplicate before coverage" as NonEmptyStr },
+    },
+  ])) {
+    LotTaxJoinRepeatedLot { lot: l, first_ordinal: first, ledger_ordinal: later } =>
+      inventory_lot_identity_eq(left: l, right: lot_spark_uez) && first == 1 && later == 5
+    LotTaxJoinCovered { rows: _ } => false
+    LedgerMissingTax { lot: _ } => false
+    TaxWithoutLedger { lot: _ } => false
+  }
+}
