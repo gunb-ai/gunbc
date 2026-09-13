@@ -866,6 +866,16 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
             binary_path.display()
         ));
     }
+    // Evaluate the realized-closure roster before any store file exists so an interpreter
+    // refusal is retryable. The generation file is the once-only sentinel and is written last.
+    let provenance_ctx = eval_entry_context(source_roots, PRODUCER_PROVENANCE_ENTRY)?;
+    let generation_closure = eval_named(
+        &provenance_ctx,
+        "v2.compiler.self_host.emitter_producer_provenance.cssl_harness_realized_closure",
+        &[],
+    )?;
+    let generation_paths =
+        emitter_module_paths_from_closure_value(&provenance_ctx, &generation_closure)?;
     let store = ancestry_dir(&workspace);
     std::fs::create_dir_all(&store)
         .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
@@ -896,19 +906,6 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     )?;
     std::fs::write(ancestry_closure_identity_path(&workspace), closure_identity)
         .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
-    std::fs::write(
-        ancestry_generation_path(&workspace),
-        format!("{ANCESTRY_GENERATION_ZERO}\n"),
-    )
-    .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
-    let provenance_ctx = eval_entry_context(source_roots, PRODUCER_PROVENANCE_ENTRY)?;
-    let generation_closure = eval_named(
-        &provenance_ctx,
-        "v2.compiler.self_host.emitter_producer_provenance.cssl_harness_realized_closure",
-        &[],
-    )?;
-    let generation_paths =
-        emitter_module_paths_from_closure_value(&provenance_ctx, &generation_closure)?;
     write_ancestry_lines(
         &ancestry_generation_closure_path(&workspace),
         &generation_paths,
@@ -924,6 +921,11 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     )
     .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
     write_stored_build(&workspace, &build)?;
+    std::fs::write(
+        ancestry_generation_path(&workspace),
+        format!("{ANCESTRY_GENERATION_ZERO}\n"),
+    )
+    .map_err(|e| format!("V2-NATIVE REFUSAL cause=GenesisStoreUnwritable — {e}"))?;
     eprintln!(
         "v2-native-genesis: NativeGeneration 0 stored at {}",
         stored.display()
