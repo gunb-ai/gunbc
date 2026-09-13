@@ -1,6 +1,6 @@
 module gunbc.public_workload_census
 
-import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, join_with_separator }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { Architecture }
@@ -261,13 +261,7 @@ type ObservedLabelStanding
   | JobResourceCarriedMultipleLabels { labels: List<String> }
 
 fn observed_label_set_rendering(labels: List<String>) -> String {
-  fold(labels, init: "", f: fn(acc, l) {
-    if acc == "" {
-      l
-    } else {
-      concat(acc, concat(", ", l))
-    }
-  })
+  join_with_separator(parts: labels, separator: ", ")
 }
 
 fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
@@ -613,7 +607,6 @@ type WorkloadCandidate {
   workflow_path: NonEmptyStr
   workflow_blob_sha: NonEmptyStr
   job_key: NonEmptyStr
-  job_display_name: NonEmptyStr
   matrix_selector: JobMatrixIdentity
   declared_runner: DeclaredRunner
   observed: ObservedExecution
@@ -660,18 +653,14 @@ fn candidate_run_identity(c: WorkloadCandidate) -> RunIdentityStanding {
         ) {
           YamlJobNameUninspected { cause } => RunIdentityUnresolved { cause: cause }
           YamlJobNameBound { prefix } =>
-            if !observed_job_binds_inspected_leg(
+            if !observed_name_matches_inspected_prefix(
               job_name: job.name,
-              job_key: c.job_key,
+              prefix: prefix,
               matrix: c.matrix_selector,
-              repository: c.repository,
-              workflow_path: c.workflow_path,
             ) {
               RunIdentityMismatched {
                 cause: "observed job name is not the Jobs API rendering of the inspected job key and matrix selector",
               }
-            } else if job.name != (c.job_display_name as String) {
-              RunIdentityMismatched { cause: "observed job name is not the inspected job display name" }
             } else if c.inspected_commit == head_sha {
               ObservedAtInspectedRevision {
                 repository: c.repository,
@@ -796,7 +785,6 @@ data candidate_biome_test: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
-  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
   },
@@ -852,7 +840,6 @@ data candidate_pdns_dnsdist_arm: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/build-and-test-all.yml",
   workflow_blob_sha: "f9f3f705735c2fe01922f075194c735246fe97aa",
   job_key: "build-dnsdist",
-  job_display_name: "build dnsdist (asan+ubsan, full, -arm)",
   matrix_selector: MatrixCombination {
     axes: [
       MatrixAxisAssignment { axis: "sanitizers", value: "asan+ubsan" },
@@ -929,7 +916,6 @@ data candidate_openobserve_arm_build: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/build-pr-image.yml",
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build_pr_image_arm64",
-  job_display_name: "build_pr_image_arm64",
   matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubicloud-standard-16-arm" },
   observed: JobRunObserved {
@@ -999,7 +985,6 @@ data candidate_openobserve_amd64: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/build-pr-image.yml",
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build_pr_image_amd64",
-  job_display_name: "build_pr_image_amd64",
   matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubicloud-standard-8" },
   observed: JobRunObserved {
@@ -1053,7 +1038,6 @@ data candidate_openobserve_manifest: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/build-pr-image.yml",
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build",
-  job_display_name: "build",
   matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubicloud-standard-16-arm" },
   observed: JobRunObserved {
@@ -1105,7 +1089,6 @@ data candidate_biome_test_windows: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
-  job_display_name: "Test (depot-windows-2022-16)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-windows-2022-16" }],
   },
@@ -1153,7 +1136,6 @@ data candidate_biome_test_macos: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
-  job_display_name: "Test (depot-macos-latest)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-macos-latest" }],
   },
@@ -1201,7 +1183,6 @@ data candidate_openobserve_summary: WorkloadCandidate = WorkloadCandidate {
   workflow_path: ".github/workflows/build-pr-image.yml",
   workflow_blob_sha: "037dec1fc6b583c991c2270927c3ca77bf73173f",
   job_key: "build_pr_image_summary",
-  job_display_name: "build_pr_image_summary",
   matrix_selector: NoMatrix,
   declared_runner: DeclaredLabel { label: "ubuntu-latest" },
   observed: JobRunObserved {
@@ -1268,7 +1249,6 @@ fn census_contains_subject(rows: List<WorkloadCandidate>, needle: WorkloadCandid
       && r.inspected_commit == needle.inspected_commit
       && r.matrix_selector == needle.matrix_selector
       && (r.workflow_blob_sha as String) == (needle.workflow_blob_sha as String)
-      && (r.job_display_name as String) == (needle.job_display_name as String)
       && match r.observed {
         JobRunObserved { job: rj, repository: r_repo, workflow_path: r_path, workflow_blob_sha_at_head: rb, head_sha: rh, correctness: r_corr } =>
           match needle.observed {

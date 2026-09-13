@@ -3,7 +3,7 @@ module extdeps.github.workflow_runs
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome }
-import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
+import std.types { CommitSha, List, NonEmptyStr, String, Timestamp, join_with_separator }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
@@ -169,13 +169,7 @@ data workflow_job_name_matrix_parenthetical_standing: CitedFigureStanding = Tran
 
 fn workflow_job_name_matrix_value_parenthetical(values: List<NonEmptyStr>) -> String {
   concat(" (", concat(
-    fold(values, init: "", f: fn(acc, v) {
-      if acc == "" {
-        v as String
-      } else {
-        concat(acc, concat(", ", v as String))
-      }
-    }),
+    join_with_separator(parts: map(values, v => v as String), separator: ", "),
     ")"
   ))
 }

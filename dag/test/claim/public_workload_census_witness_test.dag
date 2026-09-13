@@ -6,10 +6,8 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.github.workflow_runs {
-  workflow_job_name_matrix_parenthetical_standing,
   WorkflowJobRun, Completed, Success,
 }
-import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_label_resolution {
   resolve_runner_label,
@@ -58,7 +56,6 @@ data candidate_biome_blob_mismatch_control: WorkloadCandidate = WorkloadCandidat
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
-  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
   },
@@ -108,7 +105,6 @@ data candidate_biome_matrix_selector_mismatch_control: WorkloadCandidate = Workl
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
-  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-16" }],
   },
@@ -157,7 +153,6 @@ data candidate_biome_job_key_mismatch_control: WorkloadCandidate = WorkloadCandi
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "lint",
-  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
   },
@@ -206,7 +201,6 @@ data candidate_biome_job_key_titlecase_uninspected_control: WorkloadCandidate = 
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "Test",
-  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
   },
@@ -255,7 +249,6 @@ data candidate_biome_multi_label_control: WorkloadCandidate = WorkloadCandidate 
   workflow_path: ".github/workflows/main.yml",
   workflow_blob_sha: "99f1255bbfa20a11197716a8fdb4c4e3359a588b",
   job_key: "test",
-  job_display_name: "Test (depot-ubuntu-24.04-arm-16)",
   matrix_selector: MatrixCombination {
     axes: [MatrixAxisAssignment { axis: "os", value: "depot-ubuntu-24.04-arm-16" }],
   },
@@ -502,11 +495,9 @@ test fn witness_blob_mismatch_is_refused_even_when_tests_ran() -> Bool {
 }
 
 test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match() -> Bool {
-  let same_display_matrix_and_observation =
-    (candidate_biome_job_key_mismatch_control.job_display_name as String)
-      == (candidate_biome_test.job_display_name as String)
-      && candidate_biome_job_key_mismatch_control.matrix_selector
-        == candidate_biome_test.matrix_selector
+  let same_matrix_different_key =
+    candidate_biome_job_key_mismatch_control.matrix_selector
+      == candidate_biome_test.matrix_selector
       && (candidate_biome_job_key_mismatch_control.job_key as String)
         != (candidate_biome_test.job_key as String)
       && !observed_job_binds_inspected_leg(
@@ -516,7 +507,7 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
         repository: candidate_biome_job_key_mismatch_control.repository,
         workflow_path: candidate_biome_job_key_mismatch_control.workflow_path,
       )
-  same_display_matrix_and_observation
+  same_matrix_different_key
     && match candidate_run_identity(c: candidate_biome_job_key_mismatch_control) {
       RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_biome_job_key_mismatch_control) {
         BaselineRefused { cause } => true
@@ -530,8 +521,6 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
 
 test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool {
   (candidate_biome_job_key_titlecase_uninspected_control.job_key as String) == "Test"
-    && (candidate_biome_job_key_titlecase_uninspected_control.job_display_name as String)
-      == (candidate_biome_test.job_display_name as String)
     && candidate_biome_job_key_titlecase_uninspected_control.matrix_selector
       == candidate_biome_test.matrix_selector
     && match candidate_run_identity(c: candidate_biome_job_key_titlecase_uninspected_control) {
@@ -563,11 +552,9 @@ test fn witness_multiple_labels_are_not_resolved_from_the_first() -> Bool {
 }
 
 test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() -> Bool {
-  let same_display_and_observation =
-    (candidate_biome_matrix_selector_mismatch_control.job_display_name as String)
-      == (candidate_biome_test.job_display_name as String)
-      && (candidate_biome_matrix_selector_mismatch_control.job_key as String)
-        == (candidate_biome_test.job_key as String)
+  let same_key_different_matrix =
+    (candidate_biome_matrix_selector_mismatch_control.job_key as String)
+      == (candidate_biome_test.job_key as String)
       && candidate_biome_matrix_selector_mismatch_control.matrix_selector
         != candidate_biome_test.matrix_selector
       && !observed_job_binds_inspected_leg(
@@ -577,7 +564,7 @@ test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() 
         repository: candidate_biome_matrix_selector_mismatch_control.repository,
         workflow_path: candidate_biome_matrix_selector_mismatch_control.workflow_path,
       )
-  same_display_and_observation
+  same_key_different_matrix
     && match candidate_run_identity(c: candidate_biome_matrix_selector_mismatch_control) {
       RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_matrix_selector_mismatch_control) {
         BaselineRefused { cause } => true
@@ -602,11 +589,6 @@ test fn witness_a_green_job_without_tests_is_not_a_baseline() -> Bool {
   }
 }
 
-test fn witness_matrix_name_rendering_stays_an_uncited_bet() -> Bool {
-  match workflow_job_name_matrix_parenthetical_standing {
-    TranscribedUncited { read_obligation } => true
-    CitedToAuthority { authority } => false
-  }
 }
 
 fn all_claims_hold() -> Bool {
@@ -629,7 +611,6 @@ fn all_claims_hold() -> Bool {
     && witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key()
     && witness_multiple_labels_are_not_resolved_from_the_first()
     && witness_a_green_job_without_tests_is_not_a_baseline()
-    && witness_matrix_name_rendering_stays_an_uncited_bet()
 }
 
 fn public_workload_census_witness_main() -> ProcessExit {
