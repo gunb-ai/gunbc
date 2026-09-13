@@ -16,6 +16,9 @@ import v2.workflow.floor_eval_step_calibration {
 }
 import gunbc.floor_cost_distribution {
   FloorCostRow,
+  ObservedCpuReading,
+  RightCensoredCpuReading,
+  CpuLowerBoundWithoutCeiling,
   IdentityEnvelope,
   RunCost,
   RunExtremeCount,
@@ -1106,10 +1109,20 @@ fn floor_cost_attempt_pair_check() -> ProcessExit {
 // The specimen's whole claim on the reader is that its step count is deterministic; two readings
 // that disagree refute that directly, and choosing either one would report a verdict on a premise
 // the same data just falsified.
+//
+// A CENSORED ROW CANNOT ANSWER THIS QUESTION AND MUST NOT BE READ AS IF IT COULD. `FloorCostRow`'s
+// `eval_steps` is a POINT for an observed row and a LOWER BOUND for a censored one -- the parse
+// fills it from `eval_steps_at_least` on the censored arm -- so comparing it to the pin without
+// the case split lets a bound that happens to equal the pin produce a MATCH, reporting equality
+// the run never established (review 65748; DESIGN section 5, no fabricated plausible output).
+// `gunbc.floor_cost_distribution` already forces this split for the cost figure through
+// `observed_cpu_ms`, whose `Absent` arm exists precisely so a bound cannot reach a point question;
+// this is the same discipline applied to the step figure.
 type CalibrationSpecimenGrounding
   = SpecimenJoined { grounding: SpecimenStepsGrounding }
   | SpecimenAbsentFromRun { identity: String, run: NonEmptyStr }
   | SpecimenStepsNotDeterministic { identity: String, low: Int, high: Int }
+  | SpecimenStepsRightCensored { identity: String, lower_bound: Int }
   | SpecimenRunUnavailable { load: RunLoad }
 
 fn calibration_specimen_grounding_for(root: String, run: NonEmptyStr) -> CalibrationSpecimenGrounding {
@@ -1123,9 +1136,15 @@ fn calibration_specimen_grounding_for(root: String, run: NonEmptyStr) -> Calibra
 
 fn specimen_row_grounding(rows: List<FloorCostRow>, run: NonEmptyStr) -> CalibrationSpecimenGrounding {
   let wanted = calibration_specimen_identity(calibration: floor_eval_step_calibration) as String
-  let matched = rows |> filter(r => r.identity == wanted)
-  if count(matched) == 0 {
+  let all_matched = rows |> filter(r => r.identity == wanted)
+  let matched = all_matched |> filter(r => row_step_count_is_complete(row: r))
+  if count(all_matched) == 0 {
     SpecimenAbsentFromRun { identity: wanted, run: run }
+  } else if count(matched) == 0 {
+    SpecimenStepsRightCensored {
+      identity: wanted,
+      lower_bound: fold(all_matched |> map(r => r.eval_steps), init: 0, f: (m, n) => if n > m { n } else { m }),
+    }
   } else {
     let steps = matched |> map(r => r.eval_steps)
     let low = fold(steps, init: max_of(xs: steps), f: (m, n) => if n < m { n } else { m })
@@ -1159,10 +1178,23 @@ fn calibration_specimen_grounding_line(g: CalibrationSpecimenGrounding) -> Strin
     }
     SpecimenAbsentFromRun { identity: i, run: r } =>
       concat("[calibration-specimen] REFUSED identity absent from run ", concat(r as String, concat(": ", i)))
+    SpecimenStepsRightCensored { identity: i, lower_bound: lb } =>
+      concat("[calibration-specimen] REFUSED right-censored, steps are a LOWER BOUND not a count for ", concat(i, concat(": >=", to_string(lb))))
     SpecimenStepsNotDeterministic { identity: i, low: lo, high: hi } =>
       concat("[calibration-specimen] REFUSED non-deterministic steps for ", concat(i, concat(": ", concat(to_string(lo), concat("..", to_string(hi))))))
     SpecimenRunUnavailable { load: l } =>
       concat("[calibration-specimen] REFUSED run unavailable: ", join(refused_load_lines(loads: [l]), " "))
+  }
+}
+
+// A ROW WHOSE STEP COUNT IS A COMPLETED OBSERVATION RATHER THAN A BOUND. The reading arm is the
+// discriminator the artifact already carries: an interrupted claim's figures are lower bounds on
+// BOTH clocks and on the step counter, so the same arm that censors the cost censors the steps.
+fn row_step_count_is_complete(row: FloorCostRow) -> Bool {
+  match row.cost {
+    ObservedCpuReading { cpu_ms: _ } => true
+    RightCensoredCpuReading { cpu_lower_bound_ms: _, censoring_ceiling_ms: _ } => false
+    CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: _ } => false
   }
 }
 
@@ -1171,6 +1203,7 @@ fn calibration_specimen_grounding_holds(g: CalibrationSpecimenGrounding) -> Bool
     SpecimenJoined { grounding: gr } => specimen_steps_grounding_holds(grounding: gr)
     SpecimenAbsentFromRun { identity: _, run: _ } => false
     SpecimenStepsNotDeterministic { identity: _, low: _, high: _ } => false
+    SpecimenStepsRightCensored { identity: _, lower_bound: _ } => false
     SpecimenRunUnavailable { load: _ } => false
   }
 }

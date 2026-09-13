@@ -1,11 +1,11 @@
 module v2.workflow.floor_grandfathered_roster
 
-import v2.std.algebra { Cons, Empty, list_flat_map }
+import v2.std.algebra { Cons, Empty, list_flat_map, length }
 import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.integer { Int, int_add }
+import v2.std.integer { Int }
 import std.measure { EvalStepCount }
 import std.types { NonEmptyStr }
 
@@ -835,14 +835,7 @@ fn grandfathered_in_chunk(name: String, rows: List<String>) -> Bool {
 // of them the roster's length, while the roster itself was correct throughout. This folds the same
 // chunks the roster folds, so it cannot disagree with what the floor consults.
 fn floor_grandfathered_roster_size() -> Int {
-  grandfathered_roster_length(rows: floor_grandfathered_roster())
-}
-
-fn grandfathered_roster_length(rows: List<String>) -> Int {
-  match rows {
-    Empty {} => 0
-    Cons { head: _, tail: t } => int_add(a: 1, b: grandfathered_roster_length(rows: t))
-  }
+  length(xs: floor_grandfathered_roster())
 }
 
 // ── THE MONOTONE CONTRACT, AS AN EXECUTING VERDICT RATHER THAN AS THE PROSE ABOVE ──────────
