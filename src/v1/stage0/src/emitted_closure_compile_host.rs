@@ -1050,9 +1050,13 @@ pub(crate) fn run_cargo(
     finish_cargo_command(command, &invocation.argv[0], attribution_symbol)
 }
 
-/// Native genesis remaps the host build directory out of the artifact. The receipt's
-/// rustflags axis stays the warning-denial row (#11011); remap is an extra env suffix on
-/// the spawn, recorded on the ancestry store rather than as a second denial string.
+/// Native genesis remaps the host build directory out of the artifact. The RUSTFLAGS
+/// string the spawn actually sets is denial plus remap — that same string is the
+/// receipt's rustflags observation (review 64919).
+pub(crate) fn rustflags_with_remap_prefix(remap_flag: &str) -> String {
+    format!("{} {}", WARNING_DENIAL_RUSTFLAGS, remap_flag)
+}
+
 pub(crate) fn run_cargo_with_remap_prefix(
     crate_dir: &Path,
     workspace: &Path,
@@ -1063,7 +1067,7 @@ pub(crate) fn run_cargo_with_remap_prefix(
         Ok(bound) => bound,
         Err(reason) => return CargoVerdict::NotAttempted { reason },
     };
-    let plain = format!("{} {}", WARNING_DENIAL_RUSTFLAGS, remap_flag);
+    let plain = rustflags_with_remap_prefix(remap_flag);
     let encoded = format!("{WARNING_DENIAL_ENCODED_RUSTFLAGS}\x1f{remap_flag}");
     command.env(
         cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),

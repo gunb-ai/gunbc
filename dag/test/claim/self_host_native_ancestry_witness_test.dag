@@ -2,9 +2,6 @@ module test.claim.self_host_native_ancestry_witness
 
 import std.content_hash { sha512_hex_digest }
 import v2.compiler.self_host.ancestry {
-  BuildPathPinned,
-  BuildPathRemapped,
-  BuildPathTreatment,
   GenesisAdmitted,
   GenesisExecuted,
   GenesisFromSeed,
@@ -43,11 +40,13 @@ import v2.compiler.self_host.emitter_producer_provenance {
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
   ArtifactNotMaterialized,
+  BuildPathPinned,
+  BuildPathRemapped,
+  BuildPathTreatment,
+  BuildPathUnresolved,
   GeneratedArtifactIdentity,
   GenerationIdentity,
   NamedBuildConfiguration,
-  PathRemapped,
-  PathRemappingUnspecified,
   build_configuration_axis_digest,
   compiler_artifact_identity,
   generation_identity_agrees,
@@ -245,24 +244,24 @@ test fn remapping_is_part_of_build_configuration_identity() -> Bool {
   let unspecified = build_configuration_axis_digest(
     config: NamedBuildConfiguration {
       cargo_profile: "release",
-      remapping: PathRemappingUnspecified
+      remapping: BuildPathUnresolved
     }
   )
   let remapped = build_configuration_axis_digest(
     config: NamedBuildConfiguration {
       cargo_profile: "release",
-      remapping: PathRemapped {
-        host_prefix: "/tmp/build-a",
-        canonical_prefix: "/gunbc/remap/build"
+      remapping: BuildPathRemapped {
+        remap_prefix_from: "/tmp/build-a",
+        remap_prefix_to: "/gunbc/remap/build"
       }
     }
   )
   let remapped_elsewhere = build_configuration_axis_digest(
     config: NamedBuildConfiguration {
       cargo_profile: "release",
-      remapping: PathRemapped {
-        host_prefix: "/tmp/build-b",
-        canonical_prefix: "/gunbc/remap/build"
+      remapping: BuildPathRemapped {
+        remap_prefix_from: "/tmp/build-b",
+        remap_prefix_to: "/gunbc/remap/build"
       }
     }
   )

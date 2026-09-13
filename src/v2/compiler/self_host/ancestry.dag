@@ -20,6 +20,10 @@ import v2.compiler.self_host.emitter_producer_provenance {
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
   ArtifactNotMaterialized,
+  BuildPathPinned,
+  BuildPathRemapped,
+  BuildPathTreatment,
+  BuildPathUnresolved,
   GeneratedArtifactIdentity,
   GenerationIdentity,
   ObservedArtifactDigest
@@ -75,30 +79,10 @@ type ReadBackReceipt
   = ReadBackUnperformed
   | ReadBackReported { reported_artifact: ObservedArtifactDigest }
 
-// BUILD PATH IS AN INPUT THE SIX GENERATION AXES DO NOT NAME. A Rust binary embeds its
-// build directory, so identical source built in two directories yields different bytes
-// while producer_compiler, source_closure, target_model, toolchain and build_configuration
-// all agree (measured twice, gunbc#8181; registered as an obligation in
-// gunbc.self_host_promotion_obligations artifact_axis_omits_build_path).
-//
-// For a one-time genesis run on one host, pinning the directory is an honest treatment:
-// the axes are not a determinant, but nothing cross-host consumes the artifact either. For
-// the RECURRING step the artifact is the ancestor a later generation acquires, and it is
-// intended to be served across hosts, so an unresolved build path makes the ancestor's
-// identity unfalsifiable exactly where it is load-bearing. Hence the asymmetry enforced by
-// native_generation_mint_admission: genesis admits Pinned, the recurring step does not, and
-// neither admits Unresolved.
-//
-// This type is the declaration the obligation's two named remedies were waiting for; it
-// does NOT by itself discharge that obligation, because remapping is a property of the
-// build that produces the bytes and not of a carrier describing it. The obligation stays
-// unbound until the emitted-compiler build actually passes the remap and a two-directory
-// control observes identical bytes — asserting otherwise here would be rung inflation
-// (DESIGN section 4b meta-obligation 1).
-type BuildPathTreatment
-  = BuildPathRemapped { remap_prefix_from: String, remap_prefix_to: String }
-  | BuildPathPinned { directory: String }
-  | BuildPathUnresolved
+// BuildPathTreatment lives on v2.compiler.self_host.generation (one coproduct for the
+// identity axis and this field). Mint admission still owns which arms genesis vs
+// succession may inhabit: genesis admits Pinned, the recurring step does not, neither
+// admits Unresolved.
 
 type NativeGeneration {
   generation: Int

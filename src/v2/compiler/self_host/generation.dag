@@ -80,12 +80,11 @@ type GeneratedArtifactIdentity
 // axis tells the truth about what it covers. Papering over it inside a comparison is
 // the third option and is not available.
 //
-// NamedBuildConfiguration and build_configuration_axis_digest name the second
-// remedy. They are not yet the mint's build_configuration input: GenerationIdentity
-// still carries a bare Hash there, so NFS/GCS identity is not closed by this record.
-// The obligation gunbc.self_host_promotion_obligations artifact_axis_omits_build_path
-// stays unfired until remap is on the mint path and a two-directory control observes
-// identical bytes.
+// NamedBuildConfiguration hashes the same BuildPathTreatment NativeGeneration carries.
+// A second remapping coproduct beside ancestry.BuildPathTreatment was a nickname
+// (DESIGN §3). GenerationIdentity still stores a bare Hash for the axis; the obligation
+// gunbc.self_host_promotion_obligations artifact_axis_omits_build_path stays unfired
+// until a two-directory control observes identical bytes.
 //
 // The direction is fail-closed: relocating an identical build reports as a MOVED
 // artifact rather than a spurious match, so nothing is silently admitted. That is why
@@ -439,35 +438,41 @@ fn compiler_artifact_identity(
   }
 }
 
-// THE BUILD-PATH INPUT THE SIX AXES PREVIOUSLY OMITTED. Rust debug bytes embed the
-// build directory, so NFS/GCS serving across hosts requires the path to be remapped
-// to a canonical prefix rather than named as a seventh opaque axis. Host realization
-// passes rustc `--remap-path-prefix`. An unspecified remapping is a different
-// configuration from a remapped one — identity, not a default.
-type BuildPathRemapping
-  = PathRemapped { host_prefix: String, canonical_prefix: String }
-  | PathRemappingUnspecified
+// BUILD PATH IS AN INPUT THE SIX AXES DO NOT NAME AS A SEVENTH OPAQUE FIELD. A Rust
+// binary embeds its build directory (gunbc#8181). Remap, pin, or leave unresolved are
+// one treatment — NativeGeneration.build_path_treatment and this axis hash the same
+// coproduct. Remapping is still a property of the build that produces the bytes; this
+// carrier does not discharge artifact_axis_omits_build_path by itself.
+type BuildPathTreatment
+  = BuildPathRemapped { remap_prefix_from: String, remap_prefix_to: String }
+  | BuildPathPinned { directory: String }
+  | BuildPathUnresolved
 
 type NamedBuildConfiguration {
   cargo_profile: String
-  remapping: BuildPathRemapping
+  remapping: BuildPathTreatment
 }
 
-fn build_path_remapping_digest(remapping: BuildPathRemapping) -> Hash {
-  match remapping {
-    PathRemapped { host_prefix: host, canonical_prefix: canonical } =>
+fn build_path_treatment_digest(treatment: BuildPathTreatment) -> Hash {
+  match treatment {
+    BuildPathRemapped { remap_prefix_from: from, remap_prefix_to: to } =>
       combine_hash(
-        a: symbol_identity_digest(sym: host),
-        b: symbol_identity_digest(sym: canonical)
+        a: symbol_identity_digest(sym: from),
+        b: symbol_identity_digest(sym: to)
       )
-    PathRemappingUnspecified =>
-      symbol_identity_digest(sym: ^build_path_remapping_unspecified)
+    BuildPathPinned { directory: d } =>
+      combine_hash(
+        a: symbol_identity_digest(sym: ^build_path_pinned),
+        b: symbol_identity_digest(sym: d)
+      )
+    BuildPathUnresolved =>
+      symbol_identity_digest(sym: ^build_path_unresolved)
   }
 }
 
 fn build_configuration_axis_digest(config: NamedBuildConfiguration) -> Hash {
   combine_hash(
     a: symbol_identity_digest(sym: config.cargo_profile),
-    b: build_path_remapping_digest(remapping: config.remapping)
+    b: build_path_treatment_digest(treatment: config.remapping)
   )
 }
