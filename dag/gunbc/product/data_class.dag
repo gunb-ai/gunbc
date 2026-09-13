@@ -91,13 +91,13 @@ type Classified<C, T> sole_constructor {
 // mint: a mint nothing may call is a declaration nothing consumes (DESIGN 3c), and a category is
 // given its mint by the change that lands its first boundary. The admitted callers are the
 // boundaries, by declaration:
-//   PersonalIdentity -- gunbc.principal_projection oidc_principal_projection, where an OIDC ID
-//     token's standard claims (email, email_verified, name) enter our program.
+//   PersonalIdentity -- gunbc.principal_projection oidc_projection, where an OIDC ID token's
+//     standard claims (email, email_verified, name) enter our program.
 //   BuildOutput -- gunbc.fabric_m0_origin_commit job_output_bytes, where a job's produced file
 //     enters the commit path toward the durable origin.
 fn classify_personal_identity<T>(value: T) -> Classified<PersonalIdentity, T>
   admit_callers: [
-    decl_ref(module_path: "gunbc.principal_projection", decl_name: "oidc_principal_projection"),
+    decl_ref(module_path: "gunbc.principal_projection", decl_name: "oidc_projection"),
   ]
   = Classified { category: personal_identity_ref(), reveal: fn(k) { value } }
 
@@ -160,14 +160,20 @@ type Sink<C> sole_constructor {
 
 // THE CATEGORY WITNESS A SINK MINT TAKES. It binds the runtime reference to the marker type once,
 // in this module, so a sink for BuildOutput cannot be minted carrying PersonalIdentity's
-// reference. One row per category with a sink consumer in this tree -- BuildOutput today; a
-// category gets its witness with its first sink, exactly as it gets its mint with its first
+// reference. One row per category with a sink consumer -- BuildOutput for the fabric write, and
+// PersonalIdentity for the payload-fidelity witness, which admits the OIDC claims through the
+// fold because the permit is the only place a payload can be read back and compared; a category
+// gets its witness with its first sink, exactly as it gets its mint with its first
 // boundary (DESIGN 3c, review 65204). Likewise only the two sink mints with a caller exist:
 // durable_origin_sink (the fabric write) and log_channel_sink (the enrolled log-channel probe);
 // the Telemetry, SheetCell and SupportExport KINDS stay, because the map rows the private lane
 // authors name them, and their mints arrive with their first consumer.
 type DataCategoryWitness<C> sole_constructor {
   category: DeclarationRef
+}
+
+fn personal_identity_category() -> DataCategoryWitness<PersonalIdentity> {
+  DataCategoryWitness { category: personal_identity_ref() }
 }
 
 fn build_output_category() -> DataCategoryWitness<BuildOutput> {

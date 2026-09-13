@@ -23,7 +23,7 @@ import product.data_class {
   Classified, Sink, DataEffectAdmission, DataEffectAdmitted, DataEffectRefused, Transmit,
   admit_data_effect, log_channel_sink, public_fabric_map, public_fabric_posture, DataCategoryWitness,
 }
-import gunbc.principal_projection { OidcProjected, PosixProjection, oidc_principal_projection }
+import gunbc.principal_projection { oidc_projection }
 
 fn claims() -> OidcIdTokenClaims {
   OidcIdTokenClaims {
@@ -38,10 +38,7 @@ fn claims() -> OidcIdTokenClaims {
 }
 
 fn pii() -> Classified<PersonalIdentity, OidcStandardClaims> {
-  match oidc_principal_projection(claims: claims()) {
-    OidcProjected { projection: p } => p.standard
-    PosixProjection { observation: _ } => pii()
-  }
+  oidc_projection(claims: claims()).standard
 }
 
 // A JobLog sink. There is no job_log_category witness in product.data_class today (no JobLog

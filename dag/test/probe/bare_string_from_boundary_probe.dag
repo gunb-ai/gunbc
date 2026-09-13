@@ -15,7 +15,7 @@ import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, Numeri
 import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
 import product.data_category { PersonalIdentity }
 import product.data_class { Classified }
-import gunbc.principal_projection { OidcProjected, PosixProjection, oidc_principal_projection }
+import gunbc.principal_projection { oidc_projection }
 
 fn claims() -> OidcIdTokenClaims {
   OidcIdTokenClaims {
@@ -30,13 +30,9 @@ fn claims() -> OidcIdTokenClaims {
 }
 
 fn email_in_the_clear() -> String {
-  match oidc_principal_projection(claims: claims()) {
-    OidcProjected { projection: p } =>
-      match p.standard.email {
-        Present { value: e } => e as String
-        Absent => ""
-      }
-    PosixProjection { observation: _ } => ""
+  match oidc_projection(claims: claims()).standard.email {
+    Present { value: e } => e as String
+    Absent => ""
   }
 }
 

@@ -38,7 +38,11 @@ fn oidc_evidence() -> OidcIdTokenClaims {
   }
 }
 
-test fn oidc_principal_is_exact_issuer_subject_projection_with_evidence_retained() -> Bool {
+// The standard claims are retained CLASSIFIED: what this test can see of them outside
+// product.data_class is the category label. Their payload fidelity is established where a payload
+// can legitimately be read -- on a permit -- by test.claim.fabric.data_class_admission_witness
+// the_standard_claims_survive_classification_intact (review 65254).
+test fn oidc_principal_is_exact_issuer_subject_projection_with_the_standard_claims_classified() -> Bool {
   let claims = oidc_evidence()
   let projection = oidc_principal_projection(claims: claims)
   match projected_principal(projection: projection) {
