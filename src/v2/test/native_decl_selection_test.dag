@@ -161,9 +161,9 @@ test fn a_sibling_modules_declaration_is_not_selected() -> Bool {
 }
 
 
+// This witness prices refusal routing, so begin at the normalized-root boundary.
+// Re-tokenizing and parsing source with the full language model is unrelated work here.
 test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> Bool {
-  // This witness prices refusal routing, so begin at the normalized-root boundary.
-  // Re-tokenizing and parsing source with the full language model is unrelated work here.
   match fc_duplicate_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } =>
