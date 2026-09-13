@@ -9714,6 +9714,185 @@ mod changed_witness_projection_tests {
             Some(CostDebtRosterStanding::DeclaredButNotWithheld)
         );
     }
+
+    /// THE MERGE-GATE SEQUENCE THE REQUIRED FLOOR ACTUALLY APPLIES for a newly enrolled
+    /// identity: `enrolment_margin_standing_for` then `changed_witness_projection_rows`, the
+    /// two populations `required_floor_outcome_is_clean` ANDs and
+    /// `required_floor_measurement_blockers` concatenates. One helper so the two controls
+    /// below cannot silently test different compositions.
+    ///
+    /// THE HOST MIRROR IS A SECOND SPELLING of `v2.workflow.floor_enrolment_margin`
+    /// `EnrolmentExpensivenessDeclared` / `enrolment_margin_standing_name` /
+    /// `enrolment_margin_standing_blocks` / `enrolment_margin_blocking_cause` and of
+    /// `v2.workflow.floor_changed_witness` `changed_witness_blocking_cause`. The asserts on
+    /// wire names below are that agreement, executed, not a comment that the two spellings
+    /// match.
+    struct EnrolmentAndChangedComposition {
+        enrolment: EnrolmentMarginStanding,
+        changed: ChangedWitnessProjectionRow,
+    }
+
+    fn enrolment_and_changed_composition(
+        identity: &str,
+        declared: EnrolmentExpensivenessGround,
+        occurrence: Option<&crate::cli_run::WitnessExecutionOccurrence>,
+        terminal_row: Option<ClaimTerminalRow>,
+        observations: &HashMap<String, ChangedWitnessCostObservation>,
+    ) -> EnrolmentAndChangedComposition {
+        let planned = RequiredFloorDisposition::PlannedAsChangedWitness;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let mut cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        if let Some(row) = occurrence {
+            cost_owned.insert(identity, row);
+        }
+        let enrolment = enrolment_margin_standing_for(
+            identity,
+            &cost_owned,
+            &dispositions,
+            302,
+            Some(declared),
+        );
+        let terminals: Vec<ClaimTerminalRow> = terminal_row.into_iter().collect();
+        let mut verdict_only = HashSet::new();
+        verdict_only.insert(identity.to_string());
+        let changed = changed_witness_projection_rows(
+            &[identity.to_string()],
+            &[disposition(
+                identity,
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            )],
+            &terminals,
+            &verdict_only,
+            observations,
+            &no_wet_lane(),
+            TEST_CANDIDATE,
+        )
+        .into_iter()
+        .next()
+        .expect("the changed set is this one identity");
+        EnrolmentAndChangedComposition { enrolment, changed }
+    }
+
+    fn merge_blockers(
+        identity: &str,
+        composed: &EnrolmentAndChangedComposition,
+    ) -> Vec<(String, String)> {
+        let mut blockers = Vec::new();
+        if composed.enrolment.blocks() {
+            blockers.push((identity.to_string(), composed.enrolment.cause().to_string()));
+        }
+        if composed.changed.blocks {
+            blockers.push((
+                composed.changed.identity.clone(),
+                composed.changed.cause.clone(),
+            ));
+        }
+        blockers
+    }
+
+    /// CONTROL 1. A declared identity that reaches NO VERDICT — lane cancelled, no claim-cost
+    /// row, no terminal — is admitted by the enrolment arm and the RUN STILL STOPS on
+    /// changed-witness, with a typed cause naming the identity. An absorbing fallback would
+    /// stop nothing.
+    #[test]
+    fn a_declared_identity_with_no_verdict_still_stops_the_run_on_changed_witness() {
+        let identity = "fixture.declared_unmeasured";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::Roster,
+            None,
+            None,
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(
+            !composed.enrolment.blocks(),
+            "enrolment admits; that is the per-gate fact, not the composition"
+        );
+        assert_eq!(composed.enrolment.cause(), "");
+        let blockers = merge_blockers(identity, &composed);
+        assert_eq!(
+            blockers,
+            vec![(
+                identity.to_string(),
+                "changed_witness_planned_without_terminal_verdict".to_string(),
+            )],
+            "the run stops, naming this identity, via the changed-witness cause the .dag fold spells"
+        );
+    }
+
+    /// CONTROL 1b. The same declared identity, wall deadline fires (`BudgetInterrupted` on
+    /// the wall clock): enrolment still does not block, changed-witness still stops the run.
+    #[test]
+    fn a_declared_identity_interrupted_by_the_wall_deadline_still_stops_the_run() {
+        let identity = "fixture.declared_wall_interrupted";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::Roster,
+            None,
+            Some(terminal(
+                identity,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: 8000,
+                    budget_ms: 8000,
+                    kind: BudgetKind::Wall,
+                },
+            )),
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(!composed.enrolment.blocks());
+        let blockers = merge_blockers(identity, &composed);
+        assert_eq!(
+            blockers,
+            vec![(
+                identity.to_string(),
+                "changed_witness_planned_without_terminal_verdict".to_string(),
+            )]
+        );
+    }
+
+    /// CONTROL 2. Twin: a declared identity that EXECUTES and goes semantically RED still
+    /// fails the run. Enrolment reports expensiveness_declared and does not block; the
+    /// semantic Fail is changed-witness's.
+    #[test]
+    fn a_declared_identity_that_executes_and_fails_still_stops_the_run() {
+        let identity = "m.a";
+        let occurrence = crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "failed".to_string(),
+            reading: crate::cli_run::ClaimCostReading::Observed {
+                observed_cpu_ms: 325,
+                observed_wall_ms: 400,
+            },
+            eval_steps: 1,
+            verdict_reached: true,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::Roster,
+            Some(&occurrence),
+            Some(terminal(identity, ClaimOutcome::Fail)),
+            &observation(325),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(!composed.enrolment.blocks());
+        assert_eq!(composed.enrolment.cause(), "");
+        let blockers = merge_blockers(identity, &composed);
+        assert_eq!(
+            blockers,
+            vec![(
+                identity.to_string(),
+                "changed_witness_planned_without_terminal_verdict".to_string(),
+            )]
+        );
+        assert_eq!(composed.changed.outcome, "failed");
+    }
 }
 
 #[cfg(test)]
