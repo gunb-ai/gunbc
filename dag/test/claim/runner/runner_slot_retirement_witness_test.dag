@@ -1,0 +1,304 @@
+module test.claim.runner.runner_slot_retirement_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { NonEmptyStr }
+import gunbc.host_axis_caps {
+  CapRaiseAdmitted,
+  CapRaiseBlockedIncompleteEvidence,
+  CapRaiseBlockedPendingRetirement,
+  CapRaiseBlockedUnobserved,
+  cap_raise_standing,
+}
+import gunbc.runner_slot_retirement {
+  RetirementComplete,
+  RetirementPendingDrain,
+  RetirementUnobserved,
+  RunnerRetirementObservation,
+  runner_retirement_standing,
+  surplus_observation_after_retirement,
+  AuthorizedDisruptiveRetirement,
+  GracefulRetirement,
+  InterruptionAuthorization,
+  srv4_transition_interruption_authorization,
+  RetirementAttempted,
+  RetirementMethodRefused,
+  attempt_completes_retirement,
+  attempt_retirement,
+  surplus_observation_after_attempts,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn drained() -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: "actions-runner@srv1-14.service",
+    replacement_inhibited: true,
+    unit_present: false,
+    cgroup_process_count: 0,
+    cgroup_readable: true,
+  }
+}
+
+// THE POSITIVE CONTROL. Without it every refusal below is satisfied by a predicate that never
+// completes, which is the failure a refusal-only suite cannot see.
+test fn a_fully_drained_slot_is_retired() -> Bool {
+  match runner_retirement_standing(o: drained()) {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A UNIT STILL PRESENT IS NOT RETIRED, and it is not stopped either -- admitted work finishes.
+test fn a_present_unit_is_pending_rather_than_stopped() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      unit_present: true,
+      cgroup_process_count: 3,
+      cgroup_readable: true,
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// THE ORPHAN STATE: THE UNIT IS GONE AND ITS CGROUP IS NOT EMPTY. This is the exact class the
+// teardown drop-in (ExitType=cgroup, KillMode=control-group) was landed to prevent -- a unit
+// reporting stopped while Runner.Worker, claim_executor and gunbc keep running under it. Capacity
+// must stay charged, because that work is still holding memory.
+test fn a_gone_unit_with_a_populated_cgroup_is_not_retired() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      unit_present: false,
+      cgroup_process_count: 2,
+      cgroup_readable: true,
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// AN UNREADABLE CGROUP IS UNOBSERVED, NOT EMPTY. A count that could not be taken and a count of zero
+// have opposite consequences; treating the first as the second releases a ceiling on evidence
+// nobody has.
+test fn an_unreadable_cgroup_is_unobserved_not_empty() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: true,
+      unit_present: false,
+      cgroup_process_count: 0,
+      cgroup_readable: false,
+    }
+  ) {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+}
+
+// A DRAIN WITHOUT INHIBITION NEVER COMPLETES. An ephemeral runner exits after one job and is
+// restarted by its manager, so a slot drained without inhibiting replacement simply returns.
+test fn an_uninhibited_slot_cannot_complete_a_drain() -> Bool {
+  match runner_retirement_standing(
+    o: RunnerRetirementObservation {
+      unit: "actions-runner@srv1-14.service",
+      replacement_inhibited: false,
+      unit_present: false,
+      cgroup_process_count: 0,
+      cgroup_readable: true,
+    }
+  ) {
+    RetirementPendingDrain { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// THE END-TO-END JOIN: one drained slot and one still draining must leave the raise BLOCKED, and the
+// blocked standing must name the slot that is not done.
+test fn a_partial_drain_still_blocks_the_raise() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [],
+    observation: surplus_observation_after_retirement(
+      standings: [
+        runner_retirement_standing(o: drained()),
+        runner_retirement_standing(
+          o: RunnerRetirementObservation {
+            unit: "actions-runner@srv1-15.service",
+            replacement_inhibited: true,
+            unit_present: true,
+            cgroup_process_count: 1,
+            cgroup_readable: true,
+          }
+        ),
+      ]
+    )
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: sp } => sp.length() == 1
+    CapRaiseAdmitted => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AND A COMPLETE DRAIN ADMITS IT. This is the only path to a raise in the whole transaction.
+test fn a_complete_drain_admits_the_raise() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [],
+    observation: surplus_observation_after_retirement(standings: [runner_retirement_standing(o: drained())])
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// ── PERMISSION IS NOT MEASUREMENT: THE TWO-METHOD CONTRACT ─────────────────────────────────────
+
+// THE WITNESS CONSUMES THE DECLARED AUTHORIZATION AND CANNOT MINT ONE. The first draft of this file
+// constructed an `InterruptionAuthorization` inline and the compiler refused it:
+// `sole_constructor type 'InterruptionAuthorization' cannot be constructed outside its defining
+// module`. So the out-of-scope row below tests a unit the OPERATOR'S OWN scope omits, which is a
+// stronger property than testing against a scope the test invented.
+fn srv4_surplus_authorization() -> InterruptionAuthorization {
+  srv4_transition_interruption_authorization
+}
+
+fn drained_unit(unit: String) -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: unit,
+    replacement_inhibited: true,
+    unit_present: false,
+    cgroup_process_count: 0,
+    cgroup_readable: true,
+  }
+}
+
+// THE GRACEFUL METHOD MUST REFUSE, NOT SUCCEED QUIETLY. It is modelled because it is the right
+// method where a service commitment requires completion, and it is not implemented. The dangerous
+// shape would be a no-op that returns `RetirementComplete` -- an unimplemented path reporting a
+// finished drain. This row is the wall against that.
+test fn selecting_the_unimplemented_graceful_method_refuses() -> Bool {
+  match attempt_retirement(
+    method: GracefulRetirement,
+    observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+    work_interrupted: false,
+  ) {
+    RetirementMethodRefused { unit: _, method_label: l, cause: _ } => l == "GracefulRetirement"
+    RetirementAttempted { outcome: _ } => false
+  }
+}
+
+// AND A REFUSED ATTEMPT CONTRIBUTES NO COMPLETION, even though the observation it was handed shows a
+// fully drained slot. That is the separation: the host state was not brought about by the method
+// that was refused, so it cannot be claimed by it.
+test fn a_refused_method_cannot_borrow_the_observations_answer() -> Bool {
+  !attempt_completes_retirement(
+    a: attempt_retirement(
+      method: GracefulRetirement,
+      observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+      work_interrupted: false,
+    )
+  )
+}
+
+// THE AUTHORIZED DISRUPTIVE METHOD COMPLETES, and this is the path this transition uses.
+test fn the_authorized_disruptive_method_completes_on_a_drained_slot() -> Bool {
+  attempt_completes_retirement(
+    a: attempt_retirement(
+      method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+      observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+      work_interrupted: true,
+    )
+  )
+}
+
+// SCOPE IS PER UNIT, NOT PER HOST OR PER ENVIRONMENT. Permission to interrupt srv4-13 and srv4-14 is
+// not permission to interrupt srv4-15, and no "this is a dev box" reading may supply it.
+test fn interruption_outside_the_authorized_scope_refuses() -> Bool {
+  match attempt_retirement(
+    method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+    observation: drained_unit(unit: "actions-runner@srv4-01.service"),
+    work_interrupted: true,
+  ) {
+    RetirementMethodRefused { unit: u, method_label: _, cause: _ } => u == "actions-runner@srv4-01.service"
+    RetirementAttempted { outcome: _ } => false
+  }
+}
+
+// AN INTERRUPTED JOB IS NEVER REPORTED AS A GRACEFUL DRAIN OR AS A FINISHED JOB. The receipt carries
+// the method and the interruption separately from the standing, so "retired" cannot be read as "the
+// work completed".
+test fn an_interrupted_retirement_is_labelled_as_interrupted() -> Bool {
+  match attempt_retirement(
+    method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+    observation: drained_unit(unit: "actions-runner@srv4-14.service"),
+    work_interrupted: true,
+  ) {
+    RetirementAttempted { outcome: out } =>
+      out.work_interrupted
+        && out.method_label == "AuthorizedDisruptiveRetirement"
+        && out.method_label != "GracefulRetirement"
+    RetirementMethodRefused { unit: _, method_label: _, cause: _ } => false
+  }
+}
+
+// DISRUPTIVE PERMISSION DOES NOT WAIVE THE POSTCONDITION. An authorized interruption whose cgroup
+// still holds processes is NOT retired -- the orphan class again, and permission cannot measure it
+// away.
+test fn authorized_interruption_still_requires_an_empty_cgroup() -> Bool {
+  !attempt_completes_retirement(
+    a: attempt_retirement(
+      method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+      observation: RunnerRetirementObservation {
+        unit: "actions-runner@srv4-13.service",
+        replacement_inhibited: true,
+        unit_present: false,
+        cgroup_process_count: 4,
+        cgroup_readable: true,
+      },
+      work_interrupted: true,
+    )
+  )
+}
+
+// THE END-TO-END JOIN THROUGH THE METHOD LAYER: both authorized units retired, so the surplus
+// observation covers the required set and the raise admits.
+test fn two_authorized_retirements_cover_the_required_set() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [
+      "actions-runner@srv4-13.service" as NonEmptyStr,
+      "actions-runner@srv4-14.service" as NonEmptyStr,
+    ],
+    observation: surplus_observation_after_attempts(
+      attempts: [
+        attempt_retirement(
+          method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+          observation: drained_unit(unit: "actions-runner@srv4-13.service"),
+          work_interrupted: true,
+        ),
+        attempt_retirement(
+          method: AuthorizedDisruptiveRetirement { authorization: srv4_surplus_authorization() },
+          observation: drained_unit(unit: "actions-runner@srv4-14.service"),
+          work_interrupted: true,
+        ),
+      ]
+    ),
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}

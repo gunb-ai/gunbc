@@ -4,7 +4,7 @@ import gunbc.fleet_converge_timer {
   fleet_converge_timer_on_calendar,
   fleet_converge_timer_randomized_delay,
 }
-import std.measure { second_count, positive_millisecond_count }
+import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
@@ -42,7 +42,6 @@ import std.layout {
   doc_text,
   render
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_shell_command, executor_privileged_operation_converge_command }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import extdeps.systemd.unit_file {
@@ -99,7 +98,12 @@ import gunbc.host_layout {
   publication_refused_dir,
 }
 import gunbc.host_axis_caps {
-  deploy_memory_cap_apply_script_for_host,
+  CapAuthorizationRefused,
+  CapAuthorizedForThisHost,
+  CapConvergeDecision,
+  CapConvergeWithheld,
+  cap_authorization_for_host,
+  deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
   runner_slot_service_units_for_host,
@@ -402,20 +406,46 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // against what this revision would install (gunbc.live_deploy.unit_standing) consumes the same
 // directive list the emission serializes, rather than re-parsing the rendered text. The doc
 // producers below delegate here; behaviour is unchanged.
-// THE BOUND IS THE RUNNER SLOT'S, BY IDENTITY OF WORKLOAD RATHER THAN BY COINCIDENCE OF NUMBER. The
-// deployment's oneshots run `gunbc run` over the same corpus a CI job resolves, and the server is
-// the same binary; gunbc_runner_slot_desired is the fleet's one authored allowance for that
-// process, and a second literal here would be the section-3 fork. Measured on srv1 2026-09-04 for
-// scale: the serve process peaked at 3.46 GB and the belt at 0.97 GB, both well inside it.
+// THE DEPLOYMENT'S BOUND IS ITS OWN, AND THE SHARED-IDENTITY ARGUMENT THAT MADE IT THE RUNNER
+// SLOT'S IS FALSIFIED RATHER THAN OVERRULED (2026-09-12).
+//
+// WHAT THIS ROW USED TO SAY, and it was true when written: "the bound is the runner slot's, BY
+// IDENTITY OF WORKLOAD rather than by coincidence of number -- the deployment's oneshots run
+// `gunbc run` over the same corpus a CI job resolves, and the server is the same binary, so
+// gunbc_runner_slot_desired is the fleet's one authored allowance for that process and a second
+// literal here would be the section-3 fork."
+//
+// WHAT FALSIFIED IT: the runner row stopped being an allowance for "a gunbc process". The
+// 2026-09-12 demand ruling sizes it from the REQUIRED FLOOR'S measured peak -- one prepared subject
+// over the whole corpus, 22.74 GiB uncensored -- which is work this deployment never performs. The
+// same 2026-09-04 measurement the old note cited for scale is the refutation at this size: serve
+// peaked at 3.46 GB and the belt at 0.97 GB. Sharing one number with the floor was a coincidence of
+// magnitude that read as an identity of workload, and the moment the floor's number moved, the
+// coincidence ended while the sentence asserting the identity did not. That is the pattern this
+// corpus keeps finding -- a name that states a coincidence as a law.
+//
+// THE VALUES DO NOT CHANGE TODAY, deliberately. They are the bytes this deployment already runs
+// with, restated as its own fact with its own justification rather than re-derived to something
+// tighter in the same change that decouples them. Whether 16 GiB is the right bound for a 4.43 GB
+// workload is a separate question with its own evidence; this change only stops the answer being
+// decided by the floor's memory demand.
+//
+// IT ALSO CLOSES A CAP-WRITER BYPASS. `live_deploy` writes this slice with no host admission
+// consulted, so while the number was the runner row's, any move to that row propagated to a host
+// whose runner allocation may have been REFUSED. Decoupling removes the propagation rather than
+// gating it: there is no longer a runner-derived number here to leak.
+data live_deploy_slice_memory_max: ByteSize = byte_size(17179869184)
+
+data live_deploy_slice_memory_high: ByteSize = byte_size(16106127360)
+
 fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  let slot = gunbc_runner_slot_desired()
   SliceUnitFile {
     unit: [
       Description { text: join(["gunbc deployment cgroup bound for ", spec.names.unit_name as String], "") as NonEmptyStr },
     ],
     slice: [
-      slice_memory_max(bytes: slot.memory_max),
-      slice_memory_high(bytes: slot.memory_high),
+      slice_memory_max(bytes: live_deploy_slice_memory_max),
+      slice_memory_high(bytes: live_deploy_slice_memory_high),
     ],
     install: NotInstallable,
   }
@@ -1216,22 +1246,55 @@ fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> Li
   ]
 }
 
-fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+// THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
+//
+// THIS IS THE PRODUCTION WRITER. `gunbc.host_axis_caps` authors the per-slot drop-in content and
+// THIS path applies it -- `gunbc converge` does not (operator privilege hold, 2026-08-13) -- so a
+// gate that lives only beside the authoring helpers leaves the reachable route intact. Until this
+// parameter existed the guard here checked author-before-shadow-revert composition and a nonempty
+// unit list, neither of which is evidence that the surplus old slots have finished.
+//
+// THE DEFAULT IS WITHHELD AND THAT IS DELIBERATE. No caller yet supplies a live
+// `SurplusSlotObservation` (`gunbc.runner_slot_population_census` produces one but is not wired to
+// a converge call site), so every caller today reaches the refusal arm. A deploy that cannot prove
+// retirement does not write caps; it stops and says which evidence is missing. That is the safe
+// default the previous shape did not have.
+//
+// IT REFUSES BOTH HALVES. The withheld arm emits neither the authoring script NOR the per-unit
+// shadow reverts that follow it, because a revert is a change to the same subject and authorising
+// half a transaction is how the ordering hazard returns under a different name.
+fn deploy_memory_cap_apply_steps(
+  spec: DeploymentSpec,
+  authorization: CapConvergeDecision,
+) -> List<PipelineStep> {
   let host = spec.target.host.identity
   let units = runner_slot_service_units_for_host(host: host)
-  let script = deploy_memory_cap_apply_script_for_host(host: host)
-  if host_axis_caps_author_before_revert_enforced
-    && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
-    [deploy_raw(command: script)]
-  } else {
-    [
-      deploy_raw(
-        command: concat(
-          "__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=",
-          host as String,
+  match cap_authorization_for_host(d: authorization, host: host) {
+    CapAuthorizationRefused { cause: why } =>
+      [
+        deploy_raw(
+          command: concat(
+            concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply not authorized for this host: ", why),
+            concat(" host=", host as String),
+          ),
         ),
-      ),
-    ]
+      ]
+    CapAuthorizedForThisHost { desired: members, authorized_retiring: _ } => {
+      let script = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
+      if host_axis_caps_author_before_revert_enforced
+        && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
+        [deploy_raw(command: script)]
+      } else {
+        [
+          deploy_raw(
+            command: concat(
+              "__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=",
+              host as String,
+            ),
+          ),
+        ]
+      }
+    }
   }
 }
 
@@ -1729,11 +1792,20 @@ fn step_membership_effects(
   )
 }
 
+// THE CAP AUTHORIZATION IS A PARAMETER ALL THE WAY UP, NOT A DEFAULT BURIED AT THE BOTTOM.
+//
+// An earlier revision hardcoded `CapConvergeWithheld` inside this function. That was safe and
+// INVISIBLE: a reader of the deploy boundary could not tell that cap application was gated, and
+// whoever eventually wires a live observation had no compiler-enforced place to put it. Threading
+// the decision to the boundary makes the gap a signature rather than a comment -- the withheld
+// default now lives at exactly one visible call site, and supplying a real decision means changing
+// an argument rather than finding a literal.
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
   access: DeployAccess,
   plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
 ) -> Pipeline {
   Pipeline {
     steps: concat(
@@ -1749,7 +1821,7 @@ fn apply_intent_from_effects(
       concat(
         deploy_apply_preamble_steps(access: access, spec: spec),
         concat(
-          deploy_memory_cap_apply_steps(spec: spec),
+          deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
           concat(
             flat_map(spec.steps, step => apply_step_effects(step: step, effects: effects, spec: spec, plan: plan)),
             [
@@ -1841,7 +1913,11 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   )
 }
 
-fn live_deploy_apply_script_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
+fn live_deploy_apply_script_for(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+) -> String {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessJobPrincipalRefused { refusal: r } =>
       deploy_access_job_principal_refused_emit_poison(refusal: r)
@@ -1849,7 +1925,13 @@ fn live_deploy_apply_script_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -
       match membership_effects(plan: deployment_apply_plan(spec: spec)) {
         EffectsReady { effects: es } =>
           emit_pipeline_or_poison(
-            p: apply_intent_from_effects(spec: spec, effects: es, access: access, plan: plan),
+            p: apply_intent_from_effects(
+              spec: spec,
+              effects: es,
+              access: access,
+              plan: plan,
+              cap_authorization: cap_authorization,
+            ),
             refused: live_deploy_apply_emit_refused_poison
           )
         ApplyRefused { refusals: rs } =>

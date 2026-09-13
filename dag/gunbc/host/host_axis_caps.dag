@@ -244,6 +244,198 @@ fn derived_runner_memory_cap_members() -> List<CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
 }
 
+// ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────
+//
+// WHAT ADMISSION ALREADY DOES: `runner_slot_service_units_for_host` bounds the units these drop-ins
+// target by `gunbc_runner_slots_per_host`, so a host whose width is REFUSED gets no units and
+// therefore no caps. That answers WHETHER a host may be written to.
+//
+// WHAT IT DOES NOT ANSWER IS WHEN. Narrowing a width from 21 to 12 narrows the target list -- it
+// does not stop slots 13..21 EXISTING or SERVING. Applying the raise then commits the host to
+// twelve slots at the new ceiling PLUS nine still holding the old one.
+//
+// THE OBSERVATION IS AN INPUT RATHER THAN A LOOKUP, so a fixture can drive every arm this claims to
+// refuse; a zero-argument derivation over today's fleet would leave the refusing arms unreachable
+// and the check on them a decoration.
+type SurplusSlotObservation
+  = SurplusSlotsObserved { retired: List<NonEmptyStr>, still_present: List<NonEmptyStr> }
+  | SurplusSlotsUnobserved { cause: String }
+
+// THE REQUIRED RETIRING SET IS CARRIED, AND WITHOUT IT THE GATE COULD NOT SEE AN OMISSION.
+//
+// An earlier revision partitioned only the SUPPLIED standings and admitted whenever `still_present`
+// was empty. That detects an incomplete STANDING and is blind to an incomplete COLLECTION of them:
+// `standings = []` projects to `retired: [], still_present: []` and admitted, as did one truthful
+// completion supplied while another required retiree was simply omitted. Evidence about the slots
+// someone chose to mention is not evidence about the slots that must go.
+//
+// AN EMPTY REQUIRED SET IS LEGITIMATE and is not rejected: a host with no surplus -- including the
+// already-converged second pass -- has nothing to retire, and refusing that would make convergence
+// non-idempotent.
+type CapRaiseStanding
+  = CapRaiseAdmitted
+  | CapRaiseBlockedPendingRetirement { still_present: List<NonEmptyStr> }
+  | CapRaiseBlockedIncompleteEvidence { missing: List<NonEmptyStr> }
+  | CapRaiseBlockedUnobserved { cause: String }
+
+fn retirement_evidence_covers(required: List<NonEmptyStr>, retired: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  required |> filter(r => !any(retired, d => (d as String) == (r as String)))
+}
+
+fn cap_raise_standing(
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+) -> CapRaiseStanding {
+  match observation {
+    SurplusSlotsUnobserved { cause: c } => CapRaiseBlockedUnobserved { cause: c }
+    SurplusSlotsObserved { retired: rt, still_present: sp } =>
+      if sp.length() > 0 {
+        CapRaiseBlockedPendingRetirement { still_present: sp }
+      } else {
+        let missing = retirement_evidence_covers(required: required_retiring, retired: rt)
+        if missing.length() > 0 {
+          CapRaiseBlockedIncompleteEvidence { missing: missing }
+        } else {
+          CapRaiseAdmitted
+        }
+      }
+  }
+}
+
+// A WITHHELD RAISE IS NOT AN EMPTY DESIRED SET, AND THE DIFFERENCE IS A TEARDOWN.
+//
+// The previous shape returned `[]` on every blocked arm, with a note claiming an empty member list
+// means "no change". IT DOES NOT. `caps_reconcile` treats an OWNED OBSERVED member absent from the
+// desired set as `MemberRemoved`, and `membership_effects` renders that as `EffectRemove` -- so
+// "this host is not authorised to change" was encoded as "this host should have no cap members",
+// which asks for the existing caps to be TORN DOWN. A blocked raise would have removed the very
+// ceilings it was blocked from raising.
+//
+// The disposition is therefore carried to the EFFECT decision rather than flattened into a list on
+// the way there, and the withheld arm emits neither upserts nor removals.
+// THE AUTHORIZATION CARRIES ITS SUBJECT, BECAUSE AN UNBOUND ONE AUTHORIZES ANYTHING.
+//
+// An earlier revision was `CapConvergeAuthorized { desired }` -- no host, no transition. The
+// production writer then reduced it to a Boolean and rebuilt the script from its own `spec`, so a
+// decision honestly produced from srv4's completed retirement would have authorized an srv1 apply.
+// No forged constructor is needed for that: the identity was simply erased, and "not withheld" is
+// not a statement about WHICH host or WHICH transition was proven.
+//
+// So the arm names the host it authorizes AND the retiring population whose retirement licensed it.
+// A writer must check both against the deployment in front of it, and must emit the members the
+// authorization carries rather than re-deriving equivalent ones -- re-derivation is what let the
+// Boolean check pass while the content came from somewhere else.
+type CapConvergeDecision
+  = CapConvergeAuthorized {
+      host: HostIdentity,
+      authorized_retiring: List<NonEmptyStr>,
+      desired: List<CapMember>,
+    }
+  | CapConvergeWithheld { cause: String }
+
+fn cap_converge_decision(
+  host: HostIdentity,
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+) -> CapConvergeDecision {
+  match cap_raise_standing(required_retiring: required_retiring, observation: observation) {
+    CapRaiseAdmitted =>
+      CapConvergeAuthorized {
+        host: host,
+        authorized_retiring: required_retiring,
+        desired: derived_runner_memory_cap_members(),
+      }
+    CapRaiseBlockedPendingRetirement { still_present: sp } =>
+      CapConvergeWithheld {
+        cause: join(["surplus slots have not retired: ", join(map(sp, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
+      }
+    CapRaiseBlockedIncompleteEvidence { missing: ms } =>
+      CapConvergeWithheld {
+        cause: join(["no retirement evidence for required retirees: ", join(map(ms, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
+      }
+    CapRaiseBlockedUnobserved { cause: c } =>
+      CapConvergeWithheld {
+        cause: join(["the slot population could not be observed (", c, "); existing caps are left exactly as observed"], ""),
+      }
+  }
+}
+
+fn cap_converge_is_withheld(d: CapConvergeDecision) -> Bool {
+  match d {
+    CapConvergeAuthorized { host: _, authorized_retiring: _, desired: _ } => false
+    CapConvergeWithheld { cause: _ } => true
+  }
+}
+
+// THE BINDING CHECK THE WRITER MUST MAKE. A decision is usable by a deployment only if it names that
+// deployment's host; anything else is an authorization for a different subject.
+type CapAuthorizationForHost
+  = CapAuthorizedForThisHost { desired: List<CapMember>, authorized_retiring: List<NonEmptyStr> }
+  | CapAuthorizationRefused { cause: String }
+
+fn cap_authorization_for_host(
+  d: CapConvergeDecision,
+  host: HostIdentity,
+) -> CapAuthorizationForHost {
+  match d {
+    CapConvergeWithheld { cause: c } => CapAuthorizationRefused { cause: c }
+    CapConvergeAuthorized { host: h, authorized_retiring: ar, desired: ds } =>
+      if (h as String) == (host as String) {
+        CapAuthorizedForThisHost { desired: ds, authorized_retiring: ar }
+      } else {
+        CapAuthorizationRefused {
+          cause: join(["the authorization names host ", h as String, " and this deployment targets ", host as String, "; an authorization is evidence about ONE host's retirement and cannot be spent on another"], ""),
+        }
+      }
+  }
+}
+
+// THE ONLY ROUTE FROM A DECISION TO EFFECTS. A withheld decision yields NO effects at all -- not an
+// empty desired set reconciled against a nonempty observed one, which is the removal path above.
+// WITHHELD AND REFUSED ARE DIFFERENT EMPTY LISTS, so this returns a standing rather than a list.
+// The earlier shape mapped BOTH the withheld arm and `ApplyRefused` to `[]`, which meant a control
+// asserting "no effects" could not tell the intended withholding from an unrelated reconcile
+// refusal -- and a test written to prove the teardown repair would pass for the wrong reason.
+type CapEffectStanding
+  = CapEffectsReady { effects: List<MemberEffect<CapMember>> }
+  | CapEffectsWithheld { cause: String }
+  | CapEffectsRefusedByReconcile { cause: String }
+
+fn authorized_caps_effect_standing(
+  decision: CapConvergeDecision,
+  host: HostIdentity,
+  observed: List<CapMember>,
+) -> CapEffectStanding {
+  match cap_authorization_for_host(d: decision, host: host) {
+    CapAuthorizationRefused { cause: c } => CapEffectsWithheld { cause: c }
+    CapAuthorizedForThisHost { desired: d, authorized_retiring: _ } =>
+      match caps_effects(desired: d, observed: observed) {
+        EffectsReady { effects: es } => CapEffectsReady { effects: es }
+        ApplyRefused { refusals: _ } =>
+          CapEffectsRefusedByReconcile {
+            cause: "membership reconcile refused the authorized cap plan; this is NOT the withheld arm and must not be reported as one",
+          }
+      }
+  }
+}
+
+fn cap_effect_standing_effects(s: CapEffectStanding) -> List<MemberEffect<CapMember>> {
+  match s {
+    CapEffectsReady { effects: es } => es
+    CapEffectsWithheld { cause: _ } => []
+    CapEffectsRefusedByReconcile { cause: _ } => []
+  }
+}
+
+fn cap_raise_standing_blocks(standing: CapRaiseStanding) -> Bool {
+  match standing {
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => true
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => true
+    CapRaiseBlockedUnobserved { cause: _ } => true
+  }
+}
+
 // runner_memory_cap_author_script AND runner_memory_cap_author_stmts WERE HERE. They rendered
 // both derived drop-ins as one converge-side authoring script, and after the converge apply arm
 // was deleted (2026-08-21) their only remaining readers were witnesses. Production code whose
@@ -341,6 +533,22 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
 fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
   deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
+}
+
+// THE SCRIPT IS BUILT FROM THE MEMBERS THE AUTHORIZATION CARRIES, not re-derived beside it. The
+// earlier route checked a Boolean and then called `deploy_memory_cap_apply_script_for_host`, so the
+// bytes came from the writer's own `spec` while the check came from a decision about possibly some
+// other host. Taking the members from the authorization is what makes the check load-bearing.
+fn deploy_memory_cap_apply_script_from_authorization(
+  members: List<CapMember>,
+  units: List<NonEmptyStr>,
+) -> String {
+  shell_command_text_of_stmts(
+    stmts: concat(
+      fold(members, init: [], f: (acc, m) => concat(acc, cap_upsert_stmts(m: m))),
+      deploy_memory_cap_shadow_revert_stmts(units: units),
+    )
+  )
 }
 
 // Deploy apply composite: author derived drop-ins first, then shadow revert per unit.

@@ -156,6 +156,7 @@ import gunbc.ci_deploy_access {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+import gunbc.host_axis_caps { CapConvergeWithheld }
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
@@ -3811,6 +3812,22 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
   }
 }
 
+// THIS IS THE ONE PLACE THE CAP AUTHORIZATION IS SUPPLIED, AND IT IS WITHHELD.
+//
+// Everything below this function takes the decision as a parameter -- `live_deploy_apply_script_for`,
+// `apply_intent_from_effects`, `deploy_memory_cap_apply_steps` -- so this is the single visible point
+// at which a real one would be provided. An earlier revision hid the default at the bottom of that
+// chain, which was equally safe and gave whoever wires the observation no compiler-enforced place to
+// put it.
+//
+// IT IS WITHHELD BECAUSE NO CALLER CAN YET OBTAIN THE EVIDENCE. `gunbc.runner_slot_population_census`
+// produces a live surplus observation over the fleet SSH edge, and this apply-script chain is PURE:
+// the script is RENDERED here and EXECUTED later. So the observation must be taken by whoever
+// invokes this realize and threaded in, never fetched from inside a renderer -- a pure function that
+// reached out to a host would be the plan/execute boundary dissolving.
+//
+// Until that is wired a converge emits the typed refusal step and writes no caps, which is the
+// correct default: a deploy that cannot prove retirement does not raise ceilings.
 fn realize_live_deploy_apply_on_host(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
@@ -3824,7 +3841,13 @@ fn realize_live_deploy_apply_on_host(
   } else {
     realize_shell_on_host(
       script: retained_srvn(
-        body: live_deploy_apply_script_for(spec: spec, plan: plan),
+        body: live_deploy_apply_script_for(
+          spec: spec,
+          plan: plan,
+          cap_authorization: CapConvergeWithheld {
+            cause: "no live surplus-slot observation is threaded to this realize; gunbc.runner_slot_population_census produces one but this apply chain is pure and cannot obtain it",
+          },
+        ),
         reason: "live_deploy apply (unit install + start)",
       ),
       transport: transport,

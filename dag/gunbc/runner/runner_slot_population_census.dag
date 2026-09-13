@@ -1,0 +1,227 @@
+module gunbc.runner_slot_population_census
+
+import std.types { Bool, List, String }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_unit { runner_slot_unit_name, runner_unit_prefix, runner_unit_suffix }
+import std.algebra { trim }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
+import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
+import std.resources { Network }
+
+// THE POPULATION A SHRINK ACTS ON, READ RATHER THAN ASSUMED.
+//
+// `gunbc.host_axis_caps` orders a cap raise after retirement evidence and refuses without it, which
+// is correct and leaves the transaction blocked-by-construction: nothing produced a
+// `SurplusSlotObservation`. This module is that producer. It takes what a host's systemd actually
+// reports and classifies it against what the allocation authority desires.
+//
+// OWNERSHIP IS DECIDED INDEPENDENTLY OF DESIRED MEMBERSHIP, and that is the load-bearing rule. The
+// obvious shape -- recognise a unit by looking it up in the desired set -- is self-blinding for
+// exactly the operation this exists to serve: the moment the width narrows from 21 to 12, slots
+// 13..21 stop appearing in the desired set and would become UNRECOGNISABLE at the instant the
+// removal planner needs to act on them. A shrink would then see nine foreign units on its own host
+// and refuse, or worse, see nothing. Ownership is therefore a property of the unit's NAME under the
+// host's own instance prefix, which does not move when the width moves.
+type ObservedRunnerUnit {
+  unit: String
+  active: Bool
+}
+
+// FOUR DISPOSITIONS, AND `Foreign` IS NOT A SPELLING OF `Retiring`. A unit this host does not own
+// must never be retired by this transaction -- that is somebody else's process, and stopping it
+// because it sits in our directory is the class of harm the whole gate exists to avoid. It refuses
+// the census instead.
+type SlotCensusRow
+  = RetainedSlot { unit: String }
+  | RetiringSlot { unit: String, active: Bool }
+  | MissingSlot { unit: String }
+  | ForeignOccupant { unit: String }
+
+type SlotCensus
+  = CensusDerived { rows: List<SlotCensusRow> }
+  | CensusRefused { cause: String }
+
+// A SLOT UNIT BY NAME, DERIVED FROM THE UNIT AUTHORITY'S OWN PREFIX AND SUFFIX rather than spelled
+// again. `gunbc.runner_host_file_converge` carries an identical predicate for its own list-units
+// parse; this is the same contract read from the same two data rows, not a second convention.
+fn census_unit_name_is_slot(name: String) -> Bool {
+  starts_with(s: name, prefix: runner_unit_prefix)
+    && ends_with(s: name, suffix: runner_unit_suffix)
+    && string_length(s: name) > string_length(s: concat(runner_unit_prefix, runner_unit_suffix))
+}
+
+fn host_instance_prefix(host: HostIdentity) -> String {
+  join([runner_unit_prefix, host as String, "-"], "")
+}
+
+// OURS BY NAME, NOT BY MEMBERSHIP. `actions-runner@srv1-14.service` belongs to srv1 whether or not
+// srv1 currently desires a fourteenth slot.
+fn unit_is_owned_by_host(host: HostIdentity, unit: String) -> Bool {
+  starts_with(s: unit, prefix: host_instance_prefix(host: host))
+}
+
+fn desired_unit_names(host: HostIdentity) -> List<String> {
+  desired_unit_names_range(host: host, slot: 1, limit: gunbc_runner_slots_per_host(host: host))
+}
+
+fn desired_unit_names_range(host: HostIdentity, slot: Int, limit: Int) -> List<String> {
+  if slot > limit {
+    []
+  } else {
+    concat(
+      [runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: slot }) as String],
+      desired_unit_names_range(host: host, slot: slot + 1, limit: limit)
+    )
+  }
+}
+
+fn observed_unit_names(observed: List<ObservedRunnerUnit>) -> List<String> {
+  observed |> map(o => o.unit)
+}
+
+fn classify_observed_unit(
+  host: HostIdentity,
+  desired: List<String>,
+  o: ObservedRunnerUnit,
+) -> SlotCensusRow {
+  if !unit_is_owned_by_host(host: host, unit: o.unit) {
+    ForeignOccupant { unit: o.unit }
+  } else if string_list_contains(xs: desired, wanted: o.unit) {
+    RetainedSlot { unit: o.unit }
+  } else {
+    RetiringSlot { unit: o.unit, active: o.active }
+  }
+}
+
+// A DESIRED UNIT THAT IS NOT RUNNING IS `Missing`, AND IT IS REPORTED RATHER THAN IGNORED. A shrink
+// that silently tolerated an absent retained slot would converge a host to fewer serving runners
+// than it committed to, which is the under-provisioning direction of the same defect.
+fn missing_rows(desired: List<String>, observed_names: List<String>) -> List<SlotCensusRow> {
+  desired
+    |> filter(d => !string_list_contains(xs: observed_names, wanted: d))
+    |> map(d => MissingSlot { unit: d })
+}
+
+fn census_rows(host: HostIdentity, observed: List<ObservedRunnerUnit>) -> List<SlotCensusRow> {
+  let desired = desired_unit_names(host: host)
+  concat(
+    observed |> map(o => classify_observed_unit(host: host, desired: desired, o: o)),
+    missing_rows(desired: desired, observed_names: observed_unit_names(observed: observed))
+  )
+}
+
+fn row_is_foreign(r: SlotCensusRow) -> Bool {
+  match r {
+    ForeignOccupant { unit: _ } => true
+    RetainedSlot { unit: _ } => false
+    RetiringSlot { unit: _, active: _ } => false
+    MissingSlot { unit: _ } => false
+  }
+}
+
+// A FOREIGN OCCUPANT REFUSES THE WHOLE CENSUS rather than being filtered out of it. Filtering would
+// let a shrink proceed around something it could not identify, on a host where it is about to stop
+// units -- the absorbing fallback in its most dangerous position.
+fn slot_population_census(host: HostIdentity, observed: List<ObservedRunnerUnit>) -> SlotCensus {
+  let rows = census_rows(host: host, observed: observed)
+  if rows |> filter(r => row_is_foreign(r: r)) |> length() > 0 {
+    CensusRefused {
+      cause: "a unit under the runner instance directory is not owned by this host's instance prefix, so this census cannot say whether stopping it is safe; refusing rather than acting around an unidentified occupant",
+    }
+  } else {
+    CensusDerived { rows: rows }
+  }
+}
+
+fn retiring_still_present(rows: List<SlotCensusRow>) -> List<String> {
+  rows
+    |> flat_map(r => match r {
+      RetiringSlot { unit: u, active: _ } => [u]
+      RetainedSlot { unit: _ } => []
+      MissingSlot { unit: _ } => []
+      ForeignOccupant { unit: _ } => []
+    })
+}
+
+// THE PROJECTION INTO THE GATE'S INPUT. `still_present` is every OWNED unit outside the desired set
+// that systemd still reports, ACTIVE OR NOT: a stopped-but-present unit can be restarted by the
+// manager, so presence rather than activity is the retirement condition. `busy=false` is not
+// retirement and neither is `inactive`.
+fn surplus_observation(census: SlotCensus) -> SurplusSlotObservation {
+  match census {
+    CensusRefused { cause: c } => SurplusSlotsUnobserved { cause: c }
+    CensusDerived { rows: rows } =>
+      SurplusSlotsObserved {
+        retired: [],
+        still_present: retiring_still_present(rows: rows),
+      }
+  }
+}
+
+
+// ── THE LIVE PRODUCER ─────────────────────────────────────────────────────────────────────────
+//
+// THE TRANSPORT ALREADY EXISTED AND IS REUSED RATHER THAN REBUILT.
+// `gunbc.runner_host_file_converge` `observe_runner_slot_population` reads this same
+// `systemctl list-units` over the same FleetSsh edge as the same declared administrator; this
+// module needs a different PROJECTION of that output, not a second way to obtain it.
+//
+// WHAT THE EXISTING PARSE DROPS: `runner_slot_units_from_list_units` keeps only the first word of
+// each line -- the unit name -- because its consumer then asks `systemctl show` for the properties
+// it cares about. The retirement question also wants the ACTIVE column, which `list-units --plain
+// --no-legend` already carries as the third field (UNIT LOAD ACTIVE SUB DESCRIPTION), so taking it
+// here costs no additional round trip.
+//
+// ACTIVITY IS CARRIED FOR THE OPERATOR, NOT FOR THE VERDICT. `surplus_observation` blocks on
+// PRESENCE, so a unit reported inactive still blocks; the flag exists so a blocked raise can say
+// whether what it is waiting on is running or merely loaded.
+fn list_units_field(line: String, index: Int) -> String {
+  let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+  fold(
+    enumerate(words),
+    init: "",
+    f: (acc, iw) => if iw.first == index { iw.second } else { acc }
+  )
+}
+
+fn observed_units_from_list_units(stdout: String) -> List<ObservedRunnerUnit> {
+  split(s: stdout, delimiter: "\n")
+    |> filter(l => trim(s: l) != "")
+    |> map(l => ObservedRunnerUnit {
+        unit: list_units_field(line: l, index: 0),
+        active: list_units_field(line: l, index: 2) == "active",
+      })
+    |> filter(o => census_unit_name_is_slot(name: o.unit))
+}
+
+// A TRANSPORT REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION. An unreachable host or a nonzero
+// exit says nothing about how many slots it is running, and rendering either as "no surplus" is the
+// narrow that would let a shrink raise caps on a host it could not read.
+func observe_slot_population_over_ssh(
+  host: HostIdentity,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+) -> SlotCensus
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(
+    target: target,
+    context: context,
+    argv: systemctl_list_all_service_units_argv(),
+  ) {
+    TypedArgvExecRefused { reason: why } =>
+      CensusRefused { cause: join(["runner slot population unreadable over the fleet edge: ", why], "") }
+    TypedArgvExecConverged { result: listed } =>
+      if !listed.success {
+        CensusRefused {
+          cause: join(["systemctl list-units exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr)], ""),
+        }
+      } else {
+        slot_population_census(host: host, observed: observed_units_from_list_units(stdout: listed.stdout))
+      }
+  }
+}
