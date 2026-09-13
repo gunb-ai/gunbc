@@ -1,7 +1,7 @@
 module product.data_class
 
 import std.types { Bool, List, String, NonEmptyStr }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_in_list }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -205,9 +205,28 @@ fn log_channel_sink<C>(category: DataCategoryWitness<C>, purpose: DeclarationRef
 // rows (gunbc-private strategy.data_map) and deliberately NOT typed values here: that lane's
 // retention is a coproduct three of whose four arms are not periods, and none of its periods is
 // ratified, so a typed slot here would be an empty box inviting an unratified commitment.
+// THE OPERATION THE EFFECT PERFORMS, typed on the row and the permit so a permit to store is not
+// a permit to transmit.
+type DataOperation
+  = StoreDurably
+  | Transmit
+
+// A ROW ADMITS THE EFFECT'S DIMENSIONS, NOT ONLY ITS DESTINATION (parent ruling on review of
+// bdac46f52). Purpose limitation and recipient are the compliance facts this model exists to
+// carry, so a row names the PURPOSES, RECIPIENTS and OPERATIONS it admits for its
+// (category, sink kind[, route]); the fold matches the sink's purpose and recipient and the
+// requested operation against them, and the permit then carries all three as ADMITTED facts
+// rather than as whatever the caller wrote on the sink. Purposes and recipients are open
+// DeclarationRefs into the authoring lane's rows: gunbc-private strategy.data_map's
+// ProcessingPurpose (a declared frontier there, constructed and never matched) is exactly what a
+// row's purposes cite, and its recipients are that lane's transfer counterparties. An empty list
+// admits nothing -- there is no wildcard arm.
 type DataHandlingRow {
   category: DeclarationRef
   sink: SinkKind
+  purposes: List<DeclarationRef>
+  recipients: List<DeclarationRef>
+  operations: List<DataOperation>
   retention: DeclarationRef
   lawful_basis: DeclarationRef
   posture: CompliancePostureRevision
@@ -268,16 +287,11 @@ fn public_fabric_posture() -> CompliancePostureRevision {
   }
 }
 
-// THE OPERATION THE EFFECT PERFORMS, typed on the permit so a permit to store is not a permit to
-// transmit.
-type DataOperation
-  = StoreDurably
-  | Transmit
-
 // THE PERMIT, SEALED. Only admit_data_effect mints one. It carries the revealed payload -- the
 // permit IS the admitted exit, and the effect that takes it is the reader -- beside every fact the
 // decision read, so an auditor holding a permit can re-derive it: category, sink (kind, purpose,
-// recipient), operation, the map authority, the posture revision, and the retention and
+// recipient -- each matched against the admitting row, so they are admitted facts, not the
+// caller's labels), operation (likewise), the map authority, the posture revision, and the retention and
 // lawful-basis references of the row that admitted it.
 type DataEffectPermit<C, T> sole_constructor {
   category: DeclarationRef
@@ -299,6 +313,9 @@ type DataEffectRefusal
   | CategoryUnmapped { category: DeclarationRef, map: DeclarationRef }
   | SinkNotPermittedForCategory { category: DeclarationRef, sink: SinkKind }
   | RouteNotPermittedForCategory { category: DeclarationRef, route: ProviderRoute }
+  | PurposeNotPermittedForSink { category: DeclarationRef, sink: SinkKind, purpose: DeclarationRef }
+  | RecipientNotPermittedForSink { category: DeclarationRef, sink: SinkKind, recipient: DeclarationRef }
+  | OperationNotPermittedForSink { category: DeclarationRef, sink: SinkKind, operation: DataOperation }
   | PostureRevisionStale { evaluated: List<ContentHash>, active: ContentHash }
 
 type DataEffectAdmission<C, T>
@@ -364,6 +381,30 @@ fn map_refusals<C>(
   }
 }
 
+// THE EFFECT DIMENSIONS, IN REMEDY ORDER: name the purpose on the row, name the recipient, name
+// the operation. Each is judged over the rows that already matched the destination, so a
+// refusal here says exactly which dimension the policy has not admitted for this sink.
+fn dimension_refusals<C>(
+  sink: Sink<C>,
+  operation: DataOperation,
+  matched: List<DataHandlingRow>,
+  by_purpose: List<DataHandlingRow>,
+  by_recipient: List<DataHandlingRow>,
+  by_operation: List<DataHandlingRow>,
+) -> List<DataEffectRefusal> {
+  if count(matched) == 0 {
+    []
+  } else if count(by_purpose) == 0 {
+    [PurposeNotPermittedForSink { category: sink.category, sink: sink.kind, purpose: sink.purpose }]
+  } else if count(by_recipient) == 0 {
+    [RecipientNotPermittedForSink { category: sink.category, sink: sink.kind, recipient: sink.recipient }]
+  } else if count(by_operation) == 0 {
+    [OperationNotPermittedForSink { category: sink.category, sink: sink.kind, operation: operation }]
+  } else {
+    []
+  }
+}
+
 fn posture_refusals(
   matched: List<DataHandlingRow>,
   current: List<DataHandlingRow>,
@@ -397,12 +438,18 @@ fn admit_data_effect<C, T>(
   let by_category = rows_for_category(handling_map: handling_map, category: sink.category)
   let same_family = filter(by_category, r => sink_kind_same_family(row: r.sink, sink: sink.kind))
   let matched = filter(same_family, r => sink_kind_matches(row: r.sink, sink: sink.kind))
-  let current = filter(matched, r => posture_is_current(evaluated: r.posture, active: posture))
+  let by_purpose = filter(matched, r => declaration_ref_in_list(target: sink.purpose, refs: r.purposes))
+  let by_recipient = filter(by_purpose, r => declaration_ref_in_list(target: sink.recipient, refs: r.recipients))
+  let by_operation = filter(by_recipient, r => any(r.operations, o => o == operation))
+  let current = filter(by_operation, r => posture_is_current(evaluated: r.posture, active: posture))
   let refusals = concat(
     category_refusals(classified: classified, sink: sink),
     concat(
       map_refusals(sink: sink, handling_map: handling_map, by_category: by_category, same_family: same_family, matched: matched),
-      posture_refusals(matched: matched, current: current, active: posture),
+      concat(
+        dimension_refusals(sink: sink, operation: operation, matched: matched, by_purpose: by_purpose, by_recipient: by_recipient, by_operation: by_operation),
+        posture_refusals(matched: by_operation, current: current, active: posture),
+      ),
     ),
   )
   fold(

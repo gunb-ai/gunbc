@@ -37,7 +37,8 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import product.fabric.provider_route { CompliancePostureRevision }
 import product.data_class {
   DataHandlingMap, DataEffectAdmitted, DataEffectRefused, DataEffectRefusal,
-  CategoryDisagreesWithSink, CategoryUnmapped, SinkNotPermittedForCategory, RouteNotPermittedForCategory, PostureRevisionStale,
+  CategoryDisagreesWithSink, CategoryUnmapped, SinkNotPermittedForCategory, RouteNotPermittedForCategory,
+  PurposeNotPermittedForSink, RecipientNotPermittedForSink, OperationNotPermittedForSink, PostureRevisionStale,
   StoreDurably,
   admit_data_effect, durable_origin_sink, build_output_category, public_fabric_map, public_fabric_posture,
 }
@@ -274,6 +275,9 @@ fn refusal_reason(cause: DataEffectRefusal) -> String {
     CategoryUnmapped { category: _, map: m } => "no data-handling row admits BuildOutput under map " + (m.module_path as String) + "." + (m.decl_name as String) + "; run with the private map"
     SinkNotPermittedForCategory { category: _, sink: _ } => "the data-handling map admits BuildOutput to no durable origin"
     RouteNotPermittedForCategory { category: _, route: _ } => "the data-handling map does not admit BuildOutput on the fleet R2 route"
+    PurposeNotPermittedForSink { category: _, sink: _, purpose: _ } => "the admitting row does not name the canary's purpose"
+    RecipientNotPermittedForSink { category: _, sink: _, recipient: _ } => "the admitting row does not name the durable origin bucket as recipient"
+    OperationNotPermittedForSink { category: _, sink: _, operation: _ } => "the admitting row does not admit a durable store"
     PostureRevisionStale { evaluated: _, active: _ } => "the admitting row's posture revision is stale"
   }
 }

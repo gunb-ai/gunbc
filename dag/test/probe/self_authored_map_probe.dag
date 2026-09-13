@@ -46,6 +46,9 @@ fn my_rows() -> List<DataHandlingRow> {
   [DataHandlingRow {
     category: personal_identity_ref(),
     sink: DurableOrigin { route: my_route() },
+    purposes: [personal_identity_ref()],
+    recipients: [personal_identity_ref()],
+    operations: [StoreDurably],
     retention: personal_identity_ref(),
     lawful_basis: personal_identity_ref(),
     posture: public_fabric_posture(),
