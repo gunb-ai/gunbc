@@ -297,6 +297,8 @@ test fn witness_multiple_labels_are_not_resolved_from_the_first() -> Bool {
     JobResourceCarriedNoLabels { job_id } => false
   }
 }
+
+test fn witness_matrix_selector_mismatch_is_refused_when_display_name_matches() -> Bool {
   let same_display_and_observation =
     (candidate_biome_matrix_selector_mismatch_control.job_display_name as String)
       == (candidate_biome_test.job_display_name as String)
