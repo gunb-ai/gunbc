@@ -5,6 +5,8 @@ import std.measure {
   millisecond_count,
   positive_measure_count,
 }
+import std.types { Map }
+import v2.std.collection { empty_map, map_insert, map_lookup, Present, Absent }
 import gunbc.roadmap_belt { BeltCapacity }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_status { PlainLine, Unsigned }
@@ -20,6 +22,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_authority {
   roadmap_authority_projection,
+  RoadmapAuthorityProjection,
   RoadmapAuthorityProjected,
   RoadmapAuthorityProjectionRefused,
   active_roadmap_nodes_for_accepted,
@@ -74,7 +77,7 @@ import gunbc.roadmap_forecast {
   ForecastRoadmapAuthorityRefused,
   ForecastBuildRefused,
   schedule_forecast,
-  live_roadmap_schedule_forecast,
+  roadmap_schedule_forecast_over,
   AdjustmentUnavailable,
   ReviewCycleDurationUnobserved,
   OperatorMergeLatencyUnobserved,
@@ -513,11 +516,37 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
 // THE EXPECTED POPULATION IS READ OFF THE SAME PLAN THE FORECAST IS HANDED, not derived a second
 // time from the public carrier. gunbc#10987 made the plan a parameter precisely because a second
 // read answers about the PUBLIC roadmap while the nodes come from the caller's, and a control that
-// re-derived its own expectation would reintroduce exactly that split one layer up: today the two
-// agree, because roadmap_authority_projection fills `accepted` from the same projection, so the
-// join would look sound right up until someone hands this witness a plan of their own.
-fn live_active_node_ids() -> List<RoadmapNodeId> {
-  match roadmap_authority_projection() {
+// re-derived its own expectation would reintroduce exactly that split one layer up. The witness
+// therefore folds the projection ONCE and hands that value to both sides, so the two populations
+// are the same value rather than two reads that happen to agree -- a plan of someone else's would
+// move both together. Binding it twice also folded the authority projection twice inside one claim
+// body, which is the authored duplication DESIGN 2 names rather than an unavoidable recurrence.
+// THE IDENTITY JOIN IS MAP-BACKED SO IT DOES NOT COST n^2. Both directions and the count are
+// unchanged -- this is the same proposition, not a weaker one: every expected id is reported, every
+// reported id was expected, and the counts agree, so a dropped node and an extra node both still
+// red. Each side's set is built ONCE here rather than inside a lambda, because rebuilding it per
+// element is the authored duplication that would reintroduce the quadratic one layer down.
+fn node_id_set(ids: List<RoadmapNodeId>) -> Map<String, Bool> {
+  fold(ids, init: empty_map(), f: fn(m, id) { map_insert(m: m, key: id as String, value: true) })
+}
+
+fn node_id_present(m: Map<String, Bool>, id: RoadmapNodeId) -> Bool {
+  match map_lookup(m: m, key: id as String) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn node_id_sets_agree(reported: List<RoadmapNodeId>, expected: List<RoadmapNodeId>) -> Bool {
+  let reported_set = node_id_set(ids: reported)
+  let expected_set = node_id_set(ids: expected)
+  count(reported) == count(expected)
+    && all(expected, id => node_id_present(m: reported_set, id: id))
+    && all(reported, id => node_id_present(m: expected_set, id: id))
+}
+
+fn active_node_ids_for_plan(plan: RoadmapAuthorityProjection) -> List<RoadmapNodeId> {
+  match plan {
     RoadmapAuthorityProjectionRefused { detail: _ } => []
     RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
       active_roadmap_nodes_for_accepted(accepted: accepted) |> map(n => n.node)
@@ -525,15 +554,13 @@ fn live_active_node_ids() -> List<RoadmapNodeId> {
 }
 
 test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
-  let expected = live_active_node_ids()
+  let plan = roadmap_authority_projection()
+  let expected = active_node_ids_for_plan(plan: plan)
   count(expected) > 0
-    && match live_roadmap_schedule_forecast(assumptions: assumptions(), anchor: anchor()) {
+    && match roadmap_schedule_forecast_over(plan: plan, assumptions: assumptions(), anchor: anchor()) {
       ScheduleForecastKnown { forecast: _ } => false
       ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-        NodeUnsized { nodes } =>
-          count(nodes) == count(expected)
-            && all(expected, id => any(nodes, reported => reported == id))
-            && all(nodes, reported => any(expected, id => id == reported))
+        NodeUnsized { nodes } => node_id_sets_agree(reported: nodes, expected: expected)
         NoCalibrationSample { gaps: _, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => false
         ForecastGraphEmpty => false
         DependencyCycle { nodes: _ } => false
