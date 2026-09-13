@@ -19,9 +19,9 @@ import v2.lens.module_graph {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/reference_derived_graph.dag --function main
 //
-// Discriminating run is the fixture root below. Qualified value, call contents, and bare field
-// types are missing on today's assembly ingest; those are enrolled measurements, not this
-// process-exit wall. Unused-import-must-not-mint-a-reference-edge still is. It does not swap
+// Discriminating run is the fixture root below. Qualified mentions are under verification.
+// Call contents are eager-raven-113. Bare field types have a tree-side census with UNVERIFIED
+// cause. Unused-import-must-not-mint-a-reference-edge still is. It does not swap
 // dependency_resolution_facts_live (NAMESPACE-XL STAGE XL-6).
 
 data instrument_source_roots: List<String> = ["dag/test/fixture/reference_derived_graph"]
