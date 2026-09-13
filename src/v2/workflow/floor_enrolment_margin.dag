@@ -268,6 +268,16 @@ type EnrolmentMarginStanding =
 // cost before that join is the defect review 64022 found. The declaration is consulted NEXT,
 // and it is a declaration, never `claim_cost`. Only an undeclared planned identity is classified
 // from its measurement.
+//
+// THE THREE FORMERLY-BLOCKING READINGS UNDER A DECLARATION, AND WHICH COMPOSED WALL HOLDS EACH
+// (review 65751: citing only the no-terminal path is rung inflation). (1) Observed over the
+// 302ms budget with a reached verdict: this gate reports and does not decide, matching
+// `ChangedCostDebtVerdictOnly` — the 500ms CPU line over long-home changed witnesses is already
+// `gunbc.rung_drop` `long_module_changed_witness_cpu_observed_only`. (2) Right-censored: the
+// host mints that reading only from interrupt terminality, so there is no censored-with-a-verdict
+// path; changed-witness still refuses `PlannedWithoutTerminalVerdict`. (3) Absent with a reached
+// verdict: `CostObservationMissingUnderVerdictOnly` — standing down this gate with nothing
+// published is the discriminating red, not a silent admit.
 fn enrolment_margin_standing(
   reading: EnrolmentCostReading,
   budget_ms: Millisecond,

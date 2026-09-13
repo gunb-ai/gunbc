@@ -10131,6 +10131,97 @@ mod changed_witness_projection_tests {
         assert_eq!(composed.changed.outcome, "failed");
     }
 
+    /// review 65751: absent-with-a-verdict. Enrolment used to be `NotMeasured` and the only
+    /// wall if changed-witness greened a Pass. Under verdict-only it still refuses, naming
+    /// the missing publication rather than admitting.
+    #[test]
+    fn a_declared_identity_that_passes_without_a_cost_observation_still_stops_the_run() {
+        let identity = "fixture.declared_pass_unobserved";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            None,
+            Some(terminal(identity, ClaimOutcome::Pass)),
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(!composed.enrolment.blocks());
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_cost_observation_missing_under_verdict_only".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }],
+            "a reached verdict with nothing published still stops the run"
+        );
+    }
+
+    /// review 65751: ceiling-censored. The host mints `RightCensored` only from interrupt
+    /// terminality, so there is no censored-with-a-verdict production path. Enrolment
+    /// reports declared and does not block; changed-witness still stops on no verdict.
+    #[test]
+    fn a_declared_identity_censored_at_the_cpu_ceiling_still_stops_the_run() {
+        let identity = "fixture.declared_cpu_censored";
+        let occurrence = crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "interrupted".to_string(),
+            reading: crate::cli_run::ClaimCostReading::RightCensored(
+                crate::cli_run::SafetyInterruptReading {
+                    raised_by: crate::cli_run::SafetyInterruptTrigger::CpuDeadlineRaised,
+                    elapsed_cpu_at_least_ms: 500,
+                    elapsed_wall_at_least_ms: 500,
+                    cpu_safety_limit_ms: 500,
+                    wall_safety_limit_ms: 8000,
+                },
+            ),
+            eval_steps: 1,
+            verdict_reached: false,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            Some(&occurrence),
+            Some(terminal(
+                identity,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: 500,
+                    budget_ms: 500,
+                    kind: BudgetKind::Cpu,
+                },
+            )),
+            &HashMap::new(),
+        );
+        assert_eq!(composed.enrolment.name(), "expensiveness_declared");
+        assert!(
+            composed.enrolment.detail().contains("cost=CENSORED"),
+            "this control is the censored reading, not the absent one: {}",
+            composed.enrolment.detail()
+        );
+        assert!(!composed.enrolment.blocks());
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
+            }]
+        );
+    }
+
     /// THE PAIRING INVARIANT MADE EXECUTABLE. newly_enrolled contains a declared identity
     /// and the changed projection does not. Enrolment does not block; without a changed row
     /// the identity would admit silently. This call is the unpaired production arm

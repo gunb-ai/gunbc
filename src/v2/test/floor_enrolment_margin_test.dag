@@ -344,6 +344,18 @@ test fn a_declared_identity_with_no_measurement_does_not_block_at_enrolment() ->
     && !enrolment_margin_standing_blocks(standing: s)
 }
 
+// THE CENSORED READING UNDER A DECLARATION, SAME POLARITY. Composition with changed-witness
+// is the host control `a_declared_identity_censored_at_the_cpu_ceiling_still_stops_the_run`.
+test fn a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment() -> Bool {
+  let s = standing_declared(
+    reading: censored(lower_bound_ms: 500, ceiling_ms: 500),
+    identity: "fixture.declared_cpu_censored",
+    ground: EnrolmentExpensivenessLongHome,
+  )
+  standing_kind(s: s) == "expensiveness-declared"
+    && !enrolment_margin_standing_blocks(standing: s)
+}
+
 // STRING-ROSTER MEMBERSHIP DOES NOT DECLARE AT ENROLMENT. The ungated identity-string
 // chunks cannot mint EnrolmentExpensivenessIsDeclared (review 65637 / review 65665).
 test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
