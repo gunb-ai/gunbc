@@ -78,12 +78,6 @@ fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamRecei
     && monolith_control_reds_with_same_diagnostic_class(receipt: receipt)
 }
 
-fn witness_cross_shard_seam_preservation_holds() -> Bool {
-  witness_cross_shard_seam_preservation_holds_from(
-    receipt: cross_shard_seam_receipt_from(probe: run_cross_shard_seam_probe())
-  )
-}
-
 fn cross_shard_seam_preservation_standing() -> ProcessExit {
   let probe = run_cross_shard_seam_probe()
   let receipt = cross_shard_seam_receipt_from(probe: probe)

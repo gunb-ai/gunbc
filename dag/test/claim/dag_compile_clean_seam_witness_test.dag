@@ -1,5 +1,13 @@
 module test.claim.dag_compile_clean_seam_witness
 
+import std.process { ProcessExit }
+import tools.dag_compile_clean_seam {
+  cross_shard_seam_preservation_standing,
+  witness_seam_algebra_reds_on_synthetic_break,
+  witness_seam_algebra_fails_closed_when_class_missing,
+  witness_seam_algebra_fails_closed_when_importer_silently_passes,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -9,6 +17,6 @@ test fn cross_shard_seam_algebra_holds() -> Bool {
     && witness_seam_algebra_fails_closed_when_importer_silently_passes()
 }
 
-test fn cross_shard_seam_preservation_holds_on_live_tree() -> Bool {
-  witness_cross_shard_seam_preservation_holds()
+test fn cross_shard_seam_preservation_holds_on_live_tree() -> ProcessExit {
+  cross_shard_seam_preservation_standing()
 }
