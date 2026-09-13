@@ -23,29 +23,33 @@ type NativeAuthorityMode
   = BridgeAuthority
   | NativeAuthority
 
-// DECLARED CONSUMPTION FRONTIER, not an executing census reader: the separate census-completion
-// follow-up will supply the planned gunbc.git_use_census.report report_git_uses entry. Its route
-// reads git_use_rows, selects each row's disposition through git_use_disposition, and renders
-// the selected disposition beside that use's identity. That entry does not exist yet. The
-// trigger is execution of this identity-bound report for both modes on the enrolled population.
-// The production authority route is separate work in ticket 6, not the Phase 1 CAS consumer.
-// No current production consumption is claimed for this selector or the two disposition fields.
-// The constant dispositions already inhabit data GitUseRow declarations. The selector instead
-// chooses which caller-supplied computation to invoke; bridge/native are parameters, not constant
-// declarations. Keeping deferred branches preserves selection before execution when routes have
-// effects. Replacing them with eagerly supplied result values would change that contract even
-// with a working compiler. The nullary-callable inference defect therefore blocks this shape;
-// adding a dummy argument or replacing its invocation solely to evade that defect is refused.
+// DECLARED CONSUMPTION FRONTIER for the mode carrier, and a deliberately EMPTY slot where a
+// selector used to stand. The two modes are a real distinction this ledger must carry: every
+// row states a bridge disposition and a cutover disposition, and which one applies is a fact
+// about the MODE, not about the row. So the mode type stays and the rows keep both fields.
+//
+// WHAT WAS CUT, AND WHY THE CUT IS NOT A CONCESSION ON SHAPE. The selector took two deferred
+// zero-argument branches so selection could choose WHICH COMPUTATION TO INVOKE rather than
+// which already-computed value to return -- the distinction that starts mattering the moment a
+// route has effects. That shape is right and is not abandoned. But it does not compile today:
+// v1 inference discards a local callable whose resolved parameter count is zero, so both
+// branches report as not found in scope. A declaration the compiler REFUSES is not a declared
+// frontier at all -- DESIGN 3c's admissible middle state presumes the declaration is at least
+// well formed under the current substrate, and this one was known-rejected. Landing it would
+// have parked non-compiling source inside the required-witness claim home, leaving every test
+// declaration that imports this module green by absence.
+//
+// The selector therefore lands WITH ITS CONSUMER, in the lane that has both: the
+// gunbc.git_use_census.report report_git_uses entry that reads git_use_rows and renders each
+// row's selected disposition beside its use identity, once the dispatched nullary-callable
+// inference repair makes the deferred-branch shape expressible. Adding a dummy argument, or
+// eagerly supplying both values to evade the defect, stays refused (DESIGN 5 workaround rule):
+// the defect is the thing to fix, and the specimen is the evidence that repair lane needs.
+//
 // These modes do NOT seal gunbc.native_scm_interaction_contract Landed. A bridge landing mint
 // still needs independently acquired merge read-back bound to the exact projection and imported
 // native baseline. Until that producer and its exclusive mint execute, no construction rung is
 // claimed for Landed; a validator over its current presentation record would not supply one.
-fn native_authority_select<R>(mode: NativeAuthorityMode, bridge: fn() -> R, native: fn() -> R) -> R {
-  match mode {
-    BridgeAuthority => bridge()
-    NativeAuthority => native()
-  }
-}
 
 type GitUseRole
   = GitBootstrapImport
@@ -76,14 +80,6 @@ type GitUseRow {
   classification: GitUseClassification
   bridge_disposition: NonEmptyStr
   cutover_disposition: NonEmptyStr
-}
-
-fn git_use_disposition(row: GitUseRow, mode: NativeAuthorityMode) -> NonEmptyStr {
-  native_authority_select(
-    mode: mode,
-    bridge: fn() { row.bridge_disposition },
-    native: fn() { row.cutover_disposition },
-  )
 }
 
 // These are two different subjects. Import closure can be mechanically prevented by an executing
