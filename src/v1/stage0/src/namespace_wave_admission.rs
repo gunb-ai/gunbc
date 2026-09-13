@@ -1743,43 +1743,56 @@ pub struct TransitionAdmission {
 /// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
 /// so the debt is paid here rather than inherited by an unrelated lane.
 ///
-/// THE v2-NATIVE ROUTE'S MODULE SPLITS, 2026-09-11. Four facts moved to modules below their
-/// readers so the route could carry its own admission and its own discovery authority without a
-/// cycle and without dragging a policy closure into the emitted crate:
-/// `v2.compiler.native_test_vocabulary` (the NativeTest* verdict vocabulary, out of
-/// `v2.compiler.compile`), `v2.workflow.compile_door_cause_ownership` (the two-grain cause table,
-/// out of `v2.workflow.compile_door_ledger`), `v2.workflow.floor_discovery_source_authority` (the
-/// per-file discovery authority, out of the corpus walk) and `v2.workflow.floor_discovery_row`
-/// (the row vocabulary, out of the git-identified request half).
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-12). The 181 `v2-native-route module split` and
+/// `v2-native-route policy split` rows are deleted, and the four paragraphs that described them
+/// go with them.
 ///
-/// EVERY ROW BELOW IS `TargetChanged` AND NONE OF THEM MOVES A MEANING: each spelling denotes the
-/// same declaration it always did, now reached in the module the declaration moved to. The rows
-/// are enumerated by exact identity from the wave's own measured deltas rather than by a pattern
-/// over the four module pairs, because a pattern would silently admit a genuine rebind that landed
-/// in the same pair. DISSOLVE-ON: this PR merging, after which the base binds these spellings to
-/// exactly these targets and the rows read as consumed.
+/// THEIR OWN TRIGGER FIRED, AND IT WAS CHECKED BY IDENTITY RATHER THAN INFERRED FROM THE REFUSAL.
+/// The block above them authored `DISSOLVE-ON: this PR merging, after which the base binds these
+/// spellings to exactly these targets and the rows read as consumed`. #10940 merged as
+/// `6c7b081961` ("v2-native route: closure-scoped ingest and native adjudication over a
+/// seed-prepared artifact"), verified with `git log --oneline 6c7b081961` before this paragraph
+/// was written. So the base carries the four module splits, the deltas stopped being producible,
+/// and the required floor on this branch reported all 181 as `CONSUMED ADMISSION ... already
+/// satisfied at the base -- consumed by its own merge`. That is the trigger discharging the debt,
+/// not a wall being tidied: the THIRTY-SIXTH entry above records why that distinction is worth
+/// paying attention to, and the same discipline is applied here.
 ///
-/// THIS PR AUTHORS 181 ROWS INTO A ROSTER MAIN LEFT EMPTY, and they arrive in #11165's vocabulary
-/// rather than the one they were written in. Each row carried `target: "X"` -- the single module
-/// the spelling now binds. #11165 replaced that with `expected_candidates`, THE EXACT CANDIDATE SET
-/// after the transition, and the difference is not a rename: `target` named a winner and could not
-/// see a second candidate standing beside it, which is precisely the blindness that field existed
-/// to have removed. The conversion below is therefore mechanical in FORM and a CLAIM in SUBSTANCE
-/// -- each singleton asserts that the named module is the ONLY candidate at that site.
+/// THE PARTITION, so the count is not one number standing for a population nobody enumerated.
+/// All 181 carry a `v2-native-route ` label prefix: 175 `module split` rows over the four moved
+/// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
+/// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
+/// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
+/// Main's roster held exactly these 181 rows and nothing else, so the array is empty of inherited
+/// rows after this deletion and carries only this change's own two.
 ///
-/// THAT CLAIM IS ADJUDICATED BY THE EVALUATOR, NOT BY THIS PARAGRAPH. Where a site really has two
-/// candidates the row refuses with `expected candidates {...}, found candidates {...}`, which names
-/// its own repair; main's own note records a two-member result that a singleton proof could never
-/// accept, so some of these are expected to be wrong and to say so. A row that had been silently
-/// correct under `target` and is loud under `expected_candidates` has not regressed -- it has
-/// stopped hiding, which is the whole point of the change this merge brings in.
-/// Five of them arrived one wave late, and the reason is the predicate gap named above rather than
-/// a new rebind: the producer's `floor_discovery_merge_owned_data_record` spelled five names that
-/// moved to the source authority and was left without the import, so the first wave measured them
-/// as `NewUnresolvedness`. Writing the import turned each into a `TargetChanged` against the base
-/// (base: the producer's own declaration; head: the identical declaration in its new home), which
-/// `names_leaf` cannot see as authored resolution. Required floor run 34573949372 printed all five
-/// as unadjudicated; they are admitted here by the same exact identity as the rest.
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// gunbc#11156 Filesystem and Clock service bindings (2026-09-12). Seventeen modules that called
+/// `Filesystem.Read/.Write/.List` or `Clock.Now/.UnixSecs` while importing the answering module
+/// BARE now name `{ Filesystem }` / `{ Clock }`. The floor enumerated eight deltas on that head;
+/// six were a DEFECT and are repaired in source rather than admitted -- names stranded by the
+/// narrowing, which an admission row would have recorded as an intent -- and these two are the
+/// real transitions.
+///
+/// ROW ONE, `extdeps.provisioning.ubuntu_seeded_install_media_remaster`: a bare module import
+/// drags the whole module into the candidate set for every name it declares, so
+/// `extdeps.filesystem.filesystem_io`'s copy of `extdeps_external_authority_anchor` -- the
+/// per-module convention row some 315 modules each author -- was a candidate here. NO RESOLUTION
+/// CHANGES: this module authors its own anchor and a module's own declaration wins inside the
+/// authored region, so the removed candidate could not have won either way. What narrowed is the
+/// SET, and `expected_candidates` names the whole surviving five rather than the winner.
+///
+/// ROW TWO, `gunbc.srv3_boot_once_cd`, moves in the GOOD direction, which is why it is
+/// `AuthoredReferenceResolution` and not `TargetChanged`: base `{}` -> head
+/// `{extdeps.filesystem.filesystem_io}`. The module called `Filesystem.Write` while importing the
+/// declaring module under no spelling at all, so the name reached its declaration only through
+/// pool membership. It now names it -- which is what the file's own modeled `DeclarationRef`
+/// already asserted.
+///
+/// TRIGGER: these rows go when #11156 merges. The base then carries the named imports, the deltas
+/// stop being producible, and CONSUMED comes due on the roster's next touch.
 // gunbc#11177: process_identity_eq moves unchanged from gunbc.runner_connectivity_recovery
 // to gunbc.build_cache_instance beside ProcessIdentity. CI run 34702135326 measured exactly
 // these two TargetChanged bindings. Remove these permissions once consumed at the base;
@@ -1808,6 +1821,32 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
             expected_candidates: &["gunbc.build_cache_instance"],
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11156 ubuntu_seeded_install_media_remaster anchor candidate-set narrowing",
+        subject: AdmissionSubject::Binding {
+            module: "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
+            in_declaration: "extdeps_external_authority_anchor",
+            spelling: "extdeps_external_authority_anchor",
+            expected_candidates: &[
+                "extdeps.provisioning.ubuntu_seeded_install_media_remaster",
+                "extdeps.shell",
+                "extdeps.tools.grep",
+                "extdeps.tools.sed",
+                "extdeps.tools.xorriso",
+            ],
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "gunbc#11156 srv3_boot_once_cd names the Filesystem it was reaching",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.srv3_boot_once_cd",
+            in_declaration: "srv3_boot_once_cd_resolved",
+            spelling: "Filesystem",
+            expected_candidates: &["extdeps.filesystem.filesystem_io"],
+        },
+        disposition: NamespaceDeltaDisposition::AuthoredReferenceResolution,
     },
 ];
 
