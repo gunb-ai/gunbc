@@ -12,6 +12,16 @@ module v1.compiler.infer
 // permit a field read on a never-constrained enclosing generic. The v2-side
 // replacement is the application-argument substitution producer owned by
 // adhoc-8760f34f-ec2; this is bounded maintenance of its executable seed route.
+// Bare generic variant owners are instantiated at their producer into the same
+// application form: owner identity, ordered type arguments, and a retained owner
+// declaration payload. variant_reference_inferred_node and infer_record_lit_structural
+// consume variant_owner_application; declaration children are never arguments.
+// ApplicationHead arguments constrain refinement; the declaration expansion in
+// inferred is not a second applied constraint. Existing head exposure owns that role.
+// Optional<T> with Required cardinality is the canonical inferred application for
+// Optional constructors. infer_record_lit_structural previously produced T with
+// CardOptional for Present; that producer now uses the same Optional application.
+// Cardinality differences remain refusals; refinement does not equate encodings.
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
