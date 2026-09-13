@@ -79,12 +79,33 @@ fn reconciled_parent_passes() {
     );
 }
 
+fn assert_accounting_uses_its_residual(main_rs: &str) {
+    let accounting = main_rs
+        .split("let exclusive_sum =")
+        .nth(1)
+        .expect("exclusive sum opens accounting")
+        .split("let producer_counts:")
+        .next()
+        .expect("producer snapshot follows accounting");
+    assert!(
+        !accounting.contains("saturating_sub(") && !accounting.contains("checked_sub("),
+        "remainder is the accounting residual, never a second subtraction: {accounting}"
+    );
+}
+
 #[test]
 fn emitted_driver_refuses_over_attribution_instead_of_clamping_and_fails_the_process() {
     let main_rs = driver_main();
+    assert_accounting_uses_its_residual(&main_rs);
+    let second_subtraction = main_rs.replacen(
+        "let (verdict, remainder_nanos) =",
+        "let duplicate_remainder = parent_span_nanos.checked_sub(exclusive_sum);\nlet (verdict, remainder_nanos) =",
+        1,
+    );
     assert!(
-        !main_rs.contains("saturating_sub(exclusive_sum)") && !main_rs.contains("checked_sub("),
-        "remainder is the fold residual — not a second subtraction that can clamp or fork OverAttributed; emitted:\n{main_rs}"
+        std::panic::catch_unwind(|| assert_accounting_uses_its_residual(&second_subtraction))
+            .is_err(),
+        "control: a second subtraction inside accounting must still go red"
     );
     assert!(
         main_rs.contains("NativeDriverCostReconciled { residual, .. }")
