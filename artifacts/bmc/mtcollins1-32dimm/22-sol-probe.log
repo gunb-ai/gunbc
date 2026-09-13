@@ -1,0 +1,3 @@
+tcgetattr: Inappropriate ioctl for device
+[SOL Session operational.  Use ~? for help]
+done rc=0
