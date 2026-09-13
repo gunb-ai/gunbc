@@ -1,7 +1,21 @@
 module gunbc.runner_slot_retirement
 
-import std.types { Bool, List, String, NonEmptyStr }
+import std.types { Bool, List, String, NonEmptyStr, Int }
+import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
+import gunbc.runner_slot_population_census { unit_is_owned_by_host }
+import product.placement_supply { HostIdentity }
+import gunbc.host_effect { HostEffectTransport }
+import gunbc.host_operation_exec { HostOperation, SystemctlMaskNow, host_operation_exec }
+import std.resources { Network }
+import extdeps.systemd { SystemdUnitProperty, UnitFileState, LoadState, TasksCurrent }
+import gunbc.systemctl_show_read {
+  SystemdPropertyCapture,
+  SystemdPropertyCaptured,
+  SystemdPropertyCaptureRefused,
+  systemctl_show_property_read,
+}
+import v2.std.collection { Absent, Present }
 
 // RETIRING A SLOT IS A DRAIN, NOT A STOP, AND THE DIFFERENCE IS A JOB.
 //
@@ -96,6 +110,52 @@ fn surplus_observation_after_retirement(
   }
 }
 
+// TWO OBSERVATIONS, NEITHER SUFFICIENT ALONE, AND THE JOIN IS A UNION ON THE BLOCKING SIDE.
+//
+// The census reads `systemctl list-units` and is authoritative about PRESENCE: it sees every owned
+// surplus unit on the host, including ones nobody attempted to retire. It cannot supply retirement
+// EVIDENCE -- `surplus_observation` returns `retired: []` by construction -- because a unit's absence
+// from a listing is not proof that the work underneath it finished.
+//
+// The retirement standings supply exactly that evidence and are authoritative about COMPLETION: they
+// carry the cgroup reading the listing has no access to. They are, in exchange, blind to any surplus
+// unit nobody tried to retire.
+//
+// SO `retired` COMES FROM THE STANDINGS AND `still_present` FROM BOTH, AS A UNION. A slot leaves the
+// blocking set only when the census cannot see its unit AND no standing reports it pending or
+// unobserved. Each single-source alternative fails in its own direction: `still_present` from the
+// census alone releases a ceiling on a unit that is gone from the listing while its cgroup still holds
+// processes -- the orphan state the teardown drop-in exists for, and the one a listing cannot see.
+// `still_present` from the standings alone ignores a surplus slot outside the required set entirely.
+//
+// AN UNOBSERVED CENSUS POISONS THE WHOLE JOIN rather than being substituted for by the standings. A
+// host that could not be listed is a host whose surplus population is unknown, and a set of standings
+// about the units someone chose to name is not a statement about the units they did not. Letting the
+// standings answer here would be the empty-observation narrow: "I could not read the host" rendered
+// as "only the slots I happened to ask about are present".
+fn surplus_observation_from_census_and_retirement(
+  census: SurplusSlotObservation,
+  standings: List<RunnerRetirementStanding>,
+) -> SurplusSlotObservation {
+  match census {
+    SurplusSlotsUnobserved { cause: c } => SurplusSlotsUnobserved { cause: c }
+    SurplusSlotsObserved { retired: _, still_present: census_present } => {
+      let pending = standings
+        |> filter(s => !retirement_is_complete(s: s))
+        |> map(s => retirement_unit(s: s) as NonEmptyStr)
+      SurplusSlotsObserved {
+        retired: standings
+          |> filter(s => retirement_is_complete(s: s))
+          |> map(s => retirement_unit(s: s) as NonEmptyStr),
+        still_present: concat(
+          census_present,
+          pending |> filter(p => !any(census_present, cp => (cp as String) == (p as String))),
+        ),
+      }
+    }
+  }
+}
+
 
 // ── ONE RETIREMENT CONTRACT, TWO AUTHORIZED METHODS ───────────────────────────────────────────
 //
@@ -155,6 +215,28 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
     "actions-runner@srv4-21.service" as NonEmptyStr,
   ],
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+}
+
+// WHAT THIS HOST'S TRANSITION REQUIRES RETIRED, SELECTED BY OWNERSHIP RATHER THAN BY HOST LABEL.
+//
+// The cap-raise gate needs a REQUIRED set to detect an omission: evidence about the slots someone
+// chose to mention is not evidence about the slots that must go. This is that set's producer, and it
+// reads the declared authorization scope rather than re-deriving a population beside it.
+//
+// THE FILTER IS THE HOST'S OWN INSTANCE PREFIX, NOT `host == "srv4"`. A literal host comparison here
+// would be a second place the transition's subject is named -- the authorization row already names
+// its units -- and it would need editing for every host a later transition covers. Filtering the
+// declared scope by `unit_is_owned_by_host` means a new authorization row is picked up with no change
+// to this function, and a scope entry naming another host's unit can never be required of this one.
+//
+// AN EMPTY RESULT IS THE HONEST ANSWER FOR AN UNAUTHORIZED HOST, and it does not weaken the gate:
+// `cap_raise_standing` blocks on OBSERVED PRESENCE before it ever consults the required set, so a
+// host with no declared transition still cannot raise while surplus slots are running. The required
+// set adds the second, independent obligation -- that the units the operator named are covered by
+// retirement EVIDENCE -- which an empty set has nothing to assert.
+fn transition_required_retiring_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+  srv4_transition_interruption_authorization.scope
+    |> filter(u => unit_is_owned_by_host(host: host, unit: u as String))
 }
 
 type RetirementMethod
@@ -261,5 +343,177 @@ fn surplus_observation_after_attempts(attempts: List<RetirementAttempt>) -> Surp
   SurplusSlotsObserved {
     retired: attempts |> filter(a => attempt_completes_retirement(a: a)) |> map(a => attempt_unit(a: a) as NonEmptyStr),
     still_present: attempts |> filter(a => !attempt_completes_retirement(a: a)) |> map(a => attempt_unit(a: a) as NonEmptyStr),
+  }
+}
+
+
+// ── THE LIVE POSTCONDITION OBSERVER ───────────────────────────────────────────────────────────
+//
+// `runner_retirement_standing` has always been able to say whether a slot is retired. Nothing could
+// tell it what the host actually looks like, so every consumer supplied a hand-authored observation
+// and the gate was blocked by construction. This is the producer, and it reads THREE INDEPENDENT
+// PROPERTIES because the standing distinguishes three states that one read cannot separate.
+//
+// WHY NOT `is-active`, WHICH IS THE OBVIOUS SINGLE READ: `inactive` is not retirement. A stopped but
+// still-present unit is restartable by the manager, and a unit whose cgroup still holds a
+// Runner.Worker is holding memory whatever its ActiveState says. So:
+//
+//   UnitFileState  -> replacement_inhibited. `masked` is the inhibit: the manager cannot start it.
+//                     Any other state means the slot can come back mid-drain, which is the condition
+//                     under which a drain never completes.
+//   LoadState      -> unit_present. `not-found` is the only reading that means the unit is gone; a
+//                     loaded-but-inactive unit is still present.
+//   TasksCurrent   -> cgroup_process_count. This is the orphan check, and it is the one fact
+//                     `systemctl list-units` cannot supply at any grain.
+//
+// EVERY REFUSED READ LANDS ON `cgroup_readable: false`, WHICH IS THE UNOBSERVED ARM. That is
+// deliberate and it is the fail-closed direction: `runner_retirement_standing` tests
+// `!cgroup_readable` FIRST, so a host that would not answer any one of the three produces
+// `RetirementUnobserved` and keeps the slot's capacity charged. The alternative -- defaulting a
+// missing TasksCurrent to zero, or a missing LoadState to absent -- manufactures exactly the
+// completion this observer exists to measure.
+//
+// A REFUSED READ IS NOT AN ABSENT UNIT, and conflating them is why the property reads are not folded
+// into one "is it gone" predicate: `systemctl show` failing and `systemctl show` reporting
+// `not-found` are different facts with opposite consequences. The first blocks the raise; the second
+// advances it.
+fn observe_runner_retirement(
+  transport: HostEffectTransport,
+  unit: NonEmptyStr,
+) -> RunnerRetirementObservation {
+  match systemctl_show_property_read(transport: transport, unit: unit, property: UnitFileState) {
+    SystemdPropertyCaptureRefused { reason: _ } => retirement_observation_unreadable(unit: unit)
+    SystemdPropertyCaptured { value: file_state } =>
+      match systemctl_show_property_read(transport: transport, unit: unit, property: LoadState) {
+        SystemdPropertyCaptureRefused { reason: _ } => retirement_observation_unreadable(unit: unit)
+        SystemdPropertyCaptured { value: load_state } =>
+          match systemctl_show_property_read(transport: transport, unit: unit, property: TasksCurrent) {
+            SystemdPropertyCaptureRefused { reason: _ } => retirement_observation_unreadable(unit: unit)
+            SystemdPropertyCaptured { value: tasks } =>
+              RunnerRetirementObservation {
+                unit: unit as String,
+                replacement_inhibited: trim(s: file_state) == "masked",
+                unit_present: trim(s: load_state) != "not-found",
+                cgroup_process_count: retirement_task_count(raw: tasks),
+                cgroup_readable: true,
+              }
+          }
+      }
+  }
+}
+
+// `TasksCurrent` READS `[not set]` ON A UNIT THAT IS NOT RUNNING, AND THAT IS NOT ZERO TASKS.
+//
+// systemd answers `[not set]` rather than `0` when the property has no value, so parsing it as a
+// number and taking the failure as zero would report an unreadable count as an empty cgroup -- the
+// one substitution `cgroup_readable` exists to prevent. An unparseable value therefore yields a
+// count that CANNOT satisfy the standing's `== 0` test, which keeps the slot blocking. The count is
+// not the place to encode "unknown", so it encodes "not empty" and lets the readable flag carry
+// doubt; a value that does parse is used exactly as reported.
+fn retirement_task_count(raw: String) -> Int {
+  match parse_int(s: trim(s: raw)) {
+    Present { value: n } => n
+    Absent => 1
+  }
+}
+
+fn retirement_observation_unreadable(unit: NonEmptyStr) -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: unit as String,
+    replacement_inhibited: false,
+    unit_present: true,
+    cgroup_process_count: 1,
+    cgroup_readable: false,
+  }
+}
+
+// EVERY REQUIRED RETIREE GETS ITS OWN OBSERVATION. The standings list is per-unit because the cap
+// gate's `retirement_evidence_covers` is an identity join: a count of completed retirements cannot
+// say WHICH ones completed, and a required retiree omitted from the list must surface as missing
+// evidence rather than be covered by somebody else's success.
+fn observe_retirement_standings(
+  transport: HostEffectTransport,
+  units: List<NonEmptyStr>,
+) -> List<RunnerRetirementStanding> {
+  units |> map(u => runner_retirement_standing(o: observe_runner_retirement(transport: transport, unit: u)))
+}
+
+
+// ── THE INHIBITOR, WHICH IS THE ONLY DESTRUCTIVE STEP ─────────────────────────────────────────
+//
+// `mask --now` IS THE WHOLE ACTUATION, AND IT IS ONE OPERATION RATHER THAN TWO ON PURPOSE.
+//
+// The retirement contract's first obligation is to INHIBIT REPLACEMENT, because an ephemeral JIT
+// runner exits after one job and is restarted by its manager -- so a slot that is merely stopped
+// comes back and the drain never completes. `mask` links the unit name to /dev/null, which refuses
+// activation whatever requests it: the manager, a dependency, or a hand at a terminal. A `disable`
+// would not do this at all for a template instance with no [Install] symlinks to remove, and it
+// would additionally DESTROY enablement state that `unmask` leaves intact -- which is why the
+// rollback for this transition is `unmask` and not `enable`.
+//
+// `--now` ADDS THE STOP, AND THAT IS THE INTERRUPTION THE AUTHORIZATION PAYS FOR. Masking without
+// it is the graceful inhibit, whose drain this module declares unavailable; masking WITH it ends
+// whatever job the slot is currently running. So this function is reachable only through the
+// authorization check below, and it is deliberately not exported as a bare argv anyone can call.
+//
+// ORDERING WITHIN THE PAIR IS WHY THE SINGLE VERB MATTERS: masking and stopping as two operations
+// leaves a window between them in which the manager restarts the slot the stop just ended, and the
+// retirement silently regresses. `mask --now` closes the window in one systemd transaction.
+type RetirementActuation
+  = RetirementActuationAuthorized { unit: NonEmptyStr, operation: HostOperation }
+  | RetirementActuationRefused { unit: String, cause: String }
+
+// PERMISSION IS CHECKED HERE, ONCE, AGAINST THE SAME AVAILABILITY FOLD THE PURE MODEL USES. The
+// actuator does not get its own coverage test: a second predicate over the same authorization is a
+// second place for the two to disagree about which units may be interrupted, and the one that
+// disagrees loudly is the one that never runs.
+fn authorized_retirement_actuation(
+  auth: InterruptionAuthorization,
+  unit: NonEmptyStr,
+) -> RetirementActuation {
+  match retirement_method_availability(
+    method: AuthorizedDisruptiveRetirement { authorization: auth },
+    unit: unit as String,
+  ) {
+    MethodUnavailable { method_label: _, cause: c } =>
+      RetirementActuationRefused { unit: unit as String, cause: c }
+    MethodAvailable { method: _ } =>
+      RetirementActuationAuthorized { unit: unit, operation: SystemctlMaskNow { unit: unit } }
+  }
+}
+
+// THE ATTEMPT'S STANDING COMES FROM THE READBACK, NEVER FROM THE ACTUATION'S EXIT CODE, and that
+// separation is the entire safety content of this function.
+//
+// `systemctl mask --now` exiting 0 means systemd accepted the request. It does NOT mean the unit is
+// gone, and it emphatically does not mean the unit's cgroup is empty -- a Runner.Worker,
+// claim_executor or gunbc child can outlive the unit that spawned it, which is the orphan class
+// `gunbc.runner_unit`'s teardown drop-in exists for. So the actuation's own result is discarded for
+// the purpose of deciding retirement, and `observe_runner_retirement` is called afterwards as an
+// INDEPENDENT postcondition read. A success-implies-retired shortcut here would fabricate exactly
+// the completion the cap gate consumes, and it would do so on the one host where surplus work is
+// being interrupted.
+//
+// A REFUSED ACTUATION PRODUCES NO ATTEMPT AND THEREFORE NO COMPLETION. It cannot borrow the
+// readback's answer either: a unit that happens to be absent for unrelated reasons is not evidence
+// that an unauthorized interruption succeeded.
+func perform_authorized_retirement(
+  transport: HostEffectTransport,
+  auth: InterruptionAuthorization,
+  unit: NonEmptyStr,
+) -> RetirementAttempt
+  uses net: Network
+{
+  match authorized_retirement_actuation(auth: auth, unit: unit) {
+    RetirementActuationRefused { unit: u, cause: c } =>
+      RetirementMethodRefused { unit: u, method_label: "AuthorizedDisruptiveRetirement", cause: c }
+    RetirementActuationAuthorized { unit: u, operation: op } => {
+      let _actuated = host_operation_exec(transport: transport, operation: op)
+      attempt_retirement(
+        method: AuthorizedDisruptiveRetirement { authorization: auth },
+        observation: observe_runner_retirement(transport: transport, unit: u),
+        work_interrupted: true,
+      )
+    }
   }
 }

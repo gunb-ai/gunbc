@@ -23,6 +23,7 @@ import gunbc.host_axis_caps {
   runner_memory_cap_author_ready_for_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
   deploy_memory_cap_apply_script_ordered,
+  deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   deploy_memory_cap_script_matches_ordered_composition,
   deploy_memory_cap_shadow_revert_script,
@@ -157,28 +158,73 @@ test fn witness_deploy_memory_cap_author_script_derives_allocation_bytes() -> Bo
     )
 }
 
+// THE POSITIVE CONTROL, AND IT IS THE ONE THAT WAS SILENTLY FAILING. While the guard split rendered
+// text on a substring the serializer never emits, it answered false for every input -- so this
+// witness was red and the two refusals below were green for the wrong reason. It is restated over the
+// authorization builder rather than `deploy_memory_cap_apply_script_ordered`, because the guard now
+// judges a script against the MEMBERS it was given and the ordered-composition helper does not take
+// any.
 test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool {
   let units = [shadow_unit]
+  let members = derived_runner_memory_cap_members()
   host_axis_caps_author_before_revert_enforced
     && deploy_memory_cap_script_author_precedes_shadow_revert(
-      script: deploy_memory_cap_apply_script_ordered(units: units),
+      script: deploy_memory_cap_apply_script_from_authorization(members: members, units: units),
+      members: members,
       units: units,
     )
 }
 
+// REVERSED MUST REFUSE, AND THIS RED IS NOW REACHABLE. Under the text-splitting guard this passed
+// because the predicate could not read any script; it says something only now that the positive
+// control above is green.
 test fn witness_reversed_deploy_script_fails_author_before_shadow_revert_gate() -> Bool {
   let units = [shadow_unit]
+  let members = derived_runner_memory_cap_members()
   let author = deploy_runner_memory_cap_author_script()
   let reverts = deploy_memory_cap_shadow_revert_script(units: units)
-  !deploy_memory_cap_script_author_precedes_shadow_revert(script: concat(reverts, author), units: units)
+  !deploy_memory_cap_script_author_precedes_shadow_revert(
+    script: concat(reverts, author),
+    members: members,
+    units: units,
+  )
 }
 
 test fn witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate() -> Bool {
   let units = [shadow_unit]
+  let members = derived_runner_memory_cap_members()
   let author = deploy_runner_memory_cap_author_script()
   let reverts = deploy_memory_cap_shadow_revert_script(units: units)
   !deploy_memory_cap_script_author_precedes_shadow_revert(
     script: concat(concat(reverts, author), "padding"),
+    members: members,
+    units: units,
+  )
+}
+
+// A CORRECTLY ORDERED SCRIPT FOR THE WRONG MEMBERS MUST ALSO REFUSE. This is the arm the rejected
+// equality guard could not express and the text guard could not either: the bytes are in the right
+// ORDER, so an ordering-only predicate admits them, while the content belongs to a different
+// authorization. It is the discriminating red for "the check is about the members it was handed".
+test fn witness_right_order_wrong_members_fails_the_gate() -> Bool {
+  let units = [shadow_unit]
+  !deploy_memory_cap_script_author_precedes_shadow_revert(
+    script: deploy_memory_cap_apply_script_from_authorization(
+      members: srv_caps_desired(),
+      units: units,
+    ),
+    members: derived_runner_memory_cap_members(),
+    units: units,
+  )
+}
+
+// AN EMPTY MEMBER SET REFUSES, mirroring the zero-unit precondition. Authoring nothing and then
+// reverting shadows raises effective caps off whatever stale files are on disk.
+test fn witness_empty_members_fail_the_gate() -> Bool {
+  let units = [shadow_unit]
+  !deploy_memory_cap_script_author_precedes_shadow_revert(
+    script: deploy_memory_cap_apply_script_from_authorization(members: [], units: units),
+    members: [],
     units: units,
   )
 }

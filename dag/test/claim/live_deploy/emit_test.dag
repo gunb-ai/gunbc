@@ -112,6 +112,12 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
   deploy_memory_cap_script_author_precedes_shadow_revert,
+  deploy_memory_cap_apply_script_from_authorization,
+  derived_runner_memory_cap_members,
+  cap_converge_decision,
+  CapConvergeDecision,
+  CapConvergeAuthorized,
+  SurplusSlotsObserved,
   runner_slot_service_units_for_host,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -145,7 +151,17 @@ data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE
 // NOT reduce the claims that render a DIFFERENT spec or plan (the twin, the converged plan): those
 // have their own renders and still pay them, which is why the zero-mutation claim below is still
 // the expensive one and had to lose its second render outright.
-data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: CapConvergeWithheld { cause: "witness fixture: no live surplus observation" })
+// THE APPLY FIXTURE RENDERS UNDER AN AUTHORIZED DECISION, because the claims below are about what
+// the apply script CONTAINS. Rendering it withheld would emit the refusal marker instead of the cap
+// block, and every "contains" assertion would then be checking a string that is present but
+// unreachable -- the coverage trap of asserting on text after a fail-fast refusal.
+data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
+  host: operator_host_srv1,
+  required_retiring: [],
+  observation: SurplusSlotsObserved { retired: [], still_present: [] },
+)
+
+data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization)
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
 
@@ -321,9 +337,16 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
 test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
   let target = deployment_srv1_target()
   let units = runner_slot_service_units_for_host(host: target.host.identity)
-  let cap_block = deploy_memory_cap_apply_script_for_host(host: target.host.identity)
+  let cap_block = deploy_memory_cap_apply_script_from_authorization(
+    members: derived_runner_memory_cap_members(),
+    units: units,
+  )
   let sh = witness_apply_script()
-  deploy_memory_cap_script_author_precedes_shadow_revert(script: cap_block, units: units)
+  deploy_memory_cap_script_author_precedes_shadow_revert(
+    script: cap_block,
+    members: derived_runner_memory_cap_members(),
+    units: units,
+  )
     && string_contains(s: sh, pattern: cap_block)
     && string_contains(s: sh, pattern: "20-fleet-width.conf")
     && string_contains(s: sh, pattern: deploy_memory_cap_shadow_revert_script(units: units))
@@ -1103,3 +1126,88 @@ test fn a_binary_only_plan_installs_and_restarts_without_publishing_the_tree() -
     && !string_contains(s: sh, pattern: "--function repository_converge_srv1_owner_wet")
 }
 
+
+// ── THE PRODUCTION WRITER, FOUR CASES ─────────────────────────────────────────────────────────
+//
+// These call `deploy_memory_cap_apply_steps` -- the route live_deploy actually emits -- rather than
+// the abstract effect producer. A nonempty membership-effect list does not exercise this branch, and
+// the earlier suite proved that: the authorized branch was DEAD (its builder used direct writes while
+// the ordering guard re-derived the staged form) while every helper-level row stayed green.
+
+fn cap_steps_text(steps: List<PipelineStep>) -> String {
+  fold(steps, init: "", f: (acc, st) => match st {
+    Do { run: r } => concat(acc, r.command)
+    _ => acc
+  })
+}
+
+fn srv1_authorization() -> CapConvergeDecision {
+  cap_converge_decision(
+    host: operator_host_srv1,
+    required_retiring: [],
+    observation: SurplusSlotsObserved { retired: [], still_present: [] },
+  )
+}
+
+// 1. A MATCHING AUTHORIZATION REACHES THE STAGED CAP APPLICATION. This is the row that was failing
+// before the staged-builder repair: the authorized branch produced a script the ordering guard could
+// not accept, so it emitted "ordering gate failed" for every ordinary authorization.
+test fn a_matching_authorization_applies_the_staged_caps() -> Bool {
+  let text = cap_steps_text(
+    steps: deploy_memory_cap_apply_steps(spec: deployment_spec_srv1(), authorization: srv1_authorization())
+  )
+  string_contains(s: text, pattern: "20-fleet-width.conf")
+    && string_contains(s: text, pattern: "40-fleet-high.conf")
+    && string_contains(s: text, pattern: "systemctl revert")
+    && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+}
+
+// 2. A WITHHELD DECISION REACHES NO CAP APPLICATION.
+test fn a_withheld_decision_applies_no_caps_at_the_production_root() -> Bool {
+  let text = cap_steps_text(
+    steps: deploy_memory_cap_apply_steps(
+      spec: deployment_spec_srv1(),
+      authorization: CapConvergeWithheld { cause: "no live surplus observation" },
+    )
+  )
+  string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && !string_contains(s: text, pattern: "20-fleet-width.conf")
+}
+
+// 3. AN AUTHORIZATION FOR ANOTHER HOST REACHES NO CAP APPLICATION. An srv4 decision is honest
+// evidence about srv4's retirement and cannot be spent on srv1.
+test fn an_authorization_for_another_host_applies_no_caps() -> Bool {
+  let text = cap_steps_text(
+    steps: deploy_memory_cap_apply_steps(
+      spec: deployment_spec_srv1(),
+      authorization: cap_converge_decision(
+        host: operator_host_srv4,
+        required_retiring: [],
+        observation: SurplusSlotsObserved { retired: [], still_present: [] },
+      ),
+    )
+  )
+  string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && !string_contains(s: text, pattern: "20-fleet-width.conf")
+}
+
+// 4. THE WRITER TARGETS THE PLAN'S UNITS, NOT THE HOST'S. This is the transition binding made
+// observable: the units reverted are the ones the AUTHORIZATION carries. A writer that re-derived
+// them from the spec's host would revert srv1's full population regardless of what was authorized,
+// and this row would see units the authorization never named.
+test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
+  let text = cap_steps_text(
+    steps: deploy_memory_cap_apply_steps(
+      spec: deployment_spec_srv1(),
+      authorization: CapConvergeAuthorized {
+        host: operator_host_srv1,
+        authorized_retiring: [],
+        target_units: ["actions-runner@srv1-01.service" as NonEmptyStr],
+        desired: derived_runner_memory_cap_members(),
+      },
+    )
+  )
+  string_contains(s: text, pattern: "actions-runner@srv1-01.service")
+    && !string_contains(s: text, pattern: "actions-runner@srv1-02.service")
+    && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
+}

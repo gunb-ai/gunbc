@@ -198,6 +198,35 @@ fn observed_units_from_list_units(stdout: String) -> List<ObservedRunnerUnit> {
     |> filter(o => census_unit_name_is_slot(name: o.unit))
 }
 
+// ONE CLASSIFIER, EVERY TRANSPORT.
+//
+// The census's verdict is a function of the command's OUTCOME -- did `systemctl list-units` succeed,
+// and what did it print -- and of nothing else about how those bytes arrived. Taking the outcome
+// fields rather than any one transport's observation record is what lets the fleet-SSH producer and
+// the host-effect realizer share this judgment instead of each deciding separately what a nonzero
+// exit means. Two copies of that decision is two places for one of them to render an unreadable host
+// as an empty population.
+//
+// THE DIRECTION IS ONE-WAY BY CONSTRUCTION. This module names no transport carrier at all -- not
+// `ShellExecObserved`, not the typed-exec result -- so every transport module may import this and
+// none of them can be imported back. Had this taken `ShellExecObserved`, the realizer that wants a
+// census would have formed an import cycle with the module that defines the record it already holds.
+fn slot_census_from_command_outcome(
+  host: HostIdentity,
+  success: Bool,
+  exit_code: Int,
+  stdout: String,
+  stderr: String,
+) -> SlotCensus {
+  if !success {
+    CensusRefused {
+      cause: join(["systemctl list-units exit=", to_string(exit_code), " ", trim(s: stderr)], ""),
+    }
+  } else {
+    slot_population_census(host: host, observed: observed_units_from_list_units(stdout: stdout))
+  }
+}
+
 // A TRANSPORT REFUSAL IS UNOBSERVED, NEVER AN EMPTY POPULATION. An unreachable host or a nonzero
 // exit says nothing about how many slots it is running, and rendering either as "no surplus" is the
 // narrow that would let a shrink raise caps on a host it could not read.
@@ -216,12 +245,12 @@ func observe_slot_population_over_ssh(
     TypedArgvExecRefused { reason: why } =>
       CensusRefused { cause: join(["runner slot population unreadable over the fleet edge: ", why], "") }
     TypedArgvExecConverged { result: listed } =>
-      if !listed.success {
-        CensusRefused {
-          cause: join(["systemctl list-units exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr)], ""),
-        }
-      } else {
-        slot_population_census(host: host, observed: observed_units_from_list_units(stdout: listed.stdout))
-      }
+      slot_census_from_command_outcome(
+        host: host,
+        success: listed.success,
+        exit_code: listed.exit_code,
+        stdout: listed.stdout,
+        stderr: listed.stderr,
+      )
   }
 }

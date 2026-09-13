@@ -2,14 +2,17 @@ module test.claim.runner.runner_slot_retirement_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String }
 import gunbc.host_axis_caps {
   CapRaiseAdmitted,
   CapRaiseBlockedIncompleteEvidence,
   CapRaiseBlockedPendingRetirement,
   CapRaiseBlockedUnobserved,
   cap_raise_standing,
+  SurplusSlotsObserved,
+  SurplusSlotsUnobserved,
 }
+import gunbc.host_operation_exec { SystemctlMaskNow }
 import gunbc.runner_slot_retirement {
   RetirementComplete,
   RetirementPendingDrain,
@@ -26,6 +29,12 @@ import gunbc.runner_slot_retirement {
   attempt_completes_retirement,
   attempt_retirement,
   surplus_observation_after_attempts,
+  surplus_observation_from_census_and_retirement,
+  retirement_observation_unreadable,
+  retirement_task_count,
+  authorized_retirement_actuation,
+  RetirementActuationAuthorized,
+  RetirementActuationRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -300,5 +309,150 @@ test fn two_authorized_retirements_cover_the_required_set() -> Bool {
     CapRaiseBlockedPendingRetirement { still_present: _ } => false
     CapRaiseBlockedIncompleteEvidence { missing: _ } => false
     CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+
+// ── THE JOIN AND THE ACTUATOR ────────────────────────────────────────────────────────────────
+
+// THE UNION IS LOAD-BEARING IN BOTH DIRECTIONS, so each direction gets its own red.
+//
+// Direction one: the census sees a unit the standings say nothing about. A join that took
+// `still_present` from the standings alone would release a ceiling on a surplus slot nobody tried to
+// retire.
+test fn a_surplus_unit_the_standings_never_mention_still_blocks() -> Bool {
+  match cap_raise_standing(
+    required_retiring: [],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved {
+        retired: [],
+        still_present: ["actions-runner@srv4-20.service" as NonEmptyStr],
+      },
+      standings: [],
+    ),
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// Direction two: the unit is GONE from the listing while its cgroup still holds processes. This is
+// the orphan state, and it is invisible to `systemctl list-units` at any grain -- so a join that
+// took `still_present` from the census alone would admit the raise while the work is live.
+test fn a_unit_absent_from_the_listing_with_a_busy_cgroup_still_blocks() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved { retired: [], still_present: [] },
+      standings: [
+        runner_retirement_standing(
+          o: RunnerRetirementObservation {
+            unit: "actions-runner@srv4-13.service",
+            replacement_inhibited: true,
+            unit_present: false,
+            cgroup_process_count: 2,
+            cgroup_readable: true,
+          },
+        ),
+      ],
+    ),
+  ) {
+    CapRaiseBlockedPendingRetirement { still_present: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AN UNOBSERVED CENSUS POISONS THE JOIN rather than being answered by the standings. Two completed
+// retirements are real evidence about two units and say nothing about a host that could not be
+// listed; admitting here would be the empty-observation narrow.
+test fn an_unobserved_census_is_not_rescued_by_complete_standings() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsUnobserved { cause: "host unreachable" },
+      standings: [
+        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service")),
+      ],
+    ),
+  ) {
+    CapRaiseBlockedUnobserved { cause: _ } => true
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE JOIN. Both halves clean must still admit, or every red above is
+// satisfied by a join that blocks unconditionally.
+test fn a_clean_census_and_a_complete_standing_admit_together() -> Bool {
+  match cap_raise_standing(
+    required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved { retired: [], still_present: [] },
+      standings: [
+        runner_retirement_standing(o: drained_unit(unit: "actions-runner@srv4-13.service")),
+      ],
+    ),
+  ) {
+    CapRaiseAdmitted => true
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// AN UNREADABLE PROPERTY IS UNOBSERVED, NOT DRAINED. This is the arm the live observer lands every
+// refused `systemctl show` on, and it must never read as completion.
+test fn an_unreadable_observation_is_unobserved_rather_than_complete() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_unreadable(unit: "actions-runner@srv4-13.service" as NonEmptyStr),
+  ) {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+}
+
+// `TasksCurrent` ANSWERS `[not set]` ON AN INACTIVE UNIT, AND THAT IS NOT ZERO TASKS. Parsing it as
+// a number and taking the failure as zero is the one substitution that would let an unreadable
+// cgroup read as an empty one.
+test fn an_unparseable_task_count_does_not_read_as_an_empty_cgroup() -> Bool {
+  retirement_task_count(raw: "[not set]") > 0
+    && retirement_task_count(raw: "") > 0
+    && retirement_task_count(raw: "0") == 0
+    && retirement_task_count(raw: "7") == 7
+}
+
+// THE ACTUATOR IS GATED ON THE AUTHORIZATION'S SCOPE, not on the host or the environment. srv1-14 is
+// a real runner slot on a real host and is NOT named by srv4's authorization, so it must refuse.
+test fn the_actuator_refuses_a_unit_the_authorization_does_not_name() -> Bool {
+  match authorized_retirement_actuation(
+    auth: srv4_transition_interruption_authorization,
+    unit: "actions-runner@srv1-14.service" as NonEmptyStr,
+  ) {
+    RetirementActuationRefused { unit: _, cause: _ } => true
+    RetirementActuationAuthorized { unit: _, operation: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ACTUATOR, AND IT PINS THE OPERATION RATHER THAN ONLY THE ARM. An
+// actuator that authorized the right unit and then masked a different one would satisfy an
+// arm-only check.
+test fn the_actuator_authorizes_a_named_unit_and_masks_that_same_unit() -> Bool {
+  match authorized_retirement_actuation(
+    auth: srv4_transition_interruption_authorization,
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+  ) {
+    RetirementActuationAuthorized { unit: u, operation: op } =>
+      (u as String) == "actions-runner@srv4-13.service"
+        && match op {
+          SystemctlMaskNow { unit: mu } => (mu as String) == "actions-runner@srv4-13.service"
+          _ => false
+        }
+    RetirementActuationRefused { unit: _, cause: _ } => false
   }
 }
