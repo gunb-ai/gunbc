@@ -62,7 +62,7 @@ test fn callback_result_conflict_refuses() -> Bool {
 }
 
 
-data collection_alias_callback_source: String = "module probe_collection_alias_callback\nimport std.types { List }\nimport std.algebra { freemonoid_empty }\nimport v2.std.algebra { fold_list, list_snoc_item }\nfn asks<T>(xs: List<T>) -> List<T> {\n fold_list(xs: xs, empty: freemonoid_empty(), cons: fn(acc, item) { list_snoc_item(xs: acc, item: item) })\n}\n"
+data collection_alias_callback_source: String = "module probe_collection_alias_callback\nimport std.types { List }\nimport v2.std.algebra { fold_list, list_snoc_item, freemonoid_empty }\nfn asks<T>(xs: List<T>) -> List<T> {\n fold_list(xs: xs, empty: freemonoid_empty(), cons: fn(acc, item) { list_snoc_item(xs: acc, item: item) })\n}\n"
 
 test fn collection_alias_callback_result_binds() -> Bool {
   callback_compiles_clean(source: collection_alias_callback_source)
