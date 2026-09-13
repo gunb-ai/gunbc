@@ -1903,3 +1903,76 @@ test fn coverage_whose_rows_never_ran_is_refused() -> Bool {
     && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_covered_at_wrong_grain)
     && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_ran_a_different_roster)
 }
+
+// ---- EXACTLY ONE, FOR ROOT GRAIN ----
+//
+// A root lens observed twice means the root roster ran more than once over the tree, which the
+// canonical join refuses by name. The receipt is submitter-authored, so promotion cannot assume that
+// join ever ran: a row at root grain with observations: 2 is evidence the canonical authority would
+// have rejected, and accepting it here re-opens the arm the zero-count repair closed, from the other
+// side. Subtree grain is untouched by this -- it is observed once per node, so its obligation stays
+// at-least-one, and the boundary witness below is the one that would red if this arm were written
+// against both grains.
+fn pa_coverage_root_observed_twice() -> GenerationLensCoverage {
+  pa_coverage_for(
+    subject: pa_candidate_identity(),
+    material: pa_contract_material(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: required_lens_roster_digest_of(lenses: pa_contract_material()),
+      rows: [
+        RequiredLensCoverageRow {
+          lens: pa_lens_alpha().identity,
+          grain: pa_lens_alpha().grain,
+          observations: 2
+        },
+        pa_coverage_row(lens: pa_lens_beta())
+      ]
+    }
+  )
+}
+
+test fn a_root_obligation_observed_twice_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_with_coverage(
+      candidate_cov: pa_coverage_root_observed_twice(),
+      successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
+    )
+  )
+  promotion_refusal_carries(o: o, cause: ^refusal_required_lens_root_obligation_observed_more_than_once)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_observed_zero_times)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_obligation_not_covered)
+    && !promotion_refusal_carries(o: o, cause: ^refusal_required_lens_coverage_row_duplicated)
+}
+
+// THE BOUNDARY: the same count at SUBTREE grain is not a defect, because a subtree lens runs per node.
+// This is what keeps the arm above from being written against the grain-agnostic count.
+fn pa_coverage_subtree_observed_twice() -> GenerationLensCoverage {
+  pa_coverage_for(
+    subject: pa_candidate_identity_subtree(),
+    material: pa_subtree_material(),
+    observed: RequiredLensCoverageClosed {
+      roster_digest: required_lens_roster_digest_of(lenses: pa_subtree_material()),
+      rows: [
+        pa_coverage_row(lens: pa_lens_alpha()),
+        RequiredLensCoverageRow {
+          lens: pa_lens_beta_subtree().identity,
+          grain: pa_lens_beta_subtree().grain,
+          observations: 2
+        }
+      ]
+    }
+  )
+}
+
+test fn a_subtree_obligation_observed_twice_promotes() -> Bool {
+  match admit_promotion(
+    c: pa_with_coverage_for(
+      candidate_identity: pa_candidate_identity_subtree(),
+      candidate_cov: pa_coverage_subtree_observed_twice(),
+      successor_cov: pa_coverage_closed_for(subject: pa_successor_identity())
+    )
+  ) {
+    Promoted { successor: _, cases_compared: _ } => true
+    PromotionRefused { causes: _ } => false
+  }
+}

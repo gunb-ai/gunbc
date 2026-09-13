@@ -13,6 +13,8 @@ import v2.compiler.self_host.generation {
 import v2.compiler.compile {
   CompileLens,
   CompileLensGrain,
+  CompileLensRoot,
+  CompileLensSubtree,
   compile_lens_grain_eq,
   RequiredLensCoverage,
   RequiredLensCoverageClosed,
@@ -252,6 +254,7 @@ type PromotionRefusalCause
   | RequiredLensCoverageRanADifferentRoster { receipt: Symbol, derived: String, observed: String }
   | RequiredLensCoverageRowDuplicated { receipt: Symbol, lens: String }
   | RequiredLensObligationObservedZeroTimes { receipt: Symbol, lens: String }
+  | RequiredLensRootObligationObservedMoreThanOnce { receipt: Symbol, lens: String }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -542,6 +545,14 @@ fn coverage_observation_index(
 // carrier in this module identifies which run produced an observation, so two attempts of the same
 // generation are indistinguishable.
 //
+// EXACTLY-ONE-FOR-ROOT IS NOT THE DOOR'S ALONE, AND AN EARLIER REVISION OF THIS ANNOTATION SAID IT
+// WAS. The door refuses `RootLensObservedMoreThanOnce` because a root lens observed twice means the
+// root roster ran more than once per tree; subtree grain is observed once per node, so its obligation
+// is at-least-one. Deferring the root case to the door repeated the mistake the zero-count arm had
+// just fixed: the receipt is submitter-authored, so no check that ran upstream can be assumed to have
+// run at all. Promotion therefore applies the same per-grain rule the canonical join applies, and
+// refuses a root obligation observed more than once by its own name.
+//
 // NEXT-RUNG TRIGGER, stated rather than left implicit: a per-row observed RESULT and an attempt
 // identity on `RequiredLensCoverageRow`, minted by the door. Until that lands, the honest rung for
 // "the required lenses were satisfied" is the one this fold establishes -- named and executed -- and
@@ -554,8 +565,7 @@ fn coverage_observation_index(
 // further in: the receipt is submitter-authored, so rows naming every required identity at the right
 // grain with `observations: 0`, a roster digest derived from the same material and a material bound
 // to the generation's axis would promote a generation on a roster where no lens ran. Exactly-one for
-// root grain stays the door's statement; what promotion refuses here is a covered obligation that
-// never executed.
+// root grain is applied here too, for the same reason the count is read at all.
 //
 // GRAIN IS PART OF THE OBLIGATION, NOT DECORATION, and the earlier revision compared identity alone.
 // A lens registered at SUBTREE grain runs per node; the same identity observed once at ROOT is a
@@ -599,13 +609,35 @@ fn lens_coverage_uncovered_causes(
               item: RequiredLensObligationCoveredAtWrongGrain { receipt: receipt, lens: key }
             )
           } else {
-            if row.observations > 0 {
-              acc
-            } else {
-              list_snoc_item(
-                xs: acc,
-                item: RequiredLensObligationObservedZeroTimes { receipt: receipt, lens: key }
-              )
+            match reg.grain {
+              CompileLensRoot =>
+                if row.observations == 1 {
+                  acc
+                } else {
+                  if row.observations > 1 {
+                    list_snoc_item(
+                      xs: acc,
+                      item: RequiredLensRootObligationObservedMoreThanOnce {
+                        receipt: receipt,
+                        lens: key
+                      }
+                    )
+                  } else {
+                    list_snoc_item(
+                      xs: acc,
+                      item: RequiredLensObligationObservedZeroTimes { receipt: receipt, lens: key }
+                    )
+                  }
+                }
+              CompileLensSubtree =>
+                if row.observations > 0 {
+                  acc
+                } else {
+                  list_snoc_item(
+                    xs: acc,
+                    item: RequiredLensObligationObservedZeroTimes { receipt: receipt, lens: key }
+                  )
+                }
             }
           }
       }
@@ -859,6 +891,8 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_required_lens_coverage_row_duplicated
     RequiredLensObligationObservedZeroTimes { receipt: _, lens: _ } =>
       ^refusal_required_lens_obligation_observed_zero_times
+    RequiredLensRootObligationObservedMoreThanOnce { receipt: _, lens: _ } =>
+      ^refusal_required_lens_root_obligation_observed_more_than_once
   }
 }
 
