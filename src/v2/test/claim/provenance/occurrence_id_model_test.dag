@@ -48,15 +48,15 @@ test fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
   let r2 = alloc_occurrence_id(alloc: r1.alloc)
-  !occurrence_id_eq(left: r0.id, right: r1.id)
-    && !occurrence_id_eq(left: r1.id, right: r2.id)
-    && !occurrence_id_eq(left: r0.id, right: r2.id)
+  !occurrence_id_eq(left: r0.value, right: r1.value)
+    && !occurrence_id_eq(left: r1.value, right: r2.value)
+    && !occurrence_id_eq(left: r0.value, right: r2.value)
 }
 
 test fn span_index_from_source_round_trip_holds() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
   let minted = alloc_occurrence_id(alloc: alloc0)
-  let id = minted.id
+  let id = minted.value
   let locus = Textual {
     file: ^occurrence_model_file,
     extent: ByteRange { start: 0, end: 12 }
@@ -119,17 +119,17 @@ test fn span_index_merge_disjoint_entries_holds() -> Bool {
   }
   let left = span_index_record(
     index: span_index_empty(),
-    id: r0.id,
+    id: r0.value,
     event: origin_event_from_source(locus: locus0)
   )
   let right = span_index_record(
     index: span_index_empty(),
-    id: r1.id,
+    id: r1.value,
     event: origin_event_from_source(locus: locus1)
   )
   let merged = span_index_merge(base: left, incoming: right)
-  span_index_merge_lookup_from_source_holds(index: merged, id: r0.id)
-    && span_index_merge_lookup_from_source_holds(index: merged, id: r1.id)
+  span_index_merge_lookup_from_source_holds(index: merged, id: r0.value)
+    && span_index_merge_lookup_from_source_holds(index: merged, id: r1.value)
 }
 
 test fn span_index_resolve_derived_chain_holds() -> Bool {
@@ -142,15 +142,15 @@ test fn span_index_resolve_derived_chain_holds() -> Bool {
   }
   let index0 = span_index_record(
     index: span_index_empty(),
-    id: r0.id,
+    id: r0.value,
     event: origin_event_from_source(locus: locus0)
   )
   let index1 = span_index_record(
     index: index0,
-    id: r1.id,
-    event: DerivedBy { producer: ^occurrence_model_derive_producer, from: [r0.id] }
+    id: r1.value,
+    event: DerivedBy { producer: ^occurrence_model_derive_producer, from: [r0.value] }
   )
-  match span_index_resolve_textual_locus(index: index1, id: r1.id) {
+  match span_index_resolve_textual_locus(index: index1, id: r1.value) {
     Holds { value: locus } =>
       match locus {
         Textual { file: f, extent: ByteRange { start: s, end: e } } =>
@@ -172,14 +172,14 @@ test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let left = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: child }],
-    occurrence_id: node_occurrence_identity_minted(id: m0.id)
+    occurrence_id: node_occurrence_identity_minted(id: m0.value)
   )
   let right = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: child }],
-    occurrence_id: node_occurrence_identity_minted(id: m1.id)
+    occurrence_id: node_occurrence_identity_minted(id: m1.value)
   )
-  !occurrence_id_eq(left: m0.id, right: m1.id)
+  !occurrence_id_eq(left: m0.value, right: m1.value)
     && !(left == right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
@@ -191,12 +191,12 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
   let child_left = node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
-    occurrence_id: node_occurrence_identity_minted(id: m0.id)
+    occurrence_id: node_occurrence_identity_minted(id: m0.value)
   )
   let child_right = node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
-    occurrence_id: node_occurrence_identity_minted(id: m1.id)
+    occurrence_id: node_occurrence_identity_minted(id: m1.value)
   )
   let left = node_synthetic(
     kind: TypeNode { connective: Conj },
@@ -206,7 +206,7 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: child_right }]
   )
-  !occurrence_id_eq(left: m0.id, right: m1.id)
+  !occurrence_id_eq(left: m0.value, right: m1.value)
     && !(left == right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
     && !(node_for_structural_equality(n: left) == node_for_structural_equality(n: right))

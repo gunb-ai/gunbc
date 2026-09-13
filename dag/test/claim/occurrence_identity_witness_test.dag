@@ -5,7 +5,7 @@ import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceId,
-  OccurrenceIdAllocResult,
+  OccurrenceAllocation,
   OccurrenceIdAllocator,
   OccurrenceMinted,
   OccurrenceProjected,
@@ -36,9 +36,9 @@ test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
 test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
   let first = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
   let second = alloc_occurrence_id(alloc: first.alloc)
-  first.id.value == 0
-    && second.id.value == 1
-    && !occurrence_id_eq(left: first.id, right: second.id)
+  first.value.value == 0
+    && second.value.value == 1
+    && !occurrence_id_eq(left: first.value, right: second.value)
 }
 
 test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {

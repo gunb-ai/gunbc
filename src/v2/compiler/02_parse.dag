@@ -150,7 +150,8 @@ type ParseProvenanceState {
 }
 
 // normalize consumes the parser's remaining allocator and the exact parsed-graph
-// scope when producing OccurrenceProjected nodes. Scope addresses the ordered
+// scope when producing OccurrenceProjected nodes. node_occurrence_graph_scope
+// computes the address of the ordered
 // occurrence-bearing graph, not its commutative semantic Node content hash; it
 // never derives an ordinal or uses a filename as allocator identity.
 type ParseArtifact {
@@ -758,9 +759,9 @@ fn parse_mint_from_source(
     extent: ByteRange { start: start, end: end }
   }
   let event = origin_event_from_source(locus: locus)
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let index = span_index_record(index: prov.index, id: minted.value, event: event)
   ParseMintSourceResult {
-    id: minted.id,
+    id: minted.value,
     prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }
 }
@@ -850,7 +851,7 @@ fn parse_stamp_derived_conj(
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [cap1, cap2])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let index = span_index_record(index: prov.index, id: minted.value, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -858,7 +859,7 @@ fn parse_stamp_derived_conj(
         grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
         grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
       ],
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: node_occurrence_identity_minted(id: minted.value)
     ),
     prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }
@@ -871,11 +872,11 @@ fn parse_stamp_derived_repeat(
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: acc_nodes)
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let index = span_index_record(index: prov.index, id: minted.value, event: event)
   ParseStampResult {
     node: parse_repeat_captured_node(
       acc_nodes: acc_nodes,
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: node_occurrence_identity_minted(id: minted.value)
     ),
     prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }
@@ -889,7 +890,7 @@ fn parse_wrap_production_captured(
   let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [captured])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  let index = span_index_record(index: prov.index, id: minted.value, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -897,7 +898,7 @@ fn parse_wrap_production_captured(
         grammar_named_edge(name: ^grammar_production_identity_node_projection, target: production.emitted),
         grammar_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
       ],
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: node_occurrence_identity_minted(id: minted.value)
     ),
     prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }

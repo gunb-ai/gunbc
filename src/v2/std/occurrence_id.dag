@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
+  OccurrenceAllocation,
   authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_initial,
   alloc_occurrence_id,
