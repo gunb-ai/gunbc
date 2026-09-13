@@ -9,6 +9,7 @@ import extdeps.ci_runner.types {
   RunnerCatalogAvailability,
   RunnerShapesUnavailable,
   SellerArmLinuxOffer,
+  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -56,4 +57,5 @@ data google_cloud_build_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOff
   silicon: ArmSiliconUnread,
   capacity: CapacityChannelUnread,
   list_price: ArmListPriceUnread,
+  standing: OfferStandingUnread,
 }

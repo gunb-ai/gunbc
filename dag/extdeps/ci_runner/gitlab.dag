@@ -18,6 +18,7 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -97,4 +98,7 @@ data gitlab_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   silicon: ArmSiliconUnread,
   capacity: ResoldNamedCloud { vendor_words: "Google Cloud Compute Engine" },
   list_price: ArmListPriceUnread,
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "docs.gitlab.com/ci/runners/hosted_runners/linux Linux Arm64 machine types on GitLab.com (read 2026-09-13).",
+  },
 }

@@ -18,6 +18,7 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   SellerArmLinuxOffer,
+  OfferStandingUnread,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -99,4 +100,5 @@ data semaphore_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   silicon: ArmSiliconCitedSku { cpu: semaphore_q8030_sku_ref },
   capacity: CapacityChannelUnread,
   list_price: ArmListPriceUnread,
+  standing: OfferStandingUnread,
 }

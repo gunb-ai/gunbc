@@ -14,6 +14,7 @@ import extdeps.ci_runner.types {
   RunnerLabelRow,
   RunnerShapesUnavailable,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -72,4 +73,7 @@ data runs_on_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   silicon: ArmSiliconUnread,
   capacity: CustomerAccountNamedCloud { vendor_words: "self-host GitHub Actions runners on AWS" },
   list_price: ArmListPriceUnread,
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "runs-on.com 15-day free trial (read 2026-09-13).",
+  },
 }

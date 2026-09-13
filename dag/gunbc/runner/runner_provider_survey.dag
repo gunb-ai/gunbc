@@ -20,7 +20,6 @@ import extdeps.ci_runner.github_actions {
 }
 import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog, warpbuild_label_catalog }
 import extdeps.ci_runner.namespace { namespace_runner_catalog, namespace_label_catalog }
-import extdeps.ci_runner.cirrus_runners { cirrus_runners_runner_catalog, cirrus_runners_label_catalog }
 import extdeps.ci_runner.buildkite { buildkite_runner_catalog, buildkite_label_catalog }
 import extdeps.ci_runner.gitlab { gitlab_runner_catalog, gitlab_label_catalog }
 import extdeps.ci_runner.aws_codebuild { aws_codebuild_runner_catalog, aws_codebuild_label_catalog }
@@ -49,7 +48,6 @@ fn surveyed_runner_catalogs() -> List<RunnerCatalogAvailability> {
     warpbuild_runner_catalog,
     circleci_runner_catalog,
     namespace_runner_catalog,
-    cirrus_runners_runner_catalog,
     buildkite_runner_catalog,
     gitlab_runner_catalog,
     aws_codebuild_runner_catalog,
@@ -70,7 +68,6 @@ fn surveyed_label_catalogs() -> List<RunnerLabelCatalog> {
     warpbuild_label_catalog,
     circleci_label_catalog,
     namespace_label_catalog,
-    cirrus_runners_label_catalog,
     buildkite_label_catalog,
     gitlab_label_catalog,
     aws_codebuild_label_catalog,

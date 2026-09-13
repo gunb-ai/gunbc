@@ -19,6 +19,7 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -117,5 +118,8 @@ data namespace_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
       amount: money_amount_micro(count: 4000),
       currency: Usd,
     },
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "namespace.so: no credit card required (read 2026-09-13).",
   },
 }

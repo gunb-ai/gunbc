@@ -20,6 +20,7 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -116,5 +117,8 @@ data warpbuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
       amount: money_amount_micro(count: 3000),
       currency: Usd,
     },
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "warpbuild.com Get Started Free, no credit card required (read 2026-09-13).",
   },
 }

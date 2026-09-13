@@ -9,6 +9,7 @@ import extdeps.ci_runner.types {
   RunnerShapesUnavailable,
   SellerArmLinuxOffer,
   SoftwareOnCustomerHosts,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -60,4 +61,7 @@ data actuated_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   silicon: ArmSiliconUnread,
   capacity: SoftwareOnCustomerHosts,
   list_price: ArmListPriceUnread,
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "docs.actuated.dev: start a subscription (read 2026-09-13).",
+  },
 }

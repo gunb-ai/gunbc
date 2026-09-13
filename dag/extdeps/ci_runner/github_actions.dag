@@ -20,6 +20,7 @@ import extdeps.ci_runner.types {
   RunnerShapesCited,
   ResoldNamedCloud,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -136,5 +137,8 @@ data github_actions_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
       amount: money_amount_micro(count: 5000),
       currency: Usd,
     },
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "docs.github.com Actions larger-runners and hosted ARM labels still published (read 2026-09-13).",
   },
 }

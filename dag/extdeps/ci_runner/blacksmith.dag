@@ -20,6 +20,7 @@ import extdeps.ci_runner.types {
   RunnerShapesCited,
   SellerArmLinuxOffer,
   SellerOwnMetalStated,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -123,5 +124,8 @@ data blacksmith_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
       amount: money_amount_micro(count: 2500),
       currency: Usd,
     },
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "docs.blacksmith.sh/blacksmith-runners/overview FAQ: 3000 free x64 2vCPU minutes per organization per month, ARM may use them (read 2026-09-13).",
   },
 }

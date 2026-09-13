@@ -10,6 +10,9 @@ import extdeps.ci_runner.types {
   SoftwareOnCustomerHosts,
   CloudOperatorIsTheSeller,
   CapacityChannelUnread,
+  CurrentlyAcceptingCustomers,
+  SellerNotAcceptingCustomers,
+  OfferStandingUnread,
 }
 import extdeps.ci_runner.actuated { actuated_arm_linux_offer }
 import extdeps.ci_runner.aws_codebuild { aws_codebuild_arm_linux_offer }
@@ -90,6 +93,30 @@ fn customer_account_cloud_arm_offers() -> List<SellerArmLinuxOffer> {
   filter(surveyed_arm_linux_offers(), o => offer_launches_customer_cloud(offer: o))
 }
 
+fn offer_is_not_accepting_customers(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.standing {
+    SellerNotAcceptingCustomers { cause: _ } => true
+    CurrentlyAcceptingCustomers { status_surface: _ } => false
+    OfferStandingUnread => false
+  }
+}
+
+fn offer_standing_is_unread(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.standing {
+    OfferStandingUnread => true
+    CurrentlyAcceptingCustomers { status_surface: _ } => false
+    SellerNotAcceptingCustomers { cause: _ } => false
+  }
+}
+
+fn not_accepting_arm_linux_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_is_not_accepting_customers(offer: o))
+}
+
+fn unread_standing_arm_linux_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_standing_is_unread(offer: o))
+}
+
 fn offer_has_provider(offer: SellerArmLinuxOffer, provider: DeclarationRef) -> Bool {
   declaration_ref_eq(a: offer.provider, b: provider)
 }
@@ -104,6 +131,14 @@ fn reseller_includes_provider(provider: DeclarationRef) -> Bool {
 
 fn customer_account_includes_provider(provider: DeclarationRef) -> Bool {
   any(customer_account_cloud_arm_offers(), o => offer_has_provider(offer: o, provider: provider))
+}
+
+fn not_accepting_includes_provider(provider: DeclarationRef) -> Bool {
+  any(not_accepting_arm_linux_offers(), o => offer_has_provider(offer: o, provider: provider))
+}
+
+fn unread_standing_includes_provider(provider: DeclarationRef) -> Bool {
+  any(unread_standing_arm_linux_offers(), o => offer_has_provider(offer: o, provider: provider))
 }
 
 fn provider_in(provider: DeclarationRef, identities: List<DeclarationRef>) -> Bool {

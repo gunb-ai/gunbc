@@ -285,6 +285,16 @@ type ArmListPriceStanding
   | ArmListPriceUnread
   | ArmSellerNotOffering { cause: NonEmptyStr }
 
+// WHETHER THE SELLER IS CURRENTLY ACCEPTING ARM LINUX CI CUSTOMERS.
+// A price table is evidence that a price was once published, never that the
+// service is offered now. CurrentlyAcceptingCustomers requires a status or
+// announcement surface, or a dated ability to sign up, read on the snapshot
+// date. A price or shape page alone is OfferStandingUnread.
+type SellerOfferStanding
+  = CurrentlyAcceptingCustomers { status_surface: NonEmptyStr }
+  | SellerNotAcceptingCustomers { cause: NonEmptyStr }
+  | OfferStandingUnread
+
 // THE TYPED PER-SELLER ARM LINUX OFFER. The hub names the shape; which sellers
 // inhabit it is an observation in gunbc, never a roster here.
 type SellerArmLinuxOffer {
@@ -294,6 +304,7 @@ type SellerArmLinuxOffer {
   silicon: ArmSiliconStanding
   capacity: ArmCapacityChannel
   list_price: ArmListPriceStanding
+  standing: SellerOfferStanding
 }
 
 fn aarch64_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShapeRow> {

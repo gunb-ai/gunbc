@@ -19,6 +19,7 @@ import extdeps.ci_runner.types {
   RunnerShapeRow,
   RunnerShapesCited,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -105,5 +106,8 @@ data buildkite_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
       amount: money_amount_micro(count: 4000),
       currency: Usd,
     },
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "buildkite.com/docs/pipelines/hosted-agents Getting started (read 2026-09-13).",
   },
 }

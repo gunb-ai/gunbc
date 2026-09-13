@@ -1,25 +1,15 @@
 module extdeps.ci_runner.cirrus_runners
 
-import std.types { List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { MoneyPerMonth, hardware_thread_count, money_amount_micro }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
-import extdeps.toolchain.types { Aarch64 }
-import extdeps.github.actions { github_actions_runs_on_surface }
-import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
-  ArmSiliconCitedWords,
-  ArmUsdPerMonth,
+  ArmSellerNotOffering,
+  ArmSiliconUnread,
+  CapacityChannelUnread,
   CatalogSnapshot,
-  DedicatedPhysicalCore,
-  label_catalog_of_shapes,
-  QuotedWithoutBasis,
   RunnerCatalogAvailability,
-  RunnerLabelCatalog,
-  RunnerShapeRow,
-  RunnerShapesCited,
+  RunnerShapesUnavailable,
   SellerArmLinuxOffer,
-  SellerOwnMetalStated,
+  SellerNotAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -28,7 +18,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "cirrus-runners.app/setup",
+    locator: "cirruslabs.org",
   }
 }
 
@@ -41,11 +31,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [
-    ExternalAuthority {
-      uri: Uri { scheme: Https, locator: "cirrus-runners.app/pricing" },
-    },
-  ],
+  further_citations: []
 }
 
 data cirrus_runners_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
@@ -55,48 +41,28 @@ data cirrus_runners_provider_identity: DeclarationRef = decl_ref(
   decl_name: "cirrus_runners_catalog_authority",
 )
 
-fn cirrus_arm_shape(label: NonEmptyStr, vcpus: Nat, quoted_numeral: Nat) -> RunnerShapeRow {
-  RunnerShapeRow {
-    provider: cirrus_runners_provider_identity,
-    label: label,
-    architecture: Aarch64,
-    entitlement: DedicatedPhysicalCore,
-    vcpus: hardware_thread_count(vcpus),
-    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
-  }
-}
-
-data cirrus_runners_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
-  rows: [
-    cirrus_arm_shape(label: "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-sm", vcpus: 2, quoted_numeral: 6),
-    cirrus_arm_shape(label: "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-md", vcpus: 4, quoted_numeral: 12),
-    cirrus_arm_shape(label: "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-lg", vcpus: 8, quoted_numeral: 24),
-  ],
+// Live-fetched 2026-09-13 from cirruslabs.org: Cirrus Labs joined OpenAI; Cirrus CI
+// shut down 2026-06-01; Cirrus Runners stopped accepting new customers. cirrus-runners.app
+// pricing is a stale page and is not modelled as a live offer.
+data cirrus_runners_runner_catalog: RunnerCatalogAvailability = RunnerShapesUnavailable {
+  cause: "cirruslabs.org (read 2026-09-13): Cirrus CI shut down 2026-06-01; Cirrus Runners no longer accepts new customers. cirrus-runners.app/pricing is not a live offer.",
 }
 
 data cirrus_runners_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
   fetched_at: "2026-09-13T00:00:00Z",
-  declared_scope: "Linux Arm resource classes from cirrus-runners.app/setup only (sm/md/lg). macOS, Linux x86 and GPU classes on the same page are excluded as a different market or architecture.",
+  declared_scope: "Shutdown standing from cirruslabs.org only. Historical Linux Arm resource-class spellings are not modelled as a live catalog.",
 }
-
-data cirrus_runners_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
-  catalog: decl_ref(module_path: "extdeps.ci_runner.cirrus_runners", decl_name: "cirrus_runners_label_catalog"),
-  provider: cirrus_runners_provider_identity,
-  selection_surface: github_actions_runs_on_surface,
-  snapshot: cirrus_runners_catalog_snapshot,
-  availability: cirrus_runners_runner_catalog,
-)
 
 data cirrus_runners_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   provider: cirrus_runners_provider_identity,
   snapshot: cirrus_runners_catalog_snapshot,
   shapes: cirrus_runners_runner_catalog,
-  silicon: ArmSiliconCitedWords { quoted_family: "Apple Silicon CPUs" },
-  capacity: SellerOwnMetalStated,
-  list_price: ArmUsdPerMonth {
-    per_month: MoneyPerMonth {
-      amount: money_amount_micro(count: 150000000),
-      currency: Usd,
-    },
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: ArmSellerNotOffering {
+    cause: "Cirrus Runners closed to new customers; Cirrus CI shut down 2026-06-01 (cirruslabs.org, read 2026-09-13).",
+  },
+  standing: SellerNotAcceptingCustomers {
+    cause: "cirruslabs.org 2026-04-07: no longer accepting new Cirrus Runners customers; Cirrus CI shut down 2026-06-01.",
   },
 }

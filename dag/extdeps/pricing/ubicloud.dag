@@ -22,6 +22,7 @@ import extdeps.ci_runner.types {
   ArmUsdPerMinute,
   CapacityChannelUnread,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -119,5 +120,8 @@ data ubicloud_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   capacity: CapacityChannelUnread,
   list_price: ArmUsdPerMinute {
     per_minute: ubicloud_arm_standard_2_price.per_minute,
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "ubicloud.com/docs/github-actions-integration sign-up and billing-credit path (read 2026-09-13).",
   },
 }

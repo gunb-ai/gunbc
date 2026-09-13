@@ -20,6 +20,7 @@ import extdeps.ci_runner.types {
   RunnerShapesCited,
   ResoldNamedCloud,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -129,5 +130,8 @@ data depot_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
       amount: money_amount_micro(count: 6000),
       currency: Usd,
     },
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "depot.dev/pricing Developer plan $20/month with GitHub Actions minutes (read 2026-09-13).",
   },
 }

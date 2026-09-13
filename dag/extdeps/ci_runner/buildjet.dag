@@ -9,6 +9,7 @@ import extdeps.ci_runner.types {
   RunnerCatalogAvailability,
   RunnerShapesUnavailable,
   SellerArmLinuxOffer,
+  SellerNotAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -59,5 +60,8 @@ data buildjet_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
   capacity: CapacityChannelUnread,
   list_price: ArmSellerNotOffering {
     cause: "Seller shut down 2026-03-31; no live ARM list price.",
+  },
+  standing: SellerNotAcceptingCustomers {
+    cause: "buildjet.com/for-github-actions/blog/we-are-shutting-down (read 2026-09-13): runners unavailable as of 2026-03-31.",
   },
 }

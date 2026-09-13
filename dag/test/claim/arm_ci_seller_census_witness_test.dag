@@ -34,10 +34,14 @@ import gunbc.arm_ci_seller_census {
   cloud_arm_reseller_offers,
   customer_account_cloud_arm_offers,
   customer_account_includes_provider,
+  not_accepting_arm_linux_offers,
+  not_accepting_includes_provider,
   provider_in,
   reseller_includes_provider,
   surveyed_arm_linux_offers,
   surveyed_includes_provider,
+  unread_standing_arm_linux_offers,
+  unread_standing_includes_provider,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -95,9 +99,6 @@ fn page_cited_arm_labels() -> List<NonEmptyStr> {
     "16 vCPU 64 GB",
     "32 vCPU 64 GB",
     "32 vCPU 128 GB",
-    "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-sm",
-    "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-md",
-    "ghcr.io/cirruslabs/ubuntu-runner-arm64:24.04-lg",
     "LINUX_ARM64_2X4",
     "LINUX_ARM64_4X16",
     "LINUX_ARM64_8X32",
@@ -155,6 +156,14 @@ fn expected_customer_account_identities() -> List<DeclarationRef> {
   [runs_on_provider_identity, sprinters_provider_identity]
 }
 
+fn expected_not_accepting_identities() -> List<DeclarationRef> {
+  [buildjet_provider_identity, cirrus_runners_provider_identity]
+}
+
+fn expected_unread_standing_identities() -> List<DeclarationRef> {
+  [semaphore_provider_identity, google_cloud_build_provider_identity]
+}
+
 test fn every_expected_seller_is_surveyed() -> Bool {
   all(expected_seller_identities(), p => surveyed_includes_provider(provider: p))
 }
@@ -187,6 +196,22 @@ test fn customer_account_cloud_join_is_runs_on_and_sprinters() -> Bool {
     && all(
       customer_account_cloud_arm_offers(),
       o => provider_in(provider: o.provider, identities: expected_customer_account_identities()),
+    )
+}
+
+test fn not_accepting_join_is_buildjet_and_cirrus() -> Bool {
+  all(expected_not_accepting_identities(), p => not_accepting_includes_provider(provider: p))
+    && all(
+      not_accepting_arm_linux_offers(),
+      o => provider_in(provider: o.provider, identities: expected_not_accepting_identities()),
+    )
+}
+
+test fn unread_standing_join_is_semaphore_and_cloud_build() -> Bool {
+  all(expected_unread_standing_identities(), p => unread_standing_includes_provider(provider: p))
+    && all(
+      unread_standing_arm_linux_offers(),
+      o => provider_in(provider: o.provider, identities: expected_unread_standing_identities()),
     )
 }
 

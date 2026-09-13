@@ -11,6 +11,7 @@ import extdeps.ci_runner.types {
   RunnerCatalogAvailability,
   RunnerShapesUnavailable,
   SellerArmLinuxOffer,
+  CurrentlyAcceptingCustomers,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -62,5 +63,8 @@ data sprinters_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
       amount: money_amount_micro(count: 10000),
       currency: Usd,
     },
+  },
+  standing: CurrentlyAcceptingCustomers {
+    status_surface: "sprinters.sh: 1000 jobs free during first 30 days (read 2026-09-13).",
   },
 }
