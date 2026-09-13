@@ -1053,6 +1053,9 @@ fn fleet_posix_account_exists(name: NonEmptyStr) -> Bool {
 // either: that carrier requires a ProcessReceipt and a raw-output identity precisely so an account
 // cannot be asserted without a command having run, and fabricating one to record someone else's
 // reading would defeat the wall it exists to be. The DISAGREEMENT is the durable fact.
+// royal-fox-887 later getent'd srv3 and srv4 (uid=999, gid=988) and added those hosts to this
+// roster so a consumer can form a docker endpoint without minting a second uid. gid 988 is NOT
+// written into reported_gid: that field remains the srv1/srv2 reading (987).
 type ReportedAccountContradiction {
   account: FleetPosixAccountKey
   modeled_uid: Int
@@ -1072,13 +1075,22 @@ fn fleet_ci_runner_reported_contradiction() -> ReportedAccountContradiction {
     reported_uid: 999,
     reported_gid: 987,
     reported_shell: LoginShellObserved { path: "/usr/sbin/nologin" },
-    hosts: ["srv1", "srv2"],
-    source: "witty-raven-412 msg_051d4971; live getent on srv1 and srv2; not verified by this session"
+    hosts: ["srv1", "srv2", "srv3", "srv4"],
+    source: "witty-raven-412 msg_051d4971; live getent on srv1 and srv2; royal-fox-887 BatchMode getent on srv3 and srv4 (uid=999 gid=988); still not a ProcessReceipt grounding of fleet_posix_ci_runner_user"
   }
 }
 
 fn reported_contradiction_is_open(c: ReportedAccountContradiction) -> Bool {
   c.modeled_uid != c.reported_uid || c.modeled_gid != c.reported_gid
+}
+
+fn reported_ci_runner_uid_for_host(host: HostIdentity) -> Int? {
+  let c = fleet_ci_runner_reported_contradiction()
+  if any(c.hosts, h => (h as String) == (host as String)) {
+    Present { value: c.reported_uid }
+  } else {
+    none
+  }
 }
 
 // dissolve-on: fleet_posix_ci_runner_user carries authored uid/gid contradicted by a live readback

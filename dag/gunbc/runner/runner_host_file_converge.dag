@@ -137,35 +137,39 @@ fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesi
           match gunbc_runner_unit_fragment_for_host(host: host) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
-              RunnerHostFilesDesired {
-                files: [
-                  RunnerHostFileDesired {
-                    subject: "runner-unit-fragment" as NonEmptyStr,
-                    path: runner_unit_system_path as FilePath,
-                    content: fragment,
-                    mode: RemoteFileModeOwnerReadWriteWorldRead,
-                  },
-                  RunnerHostFileDesired {
-                    subject: "runner-depriv-dropin" as NonEmptyStr,
-                    path: runner_unit_depriv_dropin_path() as FilePath,
-                    content: gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host),
-                    mode: RemoteFileModeOwnerReadWriteWorldRead,
-                  },
-                  RunnerHostFileDesired {
-                    subject: "runner-teardown-dropin" as NonEmptyStr,
-                    path: runner_unit_teardown_dropin_path() as FilePath,
-                    content: gunbc_runner_unit_teardown_dropin_text(),
-                    mode: RemoteFileModeOwnerReadWriteWorldRead,
-                  },
-                  RunnerHostFileDesired {
-                    subject: "needrestart-runner-deferral" as NonEmptyStr,
-                    path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
-                    content: needrestart_conf_d_text(overrides: [
-                      NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
-                    ]),
-                    mode: RemoteFileModeOwnerReadWriteWorldRead,
-                  },
-                ],
+              match gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host) {
+                RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
+                RunnerUnitText { text: depriv } =>
+                  RunnerHostFilesDesired {
+                    files: [
+                      RunnerHostFileDesired {
+                        subject: "runner-unit-fragment" as NonEmptyStr,
+                        path: runner_unit_system_path as FilePath,
+                        content: fragment,
+                        mode: RemoteFileModeOwnerReadWriteWorldRead,
+                      },
+                      RunnerHostFileDesired {
+                        subject: "runner-depriv-dropin" as NonEmptyStr,
+                        path: runner_unit_depriv_dropin_path() as FilePath,
+                        content: depriv,
+                        mode: RemoteFileModeOwnerReadWriteWorldRead,
+                      },
+                      RunnerHostFileDesired {
+                        subject: "runner-teardown-dropin" as NonEmptyStr,
+                        path: runner_unit_teardown_dropin_path() as FilePath,
+                        content: gunbc_runner_unit_teardown_dropin_text(),
+                        mode: RemoteFileModeOwnerReadWriteWorldRead,
+                      },
+                      RunnerHostFileDesired {
+                        subject: "needrestart-runner-deferral" as NonEmptyStr,
+                        path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
+                        content: needrestart_conf_d_text(overrides: [
+                          NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
+                        ]),
+                        mode: RemoteFileModeOwnerReadWriteWorldRead,
+                      },
+                    ],
+                  }
               }
           }
       }

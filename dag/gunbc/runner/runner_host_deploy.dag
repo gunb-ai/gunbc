@@ -50,10 +50,16 @@ type RunnerHostDeploy {
   host_label: NonEmptyStr
   ssh_target: NonEmptyStr
   runner_user: NonEmptyStr
+  unit_user: NonEmptyStr
   job_user: NonEmptyStr
   app: GithubAppRunnerConfig
   runner_count: Int
 }
+
+// runner_user is the fragment's User= (the account that owns the runner tree). unit_user is the
+// depriv drop-in's User= (root mints the JIT config). job_user is CTRL_RUNNER_JOB_USER after
+// setpriv. Borrowing another host's principal for any of the three is the neighbour-row arm
+// runner_host_deploy_for already refuses.
 
 // srv4's historical five-slot pin is RETIRED (operator ruling 2026-08-06) and runner_count on
 // srv4_runner_host_deploy names the materialization target, DERIVED from
@@ -136,6 +142,7 @@ data srv1_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv1",
   ssh_target: "briansrls@192.168.1.185",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
   runner_count: gunbc_runner_slots_per_host(host: operator_host_srv1),
@@ -145,6 +152,7 @@ data srv2_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv2",
   ssh_target: "briansrls@192.168.1.188",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
   runner_count: gunbc_runner_slots_per_host(host: operator_host_srv2),
@@ -154,6 +162,7 @@ data srv3_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv3",
   ssh_target: "briansrls@192.168.1.221",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
   runner_count: gunbc_runner_slots_per_host(host: operator_host_srv3),
@@ -163,6 +172,7 @@ data srv4_runner_host_deploy: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv4",
   ssh_target: "briansrls@192.168.1.196",
   runner_user: "briansrls",
+  unit_user: "root",
   job_user: "ghrunner",
   app: gunbc_ci_github_app,
   runner_count: gunbc_runner_slots_per_host(host: operator_host_srv4),
