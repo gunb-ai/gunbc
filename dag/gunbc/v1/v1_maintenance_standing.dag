@@ -1,6 +1,6 @@
 module gunbc.v1_maintenance_standing
 
-import std.types { String, NonEmptyStr, CommitSha }
+import std.types { String, NonEmptyStr, CommitSha, Timestamp }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // Why this carrier exists rather than a sentence in DESIGN.md: a status with a
@@ -712,17 +712,87 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 // Both conditions must hold. FAILING EITHER LEAVES THE ROWS IN THE REFUSED CLASS -- a disposition
 // that cannot fail is an exemption wearing a condition's clothes, which is the whole objection
 // this boundary exists to answer rather than to repeat.
+// THE LIFECYCLE STATES, DECLARED RATHER THAN NARRATED. Review 65444: a closed four-state machine
+// written into a `NonEmptyStr` is §4c's misplaced status -- "any invariant, receipt, event, ruling,
+// citation, STATUS, count, or dissolution condition belongs in a typed carrier" -- and the prose
+// channel is the quarantine that rule exists to keep status OUT of. The row was already consuming
+// these names in `on_condition_failure` and in every specimen, so the §3c "nothing consumes it yet"
+// defence that defers the CONDITION fields does not reach them.
+//
+// NOT-YET-DUE IS NOT FAILED is now structural rather than a sentence a reader satisfies by
+// paraphrase, which is the correctness point this row exists to make.
+// WHAT EACH STATE MEANS AND WHEN IT IS DECIDED, carried here as rationale rather than as a data
+// field: §4c puts prose in `//` and keeps `String` rows for program data, so an explanation that
+// used to sit in a `lifecycle: NonEmptyStr` field belongs in this block now that the states
+// themselves are declared.
+//
+//   Eligible    before the carrying PR is enqueued. Condition one is decidable here and is the
+//               gate; condition two CANNOT have happened yet, so its absence is NotYetDue and not
+//               a failure. A rule demanding it here would refuse the exact sequence this boundary
+//               exists to permit -- which an earlier draft of this row did.
+//   Pending     the carrier has landed and the rows read as consumed. Condition one is settled;
+//               condition two is an outstanding obligation with a due date.
+//   Discharged  the follow-up landed and removed the rows. Both conditions Met; the boundary is
+//               spent.
+//   Failed      condition one was not met at the eligibility decision, or the follow-up closed
+//               unmerged, or it landed without deleting the rows. Only Failed returns the rows to
+//               the refused class.
+//
+// WHO IS IN THIS LIFECYCLE: carriers adjudicated UNDER this boundary, and today that is exactly
+// one -- the gunbc#11214 specimen, Eligible. The gunbc#10940 and gunbc#11156 specimens carry
+// PredatesBoundary and are in no state at all. So this lifecycle has never completed a traversal,
+// which is the same fact as prescribes-rather-than-adjudicates said in the vocabulary the row owns.
+type TransitionAdmissionLifecycleState =
+    Eligible
+  | Pending
+  | Discharged
+  | Failed
+
+// AND WHETHER A SPECIMEN IS IN THE LIFECYCLE AT ALL IS A DIFFERENT QUESTION FROM WHICH STATE IT IS
+// IN. Adding an `OutsideLifecycle` arm to the states above would put "not in the machine" inside the
+// machine, which is exactly the conflation this row spent a head repairing in prose. A carrier
+// adjudicated before this boundary existed was never Eligible, never entered Pending, and is not
+// Failed -- not because it behaved well but because the lifecycle does not range over it.
+type BoundarySpecimenStanding =
+    InLifecycle { state: TransitionAdmissionLifecycleState }
+  | PredatesBoundary
+
+// A CONDITION'S VERDICT, with the three answers kept apart. `NotYetDue` is the arm whose absence
+// made an earlier draft of this row forbid its own sequence.
+type BoundaryConditionVerdict =
+    Met
+  | FailsAsChronology
+  | NotYetDue
+
+// ONE SPECIMEN, DECOMPOSED. §2: "Nothing is opaque that is not genuinely atomic... a `String` leaf
+// hiding named parts is anemic modeling." The chronology is this row's only measured evidence and
+// was the one part that should not have been a blob: carrier, its merge commit and timestamp, the
+// deletion follow-up and the timestamp it was AUTHORED at, and the two verdicts. The interval
+// between the two timestamps is now derivable and is no longer transcribed -- §6, "name the
+// instrument, never transcribe its output".
+type BoundarySpecimen {
+  carrier: NonEmptyStr
+  rows: Int
+  carrier_merged_as: CommitSha
+  carrier_merged_at: Timestamp
+  deletion_follow_up: NonEmptyStr
+  deletion_authored_at: Timestamp
+  condition_one: BoundaryConditionVerdict
+  condition_two: BoundaryConditionVerdict
+  standing: BoundarySpecimenStanding
+  note: NonEmptyStr
+}
+
 type RefusalClassBoundary {
   class_bounded: MaintenanceRefusal
   excluded_shape: NonEmptyStr
   disposition: NonEmptyStr
   condition_authored_before_enqueue: NonEmptyStr
   condition_follow_up_lands: NonEmptyStr
-  lifecycle: NonEmptyStr
   on_condition_failure: NonEmptyStr
   enforcement: NonEmptyStr
   consumer: NonEmptyStr
-  specimens: List<NonEmptyStr>
+  specimens: List<BoundarySpecimen>
   authorship_disclosure: NonEmptyStr
 }
 
@@ -756,20 +826,50 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
 
   condition_follow_up_lands: "That follow-up LANDS. An authored-but-unlanded deletion discharges nothing -- the rows sit on main exactly as a permanent admission would, and the only difference is a promise." as NonEmptyStr,
 
-  lifecycle: "THESE FOUR NAMES ARE THIS BOUNDARY'S LIFECYCLE AND NOT THIS CARRIER'S VOCABULARY -- scoped explicitly because defining a term retroactively re-labels every prior informal use of the word, and two exist in other declarations of this file (RefusedV1Proposal's `reconsider_when` says a proposal becomes ELIGIBLE FOR RE-ADJUDICATION; the unadjudicated-disposition prose says a claim would assert that it FAILED). Those predate this field, are correct in their own terms, and are untouched: this row does not own those words outside itself. THE TWO CONDITIONS ARE EVALUATED AT DIFFERENT TIMES, and an earlier draft of this row forbade its own sequence by not saying so: it required both to hold, while at the enqueue decision condition two NECESSARILY has not happened yet. Four states, and NOT-YET-DUE IS NOT FAILED. ELIGIBLE -- before the carrying PR is enqueued; condition one is decidable here and is the gate, and condition two cannot have happened, so its absence is not a failure. A rule demanding it here would refuse the exact sequence this boundary exists to permit. PENDING -- the carrier has landed and the rows read as consumed; condition one is settled and condition two is an outstanding obligation with a due date rather than an unmet requirement. DISCHARGED -- the follow-up landed and removed the rows; both conditions met and the boundary is spent. FAILED -- condition one was not met at the eligibility decision, or the follow-up closed unmerged, or it landed without deleting the rows. Only FAILED returns the rows to the refused class.\n\nWHO IS IN THIS LIFECYCLE: carriers adjudicated UNDER this boundary, and today that is exactly ONE -- gunbc#11214, in ELIGIBLE. The gunbc#10940 and gunbc#11156 specimens are NOT in any of these states. They were adjudicated before the boundary existed, so they were never ELIGIBLE, never entered PENDING, and are not in FAILED -- not because they behaved well but because the lifecycle does not range over them. They fail condition one as a matter of CHRONOLOGY, which is the evidence that makes the condition new, and that is a different sentence from being in a lifecycle state. So this lifecycle has never completed a traversal, which is the same fact as prescribes-rather-than-adjudicates said in the vocabulary the row owns." as NonEmptyStr,
 
-  on_condition_failure: "FAILING EITHER CONDITION LEAVES THE ROWS IN THE REFUSED CLASS -- where FAILING means the FAILED state named in `lifecycle` and never ELIGIBLE or PENDING, because a condition that is not yet due has not been failed. This boundary does not weaken NewEscapeHatchOrAdmissionRow; it states which shape the class was never about, and a shape that does not meet both conditions is not that shape. PERMANENT admissions stay refused, unconditionally and without a boundary to argue about." as NonEmptyStr,
+  on_condition_failure: "FAILING EITHER CONDITION LEAVES THE ROWS IN THE REFUSED CLASS -- where FAILING means the `Failed` arm of `TransitionAdmissionLifecycleState` and never `Eligible` or `Pending`, because a condition that is not yet due has not been failed. This boundary does not weaken NewEscapeHatchOrAdmissionRow; it states which shape the class was never about, and a shape that does not meet both conditions is not that shape. PERMANENT admissions stay refused, unconditionally and without a boundary to argue about." as NonEmptyStr,
 
-  enforcement: "A PARTIAL CLIMB, SIZED FROM gunbc#11250'S OWN SOURCE RATHER THAN FROM ITS TITLE. #11250 checks ONE thing: that an applicable used row carries a deletion_follow_up declaration, as NotAuthored or PullRequest(n). Its own source leaves forge state -- open, closed unmerged, merged with the row still present -- to the landing tally. So when it lands it mechanizes the MISSING-DECLARATION case and nothing else: it does not establish that the number names the right deletion PR, that the follow-up was authored before enqueue, that it lands, that it deletes the intended rows, or that the classification is correct. All of those stay with the merger's tally check and with reviewers. Until #11250 lands, the tally check applies the adjudication in full. Enforcement is therefore a PERSON today and a mechanism when #11250 lands -- said plainly rather than described as automatic, because a boundary whose enforcement is overstated is how a condition becomes ceremony." as NonEmptyStr,
+  enforcement: "A PARTIAL CLIMB, SIZED FROM gunbc#11250'S OWN SOURCE RATHER THAN FROM ITS TITLE. #11250 checks ONE thing: that an applicable used row carries a deletion_follow_up declaration, as NotAuthored or PullRequest(n). Its own source leaves forge state -- open, closed unmerged, merged with the row still present -- to the landing tally. So when it lands it mechanizes the MISSING-DECLARATION case and nothing else: it does not establish that the number names the right deletion PR, that the follow-up was authored before enqueue, that it lands, that it deletes the intended rows, or that the classification is correct. All of those stay with the merger's tally check and with reviewers. Until #11250 lands, the tally check applies the adjudication in full. SO NOTHING MECHANIZES CONDITION ONE, BEFORE OR AFTER #11250 LANDS, and no established practice underwrites it either -- every measured specimen fails it as chronology. A condition with neither a mechanism nor a precedent is carried by the tally and by reviewers, and nothing absorbs a lapse; that is the honest size of this boundary today and is why it prescribes rather than codifies. Enforcement is therefore a PERSON today and a mechanism when #11250 lands -- said plainly rather than described as automatic, because a boundary whose enforcement is overstated is how a condition becomes ceremony." as NonEmptyStr,
 
   consumer: "DESIGN section 3c, answered rather than left dangling. Read TODAY by the merger's tally check, which is the route that applies this adjudication when a PR carrying transition rows comes up for landing, and by reviewers classifying such a PR against this standing -- the same review-diligence route DESIGN declares for v1_seed_standing itself, at the same honest rung. ONE PART of it becomes executed when gunbc#11250's owner charge lands -- the missing-declaration case, and only that. The rest stays read rather than executed, so #11250 is a PARTIAL trigger and the rung after it is still mitigatable. Calling it the trigger that makes this row executed would claim a climb the mechanism does not deliver." as NonEmptyStr,
 
   specimens: [
-    "gunbc#10940's 181 v2-native-route rows: consumed by their own merge (6c7b081961, merged 2026-09-12T22:45:52Z) and deleted by gunbc#11156. CONDITION ONE FAILS AS CHRONOLOGY (and this specimen is outside the lifecycle, per the `lifecycle` field): the deletion was authored in commit a5bc810f68 at 2026-09-12T23:55:07Z, one hour and nine minutes AFTER the carrier merged -- so after it was enqueued, which is the opposite of what the condition requires. Condition two met: the deletion landed." as NonEmptyStr,
-    "gunbc#11156's 2 Filesystem/Clock rows: consumed by their own merge (d7b7ab96c1f, merged 2026-09-13T02:50:04Z) and deleted by gunbc#11240. CONDITION ONE FAILS AS CHRONOLOGY (outside the lifecycle, per the `lifecycle` field): #11240's deletion was authored at 2026-09-13T05:14:49Z, two hours and twenty-four minutes AFTER the carrier merged. Condition two met: it landed at 6e70be25146." as NonEmptyStr,
-    "gunbc#11214's 15 rows: ELIGIBLE. Its deletion follow-up is authored while the carrier has not yet been enqueued, so condition one is satisfied at the eligibility decision. Condition two is not yet due and therefore is neither satisfied nor failed. If the carrier lands, the specimen becomes PENDING until the deletion follow-up lands and removes the rows. AND IT IS THE ONLY SPECIMEN IN THIS LIFECYCLE AT ALL, which inverts how this list reads: the gunbc#10940 and gunbc#11156 specimens predate the boundary and are outside it, so the open case is the compliant one and the closed ones are not instances of any state." as NonEmptyStr,
-    "SO THIS BOUNDARY PRESCRIBES ITS FIRST CONDITION RATHER THAN ADJUDICATING IT, and the specimens are what establish that rather than what hide it. NOT ONE measured specimen authored its deletion before the carrying change was enqueued: in both closed cases the rows were noticed as CONSUMED by a floor refusal after the carrier had already landed, and the follow-up was written in response. That is the practice the condition exists to end, so the evidence here shows the condition is NEW. What the specimens DO establish is condition two -- both deletions landed, promptly and by the authoring lane -- and that the disposition is sound: in both cases the rows were consumed by their own merge and nothing outlived the change that needed them." as NonEmptyStr,
-    "THE CONSEQUENCE FOR ENFORCEMENT, stated here because a reader who takes the specimens as precedent will size it wrongly: THE PRE-ENQUEUE CONDITION IS CARRIED BY THE MERGER/REVIEWER TALLY. gunbc#11250 mechanizes the narrower prerequisite that a deletion-follow-up declaration EXIST; it does not establish its timing, and necessary evidence existing is not the temporal predicate over that evidence being satisfied -- a declaration can exist and have been authored after the enqueue. So no mechanism underwrites condition one either before or after #11250 lands, there is no established practice underwriting it, and nothing absorbs a lapse." as NonEmptyStr,
+    BoundarySpecimen {
+      carrier: "gunbc#10940" as NonEmptyStr,
+      rows: 181,
+      carrier_merged_as: "6c7b081961",
+      carrier_merged_at: "2026-09-12T22:45:52Z",
+      deletion_follow_up: "gunbc#11156, commit a5bc810f68" as NonEmptyStr,
+      deletion_authored_at: "2026-09-12T23:55:07Z",
+      condition_one: FailsAsChronology,
+      condition_two: Met,
+      standing: PredatesBoundary,
+      note: "The 181 v2-native-route rows, consumed by their own merge. The deletion was authored AFTER the carrier merged, so condition one fails as chronology; the interval is derivable from the two timestamps rather than transcribed. Condition two is met: the deletion landed." as NonEmptyStr,
+    },
+    BoundarySpecimen {
+      carrier: "gunbc#11156" as NonEmptyStr,
+      rows: 2,
+      carrier_merged_as: "d7b7ab96c1f",
+      carrier_merged_at: "2026-09-13T02:50:04Z",
+      deletion_follow_up: "gunbc#11240, commit 1a0cb5c4749" as NonEmptyStr,
+      deletion_authored_at: "2026-09-13T05:14:49Z",
+      condition_one: FailsAsChronology,
+      condition_two: Met,
+      standing: PredatesBoundary,
+      note: "The two Filesystem/Clock rows, consumed by their own merge. Same shape as the gunbc#10940 specimen: the deletion was authored after the carrier merged, and it landed at 6e70be25146." as NonEmptyStr,
+    },
+    BoundarySpecimen {
+      carrier: "gunbc#11214" as NonEmptyStr,
+      rows: 15,
+      carrier_merged_as: "",
+      carrier_merged_at: "",
+      deletion_follow_up: "authored; carrier not yet enqueued" as NonEmptyStr,
+      deletion_authored_at: "",
+      condition_one: Met,
+      condition_two: NotYetDue,
+      standing: InLifecycle { state: Eligible },
+      note: "Its deletion follow-up is authored while the carrier has not yet been enqueued, so condition one is satisfied at the eligibility decision and condition two is neither satisfied nor failed. If the carrier lands, this specimen becomes Pending until the follow-up lands and removes the rows. The empty carrier_merged_as and carrier_merged_at are the honest reading of a carrier that has not merged, not a missing measurement." as NonEmptyStr,
+    },
   ],
 
   authorship_disclosure: "THE TWO SPECIMENS THIS AUTHOR CONTRIBUTED ARE THE TWO THAT FAIL CONDITION ONE, which is the disclosure that matters more than the authorship itself: the practice this row would have been read as codifying is this author's own practice, and it does not meet the condition. TWO OF THE THREE SPECIMENS ARE THIS AUTHOR'S OWN WORK: witty-moth-510 authored gunbc#11156's two rows and gunbc#11240's deletion of them, and authored the deletion of gunbc#10940's 181. A boundary whose evidence is mostly its author's own practice should say so where a reader meets it, because the alternative is a rule that looks corroborated and is largely self-cited. The adjudication is fierce-lark-661's; the specimens are not independent of the person recording them." as NonEmptyStr,
