@@ -1,7 +1,7 @@
 module gunbc.root_demand_measurement
 
 import std.types { Int, String, NonEmptyStr, Bool, List }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, gibibyte_scale_factor_bytes }
 import std.decl_ref { DeclarationRef }
 import gunbc.host_budget_source {
   HostBudgetResolution,
@@ -114,13 +114,13 @@ type MeasuredRowFromReceipt
   | MeasuredRowRefusedLowerBound { limit: ByteSize, why: NonEmptyStr }
   | MeasuredRowRefusedRunDidNotComplete { why: NonEmptyStr }
 
-data gibibyte_bytes: Int = 1073741824
-
 // The declared grain: a peak rounds UP to whole gibibytes, the fail-closed direction for a demand.
+// The gibibyte is std.measure's, not a literal here.
 fn root_demand_peak_at_grain(peak: ByteSize) -> ByteSize {
   let n = byte_size_count(b: peak)
-  let whole = n / gibibyte_bytes
-  byte_size(if whole * gibibyte_bytes == n { n } else { (whole + 1) * gibibyte_bytes })
+  let gib = gibibyte_scale_factor_bytes()
+  let whole = n / gib
+  byte_size(if whole * gib == n { n } else { (whole + 1) * gib })
 }
 
 fn root_demand_measurement_run_of(receipt: RootDemandMeasurementReceipt) -> RootDemandMeasurementRun {
