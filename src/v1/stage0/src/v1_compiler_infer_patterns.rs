@@ -826,7 +826,7 @@ pub fn find_variant_child_keyed(
 ) -> Option<Rc<Node>> {
     {
         let key = variant_pattern_coverage_key(variant_name.clone());
-        match Rc::new({
+        let matches = Rc::new({
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
                 if (variant_pattern_coverage_key(crate::v1_std_core::authored_name_at(
@@ -838,12 +838,14 @@ pub fn find_variant_child_keyed(
                 }
             }
             __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(ch) => Some(ch.clone()),
-            std::option::Option::None => std::option::Option::None,
+        });
+        if ((matches.clone().len() as i64) > 1) {
+            std::option::Option::None
+        } else {
+            match matches.clone().first().cloned() {
+                Some(ch) => Some(ch.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
         }
     }
 }
