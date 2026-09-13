@@ -791,92 +791,27 @@ func perform_authorized_retirement(
 }
 
 
-// ── THE TRANSACTION OWNER: ONE PASS, FOUR ORDERED OBLIGATIONS, NO SECOND REMOVER ──────────────
+// ── THE OBSERVATION THE FLEET ROUTE CONSUMES; THE MUTATION BELONGS TO THE REVIEWED ARTIFACT ───
 //
-// The two halves of this change were built and left uncomposed. The pure fleet planner holds the
-// `MemberRemoved` identities and the existing remover but always supplies
-// `SlotRetirementEvidenceAbsent`, so it can delete nothing. The live-deploy realizer holds the host
-// transport and the retirement readback but only READS -- it decides whether caps may move and never
-// actuates. So the source described a complete transaction that nothing performed: no production route
-// obtained retirement evidence and returned it to the remover.
+// AN EFFECTFUL `perform_transition_retirement` WAS WRITTEN HERE AND IS DELETED RATHER THAN WIRED.
 //
-// THIS IS THAT OWNER, AND IT DELIBERATELY DOES NOT DELETE ANYTHING ITSELF. It produces evidence. The
-// single tree-removal path stays where it already is -- `runner_slot_provision_plan`'s teardown arm,
-// reached through `slot_removal_realization` -- and this function's whole output is the
-// `SlotRetirementEvidence` that route consumes. A second `RemoveDirectoryTree` emitted here would be
-// exactly the parallel authority the review forbade, and it would be the easier thing to write.
+// It masked covered identities, consumed each actuation outcome, reobserved, and returned evidence --
+// and every one of those is right except that it MUTATES. There is no position in the fleet-converge
+// transaction where an actuator like that may be called: during planning it would mutate the host the
+// plan is describing; before the locked apply script it would mutate outside the reviewed artifact;
+// after it, it would be a second, unreviewed actuator; and from live_deploy it would be a parallel
+// retirement authority beside the `MemberRemoved` route. Adding a caller to cure its zero-caller count
+// would have produced exactly one of those four.
 //
-// THE ORDER IS THE SAFETY PROPERTY, AND EACH STEP REFUSES RATHER THAN WIDENING:
+// THE `mask --now` IS ALREADY A RENDERED OPERATION AND ALWAYS WAS. `slot_removal_realization` answers
+// `RemovalActuationRequired`, `runner_slot_provision_plan` renders that into `retirement_scripts`, and
+// `slot_apply_lines` emits those before any teardown. So the mutation is inside the hashed, reviewed
+// plan and is executed only by fleet apply after it reobserves the same subject. A second executable
+// path to the same effect is the thing this branch has been repeatedly warned about.
 //
-//   1. The obligation comes from the transition authority, never from permission or from the census.
-//   2. Permission is checked as COVERAGE over that obligation. An uncovered required retiree makes the
-//      whole transaction refuse: acting on the covered subset while a required unit is untouchable
-//      would retire half a population and then raise ceilings against the other half.
-//   3. `mask --now` runs only for covered identities, and its own outcome is consumed -- a refused or
-//      failed actuation contributes no completion.
-//   4. The postcondition is read INDEPENDENTLY, per identity, after actuation. Actuation success is
-//      never evidence of retirement.
-//
-// WHY ACTUATION AND TEARDOWN CANNOT SHARE A PASS. Step 4 reads a host that step 3 has just changed, so
-// a `RemoveDirectoryTree` derived from it would rest on an observation taken inside the same
-// transaction that caused it. The evidence returned here is consumed by the NEXT plan, whose standings
-// are read fresh; a unit that regresses between passes simply stops authorizing its own deletion.
-type RetirementTransactionOutcome
-  = RetirementTransactionRefused { host: HostIdentity, cause: String }
-  | RetirementTransactionEvidence {
-      host: HostIdentity,
-      attempts: List<RetirementAttempt>,
-      evidence: SlotRetirementEvidence,
-    }
-
-func perform_transition_retirement(
-  transport: HostEffectTransport,
-  host: HostIdentity,
-  auth: InterruptionAuthorization,
-) -> RetirementTransactionOutcome
-  uses net: Network
-{
-  let required = transition_required_retiring(host: host)
-  if list_length(items: required) == 0 {
-    RetirementTransactionEvidence {
-      host: host,
-      attempts: [],
-      evidence: SlotRetirementEvidencePresent { authorization: auth, standings: [] },
-    }
-  } else {
-    match transition_interruption_coverage(auth: auth, required: required) {
-      TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
-        RetirementTransactionRefused {
-          host: host,
-          cause: join(
-            [
-              "this transition requires retiring units the operator has not authorized interrupting: ",
-              join(map(u, x => x as String), " "),
-              "; retiring only the covered subset would release ceilings against a population that is still running",
-            ],
-            "",
-          ),
-        }
-      TransitionFullyPermitted { units: permitted } => {
-        let attempts = permitted
-          |> map(u => perform_authorized_retirement(transport: transport, auth: auth, unit: u))
-        RetirementTransactionEvidence {
-          host: host,
-          attempts: attempts,
-          evidence: SlotRetirementEvidencePresent {
-            authorization: auth,
-            standings: observe_retirement_standings(transport: transport, units: permitted),
-          },
-        }
-      }
-    }
-  }
-}
-
-// THE EVIDENCE A LATER PASS CONSUMES, WITHOUT RE-ACTUATING. A converge that has already masked its
-// surplus needs to READ the postcondition and hand it to the remover; running `mask --now` again to
-// obtain the same reading would make every pass destructive and would reset nothing it has not already
-// ended. So the observation-only route is a separate entry point rather than a flag on the actuator.
+// WHAT SURVIVES IS THE OBSERVATION HALF, which mutates nothing and is what the request was missing.
+// The completion bar was never "this function has a caller" -- it is "the sole production route
+// consumes this evidence".
 func observe_transition_retirement_evidence(
   transport: HostEffectTransport,
   host: HostIdentity,
@@ -891,4 +826,74 @@ func observe_transition_retirement_evidence(
       units: transition_required_retiring(host: host),
     ),
   }
+}
+
+// PERMISSION COVERAGE IS A PURE DECISION OVER THE OBLIGATION, and it is exported so the plan can
+// refuse a partially-authorized transition without performing anything. Retiring only the covered
+// subset would release ceilings against a population that is still running, so an uncovered required
+// retiree refuses the whole transition rather than narrowing it.
+fn transition_retirement_admission(
+  host: HostIdentity,
+  auth: InterruptionAuthorization,
+) -> SlotRetirementEvidence {
+  match transition_interruption_coverage(auth: auth, required: transition_required_retiring(host: host)) {
+    TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join(
+          [
+            "this transition requires retiring units the operator has not authorized interrupting: ",
+            join(map(u, x => x as String), " "),
+            "; retiring only the covered subset would release ceilings against a population still running",
+          ],
+          "",
+        ),
+      }
+    TransitionFullyPermitted { units: _ } =>
+      SlotRetirementEvidencePresent { authorization: auth, standings: [] }
+  }
+}
+
+
+// ── THE BASELINE ROWS THAT BIND RETIREMENT INTO THE PLAN/APPLY SUBJECT ────────────────────────
+//
+// THREADING EVIDENCE TO THE RENDERER IS ONLY HALF OF CONSUMPTION. `observed_baseline_text` feeds the
+// member-set fingerprint that apply compares against the reviewed artifact, and it destructured the
+// retirement evidence WITHOUT USING IT. So the fingerprint was blind to retirement: a plan built while
+// a unit read `RetirementComplete` carried a teardown for it, and an apply that reobserved the same
+// unit as POPULATED produced an identical fingerprint, admitted, and executed `rm -rf` against a live
+// tree. The drift that matters most to this transaction was the one drift the binding could not see.
+//
+// THE ROWS CARRY STABLE TYPED FACTS AND NOTHING ELSE: the unit identity and its disposition. Causes
+// are deliberately excluded -- they are rendered explanation, they move when prose is edited, and a
+// fingerprint that changed because a sentence changed would train reviewers to re-approve noise.
+// Equally, a fingerprint that ignores a disposition change is a stale-plan admission.
+//
+// AN ABSENT EVIDENCE IS ITS OWN ROW rather than no row: "no retirement was observed" and "retirement
+// was observed and everything is pending" are different subjects, and a plan built under one must not
+// admit against the other.
+fn retirement_standing_wire(s: RunnerRetirementStanding) -> String {
+  match s {
+    RetirementComplete { unit: _ } => "complete"
+    RetirementPendingDrain { unit: _, cause: _ } => "pending"
+    RetirementUnobserved { unit: _, cause: _ } => "unobserved"
+  }
+}
+
+fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
+  match evidence {
+    SlotRetirementEvidenceAbsent { cause: _ } => ["retirement:absent"]
+    SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
+      concat(
+        ["retirement:observed"],
+        ss |> map(s => join(["retirement:", retirement_unit(s: s), "=", retirement_standing_wire(s: s)], "")),
+      )
+  }
+}
+
+// THE TRANSITION'S OWN IDENTITY IS BOUND TOO, so a plan for one transition cannot admit against a
+// reobservation of a different one whose standings happen to look similar. The required set is the
+// transition's observable content: a changed prior width or target changes these rows even when every
+// disposition is unchanged.
+fn transition_baseline_rows(host: HostIdentity) -> List<String> {
+  transition_required_retiring(host: host) |> map(u => join(["required:", u as String], ""))
 }

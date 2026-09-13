@@ -68,6 +68,7 @@ import gunbc.fleet_converge_plan {
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
 // THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried
 // daemon-reload and disable and nothing else -- enable count 0, start count 0 -- so convergence
@@ -182,6 +183,7 @@ fn witness_request(deploy: RunnerHostDeploy, readiness: RunnerActivationReadines
     observed_fabric_cells: fabric_cell_observation_unobserved(host: deploy.host_label as HostIdentity),
     observed_activation_readiness: readiness,
     observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   }
 }
 

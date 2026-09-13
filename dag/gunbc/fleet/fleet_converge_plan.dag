@@ -151,7 +151,12 @@ import gunbc.host_converge {
   systemd_tasks_max_property,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+import gunbc.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  retirement_baseline_rows,
+  transition_baseline_rows,
+}
 import gunbc.runner_slot_provision {
   runner_slot_provenance_wire,
   RunnerSlotMember,
@@ -352,6 +357,7 @@ type FleetConvergeRequest
       observed_fabric_cells: FabricCellObservationDecision
       observed_activation_readiness: RunnerActivationReadiness
       observed_unit_standings: RunnerUnitStandings
+      observed_retirement: SlotRetirementEvidence
     }
   | LaunchEnvironmentConverge {
       host: NonEmptyStr
@@ -368,7 +374,7 @@ type FleetConvergeRequest
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => FullHost
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => FullHost
     LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
@@ -377,7 +383,7 @@ fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeS
 
 fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
-    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => h
+    FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => h
     LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
@@ -530,7 +536,7 @@ fn fleet_converge_apply_artifact_admits(
                 store_path: fabric_allocation_store_substrate_spec().path,
                 observed: allocation_store_substrate_prestate_wire(prestate: prestate),
               }
-            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } => ApplyMemberSetMismatch
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } => ApplyMemberSetMismatch
             LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
           }
@@ -834,6 +840,7 @@ type FleetConvergeSlotFamily
 fn fleet_converge_slot_family(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
+  retirement_evidence: SlotRetirementEvidence,
 ) -> FleetConvergeSlotFamily {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } => SlotFamilyUnmodeledHost { host: h }
@@ -855,9 +862,7 @@ fn fleet_converge_slot_family(
                 deploy: d,
                 artifact: a,
                 observed: observed_slots,
-                retirement_evidence: SlotRetirementEvidenceAbsent {
-                  cause: "this planner takes no retirement observation, so no slot tree may be deleted and no slot may be masked through it; the evidence-bearing route is the realizer that holds the host transport",
-                },
+                retirement_evidence: retirement_evidence,
               ),
             }
         }
@@ -1080,8 +1085,9 @@ fn fleet_converge_fabric_cell_refusal_count(
 fn fleet_converge_slot_lines(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
+  retirement_evidence: SlotRetirementEvidence,
 ) -> List<String> {
-  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence) {
     SlotFamilyUnmodeledHost { host: h } =>
       [concat("REFUSED-UNMODELED-HOST runner-slot host=", h as String)]
     SlotFamilyArtifactUnpublished { host: h } =>
@@ -1117,8 +1123,9 @@ fn fleet_converge_slot_lines(
 fn fleet_converge_slot_refusal_count(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
+  retirement_evidence: SlotRetirementEvidence,
 ) -> Int {
-  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence) {
     SlotFamilyUnmodeledHost { host: _ } => 1
     SlotFamilyArtifactUnpublished { host: _ } => 1
     SlotFamilyHostRefused { host: _, cause: _ } => 1
@@ -1254,8 +1261,9 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
     } => {
-      let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots)
+      let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence)
       let cap_refused = membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))
       let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
       let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
@@ -1319,6 +1327,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
     } =>
       concat(
         concat(
@@ -1326,7 +1335,7 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
             concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers))),
             concat(["# cap-axis"], membership_plan_lines_cap(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))),
           ),
-          concat(["# runner-slot"], fleet_converge_slot_lines(host: host, observed_slots: observed_slots)),
+          concat(["# runner-slot"], fleet_converge_slot_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence)),
         ),
         concat(
           concat(
@@ -1358,10 +1367,11 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
     } =>
       [
         concat("# scope=", fleet_converge_scope_wire(scope: FullHost)),
-        concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
+        concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence))),
         concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings))),
         concat("# cap-refusals=", to_string(membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)))),
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
@@ -1445,8 +1455,9 @@ fn activation_apply_lines(
 fn slot_apply_lines(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
+  retirement_evidence: SlotRetirementEvidence,
 ) -> List<String> {
-  match fleet_converge_slot_family(host: host, observed_slots: observed_slots) {
+  match fleet_converge_slot_family(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence) {
     SlotFamilyUnmodeledHost { host: h } =>
       [
         concat(
@@ -1743,6 +1754,7 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: _,
       observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
     } =>
       join(
         concat(
@@ -1759,7 +1771,13 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
                 ),
               ),
           ),
-          fabric_cell_baseline_rows(population: observed_fabric_cells),
+          concat(
+            fabric_cell_baseline_rows(population: observed_fabric_cells),
+            concat(
+              transition_baseline_rows(host: host as HostIdentity),
+              retirement_baseline_rows(evidence: retirement_evidence),
+            ),
+          ),
         ),
         "\n",
       )
@@ -2314,7 +2332,7 @@ fn fleet_converge_apply_shell(
 
 fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String {
   match request {
-    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _ } =>
+    FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _, observed_unit_standings: _, observed_retirement: _ } =>
       "this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects"
     LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
       "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
@@ -2335,6 +2353,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: readiness,
       observed_unit_standings: standings,
+      observed_retirement: retirement_evidence,
     } =>
       concat(
         concat(
@@ -2344,7 +2363,7 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
         concat(
           ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
           concat(
-            slot_apply_lines(host: host, observed_slots: observed_slots),
+            slot_apply_lines(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence),
             concat(
               ["# runner-service activation (gunbc.runner_service_activation) — enable then start, separately admitted"],
               concat(
@@ -2469,6 +2488,7 @@ fn fleet_converge_plan_artifact(
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
   observed_unit_standings: RunnerUnitStandings,
+  observed_retirement: SlotRetirementEvidence,
 ) -> FleetConvergePlanArtifact {
   fleet_converge_plan_artifact_of_request(
     request: FullHostConverge {
@@ -2479,6 +2499,7 @@ fn fleet_converge_plan_artifact(
       observed_fabric_cells: observed_fabric_cells,
       observed_activation_readiness: observed_activation_readiness,
       observed_unit_standings: observed_unit_standings,
+      observed_retirement: observed_retirement,
     },
     prior_generation: prior_generation,
   )

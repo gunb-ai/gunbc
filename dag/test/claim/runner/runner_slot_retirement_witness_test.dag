@@ -12,6 +12,16 @@ import gunbc.host_axis_caps {
   SurplusSlotsObserved,
   SurplusSlotsUnobserved,
 }
+import gunbc.runner_width_transition {
+  required_retirees_for_host,
+  host_width_transition_standing,
+  HostHasNoOpenTransition,
+  HostTransitionOpen,
+  transition_population_agreement,
+  TransitionPopulationAgrees,
+  TransitionPopulationDisagrees,
+}
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 import gunbc.host_operation_exec { SystemctlMaskNow, HostOperationObserved, HostOperationRefused, HostOperationOutcome }
 import gunbc.runner_slot_retirement {
   CgroupObservedEmpty,
@@ -38,6 +48,9 @@ import gunbc.runner_slot_retirement {
   retirement_observation_from_readings,
   authorized_retirement_actuation,
   cgroup_occupancy_from_reads,
+  transition_interruption_coverage,
+  TransitionFullyPermitted,
+  TransitionRetireesNotPermitted,
   RetirementActuationAuthorized,
   RetirementActuationRefused,
 }
@@ -600,15 +613,44 @@ test fn a_masked_inactive_slot_with_surviving_processes_does_not_complete() -> B
   }
 }
 
-// AN EXISTING BUT EMPTY CGROUP IS A LEGITIMATE POSTCONDITION. This is the positive control for the
-// decode, and it is why "the directory exists" alone may not block: without it, a decode that
-// answered Populated unconditionally would satisfy the two rows above.
-test fn an_existing_empty_cgroup_is_empty_and_completes() -> Bool {
+// AN EXISTING BUT EMPTY CGROUP IS A LEGITIMATE POSTCONDITION, AND THE TWO HALVES OF THAT ARE SPLIT.
+//
+// This was ONE conjunctive row named `..._is_empty_and_completes` whose body asserted only the
+// CLASSIFICATION -- it never called `runner_retirement_standing`. Its mutation RED was then read as
+// evidence that the defective decode BLOCKED completion of an empty cgroup, which the source
+// contradicts: `CgroupAbsent` and `CgroupObservedEmpty` both route into
+// `runner_retirement_standing_over_quiesced_workload`, so a masked, inactive unit completes under
+// either. The defective decode misclassified the evidence; it did not block the behaviour.
+//
+// A conjunctive row's RED says only that SOME conjunct became false, and a row whose NAME claims more
+// than its body asserts invites exactly the inference that was drawn from it. Split, each half reports
+// for itself: the classification is expected to flip under the old decode, and the completion is
+// expected to stay green -- which separates an evidence-fidelity defect from a behavioural one instead
+// of forcing both through one Boolean.
+test fn an_existing_empty_cgroup_is_observed_empty() -> Bool {
   match cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "\n  \n")) {
     CgroupObservedEmpty => true
     CgroupObservedPopulated { count: _ } => false
     CgroupAbsent => false
     CgroupUnobserved { cause: _ } => false
+  }
+}
+
+// THE BEHAVIOURAL HALF. A masked, inactive unit over a positively-empty cgroup must complete -- this
+// is the positive control for the whole retirement path, and without it every refusal in this file is
+// satisfied by a fold that never completes.
+test fn an_existing_empty_cgroup_completes() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "\n  \n")),
+    ),
+  ) {
+    RetirementComplete { unit: _ } => true
+    RetirementPendingDrain { unit: _, cause: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
   }
 }
 
@@ -642,5 +684,95 @@ test fn a_refused_directory_test_is_unobserved_rather_than_absent() -> Bool {
     CgroupAbsent => false
     CgroupObservedEmpty => false
     CgroupObservedPopulated { count: _ } => false
+  }
+}
+
+
+// ── THE TRANSITION OBLIGATION, AND THE COVERAGE CHECK OVER IT ─────────────────────────────────
+//
+// The obligation moved out of permission's reach, so these rows assert the RELATION rather than the
+// numbers: what a host is required to retire comes from its declared prior width, and permission is
+// checked as coverage over that set. Two earlier shapes failed here -- filtering the authorization
+// scope gave unauthorized hosts an empty obligation, and unioning scope with the census left an
+// identity required only while the census could still see it.
+
+// srv1 HAS A REAL OBLIGATION AND NO INTERRUPTION PERMISSION, which is the case the permission
+// projection could not express at all. Both halves are asserted: the obligation is non-empty, and the
+// coverage check refuses rather than silently shrinking it.
+test fn srv1_has_a_real_obligation_and_no_permission_to_act_on_it() -> Bool {
+  let required = required_retirees_for_host(host: operator_host_srv1)
+  list_length(items: required) > 0
+    && match transition_interruption_coverage(
+      auth: srv4_transition_interruption_authorization,
+      required: required,
+    ) {
+      TransitionRetireesNotPermitted { permitted: p, unpermitted: u } =>
+        list_length(items: u) == list_length(items: required) && list_length(items: p) == 0
+      TransitionFullyPermitted { units: _ } => false
+    }
+}
+
+// srv4's OBLIGATION IS COVERED BY THE OPERATOR'S ENUMERATION. This is the positive control for
+// coverage; without it every refusal above is satisfied by a check that never admits.
+test fn srv4s_obligation_is_fully_covered_by_the_declared_scope() -> Bool {
+  let required = required_retirees_for_host(host: operator_host_srv4)
+  list_length(items: required) > 0
+    && match transition_interruption_coverage(
+      auth: srv4_transition_interruption_authorization,
+      required: required,
+    ) {
+      TransitionFullyPermitted { units: p } => list_length(items: p) == list_length(items: required)
+      TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
+    }
+}
+
+// THE OBLIGATION DOES NOT READ THE CENSUS, which is the durability property the declaration exists
+// for. A host whose surplus has entirely delisted still owes exactly the same identities -- that is
+// what closes the orphan escape, where required=[] and census=[] and standings=[] once admitted.
+test fn the_obligation_is_unchanged_by_what_the_census_can_see() -> Bool {
+  let required = required_retirees_for_host(host: operator_host_srv4)
+  match cap_raise_standing(
+    required_retiring: required,
+    observation: surplus_observation_from_census_and_retirement(
+      census: SurplusSlotsObserved { retired: [], still_present: [] },
+      standings: [],
+    ),
+  ) {
+    CapRaiseBlockedIncompleteEvidence { missing: m } => list_length(items: m) == list_length(items: required)
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => false
+    CapRaiseBlockedUnobserved { cause: _ } => false
+  }
+}
+
+// A HOST WITH NO OPEN TRANSITION OWES NOTHING, and that is a different fact from a host that has
+// converged. srv2's admission refused rather than narrowed, so it has no transition row at all.
+test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
+  match host_width_transition_standing(host: operator_host_srv2) {
+    HostHasNoOpenTransition { host: _ } => list_length(items: required_retirees_for_host(host: operator_host_srv2)) == 0
+    HostTransitionOpen { transition: _, required: _ } => false
+  }
+}
+
+// AN OBSERVED SURPLUS OUTSIDE THE MANIFEST IS A DISAGREEMENT, NOT A SILENT EXPANSION. Folding it in
+// would make the durable set track observation again, one indirection further away.
+test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Bool {
+  match transition_population_agreement(
+    host: operator_host_srv4,
+    observed_surplus: ["actions-runner@srv4-31.service" as NonEmptyStr],
+  ) {
+    TransitionPopulationDisagrees { unexpected: u } => list_length(items: u) == 1
+    TransitionPopulationAgrees => false
+  }
+}
+
+// AND THE AGREEING CASE, so the row above is not satisfied by a check that always disagrees.
+test fn a_surplus_inside_the_manifest_agrees() -> Bool {
+  match transition_population_agreement(
+    host: operator_host_srv4,
+    observed_surplus: ["actions-runner@srv4-13.service" as NonEmptyStr],
+  ) {
+    TransitionPopulationAgrees => true
+    TransitionPopulationDisagrees { unexpected: _ } => false
   }
 }

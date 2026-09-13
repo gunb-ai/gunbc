@@ -30,6 +30,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_desired_caps,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
 // THE LAUNCH-SCOPE NON-INTERFERENCE WALL AFTER ITS RUNG CLIMB.
 //
@@ -280,6 +281,7 @@ fn full_host_srv1(slots: List<RunnerSlotMember>) -> FleetConvergeRequest {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
     observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   }
 }
 
@@ -305,6 +307,7 @@ test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
       observed_fabric_cells: fabric_cell_observation_unobserved(host: host_srv1 as HostIdentity),
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
     },
   )
 }
@@ -320,6 +323,7 @@ test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
         observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
       },
       prior_generation: 0,
     ).plan_body,
