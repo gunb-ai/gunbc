@@ -388,9 +388,6 @@ data artifact_deepseek_v4_1_flash_native: ModelArtifact = ModelArtifact {
   upstream_total: Present { value: deepseek_v4_1_flash_safetensors_index_total_size },
 }
 
-// THE UPSTREAM TOTAL, KEPT AS AN INDEPENDENT AGREEMENT RATHER THAN AS THE FIGURE. The index's
-// metadata.total_size is a different source from the per-tensor spans; that the two agree is evidence
-// about the partition, and it is stated as such instead of one standing in for the other.
 data artifact_glm_53_flash_native: ModelArtifact = ModelArtifact {
   identity: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_glm_53_flash_native", field: WholeDeclaration },
   label: "GLM 5.3 Flash, native checkpoint" as NonEmptyStr,
@@ -1149,11 +1146,6 @@ fn candidate_component_route_standings(c: DeploymentCandidate, p: ServingDecisio
   map(c.artifact.components, cp => component_route_standing_for(cp: cp, c: c, p: p))
 }
 
-// A ROUTED COMPONENT CONTRIBUTES THE BYTES ITS SELECTED ROUTE KEEPS RESIDENT, and when no route is
-// selected -- or the selected one has no established bound -- it contributes an OBLIGATION. The one
-// arm that does not exist is zero. Writing zero here is what would make a narrow topology look
-// feasible on the strength of a measurement nobody took, and it would do it on the single screen
-// whose whole job is to rule impossible weights out.
 // A ROUTED COMPONENT CONTRIBUTES WHAT ITS SELECTED ROUTE KEEPS RESIDENT, AND THE PROVENANCE SURVIVES.
 //
 // A first cut converted every established share to `FootprintReportedExternally` -- the arm

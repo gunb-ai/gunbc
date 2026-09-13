@@ -24,7 +24,6 @@ import extdeps.safetensors.format {
   SafetensorsIndexMember, safetensors_index_member,
   MembershipClosure, MembershipScopedToReadRows,
   SafetensorsShardedEntry, safetensors_sharded_entries,
-  safetensors_population_bytes_in_shard,
   SafetensorsShardFile, safetensors_shard_file,
 }
 
@@ -504,7 +503,15 @@ data deepseek_v4_1_flash_mid_conversation_system_messages_supported: Bool = true
 // separate carriers for that reason. Declared frontier: DSV41-10.
 // ===========================================================================================
 
-data deepseek_v4_1_flash_engram_tensor_name_infix: NonEmptyStr = ".engram." as NonEmptyStr
+// THE NAMING CONVENTION IS RECORDED HERE RATHER THAN AS A DECLARATION, because nothing can select on
+// it yet. Every Engram tensor at this revision carries `.engram.` in its name, and that WOULD be the
+// selector if this repository enumerated the revision's full index -- but it does not, which is the
+// residual `deepseek_v4_1_flash_engram_membership_closure` already carries as
+// `MembershipScopedToReadRows`. The twelve members below are enumerated by hand from the two shard
+// headers that were read, so a `.engram.` constant beside them would be a string no fold consults,
+// and a check that every hand-written Engram name contains the infix hand-written beside it would
+// compare one transcription with another. When the index is enumerated the infix becomes a real
+// selection over real rows, and it belongs in the fold that performs it rather than waiting here.
 data deepseek_v4_1_flash_index_tensor_count: Nat = 96085
 data deepseek_v4_1_flash_engram_tensor_count: Nat = 12
 
@@ -753,6 +760,18 @@ fn deepseek_v4_1_flash_engram_ngram_projection_shape() -> List<Nat> {
   [deepseek_v4_1_flash_engram.max_ngram_size, deepseek_v4_1_flash_hidden_size]
 }
 
+// INDEPENDENTLY RE-DERIVED, WHICH IS THE ONE CHECK A TRANSCRIPTION CANNOT PERFORM ON ITSELF.
+//
+// These twelve entries and two shard rows were read from the Hub shard headers at the pinned revision
+// and written down here, and a transcription can be internally consistent while being wrong about its
+// source. Review 65049 re-derived all twelve tensor spans from shape x dtype width, computed both shard
+// payload totals as file_bytes minus the 8-byte length prefix minus header_bytes, and reports that every
+// offset chains exactly and both shards close to the byte -- by a reader that did not copy the numbers.
+//
+// That is corroboration of the ARITHMETIC and of internal consistency. It is NOT a second reading of the
+// Hub, so it does not discharge the standing below: these remain publisher-declared figures cited to the
+// upstream authority, and the fleet-side obligation that would turn them into a local materialisation
+// receipt is the DSV41-10 frontier row's trigger, unchanged by this.
 data deepseek_v4_1_flash_engram_population_standing: CitedFigureStanding = CitedToAuthority {
   authority: extdeps_external_authority_anchor,
 }
@@ -768,7 +787,6 @@ data deepseek_v4_1_flash_frontier_dsv41_10: List<FrontierRow> = deepseek_v4_1_fl
     "deepseek_v4_1_flash_engram_population_standing" as NonEmptyStr,
     "deepseek_v4_1_flash_index_tensor_count" as NonEmptyStr,
     "deepseek_v4_1_flash_engram_tensor_count" as NonEmptyStr,
-    "deepseek_v4_1_flash_engram_tensor_name_infix" as NonEmptyStr,
   ],
   reason: "DSV41-10 gunbc.fabric.engram_materialization consumes this exact population as its component subject",
   dissolution: unbound_dissolution(description: "TRIGGER: a fleet-side reading that verifies these two shard sha256 digests over bytes present on a Spark and relates the header-declared population to them. SUFFICIENT FOR: the component subject's realization evidence stops being publisher-declared structure plus publisher-declared digests and becomes a local materialization receipt." as NonEmptyStr),

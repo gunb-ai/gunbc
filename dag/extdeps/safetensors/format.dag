@@ -109,12 +109,19 @@ fn safetensors_entry(
   }
 }
 
-// A NON-ASCENDING SPAN IS ZERO BYTES HERE AND IS SEPARATELY A REFUSAL BELOW. The zero is a declared
-// Nat rather than a bare literal so the two branches agree on the measure's own type.
-data safetensors_no_bytes: Nat = 0
+// A NON-ASCENDING SPAN IS ZERO BYTES HERE AND IS SEPARATELY A REFUSAL BELOW.
+//
+// EVERY DERIVED BYTE QUANTITY IN THIS FILE IS A ByteSize, and these two were the exception that the
+// file's own rule at `safetensors_shard_file` forbids. `begin_offset` and `end_offset` stay bare `Nat`
+// because they ARE the spec's `data_offsets` integers and this module's job is to model what safetensors
+// publishes -- but their DIFFERENCE is a size we computed, not a field we transcribed, and the same goes
+// for elements x dtype width. Leaving them as `Nat` is what forced `byte_size_count` unwrapping at every
+// comparison, which is two representations of one quantity reconciled by hand: DESIGN §2's test that net
+// concepts must not grow by re-invention.
+data safetensors_no_bytes: ByteSize = byte_size(count: 0)
 
-fn safetensors_entry_span(e: SafetensorsEntry) -> Nat {
-  if e.end_offset >= e.begin_offset { e.end_offset - e.begin_offset } else { safetensors_no_bytes }
+fn safetensors_entry_span(e: SafetensorsEntry) -> ByteSize {
+  if e.end_offset >= e.begin_offset { byte_size(count: e.end_offset - e.begin_offset) } else { safetensors_no_bytes }
 }
 
 fn safetensors_shape_elements(shape: List<Nat>) -> Nat {
@@ -124,15 +131,15 @@ fn safetensors_shape_elements(shape: List<Nat>) -> Nat {
 // THE DECLARED SPAN AND THE DECLARED SHAPE MUST AGREE. This is an internal-consistency relation
 // over the header alone -- it establishes that the manifest is well formed, and establishes
 // nothing whatever about the payload. Keeping the two apart is the whole reason this file exists.
-fn safetensors_entry_declared_bytes(e: SafetensorsEntry) -> Nat {
-  safetensors_shape_elements(shape: e.shape) * safetensors_dtype_byte_width(d: e.dtype)
+fn safetensors_entry_declared_bytes(e: SafetensorsEntry) -> ByteSize {
+  byte_size(count: safetensors_shape_elements(shape: e.shape) * safetensors_dtype_byte_width(d: e.dtype))
 }
 
 type SafetensorsEntryDefect
   = EntrySpanNotAscending { name: NonEmptyStr }
   | EntryShapeEmpty { name: NonEmptyStr }
   | EntryShapeHasZeroDimension { name: NonEmptyStr }
-  | EntrySpanDisagreesWithShape { name: NonEmptyStr, span: Nat, declared: Nat }
+  | EntrySpanDisagreesWithShape { name: NonEmptyStr, span: ByteSize, declared: ByteSize }
   | EntryNameDuplicated { name: NonEmptyStr, occurrences: Nat }
 
 fn safetensors_entry_defect_display(d: SafetensorsEntryDefect) -> NonEmptyStr {
@@ -145,8 +152,8 @@ fn safetensors_entry_defect_display(d: SafetensorsEntryDefect) -> NonEmptyStr {
       join(["safetensors entry ", n as String, " declares a zero-length dimension"], "") as NonEmptyStr
     EntrySpanDisagreesWithShape { name: n, span: s, declared: dd } =>
       join([
-        "safetensors entry ", n as String, " spans ", to_string(s),
-        " bytes but its shape and dtype declare ", to_string(dd),
+        "safetensors entry ", n as String, " spans ", to_string(byte_size_count(b: s)),
+        " bytes but its shape and dtype declare ", to_string(byte_size_count(b: dd)),
       ], "") as NonEmptyStr
     EntryNameDuplicated { name: n, occurrences: k } =>
       join([
@@ -169,7 +176,7 @@ fn safetensors_entry_defects(e: SafetensorsEntry) -> List<SafetensorsEntryDefect
       if all(e.shape, d => d > 0) { [] } else { [EntryShapeHasZeroDimension { name: e.name }] },
       if safetensors_shape_is_well_formed(shape: e.shape)
         && e.end_offset > e.begin_offset
-        && safetensors_entry_span(e: e) == safetensors_entry_declared_bytes(e: e) {
+        && byte_size_count(b: safetensors_entry_span(e: e)) == byte_size_count(b: safetensors_entry_declared_bytes(e: e)) {
         []
       } else {
         if safetensors_shape_is_well_formed(shape: e.shape) && e.end_offset > e.begin_offset {
@@ -568,16 +575,12 @@ fn safetensors_population_defects(
 }
 
 fn safetensors_population_total(entries: List<SafetensorsShardedEntry>) -> ByteSize {
-  byte_size(count: fold(entries, init: 0, f: (acc, se) => acc + safetensors_entry_span(e: se.entry)))
+  byte_size(count: fold(entries, init: 0, f: (acc, se) => acc + byte_size_count(b: safetensors_entry_span(e: se.entry))))
 }
 
 fn safetensors_shard_names(entries: List<SafetensorsShardedEntry>) -> List<NonEmptyStr> {
   fold(entries, init: [], f: (acc, se) =>
     if any(acc, n => (n as String) == (se.shard as String)) { acc } else { concat(acc, [se.shard]) })
-}
-
-fn safetensors_population_bytes_in_shard(entries: List<SafetensorsShardedEntry>, shard: NonEmptyStr) -> ByteSize {
-  safetensors_population_total(entries: filter(entries, se => (se.shard as String) == (shard as String)))
 }
 
 // DEFECTS ARE DECIDED BEFORE OBLIGATIONS, so a population with a real defect still REFUSES even when
@@ -685,8 +688,8 @@ fn safetensors_shard_file(path: NonEmptyStr, header_bytes: ByteSize, file_bytes:
 
 data safetensors_header_length_prefix_bytes: ByteSize = byte_size(count: 8)
 
-fn safetensors_shard_declared_overhead(header_bytes: ByteSize) -> Nat {
-  byte_size_count(b: safetensors_header_length_prefix_bytes) + byte_size_count(b: header_bytes)
+fn safetensors_shard_declared_overhead(header_bytes: ByteSize) -> ByteSize {
+  byte_size(count: byte_size_count(b: safetensors_header_length_prefix_bytes) + byte_size_count(b: header_bytes))
 }
 
 // THE PAYLOAD IS DERIVABLE OR THE SHARD IS IMPOSSIBLE, and those are two values rather than one
@@ -695,14 +698,18 @@ fn safetensors_shard_declared_overhead(header_bytes: ByteSize) -> Nat {
 // remedy is to re-read the header rather than to proceed with a zero.
 type SafetensorsShardPayload
   = ShardPayloadDeclared { bytes: ByteSize }
-  | ShardHeaderExceedsFile { path: NonEmptyStr, declared_overhead: Nat, file_bytes: ByteSize }
+  | ShardHeaderExceedsFile { path: NonEmptyStr, declared_overhead: ByteSize, file_bytes: ByteSize }
 
 fn safetensors_shard_payload(shard: SafetensorsShardFile) -> SafetensorsShardPayload {
-  let overhead = safetensors_shard_declared_overhead(header_bytes: shard.header_bytes)
+  let overhead = byte_size_count(b: safetensors_shard_declared_overhead(header_bytes: shard.header_bytes))
   if byte_size_count(b: shard.file_bytes) >= overhead {
     ShardPayloadDeclared { bytes: byte_size(count: byte_size_count(b: shard.file_bytes) - overhead) }
   } else {
-    ShardHeaderExceedsFile { path: shard.path, declared_overhead: overhead, file_bytes: shard.file_bytes }
+    ShardHeaderExceedsFile {
+      path: shard.path,
+      declared_overhead: safetensors_shard_declared_overhead(header_bytes: shard.header_bytes),
+      file_bytes: shard.file_bytes,
+    }
   }
 }
 
@@ -712,7 +719,7 @@ fn safetensors_shard_payload_defects(shard: SafetensorsShardFile) -> List<NonEmp
     ShardHeaderExceedsFile { path: pth, declared_overhead: o, file_bytes: fb } =>
       [join([
         "safetensors shard ", pth as String, " declares an 8-byte prefix plus a header totalling ",
-        to_string(o), " bytes inside a file of ", to_string(byte_size_count(b: fb)),
+        to_string(byte_size_count(b: o)), " bytes inside a file of ", to_string(byte_size_count(b: fb)),
         " bytes; the two figures contradict each other and no payload size follows from them",
       ], "") as NonEmptyStr]
   }
@@ -732,7 +739,7 @@ fn safetensors_shard_payload_agreement(shard: SafetensorsShardFile, declared: By
       ShardPayloadUnderivable {
         path: pth,
         because: join([
-          "the declared prefix plus header is ", to_string(o),
+          "the declared prefix plus header is ", to_string(byte_size_count(b: o)),
           " bytes against a file of ", to_string(byte_size_count(b: fb)), " bytes",
         ], "") as NonEmptyStr,
       }

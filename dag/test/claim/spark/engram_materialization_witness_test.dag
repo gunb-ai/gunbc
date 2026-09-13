@@ -281,7 +281,7 @@ test fn engram_derived_total_equals_the_partition_summary() -> Bool {
 test fn every_engram_entry_span_agrees_with_its_shape_and_dtype() -> Bool {
   let entries = safetensors_population_entries(s: deepseek_v4_1_flash_engram_population)
   count(entries) == 12
-    && all(entries, e => safetensors_entry_span(e: e) == safetensors_entry_declared_bytes(e: e))
+    && all(entries, e => byte_size_count(b: safetensors_entry_span(e: e)) == byte_size_count(b: safetensors_entry_declared_bytes(e: e)))
 }
 
 // EACH SHARD FILE IS ITS HEADER PLUS EXACTLY THIS LAYER'S PAYLOAD. The two Engram shards carry no
@@ -324,7 +324,7 @@ fn impossible_shard() -> SafetensorsShardFile {
 test fn a_shard_whose_header_exceeds_its_file_refuses_rather_than_declaring_no_payload() -> Bool {
   match safetensors_shard_payload(shard: impossible_shard()) {
     ShardHeaderExceedsFile { path: _, declared_overhead: o, file_bytes: fb } =>
-      o == 4104 && byte_size_count(b: fb) == 64
+      byte_size_count(b: o) == 4104 && byte_size_count(b: fb) == 64
     ShardPayloadDeclared { bytes: _ } => false
   } && count(safetensors_shard_payload_defects(shard: impossible_shard())) == 1
     && count(safetensors_shard_payload_defects(shard: deepseek_v4_1_flash_engram_shard_1.file)) == 0

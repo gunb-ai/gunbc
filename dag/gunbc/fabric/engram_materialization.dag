@@ -1997,9 +1997,6 @@ fn route_in_list(routes: List<MaterializationRoute>, identity: DeclarationRef) -
   (filter(routes, r => declaration_ref_eq(a: r.identity, b: identity))).first()
 }
 
-// THE RESIDENT SHARE A CONSUMER MAY ADD TO ITS FOOTPRINT, and there are only three answers. A
-// selected route with an established upper bound contributes that number. A selected route without
-// one, and every state in which no route is selected, contribute an OBLIGATION -- never zero.
 // ── THE RESIDENT SHARE KEEPS ITS PROVENANCE AND ITS BOUND DIRECTION ───────────────────────────
 //
 // A first cut reduced BOTH an observed quantity and an upper bound to one `bytes` field, losing the
