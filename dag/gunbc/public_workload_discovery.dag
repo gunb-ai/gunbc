@@ -1,0 +1,384 @@
+module gunbc.public_workload_discovery
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.object_store {
+  ImmutableRecordPut, ImmutableRecordStored, ImmutableRecordAlreadyPresent, ImmutableRecordConflict,
+  ImmutableRecordOccupiedByEmptyObject, ImmutableRecordPublishRefused, ImmutableRecordReadBackRefused,
+  immutable_record_put_holds,
+}
+import std.algebra { trim }
+import gunbc.clock_read { clock_now_probed_at }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types { RunnerLabelRow }
+import extdeps.github.auth { github_token, GitHubAuthTokenObserved, GitHubAuthTokenUnavailable }
+import extdeps.github.actions { RunnerSpec, HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression }
+import extdeps.languages.yaml.types { YamlMapping }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { runner_label_string }
+import extdeps.languages.yaml.gha_workflow_read {
+  WorkflowJobsInterpreted, WorkflowDocumentRefused,
+  JobInterpreted, JobUnresolved, JobInstances, JobInstancesUnknownWhileStrategyUnresolved,
+  InstanceRunner, InstanceRunnerUnresolved,
+}
+import extdeps.realization.object_store_git {
+  GitObjectStoreLayout, GitObjectStoreOpening, GitObjectStoreOpened, GitObjectStoreNotInitialized,
+  GitObjectStoreMarkerUnrecognized, GitObjectStoreUnavailable,
+  GitObjectStoreInitialized, GitObjectStoreInitializationRefused,
+  git_object_store_open, git_object_store_initialize,
+}
+import gunbc.runner_provider_survey { runs_on_label_rows }
+import gunbc.runner_label_resolution {
+  resolve_runner_label, arm_standing, provider_reading,
+  ArmConfirmed, NotArmConfirmed, ArmUndetermined,
+  ProviderFromCatalog, ProviderUnresolved,
+}
+import gunbc.public_workload_scan {
+  WorkloadScanPolicy, WorkloadScanReceipt, WorkloadScanCompleted, WorkloadScanNotStarted, perform_workload_scan,
+  ScanQueryPagesExhausted, ScanQueryPageLimit, ScanQueryHitLimit, ScanQueryTruncated, ScanQueryPageRefused,
+}
+import gunbc.public_workload_evidence {
+  WorkflowRevisionEvidence, EvidenceStorage, WorkloadEvidenceHarvest, EvidenceObserved,
+  evidence_from_hit, harvest_workload_evidence,
+}
+
+// FROM A BOUNDED SEARCH TO A SHORTLIST OF ORGANIZATIONS WITH SPECIFIC ARM JOBS.
+//
+// One run: page code search for the ARM runner labels the surveyed vendor catalogs publish, read
+// every hit's workflow at its repository's exact head, store each workflow revision as an immutable
+// record, and write a report naming each repository with at least one job instance whose runner the
+// catalogs place on Aarch64 - the job, the matrix combination, the label, the provider, the commit
+// and blob it was read at - beside everything examined that did not qualify and why.
+//
+// WHAT THE REPORT IS NOT. It is not a qualified lead, a spend estimate, a permission to contact
+// anyone, or a claim that a repository is missing because it did not come back. Search is bounded
+// and self-declared incomplete, so the report carries the scan's own per-query stops. Nothing in this
+// module contacts a maintainer, runs third-party code, or publishes anywhere but the named store and
+// the named report path.
+//
+// THE QUERIES COME FROM THE CATALOGS, NOT FROM A LIST SOMEONE TYPED. Each distinct Aarch64 label on the
+// runs-on surface of gunbc.runner_provider_survey becomes one query, so enrolling a vendor's catalog
+// widens the search with no edit here. The caller picks a window of that roster (offset and count),
+// because code search is rate limited far below the roster's size; the report names the window.
+
+fn arm_runner_labels() -> List<String> {
+  fold(runs_on_label_rows(), init: [], f: fn(acc, row) {
+    if row.architecture == Aarch64 && !any(acc, l => l == (row.label as String)) {
+      concat(acc, [row.label as String])
+    } else {
+      acc
+    }
+  })
+}
+
+fn arm_label_query(label: String) -> NonEmptyStr {
+  join([label, "path:.github/workflows"], " ") as NonEmptyStr
+}
+
+type QueryWindow {
+  offset: Int
+  count: Int
+}
+
+type QueryWindowSelection
+  = QueryWindowSelected { labels: List<String>, roster_size: Int }
+  | QueryWindowRefused { cause: NonEmptyStr }
+
+fn select_query_window(roster: List<String>, window: QueryWindow) -> QueryWindowSelection {
+  if window.offset < 0 || window.count < 1 {
+    QueryWindowRefused { cause: "the query window needs a non-negative offset and a count of at least 1" }
+  } else if window.offset >= count(roster) {
+    QueryWindowRefused { cause: join(["the query window starts at ", to_string(value: window.offset), " but the catalog roster has ", to_string(value: count(roster)), " Aarch64 labels"], "") as NonEmptyStr }
+  } else {
+    QueryWindowSelected { labels: roster |> skip(n: window.offset) |> take(n: window.count), roster_size: count(roster) }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Projection: the architecture of each job instance, read from the catalogs at the time of the run.
+
+// WHICH RUNS-ON VALUES HAVE A LABEL TO LOOK UP. A self-hosted label set names a machine the
+// repository owns, which no vendor catalog describes; an expression the reader could not evaluate
+// names nothing yet. Both are reported as not looked up, never as "not ARM".
+type InstanceLabel
+  = InstanceCatalogLabel { label: String }
+  | InstanceSelfHosted { labels: List<String> }
+  | InstanceUnevaluatedExpression { expression: String }
+
+fn instance_label(runner: RunnerSpec) -> InstanceLabel {
+  match runner {
+    HostedRunner { label } => InstanceCatalogLabel { label: runner_label_string(label: label) }
+    RunsOnLabel { label } => InstanceCatalogLabel { label: label as String }
+    SelfHosted { labels } => InstanceSelfHosted { labels: labels }
+    RunsOnExpression { expression } => InstanceUnevaluatedExpression { expression: expression }
+  }
+}
+
+type ArmInstance {
+  job_key: String
+  matrix_selector: String
+  label: String
+  provider: String
+}
+
+type InstanceTally {
+  arm: List<ArmInstance>
+  not_arm: Int
+  undetermined: Int
+  not_looked_up: Int
+}
+
+fn empty_tally() -> InstanceTally {
+  InstanceTally { arm: [], not_arm: 0, undetermined: 0, not_looked_up: 0 }
+}
+
+fn tally_instance(t: InstanceTally, job_key: String, selector: String, runner: RunnerSpec, observed_at: Rfc3339Timestamp) -> InstanceTally {
+  match instance_label(runner: runner) {
+    InstanceSelfHosted { labels } => InstanceTally { arm: t.arm, not_arm: t.not_arm, undetermined: t.undetermined, not_looked_up: t.not_looked_up + 1 }
+    InstanceUnevaluatedExpression { expression } => InstanceTally { arm: t.arm, not_arm: t.not_arm, undetermined: t.undetermined, not_looked_up: t.not_looked_up + 1 }
+    InstanceCatalogLabel { label } => {
+      let resolution = resolve_runner_label(label: label, observed_at: observed_at)
+      match arm_standing(r: resolution) {
+        ArmConfirmed { label: l, snapshot: _ } => InstanceTally {
+          arm: concat(t.arm, [ArmInstance {
+            job_key: job_key,
+            matrix_selector: selector,
+            label: l,
+            provider: match provider_reading(r: resolution) {
+              ProviderFromCatalog { provider, label: _, snapshot: _ } => provider.module_path as String
+              ProviderUnresolved { label: _, cause } => concat("unresolved: ", cause as String)
+            },
+          }]),
+          not_arm: t.not_arm, undetermined: t.undetermined, not_looked_up: t.not_looked_up,
+        }
+        NotArmConfirmed { label: _, architecture: _, snapshot: _ } => InstanceTally { arm: t.arm, not_arm: t.not_arm + 1, undetermined: t.undetermined, not_looked_up: t.not_looked_up }
+        ArmUndetermined { label: _, cause: _ } => InstanceTally { arm: t.arm, not_arm: t.not_arm, undetermined: t.undetermined + 1, not_looked_up: t.not_looked_up }
+      }
+    }
+  }
+}
+
+type RevisionTally {
+  evidence: WorkflowRevisionEvidence
+  instances: InstanceTally
+  unresolved_jobs: Int
+  jobs_without_instances: Int
+  document_refused: Bool
+}
+
+fn tally_revision(e: WorkflowRevisionEvidence, observed_at: Rfc3339Timestamp) -> RevisionTally {
+  match e.jobs {
+    WorkflowDocumentRefused { refusal: _ } => RevisionTally { evidence: e, instances: empty_tally(), unresolved_jobs: 0, jobs_without_instances: 0, document_refused: true }
+    WorkflowJobsInterpreted { jobs } =>
+      fold(jobs, init: RevisionTally { evidence: e, instances: empty_tally(), unresolved_jobs: 0, jobs_without_instances: 0, document_refused: false }, f: fn(acc, j) {
+        match j {
+          JobUnresolved { job_key: _, location: _, cause: _ } => RevisionTally { evidence: acc.evidence, instances: acc.instances, unresolved_jobs: acc.unresolved_jobs + 1, jobs_without_instances: acc.jobs_without_instances, document_refused: false }
+          JobInterpreted { job_key, runs_on: _, strategy: _, instances, steps: _, uninterpreted_keys: _, interpreted: _ } =>
+            match instances {
+              JobInstancesUnknownWhileStrategyUnresolved => RevisionTally { evidence: acc.evidence, instances: acc.instances, unresolved_jobs: acc.unresolved_jobs, jobs_without_instances: acc.jobs_without_instances + 1, document_refused: false }
+              JobInstances { instances: is } => RevisionTally {
+                evidence: acc.evidence,
+                instances: fold(is, init: acc.instances, f: fn(t, i) {
+                  match i.runner {
+                    InstanceRunner { runner } => tally_instance(t: t, job_key: job_key, selector: serialize_yaml(v: YamlMapping { entries: i.matrix_selector }), runner: runner, observed_at: observed_at)
+                    InstanceRunnerUnresolved { cause: _ } => InstanceTally { arm: t.arm, not_arm: t.not_arm, undetermined: t.undetermined, not_looked_up: t.not_looked_up + 1 }
+                  }
+                }),
+                unresolved_jobs: acc.unresolved_jobs,
+                jobs_without_instances: acc.jobs_without_instances,
+                document_refused: false,
+              }
+            }
+        }
+      })
+  }
+}
+
+fn revision_has_arm(t: RevisionTally) -> Bool {
+  count(t.instances.arm) > 0
+}
+
+// ---------------------------------------------------------------------------------------------
+// The report.
+
+fn render_scan_section(receipt: WorkloadScanReceipt) -> List<String> {
+  concat(["## Scan", "", "| query | pages (items delivered) | stop |", "| --- | --- | --- |"], map(receipt.queries, q => join([
+    "| `", q.query as String, "` | ", join(map(q.pages, p => to_string(value: p.items_delivered)), ", "), " | ",
+    match q.stop {
+      ScanQueryPagesExhausted => "pages exhausted"
+      ScanQueryPageLimit => "page limit"
+      ScanQueryHitLimit => "distinct-hit limit"
+      ScanQueryTruncated { page, cause: _ } => join(["truncated upstream at page ", to_string(value: page)], "")
+      ScanQueryPageRefused { page, performance: _ } => join(["page ", to_string(value: page), " refused"], "")
+    },
+    " |",
+  ], "")))
+}
+
+fn put_text(put: ImmutableRecordPut) -> String {
+  match put {
+    ImmutableRecordStored => "stored"
+    ImmutableRecordAlreadyPresent => "already present"
+    ImmutableRecordConflict { committed: _, offered: _ } => "NOT STORED (conflict with the record already under this key)"
+    ImmutableRecordOccupiedByEmptyObject { offered: _ } => "NOT STORED (an empty object holds this key)"
+    ImmutableRecordPublishRefused { fault } => concat("NOT STORED (publish refused: ", concat(fault.detail, ")"))
+    ImmutableRecordReadBackRefused { read: _ } => "NOT STORED (read-back did not verify)"
+  }
+}
+
+fn render_revision(t: RevisionTally, storage: EvidenceStorage) -> List<String> {
+  concat(
+    [join(["### ", t.evidence.repository_full_name_at_observation, " (repository id ", to_string(value: t.evidence.key.repository_id), ")"], ""),
+     join(["- workflow `", t.evidence.key.workflow_path, "` at commit `", t.evidence.key.ref as String, "`, blob `", t.evidence.key.blob_sha, "` - evidence ", put_text(put: storage.put)], "")],
+    concat(
+      map(t.instances.arm, a => join(["- ARM job `", a.job_key, "` ", if a.matrix_selector == "{}\n" || a.matrix_selector == "" { "" } else { join(["matrix `", replace(a.matrix_selector, "\n", "; "), "` "], "") }, "runs on `", a.label, "` (", a.provider, ")"], "")),
+      [join(["- unknowns: ", to_string(value: t.instances.undetermined), " instance(s) with a label the catalogs do not place, ", to_string(value: t.instances.not_looked_up), " self-hosted or unevaluated, ", to_string(value: t.unresolved_jobs + t.jobs_without_instances), " job(s) the reader could not expand; spend, owner interest and permission are unobserved"], ""), ""],
+    ),
+  )
+}
+
+type DiscoveryReport {
+  text: String
+  shortlisted_repositories: Int
+  stored_failures: Int
+}
+
+fn render_discovery_report(receipt: WorkloadScanReceipt, harvest: WorkloadEvidenceHarvest, window: QueryWindow, roster_size: Int, observed_at: Rfc3339Timestamp) -> DiscoveryReport {
+  let paired = map(harvest.stored, s => StoredTally { storage: s, tally: tally_revision(e: s.evidence, observed_at: observed_at) })
+  let shortlisted = filter(paired, p => revision_has_arm(t: p.tally))
+  let others = filter(paired, p => !revision_has_arm(t: p.tally))
+  let repositories = fold(shortlisted, init: [], f: fn(acc, p) { if any(acc, id => id == p.tally.evidence.key.repository_id) { acc } else { concat(acc, [p.tally.evidence.key.repository_id]) } })
+  let failures = count(filter(harvest.stored, s => !immutable_record_put_holds(put: s.put)))
+  let lines = concat(concat(concat(concat(
+    [
+      "# Public ARM workload shortlist",
+      "",
+      join(["Observed at ", observed_at as String, ". Queries ", to_string(value: window.offset), "..", to_string(value: window.offset + window.count - 1), " of ", to_string(value: roster_size), " catalog Aarch64 labels. ",
+        to_string(value: count(repositories)), " repositories with at least one catalog-confirmed ARM job; ",
+        to_string(value: count(harvest.stored)), " workflow revisions read; ",
+        to_string(value: count(harvest.text_unreadable)), " unreadable as text; ",
+        to_string(value: count(harvest.not_reached)), " hits whose bytes were not reached; ",
+        to_string(value: failures), " evidence records NOT stored."], ""),
+      "",
+      "These are screening leads, not qualified customers: no spend, contact permission or trial authorization is established by anything here, and a repository absent from this run is not evidence of anything.",
+      "",
+      "## Shortlist",
+      "",
+    ],
+    fold(shortlisted, init: [], f: fn(acc, p) { concat(acc, render_revision(t: p.tally, storage: p.storage)) })),
+    ["## Examined without a catalog-confirmed ARM job", ""]),
+    map(others, p => join(["- ", p.tally.evidence.repository_full_name_at_observation, " `", p.tally.evidence.key.workflow_path, "` - ", to_string(value: p.tally.instances.not_arm), " not ARM, ", to_string(value: p.tally.instances.undetermined), " undetermined, ", to_string(value: p.tally.instances.not_looked_up), " not looked up", if p.tally.document_refused { ", document refused by the reader" } else { "" }], ""))),
+    concat([""], render_scan_section(receipt: receipt)))
+  DiscoveryReport { text: concat(join(lines, "\n"), "\n"), shortlisted_repositories: count(repositories), stored_failures: failures }
+}
+
+type StoredTally {
+  storage: EvidenceStorage
+  tally: RevisionTally
+}
+
+// ---------------------------------------------------------------------------------------------
+// The entry point.
+
+fn parse_window_int(text: String) -> Int? {
+  parse_int(s: trim(text))
+}
+
+func discover_public_workloads(
+  report_path: String,
+  store_repo_root: String,
+  store_worktree: String,
+  store_remote: String,
+  store_branch: String,
+  query_offset: String,
+  query_count: String,
+) -> ProcessExit {
+  match parse_window_int(text: query_offset) {
+    Absent => exit_failure(reason: concat("query_offset is not an integer: ", query_offset))
+    Present { value: offset } => match parse_window_int(text: query_count) {
+      Absent => exit_failure(reason: concat("query_count is not an integer: ", query_count))
+      Present { value: n } => {
+        let window = QueryWindow { offset: offset, count: n }
+        match select_query_window(roster: arm_runner_labels(), window: window) {
+          QueryWindowRefused { cause } => exit_failure(reason: cause as String)
+          QueryWindowSelected { labels, roster_size } =>
+            if store_remote == "" || store_branch == "" || store_repo_root == "" || store_worktree == "" {
+              exit_failure(reason: "the evidence store's repository, worktree, remote and branch are all required; this entry point never chooses where records land")
+            } else {
+              match git_object_store_open(layout: GitObjectStoreLayout {
+                repo_root: store_repo_root as FilePath,
+                worktree: store_worktree as FilePath,
+                git_program: "/usr/bin/git",
+                directory_program: "/usr/bin/install",
+                remote: store_remote as NonEmptyStr,
+                branch: store_branch as NonEmptyStr,
+              }) {
+                GitObjectStoreNotInitialized { marker_path } => exit_failure(reason: concat("the evidence store is not initialized: no marker at ", marker_path))
+                GitObjectStoreMarkerUnrecognized { marker_path } => exit_failure(reason: concat("the branch holds something that is not an object store: ", marker_path))
+                GitObjectStoreUnavailable { fault } => exit_failure(reason: concat("the evidence store is unavailable: ", fault.detail))
+                GitObjectStoreOpened { layout, head } =>
+                  match github_token() {
+                    GitHubAuthTokenUnavailable { variable } => exit_failure(reason: concat("no GitHub token in ", variable as String))
+                    GitHubAuthTokenObserved { token } =>
+                      match perform_workload_scan(auth_token: token.token, policy: WorkloadScanPolicy { queries: map(labels, l => arm_label_query(label: l)), per_page: 30, max_pages_per_query: 1, max_distinct_hits: 50 }) {
+                        WorkloadScanNotStarted { cause } => exit_failure(reason: cause as String)
+                        WorkloadScanCompleted { receipt } => {
+                          let store = GitObjectStoreOpened { layout: layout, head: head }
+                          let harvest = harvest_workload_evidence(store: store, receipt: receipt, attempts: 3)
+                          match clock_now_probed_at() {
+                            Absent => exit_failure(reason: "the clock answered no time, and the catalog reading needs the observation time to decide snapshot staleness")
+                            Present { value: now } => {
+                              let report = render_discovery_report(receipt: receipt, harvest: harvest, window: window, roster_size: roster_size, observed_at: trim(now as String) as Rfc3339Timestamp)
+                              let w = Filesystem.Write(path: report_path, content: report.text)
+                              if !w.success {
+                                exit_failure(reason: concat("the report could not be written: ", w.error))
+                              } else if report.stored_failures > 0 {
+                                exit_failure(reason: join([to_string(value: report.stored_failures), " evidence record(s) were not stored; the report at ", report_path, " names them"], ""))
+                              } else {
+                                ExitSuccess
+                              }
+                            }
+                          }
+                        }
+                      }
+                  }
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+// FOUNDING THE STORE IS ITS OWN ACT. discover_public_workloads opens a store and refuses when none is
+// there, so a mistyped branch never quietly founds an empty one; this entry point is the only thing
+// that creates it, and it reports what the remote holds afterwards.
+func initialize_public_workload_evidence_store(
+  store_repo_root: String,
+  store_worktree: String,
+  store_remote: String,
+  store_branch: String,
+) -> ProcessExit {
+  if store_remote == "" || store_branch == "" || store_repo_root == "" || store_worktree == "" {
+    exit_failure(reason: "the evidence store's repository, worktree, remote and branch are all required")
+  } else {
+    match git_object_store_initialize(layout: GitObjectStoreLayout {
+      repo_root: store_repo_root as FilePath,
+      worktree: store_worktree as FilePath,
+      git_program: "/usr/bin/git",
+      directory_program: "/usr/bin/install",
+      remote: store_remote as NonEmptyStr,
+      branch: store_branch as NonEmptyStr,
+    }, label: "public-workload-evidence" as NonEmptyStr) {
+      GitObjectStoreInitializationRefused { fault } => exit_failure(reason: concat("initialization refused: ", fault.detail))
+      GitObjectStoreInitialized { opening } => match opening {
+        GitObjectStoreOpened { layout: _, head: _ } => ExitSuccess
+        GitObjectStoreNotInitialized { marker_path } => exit_failure(reason: concat("after initializing, the remote still holds no marker at ", marker_path))
+        GitObjectStoreMarkerUnrecognized { marker_path } => exit_failure(reason: concat("the branch already holds something that is not an object store: ", marker_path))
+        GitObjectStoreUnavailable { fault } => exit_failure(reason: concat("the store is unavailable after initializing: ", fault.detail))
+      }
+    }
+  }
+}

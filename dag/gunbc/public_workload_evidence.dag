@@ -273,12 +273,14 @@ fn encode_workflow_revision_evidence(e: WorkflowRevisionEvidence) -> NonEmptyStr
 
 type EvidenceStorage {
   key: WorkflowRevisionKey
+  evidence: WorkflowRevisionEvidence
   put: ImmutableRecordPut
 }
 
 func store_workflow_revision_evidence(store: GitObjectStoreOpening, evidence: WorkflowRevisionEvidence, attempts: Int) -> EvidenceStorage {
   EvidenceStorage {
     key: evidence.key,
+    evidence: evidence,
     put: git_object_store_put_record(
       store: store,
       key: workflow_revision_record_key(key: evidence.key),
