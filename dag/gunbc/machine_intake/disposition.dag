@@ -12,20 +12,20 @@ import gunbc.machine_intake_subject {
   content_hash_equal,
 }
 import gunbc.machine_intake_phase {
-  Arrival,
   ArrivalHardwareQualification,
-  BmcSecure,
+  DevelopmentAndTest,
   IntakePhase,
   IntakeQualificationPolicy,
   IntakeTransaction,
   MachineOperatingEnvironment,
   OsProvisioning,
   PlacementCommissioning,
-  QualificationPolicy,
+  Production,
   QualificationRefusalOwner,
   UnitHardware,
   fleet_admission_required_phases,
   intake_phase_transaction,
+  intake_qualification_policy,
   intake_qualification_policy_digest,
 }
 import gunbc.machine_intake_receipt {
@@ -226,6 +226,7 @@ type PartsHoldReason
   | PhaseNotYetObserved { phase: IntakePhase }
   | PlacementQualificationPending
   | QualificationSubjectStale { currency: SubjectCurrency }
+  | QualificationPolicyBarMismatch { ledger_digest: ContentHash, bar: IntakeQualificationPolicy }
 
 type MachineIntakeDisposition
   = Admitted { admission_receipt: FleetAdmissionReceipt }
@@ -262,6 +263,39 @@ fn first_phase(phases: List<IntakePhase>) -> IntakePhase? {
 // defect inside an open return window is the only path to ReturnWindow; every
 // other owner's refusal, every unobserved phase and every stale subject is a
 // PartsHold with its reason — loud, and never a false hardware diagnosis.
+fn environment_of_qualification_digest(digest: ContentHash) -> MachineOperatingEnvironment? {
+  if content_hash_equal(left: digest, right: intake_qualification_policy_digest(policy: intake_qualification_policy(environment: DevelopmentAndTest))) {
+    Present { value: DevelopmentAndTest }
+  } else if content_hash_equal(left: digest, right: intake_qualification_policy_digest(policy: intake_qualification_policy(environment: Production))) {
+    Present { value: Production }
+  } else {
+    none
+  }
+}
+
+fn policy_bar_mismatch_cause(ledger_digest: ContentHash, bar: IntakeQualificationPolicy) -> NonEmptyStr {
+  match environment_of_qualification_digest(digest: ledger_digest) {
+    Absent =>
+      match bar.environment {
+        Production => "ledger policy digest does not match the Production admission bar"
+        DevelopmentAndTest => "ledger policy digest does not match the DevelopmentAndTest admission bar"
+      }
+    Present { value: ledger_env } =>
+      match ledger_env {
+        DevelopmentAndTest =>
+          match bar.environment {
+            Production => "ledger was derived under DevelopmentAndTest; the admission bar is Production"
+            DevelopmentAndTest => "ledger policy digest does not match the DevelopmentAndTest admission bar"
+          }
+        Production =>
+          match bar.environment {
+            DevelopmentAndTest => "ledger was derived under Production; the admission bar is DevelopmentAndTest"
+            Production => "ledger policy digest does not match the Production admission bar"
+          }
+      }
+  }
+}
+
 fn derive_disposition(
   admission: FleetAdmissionStanding,
   return_window: ReturnWindow,
@@ -269,14 +303,10 @@ fn derive_disposition(
 ) -> MachineIntakeDisposition {
   match admission {
     FleetAdmissible { receipt: r } => Admitted { admission_receipt: r }
-    FleetPolicyBarMismatch { ledger_digest: _, bar: _ } =>
+    FleetPolicyBarMismatch { ledger_digest: digest, bar: bar } =>
       PartsHold {
-        reason: QualificationUnestablished {
-          phase: Arrival { phase: BmcSecure },
-          owner: QualificationPolicy,
-          cause: "ledger qualification policy is not the admission bar; a DevelopmentAndTest standing cannot be inherited for production",
-        },
-        next_action: "derive under the intended bar; promotion requires a fresh BMC-secure pass",
+        reason: QualificationPolicyBarMismatch { ledger_digest: digest, bar: bar },
+        next_action: policy_bar_mismatch_cause(ledger_digest: digest, bar: bar),
       }
     FleetNotAdmissible { missing: missing, refused: refused, subject_mismatched: mismatched, subject_currency: currency } =>
       match first_hardware_refusal(refused: refused) {
