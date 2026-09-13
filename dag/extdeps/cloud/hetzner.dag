@@ -18,6 +18,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// Published-page URIs only. Whether those pages answer a data-path question is a receipt in
+// product.supplier.hetzner_path_reading, not an Unobserved arm on this module.
+data hetzner_technical_organizational_measures_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/"
+  }
+}
+
+data hetzner_data_protection_overview_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/"
+  }
+}
+
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
 
 data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
@@ -271,89 +287,3 @@ fn hetzner_cloud_listed_catalog() -> List<HetznerCloudListedRow> {
   [ cax11_listed, cax21_listed, cax31_listed, cax41_listed,
     cx23_listed, cx33_listed, cx43_listed, cx53_listed ]
 }
-
-// ---------------------------------------------------------------------------------------------
-// NEGATIVE AND OVERVIEW READINGS WHOSE CONSUMER IS THE UNREAD PATH, NOT A LOCATED EVIDENCE SLOT.
-//
-// product.fabric.provider_route ProviderPathUnread.consulted is the slot a researched-and-
-// unanswered path uses to cite the documents that were read and did not answer. These two rows
-// are that citation's subject. They are not Locatable evidence for a path; consuming them as
-// Located.evidence would invent an answer they explicitly do not give. hetzner_published_readings
-// and the two locator/silence folds below are the value-level readers of the rows in this
-// tree. Nonempty consulted on a rented ProviderDataPathClosure is the declared frontier on
-// product.fabric.provider_route ProviderPathUnread, discharged by gunbc#11188.
-
-// WHAT THE PAGE WAS READ FOR AND DID NOT SAY, as a closed coproduct rather than a substring of
-// statement. statement remains the transcription of upstream's own words (DESIGN section 4c:
-// the quote is authored-source data). The silences are the machine claim that those questions
-// were asked of this document and not answered -- matching them is how a later reader tells
-// researched-and-unanswered from never-looked without grepping prose.
-type HetznerDocumentSilence
-  = LogSystemCountryUnstated
-  | AdministrativeAccessJurisdictionUnstated
-  | FinlandOrHelsinkiUnmentioned
-
-type HetznerPublishedReading {
-  authority: ExternalAuthority
-  read_on: NonEmptyStr
-  statement: NonEmptyStr
-  silences: List<HetznerDocumentSilence>
-}
-data hetzner_technical_organizational_measures_reading: HetznerPublishedReading = HetznerPublishedReading {
-  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/" } },
-  read_on: "2026-09-12",
-  statement: "Only authorized Hetzner employees have administrative access, within the scope of the agreed service; via multi-level authentication and cryptographic protection. Our log system saves logins and administrative changes within the customer account. We store and save these in accordance with our company deletion plan and in compliance with the GDPR. Our data centers are staffed 24/7/365 by our own technical support employees.",
-  silences: [
-    LogSystemCountryUnstated,
-    AdministrativeAccessJurisdictionUnstated,
-    FinlandOrHelsinkiUnmentioned,
-  ],
-}
-
-data hetzner_data_protection_overview_reading: HetznerPublishedReading = HetznerPublishedReading {
-  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/" } },
-  read_on: "2026-09-12",
-  statement: "The page names Falkenstein, Nuremberg and Helsinki as EU locations and Ashburn, Hillsboro and Singapore as non-EU ones; Hetzner US LLC operates the US locations and Hetzner Singapore Pte. Ltd. the Singapore one, while Hetzner Online GmbH remains the contractual partner. Only the data stored on a cloud server transfers to a non-EU location when one is selected; customer master data is processed exclusively within the EU. The subcontractor overview is referenced rather than reproduced, at www.hetzner.com/AV/subunternehmer.pdf.",
-  silences: [],
-}
-
-fn hetzner_published_readings() -> List<HetznerPublishedReading> {
-  [
-    hetzner_technical_organizational_measures_reading,
-    hetzner_data_protection_overview_reading,
-  ]
-}
-
-fn hetzner_published_reading_locators() -> List<NonEmptyStr> {
-  map(hetzner_published_readings(), r => r.authority.uri.locator)
-}
-
-fn hetzner_document_silence_eq(a: HetznerDocumentSilence, b: HetznerDocumentSilence) -> Bool {
-  match a {
-    LogSystemCountryUnstated =>
-      match b {
-        LogSystemCountryUnstated => true
-        AdministrativeAccessJurisdictionUnstated => false
-        FinlandOrHelsinkiUnmentioned => false
-      }
-    AdministrativeAccessJurisdictionUnstated =>
-      match b {
-        LogSystemCountryUnstated => false
-        AdministrativeAccessJurisdictionUnstated => true
-        FinlandOrHelsinkiUnmentioned => false
-      }
-    FinlandOrHelsinkiUnmentioned =>
-      match b {
-        LogSystemCountryUnstated => false
-        AdministrativeAccessJurisdictionUnstated => false
-        FinlandOrHelsinkiUnmentioned => true
-      }
-  }
-}
-
-fn hetzner_reading_records_silence(r: HetznerPublishedReading, silence: HetznerDocumentSilence) -> Bool {
-  count(filter(r.silences, s => hetzner_document_silence_eq(a: s, b: silence))) == 1
-}
-
-
-

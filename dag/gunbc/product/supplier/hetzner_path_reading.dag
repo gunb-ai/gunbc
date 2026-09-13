@@ -1,0 +1,91 @@
+module product.supplier.hetzner_path_reading
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.cloud.hetzner {
+  hetzner_technical_organizational_measures_page,
+  hetzner_data_protection_overview_page,
+}
+
+// WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. These rows are receipts of THIS
+// REPOSITORY reading Hetzner's published pages against product.fabric.provider_route's
+// nine-path questions. DESIGN section 3: observations produced by this repository are
+// receipts in the observing product layer, never Unobserved properties authored inside the
+// upstream module. extdeps.cloud.hetzner therefore owns only the page URIs; read_on,
+// the paraphrase, and the silence coproduct live here.
+//
+// The silences are OUR questions, not Hetzner vocabulary. FinlandOrHelsinkiUnmentioned is
+// a path-closure question, not a vendor concept. Matching a silence is how a later reader
+// tells researched-and-unanswered from never-looked without grepping prose. Consuming these
+// rows as ProviderPathLocated.evidence would invent an answer they explicitly do not give.
+//
+// DECLARED FRONTIER (DESIGN section 3c). Nonempty consulted on a rented ProviderDataPathClosure
+// is discharged by gunbc#11188, which cites these two reading declarations.
+
+type HetznerPathDocumentSilence
+  = LogSystemCountryUnstated
+  | AdministrativeAccessJurisdictionUnstated
+  | FinlandOrHelsinkiUnmentioned
+
+type HetznerPathDocumentReading {
+  authority: ExternalAuthority
+  read_on: NonEmptyStr
+  statement: NonEmptyStr
+  silences: List<HetznerPathDocumentSilence>
+}
+
+data hetzner_technical_organizational_measures_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
+  authority: hetzner_technical_organizational_measures_page,
+  read_on: "2026-09-12",
+  statement: "Only authorized Hetzner employees have administrative access, within the scope of the agreed service; via multi-level authentication and cryptographic protection. Our log system saves logins and administrative changes within the customer account. We store and save these in accordance with our company deletion plan and in compliance with the GDPR. Our data centers are staffed 24/7/365 by our own technical support employees.",
+  silences: [
+    LogSystemCountryUnstated,
+    AdministrativeAccessJurisdictionUnstated,
+    FinlandOrHelsinkiUnmentioned,
+  ],
+}
+
+data hetzner_data_protection_overview_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
+  authority: hetzner_data_protection_overview_page,
+  read_on: "2026-09-12",
+  statement: "The page names Falkenstein, Nuremberg and Helsinki as EU locations and Ashburn, Hillsboro and Singapore as non-EU ones; Hetzner US LLC operates the US locations and Hetzner Singapore Pte. Ltd. the Singapore one, while Hetzner Online GmbH remains the contractual partner. Only the data stored on a cloud server transfers to a non-EU location when one is selected; customer master data is processed exclusively within the EU. The subcontractor overview is referenced rather than reproduced, at www.hetzner.com/AV/subunternehmer.pdf.",
+  silences: [],
+}
+
+fn hetzner_published_readings() -> List<HetznerPathDocumentReading> {
+  [
+    hetzner_technical_organizational_measures_reading,
+    hetzner_data_protection_overview_reading,
+  ]
+}
+
+fn hetzner_published_reading_locators() -> List<NonEmptyStr> {
+  map(hetzner_published_readings(), r => r.authority.uri.locator)
+}
+
+fn hetzner_path_document_silence_eq(a: HetznerPathDocumentSilence, b: HetznerPathDocumentSilence) -> Bool {
+  match a {
+    LogSystemCountryUnstated =>
+      match b {
+        LogSystemCountryUnstated => true
+        AdministrativeAccessJurisdictionUnstated => false
+        FinlandOrHelsinkiUnmentioned => false
+      }
+    AdministrativeAccessJurisdictionUnstated =>
+      match b {
+        LogSystemCountryUnstated => false
+        AdministrativeAccessJurisdictionUnstated => true
+        FinlandOrHelsinkiUnmentioned => false
+      }
+    FinlandOrHelsinkiUnmentioned =>
+      match b {
+        LogSystemCountryUnstated => false
+        AdministrativeAccessJurisdictionUnstated => false
+        FinlandOrHelsinkiUnmentioned => true
+      }
+  }
+}
+
+fn hetzner_reading_records_silence(r: HetznerPathDocumentReading, silence: HetznerPathDocumentSilence) -> Bool {
+  count(filter(r.silences, s => hetzner_path_document_silence_eq(a: s, b: silence))) == 1
+}

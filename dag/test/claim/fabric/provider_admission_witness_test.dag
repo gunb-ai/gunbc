@@ -11,7 +11,7 @@ import product.fabric.provider_route {
   DownstreamProviderPopulation, NoDownstreamProviders, DownstreamProvidersUnread,
   first_unread_standing, downstream_obligation, path_unread_consulted,
 }
-import extdeps.cloud.hetzner {
+import product.supplier.hetzner_path_reading {
   hetzner_published_readings,
   hetzner_published_reading_locators,
   hetzner_technical_organizational_measures_reading,
@@ -156,11 +156,11 @@ fn closure_telemetry_unread(where_it_is: DeclarationRef) -> ProviderDataPathClos
 }
 
 fn tom_reading_ref() -> DeclarationRef {
-  decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_technical_organizational_measures_reading")
+  decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading")
 }
 
 fn dpo_reading_ref() -> DeclarationRef {
-  decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_data_protection_overview_reading")
+  decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading")
 }
 
 fn wrong_reading_ref() -> DeclarationRef {
@@ -624,11 +624,9 @@ test fn w_wrong_agreement_refuses() -> Bool {
   )
 }
 
-// Non-vacuity for the obligation extractors, so a green above cannot come from both arms of the
-// path helpers being accidentally equal. Asserted on the OBLIGATION LISTS rather than on Bool
-// predicates, because the lists are what the decision actually consumes now - a Bool helper here
-// would be a second answer to a question the extractor already answers, and would be testing
-// something the wall does not use.
+// Non-vacuity for the unread-standing extractor, so a green above cannot come from both
+// closures being accidentally equal. Asserted on first_unread_standing, because that is
+// what path_refusals consumes.
 test fn w_closure_extractors_discriminate() -> Bool {
   count(first_unread_standing(c: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 0
     && count(first_unread_standing(c: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 1

@@ -98,7 +98,7 @@ type CompliancePostureRevision {
 // pass []. The named consumer is product.supplier.hetzner's nine-path closures (gunbc#11188),
 // which already researched the TOM and data-protection-overview pages and currently cannot record
 // that because the unread arm had no slot. TRIGGER: gunbc#11188 lands AFTER this carrier, fills
-// consulted on those unread paths with decl_ref to extdeps.cloud.hetzner
+// consulted on those unread paths with decl_ref to product.supplier.hetzner_path_reading
 // hetzner_technical_organizational_measures_reading and
 // hetzner_data_protection_overview_reading, and drops its duplicate copies of those two rows.
 // Until that fires, researched-and-unanswered on a rented route is a later-change inhabitant,
