@@ -11,7 +11,7 @@ import std.interval { OrderedClosedInterval, degenerate_interval }
 import std.roster_frontier {
   FrontierRow,
   frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
-  fold_frontier_expiry, frontier_expiry_clean,
+  fold_frontier_expiry, frontier_expiry_clean, frontier_subject_key,
 }
 import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
@@ -441,9 +441,9 @@ test fn a_span_that_disagrees_with_its_shape_refuses() -> Bool {
     && population_is_refused(entries: [
       safetensors_entry(name: "layers.1.engram.q_weight" as NonEmptyStr, dtype: SafeBf16, shape: [4, 8], begin_offset: 0, end_offset: 32),
     ])
-    && safetensors_dtype_byte_width(d: SafeBf16) == 2
-    && safetensors_dtype_byte_width(d: SafeF8E8M0) == 1
-    && safetensors_dtype_byte_width(d: SafeF32) == 4
+    && byte_size_count(b: safetensors_dtype_byte_width(d: SafeBf16)) == 2
+    && byte_size_count(b: safetensors_dtype_byte_width(d: SafeF8E8M0)) == 1
+    && byte_size_count(b: safetensors_dtype_byte_width(d: SafeF32)) == 4
 }
 
 test fn a_zero_length_dimension_refuses() -> Bool {
@@ -1632,20 +1632,60 @@ fn published_realization() -> FaithfulComponentRealization {
     evidence: engram_published_faithfulness)
 }
 
-// ── THE DEFERRAL ACCOUNT IS FOLDED, NOT MERELY DECLARED ───────────────────────────────────────
+// ── THE DEFERRAL ACCOUNT IS FOLDED, AND ITS POPULATION IS JOINED AT IDENTITY GRAIN ────────────
 //
-// `engram_materialization_frontier` carries this module's entire deferral account -- the unmeasured
-// route axes, the unread non-resident mechanism, the unified-memory placement question and the
-// unestablished route subject closure -- and a first cut DECLARED it and nothing read it. Four rows
-// with no executing consumer is section 3c's only red, and it is worse than an ordinary dangling
-// declaration because these rows are the thing this cut POINTS AT when it says a question is deferred
-// rather than answered: section 7 requires a retained row to be countable and never a silent escape
-// hatch, and a row no fold reaches is not countable. So the same three checks the DeepSeek authority
-// witness runs over its own groups run here: each row well formed, the keyed roster free of duplicate
-// subjects, and the expiry fold clean with no row already fired while its subject still stands.
-test fn the_engram_deferral_account_is_well_formed_and_unexpired() -> Bool {
+// `engram_materialization_frontier` carries this module's entire deferral account, and a first cut
+// DECLARED it while nothing read it -- section 3c's only red, and worse than an ordinary dangling
+// declaration because these rows are what this cut POINTS AT when it says a question is deferred
+// rather than answered. Section 7 requires a retained row to be countable, and a row no fold reaches
+// is not countable.
+//
+// THE FIRST REPAIR WAS ITSELF INCOMPLETE AND THAT IS THE MORE INSTRUCTIVE DEFECT. It named two of the
+// four subjects as required and otherwise checked only self-consistent quantities, so DELETING either
+// unnamed row left every assertion true: the survivors are still well formed and unique, the built
+// count still equals the input count, and the unbound count still equals that now-smaller population.
+// A count derived from the same list it is checking moves with the list. That kind of check verifies a
+// BUILDER PRESERVES ITS SUPPLIED INPUT, which is worth having, and it is NOT a completeness oracle for
+// that input -- it cannot see an obligation missing from the input altogether. So the intended subjects
+// are declared here and joined to the enrolled rows in BOTH directions, and
+// `a_deferral_account_missing_a_subject_is_refused` is the discriminating negative.
+data expected_engram_deferral_subjects: List<String> = [
+  "engram_route_evidence_rows",
+  "engram_nonresident_mechanism_obligation",
+  "engram_resident_provider",
+  "component_route_assessment",
+]
+
+fn engram_frontier_subject_key(decl_name: String) -> String {
+  declaration_ref_display_key(ref: DeclarationRef {
+    module_path: "gunbc.fabric.engram_materialization" as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration,
+  })
+}
+
+fn deferral_account_covers(rows: List<FrontierRow>, expected_names: List<String>) -> Bool {
+  let expected = map(expected_names, n => engram_frontier_subject_key(decl_name: n))
+  let actual = frontier_path_subjects(rows: rows)
+  count(actual) == count(expected)
+    && all(expected, e => any(actual, a => a == e))
+    && all(actual, a => any(expected, e => e == a))
+}
+
+// WHAT THIS ESTABLISHES IS AN INVENTORY, AND THE NAME SAYS SO. An earlier name claimed the account was
+// "unexpired", which overstates the fold: every row here carries `unbound_dissolution`, so
+// `dissolution_status` returns the unbound arm and the fold increments `unbound_count` and never the
+// others. `pending_count == 0` and `fired_still_present_count == 0` therefore say THE FOLD ENCOUNTERED
+// NO BOUND CONDITIONS -- not that the fleet, integration or modelling conditions these rows describe
+// were observed not to have occurred. No such observation enters this fold, and `present_decls: []`
+// answers a different question again. The `unbound_count == count(...)` assertion is what makes the
+// limitation visible rather than hiding it, so it stays and the claim shrinks to match it.
+test fn the_engram_deferral_account_is_a_complete_inventory_with_unbound_dissolution() -> Bool {
   let expiry = fold_frontier_expiry(rows: engram_materialization_frontier, present_decls: [])
   frontier_rows_well_formed(rows: engram_materialization_frontier)
+    && deferral_account_covers(
+         rows: engram_materialization_frontier,
+         expected_names: expected_engram_deferral_subjects)
     && match frontier_rows_keyed_roster_build(rows: engram_materialization_frontier) {
       KeyedRosterBuilt { rows: built } => count(built) == count(engram_materialization_frontier)
       KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
@@ -1654,17 +1694,20 @@ test fn the_engram_deferral_account_is_well_formed_and_unexpired() -> Bool {
     && expiry.pending_count == 0
     && expiry.fired_still_present_count == 0
     && expiry.unbound_count == count(engram_materialization_frontier)
-    && engram_frontier_names(decl_name: "engram_route_evidence_rows")
-    && engram_frontier_names(decl_name: "component_route_assessment")
 }
 
-fn engram_frontier_names(decl_name: String) -> Bool {
-  let want = declaration_ref_display_key(ref: DeclarationRef {
-    module_path: "gunbc.fabric.engram_materialization" as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
-    field: WholeDeclaration,
-  })
-  any(frontier_path_subjects(rows: engram_materialization_frontier), k => k == want)
+// THE MISSING-ROW DISCRIMINATOR. Dropping any one subject from the enrolled population must refuse,
+// and this is the arm the first repair lacked: every quantity it checked was derived from the list it
+// was checking, so a shorter list simply satisfied all of them at a smaller size.
+test fn a_deferral_account_missing_a_subject_is_refused() -> Bool {
+  !deferral_account_covers(
+    rows: filter(engram_materialization_frontier, r =>
+      frontier_subject_key(subject: r.subject)
+        != engram_frontier_subject_key(decl_name: "engram_resident_provider")),
+    expected_names: expected_engram_deferral_subjects)
+    && !deferral_account_covers(
+      rows: engram_materialization_frontier,
+      expected_names: ["engram_route_evidence_rows", "component_route_assessment"])
 }
 
 // ── A DIGEST OBSERVATION IS ABOUT THE BYTES IT READ ───────────────────────────────────────────

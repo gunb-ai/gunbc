@@ -1117,19 +1117,30 @@ fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr
   })
 }
 
-// ── SHARING THE PRODUCTION DOES NOT DEDUPLICATE THE FIELD ─────────────────────────────────────
+// ── THE FIELD SURVIVES, AND THE SHARING ITSELF IS NOT OBSERVABLE FROM HERE ────────────────────
 //
-// The route decision is now produced once per distinct (component, context) pair rather than once per
-// candidate. The failure mode that would make that a semantics change rather than a cost change is
-// collapsing the PARENT population along with the child production -- returning one row for candidates
-// that shared a demand, or dropping a candidate's own wrapper. So this asserts the population survives
-// by identity: every candidate comes back, exactly once, with a standings list positionally aligned to
-// its own artifact's component list.
+// WHAT THIS ESTABLISHES, and the claim is deliberately narrower than the one it replaces. It checks
+// that the parent population is preserved -- every candidate returns exactly once, each with a
+// standings list positionally aligned to its own artifact's component list -- and that this field
+// genuinely CONTAINS candidates sharing a (component, context) demand, which is the precondition that
+// makes sharing possible at all. Both are facts about values this entry point returns.
 //
-// It also asserts the reduction actually HAPPENED -- strictly fewer demands than candidates -- so
-// reverting to per-candidate production reds this rather than passing quietly as a slower equivalent.
-// That second half is a cost fact stated as an identity relation, not a timing.
-test fn route_production_is_shared_while_every_candidate_keeps_its_own_row() -> Bool {
+// WHAT IT DOES NOT ESTABLISH, corrected from a claim I made and should not have. It does NOT show that
+// removing the sharing would red it. An earlier version asserted `count(demands) < count(candidates)`
+// and called that a wall against reverting to per-candidate production -- but the witness computes
+// `resolved_route_demands` ITSELF, separately from `routed_candidates`. Restore the per-candidate
+// implementation and the returned candidate values and cardinalities are identical while the witness's
+// own independent demand census still returns fewer, so every assertion stays true with production no
+// longer sharing. Checking the right helper independently does not prove the claimed path uses it.
+//
+// AND THE DEEPER REASON NO OUTPUT-LEVEL CONTROL CAN DO BETTER: the reduction is answer-preserving BY
+// CONSTRUCTION -- `engram_route_standing` reads only the component and the context, so two candidates
+// with an equal pair cannot differ in any returned value. That property is exactly why the reuse is
+// safe and exactly why its removal is invisible to any assertion over outputs. What would detect it is
+// a cost measurement, and at this head the full-field controls are censored at the floor's ceiling, so
+// that instrument is unavailable. The honest position is that the sharing is currently unwitnessed,
+// stated here rather than implied by a control that reads as a wall and is not one.
+test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> Bool {
   let field = deepseek_v4_1_candidate_field
   let routed = routed_candidates(field: field)
   let demands = resolved_route_demands(field: field)

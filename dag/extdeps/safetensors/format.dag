@@ -2,6 +2,13 @@ module extdeps.safetensors.format
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat, nat_max }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster {
+  KeyedRosterBuild,
+  KeyedRosterBuilt,
+  KeyedRosterBuildDuplicateKey,
+  keyed_roster_build,
+}
 import std.measure { ByteSize, byte_size, byte_size_count }
 
 // SAFETENSORS, THE STORAGE FORMAT, AS ITS OWN UPSTREAM AUTHORITY. It is an independently
@@ -62,24 +69,24 @@ fn safetensors_dtype_wire(d: SafetensorsDtype) -> NonEmptyStr {
   }
 }
 
-fn safetensors_dtype_byte_width(d: SafetensorsDtype) -> Nat {
+fn safetensors_dtype_byte_width(d: SafetensorsDtype) -> ByteSize {
   match d {
-    SafeBool => 1
-    SafeU8 => 1
-    SafeI8 => 1
-    SafeF8E5M2 => 1
-    SafeF8E4M3 => 1
-    SafeF8E8M0 => 1
-    SafeI16 => 2
-    SafeU16 => 2
-    SafeF16 => 2
-    SafeBf16 => 2
-    SafeI32 => 4
-    SafeU32 => 4
-    SafeF32 => 4
-    SafeI64 => 8
-    SafeU64 => 8
-    SafeF64 => 8
+    SafeBool => byte_size(count: 1)
+    SafeU8 => byte_size(count: 1)
+    SafeI8 => byte_size(count: 1)
+    SafeF8E5M2 => byte_size(count: 1)
+    SafeF8E4M3 => byte_size(count: 1)
+    SafeF8E8M0 => byte_size(count: 1)
+    SafeI16 => byte_size(count: 2)
+    SafeU16 => byte_size(count: 2)
+    SafeF16 => byte_size(count: 2)
+    SafeBf16 => byte_size(count: 2)
+    SafeI32 => byte_size(count: 4)
+    SafeU32 => byte_size(count: 4)
+    SafeF32 => byte_size(count: 4)
+    SafeI64 => byte_size(count: 8)
+    SafeU64 => byte_size(count: 8)
+    SafeF64 => byte_size(count: 8)
   }
 }
 
@@ -111,8 +118,19 @@ fn safetensors_entry(
 
 // A NON-ASCENDING SPAN IS ZERO BYTES HERE AND IS SEPARATELY A REFUSAL BELOW.
 //
-// EVERY DERIVED BYTE QUANTITY IN THIS FILE IS A ByteSize, and these two were the exception that the
-// file's own rule at `safetensors_shard_file` forbids. `begin_offset` and `end_offset` stay bare `Nat`
+// EVERY DERIVED BYTE QUANTITY IN THIS FILE IS A ByteSize, and these were the exception that the
+// file's own rule at `safetensors_shard_file` forbids.
+//
+// `safetensors_dtype_byte_width` is one of them and was the last to be caught: a dtype-to-width table
+// is NOT a transcribed spec field -- safetensors publishes the dtype NAME, and the width is this
+// repository's knowledge about it -- so the carve-out below does not reach it. It is the size of one
+// element, which is a size.
+//
+// AND THE ONE PLACE AN UNWRAP IS STILL RIGHT is where a dimensionless COUNT multiplies a size:
+// elements x width cannot be written as a product of two ByteSize values, so `byte_size_count` appears
+// at that multiplication and nowhere else. That is the honest line between the two cases -- unwrapping
+// to MULTIPLY BY A COUNT is arithmetic the carrier cannot express, while unwrapping to COMPARE is the
+// smell, because it is reconciling two representations of one quantity by hand. `begin_offset` and `end_offset` stay bare `Nat`
 // because they ARE the spec's `data_offsets` integers and this module's job is to model what safetensors
 // publishes -- but their DIFFERENCE is a size we computed, not a field we transcribed, and the same goes
 // for elements x dtype width. Leaving them as `Nat` is what forced `byte_size_count` unwrapping at every
@@ -132,7 +150,7 @@ fn safetensors_shape_elements(shape: List<Nat>) -> Nat {
 // over the header alone -- it establishes that the manifest is well formed, and establishes
 // nothing whatever about the payload. Keeping the two apart is the whole reason this file exists.
 fn safetensors_entry_declared_bytes(e: SafetensorsEntry) -> ByteSize {
-  byte_size(count: safetensors_shape_elements(shape: e.shape) * safetensors_dtype_byte_width(d: e.dtype))
+  byte_size(count: safetensors_shape_elements(shape: e.shape) * byte_size_count(b: safetensors_dtype_byte_width(d: e.dtype)))
 }
 
 type SafetensorsEntryDefect
@@ -140,7 +158,7 @@ type SafetensorsEntryDefect
   | EntryShapeEmpty { name: NonEmptyStr }
   | EntryShapeHasZeroDimension { name: NonEmptyStr }
   | EntrySpanDisagreesWithShape { name: NonEmptyStr, span: ByteSize, declared: ByteSize }
-  | EntryNameDuplicated { name: NonEmptyStr, occurrences: Nat }
+  | EntryNameDuplicated { name: NonEmptyStr }
 
 fn safetensors_entry_defect_display(d: SafetensorsEntryDefect) -> NonEmptyStr {
   match d {
@@ -155,10 +173,10 @@ fn safetensors_entry_defect_display(d: SafetensorsEntryDefect) -> NonEmptyStr {
         "safetensors entry ", n as String, " spans ", to_string(byte_size_count(b: s)),
         " bytes but its shape and dtype declare ", to_string(byte_size_count(b: dd)),
       ], "") as NonEmptyStr
-    EntryNameDuplicated { name: n, occurrences: k } =>
+    EntryNameDuplicated { name: n } =>
       join([
-        "safetensors tensor name ", n as String, " occurs ", to_string(k),
-        " times in one population; a tensor subject must be unique",
+        "safetensors tensor name ", n as String,
+        " occurs more than once in one population; a tensor subject must be unique",
       ], "") as NonEmptyStr
   }
 }
@@ -189,25 +207,38 @@ fn safetensors_entry_defects(e: SafetensorsEntry) -> List<SafetensorsEntryDefect
       }))
 }
 
-fn safetensors_name_occurrences(entries: List<SafetensorsEntry>, name: NonEmptyStr) -> Nat {
-  count(filter(entries, e => (e.name as String) == (name as String)))
+// DUPLICATE-KEY-OVER-A-ROSTER HAS A HOME AND THIS FILE NOW USES IT. A first cut hand-rolled the
+// occurrence count and the first-seen accumulator here, which is DESIGN section 2's failed
+// decomposition -- minting a fresh authority for a concept that already exists -- and section 3b's
+// only red, a divergence with no stated reason. `std.keyed_roster` owns it, `std.roster_frontier`
+// already adapts it exactly this way, and the adapter below is the whole of what this format
+// contributes: which field is the key.
+//
+// THE DEFECT NO LONGER CARRIES AN OCCURRENCE COUNT, deliberately. The DUPLICATION is the defect and
+// the multiplicity is decoration -- and `keyed_occurrence_count` returns an `Int` against what was a
+// `Nat` field, which is precisely the cross-type reconciliation that compiles clean and ANSWERS rather
+// than refusing. This corpus has a failure-mode row for that class. Carrying the count would have
+// re-minted the hazard in order to render one number.
+//
+// THE ROSTER REPORTS THE FIRST DUPLICATE RATHER THAN ALL OF THEM, which is the same behaviour
+// `frontier_rows_keyed_roster_build` has: one located duplicate is enough to refuse, and a refusal
+// does not become more true by enumerating the rest.
+fn safetensors_entry_name_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn safetensors_entry_keyed_rows(entries: List<SafetensorsEntry>) -> List<KeyedRow<NonEmptyStr, SafetensorsEntry>> {
+  map(entries, e => KeyedRow { row_key: e.name, value: e })
 }
 
 fn safetensors_duplicate_defects(entries: List<SafetensorsEntry>) -> List<SafetensorsEntryDefect> {
-  fold(entries, init: [], f: (acc, e) =>
-    if safetensors_name_occurrences(entries: entries, name: e.name) > 1
-      && !any(acc, d => match d {
-        EntryNameDuplicated { name: n, occurrences: _ } => (n as String) == (e.name as String)
-        EntrySpanNotAscending { name: _ } => false
-        EntryShapeEmpty { name: _ } => false
-        EntryShapeHasZeroDimension { name: _ } => false
-        EntrySpanDisagreesWithShape { name: _, span: _, declared: _ } => false
-      }) {
-      concat(acc, [EntryNameDuplicated {
-        name: e.name,
-        occurrences: safetensors_name_occurrences(entries: entries, name: e.name),
-      }])
-    } else { acc })
+  match keyed_roster_build(
+    incomings: safetensors_entry_keyed_rows(entries: entries),
+    key_eq: safetensors_entry_name_eq,
+  ) {
+    KeyedRosterBuilt { rows: _ } => []
+    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => [EntryNameDuplicated { name: k }]
+  }
 }
 
 // ── A SCAN THAT FAILED IS NOT AN EMPTY POPULATION ─────────────────────────────────────────────
@@ -268,7 +299,7 @@ type SafetensorsMembershipDefect
   = MemberMissingFromHeaders { name: NonEmptyStr, shard: NonEmptyStr }
   | EntryAbsentFromIndex { name: NonEmptyStr, shard: NonEmptyStr }
   | MemberInWrongShard { name: NonEmptyStr, index_shard: NonEmptyStr, header_shard: NonEmptyStr }
-  | MemberDuplicatedInIndex { name: NonEmptyStr, occurrences: Nat }
+  | MemberDuplicatedInIndex { name: NonEmptyStr }
   | EntrySpansOverlapWithinShard { shard: NonEmptyStr, left: NonEmptyStr, right: NonEmptyStr }
 
 fn safetensors_membership_defect_display(d: SafetensorsMembershipDefect) -> NonEmptyStr {
@@ -288,9 +319,9 @@ fn safetensors_membership_defect_display(d: SafetensorsMembershipDefect) -> NonE
         "the index places ", n as String, " in ", i as String,
         " and its header entry was read from ", h as String, "; the two sources disagree about where it lives",
       ], "") as NonEmptyStr
-    MemberDuplicatedInIndex { name: n, occurrences: k } =>
+    MemberDuplicatedInIndex { name: n } =>
       join([
-        "the index rows name ", n as String, " ", to_string(k), " times; a member must be unique",
+        "the index rows name ", n as String, " more than once; a member must be unique",
       ], "") as NonEmptyStr
     EntrySpansOverlapWithinShard { shard: sh, left: l, right: r } =>
       join([
@@ -304,8 +335,23 @@ fn safetensors_entry_for_name(entries: List<SafetensorsShardedEntry>, name: NonE
   (filter(entries, se => (se.entry.name as String) == (name as String))).first()
 }
 
-fn safetensors_index_names_occurrences(members: List<SafetensorsIndexMember>, name: NonEmptyStr) -> Nat {
-  count(filter(members, m => (m.name as String) == (name as String)))
+// THE INDEX SIDE CONSUMES THE SAME AUTHORITY. Two rosters, one duplicate-key concept, one home.
+fn safetensors_index_keyed_rows(members: List<SafetensorsIndexMember>) -> List<KeyedRow<NonEmptyStr, SafetensorsIndexMember>> {
+  map(members, m => KeyedRow { row_key: m.name, value: m })
+}
+
+fn safetensors_index_duplicate_defects(members: List<SafetensorsIndexMember>) -> List<SafetensorsMembershipDefect> {
+  match keyed_roster_build(
+    incomings: safetensors_index_keyed_rows(members: members),
+    key_eq: safetensors_entry_name_eq,
+  ) {
+    KeyedRosterBuilt { rows: _ } => []
+    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => [MemberDuplicatedInIndex { name: k }]
+  }
+}
+
+fn safetensors_index_has_name(members: List<SafetensorsIndexMember>, name: NonEmptyStr) -> Bool {
+  any(members, m => safetensors_entry_name_eq(a: m.name, b: name))
 }
 
 fn safetensors_spans_overlap(a: SafetensorsEntry, b: SafetensorsEntry) -> Bool {
@@ -340,24 +386,11 @@ fn safetensors_membership_defects(
             }
         }),
       flat_map(entries, se =>
-        if safetensors_index_names_occurrences(members: members, name: se.entry.name) == 0 {
+        if !safetensors_index_has_name(members: members, name: se.entry.name) {
           [EntryAbsentFromIndex { name: se.entry.name, shard: se.shard }]
         } else { [] })),
     concat(
-      fold(members, init: [], f: (acc, m) =>
-        if safetensors_index_names_occurrences(members: members, name: m.name) > 1
-          && !any(acc, d => match d {
-            MemberDuplicatedInIndex { name: n, occurrences: _ } => (n as String) == (m.name as String)
-            MemberMissingFromHeaders { name: _, shard: _ } => false
-            EntryAbsentFromIndex { name: _, shard: _ } => false
-            MemberInWrongShard { name: _, index_shard: _, header_shard: _ } => false
-            EntrySpansOverlapWithinShard { shard: _, left: _, right: _ } => false
-          }) {
-          concat(acc, [MemberDuplicatedInIndex {
-            name: m.name,
-            occurrences: safetensors_index_names_occurrences(members: members, name: m.name),
-          }])
-        } else { acc }),
+      safetensors_index_duplicate_defects(members: members),
       safetensors_overlap_defects(entries: entries)))
 }
 
