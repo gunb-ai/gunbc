@@ -2320,10 +2320,38 @@ fn body_lower_named_arg_value_optional(arg_capture: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_surface_punct_token(id: Symbol) -> Bool {
+  (id == ^dag_token_lbrace)
+    || (id == ^dag_token_rbrace)
+    || (id == ^dag_token_lparen)
+    || (id == ^dag_token_rparen)
+    || (id == ^dag_token_comma)
+    || (id == ^dag_token_colon)
+}
+
+fn body_lower_node_is_punct_atom(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Absent => false
+    Present { value: id } => body_lower_surface_punct_token(id: id)
+  }
+}
+
+fn body_lower_call_value_optional(operand: Node) -> Optional<Node> {
+  if body_lower_node_is_punct_atom(node: operand) {
+    optional_absent()
+  } else {
+    optional_present(value: operand)
+  }
+}
+
 fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
   match body_lower_named_arg_value_optional(arg_capture: arg_capture) {
-    Present { value: operand } => Present { value: operand }
-    Absent => body_lower_arg_operand_optional(arg_capture: arg_capture)
+    Present { value: operand } => body_lower_call_value_optional(operand: operand)
+    Absent =>
+      match body_lower_arg_operand_optional(arg_capture: arg_capture) {
+        Present { value: operand } => body_lower_call_value_optional(operand: operand)
+        Absent => optional_absent()
+      }
   }
 }
 
@@ -2449,30 +2477,67 @@ fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_ident_callee_optional(left: Node) -> Optional<Node> {
+  match body_lower_operand_ref_optional(node: left) {
+    Absent => optional_absent()
+    Present { value: callee } =>
+      match node_atom_identity_optional(node: callee) {
+        Absent => optional_absent()
+        Present { value: id } =>
+          if body_lower_surface_punct_token(id: id) {
+            optional_absent()
+          } else if dag_lex_token_symbol(sym: id) {
+            optional_absent()
+          } else {
+            optional_present(value: callee)
+          }
+      }
+  }
+}
+
+fn body_lower_try_primary_ident_call_from_pair(callee_left: Node, suffix_root: Node) -> Outcome<Optional<Node>> {
+  match body_lower_ident_callee_optional(left: callee_left) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: callee_atom } =>
+      match body_lower_primary_call_suffix_optional(root: suffix_root) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: call_suffix } =>
+          match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
+            Present { value: args } =>
+              outcome_accepted(
+                value: optional_present(
+                  value: body_lower_transform_call(
+                    operator: callee_atom,
+                    args: args
+                  )
+                )
+              )
+            Absent => outcome_accepted(value: optional_absent())
+          }
+      }
+  }
+}
+
 fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
     Present { value: pair } =>
-      match body_lower_operand_ref_optional(node: pair.left) {
-        Absent => outcome_accepted(value: optional_absent())
-        Present { value: callee_atom } =>
-          match body_lower_primary_call_suffix_optional(root: pair.right) {
-            Absent => outcome_accepted(value: optional_absent())
-            Present { value: call_suffix } =>
-              match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
-                Present { value: args } =>
-                  outcome_accepted(
-                    value: optional_present(
-                      value: body_lower_transform_call(
-                        operator: callee_atom,
-                        args: args
-                      )
-                    )
-                  )
-                Absent => outcome_accepted(value: optional_absent())
-              }
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+        Present { value: left_id } =>
+          if left_id == ^dag_token_lbrace {
+            body_lower_try_primary_ident_call(node: pair.right)
+          } else {
+            body_lower_try_primary_ident_call_from_pair(
+              callee_left: pair.left,
+              suffix_root: pair.right
+            )
           }
+        Absent =>
+          body_lower_try_primary_ident_call_from_pair(
+            callee_left: pair.left,
+            suffix_root: pair.right
+          )
       }
   }
 }
