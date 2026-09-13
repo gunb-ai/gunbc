@@ -181,9 +181,13 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
 }
 
 // TYPED COST-DEBT IDENTITIES THIS GATE MAY HONOUR AS ROSTER GROUND. Decoded by the host
-// the same way `floor_cost_debt_roster` is decoded -- never a Rust-empty HashSet. The
-// attempt list in `floor_cost_debt_typed_admission_attempts` is Empty until a row is
-// authored there; this function is what makes authoring that row reach enrolment.
+// the same way `floor_cost_debt_roster` is decoded -- never a Rust-empty HashSet.
+//
+// REACHABLE, UNEXERCISED UNTIL THE FIRST AUTHORED ATTEMPT; THAT FIRST ATTEMPT IS THE RED.
+// The Roster arm is reachable by construction (`enrolment_expensiveness_declaration` given
+// typed_admission_holds). End-to-end execution of this nullary list waits on the first
+// `FloorCostDebtReadingAttempt` in `floor_cost_debt_typed_admission_attempts`. That
+// authoring is the discriminating evidence; emptiness of today's list is not coverage.
 fn enrolment_typed_cost_debt_identities() -> List<String> {
   floor_cost_debt_typed_admitted_identities(
     ceiling_ms: millisecond(count: required_floor_claim_cpu_safety_limit_ms()),

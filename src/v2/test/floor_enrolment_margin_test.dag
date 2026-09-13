@@ -3,7 +3,6 @@ module v2.test.floor_enrolment_margin
 import v2.workflow.floor_enrolment_margin {
   floor_enrolment_margin_envelope_permille,
   floor_enrolment_margin_budget_ms,
-  enrolment_typed_cost_debt_identities,
     EnrolmentCostReading, EnrolmentCostMeasured, EnrolmentCostAbsent, EnrolmentNotPlanned,
   EnrolmentMarginStanding,
   EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentNotMeasured,
@@ -371,10 +370,6 @@ test fn a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists(
         EnrolmentExpensivenessRoster => false
       }
   }
-}
-
-test fn typed_admission_identities_are_empty_until_an_attempt_is_authored() -> Bool {
-  count(enrolment_typed_cost_debt_identities()) == 0
 }
 
 test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool {

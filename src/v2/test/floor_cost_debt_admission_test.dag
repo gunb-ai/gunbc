@@ -5,7 +5,6 @@ import v2.workflow.floor_cost_debt_admission {
   FloorCostDebtRowAdmitted, FloorCostDebtRowRefusedUnderCeiling,
   FloorCostDebtReadingAttempt,
   floor_cost_debt_row, floor_cost_debt_row_is_admitted, floor_cost_debt_admit_attempts,
-  floor_cost_debt_typed_admission_attempts, floor_cost_debt_typed_admitted_identities,
 }
 import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading,
@@ -60,6 +59,17 @@ test fn an_observed_row_above_the_ceiling_is_admitted() -> Bool {
       ceiling_ms: ceiling(),
     )
   )
+    && fold(
+         floor_cost_debt_admit_attempts(
+           attempts: [FloorCostDebtReadingAttempt {
+             identity: "fixture.proven_501",
+             reading: observed(cpu_ms: 501),
+           }],
+           ceiling_ms: ceiling(),
+         ),
+         init: "",
+         f: fn(acc, row) { concat(acc, row.identity) }
+       ) == "fixture.proven_501"
 }
 
 test fn a_censored_row_is_admitted() -> Bool {
@@ -70,6 +80,17 @@ test fn a_censored_row_is_admitted() -> Bool {
       ceiling_ms: ceiling(),
     )
   )
+    && fold(
+         floor_cost_debt_admit_attempts(
+           attempts: [FloorCostDebtReadingAttempt {
+             identity: "fixture.censored",
+             reading: censored(lower_bound_ms: 500, ceiling_ms: 500),
+           }],
+           ceiling_ms: ceiling(),
+         ),
+         init: "",
+         f: fn(acc, row) { concat(acc, row.identity) }
+       ) == "fixture.censored"
 }
 
 test fn the_admission_fold_drops_a_325ms_observed_row() -> Bool {
@@ -93,13 +114,4 @@ test fn the_admission_fold_drops_a_325ms_observed_row() -> Bool {
   fold(admitted, init: "", f: fn(acc, row) {
     concat(acc, concat(row.identity, ";"))
   }) == "fixture.proven_501;fixture.censored;"
-}
-
-// THE LIVE ATTEMPT LIST IS EMPTY, EXECUTED. Until the required-floor runner unions
-// typed-admitted identities into the withhold set, new rows are not authored here. An empty
-// list is the honest population (review 65585); a fixture identity in this list with no
-// runner join would be a withhold that never withholds.
-test fn typed_admission_attempts_are_empty_until_the_runner_joins_them() -> Bool {
-  count(floor_cost_debt_typed_admission_attempts()) == 0
-    && count(floor_cost_debt_typed_admitted_identities(ceiling_ms: ceiling())) == 0
 }
