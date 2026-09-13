@@ -14,7 +14,7 @@ import std.roster_frontier {
   fold_frontier_expiry, frontier_expiry_clean, frontier_subject_key,
 }
 import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
-import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority, CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import std.decision {
   HardConstraint, UniqueSurvivorRequired,
   DecisionAssessment, DecisionSubject, DecisionVariable, DecisionRegion,
@@ -42,6 +42,8 @@ import extdeps.safetensors.format {
   SafetensorsShardedEntry, safetensors_sharded_entry, safetensors_sharded_entries,
   MembershipClosure, MembershipClosedAgainstFullIndex, MembershipScopedToReadRows,
   safetensors_shard_file, safetensors_membership_defects, safetensors_shard_names,
+  safetensors_specification_standing, safetensors_specification_version_standing,
+  safetensors_specification_obligations,
   safetensors_shard_bounds_obligations, safetensors_shard_bounds_defects,
   SafetensorsShardAgreement, ShardPayloadMatchesPopulation, ShardPayloadDisagreesWithPopulation, ShardPayloadUnderivable,
   safetensors_shard_payload_agreement, safetensors_shard_payload, SafetensorsShardPayload,
@@ -1630,6 +1632,31 @@ fn published_realization() -> FaithfulComponentRealization {
     standing: engram_component_standing,
     artifact: engram_published_artifact,
     evidence: engram_published_faithfulness)
+}
+
+// ── THE SPEC MODULE'S OWN GROUND IS A VALUE, AND THE TWO HALVES ARE SEPARATE ──────────────────
+//
+// `extdeps.safetensors.format` transcribes a spec in its entirety, and a first cut named the source
+// only in an annotation -- which DESIGN §4c says is never evidence a machine claim holds, because no
+// Accepted program can read one. The source is now an `ExternalAuthority` value and the VERSION is a
+// separate standing that says it is uncited, because the format is documented in a repository rather
+// than as a numbered standard and this module was written against no pinned revision. Inventing a
+// version label would have been the over-assertion arm of §4d.
+//
+// THIS EXERCISES THE FOLD RATHER THAN ASSERTING THE DECLARATIONS EXIST. Both arms of
+// `cited_figure_read_obligation` run: the source citation yields nothing to read, the version yields
+// its obligation, and the combined fold returns exactly the second. Re-citing the version without
+// reading a revision would red the middle conjunct rather than quietly improving the look of the file.
+test fn the_safetensors_spec_module_cites_its_source_and_admits_an_unpinned_version() -> Bool {
+  match cited_figure_read_obligation(standing: safetensors_specification_standing) {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match cited_figure_read_obligation(standing: safetensors_specification_version_standing) {
+      Present { value: o } => string_contains(s: o as String, pattern: "NO pinned spec revision")
+      Absent => false
+    }
+    && count(safetensors_specification_obligations()) == 1
 }
 
 // ── THE DEFERRAL ACCOUNT IS FOLDED, AND ITS POPULATION IS JOINED AT IDENTITY GRAIN ────────────

@@ -10,6 +10,14 @@ import std.keyed_roster {
   keyed_roster_build,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+  cited_figure_read_obligation,
+}
+import extdeps.uri { Uri, Https }
 
 // SAFETENSORS, THE STORAGE FORMAT, AS ITS OWN UPSTREAM AUTHORITY. It is an independently
 // versioned specification (huggingface/safetensors) and not a property of any model that happens
@@ -719,7 +727,52 @@ fn safetensors_shard_file(path: NonEmptyStr, header_bytes: ByteSize, file_bytes:
   SafetensorsShardFile { path: path, header_bytes: header_bytes, file_bytes: file_bytes }
 }
 
+// THE SOURCE THIS MODULE TRANSCRIBES, AS A VALUE RATHER THAN AS A PARENTHETICAL. Every fact in this
+// file is transcribed spec -- the dtype wire names, the 8-byte little-endian length prefix, the
+// data_offsets semantics -- and a first cut pointed at the source only in an annotation. DESIGN §4c is
+// explicit that an annotation is never evidence a machine claim holds, because no Accepted program can
+// read one, and §3 requires an extdeps module to cite the source AND declare its version.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/huggingface/safetensors"
+  }
+}
+
+// THE VERSION IS UNCITED AND SAYS SO, WHICH IS THE HONEST HALF. The format is specified in that
+// repository's own documentation rather than as a numbered standard, and this module was written
+// against the format as described there WITHOUT a pinned spec revision. Writing a version label here
+// would be an invented figure asserted as a cited one, which is the over-assertion arm of §4d. So the
+// standing carries uncitedness explicitly and names what would discharge it -- the same
+// CitedFigureStanding the corpus uses for every other figure whose ground is incomplete, and the same
+// arm deepseek_v4_1_flash_engram_population_standing would take if its authority were absent.
+data safetensors_specification_version_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "this module was written against the safetensors format as documented at the cited repository, with NO pinned spec revision recorded. A commit or release tag of huggingface/safetensors read at a known date, against which the dtype wire names, the 8-byte little-endian header-length prefix and the data_offsets semantics were checked, would replace this with CitedToAuthority and make a later divergence in the upstream format detectable rather than silent" as NonEmptyStr,
+}
+
+// THE FACTS THIS MODULE ASSERTS ABOUT THE FORMAT point at the authority above. What that citation
+// establishes is the SOURCE, not the revision: the version standing is the separate fact, and keeping
+// them apart is why a reader can tell that the source is known and the revision is not.
+data safetensors_specification_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
 data safetensors_header_length_prefix_bytes: ByteSize = byte_size(count: 8)
+
+// THE TWO STANDINGS, READ AS ONE LIST OF WHAT IS STILL OWED. A consumer asking whether this module's
+// spec facts are grounded gets the source citation's silence and the version's obligation from the
+// same fold, so neither can be consulted without the other being available.
+fn safetensors_specification_obligations() -> List<NonEmptyStr> {
+  concat(
+    match cited_figure_read_obligation(standing: safetensors_specification_standing) {
+      Present { value: o } => [o]
+      Absent => []
+    },
+    match cited_figure_read_obligation(standing: safetensors_specification_version_standing) {
+      Present { value: o } => [o]
+      Absent => []
+    })
+}
 
 fn safetensors_shard_declared_overhead(header_bytes: ByteSize) -> ByteSize {
   byte_size(count: byte_size_count(b: safetensors_header_length_prefix_bytes) + byte_size_count(b: header_bytes))
