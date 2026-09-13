@@ -311,6 +311,36 @@ fn chunk_byte_count(chunk: CaptureChunk) -> Nat {
 // A CHUNK PAIRED WITH THE PROOF THAT ITS BYTES WERE KEPT. The only route in is the constructor below,
 // which refuses unless the commit receipt attests THIS chunk -- so a List<CommittedChunk> cannot be
 // assembled out of chunks nobody stored.
+// THE SEAL IS NECESSARY AND IT IS NOT SUFFICIENT, AND THE MEASUREMENT SAYS SO.
+//
+// WHAT THE SEAL ESTABLISHES: no foreign module can SPELL these arms. Four forged-literal fixtures are
+// refused on the real acceptance path with SoleConstructorViolation.
+//
+// WHAT IT DOES NOT ESTABLISH, measured rather than argued: a foreign module can still OBTAIN them
+// through the admitted mint, because local_commit_from_cas takes a CasOutcome the CALLER authors and
+// std.durable_compare_and_set does not seal CasSlotVersion. A module contacting NO STORE AT ALL was
+// compiled and run: it wrote CasCommitted { committed: CasSlotVersion { content: <any digest> } },
+// passed it to local_commit_from_cas, received LocallyCommitted, minted a CommittedChunk over a chunk
+// whose payload digest it also chose, and reached a DerivedContinuity. Exit 0. No bytes were ever
+// stored anywhere.
+//
+// SO THE CASCADE IS THE KNOWN CLASS gunbc.recurring_failure_mode.admitted_call_edge_with_unrestricted_value_egress:
+// .dag has no module-private, so every exported function returning a value that CARRIES a sealed type
+// is another route to it, and sealing the mint in turn only moves the proxy one hop. The cascade
+// terminates only at functions that carry nothing outward -- which for a durable commit means the
+// standing must be produced by something that PERFORMS the compare-and-set, not by a fold over an
+// outcome someone hands in. That is the bound realization, and it is not in this slice.
+//
+// RUNG, AND THE EARLIER CLAIM IS WITHDRAWN RATHER THAN ADJUSTED. This module reported the four arms as
+// STRUCTURALLY GUARANTEED. That was wrong at the moment it was written: unspellable is not
+// unobtainable. The honest split is two propositions that must not be blurred --
+//   (i) cross-module LITERAL construction of the sealed arms: structurally refused, executed evidence;
+//   (ii) obtaining a commit standing with no store behind it: MITIGATABLE, open, measured above.
+// The silence law rests on (ii), so the law's rung is (ii)'s. NEXT-RUNG TRIGGER, A CAPABILITY: a
+// durable-commit route that performs the compare-and-set and returns the standing, with no
+// caller-supplied outcome anywhere in its signature, sufficient that LocallyCommitted cannot be
+// reached without a store having been contacted.
+
 // sole_constructor IS THE WHOLE CLAIM. Without it this was an ordinary record any module could build
 // -- and the witness module did exactly that, minting one with the chunk's own payload digest as the
 // committed content when the real constructor refused. So "the only route in" was prose, not a
