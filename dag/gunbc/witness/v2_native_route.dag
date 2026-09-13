@@ -530,14 +530,17 @@ type NativeRouteEmittedBuild {
   warning_count: Int
 }
 
-// THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree; the
-// acquired native generation identity recorded on `preparation_seed_identity` (historical field
-// name — the ordinary route no longer emits from the seed); the emitted closure's identity; the
-// executed binary's path AND content identity (route identity is observed, never synthesized from
-// the intended command); the DERIVED universe; the module → source-path relation over the
-// universe's modules (the context reclassification's join key, carried so admission can re-ask the
-// join, not trust it); the OBSERVED population; the per-file front-end refusals the collecting fold
-// gathered; and every control.
+// THE TERMINAL OBSERVATION. Every identity the contract names is a field: the tested tree;
+// `preparation_seed_identity` is the sha512 of the seed binary that executed genesis
+// (`GenesisFromSeed.seed_binary` / ancestry `seed_binary`), not the acquired generation's
+// identity and not the live `current_exe` sha256 this field previously carried; the executed
+// binary's `executable_identity` is still sha256 of the acquired compiler, so this receipt
+// mixes digest families under one reader until that axis is unified; the emitted closure's
+// identity; the executed binary's path AND content identity (route identity is observed, never
+// synthesized from the intended command); the DERIVED universe; the module → source-path
+// relation over the universe's modules (the context reclassification's join key, carried so
+// admission can re-ask the join, not trust it); the OBSERVED population; the per-file front-end
+// refusals the collecting fold gathered; and every control.
 type NativeRouteReceipt {
   job: String
   tested_tree: String
