@@ -70,7 +70,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // SIGNATURE SHAPE IS OBSERVABLE AS A STRUCTURED RUST PROJECTION OVER THE RESOLVED
 // REGISTRY, not as contents-by-path and not as a read of emitted bytes. On
 // FixtureCompileCompleted the field resolved_rust_functions carries List<ResolvedRustFnSignature>
-// — per FnItem/FuncItem in item_registry: source owner_module + declaration_name and the
+// — per FnItem in item_registry: source owner_module + declaration_name and the
 // ordered parameter name list derived from that registry row (emit_ident / service_var_name
 // transforms applied). Witnesses assert over that list; raw text is not offered as an assertion
 // surface. Discriminating RED: test.claim.resolved_rust_fn_projection_witness.
@@ -90,7 +90,7 @@ type MultiModuleCompileFixture {
   entry: NonEmptyStr
 }
 
-// THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per resolved FnItem/FuncItem on each
+// THE STRUCTURED PROJECTION WITNESSES ASSERT OVER. Per resolved FnItem on each
 // TypedModule.item_registry (NOT the bare-name-merged ResolvedGraph.item_registry): source
 // identity (owning module + declaration name) and the PARAMETER NAME LIST taken from ItemInfo
 // with the same per-arm name transforms emit_func_params applies today (emit_ident for authored
