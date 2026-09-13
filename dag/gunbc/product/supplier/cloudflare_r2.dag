@@ -36,7 +36,7 @@ import product.fabric.provider_admission {
 // BOTH THE REFUSING PRODUCTION ROW AND THE DISCRIMINATING PAIR ARE THE DELIVERABLE.
 
 fn cloudflare_r2_provider_ref() -> DeclarationRef {
-  decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_inc")
+  decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare")
 }
 
 fn cloudflare_r2_service_ref() -> DeclarationRef {

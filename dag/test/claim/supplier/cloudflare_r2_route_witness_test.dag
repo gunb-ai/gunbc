@@ -248,9 +248,13 @@ test fn the_same_route_admits_once_that_path_is_resolved() -> Bool {
     ProviderUseDenied { decision, cause } => false,
     ProviderUseAdmitted { permit } =>
       declaration_ref_eq(
-        a: permit.route.region,
-        b: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "r2_placement_automatic"),
+        a: permit.route.provider,
+        b: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
       )
+        && declaration_ref_eq(
+          a: permit.route.region,
+          b: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "r2_placement_automatic"),
+        )
         && declaration_ref_eq(
           a: permit.evidence.customer_profile,
           b: t_customer_profile(),
