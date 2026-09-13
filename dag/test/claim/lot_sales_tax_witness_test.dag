@@ -33,12 +33,13 @@ import product.lot_sales_tax {
   LotTaxJoinRepeatedLot,
 }
 import std.measure { parts_per_million, parts_per_million_count, parts_per_million_scale_million }
+import extdeps.tax.statutory_rate { statutory_rate_value, statutory_rate_version_is_read }
 import extdeps.tax.new_jersey_sales_and_use {
-  nj_statewide_sales_tax_rate,
-  nj_uez_reduced_sales_tax_rate,
+  nj_statewide_sales_tax,
+  nj_uez_reduced_sales_tax,
 }
 import extdeps.tax.new_york_city_sales_and_use {
-  nyc_combined_sales_tax_rate,
+  nyc_combined_sales_tax,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -57,7 +58,7 @@ data lot_unrecorded: InventoryLotIdentity = mint_inventory_lot_identity(alloc: t
 
 data nyc_residual: UseTaxResidualStanding = ResidualUseTaxOwed {
   destination_jurisdiction: "New York City" as NonEmptyStr,
-  destination_combined_rate: nyc_combined_sales_tax_rate,
+  destination_combined_rate: nyc_combined_sales_tax,
 }
 
 data fixture_population: List<LotTaxEvidence> = [
@@ -66,7 +67,7 @@ data fixture_population: List<LotTaxEvidence> = [
     standing: SalesTaxCollected {
       collection: RateDerivedFromReceiptBaseAndTax {
         jurisdiction: "New Jersey statewide" as NonEmptyStr,
-        rate: nj_statewide_sales_tax_rate,
+        rate: statutory_rate_value(r: nj_statewide_sales_tax),
       },
       residual: nyc_residual,
     },
@@ -76,7 +77,7 @@ data fixture_population: List<LotTaxEvidence> = [
     standing: SalesTaxCollected {
       collection: RateTranscribedFromNamedReceiptLine {
         jurisdiction: "New Jersey Urban Enterprise Zone" as NonEmptyStr,
-        rate: nj_uez_reduced_sales_tax_rate,
+        rate: statutory_rate_value(r: nj_uez_reduced_sales_tax),
         receipt_line_label: "New Jersey UEZ Tax" as NonEmptyStr,
       },
       residual: nyc_residual,
@@ -104,13 +105,29 @@ data fixture_population: List<LotTaxEvidence> = [
   },
 ]
 
+// EFFECTIVE VERSIONS ARE READ FOR ONE ROW AND UNREAD FOR TWO, and this pins that distinction
+// rather than merely that the field exists. New Jersey's statewide rate carries its 2018-01-01
+// effective date from N.J.S.A. 54:32B-3; the Urban Enterprise Zone rate and the New York City
+// combined rate do not, and inferring the UEZ date from the statewide one is exactly the
+// inference this refuses - the statute makes it half that rate, which dates the VALUE and not
+// the version. If a later edit quietly supplies an unread date to silence the obligation, or
+// drops the read one, this reds.
+test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
+  statutory_rate_version_is_read(r: nj_statewide_sales_tax)
+    && !statutory_rate_version_is_read(r: nj_uez_reduced_sales_tax)
+    && !statutory_rate_version_is_read(r: nyc_combined_sales_tax)
+}
+
+// ENROLLED 2026-09-13. This stood as a plain `fn` and was never called, so the check it
+// describes has never executed - an inert witness, which is worse than an absent one because it
+// reads as coverage. Declaring it `test fn` is what puts it on the floor.
 test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
-  parts_per_million_count(m: nj_statewide_sales_tax_rate) == 66250
-    && parts_per_million_count(m: nj_uez_reduced_sales_tax_rate) == 33125
-    && parts_per_million_count(m: nyc_combined_sales_tax_rate) == 88750
-    && parts_per_million_count(m: nj_uez_reduced_sales_tax_rate) * 2
-      == parts_per_million_count(m: nj_statewide_sales_tax_rate)
-    && parts_per_million_count(m: nj_statewide_sales_tax_rate) < parts_per_million_scale_million()
+  parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax)) == 66250
+    && parts_per_million_count(m: statutory_rate_value(r: nj_uez_reduced_sales_tax)) == 33125
+    && parts_per_million_count(m: statutory_rate_value(r: nyc_combined_sales_tax)) == 88750
+    && parts_per_million_count(m: statutory_rate_value(r: nj_uez_reduced_sales_tax)) * 2
+      == parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax))
+    && parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax)) < parts_per_million_scale_million()
 }
 
 test fn w_population_fold_refuses_a_repeated_lot() -> Bool {

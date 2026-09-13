@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.list { list_member, list_cover }
 import std.measure { PartsPerMillion }
+import extdeps.tax.statutory_rate { StatutoryRate }
 import product.inventory { InventoryLotIdentity, inventory_lot_identity_eq }
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
@@ -31,10 +32,16 @@ type CollectedTaxRateStanding
       rate: PartsPerMillion
     }
 
+// THE DESTINATION RATE IS STATUTORY AND CARRIES ITS VERSION; THE COLLECTED RATES ABOVE DO NOT,
+// AND THE ASYMMETRY IS DELIBERATE. A collected rate is an OBSERVATION of what a vendor charged on
+// a particular receipt - transcribed from its tax line or derived from its base - so an "effective
+// from" date is not a property it has. The destination rate is a PUBLISHED STATUTORY FIGURE that a
+// residual is measured AGAINST, so a superseded version would misstate every residual computed
+// from it, silently and uniformly. Only the second one needs the version, so only it carries it.
 type UseTaxResidualStanding
   = ResidualUseTaxOwed {
       destination_jurisdiction: NonEmptyStr
-      destination_combined_rate: PartsPerMillion
+      destination_combined_rate: StatutoryRate
     }
   | ResidualUseTaxNone
   | ResidualUseTaxUnread { read_obligation: NonEmptyStr }
