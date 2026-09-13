@@ -1291,6 +1291,17 @@ fn quarantine_probe_admitted_pairs() -> std::collections::HashSet<(String, Strin
 /// `enrolment_margin_blockers`. This enum is the host's rendering of that coproduct and adds no
 /// arm; the budget is READ OUT of the model rather than restated here, exactly as the CPU and wall
 /// deadlines are, so the seed and the model cannot drift into disagreement about the figure.
+///
+/// `CeilingCensored` IS RETAINED WITH NO PRODUCER IN THIS BINARY, AND THAT IS A NARROWING OF REACH
+/// RATHER THAN A DANGLING ARM (review 65264 correctly flagged it after the diff replaced its only
+/// construction site). The modeled coproduct keeps the arm because a reading CAN carry a censoring
+/// CPU ceiling -- `gunbc.floor_cost_distribution` still parses one from an artifact vintage that
+/// has the column. What cannot produce it is THIS host: the runner mints its readings from the
+/// current run, and since gunbc#11195 the floor arms no CPU deadline, so a preempted row's CPU is
+/// a bound with nothing on its own clock that stopped it. Deleting the arm would make the host
+/// enum a DIFFERENT coproduct from the authority it renders, which is the fork §3 forbids;
+/// retaining it without a producer, unremarked, is what §3c forbids. Naming the reason is the
+/// third option and the honest one.
 #[derive(Clone, Debug)]
 pub(crate) enum EnrolmentMarginStanding {
     WithinMargin {
@@ -1306,6 +1317,16 @@ pub(crate) enum EnrolmentMarginStanding {
     CeilingCensored {
         cpu_lower_bound_ms: u64,
         censoring_ceiling_ms: u64,
+    },
+    /// A CPU LOWER BOUND WITH NO CEILING, WHICH IS NEITHER UNMEASURED NOR CEILING-CENSORED.
+    /// Mirrors `EnrolmentBoundWithoutCeiling`. The modeled authority says in terms that collapsing
+    /// this into either neighbour LOSES THE REMEDY: there IS a reading, so "produce a measurement"
+    /// is the wrong instruction, and there is no ceiling, so nothing can be reported beside the
+    /// bound. Before review 65264 this host collapsed it into `NotMeasured`, so the model's arm had
+    /// no producer on the acceptance path and the operator-facing string was the one the model
+    /// forbids.
+    BoundWithoutCeiling {
+        cpu_lower_bound_ms: u64,
     },
     NotMeasured {
         cause: String,
@@ -1325,19 +1346,23 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::WithinMargin { .. } => false,
             EnrolmentMarginStanding::OverMargin { .. } => true,
             EnrolmentMarginStanding::CeilingCensored { .. } => true,
+            EnrolmentMarginStanding::BoundWithoutCeiling { .. } => true,
             EnrolmentMarginStanding::NotMeasured { .. } => true,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
         }
     }
 
-    /// Mirror of `enrolment_margin_blocking_cause`. The three blocking causes are three distinct
-    /// strings because they have three different remedies; one shared cause would offer only the
+    /// Mirror of `enrolment_margin_blocking_cause`. The FOUR blocking causes are four distinct
+    /// strings because they have four different remedies; one shared cause would offer only the
     /// rerun, which discharges none of them.
     fn cause(&self) -> &'static str {
         match self {
             EnrolmentMarginStanding::WithinMargin { .. } => "",
             EnrolmentMarginStanding::OverMargin { .. } => "enrolment_measured_over_margin",
             EnrolmentMarginStanding::CeilingCensored { .. } => "enrolment_censored_at_ceiling",
+            EnrolmentMarginStanding::BoundWithoutCeiling { .. } => {
+                "enrolment_bound_without_ceiling"
+            }
             EnrolmentMarginStanding::NotMeasured { .. } => "enrolment_not_measured",
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
         }
@@ -1352,6 +1377,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::WithinMargin { .. } => "admitted",
             EnrolmentMarginStanding::OverMargin { .. } => "measured_over_margin",
             EnrolmentMarginStanding::CeilingCensored { .. } => "censored_at_ceiling",
+            EnrolmentMarginStanding::BoundWithoutCeiling { .. } => "bound_without_ceiling",
             EnrolmentMarginStanding::NotMeasured { .. } => "not_measured",
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
                 "outside_this_runs_execution"
@@ -1374,6 +1400,15 @@ impl EnrolmentMarginStanding {
                 censoring_ceiling_ms,
             } => format!(
                 "cost=UNMEASURED cpu_at_least_ms={cpu_lower_bound_ms} censoring_ceiling_ms={censoring_ceiling_ms}"
+            ),
+            // THE DETAIL SAYS WHAT IS KNOWN AND WHAT IS NOT, and it deliberately does NOT say
+            // `absence_cause`: a bound IS a reading, so this row is not an absence. What it lacks
+            // is a ceiling on its own clock to be compared against, which is why the margin cannot
+            // adjudicate it.
+            EnrolmentMarginStanding::BoundWithoutCeiling { cpu_lower_bound_ms } => format!(
+                "cost=UNMEASURED cpu_at_least_ms={cpu_lower_bound_ms} censoring_ceiling_ms=NONE \
+                 (no CPU deadline is armed, so nothing on this row's own clock stopped it and its \
+                 bound is not comparable to the margin)"
             ),
             EnrolmentMarginStanding::NotMeasured { cause } => {
                 format!("cost=UNMEASURED absence_cause={cause}")
@@ -1528,14 +1563,8 @@ pub(crate) fn enrolment_margin_standing_for(
             // and what this row's CPU reading actually is — a lower bound with no ceiling it can be
             // compared against — is what `NotMeasured`'s cause says. Nothing is widened: the
             // enrolment question stays unanswered and the row stays refused.
-            EnrolmentMarginStanding::NotMeasured {
-                cause: format!(
-                    "interrupted at cpu_at_least_ms={} by {} with NO CPU ceiling armed (the claim \
-                     ceiling gates on eval_steps since 2026-09-12), so this row has no CPU cost to \
-                     compare against the enrolment margin",
-                    reading.elapsed_cpu_at_least_ms,
-                    reading.raised_by.label()
-                ),
+            EnrolmentMarginStanding::BoundWithoutCeiling {
+                cpu_lower_bound_ms: reading.elapsed_cpu_at_least_ms,
             }
         }
     }

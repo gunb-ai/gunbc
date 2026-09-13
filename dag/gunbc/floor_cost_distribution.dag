@@ -244,6 +244,11 @@ type ClaimCostColumns {
   cpu_at_least_ms: Int
   censoring_cpu_limit_ms: Int?
   eval_steps: Int
+  /// THE CENSORED ROW'S STEP BOUND, IN ITS OWN COLUMN. Optional for the same reason
+  /// `censoring_cpu_limit_ms` is: an artifact written before the producer split the column does not
+  /// carry it, and refusing those vintages wholesale would retire this reader against every run
+  /// before gunbc#11195.
+  eval_steps_at_least: Int?
   preemption_reachability: Int?
 }
 
@@ -290,6 +295,7 @@ fn claim_cost_columns(header_line: String) -> ClaimCostColumns? {
                     cpu_at_least_ms: bound,
                     censoring_cpu_limit_ms: claim_cost_column_index(header_fields: fields, name: "censoring_cpu_limit_ms"),
                     eval_steps: steps,
+                    eval_steps_at_least: claim_cost_column_index(header_fields: fields, name: "eval_steps_at_least"),
                     preemption_reachability: claim_cost_column_index(header_fields: fields, name: "preemption_reachability")
                   }
                 }
@@ -367,6 +373,33 @@ fn right_censored_cost_reading(fields: List<String>, columns: ClaimCostColumns) 
   }
 }
 
+// THE STEP COUNT, READ FROM THE COLUMN THAT MATCHES THE ROW'S READING (gunbc#11195).
+//
+// A COMPLETED ROW PERFORMED ITS STEPS and carries them in `eval_steps`. A CENSORED ROW DID NOT: its
+// count is quantised by whatever stopped it, so the producer now writes it in `eval_steps_at_least`
+// and leaves `eval_steps` empty. Reading the bound out of the performed column is what let this
+// module pair a censored row with a completed one in its equal-work cohort -- the harm
+// `gunbc.guarantee_stall` `eval_steps_outside_the_reading_coproduct_stall` is on file for.
+//
+// THIS IS A HALF-STEP TOWARD THAT STALL'S TRIGGER AND IS NOT IT. The trigger asks for the count to
+// move INSIDE the `ClaimCostReading` arms so no fold can compare a bound with a performed count
+// without first matching which it holds; this only stops the two arriving through the same column.
+// A fold that reads `FloorCostRow.eval_steps` still cannot tell them apart from the field alone,
+// which is why the stall row stays standing and is not retired by this change.
+//
+// AN OLD-VINTAGE CENSORED ROW STILL READS ITS COUNT FROM `eval_steps`, because before the split
+// that is where the producer wrote it. Refusing those rows would retire the reader against every
+// run before the split, which is the same trade the optional ceiling column already makes.
+fn parse_row_eval_steps(fields: List<String>, columns: ClaimCostColumns) -> Int? {
+  match parse_int(s: fields[columns.eval_steps]) {
+    Present { value: performed } => Present { value: performed }
+    Absent => match columns.eval_steps_at_least {
+      Absent => none
+      Present { value: ix } => parse_int(s: fields[ix])
+    }
+  }
+}
+
 fn parse_claim_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
   if fields[columns.cost_reading] == "observed" {
     observed_cost_reading(fields: fields, columns: columns)
@@ -420,7 +453,10 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
           b: match columns.censoring_cpu_limit_ms { Absent => 0 Present { value: c } => c }
         )
       ),
-      b: match columns.preemption_reachability { Absent => 0 Present { value: r } => r }
+      b: max_int(
+        a: match columns.preemption_reachability { Absent => 0 Present { value: r } => r },
+        b: match columns.eval_steps_at_least { Absent => 0 Present { value: e } => e }
+      )
     )
     if count(fields) <= widest {
       none
@@ -429,7 +465,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
     } else {
       match parse_claim_cost_reading(fields: fields, columns: columns) {
         Absent => none
-        Present { value: reading } => match parse_int(s: fields[columns.eval_steps]) {
+        Present { value: reading } => match parse_row_eval_steps(fields: fields, columns: columns) {
           Absent => none
           Present { value: steps } => match parse_verdict_reached(value: fields[columns.verdict_reached]) {
             Absent => none

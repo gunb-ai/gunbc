@@ -169,8 +169,9 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
   cost_reading: 4,
   observed_cpu_ms: 6,
   cpu_at_least_ms: 8,
-  censoring_cpu_limit_ms: 10,
+  censoring_cpu_limit_ms: Present { value: 10 },
   eval_steps: 12,
+  eval_steps_at_least: none,
   preemption_reachability: none
 }
 

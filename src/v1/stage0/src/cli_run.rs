@@ -42533,13 +42533,39 @@ fn write_required_floor_claim_cost_tsv(
         file,
         "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\t\
          observed_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\t\
-         censoring_raised_by\teval_steps\tcost_line_ms\t\
+         censoring_raised_by\teval_steps\teval_steps_at_least\tcost_line_ms\t\
          preemption_reachability"
     )
     .map_err(|e| format!("write_required_floor_claim_cost_tsv: write {path}: {e}"))?;
     for row in rows {
         // THE MATCH IS THE POINT. Rendering these columns requires naming which reading this row
         // carries, so no future edit can fill a cost column from a bound without deleting an arm.
+        // EVAL STEPS ARE SPLIT BY READING EXACTLY AS THE CLOCKS ARE, and for the same reason.
+        //
+        // A COMPLETED CLAIM PERFORMED ITS STEPS. An INTERRUPTED ONE DID NOT: its count is whatever
+        // the deadline poll happened to have reached, so it is a lower bound quantised by the stop
+        // and not a property of the work. `gunbc.floor_cost_distribution` says exactly this in a
+        // comment -- "an interrupted row's `eval_steps` is itself quantised by the deadline poll"
+        // -- while pairing rows on that same column for its equal-work cohort, and
+        // `gunbc.guarantee_stall` `eval_steps_outside_the_reading_coproduct_stall` has the class on
+        // file: the knowledge lives in prose where nothing can execute it.
+        //
+        // THIS PR IS WHY THAT STOPPED BEING TOLERABLE. eval_steps is now the quantity the claim
+        // ceiling GATES on, so printing a censored row's quantised count in the same column as a
+        // performed one offers a ceiling-comparable number for a claim that never finished — the
+        // fabricated-plausible-output shape DESIGN §5 forbids, in the one column a reader is now
+        // most likely to compare against a budget. Observed in run 34743785983, which printed a
+        // censored `eval_steps=100` as a real count.
+        //
+        // THE COLUMN PAIR IS THE SCHEMA'S OWN IDIOM (`observed_cpu_ms` / `cpu_at_least_ms`), so a
+        // reader that wants performed steps reads `eval_steps` and gets nothing for a censored row,
+        // rather than getting a number that means something else. The FULL repair — moving the
+        // count inside the reading arms so no fold can compare the two without matching which it
+        // holds — is that stall row's own migration and is deliberately not ridden in here.
+        let (eval_steps_performed, eval_steps_at_least) = match &row.reading {
+            ClaimCostReading::Observed { .. } => (row.eval_steps.to_string(), String::new()),
+            ClaimCostReading::RightCensored(_) => (String::new(), row.eval_steps.to_string()),
+        };
         let (observed_wall, observed_cpu, wall_at_least, cpu_at_least, wall_limit, raised) =
             match &row.reading {
                 ClaimCostReading::Observed {
@@ -42564,7 +42590,7 @@ fn write_required_floor_claim_cost_tsv(
             };
         writeln!(
             file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             row.module_path.replace(['\t', '\n'], " "),
             row.outcome,
@@ -42576,7 +42602,8 @@ fn write_required_floor_claim_cost_tsv(
             cpu_at_least,
             wall_limit,
             raised,
-            row.eval_steps,
+            eval_steps_performed,
+            eval_steps_at_least,
             row.cost_line_ms,
             row.preemption_reachability.replace(['\t', '\n'], " ")
         )

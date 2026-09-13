@@ -1164,7 +1164,7 @@ fn required_floor_eval_step_rate_grounding() -> EvalStepRateGrounding {
 // `nested_membership_scan_where_a_map_primitive_exists` and owned by the primitive's lane, not a
 // fact every future author must route around.
 fn new_witness_over_budget_first_remedy() -> NonEmptyStr {
-  "A nested membership scan is the usual cause: `all` over one population containing `any` over another is quadratic. Use the map-backed join -- `v2.std.collection` `empty_map` / `map_insert` / `map_lookup`, PrimitiveContracts already imported by 78 dag/ modules -- which turns the join into two linear folds plus 2n lookups, with both directions and the count intact." as NonEmptyStr
+  "A nested membership scan is the usual cause: `all` over one population containing `any` over another is quadratic. Use the map-backed join -- `v2.std.collection` `empty_map` / `map_insert` / `map_lookup`, PrimitiveContracts already imported by 78 dag/ modules -- which turns the join into two linear folds plus 2n lookups, with both directions and the count intact. BEFORE REDUCING ANYTHING, CHECK WHETHER THE COST IS THIS IDENTITY'S AT ALL: if the same eval_steps has been observed cheap on a quiet run and expensive here, and neighbouring claims in the module moved with it, the charge is contention billed as CPU rather than this claim's work -- see gunbc.rung_drop floor_cost_cpu_regression_at_constant_eval_steps, which carries that class and the series that established it. A step count that did not move is the discriminator." as NonEmptyStr
 }
 
 // WHETHER ONE CLAIM'S PERFORMED WORK IS INSIDE THE CEILING.
