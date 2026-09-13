@@ -1676,10 +1676,27 @@ fn component_placement_key(pl: ArtifactComponentPlacement) -> String {
   }
 }
 
+// THE UPSTREAM TOTAL IS PART OF THIS IDENTITY BECAUSE IT IS PART OF ADMISSION. `artifact_upstream_agreement_defect`
+// reads it, so two artifacts differing only in that field are two different decisions -- and a digest
+// that omits it would let a cached or compared result carry across the change silently. It is rendered
+// as its own leading segment, so an absent total and a total of zero are different strings.
+fn artifact_upstream_total_key(t: ByteSize?) -> String {
+  match t {
+    Absent => "upstream:absent"
+    Present { value: b } => join(["upstream:", to_string(byte_size_count(b: b))], "")
+  }
+}
+
 fn artifact_decomposition_digest(art: ModelArtifact) -> String {
   if count(art.components) == 0 {
-    "undecomposed"
+    join([artifact_upstream_total_key(t: art.upstream_total), "|undecomposed"], "")
   } else {
+    join([artifact_upstream_total_key(t: art.upstream_total), "|", artifact_component_digest(art: art)], "")
+  }
+}
+
+fn artifact_component_digest(art: ModelArtifact) -> String {
+  {
     join(map(art.components, cp => join([
       declaration_ref_display_key(ref: cp.identity),
       ":", component_placement_key(pl: cp.placement),
@@ -1835,7 +1852,37 @@ type ServingFieldStanding
 // carrying a different ModelArtifact with the same identity was validated through the domain row it
 // did not use. Both are checked now, and a defective child route selection is a field defect here
 // rather than an evidence gap downstream.
+// ── THE ROUTE STANDINGS ARE COMPUTED ONCE PER CANDIDATE AND CARRIED ───────────────────────────
+//
+// `candidate_component_route_standings` runs a whole child selection per candidate, and three separate
+// demands reached it across one entry point: field establishment through `candidate_route_defects`,
+// the Pareto projection, and the construction of the selected result. DESIGN section 2 prices that as
+// AUTHORED duplication rather than a cache obligation -- the three demands have a shared-state least
+// common ancestor, `select_serving_deployment`, so the first value is computed there and carried. A
+// provider keyed on the candidate would have made the third call cheap and left the authoring defect
+// in place, which is exactly the move that section forbids.
+type RoutedCandidate sole_constructor {
+  candidate: DeploymentCandidate
+  route_standings: List<ComponentRouteStanding>
+}
+
+fn routed_candidates(field: ServingDeploymentCandidateField) -> List<RoutedCandidate> {
+  map(field.candidates, k => RoutedCandidate {
+    candidate: k,
+    route_standings: candidate_component_route_standings(c: k, p: k.profile),
+  })
+}
+
+// THE FIELD-ONLY FORM REMAINS FOR CALLERS THAT HOLD NO STANDINGS -- fixtures asking only whether a
+// field is complete. It is the one place the standings are recomputed, and it is off the entry path.
 fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> ServingFieldStanding {
+  establish_serving_candidate_field_over(field: field, routed: routed_candidates(field: field))
+}
+
+fn establish_serving_candidate_field_over(
+  field: ServingDeploymentCandidateField,
+  routed: List<RoutedCandidate>,
+) -> ServingFieldStanding {
   let expected = expected_combinations(d: field.domain)
   let actual = map(field.candidates, c => candidate_combination(c: c))
   let missing = filter(expected, k => key_occurrences(keys: actual, k: k) == 0)
@@ -1856,7 +1903,7 @@ fn establish_serving_candidate_field(field: ServingDeploymentCandidateField) -> 
         ], "") as NonEmptyStr]
         Absent => []
       }))
-  let route_defect = flat_map(field.candidates, k => candidate_route_defects(c: k, p: k.profile))
+  let route_defect = flat_map(routed, rc => candidate_route_defects_over(c: rc.candidate, route_standings: rc.route_standings))
   if count(missing) == 0 && count(extra) == 0 && count(duplicated_actual) == 0
     && count(duplicated_declared) == 0 && count(param_defect) == 0 && count(decomposition_defect) == 0
     && count(route_defect) == 0 {
@@ -2060,6 +2107,14 @@ fn route_obligation_cause(component: DeclarationRef, context: RouteSubjectKey, c
   join([route_obligation_prefix(component: component, context: context), cause as String], "") as NonEmptyStr
 }
 
+// THE TYPED REMEDY REACHES THE CONSUMER THROUGH THE SHAPE, NOT THROUGH THIS TEXT. The AxisGap carrier
+// std.pareto and std.decision share takes a String cause, and that is the substrate's shape rather than
+// this module's to change -- so `PlacementNeedsPolicy`, which is a typed survivor list, is RENDERED here
+// for the diagnostic. What a consumer acts on is `ServingDeploymentShape.component_routes`, which carries
+// the standings whole, so `component_route_placement_standing` answers the same question in its own
+// vocabulary and nobody has to parse a sentence to learn that a front needs a policy rather than another
+// measurement. A first cut left the standings on `SelectedServingDeployment` and let `shape_of` drop them,
+// which is what made the rendered text the only crossing.
 fn component_route_gap_over(standings: List<ComponentRouteStanding>) -> List<AxisGap> {
   flat_map(standings, st => {
     let prefix = route_obligation_prefix(
@@ -2080,8 +2135,12 @@ fn component_route_gap_over(standings: List<ComponentRouteStanding>) -> List<Axi
 // MEASUREMENT. The field-establishment path is where a defective input belongs, so that is where it
 // goes, and the product root reports it as a structural refusal rather than an open question.
 fn candidate_route_defects(c: DeploymentCandidate, p: ServingDecisionParameters) -> List<NonEmptyStr> {
+  candidate_route_defects_over(c: c, route_standings: candidate_component_route_standings(c: c, p: p))
+}
+
+fn candidate_route_defects_over(c: DeploymentCandidate, route_standings: List<ComponentRouteStanding>) -> List<NonEmptyStr> {
   flat_map(
-    filter(candidate_component_route_standings(c: c, p: p), st => component_route_has_defect(s: st)),
+    filter(route_standings, st => component_route_has_defect(s: st)),
     st => map(
       component_route_causes(s: st),
       cz => join([
@@ -2136,7 +2195,15 @@ fn candidate_gaps(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, 
 }
 
 fn project_candidate(c: DeploymentCandidate, e: ServingDeploymentEvidenceSnapshot, p: ServingDecisionParameters) -> ParetoEntry {
-  let route_standings = candidate_component_route_standings(c: c, p: p)
+  project_routed_candidate(
+    rc: RoutedCandidate { candidate: c, route_standings: candidate_component_route_standings(c: c, p: p) },
+    e: e)
+}
+
+fn project_routed_candidate(rc: RoutedCandidate, e: ServingDeploymentEvidenceSnapshot) -> ParetoEntry {
+  let c = rc.candidate
+  let p = rc.candidate.profile
+  let route_standings = rc.route_standings
   let fit = weight_fit_over(c: c, fleet: e.fleet, p: p, route_standings: route_standings)
   ParetoEntry {
     identity: c.identity,
@@ -2346,6 +2413,14 @@ type ServingDeploymentSelection
   | NoFeasibleServingDeployment { causes: List<NonEmptyStr> }
   | ServingDeploymentSelectionRefused { defects: List<NonEmptyStr> }
 
+fn resolve_routed(routed: List<RoutedCandidate>, identity: DeclarationRef) -> RoutedCandidate? {
+  fold(routed, init: none, f: (acc, rc) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if declaration_ref_eq(a: rc.candidate.identity, b: identity) { Present { value: rc } } else { none }
+    })
+}
+
 fn resolve_in_field(field: ServingDeploymentCandidateField, identity: DeclarationRef) -> DeploymentCandidate? {
   fold(field.candidates, init: none, f: (acc, k) =>
     match acc {
@@ -2355,13 +2430,17 @@ fn resolve_in_field(field: ServingDeploymentCandidateField, identity: Declaratio
 }
 
 fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDeploymentSelection {
-  match establish_serving_candidate_field(field: input.field) {
+  select_over_routed(input: input, routed: routed_candidates(field: input.field))
+}
+
+fn select_over_routed(input: ServingDeploymentDecisionInput, routed: List<RoutedCandidate>) -> ServingDeploymentSelection {
+  match establish_serving_candidate_field_over(field: input.field, routed: routed) {
     ServingFieldUnestablished { causes: c } => ServingDeploymentSelectionRefused { defects: c }
     ServingFieldEstablished =>
       match select_realization(
         assessment: assessment_for(input: input),
         candidate_field_identity: input.field.identity,
-        field: map(input.field.candidates, c => project_candidate(c: c, e: input.evidence, p: c.profile)),
+        field: map(routed, rc => project_routed_candidate(rc: rc, e: input.evidence)),
         axes: input.axes,
         constraints: input.constraints,
         constraint_authority: input.constraint_authority,
@@ -2369,16 +2448,16 @@ fn select_serving_deployment(input: ServingDeploymentDecisionInput) -> ServingDe
         evidence_snapshot: input.evidence.fleet_receipt,
       ) {
         SelectedWithin { candidate: e, receipt: r } =>
-          match resolve_in_field(field: input.field, identity: e.identity) {
+          match resolve_routed(routed: routed, identity: e.identity) {
             Absent => ServingDeploymentSelectionRefused {
               defects: ["the spine selected an identity that resolves to no candidate in the sealed field, which is a projector contradiction rather than a decision" as NonEmptyStr],
             }
             Present { value: chosen } => ServingDeploymentSelected {
               selected: SelectedServingDeployment {
                 input: input,
-                candidate: chosen,
+                candidate: chosen.candidate,
                 receipt: r,
-                component_routes: candidate_component_route_standings(c: chosen, p: chosen.profile),
+                component_routes: chosen.route_standings,
                 snapshot_key: decision_snapshot_key(input: input),
               },
             }
@@ -2408,6 +2487,11 @@ type ServingReplicaShape sole_constructor {
   replica_ordinal: Nat
 }
 
+// THE SHAPE CARRIES THE ROUTE STANDINGS, because the shape is what a placement consumer holds and a
+// component placed by a route is part of what was selected, not a detail of how it was chosen. A
+// first cut put `component_routes` on `SelectedServingDeployment` and let `shape_of` drop it, so the
+// one carrier that crosses this boundary answered "which components are non-resident, and under which
+// route" with silence -- and a downstream reader would have had to re-derive it or assume resident.
 type ServingDeploymentShape sole_constructor {
   artifact: DeclarationRef
   candidate: DeclarationRef
@@ -2416,6 +2500,7 @@ type ServingDeploymentShape sole_constructor {
   hosts_required: Nat
   hosts_unassigned: Nat
   selected_by: SelectionReceipt
+  component_routes: List<ComponentRouteStanding>
   snapshot_key: String
 }
 
@@ -2440,6 +2525,7 @@ fn shape_of(selected: SelectedServingDeployment) -> ServingDeploymentShape {
     hosts_required: hosts_consumed(c: selected.candidate),
     hosts_unassigned: selected.input.evidence.fleet.host_count - hosts_consumed(c: selected.candidate),
     selected_by: selected.receipt,
+    component_routes: selected.component_routes,
     snapshot_key: selected.snapshot_key,
   }
 }

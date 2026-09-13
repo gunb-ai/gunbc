@@ -28,7 +28,7 @@ import std.decision {
   RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
   SelectionReceipt, select_realization,
 }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ExternalAuthority }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision,
   deepseek_v4_1_flash_engram_population,
@@ -158,12 +158,12 @@ type ComponentSubjectStanding
 fn establish_component_subject(subject: ComponentSubject) -> ComponentSubjectStanding {
   match subject.population {
     PopulationRefused { defects: ds } => ComponentSubjectRefused { identity: subject.identity, defects: ds }
-    PopulationIncomplete { obligation: o, partial_entry_count: k } =>
+    PopulationIncomplete { obligation: o, partial_entries: es } =>
       ComponentSubjectPopulationIncomplete {
         identity: subject.identity,
         obligation: join([
           o as String,
-          " (", to_string(k), " tensor rows were read; a partial population is not the component)",
+          " (", to_string(count(es)), " tensor rows were read; a partial population is not the component)",
         ], "") as NonEmptyStr,
       }
     PopulationEstablished { population: p } =>
@@ -304,27 +304,70 @@ fn preservation_shortfall(ps: List<PreservedProperty>) -> List<NonEmptyStr> {
 
 // A RELATION BOUND TO BOTH ENDS. A relation that names neither what it maps FROM nor what it maps TO
 // relates nothing, however well documented it is.
+// ── A REFERENCE THAT RESOLVES IS NOT A RELATION THAT EXISTS ────────────────────────────────────
+//
+// A first cut took `relation: DeclarationRef` and nothing checked what it DENOTED. The Engram loader
+// relation cited `deepseek_v4_1_flash_inference_model_path` -- which is `data ... : NonEmptyStr =
+// "inference/model.py"`, a file path. So the fold compared subject, source encoding, target encoding
+// and the preserved set, all correctly, and then accepted a POINTER TO A PATH LITERAL as the relation
+// binding them. Give the resident artifact any identity and route A reached RealizationFaithful and
+// cleared a hard constraint on that basis.
+//
+// The citation gate the floor runs asks whether a name RESOLVES. It cannot ask whether the thing it
+// resolves to is a relation. So the ground is carried as a value and compared here: an unestablished
+// ground refuses, and `RelationUnestablished` is the honest arm for a transform nobody has shown
+// preserves anything.
+type RelationGround
+  = RelationProvenInCorpus { fold: DeclarationRef, how: NonEmptyStr }
+  | RelationObservedOnFleet { receipt: DeclarationRef, how: NonEmptyStr }
+  | RelationUnestablished { obligation: NonEmptyStr }
+
+fn relation_ground_obligation(g: RelationGround) -> NonEmptyStr? {
+  match g {
+    RelationProvenInCorpus { fold: _, how: _ } => none
+    RelationObservedOnFleet { receipt: _, how: _ } => none
+    RelationUnestablished { obligation: o } => Present { value: o }
+  }
+}
+
+// A RELATION ABOUT LAYOUTS IS NOT A RELATION ABOUT CONTENTS. A first cut carried only the two
+// PhysicalEncoding descriptions, so the relation said "safetensors shard set to repacked row store"
+// and nothing bound it to WHICH shard set or WHICH row store. The fold then compared subject and the
+// two layout descriptions, found them equal, and accepted any established artifact identity -- so
+// swapping the artifact's digest for a different one left the verdict RealizationFaithful. The two
+// identity fields close that: the relation names the exact bytes it maps from and the exact bytes it
+// produced, and each is compared, so a relation proven over one pair of artifacts cannot be carried
+// onto another pair wearing the same layout names.
 type FaithfulnessRelation sole_constructor {
   relation: DeclarationRef
   subject: DeclarationRef
   source_encoding: PhysicalEncoding
+  source_identity: EncodingIdentity
   target_encoding: PhysicalEncoding
+  target_identity: EncodingIdentity
   preserved: List<PreservedProperty>
+  ground: RelationGround
 }
 
 fn faithfulness_relation(
   relation: DeclarationRef,
   subject: DeclarationRef,
   source_encoding: PhysicalEncoding,
+  source_identity: EncodingIdentity,
   target_encoding: PhysicalEncoding,
+  target_identity: EncodingIdentity,
   preserved: List<PreservedProperty>,
+  ground: RelationGround,
 ) -> FaithfulnessRelation {
   FaithfulnessRelation {
     relation: relation,
     subject: subject,
     source_encoding: source_encoding,
+    source_identity: source_identity,
     target_encoding: target_encoding,
+    target_identity: target_identity,
     preserved: preserved,
+    ground: ground,
   }
 }
 
@@ -478,20 +521,136 @@ fn realize_by_relation(
           ", which is not the encoding this artifact is, ", physical_encoding_key(e: artifact.encoding),
         ], "") as NonEmptyStr]
       },
-      preservation_shortfall(ps: r.preserved)))
+      concat(
+        relation_identity_mismatches(r: r, sub: sub, artifact: artifact),
+        preservation_shortfall(ps: r.preserved))))
   if count(mismatches) > 0 {
     RealizationUnfaithful { subject: sub.identity, defects: mismatches }
   } else {
+    match relation_ground_obligation(g: r.ground) {
+      Present { value: o } => RealizationEvidenceMissing {
+        subject: sub.identity,
+        obligation: join([
+          "the relation ", declaration_ref_display_key(ref: r.relation),
+          " has no established ground, so nothing shows it preserves what it claims: ", o as String,
+        ], "") as NonEmptyStr,
+      }
+      Absent => realize_by_grounded_relation(sub: sub, artifact: artifact, r: r)
+    }
+  }
+}
+
+// THE CONTENTS PARTICIPATE HERE AND NOWHERE ELSE. An unestablished identity on EITHER end is an
+// open question, not a mismatch: nobody has said what the relation maps from or to, so the artifact
+// defers rather than being declared unfaithful. A different established identity IS a mismatch.
+fn relation_identity_mismatches(
+  r: FaithfulnessRelation,
+  sub: ComponentSubject,
+  artifact: MaterializedComponentArtifact,
+) -> List<NonEmptyStr> {
+  concat(
+    relation_end_mismatch(
+      end: "maps from", declared: r.source_identity, actual: sub.published_identity, relation: r.relation),
+    relation_end_mismatch(
+      end: "produced", declared: r.target_identity, actual: artifact.identity, relation: r.relation))
+}
+
+fn relation_end_mismatch(
+  end: String,
+  declared: EncodingIdentity,
+  actual: EncodingIdentity,
+  relation: DeclarationRef,
+) -> List<NonEmptyStr> {
+  match encoding_identity_established(i: declared) {
+    false => []
+    true => match encoding_identity_established(i: actual) {
+      false => []
+      true =>
+        if encoding_identity_eq(a: declared, b: actual) {
+          []
+        } else {
+          [join([
+            "the relation ", declaration_ref_display_key(ref: relation), " ", end, " ",
+            encoding_identity_render(i: declared), ", and this realization's corresponding bytes are ",
+            encoding_identity_render(i: actual),
+          ], "") as NonEmptyStr]
+        }
+    }
+  }
+}
+
+fn encoding_identity_established(i: EncodingIdentity) -> Bool {
+  match i {
+    EncodingIdentityUnestablished { obligation: _ } => false
+    ShardSetIdentity { shards: _ } => true
+    SingleObjectIdentity { digest: _ } => true
+  }
+}
+
+// MISSING FAITHFULNESS SURVIVES A SUPPLIED TARGET DIGEST. The grounded arm used to ask only whether
+// the ARTIFACT had an identity, so handing it one discharged the whole obligation. The relation's own
+// two ends are asked separately: if the relation cannot say what it mapped from or what it produced,
+// the realization stays open however well identified the artifact is.
+fn relation_end_obligations(r: FaithfulnessRelation) -> List<NonEmptyStr> {
+  concat(
+    match encoding_identity_established(i: r.source_identity) {
+      true => []
+      false => [join([
+        "the relation ", declaration_ref_display_key(ref: r.relation),
+        " does not say which bytes it maps from, so nothing binds it to this subject's published encoding",
+      ], "") as NonEmptyStr]
+    },
+    match encoding_identity_established(i: r.target_identity) {
+      true => []
+      false => [join([
+        "the relation ", declaration_ref_display_key(ref: r.relation),
+        " does not say which bytes it produced, so nothing binds it to the artifact this route places",
+      ], "") as NonEmptyStr]
+    })
+}
+
+// THE RESIDUAL AND ITS READING ARE THE SAME THREE-VALUED FACT read in two directions, so they cannot
+// disagree: the reading exists exactly when `component_subject_obligations` is empty on this axis.
+fn membership_closure_reading(s: ComponentSubjectStanding) -> AxisReading? {
+  match count(component_subject_obligations(s: s)) == 0 {
+    true => Present { value: route_reading(axis: ax_component_membership_closure, v: 1) }
+    false => none
+  }
+}
+
+fn realize_by_grounded_relation(
+  sub: ComponentSubject,
+  artifact: MaterializedComponentArtifact,
+  r: FaithfulnessRelation,
+) -> FaithfulComponentRealization {
+  {
+    let ends = relation_end_obligations(r: r)
     match artifact.identity {
-      EncodingIdentityUnestablished { obligation: o } => RealizationEvidenceMissing { subject: sub.identity, obligation: o }
-      ShardSetIdentity { shards: _ } => RealizationFaithful {
-        subject: sub.identity, artifact_identity: artifact.identity,
-        evidence: StructurePreservingTransform { relation: r },
+      EncodingIdentityUnestablished { obligation: o } => RealizationEvidenceMissing {
+        subject: sub.identity,
+        obligation: join(concat([o as String], map(ends, e => join(["; ", e as String], ""))), "") as NonEmptyStr,
       }
-      SingleObjectIdentity { digest: _ } => RealizationFaithful {
-        subject: sub.identity, artifact_identity: artifact.identity,
-        evidence: StructurePreservingTransform { relation: r },
-      }
+      ShardSetIdentity { shards: _ } => realization_from_relation_ends(sub: sub, artifact: artifact, r: r, ends: ends)
+      SingleObjectIdentity { digest: _ } => realization_from_relation_ends(sub: sub, artifact: artifact, r: r, ends: ends)
+    }
+  }
+}
+
+fn realization_from_relation_ends(
+  sub: ComponentSubject,
+  artifact: MaterializedComponentArtifact,
+  r: FaithfulnessRelation,
+  ends: List<NonEmptyStr>,
+) -> FaithfulComponentRealization {
+  if count(ends) > 0 {
+    RealizationEvidenceMissing {
+      subject: sub.identity,
+      obligation: join(map(ends, e => e as String), "; ") as NonEmptyStr,
+    }
+  } else {
+    RealizationFaithful {
+      subject: sub.identity, artifact_identity: artifact.identity,
+      evidence: StructurePreservingTransform { relation: r },
     }
   }
 }
@@ -815,21 +974,129 @@ fn route_addressing_admits_verification(s: RouteIntegrityStanding) -> Bool {
 // binding in its own reading, with its provenance limits documented. Consuming it means naming the
 // exact subject that readback was about and carrying its limits forward -- not asserting verification
 // because a provider happens to be content-keyed. Until a route does that, this is unestablished.
+// THE POSITIVE ARM CARRIES A SEALED RECEIPT AND THE PREDICATE COMPARES IT. A first cut destructured
+// readback, subject and limits and returned 1 while ignoring all three, so a verification claim about
+// ANOTHER subject satisfied this axis as long as the outer evidence row matched the route. The model is
+// the one finding 9 established for launch receipts: the receipt record has no exported builder, so it
+// cannot be minted outside this module, and the COMPARISON over its fields is exposed so a fixture can
+// ask whether the facts agree without being able to assert that they were observed.
+type OriginVerificationReceipt sole_constructor {
+  readback: DeclarationRef
+  verified_subject: DeclarationRef
+  verified_identity: EncodingIdentity
+  provenance_limits: NonEmptyStr
+}
+
 type RouteVerificationStanding
-  = RouteArtifactVerifiedAtOrigin { readback: DeclarationRef, subject: NonEmptyStr, limits: NonEmptyStr }
+  = RouteArtifactVerifiedAtOrigin { receipt: OriginVerificationReceipt }
   | RouteVerificationUnestablished { obligation: NonEmptyStr }
 
-fn route_verification_reading(v: RouteVerificationStanding) -> AxisReading? {
-  match v {
-    RouteArtifactVerifiedAtOrigin { readback: _, subject: _, limits: _ } =>
-      Present { value: route_reading(axis: ax_route_verified_integrity, v: 1) }
-    RouteVerificationUnestablished { obligation: _ } => none
+// THE JOIN, EXPOSED OVER FIELDS RATHER THAN OVER THE SEALED RECORD. A digest observation establishes
+// something about the EXACT artifact it read; carrying it onto a different subject or a different
+// encoding is the same transport error the launch-receipt join refuses.
+fn origin_verification_mismatches(
+  verified_subject: DeclarationRef,
+  verified_identity: EncodingIdentity,
+  wanted_subject: DeclarationRef,
+  wanted_identity: EncodingIdentity,
+) -> List<NonEmptyStr> {
+  concat(
+    if declaration_ref_eq(a: verified_subject, b: wanted_subject) {
+      []
+    } else {
+      [join([
+        "the origin readback verified component ", declaration_ref_display_key(ref: verified_subject),
+        " and this route places ", declaration_ref_display_key(ref: wanted_subject),
+      ], "") as NonEmptyStr]
+    },
+    if encoding_identity_eq(a: verified_identity, b: wanted_identity) {
+      []
+    } else {
+      [join([
+        "the origin readback verified ", encoding_identity_render(i: verified_identity),
+        " and this route's artifact is ", encoding_identity_render(i: wanted_identity),
+        "; a digest observation establishes something about the bytes it read and nothing about other bytes",
+      ], "") as NonEmptyStr]
+    })
+}
+
+fn encoding_identity_eq(a: EncodingIdentity, b: EncodingIdentity) -> Bool {
+  match a {
+    EncodingIdentityUnestablished { obligation: _ } => false
+    ShardSetIdentity { shards: xs } => match b {
+      ShardSetIdentity { shards: ys } => shard_identity_lists_match(a: xs, b: ys)
+      SingleObjectIdentity { digest: _ } => false
+      EncodingIdentityUnestablished { obligation: _ } => false
+    }
+    SingleObjectIdentity { digest: dx } => match b {
+      SingleObjectIdentity { digest: dy } => serialize_content_hash(hash: dx) == serialize_content_hash(hash: dy)
+      ShardSetIdentity { shards: _ } => false
+      EncodingIdentityUnestablished { obligation: _ } => false
+    }
   }
 }
 
-fn route_verification_gap(v: RouteVerificationStanding, route: DeclarationRef) -> List<AxisGap> {
+// THE VERIFICATION TARGET IS THE REALIZED ARTIFACT, NOT A PARAMETER THE CALLER CHOOSES. Passing a
+// wanted subject and identity separately would let a call site supply the ones the receipt happens
+// to carry, so the comparison is taken against the realization this candidate is actually placing.
+fn verification_target(r: FaithfulComponentRealization) -> VerificationTarget {
+  match r {
+    RealizationFaithful { subject: sj, artifact_identity: ai, evidence: _ } =>
+      TargetIs { subject: sj, identity: ai }
+    RealizationUnfaithful { subject: _, defects: _ } => TargetUnrealized
+    RealizationEvidenceMissing { subject: _, obligation: _ } => TargetUnrealized
+  }
+}
+
+type VerificationTarget
+  = TargetIs { subject: DeclarationRef, identity: EncodingIdentity }
+  | TargetUnrealized
+
+fn route_verification_reading(
+  v: RouteVerificationStanding,
+  realization: FaithfulComponentRealization,
+) -> AxisReading? {
+  match verification_target(r: realization) {
+    TargetUnrealized => none
+    TargetIs { subject: wanted_subject, identity: wanted_identity } => match v {
+    RouteArtifactVerifiedAtOrigin { receipt: rc } =>
+      if count(origin_verification_mismatches(
+        verified_subject: rc.verified_subject,
+        verified_identity: rc.verified_identity,
+        wanted_subject: wanted_subject,
+        wanted_identity: wanted_identity)) == 0 {
+        Present { value: route_reading(axis: ax_route_verified_integrity, v: 1) }
+      } else {
+        none
+      }
+    RouteVerificationUnestablished { obligation: _ } => none
+    }
+  }
+}
+
+fn route_verification_gap(
+  v: RouteVerificationStanding,
+  route: DeclarationRef,
+  realization: FaithfulComponentRealization,
+) -> List<AxisGap> {
   match v {
-    RouteArtifactVerifiedAtOrigin { readback: _, subject: _, limits: _ } => []
+    RouteArtifactVerifiedAtOrigin { receipt: rc } => match verification_target(r: realization) {
+      TargetUnrealized => [AxisGap {
+        axis: ax_route_verified_integrity,
+        cause: join([
+          "route ", declaration_ref_display_key(ref: route),
+          " carries an origin readback while its component has no faithful realization to verify",
+        ], "") as NonEmptyStr,
+      }]
+      TargetIs { subject: ws, identity: wi } =>
+        map(
+          origin_verification_mismatches(
+            verified_subject: rc.verified_subject,
+            verified_identity: rc.verified_identity,
+            wanted_subject: ws,
+            wanted_identity: wi),
+          m => AxisGap { axis: ax_route_verified_integrity, cause: m })
+    }
     RouteVerificationUnestablished { obligation: o } =>
       [AxisGap {
         axis: ax_route_verified_integrity,
@@ -1136,16 +1403,29 @@ data id_route_var_context: DeclarationRef = decl_ref(module_path: "gunbc.fabric.
 data id_route_term_serving_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "term_total_serving_cost")
 data id_route_region: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_region")
 data id_route_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_constraints")
-data id_route_policy: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_policy")
+// THE POLICY AUTHORITY FOR THIS SUBJECT. There is deliberately NO tie-break rule: a front of two
+// fully-measured non-dominated routes must reach SelectionNeedsPolicy rather than be separated by a
+// preference invented in the fold, and deciding one is an operator ruling. That ruling is an
+// annotation here rather than a String row -- §4c's point is that prose belongs in a typed carrier or
+// in an annotation, and a String declared only so a citation resolves is dead data. The identity
+// follows the corpus convention for a policy authority: a self-citing DeclarationRef, as
+// product.fleet_operating_point fleet_operating_point_policy does.
+data component_route_policy: DeclarationRef = decl_ref(
+  module_path: "gunbc.fabric.engram_materialization",
+  decl_name: "component_route_policy",
+)
 
-// THE POLICY AUTHORITY FOR THIS SUBJECT, declared so the citation above resolves. There is no tie-break
-// rule here yet, and that is the point: a front of two fully-measured routes must reach
-// SelectionNeedsPolicy rather than be separated by an invented preference. When a policy is decided it
-// is stated on this row.
-data component_route_policy: NonEmptyStr = "no tie-break policy is declared for component routes: a front of non-dominated fully-measured routes reaches SelectionNeedsPolicy, and separating it requires an operator ruling recorded here rather than a preference invented in the fold" as NonEmptyStr
 data id_resident_memory_unestablished: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "route_resident_authority")
 
 data ax_route_faithful_realization: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_faithful_realization")
+// THE MEMBERSHIP RESIDUAL NEEDS ITS OWN AXIS, AND THIS IS WHY. It used to ride the faithfulness
+// axis as an `AxisGap`, and for every route whose realization was established that same axis ALSO
+// received a passing reading of 1. `unread_axis_gaps` returns an entry's gaps only for axes with no
+// reading, so the reading silently swallowed the residual: a population reconciled against twelve read
+// index rows rather than the revision's full index scored as though membership were closed. Two facts
+// on one axis is the fork; they are separated here, and the closure axis has NO reading while the
+// closure is scoped, so it is an effective unresolved input for every route rather than a decoration.
+data ax_component_membership_closure: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_component_membership_closure")
 data ax_route_well_formed: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_well_formed")
 data ax_route_integrity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_integrity")
 data ax_route_verified_integrity: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_verified_integrity")
@@ -1161,6 +1441,7 @@ data ax_route_local_storage_bytes: DeclarationRef = decl_ref(module_path: "gunbc
 
 data component_route_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_route_faithful_realization, goal: HigherIsBetter },
+  SelectionAxis { identity: ax_component_membership_closure, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_well_formed, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_integrity, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_verified_integrity, goal: HigherIsBetter },
@@ -1400,6 +1681,7 @@ fn route_structural_readings(
 
 fn route_candidate_readings(
   c: RouteCandidate,
+  standing: ComponentSubjectStanding,
   realization: FaithfulComponentRealization,
   origin_provider_id: String,
   admitted_provider_ids: List<String>,
@@ -1410,10 +1692,12 @@ fn route_candidate_readings(
     concat(
       concat(
         route_structural_readings(c: c, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids),
-        optional_route_reading(r: faithfulness_reading(r: realization))),
+        concat(
+          optional_route_reading(r: faithfulness_reading(r: realization)),
+          optional_route_reading(r: membership_closure_reading(s: standing)))),
       concat(
         optional_route_reading(r: mechanism_reading(m: evidence.mechanism)),
-        optional_route_reading(r: route_verification_reading(v: evidence.verification)))),
+        optional_route_reading(r: route_verification_reading(v: evidence.verification, realization: realization)))),
     concat(
       optional_route_reading(r: route_runtime_reading(r: evidence.runtime, route: c.route, wanted: wanted)),
       optional_route_reading(r: resident_reading(s: evidence.resident_memory))))
@@ -1435,13 +1719,15 @@ fn route_candidate_gaps(
 ) -> List<AxisGap> {
   concat(
     concat(
-      map(
-        concat(
-          realization_obligations(r: realization),
-          component_subject_obligations(s: standing)),
-        o => AxisGap { axis: ax_route_faithful_realization, cause: o }),
       concat(
-        concat(mechanism_gap(m: evidence.mechanism), route_verification_gap(v: evidence.verification, route: c.route.identity)),
+        map(
+          realization_obligations(r: realization),
+          o => AxisGap { axis: ax_route_faithful_realization, cause: o }),
+        map(
+          component_subject_obligations(s: standing),
+          o => AxisGap { axis: ax_component_membership_closure, cause: o })),
+      concat(
+        concat(mechanism_gap(m: evidence.mechanism), route_verification_gap(v: evidence.verification, route: c.route.identity, realization: realization)),
         route_runtime_gap(r: evidence.runtime, route: c.route, wanted: wanted))),
     concat(
       concat(
@@ -1468,14 +1754,14 @@ fn project_route_candidate(
     RouteEvidenceFound { evidence: e } => ParetoEntry {
       identity: c.route.identity,
       display_label: c.route.label,
-      readings: route_candidate_readings(c: c, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, evidence: e, wanted: wanted),
+      readings: route_candidate_readings(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, evidence: e, wanted: wanted),
       missing_inputs: route_candidate_gaps(c: c, standing: standing, realization: realization, evidence: e, wanted: wanted),
     }
     RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os } =>
-      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
+      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os }))
     RouteEvidenceAbsent { route: rt, wanted: w } =>
-      route_entry_without_evidence(c: c, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
+      route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
         causes: route_evidence_lookup_obligations(l: RouteEvidenceAbsent { route: rt, wanted: w }))
   }
 }
@@ -1485,6 +1771,7 @@ fn project_route_candidate(
 // anyone measured it, and it is excluded on that basis rather than deferred.
 fn route_entry_without_evidence(
   c: RouteCandidate,
+  standing: ComponentSubjectStanding,
   realization: FaithfulComponentRealization,
   origin_provider_id: String,
   admitted_provider_ids: List<String>,
@@ -1496,10 +1783,14 @@ fn route_entry_without_evidence(
     display_label: c.route.label,
     readings: concat(
       route_structural_readings(c: c, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids),
-      optional_route_reading(r: faithfulness_reading(r: realization))),
+      concat(
+        optional_route_reading(r: faithfulness_reading(r: realization)),
+        optional_route_reading(r: membership_closure_reading(s: standing)))),
     missing_inputs: concat(
       concat(
-        map(causes, cz => AxisGap { axis: ax_route_nonresident_mechanism, cause: cz }),
+        concat(
+          map(component_subject_obligations(s: standing), o => AxisGap { axis: ax_component_membership_closure, cause: o }),
+          map(causes, cz => AxisGap { axis: ax_route_nonresident_mechanism, cause: cz })),
         map(causes, cz => AxisGap { axis: ax_route_runtime_observed, cause: cz })),
       concat(
         concat(
@@ -1525,14 +1816,19 @@ data component_route_region: DecisionRegion = DecisionRegion { identity: id_rout
 
 data component_route_question: NonEmptyStr = "which materialization route places this exact component for this exact consumer context" as NonEmptyStr
 
+// THE COST TERM IS UNCITED AND SAYS SO. A first cut grounded it CitedToAuthority to the safetensors
+// documentation index -- a storage-format page that grounds nothing whatever about the serving cost of
+// holding a component where a route puts it -- while this module's own assessment declared
+// PhysicalModelUnestablished for the same term forty lines below. Two declarations contradicting each
+// other, and the URL was chosen so the reference would resolve. §4d: an inference is a bet, typed as a
+// bet, and `TranscribedUncited` is the arm that exists for exactly this.
 data term_total_serving_cost: ObjectiveTerm = ObjectiveTerm {
   identity: id_route_term_serving_cost,
-  ground: CitedToAuthority { authority: component_route_cost_authority },
+  ground: TranscribedUncited {
+    read_obligation: "no authority grounds the total serving cost of placing a component on a route: amortized fill, steady-state access at the workload's concurrency, retained page-cache working set and per-rank communication are all unmeasured on this fleet, and published third-party per-step figures are somebody else's deployment. Cite a fleet measurement or keep this term uncited" as NonEmptyStr,
+  },
 }
 
-data component_route_cost_authority: ExternalAuthority = ExternalAuthority {
-  uri: "https://huggingface.co/docs/safetensors/index" as NonEmptyStr,
-}
 
 data component_route_objective: ObjectiveMeasure = ObjectiveMeasure {
   identity: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_objective"),
@@ -1624,7 +1920,7 @@ fn select_component_route(
     axes: component_route_axes,
     constraints: component_route_constraints,
     constraint_authority: id_route_constraint_authority,
-    policy: UniqueSurvivorRequired { identity: id_route_policy },
+    policy: UniqueSurvivorRequired { identity: component_route_policy },
     evidence_snapshot: evidence_snapshot,
   )
 }
@@ -2138,22 +2434,30 @@ data engram_resident_artifact: MaterializedComponentArtifact = materialized_comp
   },
 )
 
-// THE LOADER RELATION IS DECLARED AND BOUND TO BOTH ENDS -- this subject, the published encoding it
-// maps from, the resident encoding it maps to -- so establishing the artifact's identity is the ONLY
-// remaining step rather than leaving a future author to invent the relation as well. It is not yet
-// evidence: the artifact it relates to has no identity, so `realize_component` answers
-// RealizationEvidenceMissing.
-data engram_loader_relation: DeclarationRef = decl_ref(
+// ── THE LOADER RELATION IS NOT DECLARED, AND THE HONEST EVIDENCE IS THEREFORE ABSENT ───────────
+//
+// A first cut cited `deepseek_v4_1_flash_inference_model_path` as this component's faithfulness
+// relation. That declaration is a FILE PATH -- `"inference/model.py"` -- not a relation, and nothing
+// in this corpus states that the reference loader preserves tensor names, declared shapes or element
+// values when it builds parameters from those bytes. The citation resolved; it denoted nothing. And
+// the comment that stood here claimed establishing the artifact's identity was "the ONLY remaining
+// step", which was false in the direction that matters: it was one of two, and taking it alone would
+// have made route A faithful on the strength of a path string.
+//
+// So the evidence is `FaithfulnessUnestablished` and its obligation names BOTH missing things. The
+// path is still cited -- as where the loader is DESCRIBED, which is true -- but it is cited inside the
+// obligation rather than standing in for the relation.
+data engram_loader_description: DeclarationRef = decl_ref(
   module_path: "extdeps.deepseek.deepseek_v4_1_flash",
   decl_name: "deepseek_v4_1_flash_inference_model_path")
 
-data engram_resident_faithfulness: FaithfulnessEvidence = StructurePreservingTransform {
-  relation: faithfulness_relation(
-    relation: engram_loader_relation,
-    subject: engram_component_identity,
-    source_encoding: engram_published_encoding,
-    target_encoding: engram_resident_encoding,
-    preserved: [PreservesTensorNames, PreservesDeclaredShapes, PreservesDtypes, PreservesBlockScalePairing, PreservesElementValues]),
+data engram_resident_faithfulness: FaithfulnessEvidence = FaithfulnessUnestablished {
+  obligation: join([
+    "two things are missing before the resident parameter encoding can realize this component, and neither is a citation. FIRST, no structure-preserving relation is declared: ",
+    declaration_ref_display_key(ref: engram_loader_description),
+    " names the file that DESCRIBES the reference loader and is a path string, not a relation, and nothing states that loading preserves tensor names, declared shapes and element values. SECOND, the loaded representation has no established identity: ",
+    engram_resident_identity_obligation as String,
+  ], "") as NonEmptyStr,
 }
 
 fn engram_route_candidate(r: MaterializationRoute) -> RouteCandidate {

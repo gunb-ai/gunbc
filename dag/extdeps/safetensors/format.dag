@@ -1,7 +1,7 @@
 module extdeps.safetensors.format
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.nat { Nat }
+import std.nat { Nat, nat_max }
 import std.measure { ByteSize, byte_size, byte_size_count }
 
 // SAFETENSORS, THE STORAGE FORMAT, AS ITS OWN UPSTREAM AUTHORITY. It is an independently
@@ -382,6 +382,13 @@ fn membership_closure_obligations(c: MembershipClosure) -> List<NonEmptyStr> {
   }
 }
 
+// THE PARTIAL ROWS SURVIVE THE STANDING. A first cut reduced them to a COUNT, which is exactly the
+// discard this section exists to prevent one level down: a reader holding the standing could say how
+// many rows were read and could not say which, so re-reading only the missing shard was impossible and
+// the rows had to be scanned again from nothing. They are carried whole, and they are carried on the
+// INCOMPLETE arm, so no fold can reach them believing it holds a complete population -- `PopulationEstablished`
+// remains the only arm `SafetensorsPopulation` is constructed on.
+//
 // A SCAN THAT FAILED IS NOT AN EMPTY POPULATION. The reading is the outer fact and the entries are
 // inside it, so there is no way to hand a fold an entry list that has silently lost the information
 // that the scan did not finish. A partial read keeps BOTH the rows it got and the obligation for the
@@ -400,11 +407,49 @@ type SafetensorsPopulation sole_constructor {
 
 type SafetensorsPopulationStanding
   = PopulationEstablished { population: SafetensorsPopulation }
-  | PopulationIncomplete { obligation: NonEmptyStr, partial_entry_count: Nat }
+  | PopulationIncomplete { obligation: NonEmptyStr, partial_entries: List<SafetensorsShardedEntry> }
   | PopulationRefused { defects: List<NonEmptyStr> }
+
+// RECONCILIATION DOES NOT BOUND THE PAYLOAD, AND THAT IS THE GAP THIS FOLD CLOSES. Membership asks
+// which names are present and in which shard; the entry defects ask whether spans are well formed and
+// non-overlapping WITHIN the population. Shift every offset in one shard up by a single byte and all
+// of that still holds -- same names, same shards, same lengths, same non-overlap -- while the last
+// tensor now ends one byte past the payload the shard's own header declares. The extent is therefore
+// compared against the shard file's derived payload, which is the only figure that can refuse it, and
+// a shard whose payload is not derivable reports THAT rather than passing.
+fn safetensors_shard_extent_defects(
+  shards: List<SafetensorsShardFile>,
+  entries: List<SafetensorsShardedEntry>,
+) -> List<NonEmptyStr> {
+  flat_map(shards, sh =>
+    match safetensors_shard_payload(shard: sh) {
+      ShardHeaderExceedsFile { path: _, declared_overhead: _, file_bytes: _ } =>
+        safetensors_shard_payload_defects(shard: sh)
+      ShardPayloadDeclared { bytes: payload } =>
+        if safetensors_shard_extent(entries: entries, shard: sh.path) > byte_size_count(b: payload) {
+          [join([
+            "safetensors shard ", sh.path as String, " carries tensors reaching byte ",
+            to_string(safetensors_shard_extent(entries: entries, shard: sh.path)),
+            " while the shard's own header declares a payload of only ",
+            to_string(byte_size_count(b: payload)),
+            " bytes; names, lengths and non-overlap all reconcile and the population still does not fit the file",
+          ], "") as NonEmptyStr]
+        } else {
+          []
+        }
+    })
+}
+
+fn safetensors_shard_extent(entries: List<SafetensorsShardedEntry>, shard: NonEmptyStr) -> Nat {
+  fold(
+    filter(entries, se => (se.shard as String) == (shard as String)),
+    init: 0,
+    f: (acc, se) => nat_max(a: acc, b: se.entry.end_offset))
+}
 
 fn safetensors_population_defects(
   members: List<SafetensorsIndexMember>,
+  shards: List<SafetensorsShardFile>,
   entries: List<SafetensorsShardedEntry>,
 ) -> List<NonEmptyStr> {
   concat(
@@ -425,9 +470,11 @@ fn safetensors_population_defects(
           flat_map(entries, se => safetensors_entry_defects(e: se.entry)),
           safetensors_duplicate_defects(entries: map(entries, se => se.entry))),
         d => safetensors_entry_defect_display(d: d)),
-      map(
-        safetensors_membership_defects(members: members, entries: entries),
-        d => safetensors_membership_defect_display(d: d))))
+      concat(
+        map(
+          safetensors_membership_defects(members: members, entries: entries),
+          d => safetensors_membership_defect_display(d: d)),
+        safetensors_shard_extent_defects(shards: shards, entries: entries))))
 }
 
 fn safetensors_population_total(entries: List<SafetensorsShardedEntry>) -> ByteSize {
@@ -448,15 +495,16 @@ fn safetensors_population_bytes_in_shard(entries: List<SafetensorsShardedEntry>,
 // -- there is no parameter here for a size summary, so a caller cannot supply one.
 fn safetensors_population_standing(
   members: List<SafetensorsIndexMember>,
+  shards: List<SafetensorsShardFile>,
   closure: MembershipClosure,
   reading: SafetensorsPopulationReading,
 ) -> SafetensorsPopulationStanding {
   match reading {
-    PopulationUnscanned { obligation: o } => PopulationIncomplete { obligation: o, partial_entry_count: 0 }
+    PopulationUnscanned { obligation: o } => PopulationIncomplete { obligation: o, partial_entries: [] }
     PopulationPartiallyScanned { entries: es, unread: u } =>
-      PopulationIncomplete { obligation: u, partial_entry_count: count(es) }
+      PopulationIncomplete { obligation: u, partial_entries: es }
     PopulationScanned { entries: es } =>
-      if count(safetensors_population_defects(members: members, entries: es)) == 0 {
+      if count(safetensors_population_defects(members: members, shards: shards, entries: es)) == 0 {
         PopulationEstablished {
           population: SafetensorsPopulation {
             members: es,
@@ -465,7 +513,7 @@ fn safetensors_population_standing(
           },
         }
       } else {
-        PopulationRefused { defects: safetensors_population_defects(members: members, entries: es) }
+        PopulationRefused { defects: safetensors_population_defects(members: members, shards: shards, entries: es) }
       }
   }
 }
@@ -473,7 +521,7 @@ fn safetensors_population_standing(
 fn safetensors_population_members(s: SafetensorsPopulationStanding) -> List<SafetensorsShardedEntry> {
   match s {
     PopulationEstablished { population: p } => p.members
-    PopulationIncomplete { obligation: _, partial_entry_count: _ } => []
+    PopulationIncomplete { obligation: _, partial_entries: _ } => []
     PopulationRefused { defects: _ } => []
   }
 }
@@ -488,7 +536,7 @@ fn safetensors_population_entries(s: SafetensorsPopulationStanding) -> List<Safe
 fn safetensors_population_closure_obligations(s: SafetensorsPopulationStanding) -> List<NonEmptyStr> {
   match s {
     PopulationEstablished { population: p } => membership_closure_obligations(c: p.closure)
-    PopulationIncomplete { obligation: _, partial_entry_count: _ } => []
+    PopulationIncomplete { obligation: _, partial_entries: _ } => []
     PopulationRefused { defects: _ } => []
   }
 }
@@ -496,7 +544,7 @@ fn safetensors_population_closure_obligations(s: SafetensorsPopulationStanding) 
 fn safetensors_population_declared_bytes(s: SafetensorsPopulationStanding) -> ByteSize? {
   match s {
     PopulationEstablished { population: p } => Present { value: p.declared_bytes }
-    PopulationIncomplete { obligation: _, partial_entry_count: _ } => none
+    PopulationIncomplete { obligation: _, partial_entries: _ } => none
     PopulationRefused { defects: _ } => none
   }
 }

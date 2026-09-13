@@ -592,6 +592,7 @@ data deepseek_v4_1_flash_engram_membership_closure: MembershipClosure = Membersh
 
 data deepseek_v4_1_flash_engram_population: SafetensorsPopulationStanding = safetensors_population_standing(
   members: deepseek_v4_1_flash_engram_index_members,
+  shards: deepseek_v4_1_flash_engram_shard_files,
   closure: deepseek_v4_1_flash_engram_membership_closure,
   reading: deepseek_v4_1_flash_engram_population_reading,
 )
@@ -626,6 +627,10 @@ data deepseek_v4_1_flash_engram_shards: List<DeepseekV41EngramShard> = [
   deepseek_v4_1_flash_engram_shard_1,
   deepseek_v4_1_flash_engram_shard_14,
 ]
+
+// THE SHARD FILES REACH THE POPULATION FOLD, so the tensor extents are bounded by the payload each
+// shard's own header declares rather than only by each other.
+data deepseek_v4_1_flash_engram_shard_files: List<SafetensorsShardFile> = map(deepseek_v4_1_flash_engram_shards, s => s.file)
 
 // THE TOTAL, DERIVED. Every byte comes from a named tensor's declared span. This is the quantity
 // `deepseek_v4_1_flash_safetensors_payload_footprint.engram_bytes` reports, and the witness module

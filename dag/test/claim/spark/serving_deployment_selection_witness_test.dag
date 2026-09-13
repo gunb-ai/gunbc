@@ -72,8 +72,10 @@ import gunbc.spark.serving_deployment_selection {
   v4_1_artifact_components, legacy_undecomposed_artifact,
   artifact_decomposition_defect, candidate_resident_footprint, sum_component_footprints,
   artifact_upstream_agreement_defect,
+  artifact_decomposition_digest, artifact_component_digest, candidate_combination, combination_key_eq,
   footprint_bytes, component_route_reading,
-  route_obligation_marker, route_obligation_cause, id_route_consumer,
+  route_obligation_marker, route_obligation_cause, route_obligation_prefix, id_route_consumer,
+  candidate_route_context,
   FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -501,6 +503,7 @@ test fn changing_weight_treatment_changes_the_decision_identity() -> Bool {
     footprint: artifact_deepseek_v4_flash_native.footprint,
     weight_treatment: RequantisedWeights { distinction: "identity-collision-probe" as NonEmptyStr },
     components: artifact_deepseek_v4_flash_native.components,
+    upstream_total: artifact_deepseek_v4_flash_native.upstream_total,
   }
   let requant_field = serving_candidate_field(
     identity: settled_field.identity,
@@ -1041,13 +1044,26 @@ fn needs_name_axis(needs: List<SelectionEvidenceNeed>, axis: DeclarationRef) -> 
 data expected_route_component_key: String = declaration_ref_display_key(ref: engram_component_identity)
 data expected_route_consumer_key: String = declaration_ref_display_key(ref: id_route_consumer)
 
+// THE CONTEXT DIGEST IS PART OF THE DISCRIMINATOR, NOT JUST THE CONSUMER. A first cut asked for the
+// marker, the component key and the consumer key, and a cause naming this component and this consumer
+// under a DIFFERENT execution profile satisfied all three -- so the oracle would have accepted a route
+// obligation decided for another topology, which is precisely the foreign-profile reuse the route model
+// refuses. The exact prefixes production can emit for THIS field are derived here, once, from the same
+// two folds production uses, and the cause must carry one of them whole.
+data expected_route_prefixes: List<String> = map(
+  deepseek_v4_1_candidate_field.candidates,
+  k => route_obligation_prefix(
+    component: engram_component_identity,
+    context: candidate_route_context(c: k, p: k.profile)))
+
 fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr> {
   flat_map(needs, n => match n {
     UnfundedAxis { gap: g } =>
       if declaration_ref_eq(a: g.axis, b: ax_component_route)
         && string_contains(s: g.cause as String, pattern: route_obligation_marker as String)
         && string_contains(s: g.cause as String, pattern: expected_route_component_key)
-        && string_contains(s: g.cause as String, pattern: expected_route_consumer_key) {
+        && string_contains(s: g.cause as String, pattern: expected_route_consumer_key)
+        && any(expected_route_prefixes, px => string_contains(s: g.cause as String, pattern: px)) {
         [g.cause]
       } else { [] }
     CandidateStandingIncomplete { candidate: _, cause: _ } => []
@@ -1086,6 +1102,15 @@ test fn the_selectors_generic_missing_axis_gap_does_not_satisfy_the_route_oracle
       gap: AxisGap {
         axis: ax_component_route,
         cause: join([route_obligation_marker as String, "[some.other.component@some.other.context] open"], "") as NonEmptyStr,
+      },
+    }])) == 0
+    && count(route_produced_causes(needs: [UnfundedAxis {
+      gap: AxisGap {
+        axis: ax_component_route,
+        cause: route_obligation_cause(
+          component: engram_component_identity,
+          context: route_subject_key(consumer: id_route_consumer, context_digest: "a-profile-this-field-does-not-contain"),
+          cause: "open" as NonEmptyStr),
       },
     }])) == 0
 }
@@ -1138,6 +1163,24 @@ fn artifact_with_wrong_upstream_total() -> ModelArtifact {
   }
 }
 
+// ── ONE FIELD CHANGES, AND THE COMBINATION IS A DIFFERENT DECISION ────────────────────────────
+//
+// `upstream_total` is read by `artifact_upstream_agreement_defect`, so it decides admission -- and it
+// was absent from `artifact_decomposition_digest` and therefore from the combination key and the
+// snapshot key. Two artifacts identical in every other field would have shared a key, so a result
+// computed under one would have carried across the change with nothing able to notice. These two
+// differ ONLY in that field; dropping it from the digest reds this.
+test fn changing_only_the_upstream_total_changes_the_combination_identity() -> Bool {
+  let sound = artifact_deepseek_v4_1_flash_native
+  let shifted = artifact_with_wrong_upstream_total()
+  count(shifted.components) == count(sound.components)
+    && artifact_component_digest(art: shifted) == artifact_component_digest(art: sound)
+    && artifact_decomposition_digest(art: shifted) != artifact_decomposition_digest(art: sound)
+    && !combination_key_eq(
+      a: candidate_combination(c: cand(name: "identity_probe", art: sound, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))),
+      b: candidate_combination(c: cand(name: "identity_probe", art: shifted, t: topology_shape(tensor_parallel_degree: 8, replica_count: 1))))
+}
+
 test fn a_decomposition_disagreeing_with_its_upstream_total_refuses() -> Bool {
   match artifact_decomposition_defect(art: artifact_with_wrong_upstream_total()) {
     Present { value: d } => string_contains(s: d as String, pattern: "different tensor populations")
@@ -1170,6 +1213,7 @@ fn mismatched_artifact() -> ModelArtifact {
         footprint: FootprintObservedOnFleet { bytes: byte_size(count: 999), how: "fixture" as NonEmptyStr },
         placement: ComponentResident),
     ],
+    upstream_total: none,
   }
 }
 
