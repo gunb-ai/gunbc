@@ -856,7 +856,18 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     )
     .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EmittedCrateNotWritten — {cause}"))?;
     let closure_identity = emitted_closure_identity(&crate_dir)?;
+    // THE BUILD'S PEAK MUST NOT STACK ON THE EMISSION'S RETAINED ARENA. The emission's resolved
+    // graph died inside `compile_entry_emission` and the emitted file texts die with `run` here,
+    // but glibc retains the freed arena — and the cargo build below needs gigabytes beside this
+    // process. Measured: the lane's first run held ~15GiB RSS into the build and was SIGKILLed
+    // (rc=137, no diagnostic). Drop, trim, and report in the same motion — the floor runner's
+    // full-inventory release is the pattern, and a trim that cannot release live memory doubles
+    // as the measurement that nothing here is still held. Genesis is in that population: it
+    // is the same emit-then-cargo sequence that produced the measurement.
     drop(run);
+    let rss_before_kb = super::current_rss_bytes().map(|b| b / 1024);
+    let trim_reclaimed_kb = super::trim_retained_heap();
+    let rss_after_kb = super::current_rss_bytes().map(|b| b / 1024);
     let remap_flag = format!(
         "--remap-path-prefix={}={}",
         crate_dir.display(),
@@ -865,7 +876,9 @@ pub fn run_native_genesis(source_roots: &[String]) -> Result<(), String> {
     let spawn_rustflags =
         super::emitted_closure_compile_host::rustflags_with_remap_prefix(&remap_flag);
     eprintln!(
-        "v2-native-genesis: emitted {written} files into {} (closure {closure_identity}); cargo build with path remap",
+        "v2-native-genesis: emitted {written} files into {} (closure {closure_identity}); \
+         emission arena released (rss_kb_before={rss_before_kb:?} trim_reclaimed_kb={trim_reclaimed_kb:?} \
+         rss_kb_after={rss_after_kb:?}); cargo build with path remap",
         crate_dir.display()
     );
     // The invocation resolves and binds the one compiler the build runs under and takes its
