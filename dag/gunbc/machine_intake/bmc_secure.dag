@@ -130,10 +130,13 @@ type CredentialRotationApplication
   | RotationNotAttempted
   | AccountManagementUnavailable { detail: NonEmptyStr }
 
-// ONE LAN PROBE, ADDRESSED TO ONE CENSUS MEMBER. The join below matches by
-// channel identity OR assigned IPv4 address (DESIGN §5: completeness is an
-// identity join, not a count). A probe that names neither a census channel nor
-// a census address cannot cover any member.
+// ONE LAN PROBE, ADDRESSED TO ONE CENSUS MEMBER. The join matches when BOTH
+// channel and assigned IPv4 agree (DESIGN §5: completeness is an identity
+// join, not a count, and not a disjunction). A probe that names the member's
+// channel and a different address, or the member's address and a different
+// channel, covers no member: a rejection observed at 9.9.9.9 cannot close
+// 10.0.0.1. The old single published_probe minted BmcSecured while a second
+// LAN address still accepted; a disjunctive key would reopen that arm.
 type PublishedCredentialLanProbe {
   channel: IpmiChannelNumber
   address: Ipv4Address
@@ -446,7 +449,7 @@ fn probe_matches_lan_member(
   channel: IpmiChannelNumber,
   address: Ipv4Address,
 ) -> Bool {
-  ipmi_channel_number_eq(a: probe.channel, b: channel) || ipv4_address_eq(a: probe.address, b: address)
+  ipmi_channel_number_eq(a: probe.channel, b: channel) && ipv4_address_eq(a: probe.address, b: address)
 }
 
 fn published_probes_matching_member(

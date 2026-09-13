@@ -519,6 +519,30 @@ test fn census_member_unprobed_refuses() -> Bool {
   )
 }
 
+// review 65057: a probe that agrees on channel and contradicts the assigned
+// IPv4 used to cover the member (OR join). A rejection at lan_228 cannot
+// close lan_231.
+test fn probe_that_agrees_on_channel_but_not_address_does_not_cover() -> Bool {
+  let observation = rotation_observed(
+    subj: intake_subject,
+    previous_epoch: 0,
+    bootstrap: bootstrap_accepted,
+    reference: managed_reference,
+    applied_at: rotation_at,
+    managed: managed_accepted,
+    census: census_two_lan,
+    probes: [
+      lan_probe(channel: channel_one, address: lan_228, outcome: published_rejected),
+      lan_probe(channel: channel_eight, address: lan_228, outcome: published_rejected_231),
+    ],
+    account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_dev(observation: observation),
+    expected: PublishedCredentialCensusMemberUnprobed { channel: channel_eight },
+  )
+}
+
 test fn published_probe_unmatched_refuses() -> Bool {
   let observation = rotation_observed(
     subj: intake_subject,
