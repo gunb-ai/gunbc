@@ -206,6 +206,7 @@ type BmcCredentialRotationObservation sole_constructor {
   managed_probe: CredentialProbeOutcome
   channel_census: IpmiControllerChannelCensus
   census_evidence: EvidenceRef
+  census_observed_at: EpochMs
   published_probes: List<PublishedCredentialLanProbe>
   published_account: PublishedCredentialAccountObservation
 }
@@ -219,6 +220,7 @@ fn observed_bmc_credential_rotation(
   managed_probe: CredentialProbeOutcome,
   channel_census: IpmiControllerChannelCensus,
   census_evidence: EvidenceRef,
+  census_observed_at: EpochMs,
   published_probes: List<PublishedCredentialLanProbe>,
   published_account: PublishedCredentialAccountObservation,
 ) -> BmcCredentialRotationObservation {
@@ -231,6 +233,7 @@ fn observed_bmc_credential_rotation(
     managed_probe: managed_probe,
     channel_census: channel_census,
     census_evidence: census_evidence,
+    census_observed_at: census_observed_at,
     published_probes: published_probes,
     published_account: published_account,
   }
@@ -262,6 +265,7 @@ type BmcSecureRefusalCause
   | PublishedCredentialStillAccepted { channel: IpmiChannelNumber }
   | PublishedCredentialRetirementUnestablished { detail: NonEmptyStr }
   | PublishedCredentialProbePrecedesRotation { applied_at: EpochMs, probed_at: EpochMs }
+  | PublishedCredentialAccessPrecedesRotation { channel: IpmiChannelNumber, applied_at: EpochMs, observed_at: EpochMs }
   | PublishedCredentialCensusNotTaken
   | PublishedCredentialNoAddressableLanMember
   | PublishedCredentialLanMemberUnaddressed { channel: IpmiChannelNumber }
@@ -294,6 +298,7 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialStillAccepted { channel: _ } => OperatorAction
     PublishedCredentialRetirementUnestablished { detail: _ } => BmcAccess
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => QualificationPolicy
+    PublishedCredentialAccessPrecedesRotation { channel: _, applied_at: _, observed_at: _ } => QualificationPolicy
     PublishedCredentialCensusNotTaken => BmcAccess
     PublishedCredentialNoAddressableLanMember => BmcAccess
     PublishedCredentialLanMemberUnaddressed { channel: _ } => BmcAccess
@@ -320,6 +325,7 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialStillAccepted { channel: _ } => "the published factory credential still authenticates after rotation on a census LAN member"
     PublishedCredentialRetirementUnestablished { detail: _ } => "the published factory credential readback did not establish whether it still authenticates"
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => "the published credential readback precedes the rotation it claims to verify"
+    PublishedCredentialAccessPrecedesRotation { channel: _, applied_at: _, observed_at: _ } => "the published-account access reading precedes the rotation it claims to verify"
     PublishedCredentialCensusNotTaken => "no controller channel census was taken; a single-address probe cannot adjudicate retirement"
     PublishedCredentialNoAddressableLanMember => "the channel census contained no addressable LAN member to probe"
     PublishedCredentialLanMemberUnaddressed { channel: _ } => "a LAN census member has no usable address and the published account still has access on that channel"
@@ -624,6 +630,7 @@ fn join_census_member(
   member: IpmiChannelCensusMember,
   probes: List<PublishedCredentialLanProbe>,
   applied_at: EpochMs,
+  census_observed_at: EpochMs,
   require_published_closed: Bool,
 ) -> CensusJoinProgress {
   match progress {
@@ -631,7 +638,9 @@ fn join_census_member(
     CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw } =>
       match member {
         IpmiNonLanChannelMember { channel: ch, medium: _, published_user_access: access } =>
-          if access == IpmiPrivilegeNoAccess {
+          if census_observed_at < applied_at {
+            CensusJoinClosed { cause: PublishedCredentialAccessPrecedesRotation { channel: ch, applied_at: applied_at, observed_at: census_observed_at } }
+          } else if access == IpmiPrivilegeNoAccess {
             CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
           } else {
             CensusJoinClosed { cause: PublishedCredentialChannelAccessNotClosed { channel: ch } }
@@ -639,7 +648,9 @@ fn join_census_member(
         IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg, published_user_access: access } =>
           match cfg {
             IpmiLanIpv4Unassigned =>
-              if access == IpmiPrivilegeNoAccess {
+              if census_observed_at < applied_at {
+                CensusJoinClosed { cause: PublishedCredentialAccessPrecedesRotation { channel: ch, applied_at: applied_at, observed_at: census_observed_at } }
+              } else if access == IpmiPrivilegeNoAccess {
                 CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
               } else {
                 CensusJoinClosed { cause: PublishedCredentialLanMemberUnaddressed { channel: ch } }
@@ -696,6 +707,11 @@ fn unmatched_published_probe_cause(
 // Treating unaddressed as unconditionally open would refuse that controller
 // forever (DESIGN §4d over-prohibition). An unaddressed channel that still
 // holds ADMINISTRATOR is the exposure the moment it gets an address.
+// A NO ACCESS reading taken before rotation is not post-rotation evidence:
+// join_census_member refuses it with AccessPrecedesRotation, the same
+// ordering the LAN-probe path already enforces. The census is one observation
+// (census_evidence + census_observed_at); times are supplied, so this
+// orders the readings it was handed.
 //
 // MUTATION THAT TURNS RED 1: in adjudicate_published_probe, the
 // CredentialAccepted + require_published_closed arm returns
@@ -719,6 +735,7 @@ fn adjudicate_published_census_join(
   managed_evidence: EvidenceRef,
   census: IpmiControllerChannelCensus,
   census_evidence: EvidenceRef,
+  census_observed_at: EpochMs,
   probes: List<PublishedCredentialLanProbe>,
   published_account: PublishedCredentialAccountObservation,
 ) -> BmcSecureOutcome {
@@ -729,7 +746,7 @@ fn adjudicate_published_census_join(
     let joined = fold(
       census.members,
       init: CensusJoinOpen { evidence: [], latest_admitted_probe_at: none, saw_addressable_lan: false },
-      f: (acc, m) => join_census_member(progress: acc, member: m, probes: probes, applied_at: applied_at, require_published_closed: require_closed),
+      f: (acc, m) => join_census_member(progress: acc, member: m, probes: probes, applied_at: applied_at, census_observed_at: census_observed_at, require_published_closed: require_closed),
     )
     match joined {
       CensusJoinClosed { cause: c } => BmcSecureRefused { cause: c }
@@ -773,6 +790,7 @@ fn adjudicate_published_census(
   managed_evidence: EvidenceRef,
   census: IpmiControllerChannelCensus,
   census_evidence: EvidenceRef,
+  census_observed_at: EpochMs,
   probes: List<PublishedCredentialLanProbe>,
   published_account: PublishedCredentialAccountObservation,
   environment: MachineOperatingEnvironment,
@@ -791,6 +809,7 @@ fn adjudicate_published_census(
             managed_evidence: managed_evidence,
             census: census,
             census_evidence: census_evidence,
+            census_observed_at: census_observed_at,
             probes: probes,
             published_account: published_account,
           )
@@ -805,6 +824,7 @@ fn adjudicate_published_census(
         managed_evidence: managed_evidence,
         census: census,
         census_evidence: census_evidence,
+        census_observed_at: census_observed_at,
         probes: probes,
         published_account: published_account,
       )
@@ -818,6 +838,7 @@ fn adjudicate_published_census(
         managed_evidence: managed_evidence,
         census: census,
         census_evidence: census_evidence,
+        census_observed_at: census_observed_at,
         probes: probes,
         published_account: published_account,
       )
@@ -851,6 +872,7 @@ fn adjudicate_managed_probe(
           managed_evidence: me,
           census: observation.channel_census,
           census_evidence: observation.census_evidence,
+          census_observed_at: observation.census_observed_at,
           probes: observation.published_probes,
           published_account: observation.published_account,
           environment: environment,

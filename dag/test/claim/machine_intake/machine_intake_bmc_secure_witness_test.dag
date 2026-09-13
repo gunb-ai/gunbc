@@ -111,6 +111,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialNoAddressableLanMember,
   PublishedCredentialProbeDuplicate,
   PublishedCredentialProbePrecedesRotation,
+  PublishedCredentialAccessPrecedesRotation,
   PublishedCredentialProbeUnmatched,
   PublishedCredentialRetired,
   PublishedCredentialRetirementUnestablished,
@@ -331,6 +332,7 @@ fn rotation_observed(
     managed_probe: managed,
     channel_census: census,
     census_evidence: evidence(label: "channel-census"),
+    census_observed_at: applied_at,
     published_probes: probes,
     published_account: account,
   )
@@ -674,6 +676,29 @@ test fn unaddressed_lan_with_no_access_secures() -> Bool {
   is_secured(standing: standing)
 }
 
+// review 65304: NO ACCESS on an unaddressed channel is not post-rotation
+// evidence if the census was taken before the rotation. Fresh rejecting
+// probes on the assigned LAN members must not mint BmcSecured.
+test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
+  let observation = observed_bmc_credential_rotation(
+    subject: intake_subject,
+    endpoint: controller,
+    previous_credential_epoch: 0,
+    bootstrap_probe: bootstrap_accepted,
+    rotation: RotationApplied { reference: managed_reference, applied_at: rotation_at, evidence: evidence(label: "account-create-201") },
+    managed_probe: managed_accepted,
+    channel_census: census_unaddressed_no_access,
+    census_evidence: evidence(label: "channel-census"),
+    census_observed_at: 1788000002000,
+    published_probes: both_lan_rejecting(),
+    published_account: published_account_retired,
+  )
+  refused_with(
+    standing: derive_dev(observation: observation),
+    expected: PublishedCredentialAccessPrecedesRotation { channel: channel_seven, applied_at: rotation_at, observed_at: 1788000002000 },
+  )
+}
+
 test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool {
   let standing = derive_bmc_secure(
     subject: intake_subject,
@@ -956,6 +981,7 @@ test fn rotation_not_attempted_refuses() -> Bool {
     managed_probe: managed_accepted,
     channel_census: census_two_lan,
     census_evidence: evidence(label: "channel-census"),
+    census_observed_at: rotation_at,
     published_probes: both_lan_rejecting(),
     published_account: published_account_retired,
   )
@@ -972,6 +998,7 @@ test fn account_management_unavailable_refuses() -> Bool {
     managed_probe: managed_accepted,
     channel_census: census_two_lan,
     census_evidence: evidence(label: "channel-census"),
+    census_observed_at: rotation_at,
     published_probes: both_lan_rejecting(),
     published_account: published_account_retired,
   )
@@ -1050,6 +1077,7 @@ data every_refusal_cause: List<BmcSecureRefusalCause> = [
   PublishedCredentialStillAccepted { channel: channel_eight },
   PublishedCredentialRetirementUnestablished { detail: "connection reset before the login response" },
   PublishedCredentialProbePrecedesRotation { applied_at: rotation_at, probed_at: 1788000002000 },
+  PublishedCredentialAccessPrecedesRotation { channel: channel_seven, applied_at: rotation_at, observed_at: 1788000002000 },
   PublishedCredentialCensusNotTaken,
   PublishedCredentialNoAddressableLanMember,
   PublishedCredentialLanMemberUnaddressed { channel: channel_seven },
@@ -1090,15 +1118,16 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
     PublishedCredentialStillAccepted { channel: _ } => 9
     PublishedCredentialRetirementUnestablished { detail: _ } => 10
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => 11
-    PublishedCredentialCensusNotTaken => 12
-    PublishedCredentialNoAddressableLanMember => 13
-    PublishedCredentialLanMemberUnaddressed { channel: _ } => 14
-    PublishedCredentialChannelAccessNotClosed { channel: _ } => 15
-    PublishedCredentialCensusMemberUnprobed { channel: _ } => 16
-    PublishedCredentialProbeDuplicate { channel: _ } => 17
-    PublishedCredentialProbeUnmatched { channel: _ } => 18
-    PublishedCredentialRetainedNotAdmittedForProduction => 19
-    PublishedCredentialNotRetained { channel: _ } => 20
+    PublishedCredentialAccessPrecedesRotation { channel: _, applied_at: _, observed_at: _ } => 12
+    PublishedCredentialCensusNotTaken => 13
+    PublishedCredentialNoAddressableLanMember => 14
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => 15
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => 16
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => 17
+    PublishedCredentialProbeDuplicate { channel: _ } => 18
+    PublishedCredentialProbeUnmatched { channel: _ } => 19
+    PublishedCredentialRetainedNotAdmittedForProduction => 20
+    PublishedCredentialNotRetained { channel: _ } => 21
   }
 }
 
