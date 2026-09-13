@@ -4571,7 +4571,7 @@ fn body_lower_match_expr(shell: Node) -> Outcome<Node> {
 
 fn body_lower_projection_rejected_fallback(
   captured: Node,
-  projection_diagnostics: Diagnostics
+  projection_diagnostics: NonEmptyDiagnostics
 ) -> Outcome<Node> {
   match body_lower_literal_bool_atom_optional(node: captured) {
     Present { value: lit } => outcome_accepted(value: lit)

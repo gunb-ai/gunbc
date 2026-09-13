@@ -28,6 +28,14 @@ data call_preservation_two_arg_source: String = "module m\n\nfn g(x: Int, y: Int
 
 data call_preservation_nested_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: h(y: 5)) }\n"
 
+data call_preservation_nested_earlier_arg_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int, y: Int) -> Int { x }\n\nfn caller() -> Int { g(x: h(y: 5), y: 9) }\n"
+
+data fold_fn_form_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
+
+data fold_arrow_form_snippet: String = "module arrowfold\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => acc)\n}\n"
+
+data fold_named_step_snippet: String = "module namedstep\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: step)\n}\n"
+
 data call_preservation_undeclared_source: String = "module m\n\nfn caller() -> Int { undefined_callee_zzz(a: 1) }\n"
 
 data imported_callee_call_source: String = "module callcount\n\nimport v2.std.algebra { length }\n\nfn caller(xs: List<Int>) -> Int { length(xs: xs) }\n"
@@ -179,6 +187,73 @@ test fn call_preservation_nested_call_arg_control_fails_if_erasure_restored() ->
   match normalize_unprepared(src: call_preservation_nested_source, file: ^call_pres_nested) {
     Absent => false
     Present { value: root } => nested_arg_is_call(root: root, outer: ^g, inner: ^h)
+  }
+}
+
+test fn call_preservation_nested_call_in_earlier_arg_does_not_steal_outer_callee() -> Bool {
+  match normalize_unprepared(src: call_preservation_nested_earlier_arg_source, file: ^call_pres_nested_earlier) {
+    Absent => false
+    Present { value: root } =>
+      (call_arity_named(root: root, callee: ^g) == 2)
+        && nested_arg_is_call(root: root, outer: ^g, inner: ^h)
+  }
+}
+
+fn fold_ingest_has_surface(src: String, file: Symbol) -> Optional<Bool> {
+  match normalize_unprepared(src: src, file: file) {
+    Absent => Absent
+    Present { value: tree } =>
+      Present {
+        value: v2.lens.complexity_accumulator_copy.analyze.tree_contains_surface_fold_call(root: tree)
+      }
+  }
+}
+
+fn fold_ingest_has_loop(src: String, file: Symbol) -> Optional<Bool> {
+  match normalize_unprepared(src: src, file: file) {
+    Absent => Absent
+    Present { value: tree } =>
+      Present {
+        value: v2.lens.complexity_accumulator_copy.analyze.tree_contains_lowered_loop(root: tree)
+      }
+  }
+}
+
+test fn fold_fn_form_after_call_preservation_is_loop_not_surface() -> Bool {
+  match fold_ingest_has_loop(src: fold_fn_form_snippet, file: ^fold_fn_loop) {
+    Absent => false
+    Present { value: loop } =>
+      loop
+        && match fold_ingest_has_surface(src: fold_fn_form_snippet, file: ^fold_fn_surf) {
+          Absent => false
+          Present { value: surface } => !surface
+        }
+  }
+}
+
+test fn fold_arrow_form_after_call_preservation_is_not_surface() -> Bool {
+  match fold_ingest_has_surface(src: fold_arrow_form_snippet, file: ^fold_arrow_surf) {
+    Absent => false
+    Present { value: surface } => !surface
+  }
+}
+
+test fn fold_named_step_after_call_preservation_is_neither_loop_nor_surface() -> Bool {
+  match fold_ingest_has_loop(src: fold_named_step_snippet, file: ^fold_named_loop) {
+    Absent => false
+    Present { value: loop } =>
+      !loop
+        && match fold_ingest_has_surface(src: fold_named_step_snippet, file: ^fold_named_surf) {
+          Absent => false
+          Present { value: surface } => !surface
+        }
+  }
+}
+
+test fn fold_named_step_after_call_preservation_keeps_fold_as_transform_callee() -> Bool {
+  match normalize_unprepared(src: fold_named_step_snippet, file: ^fold_named_call) {
+    Absent => false
+    Present { value: root } => call_arity_named(root: root, callee: ^fold) >= 1
   }
 }
 
