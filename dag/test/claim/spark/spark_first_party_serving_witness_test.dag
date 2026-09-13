@@ -313,11 +313,17 @@ test fn a_superseded_posture_makes_the_first_party_sanction_stale() -> Bool {
 // distinction -- it can only decline to infer it. Naming it detection would claim a capability the
 // code does not have, which is the class this PR mints a row for.
 //
-// 1. MATCHING REPORTED CONFIGURATION DOES NOT ESTABLISH THE EFFECTIVE TELEMETRY CONFIGURATION.
+// 1. THE CLASSIFIER LABELS A MATCHING READBACK AS MATCHED-BUT-UNREAD, and the NAME says that rather
+// than the stronger thing, because this row asserts over spark_serving_usage_stats_unread_cause --
+// the cause classifier -- and not over anything downstream of it. An earlier name claimed it showed
+// that a matching readback DOES NOT ESTABLISH THE EFFECTIVE TELEMETRY CONFIGURATION. That property is
+// real and is carried by the two siblings below, which red when the telemetry path is mutated to
+// attribute; this row stays green under that mutation because the classifier is not its subject.
+// Auditing this file by control name would otherwise credit this row with its siblings' work.
 // Nonempty hosts, every one lane-covered, readback matching the declared launch -- and the standing
 // still returns Unread, for the missing-launch-bound-evidence reason rather than for either of the
 // two earlier causes. Before this repair this exact input produced an established standing.
-test fn a_matching_readback_does_not_establish_the_effective_telemetry_configuration() -> Bool {
+test fn a_matching_readback_is_classified_as_configuration_matched_not_as_a_read() -> Bool {
   match spark_serving_usage_stats_unread_cause(realization: t_pair_realization()) {
     TelemetryConfigurationMatchedButUnread { configured_model_path: p } =>
       (p as String) == t_declared_path()
