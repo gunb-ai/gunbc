@@ -741,8 +741,14 @@ type PostMergeDeletionReceipt {
   obligation: TransitionAdmissionDeletionObligation
 }
 
+type PendingRunway =
+  | OwedByRosterNextTouch
+
 type RefusalClassBoundary {
   class_bounded: MaintenanceRefusal
+  condition_authored_before_enqueue: NonEmptyStr
+  condition_follow_up_lands: NonEmptyStr
+  pending_runway: PendingRunway
   eligibility_observations: List<EligibilityObservation>
   prior_deletions: List<PriorDeletionReceipt>
   post_merge_receipts: List<PostMergeDeletionReceipt>
@@ -783,6 +789,9 @@ type RefusalClassBoundary {
 // enqueue decision; review diligence must establish that chronology then.
 data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalClassBoundary {
   class_bounded: NewEscapeHatchOrAdmissionRow,
+  condition_authored_before_enqueue: "The deletion follow-up PR is authored before the carrier is enqueued; otherwise eligibility fails as ConditionOneUnmetAtEligibility." as NonEmptyStr,
+  condition_follow_up_lands: "After the carrier merges, the follow-up must land and remove the admitted rows within pending_runway. An abandoned or ineffective follow-up, or an expired runway, leaves the rows in the refused class." as NonEmptyStr,
+  pending_runway: OwedByRosterNextTouch,
   eligibility_observations: [
     EligibilityObservation {
       observed_at: "2026-09-13T22:48:31Z",
