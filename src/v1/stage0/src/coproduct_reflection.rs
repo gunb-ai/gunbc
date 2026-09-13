@@ -289,7 +289,7 @@ pub fn marshal_disj_type_item(
 ) -> InterpResult<Value> {
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
-            msg: "resolve_type_node: type is not a closed coproduct (Disj)".to_string(),
+            msg: "marshal_disj_type_item: type is not a closed coproduct (Disj)".to_string(),
         });
     }
     let mut edges = Vec::with_capacity(item.children.len());
