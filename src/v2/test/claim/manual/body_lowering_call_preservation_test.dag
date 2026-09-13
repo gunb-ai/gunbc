@@ -17,7 +17,7 @@ import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Named, Node }
 import v2.std.node_query { call_argument_targets, call_callee_target, node_is_call }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -29,6 +29,10 @@ data call_preservation_two_arg_source: String = "module m\n\nfn g(x: Int, y: Int
 data call_preservation_nested_source: String = "module m\n\nfn h(y: Int) -> Int { y }\n\nfn g(x: Int) -> Int { x }\n\nfn caller() -> Int { g(x: h(y: 5)) }\n"
 
 data call_preservation_undeclared_source: String = "module m\n\nfn caller() -> Int { undefined_callee_zzz(a: 1) }\n"
+
+data imported_callee_call_source: String = "module callcount\n\nimport v2.std.algebra { length }\n\nfn caller(xs: List<Int>) -> Int { length(xs: xs) }\n"
+
+data imported_callee_import_only_source: String = "module callcount\n\nimport v2.std.algebra { length }\n\nfn caller(xs: List<Int>) -> Int { 0 }\n"
 
 fn search_call_named(root: Node, callee: Symbol) -> Optional<Node> {
   if node_is_call(node: root) {
@@ -211,4 +215,58 @@ test fn call_preservation_undeclared_callee_refuses_at_resolve() -> Bool {
 
 test fn call_preservation_declared_callee_resolves() -> Bool {
   declared_callee_resolves()
+}
+
+fn count_positional_calls_to(root: Node, callee: Symbol) -> Int {
+  let here = if node_is_call(node: root) {
+    match call_callee_target(node: root) {
+      Accepted { value: c, diagnostics: _ } =>
+        match node_atom_identity_optional(node: c) {
+          Present { value: id } => if id == callee { 1 } else { 0 }
+          Absent => 0
+        }
+      Rejected { diagnostics: _ } => 0
+    }
+  } else {
+    0
+  }
+  here + fold(root.children, init: 0, f: fn(acc, e) {
+    acc + count_positional_calls_to(root: e.target, callee: callee)
+  })
+}
+
+fn count_named_edges_with_name(root: Node, name: Symbol) -> Int {
+  fold(root.children, init: 0, f: fn(acc, e) {
+    let here = match e.label {
+      Named { name: n } => if n == name { 1 } else { 0 }
+      _ => 0
+    }
+    acc + here + count_named_edges_with_name(root: e.target, name: name)
+  })
+}
+
+fn imported_callee_positional_call_delta() -> Int {
+  match normalize_unprepared(src: imported_callee_call_source, file: ^imp_call) {
+    Absent => 0 - 1
+    Present { value: with_call } =>
+      match normalize_unprepared(src: imported_callee_import_only_source, file: ^imp_only) {
+        Absent => 0 - 1
+        Present { value: import_only } =>
+          count_positional_calls_to(root: with_call, callee: ^length)
+            - count_positional_calls_to(root: import_only, callee: ^length)
+      }
+  }
+}
+
+test fn imported_callee_normalize_call_site_count_is_one_above_import_only() -> Bool {
+  imported_callee_positional_call_delta() == 1
+}
+
+test fn imported_callee_is_positional_not_named_edge_channel() -> Bool {
+  match normalize_unprepared(src: imported_callee_call_source, file: ^imp_named) {
+    Absent => false
+    Present { value: root } =>
+      (count_positional_calls_to(root: root, callee: ^length) == 1)
+        && (count_named_edges_with_name(root: root, name: ^length) == 0)
+  }
 }
