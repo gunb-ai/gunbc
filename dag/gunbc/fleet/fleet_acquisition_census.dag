@@ -2,7 +2,7 @@ module gunbc.fleet_acquisition_census
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import product.inventory {
   CatalogRowExact,
   CatalogRowUnread,
@@ -31,13 +31,13 @@ import product.lot_sales_tax {
   LotTaxEvidence,
   SalesTaxCollected,
   SalesTaxAttestedIncluded,
-  AttestedJurisdictionGrainUnread,
+  AttestedAtCitedJurisdiction,
   SalesTaxIncludedJurisdictionUnread,
   SalesTaxTreatmentUnrecorded,
   RateTranscribedFromNamedReceiptLine,
   RateDerivedFromReceiptBaseAndTax,
   ResidualUseTaxOwed,
-  ResidualUseTaxUnread,
+  ResidualUseTaxNone,
   UseTaxResidualStanding,
   lot_tax_covers_ledgers,
   LotTaxJoinCovered,
@@ -339,28 +339,22 @@ data mt_collins_lot_tax: LotTaxEvidence = LotTaxEvidence {
 data q80_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: q80_lot_identity,
   standing: SalesTaxAttestedIncluded {
-    jurisdiction: AttestedJurisdictionGrainUnread {
-      named_as_attested: "New York" as NonEmptyStr,
-      read_obligation: "Read the receipt or card statement tax line and establish WHICH New York rate was charged. The state rate and the New York City combined rate are different figures, and the attestation named the state without naming the grain." as NonEmptyStr,
+    jurisdiction: AttestedAtCitedJurisdiction {
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
     },
-    residual: ResidualUseTaxUnread {
-      read_obligation: "Cannot be settled until the jurisdiction grain above is read. If only the New York State rate was collected on goods used in the city, the city and MCTD portion remains owed; a state-grain payment does NOT discharge a city-grain liability." as NonEmptyStr,
-    },
-    attestation: "Operator attests New York tax was paid. The private corpus also has an all-in planning figure that divides by the NYC rate; that is not a receipt tax line" as NonEmptyStr,
+    residual: ResidualUseTaxNone,
+    attestation: "Operator read the rate off the purchase records and states it is 8.875 percent. That figure is the New York City COMBINED rate and no other New York rate equals it - 4 percent state plus 4.5 percent city plus 0.375 percent MCTD - so the rate identifies the jurisdiction rather than being merely consistent with it, which is why this row may cite the city where the earlier bare 'New York tax was paid' could not. The full combined rate having been collected, no use-tax residual remains." as NonEmptyStr,
   },
 }
 
 data altrad8ud_board_lot_tax: LotTaxEvidence = LotTaxEvidence {
   lot: altrad8ud_board_lot_identity,
   standing: SalesTaxAttestedIncluded {
-    jurisdiction: AttestedJurisdictionGrainUnread {
-      named_as_attested: "New York" as NonEmptyStr,
-      read_obligation: "Read the Newegg order record and establish WHICH New York rate was charged, if any. This row is doubly unread - the private corpus states in its own words that whether the displayed total included tax was never recorded." as NonEmptyStr,
+    jurisdiction: AttestedAtCitedJurisdiction {
+      jurisdiction: decl_ref(module_path: "extdeps.tax.new_york_city_sales_and_use", decl_name: "nyc_combined_sales_tax"),
     },
-    residual: ResidualUseTaxUnread {
-      read_obligation: "Cannot be settled until the jurisdiction grain above is read, and this lot has the weaker antecedent of the two: whether tax was collected AT ALL is unrecorded, so the residual is unread rather than merely ungrained." as NonEmptyStr,
-    },
-    attestation: "Operator attests New York tax was paid. The private corpus states in its own words that whether the displayed Newegg total includes tax was not recorded; a receipt reading has not been done" as NonEmptyStr,
+    residual: ResidualUseTaxNone,
+    attestation: "Operator read the rate off the purchase records and states it is 8.875 percent, the New York City combined rate, which no other New York rate equals. That also settles the weaker antecedent this row previously carried - the corpus had not recorded whether the displayed Newegg total included tax at all, and a read rate answers that it did. The full combined rate having been collected, no use-tax residual remains." as NonEmptyStr,
   },
 }
 
