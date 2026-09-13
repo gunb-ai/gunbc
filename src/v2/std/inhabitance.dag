@@ -35,6 +35,10 @@ import v2.std.node {
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
+// PositionDeclaredReturn is the second coproduct arm so DeclaredTypePosition is not a one-arm
+// alias. This fold only constructs PositionDirectCallArgument. Declared frontier: a return-type
+// inhabitance obligation (produced body type vs declared return) at the same declared_type_inhabitance
+// consumer, trigger = that producer landing in v2.compiler.infer.
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
