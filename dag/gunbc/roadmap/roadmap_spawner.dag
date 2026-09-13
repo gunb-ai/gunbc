@@ -294,8 +294,15 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
 // Emitting objects without them under the v1 name is precisely the meaning fork DESIGN section 3
 // forbids: one spelling, one declared version, materially different obligations. A materially
 // different contract needs a materially different name, so this is roadmap-spawn-request/v2 and
-// roadmap-dispatch/v2, and a v1-pinned consumer refuses loudly instead of silently reading an
-// absent tier.
+// roadmap-dispatch/v2.
+//
+// WHAT THE BUMP DOES AND WHERE THE CLAIM STOPS: it withdraws v1's obligation. This emitter no
+// longer says the object it produces satisfies the contract a v1 reader was entitled to, so a
+// consumer that checks the schema string HAS the fact it needs to decide. It does NOT establish
+// that any consumer refuses: whether a v1-pinned reader rejects, ignores the field, or never reads
+// the string is a property of that consumer, and nothing on this side of the wire executes over it.
+// An earlier draft of this note said a v1-pinned consumer refuses loudly, which claimed an outcome
+// at the far end of a boundary this module cannot observe.
 fn sizing_json_members(derivation: NodeSizingDerivation) -> List<JsonKeyValue> {
   match derivation {
     SizingDerived { subject: _, sizing } => [

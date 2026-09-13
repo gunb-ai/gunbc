@@ -27,18 +27,39 @@ import std.types { String, Bool, NonEmptyStr }
 // today it refuses with a typed, located refusal rather than returning a fabricated cell. SizingNotDerivable is
 // a DISTINCT ARM from SizingDerived, so no consumer can read a stub answer as a derived one: a
 // default returned through the derived arm would be the fabricated plausible output DESIGN section
-// 5 forbids, and it would be indistinguishable from a measurement. Refusal is the safe arm HERE
-// specifically because the census says so and not by assumption: no consumer's control flow ever
-// branched on intricacy or volume. gunbc.dispatch_selection threads NodeSizing through selection
-// and never reads it -- its own carrier note states that volume and intricacy never flow into model
-// or effort -- so nothing that dispatched before this change refuses after it. What visibly changes
-// is only that the two dispatch-request keys are omitted, the presentation badge drops the cell,
-// and the forecast's calibration population is empty; that last one is the declared loss, rostered
-// as a section 4b(3) drop in gunbc.rung_drop.
+// 5 forbids, and it would be indistinguishable from an answer the deriver stood behind.
 //
-// What the real deriver will consume is already modeled next door and deliberately not restated
-// here: gunbc.roadmap_forecast holds the calibrated per-node work and the dependency-closure facts,
-// and its own note names the population-bucketing policy the label still needs.
+// WHAT THE CENSUS ACTUALLY FOUND, stated without the phrase it used to carry. No dispatch, launch,
+// admission, or provider-selection decision depended on intricacy or volume. The values had three
+// live uses: the spawn artifact rendered them, the roadmap presentation rendered them, and the
+// forecast used both their presence and their VALUES -- via cell equality -- to select calibration
+// populations and determine whether a projection could be produced. The rendering losses are
+// explicit output changes; the forecast capability loss is the declared section 4b(3) drop.
+//
+// An earlier draft of this note said no consumer's control flow ever branched on intricacy or
+// volume. That was FALSE and it was load-bearing: roadmap_forecast calibrate_cell selects its
+// sample with filter(o => sizing_cell_eq(...)), which compares intricacy and volume, so the values
+// decided membership in the calibration population. The sentence is recorded here as retracted
+// rather than deleted, because it was the sentence licensing "refusal is safe because the census
+// says so" and a reader who met only the corrected version would not know that claim had rested on
+// something untrue.
+//
+// WHAT THE DERIVER CONSUMES IS THE SUBJECT, AND NOTHING ELSE. derive_task_sizing takes a
+// SizingSubject: identity, title, description, exit criterion. An earlier draft said the deriver
+// would consume gunbc.roadmap_forecast's calibrated per-node work and dependency-closure facts;
+// that is a DIFFERENT question and the confusion mattered. roadmap_forecast's own note calls
+// remaining-cost-to-complete a FOLLOW-ON DERIVED READ and says in terms that it is "never an
+// authored field on RoadmapNode or NodeSizing" -- so closure cost is computed FROM sizes and
+// cannot also be an input to them without the circle the note refuses.
+//
+// SO THIS IS A DERIVED ESTIMATE, NOT AN OBSERVED FACT, and the vocabulary has to say so. Reading a
+// task's title, description and exit criterion and answering how hard the work is and how much of
+// it there is, is a judgement about work NOBODY HAS PERFORMED YET. There is no observation to
+// ground it, because the thing it describes has not happened. Calling the result a measurement or a
+// size fact would be asserting as deduced what is only inferred (DESIGN section 4d), which is
+// precisely the defect the authored cells had: an author's ordinal guess that nothing observed and
+// nothing could contradict. Deriving the guess does not make it an observation; it makes it an
+// estimate with a stated method, which is a different and honest thing.
 
 type SizingSubjectId = NonEmptyStr where brand("SizingSubjectId")
 

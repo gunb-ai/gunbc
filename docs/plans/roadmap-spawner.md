@@ -96,7 +96,7 @@ A gunbc CLI entry evaluates `next_spawnable` over the authority at HEAD and writ
   while its deriver is a stub that refuses, these two keys are absent from every object. The schema
   string moved v1 → v2 for exactly this reason: v1 entitles a consumer to read them, so emitting
   objects without them under the v1 name would be the DESIGN §3 meaning fork — one spelling, one
-  declared version, materially different obligations. A v1-pinned consumer should refuse a v2
+  declared version, materially different obligations. The bump withdraws v1's obligation rather than guaranteeing any consumer's behaviour; a v1-pinned consumer that checks the schema string has what it needs to refuse a v2
   payload rather than read an absent tier. The loss is declared at
   `gunbc.rung_drop.roadmap_sizing_authored_to_derived`, whose trigger is the derivation capability
   itself; when that lands, the keys return under v2 without another schema change, because v2
