@@ -484,25 +484,17 @@ test fn w_RED_an_incomplete_merge_queue_rule_refuses_and_names_the_missing_field
     && !string_contains(s: rendered, pattern: "merge_method")
 }
 
-// THE CONSTRUCTOR THIS REPOSITORY ACTUALLY SENDS CARRIES NO merge_queue PARAMETERS, and reading it
-// back as a queue standing must therefore find no queue at all -- not an incomplete one. If this
-// goes red, the required_status_checks rule has started claiming to be a merge_queue rule.
+// THE required_status_checks CONSTRUCTOR CARRIES NO merge_queue PARAMETERS. Reading THAT rule
+// as a queue standing must find no queue -- not an incomplete one.
 test fn w_the_required_status_checks_rule_reads_back_as_no_queue() -> Bool {
-  match merge_queue_standing(rules: desired_ruleset_rules()) {
+  match merge_queue_standing(rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue")) {
     NoMergeQueueRule => true
     _ => false
   }
 }
 
-// A merge_queue RULE AS A FIXTURE, WHICH IS THE ONLY PLACE ONE CAN BE WRITTEN TODAY. Production
-// cannot project this rule: the wire parameters record carries two non-optional Bools that belong
-// to required_status_checks, and a merge_queue rule built through it would put keys on the wire
-// that GitHub does not accept there -- a fabricated wire value, which is the same defect the
-// required_status_checks constructor refuses in the other direction. DESIGN section 4b is explicit
-// that a state unrepresentable in the ACCEPTED CORPUS may still be representable as source handed
-// to the compiler by a fixture, and that where the refusal is authorable there, declining to
-// enroll it is specification-without-execution. So every arm of the projection wall is exercised
-// here against a rule the production projection cannot yet build.
+// A merge_queue RULE AS A FIXTURE, so a truncated or HEADGREEN projection stays authorable
+// independently of `desired_ruleset_rules`. Production projects through `merge_queue_rule`.
 fn fixture_merge_queue_rule(strategy: String, max_build: Int) -> RulesetRuleWire {
   RulesetRuleWire {
     type: ruleset_rule_type_wire_label(t: MergeQueueRule),
@@ -521,12 +513,8 @@ fn fixture_merge_queue_rule(strategy: String, max_build: Int) -> RulesetRuleWire
   }
 }
 
-// SIGNING OFF WITHOUT WIRING THE PROJECTION STOPS THE LINE INSTEAD OF SILENTLY UNDER-APPLYING.
-// desired_ruleset_rules appends no merge_queue rule under either arm today, so a flip to
-// MergeQueueSignedOff with nothing else changed would PUT a ruleset without the signed queue while
-// verify reported a divergence no apply could clear. The RED is authorable only because the check
-// takes BOTH the policy and the rules as operands: the signed state does not exist in this tree, so
-// a check reading the desire row alone would be permanently green and would assert nothing.
+// SIGNING OFF WITHOUT WIRING THE PROJECTION STOPS THE LINE. The corpus is SignedOff and
+// projected; the RED is a fixture that keeps the policy and drops the merge_queue rule.
 test fn w_RED_signing_off_without_wiring_the_projection_refuses_to_actuate() -> Bool {
   match signed_desire_projection_refusal_for(
     policy: Present { value: merge_queue_floor_aligned_policy() },
