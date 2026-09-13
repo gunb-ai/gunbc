@@ -85,6 +85,22 @@ fn t_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
   }
 }
 
+// THE READBACK THAT AGREES WITH A DIFFERENT DECLARATION: same hosts, same site coverage, and a
+// process reporting a model path that is not the one this launch is declared to serve. The service
+// half must refuse this too, and for a DIFFERENT stated reason than the undecodable case -- which is
+// the whole point of typing the cause.
+fn t_foreign_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: hosts,
+    readback: ModelsRouteRead {
+      readback: vllm_models_route_readback(
+        served_model_id: "glm-5.3-flash:native" as NonEmptyStr,
+        configured_model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+        max_model_len: token_count(count: 1048576)),
+    },
+  }
+}
+
 // THE READBACK THAT DOES NOT EVEN AGREE: same hosts, same site coverage, and a document this
 // repository could not decode. Both fixtures refuse the service; they differ in the DIAGNOSIS the
 // refusal carries, which is what the two rows below discriminate on.
@@ -358,4 +374,37 @@ test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_th
 // not: the refusal is only worth its type if something downstream acts on it.
 test fn an_unidentified_service_does_not_bind_an_offer() -> Bool {
   t_service_refusal_cause_matches_the_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))
+}
+
+// RED -- A DIFFERENT REPORTED PATH REFUSES THE SERVICE, AND FOR ITS OWN REASON. The foreign case was
+// exercised only on the TELEMETRY side until now, so the service route had no control for the third
+// of its three readback situations. It is here because the operator's finding names an unreadable OR
+// foreign readback, and covering one of the two at this seam left the other resting on a neighbouring
+// producer -- which is precisely the "a correct result from a neighbouring producer does not
+// establish that the consumer carried it" defect this file already records against itself.
+//
+// IT PINS THE DIAGNOSIS, NOT JUST THE ARM, and the diagnosis it pins is the one that must NOT
+// overclaim: a reported path differing from the declaration establishes that THIS READBACK DOES NOT
+// ESTABLISH THE SERVICE, and does not establish that the process is a different launch -- a process
+// that IS the intended launch running with drifted configuration reports exactly this way. So this
+// row asserts the refusal reports non-establishment, and asserts it does NOT claim the stronger
+// thing, which is the same wall this module applies to every other inference.
+test fn a_different_reported_path_refuses_the_service_without_claiming_a_different_launch() -> Bool {
+  match spark_serving_route_standing(realization: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+    ServingRouteServiceUnidentified { allocation: a, obligation: o } =>
+      (a.decided_on as String) == "2026-09-11"
+        && string_contains(s: o as String, pattern: "the REGION is established")
+        && string_contains(s: o as String, pattern: "does not establish the specific service")
+        && !string_contains(s: o as String, pattern: "configuration agreement and not identity")
+        && !string_contains(s: o as String, pattern: "did not resolve")
+  }
+}
+
+// RED -- AND THAT REFUSAL REACHES THE BINDER, joined to the standing's own obligation rather than to
+// a literal, so the binder cannot forward a different refusal and still pass.
+test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
+  t_service_refusal_cause_matches_the_standing(realization: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]))
 }

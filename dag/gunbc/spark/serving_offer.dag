@@ -258,7 +258,7 @@ fn spark_realization_identity_cause(realization: SparkServingRealization) -> Non
       join([
         "the engine reports the model path ", rep as String,
         ", which is not the path the pair-serving launch is declared to serve (", dec as String,
-        "), so the process that answered is not the launch this route would name",
+        "), so this readback does not establish the specific service this route would name. It does NOT establish that the process is a different launch: a process that IS the intended launch, running with drifted configuration, reports exactly this way, and a configuration comparison cannot separate those -- which is the inference this module refuses everywhere else and must refuse in its own diagnosis too",
       ], "") as NonEmptyStr
     RealizationDeclaredPathUnpinned =>
       "the pair-serving snapshot is unpinned, so there is no declared configuration to compare the engine's reported one against" as NonEmptyStr
