@@ -36,6 +36,13 @@ pub enum Commands {
         /// to a subtree so a small closure can be emitted without a whole-tree pass.
         #[arg(long)]
         entry: Option<String>,
+        /// Repository identity of a whole-root compile, declared by the caller. Joined with the
+        /// primary root and dependency pools to find the root's measured demand.
+        #[arg(long)]
+        repository: Option<String>,
+        /// Location of the repository's generated demand projection (gunbc.whole_corpus_compile_demand_projection).
+        #[arg(long)]
+        measured_root_demands: Option<String>,
     },
     /// Execute a .dag program directly (interpreter)
     Run {
@@ -139,6 +146,8 @@ pub trait CliDispatchHost {
         target: String,
         dependency_pool_index: String,
         entry: Option<String>,
+        repository: Option<String>,
+        measured_root_demands: Option<String>,
     ) -> !;
     fn run_verb(
         &self,
@@ -176,6 +185,8 @@ pub fn dispatch<H: CliDispatchHost>(
                 target,
                 dependency_pool_index,
                 entry,
+                repository,
+                measured_root_demands,
             },
             _,
         ) => __gunbc_dispatch_executor_0.retained_host_kernel(
@@ -185,6 +196,8 @@ pub fn dispatch<H: CliDispatchHost>(
             target,
             dependency_pool_index,
             entry,
+            repository,
+            measured_root_demands,
         ),
         (
             Commands::Run {

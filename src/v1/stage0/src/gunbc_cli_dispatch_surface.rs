@@ -496,6 +496,24 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Entry `.dag` file: compile only this module and its transitive imports".to_string(), "(not every `.dag` file under the first --source-root). Scopes the compile".to_string(), "to a subtree so a small closure can be emitted without a whole-tree pass.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "repository".to_string(),
+    long: "repository".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliAtMostOne,
+    doc: Rc::new(vec!["Repository identity of a whole-root compile, declared by the caller. Joined with the".to_string(), "primary root and dependency pools to find the root's measured demand.".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "measured_root_demands".to_string(),
+    long: "measured-root-demands".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliAtMostOne,
+    doc: Rc::new(vec!["Location of the repository's generated demand projection (gunbc.whole_corpus_compile_demand_projection).".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliRetainedHostKernel),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,

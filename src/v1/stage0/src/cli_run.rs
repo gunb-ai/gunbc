@@ -6968,6 +6968,7 @@ mod entry_admission_tests {
     fn two_render_targets_emit_twice_from_one_resolution() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: vec![
@@ -7015,6 +7016,7 @@ mod entry_admission_tests {
     fn a_missing_source_root_refuses_at_source_discovery_instead_of_panicking() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
             primary_precedence: true,
             render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
@@ -7039,6 +7041,7 @@ mod entry_admission_tests {
     fn a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green/subject.dag")],
             primary_precedence: true,
             render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
@@ -7063,6 +7066,7 @@ mod entry_admission_tests {
     fn a_valid_source_root_still_completes_through_the_fallible_route() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
@@ -7098,6 +7102,7 @@ mod entry_admission_tests {
     fn a_refusing_second_target_withholds_the_first_target_s_finished_tree() {
         let request = |targets: Vec<crate::v1_compiler_artifact::RenderTarget>| CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/atomic_materialization/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/atomic_materialization")],
             primary_precedence: true,
             render_targets: targets,
@@ -7188,6 +7193,7 @@ mod entry_admission_tests {
     fn a_request_naming_no_target_refuses_before_it_resolves() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: Vec::new(),
@@ -7243,6 +7249,7 @@ mod entry_admission_tests {
     fn a_duplicate_target_refuses_before_the_subject_is_even_read() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry("dag/definitely_not_a_real_entry_file.dag".to_string()),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec!["dag".to_string()],
             primary_precedence: false,
             render_targets: vec![
@@ -7414,6 +7421,10 @@ impl CompileSubject {
 #[derive(Debug, Clone)]
 pub struct CompileRequest {
     pub subject: CompileSubject,
+    /// WHERE a whole-root compile's demand fact lives and WHICH repository the run is, both
+    /// handed to the run as declared facts (`--repository`, `--measured-root-demands`). Read only
+    /// on a `PrimaryRoot` subject; never inferred from host paths, and never defaulted.
+    pub root_demand: RootDemandDeclaration,
     pub source_roots: Vec<String>,
     pub primary_precedence: bool,
     /// EVERY TARGET THIS ONE RESOLUTION IS EMITTED FOR. Non-empty or the request refuses at
@@ -7431,6 +7442,14 @@ pub struct CompileRequest {
     /// The name is now DERIVED from the target by `render_target_name`, so the disagreement has
     /// no representation. Raised in review before it could ship.
     pub render_targets: Vec<crate::v1_compiler_artifact::RenderTarget>,
+}
+
+/// The two declared facts a whole-root compile's admission joins on. `None` is an undeclared fact,
+/// which refuses on a `PrimaryRoot` subject; an `Entry` subject never reads either.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RootDemandDeclaration {
+    pub repository: Option<String>,
+    pub measured_root_demands: Option<String>,
 }
 
 impl CompileRequest {
@@ -7567,6 +7586,7 @@ pub fn compile_entry_emission(
 ) -> CompileRun {
     compile_emission(&CompileRequest {
         subject: CompileSubject::Entry(entry_path.to_string()),
+        root_demand: RootDemandDeclaration::default(),
         source_roots: source_roots.to_vec(),
         primary_precedence,
         render_targets: vec![render_target],
@@ -7602,10 +7622,39 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // output reads a fabricated zero rather than a failure. Nothing about the corpus is an
     // input to the decision, so the cheapest correct place is the earliest one. Deliberately
     // NOT asked of `Entry`: see `CompileSubject`. Authority: gunbc.whole_corpus_compile_admission.
-    if let CompileSubject::PrimaryRoot(_) = &request.subject {
+    if let CompileSubject::PrimaryRoot(root) = &request.subject {
+        // The demand is a fact of THE ROOT COMPILED: its identity is the declared repository, the
+        // primary root and the ordered dependency pools, joined against the repository's own
+        // projection. An undeclared repository cannot be joined, so it refuses here rather than
+        // borrowing any identity.
+        let Some(repository) = &request.root_demand.repository else {
+            return compile_not_executed(
+                &request.subject,
+                started,
+                "admission",
+                format!(
+                    "WholeCorpusCompileRepositoryUndeclared: a whole-root compile of {root} is \
+                     admitted on its repository's measured demand, and no --repository was \
+                     declared, so the root has no identity to join. Remedy: pass \
+                     --repository <id> with --measured-root-demands <projection>."
+                ),
+            );
+        };
+        let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
+            repository: repository.clone(),
+            primary_root: root.clone(),
+            dependency_pools: source_roots.iter().skip(1).cloned().collect(),
+        };
+        let read = crate::memory_governor::read_whole_corpus_compile_demands(
+            request.root_demand.measured_root_demands.as_deref(),
+        );
         let (budget, budget_source) = crate::memory_governor::read_host_budget_bytes();
-        let admission =
-            crate::memory_governor::whole_corpus_compile_admission(budget, &budget_source);
+        let admission = crate::memory_governor::whole_corpus_compile_admission(
+            budget,
+            &budget_source,
+            &identity,
+            &read,
+        );
         if let Some(diagnostic) =
             crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
         {

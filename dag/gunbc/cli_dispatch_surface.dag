@@ -470,6 +470,25 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "to a subtree so a small closure can be emitted without a whole-tree pass."
           ],
           emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "repository",
+          long: "repository",
+          value: CliTextValue { text_default: none },
+          arity: CliAtMostOne,
+          doc: [
+            "Repository identity of a whole-root compile, declared by the caller. Joined with the",
+            "primary root and dependency pools to find the root's measured demand."
+          ],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "measured_root_demands",
+          long: "measured-root-demands",
+          value: CliTextValue { text_default: none },
+          arity: CliAtMostOne,
+          doc: ["Location of the repository's generated demand projection (gunbc.whole_corpus_compile_demand_projection)."],
+          emission: CarriedByGeneratedDispatch
         }
       ],
       realization: CliRetainedHostKernel,

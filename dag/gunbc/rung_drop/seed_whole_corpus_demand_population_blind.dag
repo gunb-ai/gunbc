@@ -1,7 +1,7 @@
 module gunbc.rung_drop.seed_whole_corpus_demand_population_blind
 
 import std.types { List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-13 (session nimble-badger-98, direction vivid-bee-814 / fierce-lark-661). The
@@ -37,7 +37,9 @@ data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {
 
   declared: "2026-09-13",
 
-  standing: Standing,
+  standing: Retired {
+    trigger_fired: "The seed admits on the root's own row: v1_compiler.cli_run compile_emission builds the root identity from the declared --repository, the primary root and the ordered pools, reads the repository's generated projection (gunbc.whole_corpus_compile_demand_projection) from --measured-root-demands, refuses an unmeasured root or another repository's projection before indexing, and compares the budget only to that root's peak; v1_compiler.memory_governor tests execute the unmeasured-root red beside the at-peak and one-byte-below controls against the committed projection. The bare seed constant and its lens row are deleted, not re-pinned" as NonEmptyStr,
+  },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
