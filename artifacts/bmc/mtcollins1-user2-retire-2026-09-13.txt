@@ -1,0 +1,40 @@
+GUNBC-BMC-USER2-RETIRE mtcollins1 executed 2026-09-13T03:42Z (host clock UTC)
+controller: AMI MegaRAC 0.32 at 192.168.1.228 (ch1) and 192.168.1.231 (ch8)
+authorization: operator "user-2 rotation - yes" (~02:30Z), relayed by royal-eagle-761
+credential values: NONE appear here. <new> = the Secret-Manager-held value
+  (bmc-mtcollins1-admin version 3, minted+round-tripped, sha256[:12]=71b4e69cc345).
+  "admin" shown below is the PUBLISHED factory default -- the value being retired.
+
+OUTCOME: the factory credential is RETIRED, not merely disabled. The value "admin"
+no longer authenticates user 2 on any transport, and user 2 remains disabled with
+network access closed on every channel. This resolves the residual from the user-3
+route (mtcollins1-bmc-user3-route-2026-09-13.txt): unit 1's BMC-secure standing is
+Retired, not DisabledNotRetired.
+
+The earlier premise "the controller refuses user 2's password change" is FALSIFIED
+here as it was for user 3: the refusal was a complexity policy. A 20-char value with
+special characters set successfully on user 2, which carries Fixed Name: Yes -- so
+Fixed Name restricts the NAME, not the password.
+
+--- FRESH BEFORE-PROBE 03:42:42Z ---
+ipmi admin@192.168.1.228 REJECTED
+ipmi admin@192.168.1.231 REJECTED
+ipmi gunbc@192.168.1.228 ACCEPTED
+user 2 before: 2  admin  true true true  NO ACCESS   (disabled, not touched)
+
+--- SET (as gunbc, user 2 access UNCHANGED) 03:42:42Z ---
+user set password 2 <new> 20  ->  Set User Password command successful (user 2)
+
+--- DISCRIMINATOR (user test, no channel re-enable) ---
+user test 2 20 <new>   ->  Success                      (new value is set)
+user test 2 20 admin   ->  Failure: password incorrect  (factory value is gone)
+
+--- NETWORK: admin/admin rejected everywhere ---
+ipmi admin@192.168.1.228 REJECTED   web admin@192.168.1.228 http=401
+ipmi admin@192.168.1.231 REJECTED   web admin@192.168.1.231 http=401
+
+--- user 2 AFTER (unchanged: disabled / NO ACCESS) ---
+2  admin  true true true  NO ACCESS
+
+CANDIDATE DISPOSITION: version 3 was APPLIED, so nothing to destroy. bmc-mtcollins1-admin
+now holds the live user-2 value; versions 1 and 2 were destroyed on 2026-09-13T00:20Z.
