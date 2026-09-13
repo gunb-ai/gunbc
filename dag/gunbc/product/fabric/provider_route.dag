@@ -217,10 +217,11 @@ fn first_unread_consulted_box(c: ProviderDataPathClosure) -> List<List<Declarati
 }
 
 fn first_unread_consulted_citations(c: ProviderDataPathClosure) -> List<DeclarationRef> {
-  match first_unread_consulted_box(c: c) |> first {
-    some(inner) => inner
-    none => []
-  }
+  fold(
+    first_unread_consulted_box(c: c),
+    init: [],
+    f: fn(acc, inner) { inner },
+  )
 }
 
 fn path_unread_consulted(p: ProviderPathStanding) -> List<DeclarationRef> {
