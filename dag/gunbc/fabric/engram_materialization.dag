@@ -2,7 +2,7 @@ module gunbc.fabric.engram_materialization
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_ceil }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -27,6 +27,11 @@ import std.decision {
   RealizationSelectionResult, SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy,
   RealizationSelectionRefused, NoFeasibleRealization, CandidateFieldUnestablished,
   SelectionReceipt, select_realization,
+}
+import gunbc.spark.v41_published_image_observation {
+  ImageEngramPlacementMechanism, v41_published_engram_placement,
+  image_offers_storage_backed_engram, engram_placement_mechanism_render,
+  v41_published_arm64_digest,
 }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ExternalAuthority }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -1465,7 +1470,13 @@ data id_route_var_route: DeclarationRef = decl_ref(module_path: "gunbc.fabric.en
 data id_route_var_context: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "var_consumer_context")
 data id_route_term_serving_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "term_total_serving_cost")
 data id_route_region: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_region")
-data id_route_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_constraints")
+// THE CONSTRAINT AUTHORITY NAMES THE FUNCTION, NOT THE ROW, because the function is what produces the
+// set that actually screened this decision. The row carries six of the seven constraints and the seventh
+// -- the per-rank memory bound -- exists only inside the function, where the candidate budget is in
+// scope. A receipt citing the row would name an authority that does not contain the constraint the
+// candidate was excluded by, which is the positional-citation failure one layer up: the reference
+// resolves and denotes the wrong thing.
+data id_route_constraint_authority: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "component_route_constraints_under")
 // THE POLICY AUTHORITY FOR THIS SUBJECT. There is deliberately NO tie-break rule: a front of two
 // fully-measured non-dominated routes must reach SelectionNeedsPolicy rather than be separated by a
 // preference invented in the fold, and deciding one is an operator ruling. That ruling is an
@@ -1495,6 +1506,16 @@ data ax_route_verified_integrity: DeclarationRef = decl_ref(module_path: "gunbc.
 data ax_route_nonresident_mechanism: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_nonresident_mechanism")
 data ax_route_runtime_observed: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_runtime_observed")
 data ax_route_resident_bytes: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_resident_bytes")
+// THE PER-RANK FLOOR IS A SEPARATE AXIS FROM THE RESIDENT-BYTES CEILING, AND THE DIRECTION OF THE
+// BOUND IS THE WHOLE REASON. `ax_route_resident_bytes` is fed by `resident_memory_upper_bound`: a
+// ceiling, which can establish that a route FITS and can never establish that it does not. This axis
+// is fed by `resident_memory_lower_bound`: a floor, which can establish that a route does NOT fit and
+// can never establish that it does. Putting a hard constraint on the ceiling axis would be the
+// generous error -- a route whose ceiling exceeded capacity would be excluded even though its true
+// requirement might fit -- and putting a Pareto preference on the floor axis would let a route win on
+// a number that says nothing about its cost. So they are two axes with opposite evidentiary force,
+// and only this one carries the capacity constraint.
+data ax_route_per_rank_resident_lower_bound: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_per_rank_resident_lower_bound")
 data ax_route_fill_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_fill_cost")
 data ax_route_token_time_access_cost: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_token_time_access_cost")
 data ax_route_network_bytes: DeclarationRef = decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "ax_route_network_bytes")
@@ -1511,6 +1532,7 @@ data component_route_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_route_nonresident_mechanism, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_runtime_observed, goal: HigherIsBetter },
   SelectionAxis { identity: ax_route_resident_bytes, goal: LowerIsBetter },
+  SelectionAxis { identity: ax_route_per_rank_resident_lower_bound, goal: LowerIsBetter },
   SelectionAxis { identity: ax_route_fill_cost, goal: LowerIsBetter },
   SelectionAxis { identity: ax_route_token_time_access_cost, goal: LowerIsBetter },
   SelectionAxis { identity: ax_route_network_bytes, goal: LowerIsBetter },
@@ -1519,8 +1541,8 @@ data component_route_axes: List<SelectionAxis> = [
   SelectionAxis { identity: ax_route_local_storage_bytes, goal: LowerIsBetter },
 ]
 
-// FIVE HARD CONSTRAINTS, screened before Pareto so an attractive-but-unservable route is excluded
-// rather than ranked. A cheap route the runtime cannot serve must not compete on cost.
+// SIX HARD CONSTRAINTS ON DECLARED AXES, screened before Pareto so an attractive-but-unservable route
+// is excluded rather than ranked. A cheap route the runtime cannot serve must not compete on cost.
 data component_route_constraints: List<HardConstraint> = [
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_faithful_realization, bound_micro: 1 },
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_well_formed, bound_micro: 1 },
@@ -1529,6 +1551,113 @@ data component_route_constraints: List<HardConstraint> = [
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_nonresident_mechanism, bound_micro: 1 },
   HardConstraint { identity: id_route_constraint_authority, axis: ax_route_runtime_observed, bound_micro: 1 },
 ]
+
+// ── THE SEVENTH CONSTRAINT IS NOT A CONSTANT, BECAUSE CAPACITY IS A PROPERTY OF THE CANDIDATE ───
+//
+// Every constraint above is a flag: the reading is 1 or 0 and the bound is 1. The memory screen is
+// not, and it cannot be moved into that list, because how many bytes this component may occupy
+// depends on the topology it is being placed under -- how many ranks share it, how much each rank has
+// free, and how much of each rank the artifact's OTHER components have already committed. A single
+// global bound would be the very thing this brief forbids: one Engram answer assumed to hold for
+// every topology.
+//
+// SO THE BUDGET ARRIVES AS EVIDENCE FROM THE CONSUMER, AND IT IS A COPRODUCT. An unknown budget must
+// not become a permissive bound -- that is DESIGN section 5's absorbing fallback, and it would fail
+// open on the one screen whose job is to rule out the impossible. The unestablished arm therefore
+// produces NO READING on the constrained axis, which makes the axis an unresolved input and the
+// selection an evidence need, rather than admitting every route against a fabricated ceiling.
+//
+// WHAT THE CONSUMER OWES AND WHAT IT DOES NOT. It owes the bytes available to THIS component on ONE
+// rank, with the authority that established them -- that is a capacity fact and the consumer is the
+// only layer that knows the candidate's other components. It does NOT owe a verdict: the comparison
+// between a route's floor and this budget happens here, once, as a hard constraint in the existing
+// algebra. A consumer that computed the verdict itself and passed a Bool would be a second copy of
+// this decision at the call site, which is exactly the fork the brief names.
+type ComponentMemoryBudget
+  = ComponentBudgetEstablished {
+      subject: RouteSubjectKey
+      rank_count: Nat
+      per_rank_bytes_available: ByteSize
+      authority: DeclarationRef
+      how: NonEmptyStr
+    }
+  | ComponentBudgetUnestablished { subject: RouteSubjectKey, obligation: NonEmptyStr }
+
+fn component_budget_subject(b: ComponentMemoryBudget) -> RouteSubjectKey {
+  match b {
+    ComponentBudgetEstablished { subject: sb, rank_count: _, per_rank_bytes_available: _, authority: _, how: _ } => sb
+    ComponentBudgetUnestablished { subject: sb, obligation: _ } => sb
+  }
+}
+
+// A BUDGET FROM ANOTHER CONTEXT IS REFUSED RATHER THAN APPLIED, for the same reason a route reading
+// from another profile is: the number is honest and the binding is wrong. A budget carries the subject
+// key it was derived under, and a mismatch degrades to the unestablished arm with the mismatch named --
+// it does not silently price this decision against another topology's headroom.
+// BUDGET EQUALITY EXISTS SO A CONSUMER CAN KEY A REUSE TABLE ON IT. A cached route standing is only
+// the same fact for the same budget: the whole point of the screen is that the answer changes with the
+// capacity, so a table keyed on (component, context) alone would return one candidate's answer for
+// another candidate's capacity. That is DESIGN section 2's rule that a provider's key must represent
+// every declared input the result depends on, and this is the input that was added.
+fn component_budget_eq(a: ComponentMemoryBudget, b: ComponentMemoryBudget) -> Bool {
+  match a {
+    ComponentBudgetEstablished { subject: asb, rank_count: ar, per_rank_bytes_available: aa, authority: aau, how: _ } =>
+      match b {
+        ComponentBudgetEstablished { subject: bsb, rank_count: br, per_rank_bytes_available: ba, authority: bau, how: _ } =>
+          route_subject_key_eq(a: asb, b: bsb)
+            && ar == br
+            && byte_size_count(b: aa) == byte_size_count(b: ba)
+            && declaration_ref_eq(a: aau, b: bau)
+        ComponentBudgetUnestablished { subject: _, obligation: _ } => false
+      }
+    ComponentBudgetUnestablished { subject: asb, obligation: ao } =>
+      match b {
+        ComponentBudgetUnestablished { subject: bsb, obligation: bo } =>
+          route_subject_key_eq(a: asb, b: bsb) && (ao as String) == (bo as String)
+        ComponentBudgetEstablished { subject: _, rank_count: _, per_rank_bytes_available: _, authority: _, how: _ } => false
+      }
+  }
+}
+
+fn budget_for_context(b: ComponentMemoryBudget, wanted: RouteSubjectKey) -> ComponentMemoryBudget {
+  if route_subject_key_eq(a: component_budget_subject(b: b), b: wanted) {
+    b
+  } else {
+    ComponentBudgetUnestablished {
+      subject: wanted,
+      obligation: join([
+        "the memory budget offered to this decision was derived under ",
+        route_subject_key_render(k: component_budget_subject(b: b)),
+        " and this decision is about ", route_subject_key_render(k: wanted),
+        "; rank count and per-rank headroom both change with topology, so a budget from another context is refused rather than reused",
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
+// THE BOUND WHEN THE BUDGET IS UNKNOWN IS ZERO, AND THAT IS UNREACHABLE BY CONSTRUCTION RATHER THAN
+// CONVENIENT. The constraint must stay in the list whatever the budget is, because removing it would
+// leave the axis funded-but-unconstrained and a route with a floor above capacity would then merely
+// score badly on a Pareto dimension instead of being excluded. With the constraint present and the
+// budget absent, `per_rank_lower_bound_reading` returns nothing, so `unread_axis_gaps` makes the axis
+// an unresolved input and the bound is never compared. Zero is chosen for the arm that cannot be
+// reached because it is the STRICTEST value for a lower-is-better axis: if a future change did make it
+// reachable, it would exclude rather than admit, so the error direction is closed.
+fn component_budget_bound(budget: ComponentMemoryBudget) -> Int {
+  match budget {
+    ComponentBudgetEstablished { subject: _, rank_count: _, per_rank_bytes_available: avail, authority: _, how: _ } =>
+      byte_size_count(b: avail)
+    ComponentBudgetUnestablished { subject: _, obligation: _ } => 0
+  }
+}
+
+fn component_route_constraints_under(budget: ComponentMemoryBudget) -> List<HardConstraint> {
+  concat(component_route_constraints, [HardConstraint {
+    identity: id_route_constraint_authority,
+    axis: ax_route_per_rank_resident_lower_bound,
+    bound_micro: component_budget_bound(budget: budget),
+  }])
+}
 
 data unmeasured_route_axes: List<DeclarationRef> = [
   ax_route_fill_cost,
@@ -1716,6 +1845,69 @@ fn resident_gap(s: RouteResidentMemoryStanding, route: DeclarationRef) -> List<A
   }
 }
 
+// ── THE PER-RANK FLOOR READING: A ROUTE'S OWN FLOOR, DIVIDED BY THE RANKS THAT SHARE IT ────────
+//
+// THE DIVISION IS A CEILING AND THE INPUT IS A FLOOR, and both directions are deliberate. The input is
+// `resident_memory_lower_bound`, so a route with only a ceiling contributes NOTHING here rather than
+// contributing its ceiling -- that would turn a fit-establishing quantity into a fit-disproving one.
+// The division rounds UP, because a component split across ranks does not divide evenly and the rank
+// that holds the extra row is the one that has to fit.
+//
+// AND AN EVEN SPLIT IS ITSELF A FLOOR, WHICH IS WHY THIS CANNOT RULE A ROUTE IN. Real sharding
+// replicates some tensors across ranks and cannot always balance the rest, so the true per-rank
+// requirement is at least this and possibly more. That is exactly the direction a lower-bound screen
+// needs: an even split that already exceeds the budget is decisively over, while one that fits
+// establishes nothing at all -- so this axis carries a hard constraint and never a passing verdict.
+fn per_rank_lower_bound_reading(s: RouteResidentMemoryStanding, budget: ComponentMemoryBudget) -> AxisReading? {
+  match budget {
+    ComponentBudgetUnestablished { subject: _, obligation: _ } => none
+    ComponentBudgetEstablished { subject: _, rank_count: ranks, per_rank_bytes_available: _, authority: _, how: _ } =>
+      if ranks == 0 {
+        none
+      } else {
+        match resident_memory_lower_bound(s: s) {
+          Absent => none
+          Present { value: total } => Present {
+            value: route_reading(
+              axis: ax_route_per_rank_resident_lower_bound,
+              v: byte_size_count(b: measure_scale_fraction_ceil(m: total, num: 1, den: ranks))),
+          }
+        }
+      }
+  }
+}
+
+// THE GAP NAMES WHICH OF THE THREE THINGS IS MISSING, because they have three different remedies: a
+// budget nobody supplied, a rank count of zero, and a route whose resident floor is unknown.
+fn per_rank_lower_bound_gap(
+  s: RouteResidentMemoryStanding,
+  budget: ComponentMemoryBudget,
+  route: DeclarationRef,
+) -> List<AxisGap> {
+  match budget {
+    ComponentBudgetUnestablished { subject: _, obligation: o } =>
+      [AxisGap { axis: ax_route_per_rank_resident_lower_bound, cause: o }]
+    ComponentBudgetEstablished { subject: _, rank_count: ranks, per_rank_bytes_available: _, authority: _, how: _ } =>
+      if ranks == 0 {
+        [AxisGap {
+          axis: ax_route_per_rank_resident_lower_bound,
+          cause: "the memory budget names zero ranks, so there is no per-rank share to compare against it" as NonEmptyStr,
+        }]
+      } else {
+        match resident_memory_lower_bound(s: s) {
+          Present { value: _ } => []
+          Absent => [AxisGap {
+            axis: ax_route_per_rank_resident_lower_bound,
+            cause: join([
+              "route ", declaration_ref_display_key(ref: route),
+              " has no established FLOOR on its resident bytes, so the per-rank memory screen cannot run for it. A ceiling does not substitute: this screen rules a route out by showing that even its minimum does not fit, and a maximum cannot answer that",
+            ], "") as NonEmptyStr,
+          }]
+        }
+      }
+  }
+}
+
 // THE TWO READINGS THAT SURVIVE A MISSING EVIDENCE ROW, because they are decided from the route's
 // own declaration rather than measured: a malformed chain is malformed whether or not anyone
 // measured it, and it is excluded on that basis rather than deferred.
@@ -1750,6 +1942,7 @@ fn route_candidate_readings(
   admitted_provider_ids: List<String>,
   evidence: RouteEvidence,
   wanted: RouteSubjectKey,
+  budget: ComponentMemoryBudget,
 ) -> List<AxisReading> {
   concat(
     concat(
@@ -1763,7 +1956,9 @@ fn route_candidate_readings(
         optional_route_reading(r: route_verification_reading(v: evidence.verification, realization: realization)))),
     concat(
       optional_route_reading(r: route_runtime_reading(r: evidence.runtime, route: c.route, wanted: wanted)),
-      optional_route_reading(r: resident_reading(s: evidence.resident_memory))))
+      concat(
+        optional_route_reading(r: resident_reading(s: evidence.resident_memory)),
+        optional_route_reading(r: per_rank_lower_bound_reading(s: evidence.resident_memory, budget: budget)))))
 }
 
 fn optional_route_reading(r: AxisReading?) -> List<AxisReading> {
@@ -1779,6 +1974,7 @@ fn route_candidate_gaps(
   realization: FaithfulComponentRealization,
   evidence: RouteEvidence,
   wanted: RouteSubjectKey,
+  budget: ComponentMemoryBudget,
 ) -> List<AxisGap> {
   concat(
     concat(
@@ -1794,7 +1990,9 @@ fn route_candidate_gaps(
         route_runtime_gap(r: evidence.runtime, route: c.route, wanted: wanted))),
     concat(
       concat(
-        resident_gap(s: evidence.resident_memory, route: c.route.identity),
+        concat(
+          resident_gap(s: evidence.resident_memory, route: c.route.identity),
+          per_rank_lower_bound_gap(s: evidence.resident_memory, budget: budget, route: c.route.identity)),
         map(
           physical_access_obligations(s: evidence.access),
           o => AxisGap { axis: ax_route_token_time_access_cost, cause: o })),
@@ -1811,14 +2009,15 @@ fn project_route_candidate(
   admitted_provider_ids: List<String>,
   rows: List<RouteEvidence>,
   wanted: RouteSubjectKey,
+  budget: ComponentMemoryBudget,
 ) -> ParetoEntry {
   let realization = realize_component(standing: standing, artifact: c.artifact, evidence: c.faithfulness)
   match route_evidence_for(route: c.route.identity, wanted: wanted, rows: rows) {
     RouteEvidenceFound { evidence: e } => ParetoEntry {
       identity: c.route.identity,
       display_label: c.route.label,
-      readings: route_candidate_readings(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, evidence: e, wanted: wanted),
-      missing_inputs: route_candidate_gaps(c: c, standing: standing, realization: realization, evidence: e, wanted: wanted),
+      readings: route_candidate_readings(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, evidence: e, wanted: wanted, budget: budget),
+      missing_inputs: route_candidate_gaps(c: c, standing: standing, realization: realization, evidence: e, wanted: wanted, budget: budget),
     }
     RouteEvidenceForeignProfile { route: rt, wanted: w, offered: os } =>
       route_entry_without_evidence(c: c, standing: standing, realization: realization, origin_provider_id: origin_provider_id, admitted_provider_ids: admitted_provider_ids, wanted: w,
@@ -1970,21 +2169,26 @@ fn component_route_field(
   }
 }
 
+// THE BUDGET IS RE-KEYED TO THIS DECISION'S CONTEXT BEFORE IT IS USED, at the one place that has both
+// the budget and the context, so a caller cannot route a foreign budget past the check by supplying it
+// and the context separately.
 fn select_component_route(
   field: ComponentRouteField,
   standing: ComponentSubjectStanding,
   rows: List<RouteEvidence>,
   context: RouteSubjectKey,
   evidence_snapshot: DeclarationRef,
+  budget: ComponentMemoryBudget,
 ) -> RealizationSelectionResult<ParetoEntry> {
+  let scoped = budget_for_context(b: budget, wanted: context)
   select_realization(
     assessment: component_route_assessment(component: field.component),
     candidate_field_identity: field.identity,
     field: map(
       field.candidates,
-      c => project_route_candidate(c: c, standing: standing, origin_provider_id: field.origin_provider_id, admitted_provider_ids: field.admitted_provider_ids, rows: rows, wanted: context)),
+      c => project_route_candidate(c: c, standing: standing, origin_provider_id: field.origin_provider_id, admitted_provider_ids: field.admitted_provider_ids, rows: rows, wanted: context, budget: scoped)),
     axes: component_route_axes,
-    constraints: component_route_constraints,
+    constraints: component_route_constraints_under(budget: scoped),
     constraint_authority: id_route_constraint_authority,
     policy: UniqueSurvivorRequired { identity: component_route_policy },
     evidence_snapshot: evidence_snapshot,
@@ -2567,8 +2771,6 @@ data engram_runtime_under_evaluation: DeclarationRef = decl_ref(
   module_path: "gunbc.spark.v41_published_image_observation",
   decl_name: "v41_published_arm64_digest")
 
-data engram_nonresident_mechanism_obligation: NonEmptyStr = "whether the published arm64 serving image can hold this component on a storage tier at all is unread. A third party patched THEIR vLLM build to do it, which observes nothing about this digest -- they may have started from another base or never tried the stock path. Two gates, and only the second is feasibility: a capability or symbol observation rules the image in as a candidate, and a launch in which the runtime is observed serving the component from the route is what this axis needs" as NonEmptyStr
-
 data engram_access_obligation: NonEmptyStr = "no physical access measurement exists for this route on this fleet. The per-token count of logical hash lookups is implementation plus configuration and is NOT a count of disk reads; an illustrative record size is not an established contiguous storage layout. So no IOPS, read amplification, latency or throughput figure may be derived here, and the published third-party per-step numbers are somebody else's deployment rather than a reading of this one" as NonEmptyStr
 
 fn engram_resident_standing_for(r: MaterializationRoute) -> RouteResidentMemoryStanding {
@@ -2593,16 +2795,52 @@ fn engram_resident_standing_for(r: MaterializationRoute) -> RouteResidentMemoryS
   }
 }
 
+// ── THE MECHANISM QUESTION IS NOW ANSWERED, AND THE ANSWER IS AN ESTABLISHED ABSENCE ───────────
+//
+// This was `MechanismUnobserved` for B, C and D: nobody had read the runtime, so the three storage
+// routes were open questions and the selection correctly reported an evidence need. The image has now
+// been read, and what it carries is one Engram placement setting that moves the tables into pinned
+// HOST memory. That is decisive against all three storage routes on THIS image, and it is decisive in
+// the strong way rather than the weak one: not "we could not find a storage path" but "we found the
+// placement setting, and it materializes from memory".
+//
+// THE DERIVATION IS FROM THE TYPE, NOT FROM THE PROSE. `image_offers_storage_backed_engram` reads the
+// observed arm; if a later reading of a different image returns the storage-backed arm, these routes
+// become prerequisite-observed here with no edit to this function. That is also why the absence is not
+// hardcoded: the fact that B, C and D are excluded today is a CONSEQUENCE of a reading, and a reading
+// is the kind of thing that changes.
+//
+// WHAT THIS STILL IS NOT. An established mechanism absence excludes the route on this runtime. It does
+// not retire the route, does not establish anything about a patched build, and -- in the other
+// direction -- the storage-backed arm would NOT establish feasibility either: it would make the route a
+// candidate whose serving still has to be observed in a launch, which is the separate axis below.
 fn engram_mechanism_standing_for(r: MaterializationRoute) -> NonResidentMechanismStanding {
   if declaration_ref_eq(a: r.identity, b: engram_route_a_identity) {
     MechanismNotRequiredByThisRoute
   } else {
-    MechanismUnobserved {
-      runtime: engram_runtime_under_evaluation,
-      obligation: engram_nonresident_mechanism_obligation,
+    if image_offers_storage_backed_engram(m: v41_published_engram_placement) {
+      MechanismPrerequisiteObserved {
+        runtime: engram_runtime_under_evaluation,
+        receipt: engram_image_placement_receipt,
+        caveat: "the image offers a storage-backed placement path, which rules this route IN as a candidate and establishes nothing about serving: the launch axis still needs a receipt in which the runtime is observed serving this component from this route" as NonEmptyStr,
+      }
+    } else {
+      MechanismEstablishedAbsent {
+        runtime: engram_runtime_under_evaluation,
+        receipt: engram_image_placement_receipt,
+        how: join([
+          "this route needs the runtime to materialize the component from a storage tier while serving, and the pinned serving image does not offer one. ",
+          engram_placement_mechanism_render(m: v41_published_engram_placement) as String,
+          ". A host-memory placement is not a storage route: it changes which pool holds the tables, and on a unified-memory host it does not even change that",
+        ], "") as NonEmptyStr,
+      }
     }
   }
 }
+
+data engram_image_placement_receipt: DeclarationRef = decl_ref(
+  module_path: "gunbc.spark.v41_published_image_observation",
+  decl_name: "v41_published_engram_placement")
 
 // NO ROUTE'S ARTIFACT HAS BEEN DIGEST-VERIFIED ON THIS FLEET. `gunbc.fabric_m0_origin_readback` is the
 // authority that could supply it -- it derives a digest over a named staged file and carries that
@@ -2647,7 +2885,11 @@ data engram_route_evidence_snapshot: DeclarationRef = decl_ref(
 // THE EVIDENCE ROWS ARE BUILT ONCE PER CONTEXT AND CARRIED TWICE. A first cut called
 // `engram_route_evidence_rows` separately for the selection and for the standing's own field --
 // one authored duplication of the expensive half, at the ancestor that has both demands.
-fn engram_route_standing(component: DeclarationRef, context: RouteSubjectKey) -> ComponentRouteStanding {
+fn engram_route_standing(
+  component: DeclarationRef,
+  context: RouteSubjectKey,
+  budget: ComponentMemoryBudget,
+) -> ComponentRouteStanding {
   if !declaration_ref_eq(a: component, b: engram_component_identity) {
     ComponentRouteSubjectHasNoAuthority { component: component, context: context }
   } else {
@@ -2661,6 +2903,7 @@ fn engram_route_standing(component: DeclarationRef, context: RouteSubjectKey) ->
         rows: rows,
         context: context,
         evidence_snapshot: engram_route_evidence_snapshot,
+        budget: budget,
       ),
       routes: engram_routes,
       evidence: rows,
@@ -2684,9 +2927,14 @@ data engram_materialization_frontier: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "TRIGGER: bounded route probes on SEPARATELY ADMITTED resources that record logical requests apart from physical reads, page-cache behaviour, bytes transferred and per-rank communication, each keyed to the exact serving context it ran under. SUFFICIENT FOR: engram_route_evidence_for returns PhysicalAccessMeasured and a ResidentMemoryObserved or ResidentMemoryBoundedAbove standing for the measured routes, so the resident and access axes carry readings instead of gaps." as NonEmptyStr),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_nonresident_mechanism_obligation"),
-    reason: "whether the published image can serve this component from a storage tier is unread, and a probe would not settle it",
-    dissolution: unbound_dissolution(description: "TRIGGER: a launch on admitted resources in which the exact published image is observed serving this component from a named non-resident route, recorded as a receipt keyed to that serving context. SUFFICIENT FOR: engram_route_evidence_for returns MechanismPrerequisiteObserved or MechanismEstablishedAbsent and a RouteObservedInLaunch witness, so the two hard-constrained runtime axes carry readings; a capability inventory alone satisfies neither." as NonEmptyStr),
+    ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_mechanism_standing_for"),
+    reason: "the storage routes are excluded for ONE image digest, and they return to a live candidate field under any runtime that can execute them",
+    dissolution: unbound_dissolution(description: "WHAT IS ESTABLISHED, so a later reader does not mistake this for a dead end: routes B, C and D are excluded because the pinned image's only Engram placement setting is memory-backed. STORAGE-BACKED ENGRAM WAS NOT TRIED AND DID NOT FAIL -- no runtime on this fleet offers it, so there was nothing to try. TRIGGER: a reading of any serving runtime whose Engram placement is storage-backed, which makes image_offers_storage_backed_engram true for that image. SUFFICIENT FOR: engram_mechanism_standing_for returns MechanismPrerequisiteObserved for B, C and D under that runtime, at which point they are candidates again and their exclusion depends on the launch and cost evidence that does not exist yet -- not on this reading." as NonEmptyStr),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "candidate_component_budget"),
+    reason: "the idle-free reading was taken on a Group A rank and this closure has no candidate-to-fabric-group binding to key it by",
+    dissolution: unbound_dissolution(description: "The per-rank budget consumes one observed idle-free figure for every candidate, because nothing in the serving closure says which fabric group a candidate lands on. That is the same grain spark_fleet_snapshot already applies its single-host reading at, so this adds no new generalisation -- but it means a group whose ranks have less free memory would be screened against another group's reading. TRIGGER: a candidate carrying its target fabric group, so group_rank_free_memory is keyed by the group the candidate actually runs on. SUFFICIENT FOR: candidate_component_budget selects the reading for that candidate's own group and reports an obligation when no reading exists for it, rather than reaching for Group A's." as NonEmptyStr),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.fabric.engram_materialization", decl_name: "engram_resident_provider"),

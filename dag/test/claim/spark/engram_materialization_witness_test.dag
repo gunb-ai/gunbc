@@ -2,7 +2,7 @@ module test.claim.spark.engram_materialization_witness_test
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_ceil }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.content_hash { Sha256Digest, Sha256DigestHex, as_content_hash_cryptographic }
 import std.realization { Placement, LocalInProcess, LocalFilesystem, RemoteNetwork, LocalAccelerator }
@@ -118,6 +118,8 @@ import gunbc.fabric.engram_materialization {
   route_evidence_for,
   RouteCandidate, route_candidate,
   ComponentRouteField, component_route_field, select_component_route,
+  ComponentMemoryBudget, ComponentBudgetEstablished, ComponentBudgetUnestablished,
+  component_budget_eq, component_route_constraints_under, ax_route_per_rank_resident_lower_bound,
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteDecided,
   ComponentResidentShare, ComponentResidentObserved, ComponentResidentBoundedAbove,
   ComponentResidentUnderivable, ComponentNotDecomposedHere,
@@ -811,6 +813,41 @@ fn context_b() -> RouteSubjectKey {
   route_subject_key(consumer: fixture_relation(), context_digest: "tp4-x2-ctx128k")
 }
 
+// ── THE BUDGET FIXTURES: THE CAPACITY THE ROUTE SCREEN IS RUN AGAINST ──────────────────────────
+//
+// These stand in for what the serving consumer derives from a real candidate. They are fixtures so a
+// control can move ONE quantity -- the bytes available on a rank -- and observe the verdict change,
+// which is what makes the memory screen an executing wall rather than a described one.
+fn budget_of(context: RouteSubjectKey, ranks: Nat, available: Nat) -> ComponentMemoryBudget {
+  ComponentBudgetEstablished {
+    subject: context,
+    rank_count: ranks,
+    per_rank_bytes_available: byte_size(count: available),
+    authority: fixture_relation(),
+    how: "fixture capacity" as NonEmptyStr,
+  }
+}
+
+fn budget_unknown(context: RouteSubjectKey) -> ComponentMemoryBudget {
+  ComponentBudgetUnestablished { subject: context, obligation: "fixture: no capacity reading" as NonEmptyStr }
+}
+
+// THE ENGRAM FLOOR ON ONE RANK, TAKEN FROM THE SAME DECLARED-BYTES ACCESSOR THE AXIS READS, so a
+// control can bracket the verdict from both sides rather than comparing against a number typed into
+// this file. Zero is returned only if the component's population is unestablished, which would itself
+// fail the closure controls above, so a control using this can distinguish the two.
+fn engram_per_rank_floor(ranks: Nat) -> Nat {
+  match component_subject_declared_bytes(s: engram_component_standing) {
+    Absent => 0
+    Present { value: total } =>
+      if ranks == 0 {
+        byte_size_count(b: byte_size(count: 0))
+      } else {
+        byte_size_count(b: measure_scale_fraction_ceil(m: total, num: 1, den: ranks))
+      }
+  }
+}
+
 // A READING FROM ANOTHER TOPOLOGY IS REFUSED, AND REFUSED DIFFERENTLY FROM AN ABSENT ONE. The two
 // need opposite remedies, so they are two arms rather than one miss.
 test fn foreign_profile_evidence_refuses_and_is_not_the_same_as_absent() -> Bool {
@@ -902,6 +939,10 @@ fn fixture_evidence(
   )
 }
 
+// THE BUDGET THIS HELPER SUPPLIES IS UNESTABLISHED ON PURPOSE. Its callers are asking about route
+// SHAPE and evidence lookup, not about capacity, so handing them a budget would add a second moving
+// part to controls that are not about memory. An unestablished budget leaves the memory axis unread,
+// which is exactly the neutral state those controls want.
 fn entry_for(route: MaterializationRoute, rows: List<RouteEvidence>, ctx: RouteSubjectKey) -> ParetoEntry {
   project_route_candidate(
     c: route_candidate(route: route, artifact: engram_published_artifact, faithfulness: engram_published_faithfulness),
@@ -910,6 +951,7 @@ fn entry_for(route: MaterializationRoute, rows: List<RouteEvidence>, ctx: RouteS
     admitted_provider_ids: engram_admitted_provider_ids,
     rows: rows,
     wanted: ctx,
+    budget: budget_unknown(context: ctx),
   )
 }
 
@@ -981,20 +1023,142 @@ test fn an_unmeasured_route_gaps_the_resident_axis_rather_than_scoring_zero() ->
 
 // ── THE LIVE ROUTE DECISION, AND WHAT IT CORRECTLY ANSWERS TODAY ───────────────────────────────
 
-test fn the_live_engram_route_selection_needs_evidence_rather_than_picking_a_winner() -> Bool {
+// THE LIVE ANSWER IS NOW A SCOPED NEGATIVE, AND THAT IS A CHANGE OF FACT RATHER THAN OF ASSERTION.
+// This witness previously required `SelectionNeedsEvidence`, which was the correct answer while nobody
+// had read the runtime and no capacity was supplied: three routes were open questions and the fourth
+// had no budget to be screened against. Both inputs now exist -- the image's Engram placement setting
+// has been read, and the consumer supplies a per-rank budget -- so every candidate is excluded on
+// evidence and the result is `NoFeasibleRealization`.
+//
+// IT ASSERTS THE ARM AND THE CAUSE COUNT, NOT ONE CAUSE'S TEXT. Four candidates are excluded, so the
+// spine emits at least four causes; requiring a substring of any of them would make this a change
+// detector over prose the exclusion fold owns.
+test fn the_live_engram_route_selection_is_a_scoped_negative_on_this_runtime_and_capacity() -> Bool {
   match select_component_route(
     field: engram_route_field,
     standing: engram_component_standing,
     rows: engram_route_evidence_rows(context: context_a()),
     context: context_a(),
-    evidence_snapshot: engram_route_evidence_snapshot) {
-    SelectionNeedsEvidence { needs: ns } => count(ns) > 0
+    evidence_snapshot: engram_route_evidence_snapshot,
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1)) {
+    NoFeasibleRealization { causes: cs } => count(cs) >= 4
+    SelectionNeedsEvidence { needs: _ } => false
     SelectedWithin { candidate: _, receipt: _ } => false
     SelectionNeedsPolicy { survivors: _ } => false
-    NoFeasibleRealization { causes: _ } => false
     CandidateFieldUnestablished { causes: _ } => false
     RealizationSelectionRefused { defects: _ } => false
   }
+}
+
+// ── THE MEMORY SCREEN IS A WALL THAT MOVES WITH ITS BUDGET, WHICH IS HOW WE KNOW IT RUNS ───────
+//
+// ONE QUANTITY MOVES AND THE VERDICT FOLLOWS. Both halves are necessary: a control that only showed
+// exclusion could be satisfied by a screen that excludes unconditionally, and a control that only
+// showed non-exclusion could be satisfied by one that never fires. The floor is derived from the
+// component's own declared bytes, so neither arm is comparing against a number typed here.
+//
+// AND THE GENEROUS ARM DOES NOT ASSERT A WINNER. Raising the budget above the floor removes THIS
+// exclusion and nothing else: the other five constraints still have no readings, so the honest result
+// there is an evidence need. Requiring `SelectedWithin` would be requiring the rest of the evidence
+// this cut deliberately does not have.
+//
+// THE GENEROUS ARM ALSO CARRIES A SECOND WALL, AND IT IS THE ONE THE BRIEF ASKS FOR BY NAME: that an
+// established mechanism absence excludes ONLY the routes it was established for. Routes B, C and D are
+// excluded here by a real established absence -- the image's Engram placement is memory-backed -- and
+// route A needs no such mechanism. If that absence leaked onto A, the field would be empty and this arm
+// would read `NoFeasibleRealization` instead of an evidence need. So the arm is not merely "no winner":
+// it is evidence that three exclusions did not become four.
+test fn the_per_rank_memory_screen_excludes_only_when_the_floor_exceeds_the_budget() -> Bool {
+  let tight = select_component_route(
+    field: engram_route_field,
+    standing: engram_component_standing,
+    rows: engram_route_evidence_rows(context: context_a()),
+    context: context_a(),
+    evidence_snapshot: engram_route_evidence_snapshot,
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))
+  let roomy = select_component_route(
+    field: engram_route_field,
+    standing: engram_component_standing,
+    rows: engram_route_evidence_rows(context: context_a()),
+    context: context_a(),
+    evidence_snapshot: engram_route_evidence_snapshot,
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4)))
+  engram_per_rank_floor(ranks: 4) > 0
+    && match tight {
+      NoFeasibleRealization { causes: _ } => true
+      SelectionNeedsEvidence { needs: _ } => false
+      SelectedWithin { candidate: _, receipt: _ } => false
+      SelectionNeedsPolicy { survivors: _ } => false
+      CandidateFieldUnestablished { causes: _ } => false
+      RealizationSelectionRefused { defects: _ } => false
+    }
+    && match roomy {
+      SelectionNeedsEvidence { needs: _ } => true
+      NoFeasibleRealization { causes: _ } => false
+      SelectedWithin { candidate: _, receipt: _ } => false
+      SelectionNeedsPolicy { survivors: _ } => false
+      CandidateFieldUnestablished { causes: _ } => false
+      RealizationSelectionRefused { defects: _ } => false
+    }
+}
+
+// AN UNKNOWN BUDGET IS AN EVIDENCE OBLIGATION AND NEVER A PERMISSIVE CEILING. This is the fail-open
+// arm the coproduct exists to prevent: if the unestablished budget produced a bound instead of no
+// reading, route A would be screened against a fabricated capacity. The assertion is that the result
+// is an evidence need -- not an exclusion either, because an absent capacity establishes nothing about
+// whether the component fits.
+test fn an_unestablished_budget_neither_admits_nor_excludes() -> Bool {
+  match select_component_route(
+    field: engram_route_field,
+    standing: engram_component_standing,
+    rows: engram_route_evidence_rows(context: context_a()),
+    context: context_a(),
+    evidence_snapshot: engram_route_evidence_snapshot,
+    budget: budget_unknown(context: context_a())) {
+    SelectionNeedsEvidence { needs: ns } => count(ns) > 0
+    NoFeasibleRealization { causes: _ } => false
+    SelectedWithin { candidate: _, receipt: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+// A BUDGET DERIVED UNDER ANOTHER TOPOLOGY IS REFUSED, NOT APPLIED. The numbers in a foreign budget are
+// honest and their binding is wrong -- the same distinction the foreign-profile evidence arm makes one
+// layer down. A budget tight enough to exclude under context A must NOT exclude under context B when it
+// is offered there, because it is not a fact about context B at all.
+test fn a_foreign_context_budget_is_refused_rather_than_priced() -> Bool {
+  match select_component_route(
+    field: engram_route_field,
+    standing: engram_component_standing,
+    rows: engram_route_evidence_rows(context: context_b()),
+    context: context_b(),
+    evidence_snapshot: engram_route_evidence_snapshot,
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1)) {
+    SelectionNeedsEvidence { needs: ns } => count(ns) > 0
+    NoFeasibleRealization { causes: _ } => false
+    SelectedWithin { candidate: _, receipt: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    CandidateFieldUnestablished { causes: _ } => false
+    RealizationSelectionRefused { defects: _ } => false
+  }
+}
+
+// THE REUSE KEY INCLUDES THE BUDGET, and this is the equality that makes that possible. Two budgets
+// differing only in available bytes are NOT the same input, so a table keyed on them cannot serve one
+// candidate's verdict for another's capacity.
+test fn budget_equality_separates_two_capacities_and_two_contexts() -> Bool {
+  let b1 = budget_of(context: context_a(), ranks: 4, available: 100)
+  let b2 = budget_of(context: context_a(), ranks: 4, available: 101)
+  let b3 = budget_of(context: context_b(), ranks: 4, available: 100)
+  let b4 = budget_of(context: context_a(), ranks: 8, available: 100)
+  component_budget_eq(a: b1, b: b1)
+    && !component_budget_eq(a: b1, b: b2)
+    && !component_budget_eq(a: b1, b: b3)
+    && !component_budget_eq(a: b1, b: b4)
+    && !component_budget_eq(a: b1, b: budget_unknown(context: context_a()))
+    && component_budget_eq(a: budget_unknown(context: context_a()), b: budget_unknown(context: context_a()))
 }
 
 // AND NO ARM OF THAT RESULT YIELDS A RESIDENT SHARE. The bytes a component keeps resident are
@@ -1006,20 +1170,25 @@ test fn the_live_engram_route_selection_needs_evidence_rather_than_picking_a_win
 // is no longer reachable through this producer at all: it is reserved for a component declared
 // `ComponentResident`, where no route question was ever asked.
 test fn an_undecided_route_contributes_an_obligation_and_never_zero_bytes() -> Bool {
-  match component_resident_share(s: engram_route_standing(component: engram_component_identity, context: context_a())) {
+  match component_resident_share(s: engram_route_standing(
+    component: engram_component_identity,
+    context: context_a(),
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))) {
     ComponentResidentUnderivable { because: _ } => true
     ComponentResidentObserved { bytes: _, receipt: _, route: _ } => false
     ComponentResidentBoundedAbove { upper_bound: _, authority: _, route: _ } => false
     ComponentNotDecomposedHere => false
   } && match engram_route_standing(
     component: fixture_foreign_component_subject(),
-    context: context_a()) {
+    context: context_a(),
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1)) {
     ComponentRouteSubjectHasNoAuthority { component: _, context: _ } => true
     ComponentRouteNotThisSubject => false
     ComponentRouteDecided { component: _, context: _, result: _, routes: _, evidence: _ } => false
   } && match component_resident_share(s: engram_route_standing(
     component: fixture_foreign_component_subject(),
-    context: context_a())) {
+    context: context_a(),
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))) {
     ComponentResidentUnderivable { because: _ } => true
     ComponentNotDecomposedHere => false
     ComponentResidentObserved { bytes: _, receipt: _, route: _ } => false
@@ -1030,8 +1199,14 @@ test fn an_undecided_route_contributes_an_obligation_and_never_zero_bytes() -> B
 // EVERY DECLARED ROUTE IS EVALUATED UNDER THE CONTEXT IT WAS ASKED ABOUT, and a different context
 // is a different decision rather than the same one reused.
 test fn the_route_decision_is_parameterized_by_the_consumer_context() -> Bool {
-  let a = engram_route_standing(component: engram_component_identity, context: context_a())
-  let b = engram_route_standing(component: engram_component_identity, context: context_b())
+  let a = engram_route_standing(
+    component: engram_component_identity,
+    context: context_a(),
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))
+  let b = engram_route_standing(
+    component: engram_component_identity,
+    context: context_b(),
+    budget: budget_of(context: context_b(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))
   match a {
     ComponentRouteDecided { component: _, context: ca, result: _, routes: rs, evidence: _ } =>
       count(rs) == 4 && ca.context_digest == "tp8-x1-ctx300k"
@@ -1072,6 +1247,7 @@ fn complete_entry(identity: DeclarationRef, label: NonEmptyStr, resident: Int, n
       AxisReading { axis: ax_route_nonresident_mechanism, interval_micro: unit_point(v: 1) },
       AxisReading { axis: ax_route_runtime_observed, interval_micro: unit_point(v: 1) },
       AxisReading { axis: ax_route_resident_bytes, interval_micro: unit_point(v: resident) },
+      AxisReading { axis: ax_route_per_rank_resident_lower_bound, interval_micro: unit_point(v: 1) },
       AxisReading { axis: ax_route_fill_cost, interval_micro: unit_point(v: 1) },
       AxisReading { axis: ax_route_token_time_access_cost, interval_micro: unit_point(v: 1) },
       AxisReading { axis: ax_route_network_bytes, interval_micro: unit_point(v: network) },
@@ -1179,15 +1355,32 @@ test fn every_candidate_violating_a_hard_constraint_is_infeasible_not_refused() 
 // the red for the defect that shipped in the first cut of this integration: the axis scored 1 for
 // "not excluded yet", so `scan_feasibility` never named it and the product-root control passed for
 // unrelated reasons. Three states, three answers, and only the settled one scores.
+// THE OPEN STATE IS STILL REACHABLE AND THIS CONTROL NOW NAMES WHAT REACHES IT. It used to reach the
+// open state through the live standing, because the live standing WAS open. It no longer is: with a read
+// runtime and a supplied capacity the live answer is an exclusion. The open state is reached today by an
+// unsupplied capacity, so that is the input this control uses -- the subject it was written for is the
+// three-way distinction between open, settled and excluded, and that subject is unchanged.
 test fn an_open_route_question_is_absent_rather_than_scoring_not_yet_excluded() -> Bool {
-  match component_route_placement_standing(s: engram_route_standing(component: engram_component_identity, context: context_a())) {
+  match component_route_placement_standing(s: engram_route_standing(
+    component: engram_component_identity,
+    context: context_a(),
+    budget: budget_unknown(context: context_a()))) {
     ComponentPlacementOpen { remedy: _ } => true
     ComponentPlacementSettled { selected: _, receipt: _ } => false
     ComponentPlacementNotThisSubject => false
     ComponentPlacementExcluded { causes: _ } => false
   } && match component_route_placement_standing(s: engram_route_standing(
+    component: engram_component_identity,
+    context: context_a(),
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))) {
+    ComponentPlacementExcluded { causes: cs } => count(cs) >= 4
+    ComponentPlacementOpen { remedy: _ } => false
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+  } && match component_route_placement_standing(s: engram_route_standing(
     component: fixture_foreign_component_subject(),
-    context: context_a())) {
+    context: context_a(),
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))) {
     ComponentPlacementOpen { remedy: r } => placement_remedy_is_defect(r: r)
     ComponentPlacementNotThisSubject => false
     ComponentPlacementSettled { selected: _, receipt: _ } => false
@@ -1242,7 +1435,8 @@ test fn a_half_read_population_needs_evidence_rather_than_reporting_no_feasible_
     standing: half_read_component_standing(),
     rows: engram_route_evidence_rows(context: context_a()),
     context: context_a(),
-    evidence_snapshot: engram_route_evidence_snapshot) {
+    evidence_snapshot: engram_route_evidence_snapshot,
+    budget: budget_unknown(context: context_a())) {
     SelectionNeedsEvidence { needs: ns } => count(ns) > 0
     NoFeasibleRealization { causes: _ } => false
     SelectedWithin { candidate: _, receipt: _ } => false
@@ -1777,9 +1971,15 @@ test fn the_safetensors_spec_module_cites_its_source_and_admits_an_unpinned_vers
 // that input -- it cannot see an obligation missing from the input altogether. So the intended subjects
 // are declared here and joined to the enrolled rows in BOTH directions, and
 // `a_deferral_account_missing_a_subject_is_refused` is the discriminating negative.
+// THE MECHANISM SUBJECT IS GONE FROM THIS ROSTER BECAUSE ITS OBLIGATION WAS DISCHARGED, not because the
+// roster was made to agree with the code. The obligation was "whether the published image can serve this
+// component from a storage tier is unread"; the image has been read, so the deferral no longer exists and
+// a row still claiming it would be a false statement that work remains. What replaced it is a different
+// subject -- the storage routes returning to the field under a runtime that can execute them -- and it is
+// enrolled below under its own declaration.
 data expected_engram_deferral_subjects: List<String> = [
   "engram_route_evidence_rows",
-  "engram_nonresident_mechanism_obligation",
+  "engram_mechanism_standing_for",
   "engram_resident_provider",
   "component_route_assessment",
 ]
@@ -1910,7 +2110,10 @@ test fn a_launch_receipt_for_another_route_or_provider_does_not_satisfy_this_one
 // component's whole declared footprint.
 test fn a_routed_subject_no_authority_covers_is_open_and_defective() -> Bool {
   let unknown = fixture_uncovered_component_subject()
-  let st = engram_route_standing(component: unknown, context: context_a())
+  let st = engram_route_standing(
+    component: unknown,
+    context: context_a(),
+    budget: budget_of(context: context_a(), ranks: 4, available: engram_per_rank_floor(ranks: 4) - 1))
   match st {
     ComponentRouteSubjectHasNoAuthority { component: c, context: _ } => declaration_ref_eq(a: c, b: unknown)
     ComponentRouteNotThisSubject => false

@@ -2,7 +2,7 @@ module gunbc.spark.pair_serving_observed
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
-import std.measure { Millisecond, millisecond, TokenCount, token_count }
+import std.measure { Millisecond, millisecond, TokenCount, token_count, ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size, measure_scale_fraction_floor }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
@@ -279,6 +279,57 @@ fn fabric_group_same(a: FabricGroup, b: FabricGroup) -> Bool {
 
 fn group_kv_pool_observed(group: FabricGroup) -> GroupKvPoolObserved? {
   first(filter(group_kv_pools_observed, r => fabric_group_same(a: r.group, b: group)))
+}
+
+// ── WHAT A RANK ACTUALLY HAS FREE WHEN IDLE, WHICH IS NOT total_memory AND NOT A FRACTION OF IT ──
+//
+// THREE QUANTITIES THAT ARE ROUTINELY CONFLATED, and this module carries only the third. The DEVICE
+// TOTAL is a hardware property and lives on gunbc.spark.serving_deployment_selection FleetSnapshot.
+// A REQUESTED ENVELOPE is total x --gpu-memory-utilization and is a launch parameter, not a reading.
+// IDLE FREE is what the runtime found unallocated on an idle rank, and it is smaller than the total
+// by whatever the driver, the CUDA context and the container already hold -- an amount no fraction
+// of the total predicts. A lower-bound feasibility screen wants THIS one, because it is the only one
+// of the three that is an observation of the machine rather than a property or a request.
+//
+// THE PRECISION IS THE REPORTER'S AND THE ROW SAYS SO. The runtime prints one decimal of GiB, so the
+// reading is 116.9 GiB and its true value lies within about 0.05 GiB of that. The byte figure below
+// is DERIVED from the reported GiB by std.measure rather than transcribed as a product, so a reader
+// who disputes the conversion can re-derive it; and any consumer comparing against it must be able
+// to survive the 0.05 GiB uncertainty, which is a fact about the reading, not a caveat to be dropped
+// once it is inconvenient. Rounding is GENEROUS here in the direction that matters: 116.9 is at most
+// 0.05 GiB above the truth, so a shortfall larger than that is established rather than borderline.
+type GroupRankFreeMemoryObserved {
+  group: FabricGroup
+  reported_free_wire: NonEmptyStr
+  reported_free_gib_tenths: Nat
+  probed_at: NonEmptyStr
+  instrument: NonEmptyStr
+  precision_caveat: NonEmptyStr
+}
+
+data group_rank_free_memory_observed: List<GroupRankFreeMemoryObserved> = [
+  GroupRankFreeMemoryObserved {
+    group: FabricGroupA,
+    reported_free_wire: "116.9 GiB free per rank with the engine idle" as NonEmptyStr,
+    reported_free_gib_tenths: 1169,
+    probed_at: "2026-09-12" as NonEmptyStr,
+    instrument: "the serving runtime's own memory-profiling line on an idle Group A rank during the V4.1 Flash rollout, read from the head's captured stdout; NVML refuses this query on unified memory and must not be substituted for it" as NonEmptyStr,
+    precision_caveat: "the runtime reports one decimal of GiB, so the true free value lies within about 0.05 GiB of this figure; a verdict drawn against this bound must exceed that uncertainty to be established rather than borderline" as NonEmptyStr,
+  },
+]
+
+// ONE TENTH OF A GIBIBYTE IS NOT A BYTE COUNT ANYONE SHOULD TYPE. The reported figure is tenths of
+// GiB, so the byte value is a std.measure scaling of a Gibibyte measure and not a hand-multiplied
+// literal -- the same reason this module records a source line rather than a retyped number.
+fn group_rank_free_memory_bytes(r: GroupRankFreeMemoryObserved) -> ByteSize {
+  measure_scale_fraction_floor(
+    m: gibibyte_to_byte_size(g: gibibyte(count: r.reported_free_gib_tenths)),
+    num: 1,
+    den: 10)
+}
+
+fn group_rank_free_memory(group: FabricGroup) -> GroupRankFreeMemoryObserved? {
+  first(filter(group_rank_free_memory_observed, r => fabric_group_same(a: r.group, b: group)))
 }
 
 // The head host of the first pair as observed: the unit and the serve process are on srv6, and the

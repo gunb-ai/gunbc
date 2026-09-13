@@ -77,7 +77,7 @@ import gunbc.spark.serving_deployment_selection {
   footprint_bytes, component_route_reading,
   route_obligation_marker, route_obligation_cause, route_obligation_prefix, id_route_consumer,
   candidate_route_context, CandidateComponentRoutes,
-  routed_candidates, RoutedCandidate,
+  routed_candidates, RoutedCandidate, candidate_component_route_standings,
   FootprintObservedOnFleet, FootprintReportedExternally, FootprintUnread, ArtifactFootprint,
   kv_bytes_per_token_standing, KvBytesPerTokenUnestablished, KvBytesPerTokenNotThisSubject,
   v4_1_gb10_kv_layout, v4_1_runtime_published_arm64, v4_1_selection_constraints,
@@ -89,6 +89,8 @@ import gunbc.fabric.engram_materialization {
   component_route_standing_component, component_route_standing_context, route_subject_key_eq,
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority,
   ComponentRouteDecided,
+  ComponentRoutePlacementStanding, ComponentPlacementSettled, ComponentPlacementNotThisSubject,
+  ComponentPlacementExcluded, ComponentPlacementOpen, component_route_placement_standing,
 }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_safetensors_index_total_size }
 import extdeps.vllm.deepseek_v4_1_sm12 {
@@ -1251,6 +1253,65 @@ test fn the_live_v4_1_serving_decision_reports_a_route_produced_obligation() -> 
     NoFeasibleServingDeployment { causes: _ } => false
     ServingDeploymentSelectionRefused { defects: _ } => false
   }
+}
+
+// ── THE MEMORY SCREEN IS PER-CANDIDATE, AND THE DISCRIMINATING PAIR PROVES IT ──────────────────
+//
+// THIS IS THE CONTROL THE BRIEF'S "DO NOT PICK ONE GLOBAL ENGRAM ROUTE" REQUIREMENT NEEDS, and it is a
+// pair rather than a single assertion because either half alone is satisfiable by a defect. A
+// TP4 exclusion alone is satisfied by a screen that excludes unconditionally; a TP8 non-exclusion alone
+// is satisfied by a screen that never fires. Only the pair establishes that the verdict is a function of
+// the candidate.
+//
+// WHY THE TWO TOPOLOGIES DISAGREE, stated so a reader does not have to re-derive it: the component's
+// resident FLOOR is divided by the ranks that share it, while the bytes free on a rank are not. At TP4
+// the Engram floor per rank exceeds what the artifact's other components leave free on a rank, and at
+// TP8 it does not. That is the whole reason topology is part of this question, and it is why the
+// operator's TP4 Group A verdict is NOT a fact about the checkpoint in general.
+//
+// AND THIS IS WHY THE PRODUCT-ROOT WITNESS ABOVE STILL REPORTS AN EVIDENCE NEED rather than an infeasible
+// field. The live domain enumerates every tp from 1 to the fleet host count, so candidates at TP5 and
+// above survive the memory screen on their own arithmetic. What would exclude THEM is host admissibility
+// -- four hosts hold this subject's deployment -- and that is the separately outstanding host-commitment
+// integration, not something this cut may settle privately. So the scoped negative is exactly that:
+// scoped, per candidate, and the field-wide answer remains open for a reason this change names.
+fn v41_candidate_at_tp(tp: Nat, replicas: Nat, name: String) -> DeploymentCandidate {
+  cand(name: name, art: artifact_deepseek_v4_1_flash_native, t: topology_shape(tensor_parallel_degree: tp, replica_count: replicas))
+}
+
+fn engram_placements_of(c: DeploymentCandidate) -> List<ComponentRoutePlacementStanding> {
+  map(
+    filter(candidate_component_route_standings(c: c, p: c.profile),
+      st => declaration_ref_eq(a: component_route_standing_component(s: st), b: engram_component_identity)),
+    st => component_route_placement_standing(s: st))
+}
+
+fn any_placement_excluded(ps: List<ComponentRoutePlacementStanding>) -> Bool {
+  any(ps, pl => match pl {
+    ComponentPlacementExcluded { causes: _ } => true
+    ComponentPlacementOpen { remedy: _ } => false
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+  })
+}
+
+fn any_placement_open(ps: List<ComponentRoutePlacementStanding>) -> Bool {
+  any(ps, pl => match pl {
+    ComponentPlacementOpen { remedy: _ } => true
+    ComponentPlacementExcluded { causes: _ } => false
+    ComponentPlacementSettled { selected: _, receipt: _ } => false
+    ComponentPlacementNotThisSubject => false
+  })
+}
+
+test fn the_engram_memory_screen_excludes_the_tp4_candidate_and_not_the_tp8_one() -> Bool {
+  let tp4 = engram_placements_of(c: v41_candidate_at_tp(tp: 4, replicas: 2, name: "screen_tp4"))
+  let tp8 = engram_placements_of(c: v41_candidate_at_tp(tp: 8, replicas: 1, name: "screen_tp8"))
+  count(tp4) == 1
+    && count(tp8) == 1
+    && any_placement_excluded(ps: tp4)
+    && !any_placement_excluded(ps: tp8)
+    && any_placement_open(ps: tp8)
 }
 
 // THE DISCONNECTION NEGATIVE. This is what the field looks like when the route contribution is gone

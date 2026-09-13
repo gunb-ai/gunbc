@@ -51,6 +51,10 @@ import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
+import gunbc.spark.pair_serving_observed {
+  GroupRankFreeMemoryObserved, group_rank_free_memory, group_rank_free_memory_bytes,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.fabric.engram_materialization {
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority, ComponentRouteDecided,
   ComponentResidentShare, ComponentResidentObserved, ComponentResidentBoundedAbove,
@@ -64,6 +68,7 @@ import gunbc.fabric.engram_materialization {
   PlacementRemedy, PlacementNeedsRouteEvidence, PlacementNeedsPolicy,
   PlacementNeedsCandidateFieldRepair, PlacementSelectionDefective, PlacementSubjectHasNoRouteAuthority,
   engram_route_standing, engram_component_identity,
+  ComponentMemoryBudget, ComponentBudgetEstablished, ComponentBudgetUnestablished, component_budget_eq,
   engram_pool_relief, engram_route_a_resident,
   PoolReliefStanding, NoPoolReliefEveryHopInMemoryPool, PoolReliefBoundedByWorkingSet, PoolReliefNeedsWorkingSetEvidence,
 }
@@ -1130,6 +1135,121 @@ fn candidate_route_context(c: DeploymentCandidate, p: ServingDecisionParameters)
   )
 }
 
+// ── WHAT THIS COMPONENT MAY OCCUPY ON ONE RANK, WHICH ONLY THIS LAYER CAN COMPUTE ──────────────
+//
+// The route authority owns the comparison; this owns the capacity, because the budget depends on facts
+// the route authority cannot see: how many ranks this candidate has, and how much of each rank the
+// artifact's OTHER components have already committed. Passing a verdict down instead of a budget would
+// put a second copy of the feasibility decision here.
+//
+// THREE DIRECTIONS OF ERROR, AND ALL THREE ARE CLOSED TOWARD UNDER-REFUSING. This budget feeds a screen
+// that can only rule a route OUT, so every approximation is taken in the direction that makes the
+// budget LARGER and the exclusion harder to reach -- an exclusion drawn against a generous budget is
+// established, while one drawn against a tight budget might be an artefact of the approximation.
+//   (1) The free-memory reading is the observed idle free, not total memory and not total x the
+//       requested utilisation fraction. Of the three it is the largest that is actually available, and
+//       it is a reading rather than a parameter.
+//   (2) Sibling components are subtracted at their reported footprint, which for an upstream-reported
+//       size is a floor on what they really occupy -- so the remainder is a ceiling on what is left.
+//   (3) A sibling whose footprint is UNREAD contributes nothing to the subtraction, which overstates
+//       the budget further. This is the one approximation that looks like the prohibited move of
+//       treating an unmeasured quantity as zero, and it is the opposite: a zero here makes the budget
+//       bigger and the screen weaker, so it can only cause a missed exclusion, never a false one. The
+//       count of such siblings travels in the budget's own `how` so a reader can see the screen was
+//       weakened and by how many terms.
+//
+// AND THE READING'S OWN GRAIN IS STATED RATHER THAN QUIETLY WIDENED. The idle-free figure was read on a
+// Group A rank; this module does not model which fabric group a candidate lands on, so the reading is
+// applied at exactly the grain `spark_fleet_snapshot` already applies its own single-host reading at.
+// That is a real limit, not a derivation, and it is a frontier row rather than a silence.
+fn sibling_footprint_bytes(cp: ArtifactComponent, c: DeploymentCandidate) -> Nat {
+  fold(c.artifact.components, init: 0, f: (acc, other) =>
+    if declaration_ref_eq(a: other.identity, b: cp.identity) {
+      acc
+    } else {
+      match other.footprint {
+        FootprintObservedOnFleet { bytes: b, how: _ } => acc + byte_size_count(b: b)
+        FootprintReportedExternally { bytes: b, source: _ } => acc + byte_size_count(b: b)
+        FootprintUnread { obligation: _ } => acc
+      }
+    })
+}
+
+fn sibling_footprints_unread(cp: ArtifactComponent, c: DeploymentCandidate) -> Nat {
+  count(filter(c.artifact.components, other =>
+    !declaration_ref_eq(a: other.identity, b: cp.identity) && footprint_is_unread(f: other.footprint)))
+}
+
+fn footprint_is_unread(f: ArtifactFootprint) -> Bool {
+  match f {
+    FootprintUnread { obligation: _ } => true
+    FootprintObservedOnFleet { bytes: _, how: _ } => false
+    FootprintReportedExternally { bytes: _, source: _ } => false
+  }
+}
+
+data id_component_budget_authority: DeclarationRef = decl_ref(
+  module_path: "gunbc.spark.serving_deployment_selection",
+  decl_name: "candidate_component_budget")
+
+fn candidate_component_budget(
+  cp: ArtifactComponent,
+  c: DeploymentCandidate,
+  p: ServingDecisionParameters,
+) -> ComponentMemoryBudget {
+  let ctx = candidate_route_context(c: c, p: p)
+  match group_rank_free_memory(group: FabricGroupA) {
+    Absent => ComponentBudgetUnestablished {
+      subject: ctx,
+      obligation: "no idle free-memory reading exists for a rank of this fleet, so the bytes available to a routed component are unknown; total device memory is a hardware property and the requested utilisation fraction is a launch parameter, and neither is a reading of what a rank actually has free" as NonEmptyStr,
+    }
+    Present { value: free } =>
+      if c.topology.tensor_parallel_degree == 0 {
+        ComponentBudgetUnestablished {
+          subject: ctx,
+          obligation: "this candidate declares zero tensor-parallel ranks, so there is no per-rank budget to derive" as NonEmptyStr,
+        }
+      } else {
+        match per_rank_bytes_ceiling(total: byte_size(count: sibling_footprint_bytes(cp: cp, c: c)), ranks: c.topology.tensor_parallel_degree) {
+          Absent => ComponentBudgetUnestablished {
+            subject: ctx,
+            obligation: "the per-rank share of this artifact's other components is underivable, so no budget follows" as NonEmptyStr,
+          }
+          Present { value: siblings_per_rank } =>
+            match measure_sub(a: group_rank_free_memory_bytes(r: free), b: siblings_per_rank) {
+              MeasureSubtrahendExceedsMinuend => ComponentBudgetEstablished {
+                subject: ctx,
+                rank_count: c.topology.tensor_parallel_degree,
+                per_rank_bytes_available: byte_size(count: 0),
+                authority: id_component_budget_authority,
+                how: join([
+                  "this artifact's OTHER components already require more than a rank has free (",
+                  to_string(byte_size_count(b: siblings_per_rank)), " bytes per rank against ",
+                  free.reported_free_wire as String,
+                  "), so nothing remains for this component on any route. Zero here is a DERIVED remainder, not a missing measurement",
+                ], "") as NonEmptyStr,
+              }
+              MeasureDifference { value: avail } => ComponentBudgetEstablished {
+                subject: ctx,
+                rank_count: c.topology.tensor_parallel_degree,
+                per_rank_bytes_available: avail,
+                authority: id_component_budget_authority,
+                how: join([
+                  "observed idle free per rank (", free.reported_free_wire as String,
+                  ", ", free.instrument as String, ") minus the per-rank ceiling of this artifact's other components (",
+                  to_string(byte_size_count(b: siblings_per_rank)), " bytes across ",
+                  to_string(c.topology.tensor_parallel_degree), " ranks). ",
+                  free.precision_caveat as String,
+                  ". Siblings with no read footprint: ", to_string(sibling_footprints_unread(cp: cp, c: c)),
+                  " -- each contributes zero to the subtraction, which OVERSTATES this budget and can only weaken the screen",
+                ], "") as NonEmptyStr,
+              }
+            }
+        }
+      }
+  }
+}
+
 fn component_route_standing_for(
   cp: ArtifactComponent,
   c: DeploymentCandidate,
@@ -1138,7 +1258,10 @@ fn component_route_standing_for(
   match cp.placement {
     ComponentResident => ComponentRouteNotThisSubject
     ComponentPlacedByRoute { component_subject: subj } =>
-      engram_route_standing(component: subj, context: candidate_route_context(c: c, p: p))
+      engram_route_standing(
+        component: subj,
+        context: candidate_route_context(c: c, p: p),
+        budget: candidate_component_budget(cp: cp, c: c, p: p))
   }
 }
 
@@ -1914,11 +2037,26 @@ data route_context_replica_count_obligation: FrontierRow = frontier_row_decl(
 type ResolvedRouteDemand sole_constructor {
   component: DeclarationRef
   context: RouteSubjectKey
+  budget: ComponentMemoryBudget
   standing: ComponentRouteStanding
 }
 
-fn route_demand_matches(d: ResolvedRouteDemand, component: DeclarationRef, context: RouteSubjectKey) -> Bool {
-  declaration_ref_eq(a: d.component, b: component) && route_subject_key_eq(a: d.context, b: context)
+// THE BUDGET IS PART OF THE KEY, NOT AN INCIDENTAL PAYLOAD. A route standing is the same fact only for
+// the same capacity -- the memory screen's whole purpose is that the answer moves with the budget -- so
+// reusing a row across two different budgets would return one candidate's verdict under another
+// candidate's capacity. Today the context digest already carries the artifact and the rank count, which
+// are what the budget is derived from, so a disagreement is not reachable; keying on it anyway costs one
+// comparison and means the table stays correct if either derivation changes, instead of depending on a
+// coincidence between two functions that no longer have to agree.
+fn route_demand_matches(
+  d: ResolvedRouteDemand,
+  component: DeclarationRef,
+  context: RouteSubjectKey,
+  budget: ComponentMemoryBudget,
+) -> Bool {
+  declaration_ref_eq(a: d.component, b: component)
+    && route_subject_key_eq(a: d.context, b: context)
+    && component_budget_eq(a: d.budget, b: budget)
 }
 
 fn resolved_route_demands(field: ServingDeploymentCandidateField) -> List<ResolvedRouteDemand> {
@@ -1936,13 +2074,15 @@ fn route_demand_accumulate(
     ComponentResident => acc
     ComponentPlacedByRoute { component_subject: subj } => {
       let ctx = candidate_route_context(c: c, p: c.profile)
-      if any(acc, d => route_demand_matches(d: d, component: subj, context: ctx)) {
+      let budget = candidate_component_budget(cp: cp, c: c, p: c.profile)
+      if any(acc, d => route_demand_matches(d: d, component: subj, context: ctx, budget: budget)) {
         acc
       } else {
         concat(acc, [ResolvedRouteDemand {
           component: subj,
           context: ctx,
-          standing: engram_route_standing(component: subj, context: ctx),
+          budget: budget,
+          standing: engram_route_standing(component: subj, context: ctx, budget: budget),
         }])
       }
     }
@@ -1964,18 +2104,27 @@ fn candidate_standings_from_demands(
   map(c.artifact.components, cp => match cp.placement {
     ComponentResident => ComponentRouteNotThisSubject
     ComponentPlacedByRoute { component_subject: subj } =>
-      resolved_standing_for(demands: demands, component: subj, context: candidate_route_context(c: c, p: c.profile))
+      resolved_standing_for(
+        demands: demands,
+        component: subj,
+        context: candidate_route_context(c: c, p: c.profile),
+        budget: candidate_component_budget(cp: cp, c: c, p: c.profile))
   })
 }
 
+// THE UNRESOLVED ARM RECOMPUTES WITH THE CALLER'S OWN BUDGET rather than inventing an empty one. It is
+// unreachable -- the table is built by enumerating these same triples -- but if it were reached, the
+// correct answer is the one this candidate's capacity produces, and substituting an unestablished budget
+// would turn an unreachable arm into a silent downgrade of a real verdict to an evidence need.
 fn resolved_standing_for(
   demands: List<ResolvedRouteDemand>,
   component: DeclarationRef,
   context: RouteSubjectKey,
+  budget: ComponentMemoryBudget,
 ) -> ComponentRouteStanding {
-  match (filter(demands, d => route_demand_matches(d: d, component: component, context: context))).first() {
+  match (filter(demands, d => route_demand_matches(d: d, component: component, context: context, budget: budget))).first() {
     Present { value: d } => d.standing
-    Absent => engram_route_standing(component: component, context: context)
+    Absent => engram_route_standing(component: component, context: context, budget: budget)
   }
 }
 
