@@ -52,11 +52,11 @@ fn cross_shard_seam_probe_failed(cause: String) -> CrossShardSeamProbeResult {
   }
 }
 
+// stage == "" is the monolith: PrimaryRoot of the staged dag copy (whole-tree by
+// definition). On a runner with no GUNBC_MEMORY_BUDGET_BYTES that is
+// WholeCorpusCompileBudgetUnreadable / compile_cli_exit_not_executed — RefusedBeforeSubject,
+// not a subject verdict. The live-tree standing is not a required-floor identity.
 fn cross_shard_seam_compile_args(stage: String, broken_dag: String, out_dir: String) -> List<String> {
-  // stage == "" is the monolith: PrimaryRoot of the staged dag copy (whole-tree by
-  // definition). On a runner with no GUNBC_MEMORY_BUDGET_BYTES that is
-  // WholeCorpusCompileBudgetUnreadable / compile_cli_exit_not_executed — RefusedBeforeSubject,
-  // not a subject verdict. The live-tree standing is not a required-floor identity.
   let staged = if stage == "" {
     ["compile"]
   } else {
