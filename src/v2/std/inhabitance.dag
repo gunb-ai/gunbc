@@ -61,15 +61,14 @@ type InhabitanceUndecidableReason
   | UndecidableOptionalCarrier
   | UndecidableFormalUnresolved
   | UndecidableArgumentTypeNotDerived
-  | UndecidableArityShapeUnmodeled
 
 // InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as
 // v2.compiler.infer infer_grounding_not_derived: typed, located, dissolve-on when the missing fact
-// lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation,
-// arity/named-arg shape). It is never a silent admit and never a refusal. Rejected is reserved
-// for both sides derived AND find_witness over the declared singleton refusing. The RFM row's v2
-// arm retires when the frontier count over reached applications is zero on both routes; the
-// count is the census.
+// lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation).
+// It is never a silent admit and never a refusal. Rejected is reserved for both sides derived AND
+// find_witness over the declared singleton refusing, and for decidable positional arity mismatch
+// (exact bijection of formals and positional arguments). The RFM row's v2 arm retires when the
+// frontier count over reached applications is zero on both routes; the count is the census.
 // RUNG PER PATH. Source→interpretation (v2 04_infer consuming declared_type_inhabitance): a
 // decidable incompatible argument refuses; unjudgeable applications are counted. That is the
 // claim, not "every reached application is judged". Native emission is a declared frontier: it
@@ -177,10 +176,6 @@ fn undecidable_argument_type_not_derived() -> InhabitanceUndecidableReason {
   UndecidableArgumentTypeNotDerived
 }
 
-fn undecidable_arity_shape_unmodeled() -> InhabitanceUndecidableReason {
-  UndecidableArityShapeUnmodeled
-}
-
 fn inhabitance_undecidable_reason_symbol(
   reason: InhabitanceUndecidableReason
 ) -> Symbol {
@@ -189,7 +184,6 @@ fn inhabitance_undecidable_reason_symbol(
     UndecidableOptionalCarrier => ^inhabitance_undecidable_optional_carrier
     UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
     UndecidableArgumentTypeNotDerived => ^inhabitance_undecidable_argument_type_not_derived
-    UndecidableArityShapeUnmodeled => ^inhabitance_undecidable_arity_shape_unmodeled
   }
 }
 
@@ -199,6 +193,31 @@ fn inhabitance_undecidable_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: inhabitance_undecidable_reason_symbol(reason: reason),
+    at: node_locus(node: application),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn application_positional_surplus_reason() -> Symbol {
+  ^application_positional_surplus
+}
+
+fn application_positional_deficit_reason() -> Symbol {
+  ^application_positional_deficit
+}
+
+fn application_positional_arity_mismatch_diagnostic(
+  application: Node,
+  formal_count: Int,
+  argument_count: Int
+) -> Diagnostic {
+  Diagnostic {
+    reason:
+      if argument_count > formal_count {
+        application_positional_surplus_reason()
+      } else {
+        application_positional_deficit_reason()
+      },
     at: node_locus(node: application),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

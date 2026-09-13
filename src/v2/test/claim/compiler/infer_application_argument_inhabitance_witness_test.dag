@@ -271,13 +271,13 @@ test fn infer_optional_carrier_is_counted_frontier_holds() -> Bool {
   }
 }
 
-test fn infer_arity_shape_unmodeled_is_counted_frontier_holds() -> Bool {
+test fn infer_positional_surplus_refuses_holds() -> Bool {
   match infer(tree: inhabitance_arity_unmodeled_tree()) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
       inhabitance_diagnostics_has_reason(
-        d: d,
-        reason: ^inhabitance_undecidable_arity_shape_unmodeled
+        d: Some { diagnostics: nds },
+        reason: ^application_positional_surplus
       )
   }
 }

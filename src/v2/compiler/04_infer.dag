@@ -54,11 +54,11 @@ import v2.std.inhabitance {
   InhabitanceUndecidableReason,
   InhabitanceVerdict,
   application_argument_does_not_inhabit_diagnostic,
+  application_positional_arity_mismatch_diagnostic,
   declared_type_inhabitance,
   inhabitance_undecidable_diagnostic,
   position_direct_call_argument,
   undecidable_argument_type_not_derived,
-  undecidable_arity_shape_unmodeled,
   undecidable_formal_unresolved
 }
 import v2.std.diagnostic {
@@ -1700,9 +1700,12 @@ fn infer_application_argument_inhabitance(
     Present { value: formals } =>
       let args = infer_transform_argument_targets(node: node)
       if length(xs: formals) != length(xs: args) {
-        infer_inhabitance_undecidable_accepted(
-          application: node,
-          reason: undecidable_arity_shape_unmodeled()
+        outcome_rejected(
+          application_positional_arity_mismatch_diagnostic(
+            application: node,
+            formal_count: length(xs: formals),
+            argument_count: length(xs: args)
+          )
         )
       } else {
         fold(
