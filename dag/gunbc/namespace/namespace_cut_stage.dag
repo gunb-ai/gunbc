@@ -139,13 +139,11 @@ fn namespace_cut_stage_is(a: NamespaceCutStage, b: NamespaceCutStage) -> Bool {
 // distinction, expressed as a missing field rather than as a rule about when to trust a field.
 // ---------------------------------------------------------------------------------------------
 type StageDeliveryEvidenceKind
-  = DenominatorRosterInstrumentDelivered
-  | RehearsalInstrumentDelivered
+  = RehearsalInstrumentDelivered
   | ReferenceGraphInstrumentDelivered
 
 fn stage_delivery_evidence_label(k: StageDeliveryEvidenceKind) -> String {
   match k {
-    DenominatorRosterInstrumentDelivered => "XL-0 repair-input origin roster instrument delivered and discriminated once"
     RehearsalInstrumentDelivered => "XL-2 rehearsal instrument delivered and discriminated once"
     ReferenceGraphInstrumentDelivered => "XL-4 reference-graph instrument delivered and discriminated once"
   }
@@ -161,13 +159,20 @@ type StageDeliveryReceipt {
 }
 
 data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
-  DenominatorRosterInstrumentDelivered,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
 ]
 
-// XL-0 IS NOT DELIVERED. THE RECEIPT THAT STOOD HERE WAS WITHDRAWN, BY EXECUTION, BEFORE IT EVER
-// LANDED ON MAIN.
+// XL-0 OWES NO DELIVERY RECEIPT AND HAS NO DELIVERY KIND ON THIS CHANNEL. Both the receipt and the
+// KIND were withdrawn; an earlier revision of this change removed the receipt and left
+// DenominatorRosterInstrumentDelivered standing in the type and in the required roster with NOTHING
+// READING IT. That is the attractor the withdrawal existed to kill: two answers to "is XL-0's
+// instrument ready?" -- a required delivery kind no standing consults, beside the MissingInstrument
+// cause StageXL0Denominator actually cites. DESIGN section 3, one fact one place. XL-0's readiness
+// is the instrument question and nothing else; if it ever owes this channel, the kind comes back
+// WITH the standing that reads it, in the same change.
+//
+// THE RECEIPT THAT STOOD HERE WAS WITHDRAWN, BY EXECUTION, BEFORE IT EVER LANDED ON MAIN.
 //
 // WHAT IT CLAIMED: that v2.compiler.repair_input_origin_roster had been delivered and discriminated
 // once. WHAT WAS TRUE: it had been discriminated against HAND-BUILT Node trees, and on the tree the
