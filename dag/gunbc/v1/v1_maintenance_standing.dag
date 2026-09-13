@@ -702,7 +702,18 @@ type RefusalClassBoundary {
   authorship_disclosure: NonEmptyStr
 }
 
-// THE ADJUDICATION, fierce-lark-661, relayed through eager-raven-113 on 2026-09-13. Its occasion:
+// THE ADJUDICATION, fierce-lark-661, relayed through eager-raven-113 on 2026-09-13.
+//
+// IT PRESCRIBES ITS FIRST CONDITION RATHER THAN DESCRIBING ESTABLISHED PRACTICE, and that is
+// stated at the top because a reader who takes it the other way will size its enforcement wrongly.
+// Both closed specimens below FAIL condition one: in each, the rows were noticed as CONSUMED by a
+// floor refusal after the carrying change had already landed, and the deletion was written in
+// response -- by 1h09m in one case and 2h24m in the other. That is precisely the practice the
+// condition exists to end. The disposition (a consumed ledger entry, not an escape hatch) IS
+// established by those specimens; the pre-enqueue requirement is not, and nothing underwrites it
+// except gunbc#11250 and the merger.
+//
+// Its occasion:
 // royal-eagle's side chat refused gunbc#11214's fifteen NAMESPACE_TRANSITION_ADMISSIONS rows as
 // NewEscapeHatchOrAdmissionRow on the face of this standing, while the fleet's practice treats
 // those rows as transient. Both readings were defensible on the text, which is why the boundary is
@@ -725,10 +736,12 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
   consumer: "DESIGN section 3c, answered rather than left dangling. Read TODAY by the merger's tally check, which is the route that applies this adjudication when a PR carrying transition rows comes up for landing, and by reviewers classifying such a PR against this standing -- the same review-diligence route DESIGN declares for v1_seed_standing itself, at the same honest rung. It becomes EXECUTED rather than read when gunbc#11250's owner charge lands and the deletion obligation is carried by a mechanism instead of by the merger; that is this row's trigger, and until it fires the rung here is mitigatable and is not claimed higher." as NonEmptyStr,
 
   specimens: [
-    "gunbc#10940's 181 v2-native-route rows: consumed by their own merge (6c7b081961), deleted by gunbc#11156's THIRTY-SEVENTH dissolution. Both conditions met." as NonEmptyStr,
-    "gunbc#11156's 2 Filesystem/Clock rows: consumed by their own merge (d7b7ab96c1f), deleted by gunbc#11240 as a dedicated two-row change. Both conditions met." as NonEmptyStr,
-    "gunbc#11214's 15 rows: PENDING, with its follow-up authored. Recorded as pending rather than as a third success, because a specimen whose conditions have not both fired yet is evidence of the practice and not of the discharge." as NonEmptyStr,
+    "gunbc#10940's 181 v2-native-route rows: consumed by their own merge (6c7b081961, merged 2026-09-12T22:45:52Z) and deleted by gunbc#11156. CONDITION ONE NOT MET: the deletion was authored in commit a5bc810f68 at 2026-09-12T23:55:07Z, one hour and nine minutes AFTER the carrier merged -- so after it was enqueued, which is the opposite of what the condition requires. Condition two met: the deletion landed." as NonEmptyStr,
+    "gunbc#11156's 2 Filesystem/Clock rows: consumed by their own merge (d7b7ab96c1f, merged 2026-09-13T02:50:04Z) and deleted by gunbc#11240. CONDITION ONE NOT MET: #11240's deletion was authored at 2026-09-13T05:14:49Z, two hours and twenty-four minutes AFTER the carrier merged. Condition two met: it landed at 6e70be25146." as NonEmptyStr,
+    "gunbc#11214's 15 rows: PENDING, follow-up authored, neither condition resolved yet." as NonEmptyStr,
+    "SO THIS BOUNDARY PRESCRIBES ITS FIRST CONDITION RATHER THAN ADJUDICATING IT, and the specimens are what establish that rather than what hide it. NOT ONE measured specimen authored its deletion before the carrying change was enqueued: in both closed cases the rows were noticed as CONSUMED by a floor refusal after the carrier had already landed, and the follow-up was written in response. That is the practice the condition exists to end, so the evidence here shows the condition is NEW. What the specimens DO establish is condition two -- both deletions landed, promptly and by the authoring lane -- and that the disposition is sound: in both cases the rows were consumed by their own merge and nothing outlived the change that needed them." as NonEmptyStr,
+    "THE CONSEQUENCE FOR ENFORCEMENT, stated here because a reader who takes the specimens as precedent will size it wrongly: a condition with no precedent is carried ENTIRELY by gunbc#11250's owner charge and by the merger until it lands. There is no established practice underwriting condition one, so nothing absorbs a lapse if that charge is not built." as NonEmptyStr,
   ],
 
-  authorship_disclosure: "TWO OF THE THREE SPECIMENS ARE THIS AUTHOR'S OWN WORK: witty-moth-510 authored gunbc#11156's two rows and gunbc#11240's deletion of them, and authored the deletion of gunbc#10940's 181. A boundary whose evidence is mostly its author's own practice should say so where a reader meets it, because the alternative is a rule that looks corroborated and is largely self-cited. The adjudication is fierce-lark-661's; the specimens are not independent of the person recording them." as NonEmptyStr,
+  authorship_disclosure: "THE TWO SPECIMENS THIS AUTHOR CONTRIBUTED ARE THE TWO THAT FAIL CONDITION ONE, which is the disclosure that matters more than the authorship itself: the practice this row would have been read as codifying is this author's own practice, and it does not meet the condition. TWO OF THE THREE SPECIMENS ARE THIS AUTHOR'S OWN WORK: witty-moth-510 authored gunbc#11156's two rows and gunbc#11240's deletion of them, and authored the deletion of gunbc#10940's 181. A boundary whose evidence is mostly its author's own practice should say so where a reader meets it, because the alternative is a rule that looks corroborated and is largely self-cited. The adjudication is fierce-lark-661's; the specimens are not independent of the person recording them." as NonEmptyStr,
 }
