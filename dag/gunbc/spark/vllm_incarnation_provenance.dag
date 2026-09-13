@@ -8,6 +8,7 @@ import gunbc.serving.incarnation_provenance {
   ServingSourceResolution, ServingRuntimeResolution,
   resolve_serving_source, resolve_serving_runtime,
 }
+import extdeps.docker.container_inspect { go_template_action }
 import gunbc.spark.remote_execution {
   SparkRemoteExecutionContext, spark_exec, remote_run_succeeded, remote_run_stdout, remote_run_text,
 }
@@ -172,7 +173,7 @@ fn checkpoint_revision_rung(repo: NonEmptyStr, revision: NonEmptyStr) -> Serving
 
 func observe_serving_source(
   ctx: SparkRemoteExecutionContext, host: HostIdentity,
-  snapshot_dir: NonEmptyStr, repo: NonEmptyStr, revision: NonEmptyStr,
+  snapshot_dir: NonEmptyStr, repo: NonEmptyStr, revision: NonEmptyStr, container: NonEmptyStr,
 ) -> ServingSourceResolution
   uses net: Network
 {
@@ -182,7 +183,9 @@ func observe_serving_source(
     tokenizer: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_tokenizer),
     tokenizer_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_tokenizer_config),
     special_tokens: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_special_tokens),
-    chat_template: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_chat_template),
+    chat_template: observe_effective_chat_template(
+      ctx: ctx, host: host, snapshot_dir: snapshot_dir,
+      origin: observe_chat_template_origin(ctx: ctx, host: host, snapshot_dir: snapshot_dir, container: container)),
     model_side_code: observe_model_side_code(ctx: ctx, host: host, snapshot_dir: snapshot_dir),
     generation_defaults: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_generation_defaults),
     processor_config: observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: snapshot_member_processor_config),
@@ -203,7 +206,7 @@ func observe_serving_source(
 // population here. Absent means "no runtime artifact outside the image", not "no extensions".
 fn runtime_image_id_argv(container: NonEmptyStr) -> List<String> {
   ["sh", "-c", join([
-    "docker inspect -f '{{.Image}}' ", container as String, " | sed 's/^sha256://'",
+    "docker inspect -f '", go_template_action(body: ".Image"), "' ", container as String, " | sed 's/^sha256://'",
   ], "")]
 }
 
@@ -265,6 +268,7 @@ func observe_glm_incarnation(ctx: SparkRemoteExecutionContext) -> ProcessExit
   let source = observe_serving_source(
     ctx: ctx, host: glm_native_provenance_host,
     snapshot_dir: glm_native_snapshot_dir, repo: glm_native_repo, revision: glm_native_revision,
+    container: glm_native_container,
   )
   let runtime = observe_serving_runtime(
     ctx: ctx, host: glm_native_provenance_host, container: glm_native_container,
@@ -439,4 +443,128 @@ fn incarnation_for_launch(
   candidates: List<VllmServingIncarnationProvenance>, launch: VllmEndpointProcessLaunch,
 ) -> VllmServingIncarnationProvenance? {
   filter(candidates, p => incarnation_applies_to(p: p, launch: launch)).first()
+}
+
+
+// ── WHICH TEMPLATE THE LAUNCH ACTUALLY USES, NOT EVERY TEMPLATE-SHAPED FILE PRESENT ────────────
+//
+// HASHING chat_template.jinja BECAUSE IT IS THERE IS NOT THE SAME QUESTION. A snapshot may carry a
+// template the launch never selects, a launch may override it on the command line, and a tokenizer
+// configuration may carry one inline -- and the source identity must name the one that SHAPED THE
+// REQUEST. The previous observation read the repository file unconditionally, which happens to be
+// right on this deployment and would be silently wrong on the next.
+//
+// IDENTITY IS THE SELECTED TEMPLATE'S CONTENT AND ORIGIN IS EVIDENCE BESIDE IT. Two launches whose
+// effective templates are byte-identical compute the same thing whichever path the bytes came from,
+// so origin must not enter the coordinate; what origin answers is how a reader would reproduce the
+// selection, which is a different question from what the engine did.
+//
+// AMBIGUITY REFUSES RATHER THAN PICKING. More than one template-shaped file with nothing selecting
+// between them is a question this observer cannot answer, and answering it by convention -- first
+// alphabetically, or the one matching a known name -- would be a fabricated plausible output.
+type ChatTemplateOrigin
+  = TemplateFromLaunchOverride { path: NonEmptyStr }
+  | TemplateFromRepositoryFile { path: NonEmptyStr }
+  | TemplateInheritedFromTokenizerConfig
+  | TemplateSelectionAmbiguous { candidates: Nat }
+  | TemplateOriginUnestablished { cause: NonEmptyStr }
+
+fn chat_template_origin_wire(origin: ChatTemplateOrigin) -> NonEmptyStr {
+  match origin {
+    TemplateFromLaunchOverride { path: p } =>
+      join(["selected by the launch line: ", p as String], "") as NonEmptyStr
+    TemplateFromRepositoryFile { path: p } =>
+      join(["the repository's own template file: ", p as String], "") as NonEmptyStr
+    TemplateInheritedFromTokenizerConfig =>
+      "inherited from the tokenizer configuration, whose digest is its own coordinate" as NonEmptyStr
+    TemplateSelectionAmbiguous { candidates: n } =>
+      join([to_string(n), " template-shaped files and nothing selecting between them"], "") as NonEmptyStr
+    TemplateOriginUnestablished { cause: c } => c
+  }
+}
+
+// THE LAUNCH LINE IS READ FIRST BECAUSE IT WINS. An override names a path that need not be inside the
+// snapshot at all, so the selection is decided before anything looks at the repository population.
+fn launch_chat_template_override_argv(container: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "docker inspect -f '", go_template_action(body: "json .Config.Cmd"), "' ", container as String,
+    " | tr ',' '\\n' | grep -A1 -- '--chat-template' | tail -1 | tr -d '\"[] '",
+  ], "")]
+}
+
+fn snapshot_template_candidates_argv(snapshot_dir: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "ls ", snapshot_dir as String, " 2>/dev/null | grep -ci template",
+  ], "")]
+}
+
+fn tokenizer_config_carries_template_argv(snapshot_dir: NonEmptyStr) -> List<String> {
+  ["sh", "-c", join([
+    "grep -c '\"chat_template\"' ", snapshot_dir as String, "/tokenizer_config.json 2>/dev/null || echo 0",
+  ], "")]
+}
+
+func observe_chat_template_origin(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr, container: NonEmptyStr,
+) -> ChatTemplateOrigin
+  uses net: Network
+{
+  let override = spark_exec(ctx: ctx, host: host, argv: launch_chat_template_override_argv(container: container))
+  if !remote_run_succeeded(r: override) {
+    TemplateOriginUnestablished { cause: "the launch line could not be read for a chat-template override" as NonEmptyStr }
+  } else {
+    if remote_run_stdout(r: override) != "" {
+      TemplateFromLaunchOverride { path: remote_run_stdout(r: override) as NonEmptyStr }
+    } else {
+      let candidates = spark_exec(ctx: ctx, host: host, argv: snapshot_template_candidates_argv(snapshot_dir: snapshot_dir))
+      if !remote_run_succeeded(r: candidates) {
+        TemplateOriginUnestablished { cause: "the snapshot's template population could not be counted" as NonEmptyStr }
+      } else {
+        if remote_run_stdout(r: candidates) == "1" {
+          TemplateFromRepositoryFile { path: snapshot_member_chat_template }
+        } else {
+          if remote_run_stdout(r: candidates) == "0" {
+            let inherited = spark_exec(ctx: ctx, host: host, argv: tokenizer_config_carries_template_argv(snapshot_dir: snapshot_dir))
+            if !remote_run_succeeded(r: inherited) {
+              TemplateOriginUnestablished { cause: "the tokenizer configuration could not be read for an inline template" as NonEmptyStr }
+            } else {
+              if remote_run_stdout(r: inherited) == "0" {
+                TemplateOriginUnestablished { cause: "no template was found in the launch line, the repository or the tokenizer configuration" as NonEmptyStr }
+              } else {
+                TemplateInheritedFromTokenizerConfig
+              }
+            }
+          } else {
+            TemplateSelectionAmbiguous { candidates: 2 }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE COORDINATE FOLLOWS THE SELECTION. An inherited template is AbsentByObservation on this axis and
+// is covered by the tokenizer-configuration coordinate that actually contains it -- the same shape the
+// special-token axis takes in this layout -- while an ambiguous or unestablished selection refuses, so
+// no manifest is built over a template nobody identified.
+func observe_effective_chat_template(
+  ctx: SparkRemoteExecutionContext, host: HostIdentity, snapshot_dir: NonEmptyStr, origin: ChatTemplateOrigin,
+) -> ServingCoordinateReading
+  uses net: Network
+{
+  match origin {
+    TemplateFromLaunchOverride { path: p } =>
+      observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: p)
+    TemplateFromRepositoryFile { path: p } =>
+      observe_snapshot_member(ctx: ctx, host: host, snapshot_dir: snapshot_dir, member: p)
+    TemplateInheritedFromTokenizerConfig => CoordinateAbsentByObservation
+    TemplateSelectionAmbiguous { candidates: n } =>
+      CoordinateUnestablished {
+        obligation: join([
+          "the effective chat template is ambiguous: ",
+          chat_template_origin_wire(origin: TemplateSelectionAmbiguous { candidates: n }) as String,
+        ], "") as NonEmptyStr,
+      }
+    TemplateOriginUnestablished { cause: c } => CoordinateUnestablished { obligation: c }
+  }
 }
