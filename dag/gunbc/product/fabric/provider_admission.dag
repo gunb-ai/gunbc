@@ -43,11 +43,11 @@ import product.fabric.provider_route {
 // stays dead. Reporting this module's class as structural on the strength of the selection path
 // alone would be rung inflation, since a class's rung is the MINIMUM across its in-scope paths.
 //
-// NOT YET CONSUMED, and named so it is not read as covered: the permit is not recorded on
-// ExecutionGrant, so a grant gates on admission without carrying evidence of it and an auditor
-// reading a grant alone cannot re-derive which posture revision admitted it. TRIGGER: ExecutionGrant
-// gaining a permit field SUFFICIENT FOR a grant to name its own admitting posture revision and route
-// without consulting the candidate that produced it.
+// CONSUMED ON THE GRANT. ExecutionGrant carries the permit as its own field, so an auditor
+// reading a grant alone can re-derive the admitting posture revision, the route-facts revision and
+// the route without consulting the candidate that produced it. product.fabric.execution names
+// the three projections. Issuance still takes the permit as a parameter rather than a
+// CandidateOffer: residual capability ONE in grant_issue remains open.
 
 // STATED DIVERGENCE FROM std.scoped_authorization (DESIGN section 3b). That module already models
 // a permit-shaped answer - AuthorizationDecision<Subject> is Permitted { grant } | Refused { cause }
