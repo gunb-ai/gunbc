@@ -1,0 +1,93 @@
+module product.fabric.offer_route
+
+import std.types { Bool, List }
+import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
+import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, provider_route_eq }
+
+// THE JOIN NOBODY OWNED: FROM AN OFFER IDENTITY TO THE ROUTE FACTS THAT GOVERN IT.
+//
+// product.fabric.provider_admission's admit_provider_use takes ProviderRouteFacts as a GIVEN. Every
+// caller therefore had to answer "which route facts govern this offer" on its own, and there was no
+// typed answer for the case that decides most real populations: WE HAVE NO ROUTE FACTS FOR THIS
+// OFFER AT ALL. That case is not ProviderRouteUnclassified - unclassified means facts exist and no
+// sanction covers them, and its remedy is to sanction the route. The remedy here is different and
+// earlier: go and observe the provider's data paths. Reporting one as the other names the wrong
+// thing to go and do, which DESIGN section 5 rules is a fabricated diagnosis rather than a located
+// one.
+//
+// WHY THIS IS PUBLIC AND WHY IT IS THE SHAPE ONLY. Which route an offer runs on, and what that
+// route's data paths are, are facts about the PROVIDER, so by DESIGN section 3 they belong beside
+// the offers and the routes rather than inside a buyer's strategy module. But DESIGN's external
+// upstream decomposition equally forbids a generic hub from enumerating concrete products: this
+// module therefore declares the correspondence and its refusals, and enumerates no vendor, no sku
+// and no region. The ROSTER is a parameter. Whose offers are in it, and which of them we presently
+// choose to consider, is a policy fact owned by whoever is buying.
+//
+// THERE IS NO DEFAULT ARM AND NO "ASSUME THE OFFER'S OWN ROUTE" ARM. Reading the route off the
+// offer and proceeding would make the offer the authority on its own compliance standing, which is
+// the supplier-declares-its-own-sanction inversion product.fabric.provider_route exists to refuse.
+// The offer's route is an input to be CHECKED against the facts row, never a substitute for it.
+type OfferRouteRow<P> {
+  offer: FabricIdentity<P, OfferKey>
+  facts: ProviderRouteFacts
+}
+
+// FOUR ARMS, THREE OF THEM REFUSALS, AND EACH REFUSAL IS A DIFFERENT THING TO GO AND DO.
+//
+// OfferRouteNotModeled: nobody has read this provider's data paths. Go and read them.
+// OfferRouteAmbiguous: two rows answer for one offer identity and they disagree about the route.
+//   Taking the first would let roster ORDER decide a compliance question, so it refuses and hands
+//   back every route claimed, because the remedy is to settle which one is true.
+// OfferRouteFactsNameAnotherRoute: a facts row exists but governs a different route than the offer
+//   says it runs on. That is a wiring fault - real facts carried onto the wrong offer - and it is
+//   exactly the disagreement the route field on SupplierOffer exists to make expressible.
+type OfferRouteCorrespondence<P>
+  = OfferRouteModeled { facts: ProviderRouteFacts }
+  | OfferRouteNotModeled { offer: FabricIdentity<P, OfferKey> }
+  | OfferRouteAmbiguous { offer: FabricIdentity<P, OfferKey>, claimed: List<ProviderRoute> }
+  | OfferRouteFactsNameAnotherRoute { facts_route: ProviderRoute, offer_route: ProviderRoute }
+
+fn rows_for_offer<P>(
+  roster: List<OfferRouteRow<P>>,
+  offer: FabricIdentity<P, OfferKey>,
+) -> List<OfferRouteRow<P>> {
+  filter(roster, r => fabric_identity_eq(left: r.offer, right: offer))
+}
+
+fn claimed_routes<P>(rows: List<OfferRouteRow<P>>) -> List<ProviderRoute> {
+  map(rows, r => r.facts.route)
+}
+
+fn rows_naming_another_route<P>(
+  rows: List<OfferRouteRow<P>>,
+  route: ProviderRoute,
+) -> List<OfferRouteRow<P>> {
+  filter(rows, r => !provider_route_eq(a: r.facts.route, b: route))
+}
+
+// THE ORDER OF THE THREE CHECKS IS FIXED AND IS NOT ARBITRARY. Ambiguity is answered FIRST because
+// an ambiguous roster cannot answer anything else honestly: whichever row the mismatch check read
+// would be the row roster order happened to put first. Only once the roster speaks with one voice
+// is it meaningful to ask whether that voice names the offer's own route.
+//
+// The offer's route arrives as a PARAMETER rather than being read from a SupplierOffer, so this
+// module does not import the supply carrier to read one field - the same reason
+// product.fabric.provider_admission's permit_standing takes an identity and a route.
+fn correspond_offer_route<P>(
+  roster: List<OfferRouteRow<P>>,
+  offer: FabricIdentity<P, OfferKey>,
+  route: ProviderRoute,
+) -> OfferRouteCorrespondence<P> {
+  let rows = rows_for_offer(roster: roster, offer: offer)
+  match rows.first() {
+    Absent => OfferRouteNotModeled { offer: offer }
+    Present { value: row } =>
+      if count(rows_naming_another_route(rows: rows, route: row.facts.route)) > 0 {
+        OfferRouteAmbiguous { offer: offer, claimed: claimed_routes(rows: rows) }
+      } else if !provider_route_eq(a: row.facts.route, b: route) {
+        OfferRouteFactsNameAnotherRoute { facts_route: row.facts.route, offer_route: route }
+      } else {
+        OfferRouteModeled { facts: row.facts }
+      }
+  }
+}
