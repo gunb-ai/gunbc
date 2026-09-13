@@ -527,6 +527,26 @@ fn coverage_observation_index(
   )
 }
 
+// PRESENT, EXECUTED AND SATISFIED ARE THREE FACTS, AND THIS FOLD SEPARATES ONLY THE FIRST TWO.
+// A row's existence says the obligation was named; a positive count says something ran. Neither says
+// the run was ACCEPTED, and `RequiredLensCoverageRow` carries no field that could: it is lens, grain
+// and count. At the door that gap is closed by construction rather than by a check -- a rejected gate
+// returns `outcome_rejected` and no `Validated` is minted, so a `RequiredLensCoverageClosed` the door
+// produced cannot describe a failed lens. At promotion the receipt is submitter-authored, so that
+// construction does not carry: nothing here can distinguish a closed coverage the door minted from
+// one authored beside it, and the count cannot be read as a verdict.
+//
+// What IS separated: the generation. The coverage carries its own `subject` and is joined to the
+// promotion subject through `stale_causes_for`, so a count belonging to a different generation is
+// refused as a stale receipt rather than counted here. What is NOT separated is the ATTEMPT -- no
+// carrier in this module identifies which run produced an observation, so two attempts of the same
+// generation are indistinguishable.
+//
+// NEXT-RUNG TRIGGER, stated rather than left implicit: a per-row observed RESULT and an attempt
+// identity on `RequiredLensCoverageRow`, minted by the door. Until that lands, the honest rung for
+// "the required lenses were satisfied" is the one this fold establishes -- named and executed -- and
+// this annotation exists so the count is not read as more than that.
+//
 // A ROW IS NOT AN EXECUTION, AND THE COUNT IS THE DIFFERENCE. `RequiredLensCoverageRow` carries
 // `observations` because the door's obligation is at-least-one per registration -- it refuses
 // `RegistrationUnobserved` there. An earlier revision of this fold decided coverage by the PRESENCE
