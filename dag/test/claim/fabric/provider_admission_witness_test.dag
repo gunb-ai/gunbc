@@ -311,7 +311,7 @@ fn decide(
 fn refusal_tag(c: ProviderUseRefusal) -> String {
   match c {
     ProviderRouteUnclassified { route } => "route-unclassified",
-    ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => "facts-incomplete",
     DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
     PostureRevisionStale { evaluated, active } => "posture-stale",
     CustomerScopeUnsupported { cause } => "customer-unsupported",
@@ -328,7 +328,7 @@ fn refusal_tag(c: ProviderUseRefusal) -> String {
 fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
   match c {
     ProviderRouteUnclassified { route } => [],
-    ProviderRouteFactsIncomplete { route, obligation } => [obligation],
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => [obligation],
     DownstreamProviderUnassessed { obligation } => [obligation],
     PostureRevisionStale { evaluated, active } => [],
     CustomerScopeUnsupported { cause } => [cause],
@@ -337,6 +337,21 @@ fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
     ProhibitedUseNotCleared { obligation } => [obligation],
     SanctionsNotCleared { obligation } => [obligation],
     ExportNotCleared { obligation } => [obligation],
+  }
+}
+
+fn refusal_consulted(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => consulted,
+    DownstreamProviderUnassessed { obligation } => [],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [],
+    DataHandlingUnsupported { cause } => [],
+    RequiredAgreementAuthorityAbsent { accepted } => [],
+    ProhibitedUseNotCleared { obligation } => [],
+    SanctionsNotCleared { obligation } => [],
+    ExportNotCleared { obligation } => [],
   }
 }
 
@@ -368,6 +383,13 @@ fn denied_tagged(a: ProviderUseAdmission<NonEmptyStr>, tag: String) -> Bool {
   match a {
     ProviderUseAdmitted { permit } => false,
     ProviderUseDenied { decision, cause } => refusal_tag(c: cause) == tag,
+  }
+}
+
+fn admission_consulted(a: ProviderUseAdmission<NonEmptyStr>) -> List<DeclarationRef> {
+  match a {
+    ProviderUseAdmitted { permit } => [],
+    ProviderUseDenied { decision, cause } => refusal_consulted(c: cause),
   }
 }
 
@@ -415,18 +437,20 @@ test fn w_same_provider_two_regions_differ() -> Bool {
 
 // RED - unread telemetry refuses AND the refusal names the TELEMETRY obligation, not the
 // provider row. Naming the provider would keep the category right and the remedy wrong.
+// RED - unread telemetry refuses AND the refusal names the TELEMETRY obligation, not the
+// provider row. Naming the provider would keep the category right and the remedy wrong.
+// consulted ON THE REFUSAL IS EMPTY: this closure is never-looked, so the live denial must
+// tell a caller to go read something rather than to stop re-reading the same pages.
 test fn w_unread_telemetry_names_its_obligation() -> Bool {
-  denied_with(
-    a: decide(
-      route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
-      paths: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
-      downstream: no_downstream(),
-      active: posture(seed: "posture-r1"),
-      scope: scope_ordinary(),
-    ),
-    tag: "facts-incomplete",
-    located: telemetry_obligation(),
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
   )
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
+    && count(admission_consulted(a: a)) == 0
 }
 
 // RED - an unread downstream population refuses and names ITS OWN obligation. A provider's
@@ -625,44 +649,64 @@ test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
 
 test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool {
   let paths = closure_telemetry_researched_unread(where_it_is: w_jurisdiction_one())
-  let consulted = first_unread_consulted_citations(c: paths)
-  count(first_unresolved_obligation(c: paths)) == 1
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: paths,
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  )
+  let consulted = admission_consulted(a: a)
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
     && count(hetzner_published_readings()) == 2
     && count(consulted) == 2
     && consulted_cites(consulted: consulted, expected: tom_reading_ref())
     && consulted_cites(consulted: consulted, expected: dpo_reading_ref())
-    && denied_with(
-      a: decide(
-        route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
-        paths: paths,
-        downstream: no_downstream(),
-        active: posture(seed: "posture-r1"),
-        scope: scope_ordinary(),
-      ),
-      tag: "facts-incomplete",
-      located: telemetry_obligation(),
-    )
 }
 
 test fn w_resolving_wrong_consulted_reading_refuses_the_join() -> Bool {
-  let paths = closure_telemetry_wrong_consulted(where_it_is: w_jurisdiction_one())
-  let consulted = first_unread_consulted_citations(c: paths)
-  count(first_unresolved_obligation(c: paths)) == 1
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: closure_telemetry_wrong_consulted(where_it_is: w_jurisdiction_one()),
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  )
+  let consulted = admission_consulted(a: a)
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
     && count(consulted) == 1
     && !consulted_cites(consulted: consulted, expected: tom_reading_ref())
     && !consulted_cites(consulted: consulted, expected: dpo_reading_ref())
 }
 
 test fn w_never_looked_and_researched_unread_are_not_the_same_citations() -> Bool {
-  count(first_unread_consulted_citations(c: closure_telemetry_unread(where_it_is: w_jurisdiction_one()))) == 0
-    && count(first_unread_consulted_citations(c: closure_telemetry_researched_unread(where_it_is: w_jurisdiction_one()))) == 2
+  count(admission_consulted(a: decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: closure_telemetry_unread(where_it_is: w_jurisdiction_one()),
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  ))) == 0
+    && count(admission_consulted(a: decide(
+      route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+      paths: closure_telemetry_researched_unread(where_it_is: w_jurisdiction_one()),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_ordinary(),
+    ))) == 2
 }
 
 test fn w_later_researched_unread_does_not_fill_a_never_looked_first_path() -> Bool {
   let paths = closure_first_unread_never_looked_later_researched(where_it_is: w_jurisdiction_one())
-  count(first_unresolved_obligation(c: paths)) == 1
-    && count(first_unread_consulted_box(c: paths)) == 1
-    && count(first_unread_consulted_citations(c: paths)) == 0
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: paths,
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  )
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
+    && count(admission_consulted(a: a)) == 0
     && count(path_unread_consulted(p: paths.administrative_access)) == 2
 }
 

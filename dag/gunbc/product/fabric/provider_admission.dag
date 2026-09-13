@@ -7,7 +7,7 @@ import std.access { AccessDecision, access_policy_refusal }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, fabric_identity_eq }
 import product.fabric.provider_route {
   ProviderRoute, provider_route_eq, CompliancePostureRevision, ProviderRouteFacts,
-  first_unresolved_obligation, downstream_obligation,
+  first_unresolved_obligation, downstream_obligation, first_unread_consulted_citations,
 }
 
 // THE MISSING NON-ECONOMIC GATE. The code in this tree that actually places work admits an offer
@@ -202,7 +202,11 @@ type ProviderUsePermit<P> sole_constructor {
 // path in a non-permitted jurisdiction becomes authorable and both arms land with their reds.
 type ProviderUseRefusal
   = ProviderRouteUnclassified { route: ProviderRoute }
-  | ProviderRouteFactsIncomplete { route: ProviderRoute, obligation: DeclarationRef }
+  | ProviderRouteFactsIncomplete {
+      route: ProviderRoute,
+      obligation: DeclarationRef,
+      consulted: List<DeclarationRef>,
+    }
   | DownstreamProviderUnassessed { obligation: DeclarationRef }
   | PostureRevisionStale { evaluated: List<ContentHash>, active: ContentHash }
   | CustomerScopeUnsupported { cause: DeclarationRef }
@@ -229,7 +233,7 @@ type ProviderUseAdmission<P>
 fn refusal_reason(c: ProviderUseRefusal) -> String {
   match c {
     ProviderRouteUnclassified { route } => "route unclassified",
-    ProviderRouteFactsIncomplete { route, obligation } => "route facts incomplete",
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => "route facts incomplete",
     DownstreamProviderUnassessed { obligation } => "downstream unassessed",
     PostureRevisionStale { evaluated, active } => "posture stale",
     CustomerScopeUnsupported { cause } => "customer scope unsupported",
@@ -339,10 +343,25 @@ fn disposition_program_refusal(p: DispositionProgram, obligation: DeclarationRef
 // the coproduct that caused the refusal, so there is no seed anywhere and no arm carries a value
 // that had to be invented to fill a slot. An empty result means the condition does not hold; a
 // one-element result IS the refusal, carrying the obligation its own arm named.
+// THE REFUSAL BUILDERS. Each is a map over a zero-or-one obligation list produced by ONE match of
+// the coproduct that caused the refusal, so there is no seed anywhere and no arm carries a value
+// that had to be invented to fill a slot. An empty result means the condition does not hold; a
+// one-element result IS the refusal, carrying the obligation its own arm named.
+//
+// consulted TRAVELS ON THE FACTS-INCOMPLETE ARM because the remedy differs: empty means go read
+// a source for the first time, nonempty means the published sources have been read and do not
+// answer, so the next step is to ask the provider. first_unread_consulted_citations is the same
+// first-unread walk as first_unresolved_obligation, so the list it returns is the consulted slot
+// of the obligation this refusal names -- not a later path's. This call is the production
+// consumer of that fold (DESIGN section 3c).
 fn path_refusals(facts: ProviderRouteFacts) -> List<ProviderUseRefusal> {
   map(
     first_unresolved_obligation(c: facts.data_paths),
-    o => ProviderRouteFactsIncomplete { route: facts.route, obligation: o },
+    o => ProviderRouteFactsIncomplete {
+      route: facts.route,
+      obligation: o,
+      consulted: first_unread_consulted_citations(c: facts.data_paths),
+    },
   )
 }
 

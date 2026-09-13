@@ -148,7 +148,7 @@ fn decide(agreement: DeclarationRef) -> ProviderUseAdmission<NonEmptyStr> {
 fn accepted_of(c: ProviderUseRefusal) -> List<DeclarationRef> {
   match c {
     ProviderRouteUnclassified { route } => [],
-    ProviderRouteFactsIncomplete { route, obligation } => [],
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => [],
     DownstreamProviderUnassessed { obligation } => [],
     PostureRevisionStale { evaluated, active } => [],
     CustomerScopeUnsupported { cause } => [],

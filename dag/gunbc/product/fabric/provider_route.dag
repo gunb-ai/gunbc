@@ -86,8 +86,11 @@ type CompliancePostureRevision {
 // citation leaked into prose and a reviewer correctly treated the prose as not a consumer.
 // consulted: is the same DeclarationRef vocabulary evidence: already uses (DESIGN section 3:
 // no second citation name). The empty list is NEVER-LOOKED. A nonempty list is RESEARCHED AND
-// UNANSWERED. first_unread_consulted_citations reads the slot, so filling it without a fold
-// that consumes it is the gunbc#11194 shape under another name.
+// UNANSWERED. The production consumer is product.fabric.provider_admission path_refusals,
+// which calls first_unread_consulted_citations and records the list on
+// ProviderRouteFactsIncomplete so a live denial can tell the two remedies apart. Filling the
+// slot without that fold reaching admit_provider_use would be the gunbc#11194 shape under
+// another name.
 type ProviderPathStanding
   = ProviderPathLocated {
       operator: DeclarationRef,
