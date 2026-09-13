@@ -82,3 +82,50 @@ fn yaml_sequence(elements: List<YamlValue>) -> YamlValue {
 fn kv(key: String, value: YamlValue) -> YamlKeyValue {
   YamlKeyValue { key: key, value: value }
 }
+
+// STRUCTURAL EQUALITY OF TWO NODES, the relation a consumer comparing YAML values means - mapping
+// entries compared in order, because this model keeps a mapping as its ordered entry list and two
+// orderings are two different values of it. Scalars compare by their typed payload: the int 22 and
+// the string "22" are different nodes.
+fn yaml_value_eq(a: YamlValue, b: YamlValue) -> Bool {
+  match a {
+    YamlNull => match b { YamlNull => true  _ => false }
+    YamlBool { value: x } => match b { YamlBool { value: y } => x == y  _ => false }
+    YamlInt { lexeme: x } => match b { YamlInt { lexeme: y } => x == y  _ => false }
+    YamlFloat { lexeme: x } => match b { YamlFloat { lexeme: y } => x == y  _ => false }
+    YamlString { value: x } => match b { YamlString { value: y } => x == y  _ => false }
+    YamlSequence { elements: xs } => match b {
+      YamlSequence { elements: ys } => yaml_values_eq(a: xs, b: ys)
+      _ => false
+    }
+    YamlMapping { entries: xs } => match b {
+      YamlMapping { entries: ys } => yaml_key_values_eq(a: xs, b: ys)
+      _ => false
+    }
+  }
+}
+
+fn yaml_values_eq(a: List<YamlValue>, b: List<YamlValue>) -> Bool {
+  (a.length() == b.length())
+    && fold(enumerate(a), init: true, f: (acc, pair) => acc && match b.get(n: pair.first) {
+      Present { value: y } => yaml_value_eq(a: pair.second, b: y)
+      Absent => false
+    })
+}
+
+fn yaml_key_values_eq(a: List<YamlKeyValue>, b: List<YamlKeyValue>) -> Bool {
+  (a.length() == b.length())
+    && fold(enumerate(a), init: true, f: (acc, pair) => acc && match b.get(n: pair.first) {
+      Present { value: y } => (pair.second.key == y.key) && yaml_value_eq(a: pair.second.value, b: y.value)
+      Absent => false
+    })
+}
+
+// The value under a key, or Absent. A mapping with the key twice is not a YAML document the
+// specification admits, and this answers the first occurrence rather than pretending to decide it.
+fn yaml_mapping_lookup(entries: List<YamlKeyValue>, key: String) -> YamlValue? {
+  match filter(entries, e => e.key == key).first() {
+    Present { value: e } => Present { value: e.value }
+    Absent => none
+  }
+}

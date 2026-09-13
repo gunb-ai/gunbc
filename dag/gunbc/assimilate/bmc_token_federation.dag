@@ -197,6 +197,7 @@ fn bmc_checkout_step() -> Step {
 
 fn bmc_token_smoke_job() -> Job {
   Job {
+    strategy: none,
     id: "bmc_token_smoke",
     name: none,
     runner: gunbc_ci_runner_spec(),

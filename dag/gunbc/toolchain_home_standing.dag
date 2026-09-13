@@ -3,7 +3,7 @@ module gunbc.toolchain_home_standing
 import std.types { String, Bool, List }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression,
+  RunnerSpec, HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression,
   setup_rust_action, action_ref_eq
 }
 import v2.workflow.ci_workflow_run_emit {
@@ -141,6 +141,9 @@ fn scan_job_steps(steps: List<Step>) -> ToolchainHomeScan {
 // GitHub expression resolved at dispatch, so this layer cannot decide whether the home persists.
 // Where an expression job installs nothing the question does not arise and it classifies normally;
 // where it installs, the answer is unknown and unknown fails closed.
+// A LITERAL NON-GITHUB LABEL IS UNDECIDABLE FOR THE SAME REASON by a different route: the label may
+// name a third-party provider's fresh machine or a custom label on a persistent self-hosted runner,
+// and the file does not say which.
 fn classify_runner_install(runner: RunnerSpec, job_id: String, isolated: Bool) -> ToolchainHomeClassification {
   match runner {
     HostedRunner { label: _ } =>
@@ -150,6 +153,12 @@ fn classify_runner_install(runner: RunnerSpec, job_id: String, isolated: Bool) -
         ToolchainHomeClassified { job_id: job_id, standing: PrivateMutableHome }
       } else {
         ToolchainHomeUnclassified { job_id: job_id, refusal: ToolchainInstalledIntoSharedHome }
+      }
+    RunsOnLabel { label: _ } =>
+      if isolated {
+        ToolchainHomeClassified { job_id: job_id, standing: PrivateMutableHome }
+      } else {
+        ToolchainHomeUnclassified { job_id: job_id, refusal: ToolchainHomeRunnerKindUndecidable }
       }
     RunsOnExpression { expression: _ } =>
       if isolated {

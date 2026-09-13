@@ -2,7 +2,7 @@ module test.claim.runner_unit_file_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnLabel, RunsOnExpression, UbuntuLatest }
 import extdeps.systemd.unit_file {
   ExitTypeMain,
   KillModeProcess,
@@ -234,6 +234,16 @@ test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> B
   string_contains(s: reason, pattern: "unknown rather than empty")
     && string_contains(s: reason, pattern: "matrix.runner")
     && reason != refusal_reason(spec: HostedRunner { label: UbuntuLatest })
+}
+
+// A single literal label is its own refusal, distinct from both neighbours: fixed in the file like a
+// hosted label, yet without the provenance label that would make it ours.
+test fn a_literal_runs_on_label_refuses_without_self_hosted_provenance() -> Bool {
+  let reason = refusal_reason(spec: RunsOnLabel { label: "depot-ubuntu-24.04-arm" as NonEmptyStr })
+  string_contains(s: reason, pattern: "depot-ubuntu-24.04-arm")
+    && string_contains(s: reason, pattern: "no self-hosted provenance label")
+    && reason != refusal_reason(spec: HostedRunner { label: UbuntuLatest })
+    && reason != refusal_reason(spec: RunsOnExpression { expression: "depot-ubuntu-24.04-arm" })
 }
 
 

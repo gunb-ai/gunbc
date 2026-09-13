@@ -192,6 +192,7 @@ fn fleet_desired_admission_action_step() -> Step {
 // refs/fleet/desired. No other grant is taken.
 fn fleet_desired_admission_job() -> Job {
   Job {
+    strategy: none,
     id: fleet_desired_admission_workflow_job_id,
     name: none,
     runner: gunbc_ci_deploy_srv1_runner_spec(),

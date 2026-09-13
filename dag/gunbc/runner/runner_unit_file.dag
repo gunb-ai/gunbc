@@ -3,7 +3,7 @@ module gunbc.runner_unit_file
 import std.types { String, NonEmptyStr, List, Bool }
 import std.measure { hardware_thread_count_value }
 import std.disposition { Disposition, SingleAuthority }
-import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnLabel, RunsOnExpression }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth }
@@ -124,17 +124,20 @@ fn runner_slot_instance_directory() -> String {
 // the render takes the `RunnerSpec` that `gunbc.ci_deploy_target_host` `host_pinned_runner_spec`
 // derives, and this module spells no label literal.
 //
-// THE TWO NON-SELF-HOSTED SPECS REFUSE, AND THEY REFUSE SEPARATELY, because they are different
+// THE THREE NON-SELF-HOSTED SPECS REFUSE, AND THEY REFUSE SEPARATELY, because they are different
 // facts with different remedies. A hosted-runner spec names a machine GitHub owns -- there is no
 // unit to install and no label set to advertise, so the caller pointed this render at the wrong
 // host. A `runs-on` expression is unresolved at this layer: it may well denote a self-hosted label
 // set, but nothing here has evaluated it, so the honest answer is that the labels are unknown rather
-// than absent. Collapsing them into one absent answer is the not-applicable-rendered-as-malformed
-// conflation, and rendering either as an empty JSON array would silently deliver a runner that
+// than absent. A single literal label is unknown the same way from the other side: it is fixed in
+// the file, but nothing in it says a self-hosted runner of ours is what answers it. Collapsing them
+// into one absent answer is the not-applicable-rendered-as-malformed conflation, and rendering any
+// of them as an empty JSON array would silently deliver a runner that
 // registers with no labels and that no workflow can ever select.
 type RunnerUnitLabelsRendering
   = RunnerUnitLabels { json_text: String }
   | RunnerUnitLabelsHostedRunner
+  | RunnerUnitLabelsUnresolvedLabel { label: NonEmptyStr }
   | RunnerUnitLabelsUnresolvedExpression { expression: String }
 
 fn runner_unit_labels_json(spec: RunnerSpec) -> RunnerUnitLabelsRendering {
@@ -144,6 +147,7 @@ fn runner_unit_labels_json(spec: RunnerSpec) -> RunnerUnitLabelsRendering {
         json_text: serialize_json(v: json_array(elements: map(labels, l => json_string(s: l)))),
       }
     HostedRunner { label: _ } => RunnerUnitLabelsHostedRunner
+    RunsOnLabel { label: l } => RunnerUnitLabelsUnresolvedLabel { label: l }
     RunsOnExpression { expression: e } => RunnerUnitLabelsUnresolvedExpression { expression: e }
   }
 }
@@ -254,6 +258,14 @@ fn runner_unit_file(
     RunnerUnitLabelsHostedRunner =>
       RunnerUnitFileRefused {
         reason: "runner_unit_file: the runner spec names a GitHub-hosted runner, so there is no self-hosted unit to install and no label set to advertise; the render was pointed at the wrong host" as NonEmptyStr,
+      }
+    RunnerUnitLabelsUnresolvedLabel { label: l } =>
+      RunnerUnitFileRefused {
+        reason: join([
+          "runner_unit_file: the runner spec is the single literal label ",
+          l as String,
+          ", which carries no self-hosted provenance label, so whether any unit of ours answers it is not established; name the self-hosted label set before rendering",
+        ], "") as NonEmptyStr,
       }
     RunnerUnitLabelsUnresolvedExpression { expression: e } =>
       RunnerUnitFileRefused {

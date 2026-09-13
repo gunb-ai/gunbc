@@ -22,6 +22,10 @@ data yaml_inline_comment_ingested_as_scalar_content: RecurringFailureMode = Recu
     "Ceiling: structurally guaranteed once comment separation is a lexical production in the YAML grammar, so comment bytes cannot enter scalar content except through quoted or block scalar productions.",
 
     "Next-rung trigger: inline YAML 1.2.2 comment separation modeled lexically rather than recognized by the temporary value-text refusal.",
+
+    "Climbed 2026-09-13: `extdeps.languages.yaml.ingest` now separates comments lexically - `yaml_parse_inline` decides where a scalar ends (a closed quoted scalar, a closed flow collection, or a plain scalar cut at the first separation-preceded `#`), and `yaml_line_is_ignorable` skips comment lines at every indentation outside block scalars. The temporary predicate `yaml_has_unmodeled_inline_comment` is deleted, and the two refusal controls in `test.claim.yaml_ingest_witness` are flipped to separation controls beside a new discriminating case where a `#` not preceded by separation stays content. The trigger was real third-party workflows: three pinned public files (Biome, OpenObserve, PowerDNS) each refused under the interim rung, because pinned `uses:` lines carry `# vX.Y.Z` comments.",
+
+    "Rung after the climb: structurally guaranteed on the ingest path for the productions this reader admits - comment bytes can enter scalar content only through a quoted or block scalar. Evidence: `test.claim.yaml_ingest_witness` and `test.claim.gha_workflow_reverse_read_witness_test` `biome_pinned_action_comment_is_separated_from_the_ref` and `openobserve_shell_comment_inside_a_literal_stays_content`.",
   ],
 
   evidence: [],

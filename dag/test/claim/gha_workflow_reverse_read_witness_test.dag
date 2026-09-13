@@ -1,0 +1,550 @@
+module test.claim.gha_workflow_reverse_read_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlKeyValue, YamlString, YamlInt, YamlMapping, YamlSequence,
+  yaml_string, yaml_int, yaml_mapping, yaml_sequence, kv, yaml_value_eq, yaml_key_values_eq, yaml_mapping_lookup
+}
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.ingest { ingest_yaml_source, yaml_source_parses, IngestedYaml, YamlIngestRejected }
+import extdeps.languages.yaml.gha_workflow { job_yaml }
+import extdeps.languages.yaml.gha_workflow_read {
+  WorkflowJobsRead, WorkflowJobsInterpreted, WorkflowDocumentRefused,
+  JobRead, JobInterpreted, JobUnresolved, JobCallsReusableWorkflow,
+  RunsOnRead, RunsOnInterpreted, RunsOnUnresolved, RunsOnGroupMapping, RunsOnLabelListWithoutSelfHosted,
+  StrategyRead, StrategyAbsent, StrategyInterpreted, StrategyUnresolved,
+  StrategyMatrixUnresolved, MatrixIsExpression, MatrixAxisIsExpression, MatrixOverCombinationLimit,
+  JobInstancesRead, JobInstances, JobInstancesUnknownWhileStrategyUnresolved, JobInstance,
+  InstanceRunnerRead, InstanceRunner, InstanceRunnerUnresolved,
+  InstanceRunnerEvaluationRefused, InstanceRunnerTemplateUnparsed,
+  StepRead, StepInterpreted, StepUnresolved, StepUsesNotARepositoryAction,
+  JobModelRead, JobModelComplete, JobModelIncomplete,
+  read_workflow_jobs, job_read_as_job,
+}
+import extdeps.github.actions {
+  Job, Step, RunStep, UsesStep, ActionRef,
+  RunnerSpec, HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression, UbuntuLatest,
+  JobStrategy, MatrixSpec, MatrixAxis,
+  MatrixExpansion, MatrixCombinations, MatrixCombinationLimitExceeded, matrix_combinations,
+}
+import extdeps.github.expressions { UnmodeledContext, Vars }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CONTROLS FOR THE BOUNDED REVERSE READ OF GITHUB ACTIONS WORKFLOWS (extdeps.languages.yaml
+// gha_workflow_read), the matrix semantics it expands through (extdeps.github.actions
+// matrix_combinations), and the YAML productions real workflows needed (extdeps.languages.yaml.ingest).
+//
+// Every refusal arm is paired with the input that differs from it in the one respect the arm decides,
+// so a reader that refused everything fails the positive half and one that admitted everything fails
+// the refusal half. Matrix expectations are written from the workflow-syntax authority's own worked
+// example, not from this implementation's output.
+//
+// THE REAL-BYTES FIXTURES ARE PINNED PUBLIC WORKFLOW FILES, read through the contents API at an exact
+// commit and checked against their blob sha (git hash-object) before being embedded:
+//   biomejs/biome            .github/workflows/main.yml               @ 47d7383d049b36ff8eaba50912176928143dd9e9  blob 99f1255bbfa20a11197716a8fdb4c4e3359a588b  (whole file)
+//   openobserve/openobserve  .github/workflows/build-pr-image.yml     @ 6a1fc64811abf36424cec2523f0210a8223b19d1  blob 037dec1fc6b583c991c2270927c3ca77bf73173f  (whole file)
+//   PowerDNS/pdns            .github/workflows/build-and-test-all.yml @ 0f2df8380e89bb066e947a5818f6267016847d98  blob f9f3f705735c2fe01922f075194c735246fe97aa  (EXCERPT)
+// The PowerDNS fixture is an excerpt, byte-identical within its ranges: source lines 1-52 (document
+// start, triggers, top-level permissions and env, the get-runner-container-image job) followed
+// directly by lines 208-370 (the build-dnsdist and test-auth-api jobs). Nothing inside a range is
+// altered; the jobs between them are omitted, so this fixture's blob sha is not the file's.
+
+data biome_main_workflow_bytes: String = "# This workflow run when something is pushed on main and it does:\n# - normal checks like in the normal PRs\n# - expand the test suite to be run on multiple OS\n# - runs the coverage and prints in the command line\nname: CI on main\non:\n  workflow_dispatch:\n  push:\n    branches:\n      - main\n\nenv:\n  RUST_LOG: info\n  RUST_BACKTRACE: 1\n  RUSTUP_WINDOWS_PATH_ADD_BIN: 1\n\njobs:\n  format:\n    name: Format Rust Files\n    runs-on: depot-ubuntu-24.04-arm\n    steps:\n      - name: Checkout repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n      - name: Support longpaths\n        run: git config core.longpaths true\n      - name: Checkout repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n      - name: Install toolchain\n        uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0\n        with:\n          components: rustfmt\n          cache-base: main\n        env:\n          GITHUB_TOKEN: $\{\{ secrets.GITHUB_TOKEN \}\}\n      - name: Run rustfmt\n        run: |\n          cargo fmt --all --verbose -- --check\n      - uses: tombi-toml/setup-tombi@23af0f0e4fcad609f048a37fb312714cd6b07741 # v1.4.0\n        env:\n          GITHUB_TOKEN: $\{\{ secrets.GITHUB_TOKEN \}\}\n      - name: Format TOML files\n        run: tombi format --check\n\n  lint:\n    name: Lint Rust Files\n    runs-on: depot-ubuntu-24.04-arm-16\n    steps:\n      - name: Checkout repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n      - name: Install toolchain\n        uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0\n        with:\n          components: clippy\n          cache-base: main\n        env:\n          GITHUB_TOKEN: $\{\{ secrets.GITHUB_TOKEN \}\}\n      - name: Run cargo check\n        run: cargo check --workspace --all-targets --all-features --release\n      - name: Run clippy\n        run: cargo lint\n  #  NOTE: enable once it becomes stable again\n  #  check-dependencies:\n  #    name: Check Dependencies\n  #    runs-on: depot-ubuntu-24.04-arm\n  #    steps:\n  #      - name: Checkout repository\n  #        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3\n  #      - name: Install toolchain\n  #        uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0\n  #        with:\n  #          channel: nightly\n  #          bins: cargo-udeps\n  #          cache: false\n  #        env:\n  #          GITHUB_TOKEN: $\{\{ secrets.GITHUB_TOKEN \}\}\n  #      - name: Run udeps\n  #        run: cargo +nightly udeps --all-targets --all-features\n\n  deny:\n    name: Cargo Deny\n    runs-on: depot-ubuntu-24.04-arm\n    steps:\n      - name: Checkout repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n      - name: Install cargo-deny\n        uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2.85.13\n        with:\n          tool: cargo-deny\n      - name: Audit crates.io dependencies\n        run: cargo deny check bans advisories\n\n  test:\n    name: Test\n    runs-on: $\{\{ matrix.os \}\}\n    strategy:\n      matrix:\n        include:\n          - os: depot-windows-2022-16\n          - os: depot-ubuntu-24.04-arm-16\n          - os: depot-macos-latest\n    steps:\n      - name: Enable Git long paths\n        if: matrix.os == 'depot-windows-2022-16'\n        run: git config --system core.longpaths true\n      - name: Checkout repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n      - name: Install toolchain\n        uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0\n        with:\n          cache-base: main\n        env:\n          GITHUB_TOKEN: $\{\{ secrets.GITHUB_TOKEN \}\}\n      - name: Run tests on $\{\{ matrix.os \}\}\n        if: matrix.os == 'depot-windows-2022-16'\n        env:\n          CARGO_PROFILE_TEST_DEBUG: \"0\"\n          CARGO_INCREMENTAL: \"0\"\n        run: cargo test --workspace --features=js_plugin\n      - name: Run tests on $\{\{ matrix.os \}\}\n        if: matrix.os != 'depot-windows-2022-16'\n        run: cargo test --workspace --features=js_plugin\n\n  coverage:\n    name: Test262 Coverage\n    runs-on: $\{\{ matrix.os \}\}\n    strategy:\n      fail-fast: false\n      matrix:\n        os: [depot-windows-2022-16, depot-ubuntu-24.04-arm-16]\n    steps:\n      # ref: https://github.com/orgs/community/discussions/26952\n      - name: Support longpaths\n        if: matrix.os == 'depot-windows-2022-16'\n        run: git config --system core.longpaths true\n      - name: Checkout repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0\n        with:\n          submodules: recursive\n      - name: Install toolchain\n        uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0\n        with:\n          cache-target: release\n          cache-base: main\n        env:\n          GITHUB_TOKEN: $\{\{ secrets.GITHUB_TOKEN \}\}\n      - name: Compile\n        run: cargo build --release --locked -p xtask_coverage\n      - name: Run Test262 suite\n        continue-on-error: true\n        run: cargo coverage\n      - name: Clean cache\n        run: cargo cache --autoclean\n"
+
+data openobserve_build_pr_image_workflow_bytes: String = "name: Build PR Docker Image\n\non:\n  pull_request:\n    branches:\n      - \"*\"\n\nconcurrency:\n  group: $\{\{ github.workflow \}\}-$\{\{ github.event.pull_request.number || github.ref \}\}\n  cancel-in-progress: true\n\nenv:\n  AWS_REGION: us-east-1\n\njobs:\n  check_changes:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    outputs:\n      has_changes: $\{\{ steps.check_changes.outputs.has_changes \}\}\n      should_build: $\{\{ steps.check_changes.outputs.should_build \}\}\n    steps:\n      - name: Clone the current repo\n        uses: actions/checkout@v5\n        with:\n          fetch-depth: 0\n\n      - name: Check if relevant code has changes\n        id: check_changes\n        run: |\n          if git diff --name-only origin/$\{\{ github.base_ref || 'main' \}\} $\{\{ github.sha \}\} | grep -qvE '\\.(md|yml|yaml)$'; then\n            echo \"has_changes=true\" >> $GITHUB_OUTPUT\n          else\n            echo \"has_changes=false\" >> $GITHUB_OUTPUT\n          fi\n\n          # Also check if this is a non-fork PR\n          if [ \"$\{\{ github.event_name \}\}\" == \"pull_request\" ] && \\\n             [ \"$\{\{ github.event.pull_request.head.repo.full_name \}\}\" == \"$\{\{ github.repository \}\}\" ] && \\\n             [ \"$\{\{ github.event.pull_request.head.repo.fork \}\}\" == \"false\" ]; then\n            echo \"should_build=true\" >> $GITHUB_OUTPUT\n          else\n            echo \"should_build=false\" >> $GITHUB_OUTPUT\n          fi\n\n  build_pr_image_amd64:\n    name: build_pr_image_amd64\n    needs: check_changes\n    permissions:\n      id-token: write\n      contents: read\n    if: needs.check_changes.outputs.has_changes == 'true' && needs.check_changes.outputs.should_build == 'true'\n    runs-on: ubicloud-standard-8\n    steps:\n      - name: Remove unused tools\n        run: |\n          sudo rm -rf /usr/share/dotnet\n          sudo rm -rf /opt/ghc\n          sudo rm -rf \"/usr/local/share/boost\"\n          sudo rm -rf \"$AGENT_TOOLSDIRECTORY\"\n\n      - name: Clone the current repo\n        uses: actions/checkout@v5\n        with:\n          repository: $\{\{ github.event.pull_request.head.repo.full_name \}\}\n          ref: $\{\{ github.event.pull_request.head.ref || github.ref \}\}\n          fetch-depth: 0\n          fetch-tags: true\n\n      - name: Setup Rust Toolchain\n        uses: dtolnay/rust-toolchain@master\n        with:\n          toolchain: nightly-2025-11-11\n\n      - uses: Swatinem/rust-cache@v2\n        with:\n          cache-on-failure: true\n          prefix-key: amd64\n      - name: Install Protoc\n        uses: arduino/setup-protoc@v3\n        with:\n          version: \"21.12\"\n      - uses: actions/setup-node@v5\n        with:\n          node-version: 22\n\n      - name: Build frontend code\n        run: cd web && npm install && npm run build\n\n      - name: Print rustc cfg\n        run: rustc -C target-cpu=native --print cfg\n\n      - name: Build and run binary\n        run: |\n          cargo build --features mimalloc --profile release-profiling --target x86_64-unknown-linux-gnu\n          mkdir -p bin\n          mv target/x86_64-unknown-linux-gnu/release-profiling/openobserve bin/openobserve\n\n      - name: Configure AWS Credentials\n        uses: aws-actions/configure-aws-credentials@v4\n        with:\n          aws-region: $\{\{ env.AWS_REGION \}\}\n          role-to-assume: arn:aws:iam::058694856476:role/GitHubActionsRole\n          role-session-name: GithubActionsSession\n\n      - name: Login to Amazon ECR\n        id: login-ecr\n        uses: aws-actions/amazon-ecr-login@v2\n        with:\n          registry-type: public\n\n      - name: Set up Docker Buildx\n        uses: docker/setup-buildx-action@v3\n\n      - name: Set GIT_TAG env\n        run: |\n          echo \"GIT_TAG=$(git describe --tags --abbrev=0)\" >> $GITHUB_ENV\n          echo \"GIT_HASH=$(git rev-parse --short=7 HEAD)\" >> $GITHUB_ENV\n\n      - name: Build and push\n        uses: docker/build-push-action@v6\n        with:\n          file: deploy/build/Dockerfile.pr\n          context: .\n          tags: |\n            public.ecr.aws/zinclabs/openobserve-dev:$\{\{ env.GIT_TAG \}\}-$\{\{ env.GIT_HASH\}\}-amd64\n          push: true\n          cache-from: type=gha,scope=amd64\n          cache-to: type=gha,mode=max,scope=amd64\n          platforms: linux/amd64\n\n  build_pr_image_arm64:\n    name: build_pr_image_arm64\n    needs: check_changes\n    permissions:\n      id-token: write\n      contents: read\n    if: needs.check_changes.outputs.has_changes == 'true' && needs.check_changes.outputs.should_build == 'true'\n    runs-on: \"ubicloud-standard-16-arm\"\n    steps:\n      - name: Remove unused tools\n        run: |\n          sudo rm -rf /usr/share/dotnet\n          sudo rm -rf /opt/ghc\n          sudo rm -rf \"/usr/local/share/boost\"\n          sudo rm -rf \"$AGENT_TOOLSDIRECTORY\"\n\n      - name: Clone the current repo\n        uses: actions/checkout@v5\n        with:\n          repository: $\{\{ github.event.pull_request.head.repo.full_name \}\}\n          ref: $\{\{ github.event.pull_request.head.ref || github.ref \}\}\n          fetch-depth: 0\n          fetch-tags: true\n\n      - name: Setup Rust Toolchain\n        uses: dtolnay/rust-toolchain@master\n        with:\n          toolchain: nightly-2025-11-11\n\n      - uses: Swatinem/rust-cache@v2\n        with:\n          cache-on-failure: true\n          prefix-key: arm64\n      - name: Install Protoc\n        uses: arduino/setup-protoc@v3\n        with:\n          version: \"21.12\"\n      - uses: actions/setup-node@v5\n        with:\n          node-version: 22\n\n      - name: Build frontend code\n        run: cd web && npm install && npm run build\n\n      - name: Print rustc cfg\n        run: rustc -C target-cpu=native --print cfg\n\n      - name: Build and run binary\n        run: |\n          cargo build --features mimalloc --profile release-profiling --target aarch64-unknown-linux-gnu\n          mkdir -p bin\n          mv target/aarch64-unknown-linux-gnu/release-profiling/openobserve bin/openobserve\n\n      - name: Configure AWS Credentials\n        uses: aws-actions/configure-aws-credentials@v4\n        with:\n          aws-region: $\{\{ env.AWS_REGION \}\}\n          role-to-assume: arn:aws:iam::058694856476:role/GitHubActionsRole\n          role-session-name: GithubActionsSession\n\n      - name: Login to Amazon ECR\n        id: login-ecr\n        uses: aws-actions/amazon-ecr-login@v2\n        with:\n          registry-type: public\n\n      - name: Set up Docker Buildx\n        uses: docker/setup-buildx-action@v3\n\n      - name: Set GIT_TAG env\n        run: |\n          echo \"GIT_TAG=$(git describe --tags --abbrev=0)\" >> $GITHUB_ENV\n          echo \"GIT_HASH=$(git rev-parse --short=7 HEAD)\" >> $GITHUB_ENV\n\n      - name: Build and push\n        uses: docker/build-push-action@v6\n        with:\n          file: deploy/build/Dockerfile.pr\n          context: .\n          tags: |\n            public.ecr.aws/zinclabs/openobserve-dev:$\{\{ env.GIT_TAG \}\}-$\{\{ env.GIT_HASH\}\}-arm64\n          push: true\n          cache-from: type=gha,scope=arm64\n          cache-to: type=gha,mode=max,scope=arm64\n          platforms: linux/arm64\n\n  build:\n    needs: [build_pr_image_amd64, build_pr_image_arm64]\n    if: $\{\{ needs.build_pr_image_amd64.result == 'success' && needs.build_pr_image_arm64.result == 'success' \}\}\n    runs-on: ubicloud-standard-16-arm\n    permissions:\n      id-token: write\n      contents: read\n    steps:\n      - name: Clone the current repo\n        uses: actions/checkout@v5\n        with:\n          repository: $\{\{ github.event.pull_request.head.repo.full_name \}\}\n          ref: $\{\{ github.event.pull_request.head.ref || github.ref \}\}\n          fetch-depth: 0\n          fetch-tags: true\n      - name: Set GIT_TAG env\n        run: |\n          echo \"GIT_TAG=$(git describe --tags --abbrev=0)\" >> $GITHUB_ENV\n          echo \"GIT_HASH=$(git rev-parse --short=7 HEAD)\" >> $GITHUB_ENV\n      - name: Configure AWS Credentials\n        uses: aws-actions/configure-aws-credentials@v4\n        with:\n          aws-region: $\{\{ env.AWS_REGION \}\}\n          role-to-assume: arn:aws:iam::058694856476:role/GitHubActionsRole\n          role-session-name: GithubActionsSession\n\n      - name: Login to Amazon ECR\n        id: login-ecr\n        uses: aws-actions/amazon-ecr-login@v2\n        with:\n          registry-type: public\n\n      - uses: int128/docker-manifest-create-action@v2\n        with:\n          tags: |\n            public.ecr.aws/zinclabs/openobserve-dev:$\{\{ env.GIT_TAG \}\}-$\{\{ env.GIT_HASH\}\}\n          sources: |\n            public.ecr.aws/zinclabs/openobserve-dev:$\{\{ env.GIT_TAG \}\}-$\{\{ env.GIT_HASH\}\}-amd64\n            public.ecr.aws/zinclabs/openobserve-dev:$\{\{ env.GIT_TAG \}\}-$\{\{ env.GIT_HASH\}\}-arm64\n\n  build_pr_image_summary:\n    runs-on: ubuntu-latest\n    permissions: \{\}\n    needs: [check_changes, build_pr_image_amd64, build_pr_image_arm64, build]\n    if: always()\n    steps:\n      - name: Check build results\n        run: |\n          if [ \"$\{\{ needs.check_changes.outputs.has_changes \}\}\" != \"true\" ] || [ \"$\{\{ needs.check_changes.outputs.should_build \}\}\" != \"true\" ]; then\n            echo \"No relevant changes or not a non-fork PR - builds skipped\"\n            exit 0\n          fi\n\n          if [ \"$\{\{ needs.build_pr_image_amd64.result \}\}\" == \"success\" ] || [ \"$\{\{ needs.build_pr_image_amd64.result \}\}\" == \"skipped\" ]; then\n            echo \"AMD64 build passed or skipped\"\n          else\n            echo \"AMD64 build failed\"\n            exit 1\n          fi\n\n          if [ \"$\{\{ needs.build_pr_image_arm64.result \}\}\" == \"success\" ] || [ \"$\{\{ needs.build_pr_image_arm64.result \}\}\" == \"skipped\" ]; then\n            echo \"ARM64 build passed or skipped\"\n          else\n            echo \"ARM64 build failed\"\n            exit 1\n          fi\n\n          if [ \"$\{\{ needs.build.result \}\}\" == \"success\" ] || [ \"$\{\{ needs.build.result \}\}\" == \"skipped\" ]; then\n            echo \"Manifest build passed or skipped\"\n          else\n            echo \"Manifest build failed\"\n            exit 1\n          fi\n\n          echo \"All builds completed successfully\"\n"
+
+data pdns_build_and_test_all_excerpt_bytes: String = "---\nname: 'Build and test everything'\n\non:\n  push:\n  pull_request:\n  workflow_call:\n    inputs:\n      branch-name:\n        description: 'Checkout to a specific branch'\n        required: true\n        default: ''\n        type: string\n      runner-docker-image-name:\n        description: 'Image name to be used for running all jobs'\n        required: false\n        default: ''\n        type: string\n  schedule:\n    - cron: '0 22 * * 3'\n\npermissions: # least privileges, see https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#permissions\n  contents: read\n\nenv:\n  COMPILER: clang\n  CLANG_VERSION: $\{\{ contains(inputs.runner-docker-image-name, 'debian-11') && '13' || '19' \}\}\n  # github.workspace variable points to the Runner home folder. Container home folder defined below.\n  REPO_HOME: '/__w/$\{\{ github.event.repository.name \}\}/$\{\{ github.event.repository.name \}\}'\n  BUILDER_VERSION: '0.0.0-git1'\n  COVERAGE: $\{\{ github.repository == 'PowerDNS/pdns' && 'yes' || 'no' \}\}\n  LLVM_PROFILE_FILE: \"/tmp/code-%p.profraw\"\n  OPTIMIZATIONS: yes\n  INV_CMD: \". $\{REPO_HOME\}/.venv/bin/activate && inv\"\n  BRANCH_NAME: $\{\{ inputs.branch-name || github.ref_name \}\}\n\njobs:\n  get-runner-container-image:\n    name: generate docker runner image name\n    runs-on: ubuntu-24.04\n    outputs:\n      id: $\{\{ steps.get-runner-image.outputs.image-id \}\}\n      tag: $\{\{ steps.get-runner-image.outputs.tag \}\}\n    env:\n      DEFAULT_IMAGE_TAG: master # update when backporting, e.g. auth-4.9.x\n      DOCKER_IMAGE: $\{\{ inputs.runner-docker-image-name || 'base-pdns-ci-image/debian-13-pdns-base-py13' \}\}\n    steps:\n      - id: get-runner-image\n        run: |\n          echo \"image-id=ghcr.io/powerdns/$DOCKER_IMAGE\" >> \"$GITHUB_OUTPUT\"\n          echo \"tag=$DEFAULT_IMAGE_TAG\" >> \"$GITHUB_OUTPUT\"\n\n  build-dnsdist:\n    name: build dnsdist\n    if: $\{\{ !github.event.schedule || vars.SCHEDULED_JOBS_BUILD_AND_TEST_ALL \}\}\n    runs-on: $\{\{ ( vars.REPOSITORY_USE_UBICLOUD == '1' ) && format('ubicloud-standard-4\{0\}-ubuntu-2404', matrix.architecture_suffix) || format('ubuntu-24.04\{0\}', matrix.architecture_suffix) \}\}\n    needs: get-runner-container-image\n    strategy:\n      matrix:\n        sanitizers: [asan+ubsan, tsan]\n        features: [least, full]\n        architecture_suffix: $\{\{ contains(needs.get-runner-container-image.outputs.id, 'debian-11') && fromJson('[\"\"]') || fromJson('[\"\", \"-arm\"]') \}\}\n        exclude:\n          - sanitizers: tsan\n            features: least\n          - architecture_suffix: '-arm'\n            features: least\n          - architecture_suffix: '-arm'\n            sanitizers: tsan\n      fail-fast: false\n    container:\n      image: \"$\{\{ needs.get-runner-container-image.outputs.id \}\}:$\{\{ needs.get-runner-container-image.outputs.tag \}\}\"\n      env:\n        SANITIZERS: $\{\{ matrix.sanitizers \}\}\n        UBSAN_OPTIONS: \"print_stacktrace=1:halt_on_error=1:suppressions=$\{\{ env.REPO_HOME \}\}/build-scripts/UBSan.supp\"\n        UNIT_TESTS: yes\n        FUZZING_TARGETS: yes\n        CARGO_USE_DEV: 1\n      options: --sysctl net.ipv6.conf.all.disable_ipv6=0\n    defaults:\n      run:\n        working-directory: ./pdns/dnsdistdist/dnsdist-$\{\{ env.BUILDER_VERSION \}\}\n    steps:\n      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 5\n          submodules: recursive\n          ref: $\{\{ inputs.branch-name \}\}\n          persist-credentials: false\n      - name: add problem matchers\n        uses: ./.github/actions/problem-matchers\n      - name: set up build\n        uses: ./.github/actions/cache\n        with:\n          cache-key-base: dnsdist-$\{\{ matrix.features \}\}-$\{\{ matrix.sanitizers \}\}-meson$\{\{ matrix.architecture_suffix \}\}-ccache\n      - name: install pip build dependencies\n        uses: ./.github/actions/pip-build-dependencies\n        with:\n          venv-parent: $\{\{ env.REPO_HOME \}\}\n          working-directory: .\n      - run: $\{\{ env.INV_CMD \}\} install-dnsdist-build-deps $([ \"$(. /etc/os-release && echo $VERSION_CODENAME)\" = \"bullseye\" ] && echo \"--skipXDP=True\")\n        working-directory: .\n      - run: $\{\{ env.INV_CMD \}\} install-clang\n        working-directory: .\n      - run: $\{\{ env.INV_CMD \}\} install-lld-linker-if-needed\n        working-directory: ./pdns/dnsdistdist/\n      - run: $\{\{ env.INV_CMD \}\} ci-install-rust $\{REPO_HOME\}\n        working-directory: ./pdns/dnsdistdist/\n      - run: $\{\{ env.INV_CMD \}\} ci-build-and-install-quiche $\{REPO_HOME\}\n        if: $\{\{ matrix.features != 'least' \}\}\n        working-directory: ./pdns/dnsdistdist/\n      - run: $\{\{ env.INV_CMD \}\} ci-dnsdist-configure $\{\{ matrix.features \}\} dnsdist-$\{\{ env.BUILDER_VERSION \}\}\n        working-directory: ./pdns/dnsdistdist/\n      - run: $\{\{ env.INV_CMD \}\} ci-dnsdist-run-ninja dnsdist-$\{\{ env.BUILDER_VERSION \}\}\n        working-directory: ./pdns/dnsdistdist/\n      - run: $\{\{ env.INV_CMD \}\} ci-dnsdist-run-unit-tests\n      - run: $\{\{ env.INV_CMD \}\} generate-coverage-info ./testrunner 'dnsdist' $GITHUB_WORKSPACE\n        if: $\{\{ env.COVERAGE == 'yes' && matrix.sanitizers != 'tsan' \}\}\n      - name: Coveralls Parallel dnsdist unit\n        if: $\{\{ env.COVERAGE == 'yes' && matrix.sanitizers != 'tsan' \}\}\n        uses: coverallsapp/github-action@5cbfd81b66ca5d10c19b062c04de0199c215fb6e\n        with:\n          flag-name: dnsdist-unit-$\{\{ matrix.features \}\}-$\{\{ matrix.sanitizers \}\}\n          path-to-lcov: $GITHUB_WORKSPACE/coverage.lcov\n          parallel: true\n          allow-empty: true\n          fail-on-error: false\n      - run: $\{\{ env.INV_CMD \}\} ci-dnsdist-install\n      - run: ccache -s\n      - uses: ./.github/actions/normalize-branch-name\n      - name: Prepare binaries folder\n        run: |\n          mkdir -p /opt/dnsdist/bin\n          for i in $(find . -maxdepth 1 -type f -executable); do cp $\{i\} /opt/dnsdist/bin/; done\n      - name: Store the binaries\n        uses: actions/upload-artifact@v7 # this takes 30 seconds, maybe we want to tar\n        with:\n          name: dnsdist-$\{\{ matrix.features \}\}-$\{\{ matrix.sanitizers \}\}-meson$\{\{ matrix.architecture_suffix \}\}-$\{\{ env.normalized-branch-name \}\}\n          path: /opt/dnsdist\n          retention-days: 1\n\n  test-auth-api:\n    needs:\n      - build-auth\n      - get-runner-container-image\n    runs-on: ubuntu-24.04\n    container:\n      image: \"$\{\{ needs.get-runner-container-image.outputs.id \}\}:$\{\{ needs.get-runner-container-image.outputs.tag \}\}\"\n      env:\n        UBSAN_OPTIONS: \"print_stacktrace=1:halt_on_error=1:suppressions=$\{\{ env.REPO_HOME \}\}/build-scripts/UBSan.supp\"\n        ASAN_OPTIONS: detect_leaks=0\n        TSAN_OPTIONS: \"halt_on_error=1:suppressions=$\{\{ env.REPO_HOME \}\}/pdns/dnsdistdist/dnsdist-tsan.supp\"\n        AUTH_BACKEND_IP_ADDR: \"172.17.0.1\"\n      options: --sysctl net.ipv6.conf.all.disable_ipv6=0\n    strategy:\n      matrix:\n        include:\n          - backend: gsqlite3\n            image: coscale/docker-sleep@sha256:7ac94378c23c68b47c623dee4b3ac694ed7201543df3feed668e487ef1102fc5\n          - backend: gmysql\n            image: mysql@sha256:4bc6bc963e6d8443453676cae56536f4b8156d78bae03c0145cbe47c2aad73bb # mysql:5.7.44\n          - backend: gpgsql\n            image: postgres@sha256:bbcaba1d74865ee6d6318b5e297d0df73d1f6b6d995cd892b60a2cf1440b716a # postgres:14.18\n          - backend: lmdb\n            image: coscale/docker-sleep@sha256:7ac94378c23c68b47c623dee4b3ac694ed7201543df3feed668e487ef1102fc5\n      fail-fast: false\n    services:\n      database:\n        image: $\{\{ matrix.image \}\}\n        env:\n          POSTGRES_USER: runner\n          POSTGRES_HOST_AUTH_METHOD: trust\n          MYSQL_ALLOW_EMPTY_PASSWORD: 1\n        ports:\n          - 3306:3306\n          - 5432:5432\n        # FIXME: this works around dist-upgrade stopping all docker containers. dist-upgrade is huge on these images anyway. Perhaps we do want to run our tasks in a Docker container too.\n        options: >-\n          --restart always\n    steps:\n      - uses: actions/checkout@v7\n        with:\n          fetch-depth: 5\n          submodules: recursive\n          ref: $\{\{ inputs.branch-name \}\}\n          persist-credentials: false\n      - name: add problem matchers\n        uses: ./.github/actions/problem-matchers\n      - uses: ./.github/actions/normalize-branch-name\n      - name: Fetch the binaries\n        uses: actions/download-artifact@v8\n        with:\n          name: pdns-auth-meson-$\{\{ env.normalized-branch-name \}\}\n          path: /opt/pdns-auth\n      - name: install pip build dependencies\n        uses: ./.github/actions/pip-build-dependencies\n        with:\n          venv-parent: $\{\{ env.REPO_HOME \}\}\n          working-directory: .\n      - run: $\{\{ env.INV_CMD \}\} apt-fresh\n      - run: $\{\{ env.INV_CMD \}\} install-clang-runtime\n      - run: $\{\{ env.INV_CMD \}\} install-auth-test-deps -b $\{\{ matrix.backend \}\}\n      - run: $\{\{ env.INV_CMD \}\} test-api auth -b $\{\{ matrix.backend \}\}\n      - run: $\{\{ env.INV_CMD \}\} generate-coverage-info /opt/pdns-auth/sbin/pdns_server 'auth' $GITHUB_WORKSPACE\n        if: $\{\{ env.COVERAGE == 'yes' \}\}\n      - name: Coveralls Parallel auth API $\{\{ matrix.backend \}\}\n        if: $\{\{ env.COVERAGE == 'yes' \}\}\n        uses: coverallsapp/github-action@5cbfd81b66ca5d10c19b062c04de0199c215fb6e\n        with:\n          flag-name: auth-api-$\{\{ matrix.backend \}\}\n          path-to-lcov: $GITHUB_WORKSPACE/coverage.lcov\n          parallel: true\n          allow-empty: true\n          fail-on-error: false\n\n"
+
+fn s(v: String) -> YamlValue {
+  yaml_string(s: v)
+}
+
+fn job_named(source: String, key: String) -> JobRead? {
+  match read_workflow_jobs(source: source) {
+    WorkflowDocumentRefused { refusal: _ } => none
+    WorkflowJobsInterpreted { jobs: jobs } => filter(jobs, j => match j {
+      JobInterpreted { job_key: k, runs_on: _, strategy: _, instances: _, steps: _, uninterpreted_keys: _, interpreted: _ } => k == key
+      JobUnresolved { job_key: k, location: _, cause: _ } => k == key
+    }).first()
+  }
+}
+
+fn job_count(source: String) -> Int {
+  match read_workflow_jobs(source: source) {
+    WorkflowDocumentRefused { refusal: _ } => -1
+    WorkflowJobsInterpreted { jobs: jobs } => jobs.length()
+  }
+}
+
+fn one_job_document(job_body: String) -> String {
+  concat("jobs:\n  j:\n", job_body)
+}
+
+fn runs_on_of(job_body: String) -> RunsOnRead? {
+  match job_named(source: one_job_document(job_body: job_body), key: "j") {
+    Present { value: JobInterpreted { job_key: _, runs_on: r, strategy: _, instances: _, steps: _, uninterpreted_keys: _, interpreted: _ } } => Present { value: r }
+    _ => none
+  }
+}
+
+fn strategy_of(read: JobRead?) -> StrategyRead? {
+  match read {
+    Present { value: JobInterpreted { job_key: _, runs_on: _, strategy: st, instances: _, steps: _, uninterpreted_keys: _, interpreted: _ } } => Present { value: st }
+    _ => none
+  }
+}
+
+fn instances_of(read: JobRead?) -> List<JobInstance>? {
+  match read {
+    Present { value: JobInterpreted { job_key: _, runs_on: _, strategy: _, instances: JobInstances { instances: is }, steps: _, uninterpreted_keys: _, interpreted: _ } } => Present { value: is }
+    _ => none
+  }
+}
+
+fn steps_of(read: JobRead?) -> List<StepRead>? {
+  match read {
+    Present { value: JobInterpreted { job_key: _, runs_on: _, strategy: _, instances: _, steps: ss, uninterpreted_keys: _, interpreted: _ } } => Present { value: ss }
+    _ => none
+  }
+}
+
+fn uninterpreted_of(read: JobRead?) -> List<String>? {
+  match read {
+    Present { value: JobInterpreted { job_key: _, runs_on: _, strategy: _, instances: _, steps: _, uninterpreted_keys: ks, interpreted: _ } } => Present { value: ks }
+    _ => none
+  }
+}
+
+fn instance_runner_is_label(instance: JobInstance?, label: String) -> Bool {
+  match instance {
+    Present { value: i } => match i.runner {
+      InstanceRunner { runner: RunsOnLabel { label: l } } => (l as String) == label
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+fn combination_list_eq(a: List<List<YamlKeyValue>>, b: List<List<YamlKeyValue>>) -> Bool {
+  (a.length() == b.length())
+    && fold(enumerate(a), init: true, f: (acc, pair) => acc && match b.get(n: pair.first) {
+      Present { value: y } => yaml_key_values_eq(a: pair.second, b: y)
+      Absent => false
+    })
+}
+
+fn expanded(matrix: MatrixSpec) -> List<List<YamlKeyValue>>? {
+  match matrix_combinations(matrix: matrix) {
+    MatrixCombinations { combinations: cs } => Present { value: cs }
+    MatrixCombinationLimitExceeded { at_least: _, limit: _ } => none
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Matrix semantics.
+// -------------------------------------------------------------------------------------
+
+// The workflow-syntax authority's own include example (jobs.<job_id>.strategy.matrix.include,
+// "Example: Expanding configurations"): two axes, five include entries, six jobs.
+fn documented_include_matrix() -> MatrixSpec {
+  MatrixSpec {
+    axes: [
+      MatrixAxis { name: "fruit", values: [s(v: "apple"), s(v: "pear")] },
+      MatrixAxis { name: "animal", values: [s(v: "cat"), s(v: "dog")] },
+    ],
+    include: [
+      [kv(key: "color", value: s(v: "green"))],
+      [kv(key: "color", value: s(v: "pink")), kv(key: "animal", value: s(v: "cat"))],
+      [kv(key: "fruit", value: s(v: "apple")), kv(key: "shape", value: s(v: "circle"))],
+      [kv(key: "fruit", value: s(v: "banana"))],
+      [kv(key: "fruit", value: s(v: "banana")), kv(key: "animal", value: s(v: "cat"))],
+    ],
+    exclude: [],
+  }
+}
+
+test fn matrix_include_expands_exactly_as_the_workflow_syntax_example() -> Bool {
+  match expanded(matrix: documented_include_matrix()) {
+    Absent => false
+    Present { value: cs } => combination_list_eq(a: cs, b: [
+      [kv(key: "fruit", value: s(v: "apple")), kv(key: "animal", value: s(v: "cat")), kv(key: "color", value: s(v: "pink")), kv(key: "shape", value: s(v: "circle"))],
+      [kv(key: "fruit", value: s(v: "apple")), kv(key: "animal", value: s(v: "dog")), kv(key: "color", value: s(v: "green")), kv(key: "shape", value: s(v: "circle"))],
+      [kv(key: "fruit", value: s(v: "pear")), kv(key: "animal", value: s(v: "cat")), kv(key: "color", value: s(v: "pink"))],
+      [kv(key: "fruit", value: s(v: "pear")), kv(key: "animal", value: s(v: "dog")), kv(key: "color", value: s(v: "green"))],
+      [kv(key: "fruit", value: s(v: "banana"))],
+      [kv(key: "fruit", value: s(v: "banana")), kv(key: "animal", value: s(v: "cat"))],
+    ])
+  }
+}
+
+fn os_arch_matrix(exclude: List<List<YamlKeyValue>>) -> MatrixSpec {
+  MatrixSpec {
+    axes: [
+      MatrixAxis { name: "os", values: [s(v: "linux"), s(v: "windows")] },
+      MatrixAxis { name: "arch", values: [s(v: "x64"), s(v: "arm64")] },
+    ],
+    include: [],
+    exclude: exclude,
+  }
+}
+
+test fn matrix_exclude_removes_every_partial_match_and_nothing_else() -> Bool {
+  match expanded(matrix: os_arch_matrix(exclude: [[kv(key: "os", value: s(v: "windows"))]])) {
+    Absent => false
+    Present { value: cs } => combination_list_eq(a: cs, b: [
+      [kv(key: "os", value: s(v: "linux")), kv(key: "arch", value: s(v: "x64"))],
+      [kv(key: "os", value: s(v: "linux")), kv(key: "arch", value: s(v: "arm64"))],
+    ])
+  } && match expanded(matrix: os_arch_matrix(exclude: [])) {
+    Absent => false
+    Present { value: cs } => cs.length() == 4
+  }
+}
+
+test fn an_include_only_matrix_runs_exactly_its_entries() -> Bool {
+  match expanded(matrix: MatrixSpec { axes: [], include: [[kv(key: "os", value: s(v: "a"))], [kv(key: "os", value: s(v: "b"))]], exclude: [] }) {
+    Absent => false
+    Present { value: cs } => combination_list_eq(a: cs, b: [[kv(key: "os", value: s(v: "a"))], [kv(key: "os", value: s(v: "b"))]])
+  }
+}
+
+fn int_values(n: Int) -> List<YamlValue> {
+  if n <= 0 { [] } else { concat(int_values(n: n - 1), [yaml_int(n: n - 1)]) }
+}
+
+test fn a_matrix_over_the_job_ceiling_refuses_and_one_at_it_expands() -> Bool {
+  match matrix_combinations(matrix: MatrixSpec { axes: [MatrixAxis { name: "a", values: int_values(n: 17) }, MatrixAxis { name: "b", values: int_values(n: 16) }], include: [], exclude: [] }) {
+    MatrixCombinationLimitExceeded { at_least: n, limit: l } => (n == 272) && (l == 256)
+    MatrixCombinations { combinations: _ } => false
+  } && match expanded(matrix: MatrixSpec { axes: [MatrixAxis { name: "a", values: int_values(n: 16) }, MatrixAxis { name: "b", values: int_values(n: 16) }], include: [], exclude: [] }) {
+    Present { value: cs } => cs.length() == 256
+    Absent => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// runs-on is syntax, not provider resolution.
+// -------------------------------------------------------------------------------------
+
+test fn a_third_party_literal_label_reads_as_a_literal_and_githubs_own_as_hosted() -> Bool {
+  match runs_on_of(job_body: "    runs-on: depot-ubuntu-24.04-arm\n    steps:\n      - run: echo\n") {
+    Present { value: RunsOnInterpreted { runner: RunsOnLabel { label: l } } } => (l as String) == "depot-ubuntu-24.04-arm"
+    _ => false
+  } && match runs_on_of(job_body: "    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n") {
+    Present { value: RunsOnInterpreted { runner: HostedRunner { label: UbuntuLatest } } } => true
+    _ => false
+  }
+}
+
+test fn a_label_list_is_self_hosted_only_when_it_carries_the_provenance_label() -> Bool {
+  match runs_on_of(job_body: "    runs-on: [self-hosted, linux, arm64]\n    steps:\n      - run: echo\n") {
+    Present { value: RunsOnInterpreted { runner: SelfHosted { labels: ls } } } => ls.length() == 3
+    _ => false
+  } && match runs_on_of(job_body: "    runs-on: [ubuntu-latest, gpu]\n    steps:\n      - run: echo\n") {
+    Present { value: RunsOnUnresolved { location: l, cause: RunsOnLabelListWithoutSelfHosted } } => l == "jobs.j.runs-on"
+    _ => false
+  }
+}
+
+test fn a_runner_group_mapping_is_unresolved_rather_than_guessed() -> Bool {
+  match runs_on_of(job_body: "    runs-on:\n      group: large\n      labels: [big]\n    steps:\n      - run: echo\n") {
+    Present { value: RunsOnUnresolved { location: _, cause: RunsOnGroupMapping } } => true
+    _ => false
+  }
+}
+
+fn matrix_runner_document(runs_on: String) -> String {
+  one_job_document(job_body: join([
+    "    runs-on: ", runs_on, "\n",
+    "    strategy:\n      matrix:\n        include:\n          - os: depot-windows-2022-16\n          - os: depot-ubuntu-24.04-arm-16\n",
+    "    steps:\n      - run: echo\n",
+  ], ""))
+}
+
+test fn a_matrix_runs_on_expression_evaluates_per_instance_from_that_instance_only() -> Bool {
+  match instances_of(read: job_named(source: matrix_runner_document(runs_on: "${{ matrix.os }}"), key: "j")) {
+    Absent => false
+    Present { value: is } =>
+      (is.length() == 2)
+        && instance_runner_is_label(instance: is.get(n: 0), label: "depot-windows-2022-16")
+        && instance_runner_is_label(instance: is.get(n: 1), label: "depot-ubuntu-24.04-arm-16")
+  }
+}
+
+test fn a_runs_on_expression_over_an_unanswered_context_stays_unresolved() -> Bool {
+  match instances_of(read: job_named(source: matrix_runner_document(runs_on: "${{ vars.RUNNER }}"), key: "j")) {
+    Absent => false
+    Present { value: is } => (is.length() == 2) && all(is, i => match i.runner {
+      InstanceRunnerUnresolved { cause: InstanceRunnerEvaluationRefused { refusal: UnmodeledContext { context: Vars, path: _ } } } => true
+      _ => false
+    })
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Shapes the model has no field for.
+// -------------------------------------------------------------------------------------
+
+test fn a_dynamic_matrix_is_unresolved_and_has_no_instances() -> Bool {
+  let whole = job_named(source: one_job_document(job_body: "    runs-on: ubuntu-latest\n    strategy:\n      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}\n    steps:\n      - run: echo\n"), key: "j")
+  let axis = job_named(source: one_job_document(job_body: "    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        os: ${{ fromJSON(needs.plan.outputs.os) }}\n    steps:\n      - run: echo\n"), key: "j")
+  let static_axis = job_named(source: one_job_document(job_body: "    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        os: [a, b]\n    steps:\n      - run: echo\n"), key: "j")
+  match strategy_of(read: whole) {
+    Present { value: StrategyUnresolved { location: l, cause: StrategyMatrixUnresolved { cause: MatrixIsExpression { expression: _ } } } } => l == "jobs.j.strategy.matrix"
+    _ => false
+  } && match whole {
+    Present { value: JobInterpreted { job_key: _, runs_on: _, strategy: _, instances: JobInstancesUnknownWhileStrategyUnresolved, steps: _, uninterpreted_keys: _, interpreted: _ } } => true
+    _ => false
+  } && match strategy_of(read: axis) {
+    Present { value: StrategyUnresolved { location: _, cause: StrategyMatrixUnresolved { cause: MatrixAxisIsExpression { axis: a, expression: _ } } } } => a == "os"
+    _ => false
+  } && match instances_of(read: static_axis) {
+    Present { value: is } => is.length() == 2
+    Absent => false
+  }
+}
+
+test fn a_reusable_workflow_call_is_an_unresolved_job_not_an_empty_one() -> Bool {
+  match job_named(source: one_job_document(job_body: "    uses: octo/repo/.github/workflows/build.yml@main\n"), key: "j") {
+    Present { value: JobUnresolved { job_key: _, location: l, cause: JobCallsReusableWorkflow { uses: u } } } =>
+      (l == "jobs.j.uses") && (u == "octo/repo/.github/workflows/build.yml@main")
+    _ => false
+  } && match job_named(source: one_job_document(job_body: "    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n"), key: "j") {
+    Present { value: JobInterpreted { job_key: _, runs_on: _, strategy: _, instances: _, steps: _, uninterpreted_keys: _, interpreted: _ } } => true
+    _ => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Emit and read are one grammar: a Job carrying every new field survives the round trip.
+// -------------------------------------------------------------------------------------
+
+fn round_trip_job() -> Job {
+  extdeps.github.actions.Job {
+    id: "rt",
+    name: Present { value: "Round trip" },
+    runner: RunsOnLabel { label: "depot-ubuntu-24.04-arm-16" as NonEmptyStr },
+    steps: [
+      UsesStep {
+        name: none,
+        id: none,
+        uses: ActionRef { owner: "actions", repo: "checkout", ref: "d23441a48e516b6c34aea4fa41551a30e30af803" },
+        with: Present { value: [kv(key: "fetch-depth", value: yaml_int(n: 0))] },
+        env: none,
+        if_condition: none,
+        continue_on_error: none,
+        timeout_minutes: Present { value: 5 }
+      },
+      RunStep {
+        name: Present { value: "Run tests" },
+        id: none,
+        run: "cargo test --workspace --features=js_plugin",
+        shell: none,
+        env: none,
+        working_directory: none,
+        if_condition: Present { value: "matrix.os != 'depot-windows-2022-16'" },
+        continue_on_error: none,
+        timeout_minutes: none
+      },
+    ],
+    needs: ["build"],
+    env: Present { value: [kv(key: "RUST_LOG", value: s(v: "info"))] },
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: 30 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+    strategy: Present {
+      value: JobStrategy {
+        matrix: Present {
+          value: MatrixSpec {
+            axes: [MatrixAxis { name: "os", values: [s(v: "linux"), s(v: "windows")] }],
+            include: [[kv(key: "os", value: s(v: "macos"))]],
+            exclude: [[kv(key: "os", value: s(v: "windows"))]]
+          }
+        },
+        fail_fast: Present { value: false },
+        max_parallel: Present { value: 2 }
+      }
+    }
+  }
+}
+
+fn emitted_workflow(job: Job) -> String {
+  serialize_yaml(v: yaml_mapping(entries: [kv(key: "jobs", value: yaml_mapping(entries: [kv(key: job.id, value: job_yaml(job: job))]))]))
+}
+
+test fn a_job_with_every_new_field_round_trips_through_emit_and_read() -> Bool {
+  let original = round_trip_job()
+  match job_named(source: emitted_workflow(job: original), key: "rt") {
+    Absent => false
+    Present { value: read } => match job_read_as_job(read: read) {
+      JobModelComplete { job: back } => emitted_workflow(job: back) == emitted_workflow(job: original)
+      JobModelIncomplete { reasons: _ } => false
+    }
+  }
+}
+
+test fn a_job_key_the_reading_did_not_consume_withholds_the_job() -> Bool {
+  let source = concat(emitted_workflow(job: round_trip_job()), "")
+  let with_container = replace(source, "    runs-on: depot-ubuntu-24.04-arm-16\n", "    runs-on: depot-ubuntu-24.04-arm-16\n    container: alpine\n")
+  (with_container != source) && match job_named(source: with_container, key: "rt") {
+    Present { value: read } => match job_read_as_job(read: read) {
+      JobModelIncomplete { reasons: rs } => any(rs, r => r == "job key not interpreted: container")
+      JobModelComplete { job: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Real bytes.
+// -------------------------------------------------------------------------------------
+
+test fn biome_main_workflow_reads_its_arm_test_instance() -> Bool {
+  let test_job = job_named(source: biome_main_workflow_bytes, key: "test")
+  (job_count(source: biome_main_workflow_bytes) == 5)
+    && match instances_of(read: test_job) {
+      Present { value: is } =>
+        (is.length() == 3)
+          && instance_runner_is_label(instance: is.get(n: 1), label: "depot-ubuntu-24.04-arm-16")
+          && match is.get(n: 1) {
+            Present { value: i } => yaml_key_values_eq(a: i.matrix_selector, b: [kv(key: "os", value: s(v: "depot-ubuntu-24.04-arm-16"))])
+            Absent => false
+          }
+      Absent => false
+    }
+    && match test_job {
+      Present { value: read } => match job_read_as_job(read: read) {
+        JobModelComplete { job: j } => match j.steps.skip(n: j.steps.length() - 1).first() {
+          Present { value: RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } } =>
+            (r == "cargo test --workspace --features=js_plugin") && match c {
+              Present { value: cond } => cond == "matrix.os != 'depot-windows-2022-16'"
+              Absent => false
+            }
+          _ => false
+        }
+        JobModelIncomplete { reasons: _ } => false
+      }
+      Absent => false
+    }
+}
+
+test fn biome_pinned_action_comment_is_separated_from_the_ref() -> Bool {
+  match steps_of(read: job_named(source: biome_main_workflow_bytes, key: "format")) {
+    Present { value: ss } => match ss.first() {
+      Present { value: StepInterpreted { step: UsesStep { name: _, id: _, uses: a, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } } } =>
+        (a.owner == "actions") && (a.repo == "checkout") && (a.ref == "d23441a48e516b6c34aea4fa41551a30e30af803")
+      _ => false
+    }
+    Absent => false
+  } && match instances_of(read: job_named(source: biome_main_workflow_bytes, key: "coverage")) {
+    Present { value: is } => is.length() == 2
+    Absent => false
+  }
+}
+
+test fn openobserve_arm_build_reads_a_quoted_third_party_label_and_names_its_unread_keys() -> Bool {
+  let arm = job_named(source: openobserve_build_pr_image_workflow_bytes, key: "build_pr_image_arm64")
+  (job_count(source: openobserve_build_pr_image_workflow_bytes) == 5)
+    && match runs_on_of_read(read: arm) {
+      Present { value: RunsOnInterpreted { runner: RunsOnLabel { label: l } } } => (l as String) == "ubicloud-standard-16-arm"
+      _ => false
+    }
+    && match uninterpreted_of(read: arm) {
+      Present { value: ks } => (ks.length() == 1) && any(ks, k => k == "permissions")
+      Absent => false
+    }
+    && match steps_of(read: arm) {
+      Present { value: ss } => (ss.length() == 14) && all(ss, st => match st { StepInterpreted { step: _ } => true  StepUnresolved { location: _, cause: _ } => false })
+      Absent => false
+    }
+    && match arm {
+      Present { value: read } => match job_read_as_job(read: read) {
+        JobModelIncomplete { reasons: rs } => (rs.length() == 1) && any(rs, r => r == "job key not interpreted: permissions")
+        JobModelComplete { job: _ } => false
+      }
+      Absent => false
+    }
+}
+
+fn runs_on_of_read(read: JobRead?) -> RunsOnRead? {
+  match read {
+    Present { value: JobInterpreted { job_key: _, runs_on: r, strategy: _, instances: _, steps: _, uninterpreted_keys: _, interpreted: _ } } => Present { value: r }
+    _ => none
+  }
+}
+
+test fn openobserve_shell_comment_inside_a_literal_stays_content() -> Bool {
+  match steps_of(read: job_named(source: openobserve_build_pr_image_workflow_bytes, key: "check_changes")) {
+    Present { value: ss } => match ss.get(n: 1) {
+      Present { value: StepInterpreted { step: RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } } } =>
+        string_contains(s: r, pattern: "\n\n  # Also check if this is a non-fork PR\n") == false
+          && string_contains(s: r, pattern: "\n\n# Also check if this is a non-fork PR\n")
+          && ends_with(s: r, suffix: "fi")
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+test fn pdns_dnsdist_matrix_is_unresolved_at_its_dynamic_axis() -> Bool {
+  let dnsdist = job_named(source: pdns_build_and_test_all_excerpt_bytes, key: "build-dnsdist")
+  (job_count(source: pdns_build_and_test_all_excerpt_bytes) == 3)
+    && match strategy_of(read: dnsdist) {
+      Present { value: StrategyUnresolved { location: l, cause: StrategyMatrixUnresolved { cause: MatrixAxisIsExpression { axis: a, expression: _ } } } } =>
+        (l == "jobs.build-dnsdist.strategy.matrix") && (a == "architecture_suffix")
+      _ => false
+    }
+    && match runs_on_of_read(read: dnsdist) {
+      Present { value: RunsOnInterpreted { runner: RunsOnExpression { expression: _ } } } => true
+      _ => false
+    }
+    && match uninterpreted_of(read: dnsdist) {
+      Present { value: ks } => any(ks, k => k == "container") && any(ks, k => k == "defaults")
+      Absent => false
+    }
+    && match steps_of(read: dnsdist) {
+      Present { value: ss } => match ss.get(n: 1) {
+        Present { value: StepUnresolved { location: l, cause: StepUsesNotARepositoryAction { uses: u } } } =>
+          (l == "jobs.build-dnsdist.steps[1].uses") && (u == "./.github/actions/problem-matchers")
+        _ => false
+      }
+      Absent => false
+    }
+}
+
+test fn pdns_excerpt_carries_document_start_comments_and_a_folded_scalar() -> Bool {
+  match ingest_yaml_source(src: pdns_build_and_test_all_excerpt_bytes) {
+    YamlIngestRejected { reason: _ } => false
+    IngestedYaml { value: YamlMapping { entries: es } } =>
+      match yaml_mapping_lookup(entries: es, key: "jobs") {
+        Present { value: YamlMapping { entries: jobs } } => match yaml_mapping_lookup(entries: jobs, key: "test-auth-api") {
+          Present { value: YamlMapping { entries: job } } => match yaml_mapping_lookup(entries: job, key: "services") {
+            Present { value: YamlMapping { entries: services } } => match yaml_mapping_lookup(entries: services, key: "database") {
+              Present { value: YamlMapping { entries: db } } =>
+                match yaml_mapping_lookup(entries: db, key: "options") {
+                  Present { value: o } => yaml_value_eq(a: o, b: s(v: "--restart always"))
+                  Absent => false
+                }
+              _ => false
+            }
+            _ => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+      && match yaml_mapping_lookup(entries: es, key: "name") {
+        Present { value: YamlString { value: n } } => n == "Build and test everything"
+        _ => false
+      }
+    IngestedYaml { value: _ } => false
+  } && match instances_of(read: job_named(source: pdns_build_and_test_all_excerpt_bytes, key: "test-auth-api")) {
+    Present { value: is } => is.length() == 4
+    Absent => false
+  }
+}

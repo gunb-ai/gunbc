@@ -1958,6 +1958,7 @@ fn witness_floor_lane_needs() -> List<String> { [] }
 
 fn witness_floor_job() -> Job {
   Job {
+    strategy: none,
     id: floor_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
@@ -2348,6 +2349,7 @@ fn heal_generated_artifacts_capability_closure_holds() -> Bool {
 
 fn heal_generated_artifacts_job() -> Job {
   Job {
+    strategy: none,
     id: heal_generated_artifacts_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
@@ -2367,6 +2369,7 @@ fn build_lane_needs() -> List<String> { [] }
 
 fn build_lane_job() -> Job {
   Job {
+    strategy: none,
     id: build_lane_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
@@ -2747,6 +2750,7 @@ fn required_lanes_aggregate_step() -> Step {
 // neither is retired by a pull request that merely re-adds the job.
 fn required_lanes_aggregate_job() -> Job {
   Job {
+    strategy: none,
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),

@@ -10,7 +10,8 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
   CancelInProgressBool,
-  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse
+  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse,
+  JobStrategy, MatrixSpec, MatrixAxis
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -49,6 +50,19 @@ fn probe_step() -> Step {
 
 fn all_fields_job() -> Job {
   Job {
+    strategy: Present {
+      value: JobStrategy {
+        matrix: Present {
+          value: MatrixSpec {
+            axes: [MatrixAxis { name: "probe_axis", values: [yaml_string(s: "axis-value")] }],
+            include: [],
+            exclude: []
+          }
+        },
+        fail_fast: Present { value: false },
+        max_parallel: Present { value: 2 }
+      }
+    },
     id: "all_fields",
     name: Present { value: "Every Optional Field Populated" },
     runner: HostedRunner { label: UbuntuLatest },
@@ -79,6 +93,7 @@ fn all_fields_job() -> Job {
 
 fn minimal_job() -> Job {
   Job {
+    strategy: none,
     id: "minimal",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },
@@ -119,6 +134,11 @@ test fn every_populated_job_field_reaches_the_emitted_yaml() -> Bool {
     && string_contains(s: y, pattern: "env:")
     && string_contains(s: y, pattern: "PROBE_ENV: env-value")
     && string_contains(s: y, pattern: "continue-on-error: true")
+    && string_contains(s: y, pattern: "strategy:")
+    && string_contains(s: y, pattern: "probe_axis:")
+    && string_contains(s: y, pattern: "axis-value")
+    && string_contains(s: y, pattern: "fail-fast: false")
+    && string_contains(s: y, pattern: "max-parallel: 2")
 }
 
 // Asserted as ADJACENCY rather than as per-key absence, because a bare !contains("name:") is
@@ -126,7 +146,7 @@ test fn every_populated_job_field_reaches_the_emitted_yaml() -> Bool {
 // document conflates job-level keys with step-level ones and reds on a correct emitter (observed —
 // this witness failed that way first). Adjacency is also the stronger claim: runs-on is the first
 // key when name is absent and steps is the first key after the optional block, so requiring them
-// CONTIGUOUS proves that none of name/needs/timeout-minutes/if/permissions/concurrency/outputs
+// CONTIGUOUS proves that none of name/strategy/needs/timeout-minutes/if/permissions/concurrency/outputs
 // emitted anything at all — one assertion covering the whole optional block, and it breaks if any
 // single one starts emitting an empty key. The trailing keys (env, continue-on-error) sit after
 // steps and are checked separately at top-level indent.
@@ -149,6 +169,7 @@ test fn queue_max_emits_the_queue_key() -> Bool {
 
 fn queue_not_max_job() -> Job {
   Job {
+    strategy: none,
     id: "queue_not_max",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },
@@ -172,6 +193,7 @@ fn queue_not_max_job() -> Job {
 
 fn queue_max_only_job() -> Job {
   Job {
+    strategy: none,
     id: "queue_max_only",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },
@@ -202,6 +224,7 @@ test fn queue_max_and_queue_not_max_no_longer_serialize_identically() -> Bool {
 
 test fn scalar_concurrency_group_still_projects_as_a_bare_string() -> Bool {
   let j = Job {
+    strategy: none,
     id: "scalar",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },
