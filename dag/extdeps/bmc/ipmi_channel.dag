@@ -38,37 +38,24 @@ fn ipmi_channel_number_eq(a: IpmiChannelNumber, b: IpmiChannelNumber) -> Bool {
   (a as Int) == (b as Int)
 }
 
-// Table 6-3 Channel Medium Type. Arms the specification names. Codes this
-// corpus has not yet had to classify stay Other { code } rather than a
-// fabricated named medium.
-type IpmiChannelMedium
+// Table 6-3 Channel Medium Type, split so LAN vs non-LAN cannot disagree
+// with the census-member coproduct. A serial medium has no constructor on a
+// LAN member; 802.3 has no constructor on a non-LAN member. Codes this corpus
+// has not yet had to classify stay Other { code } on the non-LAN side.
+type IpmiLanMedium
+  = IpmiMedium8023Lan
+  | IpmiMediumOtherLan
+
+type IpmiNonLanMedium
   = IpmiMediumIpmb
   | IpmiMediumIcmbV1
   | IpmiMediumIcmbV09
-  | IpmiMedium8023Lan
   | IpmiMediumSerialAsync
-  | IpmiMediumOtherLan
   | IpmiMediumPciSmbus
   | IpmiMediumSmbusV1
   | IpmiMediumSmbusV2
   | IpmiMediumSystemInterface
   | IpmiMediumOther { code: Int }
-
-fn ipmi_channel_medium_is_lan(medium: IpmiChannelMedium) -> Bool {
-  match medium {
-    IpmiMedium8023Lan => true
-    IpmiMediumOtherLan => true
-    IpmiMediumIpmb => false
-    IpmiMediumIcmbV1 => false
-    IpmiMediumIcmbV09 => false
-    IpmiMediumSerialAsync => false
-    IpmiMediumPciSmbus => false
-    IpmiMediumSmbusV1 => false
-    IpmiMediumSmbusV2 => false
-    IpmiMediumSystemInterface => false
-    IpmiMediumOther { code: _ } => false
-  }
-}
 
 // Get User Access (IPMI v2.0 rev 1.1 §22.27, Channel Privilege Limits).
 // Fh is NO ACCESS. This is the published account's per-channel limit, not a
@@ -117,19 +104,19 @@ fn ipmi_lan_ipv4_configuration(address: Ipv4Address) -> IpmiLanIpv4Configuration
 type IpmiChannelCensusMember
   = IpmiLanChannelMember {
       channel: IpmiChannelNumber
-      medium: IpmiChannelMedium
+      medium: IpmiLanMedium
       ipv4: IpmiLanIpv4Configuration
       published_user_access: IpmiChannelPrivilegeLimit
     }
   | IpmiNonLanChannelMember {
       channel: IpmiChannelNumber
-      medium: IpmiChannelMedium
+      medium: IpmiNonLanMedium
       published_user_access: IpmiChannelPrivilegeLimit
     }
 
 fn ipmi_lan_channel_member(
   channel: IpmiChannelNumber,
-  medium: IpmiChannelMedium,
+  medium: IpmiLanMedium,
   address: Ipv4Address,
   published_user_access: IpmiChannelPrivilegeLimit,
 ) -> IpmiChannelCensusMember {
@@ -143,7 +130,7 @@ fn ipmi_lan_channel_member(
 
 fn ipmi_non_lan_channel_member(
   channel: IpmiChannelNumber,
-  medium: IpmiChannelMedium,
+  medium: IpmiNonLanMedium,
   published_user_access: IpmiChannelPrivilegeLimit,
 ) -> IpmiChannelCensusMember {
   IpmiNonLanChannelMember {

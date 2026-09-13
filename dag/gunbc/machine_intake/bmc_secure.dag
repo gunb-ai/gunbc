@@ -506,32 +506,40 @@ type CensusJoinProgress
   = CensusJoinOpen { evidence: List<EvidenceRef>, latest_rejected_at: EpochMs?, saw_addressable_lan: Bool }
   | CensusJoinClosed { cause: BmcSecureRefusalCause }
 
-fn published_probe_refusal(
+// ONE SOURCE for whether an assigned-LAN probe admits or refuses. A later
+// re-match of probe.outcome that closed Accepted/Unestablished independently
+// made the RED-1 mutation receipt void (review 65033): changing this function's
+// Accepted arm to none still closed in the caller with the same cause.
+type PublishedProbeAdjudication
+  = PublishedProbeRefused { cause: BmcSecureRefusalCause }
+  | PublishedProbeAdmitted { evidence: EvidenceRef, observed_at: EpochMs }
+
+fn adjudicate_published_probe(
   probe: PublishedCredentialLanProbe,
   channel: IpmiChannelNumber,
   applied_at: EpochMs,
   require_published_closed: Bool,
-) -> BmcSecureRefusalCause? {
+) -> PublishedProbeAdjudication {
   match probe.outcome {
     CredentialProbeUnestablished { detail: d } =>
-      Present { value: PublishedCredentialRetirementUnestablished { detail: d } }
-    CredentialAccepted { evidence: _, observed_at: at } =>
+      PublishedProbeRefused { cause: PublishedCredentialRetirementUnestablished { detail: d } }
+    CredentialAccepted { evidence: e, observed_at: at } =>
       if require_published_closed {
-        Present { value: PublishedCredentialStillAccepted { channel: channel } }
+        PublishedProbeRefused { cause: PublishedCredentialStillAccepted { channel: channel } }
       } else if at < applied_at {
-        Present { value: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
+        PublishedProbeRefused { cause: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
       } else {
-        none
+        PublishedProbeAdmitted { evidence: e, observed_at: at }
       }
-    CredentialRejected { evidence: _, observed_at: at } =>
+    CredentialRejected { evidence: e, observed_at: at } =>
       if require_published_closed {
         if at < applied_at {
-          Present { value: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
+          PublishedProbeRefused { cause: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
         } else {
-          none
+          PublishedProbeAdmitted { evidence: e, observed_at: at }
         }
       } else {
-        Present { value: PublishedCredentialNotRetained { channel: channel } }
+        PublishedProbeRefused { cause: PublishedCredentialNotRetained { channel: channel } }
       }
   }
 }
@@ -554,24 +562,13 @@ fn join_open_assigned_lan(
     match matches |> get(0) {
       Absent => CensusJoinClosed { cause: PublishedCredentialCensusMemberUnprobed { channel: channel } }
       Present { value: probe } =>
-        match published_probe_refusal(probe: probe, channel: channel, applied_at: applied_at, require_published_closed: require_published_closed) {
-          Present { value: c } => CensusJoinClosed { cause: c }
-          Absent =>
-            match probe.outcome {
-              CredentialRejected { evidence: pe, observed_at: at } =>
-                CensusJoinOpen {
-                  evidence: concat(ev, [pe]),
-                  latest_rejected_at: Present { value: at },
-                  saw_addressable_lan: true,
-                }
-              CredentialAccepted { evidence: pe, observed_at: at } =>
-                CensusJoinOpen {
-                  evidence: concat(ev, [pe]),
-                  latest_rejected_at: Present { value: at },
-                  saw_addressable_lan: true,
-                }
-              CredentialProbeUnestablished { detail: d } =>
-                CensusJoinClosed { cause: PublishedCredentialRetirementUnestablished { detail: d } }
+        match adjudicate_published_probe(probe: probe, channel: channel, applied_at: applied_at, require_published_closed: require_published_closed) {
+          PublishedProbeRefused { cause: c } => CensusJoinClosed { cause: c }
+          PublishedProbeAdmitted { evidence: pe, observed_at: at } =>
+            CensusJoinOpen {
+              evidence: concat(ev, [pe]),
+              latest_rejected_at: Present { value: at },
+              saw_addressable_lan: true,
             }
         }
     }
@@ -678,17 +675,19 @@ fn unmatched_published_probe_cause(
 // forever (DESIGN §4d over-prohibition). An unaddressed channel that still
 // holds ADMINISTRATOR is the exposure the moment it gets an address.
 //
-// MUTATION THAT TURNS RED 1: in published_probe_refusal, change the
-// CredentialAccepted arm to `none`. The split-address specimen then mints
-// BmcSecured. MUTATION THAT TURNS RED 2: replace the empty-members
-// CensusNotTaken return with the retired single-host path (if the sole
-// supplied probe is CredentialRejected, mint BmcSecured). Deleting the
-// return so the fold proceeds still refuses NoAddressableLanMember — that
-// mutant is VOID. MUTATION THAT TURNS unaddressed+ADMINISTRATOR RED into
-// GREEN: in join_census_member, treat IpmiLanIpv4Unassigned as always Open.
-// MUTATION THAT TURNS unaddressed+NO ACCESS GREEN into RED: delete the
-// no-access arm so Unassigned always refuses LanMemberUnaddressed.
-// A parse failure of either mutant is VOID, not a passed red.
+// MUTATION THAT TURNS RED 1: in adjudicate_published_probe, the
+// CredentialAccepted + require_published_closed arm returns
+// PublishedProbeAdmitted instead of PublishedProbeRefused StillAccepted.
+// The split-address specimen then mints BmcSecured. There is no second match
+// of probe.outcome that can re-close that arm. MUTATION THAT TURNS RED 2:
+// replace the empty-members CensusNotTaken return with the retired single-host
+// path (if the sole supplied probe is CredentialRejected, mint BmcSecured).
+// Deleting the return so the fold proceeds still refuses
+// NoAddressableLanMember — that mutant is VOID. MUTATION THAT TURNS
+// unaddressed+ADMINISTRATOR RED into GREEN: in join_census_member, treat
+// IpmiLanIpv4Unassigned as always Open. MUTATION THAT TURNS unaddressed+NO
+// ACCESS GREEN into RED: delete the no-access arm so Unassigned always refuses
+// LanMemberUnaddressed. A parse failure of a mutant is VOID, not a passed red.
 fn adjudicate_published_census(
   endpoint: BmcControllerEndpoint,
   reference: ManagedCredentialReference,

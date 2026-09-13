@@ -455,7 +455,7 @@ test fn published_probe_before_rotation_refuses() -> Bool {
 
 // RED 1. Census of two addresses: .228 rejects, .231 accepts. Count of probes
 // equals members; identity join still refuses because one member accepts.
-// MUTATION: published_probe_refusal CredentialAccepted -> none mints BmcSecured.
+// MUTATION: adjudicate_published_probe Accepted+require_closed -> Admitted mints BmcSecured.
 test fn split_lan_census_one_accepting_refuses() -> Bool {
   let observation = rotation_observed(
     subj: intake_subject,
