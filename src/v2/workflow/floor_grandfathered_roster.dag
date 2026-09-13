@@ -6,6 +6,7 @@ import v2.std.optional { Optional, Absent, Present, optional_absent, optional_pr
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int, int_add }
+import std.measure { EvalStepCount }
 import std.types { NonEmptyStr }
 
 // THE CLOSED ROSTER OF WITNESS IDENTITIES GRANDFATHERED AT THE CUT COMMIT (operator ruling via
@@ -48,7 +49,7 @@ import std.types { NonEmptyStr }
 type GrandfatheredRemoval =
     WitnessDeleted { identity: NonEmptyStr, deleted_in: NonEmptyStr }
   | WitnessRenamed { previous_identity: NonEmptyStr, new_identity: NonEmptyStr, renamed_in: NonEmptyStr }
-  | WitnessNowInsideNewTier { identity: NonEmptyStr, observed_eval_steps: Int, measured_by: NonEmptyStr }
+  | WitnessNowInsideNewTier { identity: NonEmptyStr, observed_eval_steps: EvalStepCount, measured_by: NonEmptyStr }
 
 // THREE ROWS WERE STRUCK BECAUSE THE CUT CAPTURED THIS LANE'S OWN NEW WITNESSES (review 65549, and
 // the finding was correct and serious). The generating floor run was taken PART-WAY THROUGH this

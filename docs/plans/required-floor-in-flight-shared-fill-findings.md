@@ -7,7 +7,7 @@ change to the required floor's cost model.
 > **HALF OF THIS DOCUMENT'S SUBJECT NO LONGER EXISTS (2026-09-12).** The required floor's claim
 > ceiling moved off the CPU clock onto eval steps and CPU became observed-only for every claim
 > (operator ruling via fierce-lark-661; `v2.workflow.required_floor`
-> `required_floor_claim_eval_step_budget` and `claim_cost_basis_standing`), and
+> `claim_eval_step_budget_for_identity` and `claim_cost_basis_standing`), and
 > `required_floor_claim_cpu_safety_limit_ms` is deleted. **Every sentence below about a 500ms CPU
 > deadline, about what crosses it, and about the merge-blocking comparison over marginal CPU is
 > superseded** — the 500 survives only as `required_floor_claim_work_envelope_ms`, a policy in

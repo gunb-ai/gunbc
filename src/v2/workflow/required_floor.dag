@@ -177,13 +177,27 @@ fn required_floor_disposition_with_changed_selection(
 // exactly one thing -- the CPU ceiling's power to convert a REACHED verdict into a floor red,
 // for an identity whose expensiveness is already declared debt and whose author is present.
 //
-// AN ORDINARY CHANGED WITNESS IS UNAFFECTED. A changed identity that is NEITHER cost-debt
-// rostered NOR long-home classified keeps the ordinary policy and still reds when it exceeds the
-// CPU line, so this is not a widening of the floor: no identity gains the override by being
-// changed alone, and none gains it by being expensive alone. The two conditions are one question
-// asked at two grains -- `changed_witness_expensiveness_is_declared` is the authority that joins
-// them -- so this sentence names both, and a reader who finds only the roster here is reading a
-// rule the implementation stopped following.
+// WHAT THIS POLICY STILL DISTINGUISHES, RESTATED BECAUSE THE CPU ARMING DISTINCTION IT USED TO
+// NAME NO LONGER EXISTS (review 65674). An earlier revision of this paragraph said an ordinary
+// changed witness "still reds when it exceeds the CPU line". That was true when written and is
+// false at this head: `claim_cost_basis_standing` makes `CpuTimeBasis` `BasisObservedOnly` for
+// EVERY claim, so no CPU figure refuses anything under either arm. Two answers to "may CPU
+// refuse?" in one file is the meaning fork DESIGN section 3 forbids, and it is an instance of the
+// class this same change files at `gunbc.recurring_failure_mode`
+// `prose_repealed_by_the_change_that_wrote_it` -- which is why it is corrected here rather than
+// left for the next reader to discover against a deleted world.
+//
+// THE SURVIVING DIFFERENCE IS ABOUT PUBLISHING, NOT ABOUT ARMING. Both arms now gate on eval
+// steps and observe CPU. What `ChangedCostDebtVerdictOnly` still selects is that a changed
+// identity whose expensiveness is ALREADY DECLARED DEBT, and whose author is present, has its
+// cost observation published as a cost-debt receipt rather than read as a fresh finding about
+// that claim. `OrdinaryChangedWitnessCostPolicy` publishes no such receipt.
+//
+// NEITHER ARM IS A WIDENING, and the reason is unchanged by the above: no identity gains the
+// override by being changed alone, and none by being expensive alone. The two conditions are one
+// question asked at two grains -- `changed_witness_expensiveness_is_declared` is the authority
+// that joins them -- so a reader who finds only the roster here is reading a rule the
+// implementation stopped following.
 type ChangedWitnessCostPolicy =
     OrdinaryChangedWitnessCostPolicy
   | ChangedCostDebtVerdictOnly

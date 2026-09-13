@@ -41347,9 +41347,12 @@ pub struct RequiredFloorClaim {
     /// `v2.workflow.required_floor` `ChangedWitnessCostPolicy`, derived by
     /// `changed_witness_cost_policy` from the intersection of changed-witness selection and
     /// `v2.workflow.floor_cost_debt` enrollment (FLOOR-CHANGED-COST-0, operator ruling
-    /// 2026-08-30). It selects WHICH CLOCK IS ARMED, never what the claim is allowed to cost:
-    /// `cpu_safety_limit_ms` above carries the same 500ms figure under both policies, and under
-    /// the override that figure is measured against and published rather than enforced.
+    /// 2026-08-30). It no longer selects which clock is armed: since the claim ceiling moved onto
+    /// eval steps, `claim_cost_basis_standing` makes CPU `BasisObservedOnly` for EVERY claim, so
+    /// no CPU figure refuses under either arm and `cpu_safety_limit_ms` no longer exists. What it
+    /// selects is whether the claim's cost observation is PUBLISHED as a cost-debt receipt --
+    /// which the override does and the ordinary arm does not. The prior wording survived the
+    /// deletion of the field it cited (review 65674).
     pub cost_policy: ChangedWitnessCostPolicy,
 }
 
