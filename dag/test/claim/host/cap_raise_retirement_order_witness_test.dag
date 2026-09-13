@@ -3,6 +3,7 @@ module test.claim.host.cap_raise_retirement_order_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.types { NonEmptyStr }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
 import gunbc.host_axis_caps {
   CapConvergeAuthorized,
   CapConvergeWithheld,
@@ -13,8 +14,15 @@ import gunbc.host_axis_caps {
   CapMember,
   SurplusSlotsObserved,
   SurplusSlotsUnobserved,
-  authorized_caps_effects,
+  ApplyRefused,
+  CapEffectsReady,
+  CapEffectsRefusedByReconcile,
+  CapEffectsWithheld,
+  EffectsReady,
+  authorized_caps_effect_standing,
   cap_converge_decision,
+  caps_effects,
+  gunbc_runner_per_slot_dropin_path,
   cap_converge_is_withheld,
   cap_raise_standing,
   cap_raise_standing_blocks,
@@ -96,47 +104,102 @@ test fn both_blocked_standings_report_as_blocking() -> Bool {
 // defect lived in what its result was flattened into on the way to the effect decision. So these
 // rows drive `authorized_caps_effects` with a NONEMPTY OBSERVED SET -- the only shape in which a
 // removal can be produced at all.
+// THE FIXTURE MUST BE AN *OWNED* MEMBER OR IT TESTS NOTHING, and the first draft was not.
+//
+// It used `/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf`, which is NOT in
+// `caps_managed_dropin_paths`, so `cap_member_ownership` classified it `Ensured`. Removal of an
+// `Ensured` member is REFUSED by `removal_admission` -- so the destructive branch the teardown
+// finding was about was never reached, and the rows asserting "no effects" passed for a reason
+// unrelated to the repair. The path is now derived from the managed-path authority itself, with the
+// old 16 GiB bytes retained as its historical input.
 fn observed_existing_caps() -> List<CapMember> {
   [
     desired_cap_member(
-      dropin_path: "/etc/systemd/system/actions-runner@.service.d/10-resource-caps.conf" as NonEmptyStr,
+      dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
       property: "MemoryMax" as NonEmptyStr,
       bytes_value: "17179869184" as NonEmptyStr,
     ),
   ]
 }
 
-test fn a_withheld_decision_emits_no_effects_against_existing_caps() -> Bool {
-  authorized_caps_effects(
-    decision: CapConvergeWithheld { cause: "unobserved" },
-    observed: observed_existing_caps(),
-  ).length() == 0
+// FIRST ESTABLISH THAT THE DESTRUCTIVE BRANCH IS REACHABLE AT ALL. Ordinary reconciliation of an
+// EMPTY desired set against this owned observed member MUST produce a removal. Without this row the
+// withholding rows below prove nothing: they would be satisfied by a member that can never be
+// removed, which is exactly the defect this fixture had.
+test fn an_empty_desired_set_would_remove_the_owned_cap() -> Bool {
+  match caps_effects(desired: [], observed: observed_existing_caps()) {
+    EffectsReady { effects: es } => es.length() == 1
+    ApplyRefused { refusals: _ } => false
+  }
 }
 
-// THE DISCRIMINATING RED FOR THE TEARDOWN CLASS. An unobserved surplus, against a host that already
-// carries owned caps, must emit NEITHER upserts NOR removals. Reinstating the empty-desired-set
-// shape makes this row produce a removal and go red.
-test fn an_unobserved_surplus_removes_nothing_that_exists() -> Bool {
-  authorized_caps_effects(
+// AND NOW THE REPAIR: withholding does NOT take that path. The standing distinguishes a withheld
+// empty from a reconcile-refused empty, so this asserts the WITHHELD arm by name rather than
+// asserting an empty list that either arm could produce.
+test fn a_withheld_decision_withholds_rather_than_removing_the_owned_cap() -> Bool {
+  match authorized_caps_effect_standing(
+    decision: CapConvergeWithheld { cause: "unobserved" },
+    host: operator_host_srv4,
+    observed: observed_existing_caps(),
+  ) {
+    CapEffectsWithheld { cause: _ } => true
+    CapEffectsReady { effects: _ } => false
+    CapEffectsRefusedByReconcile { cause: _ } => false
+  }
+}
+
+test fn an_unobserved_surplus_withholds_rather_than_removing() -> Bool {
+  match authorized_caps_effect_standing(
     decision: cap_converge_decision(
-      required_retiring: ["actions-runner@srv1-14.service" as NonEmptyStr],
+      host: operator_host_srv4,
+      required_retiring: ["actions-runner@srv4-13.service" as NonEmptyStr],
       observation: SurplusSlotsUnobserved { cause: "no census" },
     ),
+    host: operator_host_srv4,
     observed: observed_existing_caps(),
-  ).length() == 0
+  ) {
+    CapEffectsWithheld { cause: _ } => true
+    CapEffectsReady { effects: _ } => false
+    CapEffectsRefusedByReconcile { cause: _ } => false
+  }
 }
 
-test fn a_pending_drain_removes_nothing_that_exists() -> Bool {
-  authorized_caps_effects(
+// THE POSITIVE CONTROL NOW CALLS THE EFFECT PRODUCER AND REQUIRES NONEMPTY EFFECTS. The earlier row
+// only checked that the decision carried two desired members, so making
+// `authorized_caps_effect_standing` return nothing unconditionally would have left the whole suite
+// green -- the name promised more than the body established.
+test fn an_authorized_decision_produces_nonempty_cap_effects() -> Bool {
+  match authorized_caps_effect_standing(
     decision: cap_converge_decision(
-      required_retiring: ["actions-runner@srv1-14.service" as NonEmptyStr],
-      observation: SurplusSlotsObserved {
-        retired: [],
-        still_present: ["actions-runner@srv1-14.service" as NonEmptyStr],
-      },
+      host: operator_host_srv4,
+      required_retiring: [],
+      observation: SurplusSlotsObserved { retired: [], still_present: [] },
     ),
+    host: operator_host_srv4,
+    observed: [],
+  ) {
+    CapEffectsReady { effects: es } => es.length() > 0
+    CapEffectsWithheld { cause: _ } => false
+    CapEffectsRefusedByReconcile { cause: _ } => false
+  }
+}
+
+// AN AUTHORIZATION FOR ANOTHER HOST IS NOT USABLE HERE. This is finding 1's discriminating red: a
+// decision honestly produced from srv4's completed retirement, spent against srv1.
+test fn an_authorization_for_another_host_is_refused() -> Bool {
+  match authorized_caps_effect_standing(
+    decision: cap_converge_decision(
+      host: operator_host_srv4,
+      required_retiring: [],
+      observation: SurplusSlotsObserved { retired: [], still_present: [] },
+    ),
+    host: operator_host_srv1,
     observed: observed_existing_caps(),
-  ).length() == 0
+  ) {
+    CapEffectsWithheld { cause: _ } => true
+    CapEffectsReady { effects: _ } => false
+    CapEffectsRefusedByReconcile { cause: _ } => false
+  }
 }
 
 // ── COVERAGE: EVIDENCE ABOUT THE SLOTS SOMEONE MENTIONED IS NOT EVIDENCE ABOUT THE SLOTS THAT
@@ -208,19 +271,5 @@ test fn an_empty_required_set_admits_so_convergence_is_idempotent() -> Bool {
     CapRaiseBlockedIncompleteEvidence { missing: _ } => false
     CapRaiseBlockedPendingRetirement { still_present: _ } => false
     CapRaiseBlockedUnobserved { cause: _ } => false
-  }
-}
-
-// AND THE AUTHORIZED PATH STILL WRITES. Without this the suite is satisfied by a gate that withholds
-// everything, which is the failure a refusal-only suite cannot see.
-test fn an_authorized_decision_still_produces_cap_effects() -> Bool {
-  match cap_converge_decision(
-    required_retiring: [],
-    observation: SurplusSlotsObserved { retired: [], still_present: [] },
-  ) {
-    CapConvergeAuthorized { desired: d } => d.length() == 2 && !cap_converge_is_withheld(
-      d: CapConvergeAuthorized { desired: d }
-    )
-    CapConvergeWithheld { cause: _ } => false
   }
 }

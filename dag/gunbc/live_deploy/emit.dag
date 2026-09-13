@@ -98,10 +98,12 @@ import gunbc.host_layout {
   publication_refused_dir,
 }
 import gunbc.host_axis_caps {
+  CapAuthorizationRefused,
+  CapAuthorizedForThisHost,
   CapConvergeDecision,
   CapConvergeWithheld,
-  cap_converge_is_withheld,
-  deploy_memory_cap_apply_script_for_host,
+  cap_authorization_for_host,
+  deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
   runner_slot_service_units_for_host,
@@ -1267,28 +1269,32 @@ fn deploy_memory_cap_apply_steps(
 ) -> List<PipelineStep> {
   let host = spec.target.host.identity
   let units = runner_slot_service_units_for_host(host: host)
-  let script = deploy_memory_cap_apply_script_for_host(host: host)
-  if cap_converge_is_withheld(d: authorization) {
-    [
-      deploy_raw(
-        command: concat(
-          "__GUNBC_DEPLOY_REFUSED__ memory-cap apply withheld: no completed retirement evidence host=",
-          host as String,
+  match cap_authorization_for_host(d: authorization, host: host) {
+    CapAuthorizationRefused { cause: why } =>
+      [
+        deploy_raw(
+          command: concat(
+            concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply not authorized for this host: ", why),
+            concat(" host=", host as String),
+          ),
         ),
-      ),
-    ]
-  } else if host_axis_caps_author_before_revert_enforced
-    && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
-    [deploy_raw(command: script)]
-  } else {
-    [
-      deploy_raw(
-        command: concat(
-          "__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=",
-          host as String,
-        ),
-      ),
-    ]
+      ]
+    CapAuthorizedForThisHost { desired: members, authorized_retiring: _ } => {
+      let script = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
+      if host_axis_caps_author_before_revert_enforced
+        && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
+        [deploy_raw(command: script)]
+      } else {
+        [
+          deploy_raw(
+            command: concat(
+              "__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=",
+              host as String,
+            ),
+          ),
+        ]
+      }
+    }
   }
 }
 
