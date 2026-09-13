@@ -63,3 +63,15 @@ data empty_fold_source: String = "module probe_generic_empty_fold\nimport std.ty
 test fn empty_fold_element_binds() -> Bool {
   callback_inference_error_count(source: empty_fold_source) == 0
 }
+
+data empty_map_source: String = "module probe_generic_empty_map\nfn asks() -> Map<String, Int> { empty_map() }\n"
+
+test fn empty_map_argument_binds() -> Bool {
+  callback_inference_error_count(source: empty_map_source) == 0
+}
+
+data empty_set_source: String = "module probe_generic_empty_set\nfn asks() -> Set<Int> { empty_set() }\n"
+
+test fn empty_set_argument_binds() -> Bool {
+  callback_inference_error_count(source: empty_set_source) == 0
+}
