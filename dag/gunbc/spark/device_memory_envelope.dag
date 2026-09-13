@@ -17,12 +17,14 @@ import gunbc.spark.serving_arm_launch {
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, VllmOpenaiGlm53Flash, FourSparkTp4, ArmBoundedExperiment,
   serving_topology_rank_count, vllm_openai_glm53_flash_row, ArmNormalServing, runtime_artifact_wire,
+  glm53_nope_derived_row,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_compatibility {
   SelectedServingDeployment, SelectedDeploymentAuthorization, SelectionAdmission,
   SelectionAdmitted, SelectionRefused, select_serving_deployment,
   selected_identity_of, authorization_covers, authorize_selection,
+  glm_native_on_derived_nope_tp4, glm_native_on_derived_nope_standing,
   glm_native_on_official_sm121_tp4, glm_native_official_sm121_tp4_standing,
 }
 
@@ -639,10 +641,20 @@ fn glm_native_tp4_launch_plan_for(
 // the compatibility roster refuses cannot reach a plan even here. It asks for a bounded experiment because no
 // execution has shown this subject serving -- which is exactly what select_serving_deployment enforces, and
 // today this subject is ExecutionIncompatible, so the selection refuses and there is no plan at all.
+// THE ARM NOW NAMES THE RUNTIME THIS FLEET BUILT, WHICH IS THE WHOLE POINT OF BUILDING IT. This selection
+// pointed at glm_native_on_official_sm121_tp4, whose standing is ExecutionIncompatible -- measured, at
+// attempt 9 on 2026-09-11, after all four ranks started and rank zero loaded weights in 524 seconds. That
+// refusal is not being overruled or reinterpreted: it stays exactly where it is, as evidence about the
+// official image, and this arm simply stops asking that subject the question.
+//
+// THE NEW SUBJECT IS StaticallyPlausible, SO THIS ADMITS A BOUNDED EXPERIMENT AND NOTHING ELSE. The
+// intent argument is false and must stay false until execution says otherwise: a StaticallyPlausible
+// standing with intent_is_normal_serving true is refused by the same function, which is the wall that
+// keeps inspection from being promoted into a serving licence.
 fn glm_native_tp4_selection() -> SelectionAdmission {
   select_serving_deployment(
-    subject: glm_native_on_official_sm121_tp4,
-    standing: glm_native_official_sm121_tp4_standing,
+    subject: glm_native_on_derived_nope_tp4,
+    standing: glm_native_on_derived_nope_standing,
     intent_is_normal_serving: false,
   )
 }
@@ -664,7 +676,7 @@ fn glm_native_tp4_launch_plan(envelope: ResolvedDeviceMemoryEnvelope) -> ArmLaun
 // which is the mismatch RankEnvelopeForeignImage exists to catch -- and a check is a poor substitute for
 // there being only one place the value comes from.
 fn glm_native_tp4_runtime_image() -> NonEmptyStr {
-  runtime_artifact_wire(a: vllm_openai_glm53_flash_row.artifact)
+  runtime_artifact_wire(a: glm53_nope_derived_row.artifact)
 }
 
 func glm_native_tp4_resolve_envelope(

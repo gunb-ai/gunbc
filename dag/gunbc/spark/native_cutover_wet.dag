@@ -58,6 +58,7 @@ import gunbc.spark.nope_conformance_probe {
 }
 import gunbc.spark.serving_arm { RuntimeArtifactIdentity, vllm_openai_glm53_flash_row }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.native_incumbent {
   IncumbentObservation, IncumbentRunning, IncumbentStoppedPresent, IncumbentAbsent, IncumbentUnreadable,
@@ -742,14 +743,9 @@ func glm53_nope_conformance_wet(artifact: RuntimeArtifactIdentity) -> ProcessExi
                       match standing {
                         NopeConformanceHeld { image_key: _, passed: _ } => ExitSuccess
                         NopeConformancePartial { image_key: k, passed: p, unrun: u, obligations: obs } => {
-                          let _ = Stdout.Write(content: join([
-                            "PREFLIGHT PASSED, COVERAGE INCOMPLETE: ", to_string(p),
-                            " mandatory probe(s) passed and ", to_string(u),
-                            " propert(ies) remain unrun against ", k,
-                            ". This LICENSES a bounded authorised experiment and does NOT license normal serving. ",
-                            "Remaining for the engine run: ", join(map(obs, o => o as String), " | "), "\n",
-                          ], ""))
-                          ExitSuccess
+                          let body = nope_partial_coverage_report(image_key: k, passed: p, unrun: u, obligations: obs)
+                          let w = Filesystem.Write(path: nope_conformance_receipt_path, content: body)
+                          if w.success { ExitSuccess } else { exit_failure(reason: body) }
                         }
                         NopeConformanceRefused { image_key: k, first_refusal: r } =>
                           exit_failure(reason: join(["REFUSED against ", k, ": ", r], ""))
@@ -768,6 +764,32 @@ func glm53_nope_conformance_wet(artifact: RuntimeArtifactIdentity) -> ProcessExi
 // rather than a default parameter so that running the probes against the stock image is an explicit request:
 // the interesting run, once the derived runtime exists, is against the DERIVED artifact, and a default would
 // quietly keep answering about the old bytes.
+// PARTIAL COVERAGE EXITS SUCCESS, SO ITS QUALIFICATION HAS TO BE READABLE SOMEWHERE. This arm reported
+// through `Stdout.Write`, which does not exist: Stdout is a ShellOutputChannel VARIANT, not a service, so
+// the call named a method on a coproduct and the whole module failed to RESOLVE -- measured 2026-09-13,
+// where `gunbc run` refuses this entry and every other entry in the file with it.
+//
+// THE CONSEQUENCE WAS WORSE THAN A BUILD BREAK. The sentence that never printed is the one saying this
+// result licenses a bounded experiment and NOT normal serving, so a caller reading only the exit status
+// saw success with the qualification nowhere. A receipt is where every other entry in these modules puts
+// its findings, and a write that fails now refuses rather than exiting success silently.
+//
+// THE LICENCE SEMANTICS ARE UNCHANGED ON PURPOSE: partial coverage still exits success, because the
+// standing model is what gates serving -- compatibility_admits gives StaticallyPlausible a bounded
+// experiment and withholds normal serving regardless of what this process returns. This repair makes the
+// statement legible; it does not move the wall.
+data nope_conformance_receipt_path: String = "target/spark-nope-conformance-receipt.txt"
+
+fn nope_partial_coverage_report(image_key: NonEmptyStr, passed: Nat, unrun: Nat, obligations: List<NonEmptyStr>) -> String {
+  join([
+    "PREFLIGHT PASSED, COVERAGE INCOMPLETE: ", to_string(passed),
+    " mandatory probe(s) passed and ", to_string(unrun),
+    " propert(ies) remain unrun against ", image_key as String,
+    ". This LICENSES a bounded authorised experiment and does NOT license normal serving. ",
+    "Remaining for the engine run: ", join(map(obligations, o => o as String), " | "), "\n",
+  ], "")
+}
+
 func glm53_nope_conformance_on_stock_official_wet() -> ProcessExit
   uses net: Network
 {
