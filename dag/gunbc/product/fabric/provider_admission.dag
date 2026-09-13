@@ -211,7 +211,6 @@ type ProviderUseRefusal
   | ProhibitedUseNotCleared { obligation: DeclarationRef }
   | SanctionsNotCleared { obligation: DeclarationRef }
   | ExportNotCleared { obligation: DeclarationRef }
-  | PlantedReceiptArmForGunbc11256 { obligation: DeclarationRef }
 
 // std.access.AccessDecision stays the allow/deny authority. This coproduct transports the sealed
 // positive permit and the typed domain cause; it deliberately does NOT make a second, independent
