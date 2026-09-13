@@ -17,9 +17,7 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness
 }
-import v2.std.logic { Bool }
 import v2.std.node {
-  Atom,
   Cardinality,
   Conj,
   Edge,
@@ -52,12 +50,22 @@ type InhabitanceFormal {
 type InhabitanceUndecidableReason
   = UndecidableGenericFormal
   | UndecidableOptionalCarrier
-  | UndecidableRefinementChain
-  | UndecidableKernelNumeric
   | UndecidableFormalUnresolved
   | UndecidableArgumentTypeNotDerived
   | UndecidableArityShapeUnmodeled
 
+// InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as
+// v2.compiler.infer infer_grounding_not_derived: typed, located, dissolve-on when the missing fact
+// lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation,
+// arity/named-arg shape). It is never a silent admit and never a refusal. Rejected is reserved
+// for both sides derived AND find_witness over the declared singleton refusing. The RFM row's v2
+// arm retires when the frontier count over reached applications is zero on both routes; the
+// count is the census.
+// RUNG PER PATH. Source→interpretation (v2 04_infer consuming declared_type_inhabitance): a
+// decidable incompatible argument refuses; unjudgeable applications are counted. That is the
+// claim, not "every reached application is judged". Native emission is a declared frontier: it
+// is unclaimed until v2.std.inhabitance is in the native 04_infer closure AND the same RED (Bool
+// at an Int formal) refuses on the emitted binary.
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
   | InhabitanceRefused { find_witness_reason: Symbol }
@@ -77,32 +85,23 @@ fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
   }
 }
 
-fn inhabitance_node_is_instantiation(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Instantiation } => true
-    _ => false
-  }
-}
-
-fn inhabitance_node_is_cardinality(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: Cardinality } => true
-    _ => false
-  }
-}
-
 fn inhabitance_pair_undecidable_reason(
   declared: Node,
   produced: Node
 ) -> Optional<InhabitanceUndecidableReason> {
-  if inhabitance_node_is_cardinality(n: declared)
-    || inhabitance_node_is_cardinality(n: produced) {
-    optional_present(value: UndecidableOptionalCarrier)
-  } else if inhabitance_node_is_instantiation(n: declared)
-    || inhabitance_node_is_instantiation(n: produced) {
-    optional_present(value: UndecidableGenericFormal)
-  } else {
-    Absent
+  match declared.kind {
+    TypeNode { connective: Cardinality } =>
+      optional_present(value: UndecidableOptionalCarrier)
+    TypeNode { connective: Instantiation } =>
+      optional_present(value: UndecidableGenericFormal)
+    _ =>
+      match produced.kind {
+        TypeNode { connective: Cardinality } =>
+          optional_present(value: UndecidableOptionalCarrier)
+        TypeNode { connective: Instantiation } =>
+          optional_present(value: UndecidableGenericFormal)
+        _ => Absent
+      }
   }
 }
 
@@ -145,16 +144,6 @@ fn inhabitance_inhabits_homomorphism(
   }
 }
 
-fn inhabitance_refused_find_witness_reason(
-  verdict: InhabitanceVerdict
-) -> Optional<Symbol> {
-  match verdict {
-    InhabitanceRefused { find_witness_reason: r } => Present { value: r }
-    Inhabits { homomorphism: _ } => Absent
-    InhabitanceUndecidable { reason: _ } => Absent
-  }
-}
-
 fn inhabitance_undecidable_reason(
   verdict: InhabitanceVerdict
 ) -> Optional<InhabitanceUndecidableReason> {
@@ -183,8 +172,6 @@ fn inhabitance_undecidable_reason_symbol(
   match reason {
     UndecidableGenericFormal => ^inhabitance_undecidable_generic_formal
     UndecidableOptionalCarrier => ^inhabitance_undecidable_optional_carrier
-    UndecidableRefinementChain => ^inhabitance_undecidable_refinement_chain
-    UndecidableKernelNumeric => ^inhabitance_undecidable_kernel_numeric
     UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
     UndecidableArgumentTypeNotDerived => ^inhabitance_undecidable_argument_type_not_derived
     UndecidableArityShapeUnmodeled => ^inhabitance_undecidable_arity_shape_unmodeled
@@ -201,10 +188,6 @@ fn inhabitance_undecidable_diagnostic(
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
-data inhabitance_undecidable_frontier_note: String = "InhabitanceUndecidable is a counted frontier on the Accepted path, the same discipline as v2.compiler.infer infer_grounding_not_derived: typed, located, dissolve-on when the missing fact lands (argument derivation, operator Arrow / ResolvedTree.bindings, generic instantiation, arity/named-arg shape). It is never a silent admit and never a refusal. Rejected is reserved for both sides derived AND find_witness over the declared singleton refusing. The RFM row's v2 arm retires when the frontier count over reached applications is zero on both routes; the count is the census."
-
-data inhabitance_rung_honesty_note: String = "RUNG PER PATH. Source→interpretation (v2 04_infer consuming declared_type_inhabitance): a decidable incompatible argument refuses; unjudgeable applications are counted. That is the claim, not 'every reached application is judged'. Native emission is a declared frontier: it is unclaimed until v2.std.inhabitance is in the native 04_infer closure AND the same RED (Bool at an Int formal) refuses on the emitted binary. The #11277 v2 arm retires when the InhabitanceUndecidable frontier count over reached applications is zero on both routes."
 
 fn application_argument_does_not_inhabit_diagnostic(
   application: Node,
