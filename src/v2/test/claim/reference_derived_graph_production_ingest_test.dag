@@ -1,0 +1,322 @@
+module v2.test.claim.reference_derived_graph_production_ingest
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.types { Int }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.reference_site_collector { collect_module_reference_sites }
+import v2.lens.module_graph {
+  LocatedModuleRoot,
+  located_roots_from_source_root_ingest,
+  reference_derived_edges_from_located_roots,
+}
+import v2.std.algebra { length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { List }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+  fold_node,
+  NodeFold
+}
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// MEASUREMENTS OF TODAY'S XL-4 ROUTE: module_roots_from_source_root_ingest then
+// normalized_tree_roots_to_nodes (via located_roots_from_source_root_ingest), then the one
+// collector. Not a second parse_module ingest.
+// Call-argument and callee: tree-side; go red when eager-raven-113 lowering lands, then this ingest.
+// "Type position" is too coarse. Bare PARAMETER type names are FOUND (LocalMarker;
+// LocalParamMarker in consumer_field_bare_local). Bare FIELD type names are absent at the
+// collector; the tree-side atom-and-label census on the same ingested root is enrolled separately,
+// cause UNVERIFIED (normalization drop vs a representation neither search reaches). No collector
+// trigger on the field-type site row until those separate.
+// Qualified cross-module mentions: declared frontier, triggered on the dotted-reference
+// capability, not on lowering. Collector-only; do not restore the parse-QN walk.
+
+data provider_text: String = "module test.fixture.reference_derived_graph.provider\nimport std.types { Int }\ntype ProvidedMarker\ndata provided_value: Int = 1\nfn provided_fn() -> Int { 1 }\n"
+
+data consumer_reference_only_text: String = "module test.fixture.reference_derived_graph.consumer_reference_only\nimport std.types { Int }\nfn uses_provider() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
+
+data consumer_import_only_text: String = "module test.fixture.reference_derived_graph.consumer_import_only\nimport test.fixture.reference_derived_graph.provider { ProvidedMarker }\n"
+
+data consumer_both_text: String = "module test.fixture.reference_derived_graph.consumer_both\nimport std.types { Int }\nimport test.fixture.reference_derived_graph.provider { provided_value }\nfn uses_imported_provider() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_value\n}\n"
+
+data consumer_call_only_text: String = "module test.fixture.reference_derived_graph.consumer_call_only\nimport std.types { Int }\nfn sink(x: Int) -> Int { x }\nfn uses_only_in_call() -> Int {\n  sink(x: test.fixture.reference_derived_graph.provider.provided_value)\n}\n"
+
+data consumer_type_only_text: String = "module test.fixture.reference_derived_graph.consumer_type_only\nimport std.types { Int }\nfn uses(\n  x: test.fixture.reference_derived_graph.provider.ProvidedMarker\n) -> Int {\n  1\n}\n"
+
+data consumer_callee_only_text: String = "module test.fixture.reference_derived_graph.consumer_callee_only\nimport std.types { Int }\nfn uses_only_as_callee() -> Int {\n  test.fixture.reference_derived_graph.provider.provided_fn()\n}\n"
+
+data consumer_type_imported_text: String = "module test.fixture.reference_derived_graph.consumer_type_imported\nimport std.types { Int }\nimport test.fixture.reference_derived_graph.provider { ProvidedMarker }\nfn uses(x: ProvidedMarker) -> Int {\n  1\n}\n"
+
+data consumer_type_bare_local_text: String = "module test.fixture.reference_derived_graph.consumer_type_bare_local\nimport std.types { Int }\ntype LocalMarker\nfn uses(x: LocalMarker) -> Int {\n  1\n}\n"
+
+data consumer_field_bare_local_text: String = "module test.fixture.reference_derived_graph.consumer_field_bare_local\nimport std.types { Int }\ntype LocalFieldOnly\ntype LocalParamMarker\ntype LocalWrapper {\n  f: LocalFieldOnly\n}\nfn uses(x: LocalParamMarker) -> Int {\n  1\n}\n"
+
+data provider_path: String = "dag/test/fixture/reference_derived_graph/provider.dag"
+
+data consumer_reference_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_reference_only.dag"
+
+data consumer_import_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_import_only.dag"
+
+data consumer_both_path: String = "dag/test/fixture/reference_derived_graph/consumer_both.dag"
+
+data consumer_call_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_call_only.dag"
+
+data consumer_type_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_only.dag"
+
+data consumer_callee_only_path: String = "dag/test/fixture/reference_derived_graph/consumer_callee_only.dag"
+
+data consumer_type_imported_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_imported.dag"
+
+data consumer_type_bare_local_path: String = "dag/test/fixture/reference_derived_graph/consumer_type_bare_local.dag"
+
+data consumer_field_bare_local_path: String = "dag/test/fixture/reference_derived_graph/consumer_field_bare_local.dag"
+
+data provider_module: String = "test.fixture.reference_derived_graph.provider"
+
+data production_ingest_refused_count: Int = -1
+
+fn fixture_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data fixture_ingest: SourceRootIngest = Cons {
+  head: fixture_read(text: provider_text, path: provider_path, unit: ^provider_unit),
+  tail: Cons {
+    head: fixture_read(text: consumer_reference_only_text, path: consumer_reference_only_path, unit: ^reference_only_unit),
+    tail: Cons {
+      head: fixture_read(text: consumer_import_only_text, path: consumer_import_only_path, unit: ^import_only_unit),
+      tail: Cons {
+        head: fixture_read(text: consumer_both_text, path: consumer_both_path, unit: ^both_unit),
+        tail: Cons {
+          head: fixture_read(text: consumer_call_only_text, path: consumer_call_only_path, unit: ^call_only_unit),
+          tail: Cons {
+            head: fixture_read(text: consumer_type_only_text, path: consumer_type_only_path, unit: ^type_only_unit),
+            tail: Cons {
+              head: fixture_read(text: consumer_callee_only_text, path: consumer_callee_only_path, unit: ^callee_only_unit),
+              tail: Cons {
+                head: fixture_read(text: consumer_type_imported_text, path: consumer_type_imported_path, unit: ^type_imported_unit),
+                tail: Cons {
+                  head: fixture_read(text: consumer_type_bare_local_text, path: consumer_type_bare_local_path, unit: ^type_bare_local_unit),
+                  tail: Cons {
+                    head: fixture_read(text: consumer_field_bare_local_text, path: consumer_field_bare_local_path, unit: ^field_bare_local_unit),
+                    tail: Empty
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+data provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
+
+data provided_marker_bare: String = "ProvidedMarker"
+
+data local_marker_bare: String = "LocalMarker"
+
+data local_field_only_bare: String = "LocalFieldOnly"
+
+data local_param_marker_bare: String = "LocalParamMarker"
+
+data local_wrapper_sym: Symbol = ^LocalWrapper
+
+data local_field_only_sym: Symbol = ^LocalFieldOnly
+
+data local_param_marker_sym: Symbol = ^LocalParamMarker
+
+data local_wrapper_field_name_sym: Symbol = ^f
+
+fn production_edge_count(path: String, target: String) -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      length(
+        xs: reference_derived_edges_from_located_roots(
+          items: items,
+          include_import_syntax: false
+        ).edges |> filter(e => e.path == path && e.target_module == target)
+      )
+  }
+}
+
+fn site_spelling_count(path: String, needle: String) -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match items |> filter(item => item.path == path) |> first {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          length(
+            xs: collect_module_reference_sites(root: item.root).sites
+              |> filter(site => qualified_name_to_dotted_string(qn: site.spelling) == needle)
+          )
+      }
+  }
+}
+
+fn node_atom_is(n: Node, needle: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == needle
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn tree_named_edge_count_in_root(root: Node, needle: Symbol) -> Int {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(_) { 0 },
+      step: fn(acc, edge, child_count) {
+        let here = match edge.label {
+          Named { name: nm } => if nm == needle { 1 } else { 0 }
+          Positional => 0
+        }
+        acc + here + child_count
+      }
+    }
+  )
+}
+
+fn tree_atom_count(path: String, needle: Symbol) -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match items |> filter(item => item.path == path) |> first {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          length(xs: node_subtree_nodes(root: item.root) |> filter(n => node_atom_is(n: n, needle: needle)))
+      }
+  }
+}
+
+fn tree_named_edge_count(path: String, needle: Symbol) -> Int {
+  match located_roots_from_source_root_ingest(ingest: fixture_ingest) {
+    Rejected { diagnostics: _ } => production_ingest_refused_count
+    Accepted { value: items, diagnostics: _ } =>
+      match items |> filter(item => item.path == path) |> first {
+        Absent => production_ingest_refused_count
+        Present { value: item } =>
+          tree_named_edge_count_in_root(root: item.root, needle: needle)
+      }
+  }
+}
+
+fn tree_atom_and_label_absent(path: String, needle: Symbol) -> Bool {
+  tree_atom_count(path: path, needle: needle) == 0
+    && tree_named_edge_count(path: path, needle: needle) == 0
+}
+
+// Absent today. Trigger: dotted-reference capability, not lowering.
+test fn production_route_reference_only_plain_value_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_reference_only_path, target: provider_module) == 0
+}
+
+test fn production_route_import_only_has_no_reference_edge_holds() -> Bool {
+  production_edge_count(path: consumer_import_only_path, target: provider_module) == 0
+}
+
+// Absent today. Same dotted-reference trigger as the reference-only qualified body mention.
+test fn production_route_both_plain_value_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_both_path, target: provider_module) == 0
+}
+
+// Tree-side. Trigger: eager-raven-113 lowering, then this ingest.
+test fn production_route_call_contents_are_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
+}
+
+// Re-derived: qualified type-position spelling is not a site and makes no edge. Same
+// dotted-reference trigger as the qualified body mention, not lowering.
+test fn production_route_type_position_qualified_site_is_missing_today_holds() -> Bool {
+  site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 0
+}
+
+test fn production_route_type_position_qualified_edge_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_type_only_path, target: provider_module) == 0
+}
+
+// Type-position-only reference (imported bare ProvidedMarker). The collector sees the site.
+// The edge is still absent: resolution or edge derivation, not collector absence and not lowering.
+test fn production_route_type_imported_bare_site_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_type_imported_path, needle: provided_marker_bare) > 0
+}
+
+test fn production_route_type_imported_site_does_not_yield_edge_today_holds() -> Bool {
+  production_edge_count(path: consumer_type_imported_path, target: provider_module) == 0
+}
+
+// Falsifier for "type position is a lowering class": locally declared LocalMarker, no dot.
+// The qualification rule says this PARAMETER-position site is found.
+test fn production_route_bare_local_type_position_site_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_type_bare_local_path, needle: local_marker_bare) > 0
+}
+
+// Same module, two bare names: parameter reaches the collector, field type does not.
+// No collector trigger on the field-type site row until the tree-side census below separates
+// a drop from a third representation. Qualified field types remain untested.
+test fn production_route_bare_param_type_in_field_fixture_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_field_bare_local_path, needle: local_param_marker_bare) > 0
+}
+
+test fn production_route_bare_field_type_site_is_missing_today_holds() -> Bool {
+  site_spelling_count(path: consumer_field_bare_local_path, needle: local_field_only_bare) == 0
+}
+
+// Tree-side discriminator (atom AND named-edge search over node_subtree_nodes, not the
+// collector). Cause UNVERIFIED: ingest ACCEPTs this root; LocalParamMarker is an atom;
+// LocalWrapper, field name f, and LocalFieldOnly are findable as neither. That is not yet
+// "normalization dropped the declaration" vs a representation these two searches do not reach.
+test fn production_tree_field_fixture_param_type_atom_is_present_holds() -> Bool {
+  tree_atom_count(path: consumer_field_bare_local_path, needle: local_param_marker_sym) > 0
+}
+
+test fn production_tree_field_fixture_wrapper_name_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_sym)
+}
+
+test fn production_tree_field_fixture_field_name_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_field_name_sym)
+}
+
+test fn production_tree_field_fixture_field_type_unfindable_today_holds() -> Bool {
+  tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_field_only_sym)
+}
+
+// Tree-side (whole call expression). Trigger: eager-raven-113 lowering, then this ingest.
+test fn production_route_callee_with_no_arguments_is_missing_today_holds() -> Bool {
+  production_edge_count(path: consumer_callee_only_path, target: provider_module) == 0
+}

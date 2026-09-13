@@ -163,8 +163,11 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
   ReferenceGraphInstrumentDelivered,
 ]
 
-// Empty by construction today: neither instrument exists. A row lands here when the stage that
-// owes it delivers it.
+// Empty: neither instrument is delivered. XL-4's reference-graph instrument exists, but on the
+// production ingest route it emits no reference-derived edge for any fixture, so it has no accepted
+// positive control there (review 64925 on gunbc#11202). A receipt discriminated only over hand-built
+// roots would inflate the rung (DESIGN 4b(1)). The row lands when tools.reference_derived_graph main
+// exits success on the production route, which requires its positive control.
 data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
