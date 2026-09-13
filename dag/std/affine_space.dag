@@ -188,7 +188,6 @@ type SpatialFrameRelation
   | TransformTranslationInDestinationRequired
   | MillimetreFrameRequired
   | ProjectionSourceFrameRequired
-  | PlantedReceiptArmForGunbc11256
 
 type SpatialFrameRefusal {
   operation: SpatialOperationIdentity
