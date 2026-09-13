@@ -81,10 +81,6 @@ type GeneratedArtifactIdentity
 // the third option and is not available.
 //
 // NamedBuildConfiguration hashes the same BuildPathTreatment NativeGeneration carries.
-// A second remapping coproduct beside ancestry.BuildPathTreatment was a nickname
-// (DESIGN §3). GenerationIdentity still stores a bare Hash for the axis; the obligation
-// gunbc.self_host_promotion_obligations artifact_axis_omits_build_path stays unfired
-// until a two-directory control observes identical bytes.
 //
 // The direction is fail-closed: relocating an identical build reports as a MOVED
 // artifact rather than a spurious match, so nothing is silently admitted. That is why
