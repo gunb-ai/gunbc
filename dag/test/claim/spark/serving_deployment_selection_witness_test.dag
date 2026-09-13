@@ -821,7 +821,7 @@ test fn a_planted_eight_rank_v4_1_shape_is_infeasible_on_group_a_and_open_on_eig
         standings: [ServingProfileReady { profile: p }],
       )
       let field = serving_candidate_field(
-        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "planted_tp8_v4_1"),
+        identity: decl_ref(module_path: "test.claim.spark.serving_deployment_selection_witness_test", decl_name: "a_planted_eight_rank_v4_1_shape_is_infeasible_on_group_a_and_open_on_eight_hosts"),
         domain: domain,
         candidates: derived_candidates_for(stem: "planted_tp8", domain: domain),
       )
