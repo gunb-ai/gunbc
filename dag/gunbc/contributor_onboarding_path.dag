@@ -29,8 +29,25 @@ import tools.docs_projection_agreement { docs_projection_regen_command }
 // safely assert about CI is WHICH AUTHORITY OWNS A FACT and never which steps are running today;
 // a first-day document is the worst possible place to break that rule, because its reader has no
 // way to tell a stale sentence from a live one. Costs belong to the run that measured them.
-data contributor_onboarding_path_authority_note: String = "Single authority for the ordered path from a bare clone to one landed reviewed change, and for the obstacles that path hits. It is the projection source for docs/onboarding.md. The steps carry DERIVED commands rather than typed ones: the build argv is gunbc.repo_self_build, the witness argv is gunbc.fabric_witness_run, the source roots are gunbc.ci_layer_roots, the regen recipe is tools.docs_projection_agreement. The only literal argv words here are git and rustup words, which this repository does not model and whose upstreams own them. THE OBSTACLE ROSTER IS THE ITEM'S REAL DELIVERABLE and is typed rather than narrated, because each row answers a question a hiring or bus-factor decision needs: can a newcomer clear this alone, does the error text tell them how, and if not, who must be in the loop. A row whose disposition is OperatorGated is a standing bus-factor risk and is not a defect in this document."
-
+// THE AUTHORITY THIS MODULE IS, RECORDED AS AN ANNOTATION RATHER THAN AS DATA (review 65295).
+//
+// It was a String declaration whose sole purpose was commentary and which nothing read -- a
+// whole-tree grep found only its own declaration. DESIGN section 4c calls that misplaced or dead
+// data, and names the comment channel as the quarantine boundary for exactly this: irreducible
+// rationale about why a construction has its shape, unreadable by any Accepted program, which is
+// the honest standing for prose that no fold consumes.
+//
+// Single authority for the ordered path from a bare clone to one landed reviewed change, and for
+// the obstacles that path hits. It is the projection source for docs/onboarding.md. The steps
+// carry DERIVED commands rather than typed ones: the build argv is gunbc.repo_self_build, the
+// witness argv is gunbc.fabric_witness_run, the source roots are gunbc.ci_layer_roots, the regen
+// recipe is tools.docs_projection_agreement. The only literal argv words here are git and rustup
+// words, which this repository does not model and whose upstreams own them. THE OBSTACLE ROSTER IS
+// THE ITEM'S REAL DELIVERABLE and is typed rather than narrated, because each row answers a
+// question a hiring or bus-factor decision needs: can a newcomer clear this alone, does the error
+// text tell them how, and if not, who must be in the loop. A row whose disposition is
+// OperatorGated is a standing bus-factor risk and is not a defect in this document.
+//
 // WHO MUST BE IN THE LOOP FOR A STEP TO COMPLETE. This is the bus-factor census, and the reason
 // it is a coproduct rather than a Bool is that the three blocking kinds have different remedies:
 // a credential is provisioned, a decision is made, a machine is acquired. Collapsing them to

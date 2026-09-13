@@ -231,7 +231,7 @@ test fn only_the_first_day_priority_answers_first_day() -> Bool {
 // which is the arm that would have caught a producer match answering Absent for a docs path.
 //
 // What is NOT weakened: production still derives its population from the registry, and
-// docs_projection_producer_coverage refuses on the real acceptance path. This tests the predicate
+// docs_projection_coverage_of refuses on the real acceptance path. This tests the predicate
 // production calls, with an input production cannot be handed.
 //
 // THE POPULATION IS ONE ROW ON PURPOSE. Asking whether a producer exists RENDERS the document,
