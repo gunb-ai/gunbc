@@ -1,7 +1,9 @@
 module v2.test.manual.scoped_type_reflection_conformance
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.algebra { any, for_all, length }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Symbol }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node_reflection {
   coproduct_arm_keys_checked,
@@ -60,12 +62,32 @@ test fn ambiguous_type_spelling_refuses_at_the_node_route_too() -> Bool {
 // everything. `Connective` is declared once in this pool, so the guard must let it through and
 // the arm keys must still come back. A guard that refused here would pass the two claims above
 // while destroying the surface, which is why this claim is enrolled beside them and not after.
+//
+// IT ASSERTS THE ANSWER AND NOT MERELY THE ARM, because review 65601 showed why that distinction
+// is load-bearing here. An accepted Outcome says the guard let the call through; it says nothing
+// about WHICH declaration produced the Node, and the whole defect this module exists to close is a
+// seam that answers from the wrong declaration. So the control names the arm keys `Connective`
+// actually declares. A route that resolved some other same-named type, or handed back a node of
+// the wrong shape, would still be Accepted and would fail here.
+fn outcome_arm_keys_are(o: Outcome<List<Symbol>>, expected: List<Symbol>) -> Bool {
+  match o {
+    Accepted { value: keys, diagnostics: _ } =>
+      length(xs: keys) == length(xs: expected)
+        && for_all(
+          xs: expected,
+          predicate: fn(k) { any(xs: keys, predicate: fn(got) { got == k }) }
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn unique_type_spelling_still_resolves() -> Bool {
-  outcome_is_accepted(
+  outcome_arm_keys_are(
     o: coproduct_arm_keys_checked(
       pool_roots: scoped_reflection_pool_roots,
       type_name: ^Connective
-    )
+    ),
+    expected: [^Atom, ^Conj, ^Disj, ^Arrow, ^Cardinality, ^Instantiation]
   )
 }
 

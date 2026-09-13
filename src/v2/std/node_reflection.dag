@@ -140,7 +140,7 @@ fn accept_sole_declaration(
       )
     HeadFound { value: sole } =>
       if node_is_coproduct(node: sole.node) {
-        outcome_accepted(value: resolve_type_node(type_name: type_name))
+        outcome_accepted(value: sole.node)
       } else {
         outcome_rejected(
           d: scoped_type_reflection_diagnostic(
