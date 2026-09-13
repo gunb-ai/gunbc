@@ -38,8 +38,11 @@ import gunbc.spark.serving_offer {
   bind_spark_serving_offer,
 }
 
-// THE ROUTE OBLIGATION, EXECUTED. spark_serving_route_standing refuses today because nothing
-// observes which region a serving host sits in, and these rows are what stop that refusal from
+// THE ROUTE OBLIGATION, EXECUTED. The standing has two independently evidenced halves. Host
+// membership is checked against the operator's allocation and can establish the region. The readback
+// bears on the service-identity diagnosis but does not establish the service; with current evidence,
+// covered hosts therefore produce ServingRouteServiceUnidentified, while absent or out-of-allocation
+// host evidence produces ServingRouteRegionUnobserved. These rows are what stop those refusals from
 // being a claim in a comment. The pair is deliberate: without the observed control below, "the
 // offer did not bind" would be satisfied by a binder that never binds for any reason at all, and
 // the refusal row would assert nothing about the route.
@@ -49,8 +52,11 @@ import gunbc.spark.serving_offer {
 // unresolved value on purpose, which was true and was the defect: a route has two halves established
 // by different evidence, and reading only the hosts meant an unreadable readback on covered hosts
 // still received gunbc.spark.pair_serving_desired as its SERVICE. The hosts decide the REGION, which
-// the operator's dated allocation establishes independently of whatever answered. The readback
-// decides the SERVICE, because which deployment answered is not a fact about where the machines are.
+// the operator's dated allocation establishes independently of whatever answered. The readback bears
+// on the SERVICE-IDENTITY DIAGNOSIS and does NOT decide the service -- that is this change's whole
+// point, since even a readback matching the declared configuration cannot name which deployment
+// answered. This sentence survived the rewrite that narrates the correction above it: the edit fixed
+// what it was looking at and left a claim in the same paragraph that the same change had falsified.
 // So these rows now vary both, and the fixtures below are named for which half they exercise.
 // THE DECLARED PATH COMES FROM THE PRODUCER THE MODULE COMPARES AGAINST, never a literal, so this
 // fixture cannot drift into agreeing with itself when the pinned snapshot moves.
