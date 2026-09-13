@@ -1,0 +1,310 @@
+module gunbc.memory_configuration_evaluation
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.integer { UInt8 }
+import std.algebra { FreeSemigroup }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import extdeps.boards.types { AmpereMtCollins }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsPopulationRoleRefusal, MtCollinsChannelPopulationRoleStanding,
+  PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles,
+}
+import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
+import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationEstablished, ObservationRefused }
+import gunbc.memory_configuration {
+  MemoryConfiguration, MemoryChangeProposal, MemoryPosition, PositionedMemoryModule,
+  MemoryOperatingObligation, MemoryPlacement, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
+  MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
+  AdditionalMemoryRequirement, memory_operating_obligations,
+}
+import gunbc.memory_observation { MemoryEvaluationEvidence, MemoryMixtureFinding, memory_collector_refusal, memory_capture_covers_population }
+import gunbc.host_memory_qualification {
+  HostMemoryStanding, PartImplication, PartEvidenceUnresolved, PartNotImplicated,
+  PartSampleQualificationRequired, PartImplicatedByFailingStep, part_implication,
+  ClassSupportedByBoard, ClassUnsupportedByBoard, ClassSupportUnobserved,
+  ListedInVendorAvl, NotListedInVendorAvl, PartQualificationUnobserved,
+  TrainingOperational, TrainingFailed, TrainingOutcomeUnobserved,
+  BootReachedOperatingSystem, BootOutcomeUnobserved,
+}
+
+// Possible delivery conflicts are not claims that an undelivered unit failed.
+// A certain conflict carries both exact positions, catalog identities, variant
+// identities and bytes, with the observing receipt that bounds applicability.
+type MemoryCounterexample
+  = MemoryPackageConflict {
+      left: PositionedMemoryModule, right: PositionedMemoryModule,
+      left_variant: NonEmptyStr, right_variant: NonEmptyStr,
+      left_byte: UInt8, right_byte: UInt8, finding: MemoryMixtureFinding,
+    }
+  | MemoryStandingConflict { standing: HostMemoryStanding }
+  | MemoryTrainingScreenConflict { dimm: PositionedMemoryModule, implication: PartImplication }
+  | MemoryPositionConflict { position: MemoryPosition }
+
+type MemoryUnknownFact
+  = MemoryPackageMissing { position: MemoryPosition, variant: NonEmptyStr }
+  | MemoryVariantsMissing { position: MemoryPosition }
+  | MemoryProcurementCondition { counterexample: MemoryCounterexample, condition: NonEmptyStr }
+  | MemoryFindingUnavailable { cause: NonEmptyStr }
+  | MemoryFirmwareScopeUnestablished { position: MemoryPosition }
+  | MemoryComparisonUnestablished { left: UInt8, right: UInt8 }
+  | MemoryStandingMissing { position: MemoryPosition, obligation: MemoryOperatingObligation }
+  | MemoryStandingEvidenceUnobserved { standing: HostMemoryStanding, obligation: MemoryOperatingObligation }
+  | MemoryTrainingScreenUnresolved { dimm: PositionedMemoryModule, implication: PartImplication }
+  | MemoryModelMissing { obligation: MemoryOperatingObligation }
+  | MemoryCollectorUnavailable { cause: NonEmptyStr }
+  | MemoryPopulationRoleUnresolved { refusal: MtCollinsPopulationRoleRefusal }
+
+// The carrier is std.goal_assessment's outcome algebra, specialized only in
+// payload. A missing collector is not a successful empty observation.
+type MemoryObligationResult {
+  obligation: MemoryOperatingObligation
+  assessment: GoalAssessment<List<DeclarationRef>, MemoryCounterexample, MemoryUnknownFact, NonEmptyStr>
+}
+
+type MemoryCheckFacts {
+  sources: List<DeclarationRef>
+  deviations: List<MemoryCounterexample>
+  unknowns: List<MemoryUnknownFact>
+}
+
+data memory_empty_facts: MemoryCheckFacts = MemoryCheckFacts { sources: [], deviations: [], unknowns: [] }
+
+fn memory_facts_join(a: MemoryCheckFacts, b: MemoryCheckFacts) -> MemoryCheckFacts {
+  MemoryCheckFacts {
+    sources: concat(a.sources, b.sources), deviations: concat(a.deviations, b.deviations),
+    unknowns: concat(a.unknowns, b.unknowns),
+  }
+}
+
+fn memory_unknown(fact: MemoryUnknownFact) -> MemoryCheckFacts {
+  MemoryCheckFacts { sources: [], deviations: [], unknowns: [fact] }
+}
+
+fn memory_obligation_result(obligation: MemoryOperatingObligation, facts: MemoryCheckFacts) -> MemoryObligationResult {
+  MemoryObligationResult { obligation: obligation, assessment: match facts.unknowns.first() {
+      Present { value: first } => GoalIndeterminate {
+        known_deviations: facts.deviations,
+        unknowns: FreeSemigroup { head: first, tail: facts.unknowns.skip(n: 1) },
+      }
+      Absent => match facts.deviations.first() {
+        Present { value: first } => GoalDiverged {
+          deviations: FreeSemigroup { head: first, tail: facts.deviations.skip(n: 1) },
+        }
+        Absent => GoalSatisfied { evidence: facts.sources }
+      }
+    }
+  }
+}
+
+fn memory_position_precedes(a: MemoryPosition, b: MemoryPosition) -> Bool {
+  a.socket < b.socket || (a.socket == b.socket && (a.controller < b.controller
+    || (a.controller == b.controller && a.slot < b.slot)))
+}
+
+fn memory_package_pair(left: PositionedMemoryModule, right: PositionedMemoryModule, finding: MemoryMixtureFinding) -> MemoryCheckFacts {
+  let combinations = count(left.alternatives) * count(right.alternatives)
+  let facts = fold(left.alternatives, init: memory_empty_facts, f: (acc, a) =>
+    fold(right.alternatives, init: acc, f: (acc2, b) =>
+      match a.package {
+        Absent => memory_facts_join(a: acc2, b: memory_unknown(fact: MemoryPackageMissing { position: left.position, variant: a.identity }))
+        Present { value: ap } => match b.package {
+          Absent => memory_facts_join(a: acc2, b: memory_unknown(fact: MemoryPackageMissing { position: right.position, variant: b.identity }))
+          Present { value: bp } => {
+            let av = ap.value.Data
+            let bv = bp.value.Data
+            if av == bv {
+              memory_facts_join(a: acc2, b: MemoryCheckFacts { sources: [ap.source, bp.source, finding.collector.source], deviations: [], unknowns: [] })
+            } else if (av == finding.expected_byte && bv == finding.actual_byte)
+              || (bv == finding.expected_byte && av == finding.actual_byte) {
+              memory_facts_join(a: acc2, b: MemoryCheckFacts { sources: [], unknowns: [], deviations: [MemoryPackageConflict {
+                left: left, right: right, left_variant: a.identity, right_variant: b.identity,
+                left_byte: av, right_byte: bv, finding: finding,
+              }] })
+            } else {
+              memory_facts_join(a: acc2, b: memory_unknown(fact: MemoryComparisonUnestablished { left: av, right: bv }))
+            }
+          }
+        }
+      }
+    )
+  )
+  if count(facts.deviations) > 0 && count(facts.deviations) < combinations {
+    MemoryCheckFacts { sources: facts.sources, deviations: [], unknowns: concat(facts.unknowns,
+      map(facts.deviations, d => MemoryProcurementCondition { counterexample: d,
+        condition: "restrict allowed variants by supplier confirmation, sample qualification or receiving inspection, then re-evaluate the exact delivered configuration" })) }
+  } else { facts }
+}
+
+fn memory_package_facts(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence) -> MemoryCheckFacts {
+  match evidence.mixture {
+    ObservationRefused { cause } => memory_unknown(fact: MemoryFindingUnavailable { cause: cause })
+    ObservationEstablished { observed: finding } =>
+      match memory_collector_refusal(c: finding.collector) {
+        Present { value: cause } => memory_unknown(fact: MemoryCollectorUnavailable { cause: cause })
+        Absent => fold(configuration.population, init: memory_empty_facts, f: (acc, left) => {
+          let own = if !(configuration.platform == finding.configuration.platform) {
+            memory_unknown(fact: MemoryFirmwareScopeUnestablished { position: left.position })
+          } else if left.position.socket != finding.comparison_socket {
+            memory_empty_facts
+          } else if count(left.alternatives) == 0 {
+            memory_unknown(fact: MemoryVariantsMissing { position: left.position })
+          } else {
+            fold(left.alternatives, init: memory_empty_facts, f: (a, variant) =>
+              match variant.package {
+                Absent => memory_facts_join(a: a, b: memory_unknown(fact: MemoryPackageMissing { position: left.position, variant: variant.identity }))
+                Present { value: package } => a
+              }
+            )
+          }
+          let pairs = if (configuration.platform == finding.configuration.platform)
+            && left.position.socket == finding.comparison_socket {
+            fold(configuration.population, init: memory_empty_facts, f: (a, right) =>
+              if left.position.socket == right.position.socket && memory_position_precedes(a: left.position, b: right.position) {
+                memory_facts_join(a: a, b: memory_package_pair(left: left, right: right, finding: finding))
+              } else { a }
+            )
+          } else { memory_empty_facts }
+          memory_facts_join(a: acc, b: memory_facts_join(a: own, b: pairs))
+        })
+      }
+  }
+}
+
+// Coverage is separate from the check within its witnessed comparison group.
+// A passed socket-0 check cannot silently answer the socket-1 question.
+fn memory_firmware_scope_facts(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence) -> MemoryCheckFacts {
+  match evidence.mixture {
+    ObservationRefused { cause } => memory_unknown(fact: MemoryFindingUnavailable { cause: cause })
+    ObservationEstablished { observed: finding } => fold(configuration.population, init: memory_empty_facts, f: (acc, dimm) =>
+      if (configuration.platform == finding.configuration.platform)
+        && dimm.position.socket == finding.comparison_socket { acc }
+      else { memory_facts_join(a: acc, b: memory_unknown(fact: MemoryFirmwareScopeUnestablished { position: dimm.position })) }
+    )
+  }
+}
+
+fn memory_placement_facts(configuration: MemoryConfiguration) -> MemoryCheckFacts {
+  if configuration.platform.board != AmpereMtCollins || count(configuration.population) == 0 {
+    memory_unknown(fact: MemoryModelMissing { obligation: MemoryPlacement })
+  } else {
+    memory_placement_from_roles(configuration: configuration, standing: mt_collins_channel_population_roles)
+  }
+}
+
+// The production join accepts the authority's complete standing; an unresolved
+// pair never becomes a partial roster or a fabricated connector conflict.
+fn memory_placement_from_roles(configuration: MemoryConfiguration, standing: MtCollinsChannelPopulationRoleStanding) -> MemoryCheckFacts {
+  match standing {
+    PopulationRolesRefused { refusals } => MemoryCheckFacts {
+      sources: [], deviations: [], unknowns: map(refusals, refusal => MemoryPopulationRoleUnresolved { refusal: refusal }),
+    }
+    PopulationRolesResolved { roles } => {
+      let positions = flat_map(roles, role => [
+        mtcollins_memory_position(role: role, additional: false), mtcollins_memory_position(role: role, additional: true),
+      ])
+      fold(configuration.population, init: memory_empty_facts, f: (acc, m) => {
+        let copies = count(filter(configuration.population, other =>
+          other.position.connector == m.position.connector ||
+          (other.position.socket == m.position.socket && other.position.controller == m.position.controller && other.position.slot == m.position.slot)))
+        let position_matches = any(positions, position =>
+          position.socket == m.position.socket && position.controller == m.position.controller
+            && position.slot == m.position.slot && position.connector == m.position.connector)
+        if copies != 1 || !position_matches {
+          memory_facts_join(a: acc, b: MemoryCheckFacts { sources: [], unknowns: [], deviations: [MemoryPositionConflict { position: m.position }] })
+        } else { acc }
+      })
+    }
+  }
+}
+
+fn memory_standing_facts(obligation: MemoryOperatingObligation, standing: HostMemoryStanding) -> MemoryCheckFacts {
+  let conflict = MemoryCheckFacts { sources: [], unknowns: [], deviations: [MemoryStandingConflict { standing: standing }] }
+  match obligation {
+    MemoryClassSupport => match standing.class_support {
+      ClassSupportedByBoard => memory_empty_facts
+      ClassUnsupportedByBoard => conflict
+      ClassSupportUnobserved => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    }
+    MemorySpecificPartQualification => match standing.part_qualification {
+      ListedInVendorAvl { avl_authority: _, avl_issue: _ } => memory_empty_facts
+      _ => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    }
+    MemoryTraining => match standing.training {
+      TrainingOperational { dimm_mask: _ } => memory_empty_facts
+      TrainingFailed { detail: _ } => conflict
+      TrainingOutcomeUnobserved => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+    }
+    MemoryBoot => match standing.boot {
+      BootReachedOperatingSystem => memory_empty_facts
+      BootOutcomeUnobserved => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+      _ => conflict
+    }
+    _ => memory_unknown(fact: MemoryStandingEvidenceUnobserved { standing: standing, obligation: obligation })
+  }
+}
+
+fn memory_qualification_facts(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence, obligation: MemoryOperatingObligation) -> MemoryCheckFacts {
+  let receipts = filter(evidence.qualifications, r => (configuration == r.configuration))
+  fold(configuration.population, init: memory_empty_facts, f: (acc, dimm) => {
+    let matched = fold(receipts, init: false, f: (seen, r) => seen ||
+      any(r.standings, s => s.host == configuration.platform.host && s.part_number == dimm.catalog.part_number
+        && any(s.population, slot => slot == dimm.position.connector)))
+    if !matched {
+      memory_facts_join(a: acc, b: memory_unknown(fact: MemoryStandingMissing { position: dimm.position, obligation: obligation }))
+    } else {
+      fold(receipts, init: acc, f: (a, r) => match memory_collector_refusal(c: r.collector) {
+        Present { value: cause } => memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable { cause: cause }))
+        Absent => if !memory_capture_covers_population(configuration: configuration, collector: r.collector) {
+          memory_facts_join(a: a, b: memory_unknown(fact: MemoryCollectorUnavailable {
+            cause: "qualification capture does not cover its claimed positioned inventory and catalog bindings",
+          }))
+        } else { fold(r.standings, init: a, f: (a2, s) =>
+          if s.host == configuration.platform.host && s.part_number == dimm.catalog.part_number
+            && any(s.population, slot => slot == dimm.position.connector) {
+            memory_facts_join(a: a2, b: memory_standing_facts(obligation: obligation, standing: s))
+          } else { a2 }
+        ) }
+      })
+    }
+  })
+}
+
+fn memory_training_screen_facts(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence) -> MemoryCheckFacts {
+  fold(configuration.population, init: memory_empty_facts, f: (acc, dimm) => {
+    let implication = part_implication(candidate: dimm.catalog, failures: evidence.training_failures, target_board: configuration.platform.board)
+    memory_facts_join(a: acc, b: match implication {
+      PartNotImplicated => memory_empty_facts
+      PartImplicatedByFailingStep { step: _, standing: _ } => MemoryCheckFacts { sources: [], unknowns: [], deviations: [MemoryTrainingScreenConflict { dimm: dimm, implication: implication }] }
+      _ => memory_unknown(fact: MemoryTrainingScreenUnresolved { dimm: dimm, implication: implication })
+    })
+  })
+}
+
+fn evaluate_memory_obligation(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence, obligation: MemoryOperatingObligation) -> MemoryObligationResult {
+  memory_obligation_result(obligation: obligation, facts: match obligation {
+    MemoryPlacement => memory_placement_facts(configuration: configuration)
+    MemoryFirmwareScopeCoverage => memory_firmware_scope_facts(configuration: configuration, evidence: evidence)
+    MemoryPackageMixture => memory_package_facts(configuration: configuration, evidence: evidence)
+    MemoryTrainingFailureScreen => memory_training_screen_facts(configuration: configuration, evidence: evidence)
+    AdditionalMemoryRequirement { authority: _ } => memory_unknown(fact: MemoryModelMissing { obligation: obligation })
+    _ => memory_qualification_facts(configuration: configuration, evidence: evidence, obligation: obligation)
+  })
+}
+
+type MemoryConfigurationAssessment {
+  configuration: MemoryConfiguration
+  evidence: MemoryEvaluationEvidence
+  required: List<MemoryOperatingObligation>
+  results: List<MemoryObligationResult>
+}
+
+// No caller-supplied list can omit the minimum operating questions. Every
+// required row is actually dispatched, including unsupported additional models.
+fn evaluate_memory_configuration(configuration: MemoryConfiguration, evidence: MemoryEvaluationEvidence, additional: List<MemoryOperatingObligation>) -> MemoryConfigurationAssessment {
+  let required = concat(memory_operating_obligations, additional)
+  MemoryConfigurationAssessment {
+    configuration: configuration, evidence: evidence, required: required,
+    results: map(required, obligation => evaluate_memory_obligation(configuration: configuration, evidence: evidence, obligation: obligation)),
+  }
+}

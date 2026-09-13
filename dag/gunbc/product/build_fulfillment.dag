@@ -6,7 +6,13 @@ import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
 import extdeps.external_authority { ExternalAuthority }
-import gunbc.memory_provisioning { PopulationOption }
+import gunbc.memory_configuration { MemoryChangeProposal, RetainedMemoryUnit, AcquireMemoryUnit, MemoryTrainingFailureScreen }
+import gunbc.memory_observation { MemoryEvaluationEvidence }
+import gunbc.memory_change_evaluation {
+  MemoryChangeAssessment, MemoryPurchasePurpose, ProductionMemoryPurchase, QualificationMemoryPurchase,
+  evaluate_memory_change, memory_change_admission_refusal,
+}
+import gunbc.host_memory_qualification { part_implication }
 import extdeps.memory.training { memory_training_step_label }
 import gunbc.host_memory_qualification {
   PartImplicatedByFailingStep,
@@ -118,15 +124,13 @@ type SystemInclusion {
   quantity_included: Nat
 }
 
-// THE RECIPE. Memory arrives as a PopulationOption because that is the shape
-// gunbc.memory_provisioning derives — this module does not re-derive a
-// population from a slot count, and there is no arm that could: a population
-// the upstream refused has no way in here.
-//
-// sockets multiplies the processor line AND the memory line, because
-// memory_provisioning's geometries are per socket (its Mt. Collins row says so
-// in its own header). A dual-socket recipe over a sixteen-slot per-socket
-// geometry therefore needs two processors and thirty-two modules.
+// A concrete population replaces the homogeneous PopulationOption shortcut.
+// The assessment executes before ANY fulfillment, including system inclusions.
+// Production ordering is a declared frontier: when an order actuator lands it
+// must consume this proposal/evidence-bound result, never standalone part compatibility.
+// Physical-memory convergence is a declared frontier: its future readback
+// consumer must join actual serials, connector placements, firmware and settings
+// to this exact proposal and re-evaluate substitutions before claiming agreement.
 type NodeRecipe {
   label: NonEmptyStr
   sockets: Nat
@@ -134,32 +138,33 @@ type NodeRecipe {
   processor_label: NonEmptyStr
   baseboard: DeclarationRef
   baseboard_label: NonEmptyStr
-  memory_module: DeclarationRef
-  population: PopulationOption
+  memory: MemoryChangeProposal
+  memory_evidence: MemoryEvaluationEvidence
+  memory_purchase: MemoryPurchasePurpose
   inclusions: List<SystemInclusion>
 }
 
 fn derive_bom(recipe: NodeRecipe) -> List<BomLine> {
-  [
-    BomLine {
-      role: Processor,
-      part: recipe.processor,
-      display_label: recipe.processor_label,
-      quantity_per_build: recipe.sockets,
-    },
-    BomLine {
-      role: Baseboard,
-      part: recipe.baseboard,
-      display_label: recipe.baseboard_label,
-      quantity_per_build: 1,
-    },
-    BomLine {
-      role: MemoryModule,
-      part: recipe.memory_module,
-      display_label: recipe.population.module.part_number,
-      quantity_per_build: recipe.population.dimm_count * recipe.sockets,
-    },
-  ]
+  let memory_lines = fold(recipe.memory.proposed.population, init: [], f: (lines, dimm) =>
+    match dimm.origin {
+      RetainedMemoryUnit { serial: _ } => lines
+      AcquireMemoryUnit => {
+        let present = any(lines, line => declaration_ref_eq(a: line.part, b: dimm.part))
+        if present {
+          map(lines, line => if declaration_ref_eq(a: line.part, b: dimm.part) {
+            BomLine { role: MemoryModule, part: line.part, display_label: line.display_label, quantity_per_build: line.quantity_per_build + 1 }
+          } else { line })
+        } else {
+          concat(lines, [BomLine { role: MemoryModule, part: dimm.part,
+            display_label: dimm.catalog.part_number, quantity_per_build: 1 }])
+        }
+      }
+    }
+  )
+  concat([
+    BomLine { role: Processor, part: recipe.processor, display_label: recipe.processor_label, quantity_per_build: recipe.sockets },
+    BomLine { role: Baseboard, part: recipe.baseboard, display_label: recipe.baseboard_label, quantity_per_build: 1 },
+  ], memory_lines)
 }
 
 // --- the two supplies -------------------------------------------------------------------------
@@ -302,6 +307,11 @@ fn included_units(inclusions: List<SystemInclusion>, line: BomLine) -> Nat {
 // require this module to choose a split policy nobody stated, which is the
 // heuristic DESIGN section 4 rules unnecessary in a closed system — a caller
 // that wants to buy eight and draw four states two builds, or two lines.
+type MemoryFulfillmentContext {
+  assessment: MemoryChangeAssessment
+  purpose: MemoryPurchasePurpose
+}
+
 type Fulfillment
   = OwnedInventory {
       lot: InventoryLotIdentity
@@ -328,7 +338,8 @@ type Fulfillment
 // it is not there"; a refusal means "the question could not be answered", and
 // answering SupplyMissing for it would report a stockout that was never observed.
 type FulfillmentRefusalCause
-  = SupplyRowAbsent { part: DeclarationRef }
+  = MemoryProposalNotAdmitted { assessment: MemoryChangeAssessment, reason: NonEmptyStr }
+  | SupplyRowAbsent { part: DeclarationRef }
   | SupplyRowDuplicated { part: DeclarationRef }
   | PartialSystemInclusion { part: DeclarationRef, included: Nat, required: Nat }
   | LedgerRefusedDraw { cause: LedgerRefusalCause, requested: Nat, available: Nat }
@@ -366,7 +377,9 @@ fn resolution_label(r: LineResolution) -> NonEmptyStr {
 // The market arm, reached only after the owned arm has answered. owned_available
 // is threaded in rather than re-read, so a SupplyMissing line reports the SAME number
 // the ledger refused with.
-fn resolve_from_market(line: BomLine, market: MarketDepth, owned_available: Nat) -> LineResolution {
+fn resolve_from_market(
+  line: BomLine, market: MarketDepth, owned_available: Nat,
+) -> LineResolution {
   match market {
     MarketDepthCited { units_available: units, unit_price: price, authority: auth } =>
       if units >= line.quantity_per_build {
@@ -549,14 +562,68 @@ fn resolve_line(
   }
 }
 
-fn resolve_build(
-  recipe: NodeRecipe,
-  rows: List<SupplyRow>,
-) -> List<LineResolution> {
-  map(
-    derive_bom(recipe: recipe),
-    line => resolve_line(line: line, inclusions: recipe.inclusions, rows: rows, holder: recipe.label),
-  )
+// compatibility_of is now called on the fulfillment route. A negative screen
+// can restrict an independently assessed proposal, never establish one.
+// With PartNotImplicated, the independently evaluated class, part, training
+// and boot obligations supply the positive authority.
+fn memory_screened_rows(recipe: NodeRecipe, rows: List<SupplyRow>) -> List<SupplyRow> {
+  map(rows, row => {
+    let compatibility = fold(recipe.memory.proposed.population, init: row.compatibility, f: (acc, dimm) =>
+      if !declaration_ref_eq(a: dimm.part, b: row.part) { acc }
+      else {
+        let implication = part_implication(candidate: dimm.catalog, failures: recipe.memory_evidence.training_failures,
+          target_board: recipe.memory.proposed.platform.board)
+        let screened = compatibility_of(implication: implication)
+        match screened {
+          CompatibilityRefutedForPlatform { reason: _ } => screened
+          CompatibilityEvidenceUnread { obligation: _ } => match acc {
+            CompatibilityRefutedForPlatform { reason: _ } => acc
+            _ => match implication {
+              PartNotImplicated => acc
+              _ => match recipe.memory_purchase {
+                ProductionMemoryPurchase => screened
+                QualificationMemoryPurchase { maximum_units: _, completion } =>
+                  if any(completion, obligation => obligation == MemoryTrainingFailureScreen) { acc }
+                  else { screened }
+              }
+            }
+          }
+          CompatibilityEstablished => acc
+        }
+      }
+    )
+    SupplyRow { part: row.part, compatibility: compatibility, owned: row.owned, market: row.market }
+  })
+}
+
+fn memory_recipe_admission_refusal(recipe: NodeRecipe, assessment: MemoryChangeAssessment) -> NonEmptyStr? {
+  if !declaration_ref_eq(a: recipe.processor, b: recipe.memory.proposed.platform.processor)
+    || !declaration_ref_eq(a: recipe.baseboard, b: recipe.memory.proposed.platform.board_part)
+    || recipe.sockets == 0 || any(recipe.memory.proposed.population, dimm => dimm.position.socket >= recipe.sockets) {
+    Present { value: "recipe board, processor or socket count differs from the assessed memory platform" as NonEmptyStr }
+  } else { memory_change_admission_refusal(a: assessment, purpose: recipe.memory_purchase) }
+}
+
+// Assessment and purchase purpose describe the whole build, including refused
+// and unfillable builds. Lines carry only their own fulfillment facts.
+type BuildResolution {
+  memory_context: MemoryFulfillmentContext
+  lines: List<LineResolution>
+}
+
+fn resolve_build(recipe: NodeRecipe, rows: List<SupplyRow>) -> BuildResolution {
+  let assessment = evaluate_memory_change(proposal: recipe.memory, evidence: recipe.memory_evidence)
+  BuildResolution {
+    memory_context: MemoryFulfillmentContext { assessment: assessment, purpose: recipe.memory_purchase },
+    lines: match memory_recipe_admission_refusal(recipe: recipe, assessment: assessment) {
+      Present { value: reason } => map(derive_bom(recipe: recipe), line =>
+        LineRefused { line: line, cause: MemoryProposalNotAdmitted { assessment: assessment, reason: reason } })
+      Absent => {
+        let screened = memory_screened_rows(recipe: recipe, rows: rows)
+        map(derive_bom(recipe: recipe), line => resolve_line(line: line, inclusions: recipe.inclusions, rows: screened, holder: recipe.label))
+      }
+    },
+  }
 }
 
 // --- projection one: incremental cash now -------------------------------------------------------
@@ -627,10 +694,10 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
 }
 
 fn incremental_cash_now(
-  resolutions: List<LineResolution>,
+  resolutions: BuildResolution,
   declared_currency: CurrencyCode,
 ) -> CashProjection {
-  fold(resolutions, init: CashNoPurchaseLines, f: fn(acc, r) {
+  fold(resolutions.lines, init: CashNoPurchaseLines, f: fn(acc, r) {
     cash_step(acc: acc, declared: declared_currency, r: r)
   })
 }
@@ -661,8 +728,8 @@ fn draw_step(acc: List<LotDraw>, lot: InventoryLotIdentity, quantity: Nat) -> Li
 // report one row of the summed quantity rather than two rows a consumer would
 // have to add up — and adding them up is precisely where a second draw against
 // an exhausted lot would hide.
-fn owned_stock_consumed(resolutions: List<LineResolution>) -> List<LotDraw> {
-  fold(resolutions, init: [], f: fn(acc, r) {
+fn owned_stock_consumed(resolutions: BuildResolution) -> List<LotDraw> {
+  fold(resolutions.lines, init: [], f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: _ } => acc
       LineResolved { line: _, fulfillment: f } =>
@@ -948,15 +1015,18 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
   }
 }
 
-fn max_constructible(
-  recipe: NodeRecipe,
-  rows: List<SupplyRow>,
-) -> ConstructibleCeiling {
-  fold(derive_bom(recipe: recipe), init: CeilingUnconstrainedByAnyLine, f: fn(acc, line) {
-    ceiling_step(
-      acc: acc,
-      line: line,
-      depth: line_depth(line: line, inclusions: recipe.inclusions, rows: rows),
-    )
-  })
+fn max_constructible(recipe: NodeRecipe, rows: List<SupplyRow>) -> ConstructibleCeiling {
+  let assessment = evaluate_memory_change(proposal: recipe.memory, evidence: recipe.memory_evidence)
+  match memory_recipe_admission_refusal(recipe: recipe, assessment: assessment) {
+    Present { value: reason } => CeilingRefused { cause: CeilingLineRefused {
+      part: recipe.baseboard, cause: MemoryProposalNotAdmitted { assessment: assessment, reason: reason },
+    } }
+    Absent => {
+      let screened = memory_screened_rows(recipe: recipe, rows: rows)
+      fold(derive_bom(recipe: recipe), init: CeilingUnconstrainedByAnyLine, f: fn(acc, line) {
+        ceiling_step(acc: acc, line: line,
+          depth: line_depth(line: line, inclusions: recipe.inclusions, rows: screened))
+      })
+    }
+  }
 }

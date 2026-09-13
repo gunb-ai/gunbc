@@ -1,0 +1,196 @@
+module gunbc.mtcollins_memory_change
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.boards.types { AmpereMtCollins }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelPopulationRole, MtCollinsPopulationRoleRefusal,
+  PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles,
+  mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs,
+}
+import extdeps.memory.micron {
+  mta36ads2g72pz_2g1a1_catalog, mta36ads2g72pz_2g1a1_primary_package,
+  mta36ads2g72pz_2g1a1_primary_package_citation,
+}
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
+import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
+import product.placement_supply { HostIdentity }
+import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
+import gunbc.memory_configuration {
+  MemoryPosition, MemoryPackageEvidence, MemoryDeliveryVariant, PositionedMemoryModule,
+  MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
+  AcquireMemoryUnit, RetainedMemoryUnit, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
+}
+import gunbc.memory_observation { MemoryCollectorReceipt, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population }
+import gunbc.memory_change_report { MemoryChangeExplanation, explain_memory_change }
+import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+
+// The capture is owned by the observing layer. The replay reads its bytes,
+// verifies the committed artifact identity, and joins catalog and layout facts.
+data mtcollins_training_capture_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt"
+data mtcollins_training_capture_sha256: NonEmptyStr = "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c"
+data mtcollins_training_capture_source: DeclarationRef = decl_ref(module_path: "gunbc.mtcollins_memory_change", decl_name: "mtcollins_training_capture_path")
+
+data mtcollins_ads_part: DeclarationRef = decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36ads2g72pz_2g1a1_catalog")
+data mtcollins_hynix_part: DeclarationRef = decl_ref(module_path: "extdeps.memory.sk_hynix", decl_name: "hma82gr7afr4n_vk_catalog")
+
+// Observed byte 6 for the retained Hynix population, not a manufacturer
+// guarantee for every unit sold under that part number.
+data mtcollins_observed_hynix_package: MemoryPackageEvidence = MemoryPackageEvidence {
+  value: SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT { Data: 0 }, source: mtcollins_training_capture_source,
+}
+
+fn mtcollins_memory_variants(ads: Bool) -> List<MemoryDeliveryVariant> {
+  if ads { [MemoryDeliveryVariant {
+    identity: "Micron published SKU process variants",
+    package: Present { value: MemoryPackageEvidence { value: mta36ads2g72pz_2g1a1_primary_package, source: mta36ads2g72pz_2g1a1_primary_package_citation.fact } },
+    register_vendor: none,
+  }] } else { [MemoryDeliveryVariant {
+    identity: "retained population observed package",
+    package: Present { value: mtcollins_observed_hynix_package }, register_vendor: none,
+  }] }
+}
+
+fn mtcollins_memory_module(position: MemoryPosition, ads: Bool) -> PositionedMemoryModule {
+  PositionedMemoryModule {
+    position: position,
+    part: if ads { mtcollins_ads_part } else { mtcollins_hynix_part },
+    catalog: if ads { mta36ads2g72pz_2g1a1_catalog } else { hma82gr7afr4n_vk_catalog },
+    alternatives: mtcollins_memory_variants(ads: ads),
+    origin: if ads { AcquireMemoryUnit } else { RetainedMemoryUnit { serial: none } },
+  }
+}
+
+// The artifact does not contain serials. The replay therefore reconstructs
+// placement and part identities without fabricating retained unit serials.
+// Board identity cites the existing intake observation, not a fabricated vendor catalog.
+fn mtcollins_witnessed_configuration(roles: List<MtCollinsChannelPopulationRole>) -> MemoryConfiguration {
+  MemoryConfiguration {
+    platform: MemoryPlatform { host: "mtcollins1" as HostIdentity, board: AmpereMtCollins,
+      board_part: decl_field_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "baseboard"),
+      processor: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog"),
+      firmware: "210525", settings: [MemoryFirmwareSetting { name: "ecc_en", value: "00000002" }],
+    },
+    population: map(roles, role =>
+      mtcollins_memory_module(position: mtcollins_memory_position(role: role, additional: false), ads: role.processor_socket == 0 && role.memory_controller < 4)),
+  }
+}
+
+fn mtcollins_replay_proposal(configuration: MemoryConfiguration) -> MemoryChangeProposal {
+  MemoryChangeProposal { initial: configuration, proposed: configuration,
+    actions: [MemoryPowerOff, MemoryInitialize, MemoryReadbackRequired], additional_requirements: [] }
+}
+
+// Collector session duration is the operator's repaired-collector report,
+// attached to this attempt, not inferred from the script wrapper's timestamps.
+// Printed tokens are transcribed from this capture and bound to catalog symbols;
+// no rule about every ADS part or other firmware truncating an MTA prefix follows.
+fn mtcollins_training_collector(configuration: MemoryConfiguration, payload: String) -> MemoryCollectorReceipt {
+  MemoryCollectorReceipt { source: mtcollins_training_capture_source,
+    printed_parts: [
+      MemoryPrintedPartBinding { part: mtcollins_ads_part, printed: "36ADS2G72PZ-2G1A1" },
+      MemoryPrintedPartBinding { part: mtcollins_hynix_part, printed: "HMA82GR7AFR4N-VK" },
+    ],
+    printed_positions: map(configuration.population, dimm => MemoryPrintedPositionBinding {
+      position: dimm.position, printed: concat("  SK", to_string(dimm.position.socket), " MC", to_string(dimm.position.controller), " S", to_string(dimm.position.slot), ":") as NonEmptyStr,
+    }),
+    expected_payload_token: "DRAM populated DIMMs:",
+    session: "mtcollins1 SOL 2026-09-12T02:37:23Z",
+    expected_stimulus: "2026-09-12T02:37:23Z failing boot",
+    observed_stimulus: Present { value: "2026-09-12T02:37:23Z failing boot" },
+    required_start: 0, required_end: 645, collector_start: 0, collector_end: 645,
+    exit_code: 0, payload: payload, capture_digest: mtcollins_training_capture_sha256,
+    previous_capture_digest: none,
+  }
+}
+
+// Recognizer for this witnessed attempt only. The transcript tokens, roster,
+// firmware and compared pair are observing facts, not universal firmware rules.
+fn mtcollins_training_mixture_finding(
+  attempt: NonEmptyStr,
+  configuration: MemoryConfiguration,
+  collector: MemoryCollectorReceipt,
+) -> ObservationAttempt<MemoryMixtureFinding, NonEmptyStr> {
+  match memory_collector_refusal(c: collector) {
+    Present { value: cause } => ObservationRefused { cause: cause }
+    Absent =>
+      if count(configuration.population) != count(concat(mt_collins_socket0_channel_pairs, mt_collins_socket1_channel_pairs)) {
+        ObservationRefused { cause: "bounded Mt. Collins attempt requires one populated position per documented channel pair across both sockets" }
+      } else if !memory_capture_covers_population(configuration: configuration, collector: collector) {
+        ObservationRefused { cause: "positioned inventory incomplete or printed-part catalog binding missing or ambiguous" }
+      } else if !contains(collector.payload, "NOTICE:  DRAM FW version 210525")
+        || !contains(collector.payload, "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]")
+        || !contains(collector.payload, "ERROR:   Non-identical DIMM mixture NOT supported!")
+        || !contains(collector.payload, "ERROR:   SK[0]: 00110010")
+        || configuration.platform.firmware != "210525"
+      {
+        ObservationRefused { cause: "transcript does not establish the bounded socket-0 00/91 firmware finding" }
+      } else {
+        let positions = filter(configuration.population, dimm => dimm.position.socket == 0 && dimm.position.controller == 4 && dimm.position.slot == 0)
+        if count(positions) != 1 {
+          ObservationRefused { cause: "observed mismatch coordinate does not identify one DIMM in the captured configuration" }
+        } else { match positions.first() {
+          Absent => ObservationRefused { cause: "observed mismatch coordinate is absent" }
+          Present { value: dimm } => ObservationEstablished { observed: MemoryMixtureFinding {
+            attempt: attempt, configuration: configuration, collector: collector,
+            comparison_socket: 0, mismatch_position: dimm.position,
+            expected_byte: 145, actual_byte: 0,
+          } }
+        } }
+      }
+  }
+}
+
+fn mtcollins_memory_evidence_from_capture(configuration: MemoryConfiguration, payload: String) -> MemoryEvaluationEvidence {
+  MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
+    mixture: mtcollins_training_mixture_finding(attempt: "2026-09-12T02:37:23Z", configuration: configuration,
+      collector: mtcollins_training_collector(configuration: configuration, payload: payload)),
+    qualifications: [], training_failures: [],
+  }
+}
+
+func replay_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeAssessment, List<MtCollinsPopulationRoleRefusal>> {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals } => ObservationRefused { cause: refusals }
+    PopulationRolesResolved { roles } => {
+      let configuration = mtcollins_witnessed_configuration(roles: roles)
+      let read = Filesystem.Read(path: mtcollins_training_capture_path as String)
+      let hash = sha256sum_file_digest_via_shell(path: mtcollins_training_capture_path)
+      let valid_hash = match hash {
+        Sha256FileDigest { digest } => digest.hex == mtcollins_training_capture_sha256
+        Sha256FileDigestUnavailable { path: _, reason: _ } => false
+      }
+      let evidence = if read.success && valid_hash {
+        mtcollins_memory_evidence_from_capture(configuration: configuration, payload: read.content)
+      } else { MemoryEvaluationEvidence { revision: mtcollins_training_capture_sha256,
+        mixture: ObservationRefused { cause: "committed capture could not be read and verified" },
+        qualifications: [], training_failures: [],
+      } }
+      ObservationEstablished { observed: evaluate_memory_change(proposal: mtcollins_replay_proposal(configuration: configuration), evidence: evidence) }
+    }
+  }
+}
+
+func explain_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeExplanation, List<MtCollinsPopulationRoleRefusal>> {
+  match replay_mtcollins_memory_change() {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed } => ObservationEstablished { observed: explain_memory_change(assessment: observed) }
+  }
+}
+
+// Read-only assessment command. Its failure exit is the proposed production
+// admission refusal, not a claim that a new hardware experiment was executed.
+func assess_mtcollins_memory_change() -> ProcessExit {
+  match explain_mtcollins_memory_change() {
+    ObservationRefused { cause } => exit_failure(reason: concat("UNEVALUATED: population-role authority refused: ", to_string(cause)))
+    ObservationEstablished { observed: explanation } =>
+      match memory_change_admission_refusal(a: explanation.assessment, purpose: ProductionMemoryPurchase) {
+        Present { value: cause } => exit_failure(reason: concat(cause as String, "\n", join(map(explanation.lines, line => line as String), "\n")))
+        Absent => ExitSuccess
+      }
+  }
+}
