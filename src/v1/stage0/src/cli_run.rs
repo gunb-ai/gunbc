@@ -41276,9 +41276,21 @@ fn claim_scope_for_with_memos(
     // resolution no source authorizes, which is §5's fabricated-plausible-output in the resolver
     // rather than in an output. The line stops here instead, typed and located.
     //
-    // KEYED ON THE SAME VALUE THE CENSUS PUBLISHES, not on a restatement of it. `ambiguous_reads`
-    // is the single binding; the census lines in `required_floor_runner` read this same vector,
-    // so the refusal and the count cannot drift apart. A wall keyed on the RAW free-reference set
+    // KEYED ON THE SAME VALUE THE READ CENSUS USED TO PUBLISH, and that census is DELETED by this
+    // climb rather than left beside it. `ambiguous_reads` is the single binding. An earlier draft
+    // of this comment said "the census lines in `required_floor_runner` read this same vector, so
+    // the refusal and the count cannot drift apart" -- which this diff falsifies: the refusal
+    // returns Err before a scope exists, the runner reaches `built` only through
+    // `claim_scope_for(..)?`, so the read census could not agree with the refusal either. It could
+    // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
+    // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
+    // read lines are gone and the fixture rows in
+    // `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` remain.
+    //
+    // THE DECLARATION-GRAIN AND QUALIFIED-READ CENSUSES ARE NOT IN SCOPE HERE AND STAY LIVE:
+    // `ambiguous_bare_names` and `qualified_bare_reads` are populated on scopes this wall ACCEPTS,
+    // so they keep carrying information. Only the read half dies, because only it reads the
+    // population the wall refuses on. A wall keyed on the RAW free-reference set
     // would over-approximate -- that set unions type annotations, record-literal type names,
     // field labels and variant constructors -- and would refuse `Foo { observation: o }` the day
     // a second `observation` is declared. The value-position projection plus the three resolution

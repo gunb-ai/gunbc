@@ -6560,11 +6560,6 @@ pub fn run_required_floor(
     let mut ambiguous_claimants: BTreeMap<String, BTreeSet<(String, &'static str)>> =
         BTreeMap::new();
     let mut ambiguous_scope_count: BTreeMap<String, usize> = BTreeMap::new();
-    // AND THE READS: (name, referring module) sites, unioned across scopes. This is the
-    // population a refusal is affordable against — a declared name nothing reads bare is a
-    // convention, and the corpus carries whole families of those.
-    let mut ambiguous_read_sites: BTreeMap<(String, String), BTreeSet<(String, &'static str)>> =
-        BTreeMap::new();
     // The positive half: (name, referring module) -> the module that answered it, for names that
     // ARE ambiguous in the shared slot but are not read through it at this site.
     let mut qualified_read_sites: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
@@ -6610,12 +6605,6 @@ pub fn run_required_floor(
                         .entry((name.clone(), referring.clone()))
                         .or_default()
                         .insert(resolved.clone());
-                }
-                for row in built.ambiguous_bare_reads.iter() {
-                    ambiguous_read_sites
-                        .entry((row.name.clone(), row.referring_module.clone()))
-                        .or_default()
-                        .extend(row.claimants.iter().cloned());
                 }
                 for row in built.ambiguous_bare_names.iter() {
                     *ambiguous_scope_count.entry(row.name.clone()).or_insert(0) += 1;
@@ -7501,26 +7490,27 @@ pub fn run_required_floor(
     // written at — `refs_by_module` publishes a module's free references deduped, so this is a
     // count of referencing modules per name and NOT a count of occurrences.
     {
-        let mut read_names: BTreeMap<String, usize> = BTreeMap::new();
-        for ((name, referring_module), claimants) in ambiguous_read_sites.iter() {
-            *read_names.entry(name.clone()).or_insert(0) += 1;
-            let sites = claimants
-                .iter()
-                .map(|(module, kind)| format!("{module}:{kind}"))
-                .collect::<Vec<String>>()
-                .join(",");
-            eprintln!(
-                "[floor-bare-name-ambiguity-read] name={name} referring_module={referring_module} \
-                 claimants={sites}"
-            );
-        }
-        eprintln!(
-            "[floor-bare-name-ambiguity-reads] read_name_module_pairs={} \
-             read_names_distinct={} declared_names_distinct={}",
-            ambiguous_read_sites.len(),
-            read_names.len(),
-            ambiguous_claimants_len
-        );
+        // THE PER-SITE READ CENSUS IS DELETED BY THE CLIMB IT MEASURED FOR, and its absence is the
+        // point rather than an omission. It printed `[floor-bare-name-ambiguity-read]` per site and
+        // a `[floor-bare-name-ambiguity-reads]` summary, populated from
+        // `built.ambiguous_bare_reads`. `claim_scope_for` now REFUSES whenever that vector is
+        // non-empty, and this runner reaches `built` only through `claim_scope_for(..)?` -- so a
+        // non-empty population propagates the Err and never arrives here. Those lines could
+        // therefore only ever print zero, which DESIGN §4b calls a decoration: "permanently green
+        // by construction, carrying no information, and worse than absent because it will be cited
+        // as coverage."
+        //
+        // §4b(4) is the rule that says to delete it rather than keep it as a belt: a climb deletes
+        // the redundant lower-rung PRODUCTION machinery it obsoletes, while the class's
+        // discriminating RED and positive control REMAIN ENROLLED. The evidence is separate and
+        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` holds the eight rows,
+        // including the subject that must refuse and the field-label and local-parameter controls
+        // that must not.
+        //
+        // WHAT STILL PRINTS AND WHY IT IS NOT THE SAME LINE: the DECLARED-name lines
+        // (`-name`, `-kinds`) and the QUALIFIED-read line (`-bound`) are populated on scopes the
+        // wall accepts, so they carry information after the climb. Only the ambiguous-READ lines
+        // became unreachable, because only they read the population the wall refuses on.
         // THE ADJACENT CLASS THIS CENSUS DELIBERATELY DOES NOT COVER, named so that a zero here
         // can never be read as "no ambiguity in the corpus". A value-position read is what the
         // evaluator resolves through the shared slot; a TYPE whose spelling two modules share is
