@@ -7426,7 +7426,6 @@ pub fn run_required_floor(
         ambiguous_max,
         ambiguous_claimants.len()
     );
-    let ambiguous_claimants_len = ambiguous_claimants.len();
     // AND THE NAMES THEMSELVES. `names_total` sizes the population and names nothing in it, so
     // it can size a campaign and cannot be the campaign's input. Layer 2 of this class is a
     // refusal landed together with the rename or qualification of every site it would refuse;

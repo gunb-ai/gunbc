@@ -12327,6 +12327,11 @@ fn claim_scope_fixture_value(
     }
 }
 
+/// Projects a host multi-module fixture outcome into the `tools.multi_module_compile_fixture`
+/// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
+/// the compiler's verdict, and a compile that never ran must never arrive as
+/// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
+/// conflated with passing).
 fn multi_module_compile_fixture_value(
     outcome: crate::cli_run::MultiModuleCompileFixtureOutcome,
     ctx: &InterpContext,
