@@ -23,6 +23,35 @@ import std.measure { Millisecond, millisecond_count }
 // THE CEILING IS A PARAMETER. This module must not import `required_floor` (cycle through
 // floor_cost_debt) and must not restate 500. Callers pass
 // `required_floor_claim_cpu_safety_limit_ms()`.
+//
+// DECLARED FRONTIER (DESIGN §3c), not a live mint. `floor_cost_debt_row` is consumed by
+// `floor_cost_debt_admit_attempts` and by executing tests; it is NOT consumed by
+// `floor_cost_debt_roster`. The live withhold set is still those identity strings. Wiring
+// this module into every required-floor compile would import `gunbc.floor_cost_distribution`
+// onto that hot path (the reason the constructor is not inside `floor_cost_debt`).
+//
+// NAMED LATER CONSUMER: `v1_compiler.cli_run` `run_required_floor` unions
+// `floor_cost_debt_typed_admitted_identities` into the withhold HashSet it already builds
+// from `floor_cost_debt_roster`, and the string chunks freeze against additions (identity
+// join vs the merge-base roster). TRIGGER: the first identity that would otherwise be
+// appended as a string after this PR — that row is authored here as a
+// `FloorCostDebtReadingAttempt` and nowhere else. Until then this list is Empty, which is
+// the honest population, not a scaffold pretending the runner already joined it.
+
+fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttempt> {
+  []
+}
+
+fn floor_cost_debt_typed_admitted_identities(ceiling_ms: Millisecond) -> List<String> {
+  reverse(fold(
+    floor_cost_debt_admit_attempts(
+      attempts: floor_cost_debt_typed_admission_attempts(),
+      ceiling_ms: ceiling_ms,
+    ),
+    init: [],
+    f: fn(acc, row) { concat([row.identity], acc) },
+  ))
+}
 
 type FloorCostDebtRow {
   identity: String
