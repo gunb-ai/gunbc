@@ -121,7 +121,8 @@ func observe_account_permission_groups_standing() -> PermissionGroupListing uses
 // IDS at all, so there is no document to cite and an id authored from memory would be
 // indistinguishable from a checked one.
 // THE INSTRUMENT IS NAMED RATHER THAN THE OUTPUT TRANSCRIBED, per DESIGN section 6: these rows are
-// re-derived by running observe_account_permission_groups above against the same account. What is
+// re-derived by running observe_account_permission_groups_wet above against the same account -- or
+// by dispatching fleet-converge in r2_mint_preflight mode, which runs that entry. What is
 // recorded here is only what a later reader needs in order to act without re-running it.
 // THE RETRIEVAL TIME IS PART OF THE FACT. A permission group id is stable in practice and guaranteed
 // by nobody, so a row without its retrieval moment is a claim with no expiry and no way to tell
@@ -213,6 +214,18 @@ fn r2_bucket_item_write_permission_group() -> PermissionGroupRef {
 // a mint entry, and its row stays only until that mint has executed; the bootstrap id becomes an
 // input to a check that the credential in custody actually holds the grant its shape declares --
 // which needs a token-verify read this repository does not model yet.
+// THIS ROW'S OLD REASON WAS FALSIFIED BY THE CHANGE THAT ADDED THE CALLER, and repointing it
+// without rewriting it would have left a frontier asserting something the same commit made
+// untrue. It read "the listing entry is operator-invoked and has no automated caller"; the
+// listing now has an executing route -- gunbc.fleet_converge_workflow's r2_mint_preflight mode
+// runs observe_account_permission_groups_wet and folds its standing into a process exit and an
+// uploaded receipt. Half of the original gap therefore closed.
+  //
+// THE HALF THAT REMAINS IS THE ONE THE ROW IS NOW ABOUT: the rows below are still TRANSCRIBED
+// from a run rather than derived by one. An executing caller that discards its own listing into
+// a text artifact, while the ids a consumer actually reads are hand-authored constants beside
+// it, is exactly the instrument-versus-transcription split DESIGN section 6 names -- and it is a
+// narrower, truer frontier than the one this row carried before.
 data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id"),
@@ -229,10 +242,10 @@ data cloudflare_permission_group_observation_frontier_rows: List<FrontierRow> = 
     )
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "observe_account_permission_groups"),
-    reason: "the listing entry is operator-invoked and has no automated caller",
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "observe_account_permission_groups_wet"),
+    reason: "the listing now executes from a dispatch mode, and the permission group ids consumers read are still authored constants beside it rather than the listing's own output",
     dissolution: unbound_dissolution(
-      description: "dissolves when a converge or required lane invokes this listing and folds its result, rather than an operator running it by hand and transcribing the rows below"
+      description: "dissolves when the observed permission group rows below are DERIVED from this entry's listing rather than transcribed beside it -- an artifact-backed observation a consumer reads, not a receipt a human copies from"
     )
   ),
 ]
@@ -264,15 +277,6 @@ func observe_account_permission_groups_wet() -> ProcessExit uses net: Network {
         exit_failure(reason: concat("THE PREFLIGHT LISTED AND ITS RECEIPT COULD NOT BE WRITTEN: ", written.error))
       }
     }
-  }
-}
-
-// The pre-existing String-valued entry, kept as the RENDERING of the standing so nothing that
-// invoked it is renamed and no second listing exists.
-func observe_account_permission_groups() -> String uses net: Network {
-  match observe_account_permission_groups_standing() {
-    PermissionGroupListingRefused { cause: cause } => cause as String
-    PermissionGroupsListed { rendered: rendered } => rendered
   }
 }
 
