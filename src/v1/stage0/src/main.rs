@@ -509,7 +509,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         // never ran, so `resolved 0 sources` would report a resolve that did not
                         // happen as one that found nothing.
                         eprintln!("gunbc compile: {earlier_phase}: {cause}");
-                        std::process::exit(1);
+                        std::process::exit(cli_run::COMPILE_CLI_EXIT_NOT_EXECUTED);
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(

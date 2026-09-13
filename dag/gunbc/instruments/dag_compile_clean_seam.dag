@@ -11,8 +11,9 @@ import tools.dag_compile_clean_seam_transport {
   cross_shard_seam_importer_entry_path,
   cross_shard_seam_importee_entry_path
 }
-import tools.dag_compile_clean_transport { dcc_report_is_subject_red }
+import tools.dag_compile_clean_transport { dcc_report_is_subject_red, dcc_compile_report_arm }
 import std.types { String, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 type CrossShardSeamReceipt {
   probe_ran: Bool
@@ -81,6 +82,24 @@ fn witness_cross_shard_seam_preservation_holds() -> Bool {
   witness_cross_shard_seam_preservation_holds_from(
     receipt: cross_shard_seam_receipt_from(probe: run_cross_shard_seam_probe())
   )
+}
+
+fn cross_shard_seam_preservation_standing() -> ProcessExit {
+  let probe = run_cross_shard_seam_probe()
+  let receipt = cross_shard_seam_receipt_from(probe: probe)
+  if witness_cross_shard_seam_preservation_holds_from(receipt: receipt) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join([
+      "probe_ran=", to_string(receipt.probe_ran),
+      " y=", dcc_compile_report_arm(report: probe.y_report),
+      " x=", dcc_compile_report_arm(report: probe.x_report),
+      " m=", dcc_compile_report_arm(report: probe.m_report),
+      " y_names=", to_string(receipt.y_names_class),
+      " x_names=", to_string(receipt.x_names_class),
+      " m_names=", to_string(receipt.m_names_class)
+    ], ""))
+  }
 }
 
 fn synthetic_seam_receipt(y_reds: Bool, x_reds: Bool, m_reds: Bool, y_names: Bool, x_names: Bool, m_names: Bool) -> CrossShardSeamReceipt {

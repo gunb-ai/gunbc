@@ -6,6 +6,7 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
+import std.shell_stream_capture { Complete }
 import std.types { String, Bool }
 import tools.dag_compile_clean_transport {
   DccCompileReport,
@@ -115,7 +116,8 @@ fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
         workdir: root.path,
         bin_path: gunbc_path,
         args: cross_shard_seam_compile_args(stage: "", broken_dag: broken_dag, out_dir: out_m.path),
-        expect: OutcomeIsData
+        expect: OutcomeIsData,
+        stderr_capture: Complete
       )
       let cleaned_broken = shell.Remove.RecursiveForce(path: broken.path)
       let cleaned_sy = shell.Remove.RecursiveForce(path: stage_y.path)
@@ -128,13 +130,13 @@ fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
           && cleaned_broken.success && cleaned_sy.success && cleaned_sx.success
           && cleaned_oy.success && cleaned_ox.success && cleaned_om.success,
         y_report: dcc_compile_report_from_bin(
-          success: compile_y.success, stdout: compile_y.stdout, stderr: compile_y.stderr
+          exit_code: compile_y.exit_code, stdout: compile_y.stdout, stderr: compile_y.stderr
         ),
         x_report: dcc_compile_report_from_bin(
-          success: compile_x.success, stdout: compile_x.stdout, stderr: compile_x.stderr
+          exit_code: compile_x.exit_code, stdout: compile_x.stdout, stderr: compile_x.stderr
         ),
         m_report: dcc_compile_report_from_bin(
-          success: compile_m.success, stdout: compile_m.stdout, stderr: compile_m.stderr
+          exit_code: compile_m.exit_code, stdout: compile_m.stdout, stderr: compile_m.stderr
         ),
         y_output: concat(compile_y.stdout, compile_y.stderr),
         x_output: concat(compile_x.stdout, compile_x.stderr),

@@ -4,6 +4,7 @@ import std.measure { Millisecond, millisecond_count }
 import std.types { Bool, CommitSha, Int, List, Port, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.process.posix_exit { exit_code_success, exit_code_general_error }
 
 // One-consumer realization helper: only the generated dispatch emitter consumes this spelling,
 // and the spelling never enters CLI identity, build identity, receipts, cache keys, or product
@@ -305,6 +306,15 @@ fn gunbc_cli_dispatch_executor_binding_prefix() -> String {
 fn gunbc_cli_binary_name() -> String {
   "gunbc"
 }
+
+// Compile verb process status — the CLI surface of CompileDisposition. Completed is POSIX
+// success. Refused is POSIX general error (the compiler reached the subject). NotExecuted is a
+// distinct implementation-defined status in the POSIX 1–125 band so a transport that reads
+// WitnessBin.Run.exit_code cannot collapse admission with a subject verdict. Do not share
+// status 2 (usage / gnu_bash_exit exit_code_misuse).
+data compile_cli_exit_completed: Int = exit_code_success
+data compile_cli_exit_refused: Int = exit_code_general_error
+data compile_cli_exit_not_executed: Int = 3
 
 fn gunbc_cli_about() -> String {
   "A causal compiler: write .dag, get Rust/Python/Go."

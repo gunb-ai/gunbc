@@ -7,88 +7,53 @@ import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.ci_gate { GateReceipt }
 import gunbc.ci_layer_roots { compile_clean_source_roots }
+import gunbc.cli_dispatch_surface {
+  compile_cli_exit_completed,
+  compile_cli_exit_not_executed,
+  compile_cli_exit_refused
+}
 import gunbc.output_policy { OutcomeIsData }
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
-// Compile-clean gate transports, typed. Each receipt is a composition of typed service operations
-// (shell.Mktemp.DirWithTemplate under the workspace target/, Filesystem.Write, gunbc.WitnessBin.Run
-// on the gunbc binary, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former
-// ShellProgram builders, their serialize-shape witnesses (shell_serializes_dcc_common_compile_invocation
-// and the marker rows), and the two RealizationDispatch scaffold rows dissolved with the flip: the
-// invocation facts are now carried by the typed args construction itself, so the spelling-drift
-// class those witnesses validated is unwritable (DESIGN 5, construction over validation).
-
-// Class C attribution (test-decomposition-wcf-cut.md, session nimble-ibex-483, 2026-07-25): run
-// 30009199696 measured dag_compile_clean_perturb_receipts_holds at 53s; measured head ~141s — both
-// are the SAME shape (four serial gunbc compile invocations each pulling
-// compile_clean_source_roots: dag + src/v2 + src/v1). Per-compile wall grew with corpus size and
-// the namespace-flip compile wall, NOT the #7205 per-entry fixture pipeline (Class F:
-// fixture-shaped + slow by defect). Disposition Class C: mechanism RED arms (optional_skew,
-// unresolved_import) need only a single-module fixture closure (dcc_fixture_only_compile_args);
-// cross_tree_import and dag_shell_primary_precedence need the live-tree pool and ride
-// falsifier_rehomed_bin_wet_entries.
-
-// THE REPORT COPRODUCT. WitnessBin.Run answers a process record (success/stdout/stderr); it does
-// not return cli_run CompileDisposition. Folding that record to Bool made a workspace-root
-// admission refusal (compile_not_executed, earlier_phase root-admission / entry-admission)
-// indistinguishable from a subject verdict. DFS: gunbc.ci_gate GateReceipt already splits
-// GateObserved / GateNotRun / GateNotApplicable, but it is the CI-gate owner, not a compile
-// transaction. CompileDisposition (Completed / Refused / NotExecuted) is the compile owner;
-// RefusedBeforeSubject reuses NotExecuted's earlier_phase+cause fields. Classification matches
-// the NotExecuted print template (`gunbc compile: {earlier_phase}:`). A nonzero exit without
-// that template is SubjectRed. Never parse the cause sentence "outside the workspace root".
-// Citing folds must match all three; an ExpectFailure perturb arm is
-// dcc_subject_expectation_holds and is never true on RefusedBeforeSubject.
+// Compile-clean transports return DccCompileReport, not Bool. WitnessBin.Run is a process
+// record; folding it to Bool made a compile CLI NotExecuted (workspace-root admission)
+// indistinguishable from a subject refusal. Classify on compile_cli_exit_* (the compile
+// verb's process status): completed / refused / not-executed. ExpectFailure never holds on
+// RefusedBeforeSubject.
 
 type DccCompileReport
   = SubjectGreen
   | SubjectRed
   | RefusedBeforeSubject { earlier_phase: String, cause: String }
 
-data dcc_compile_not_executed_prefix: String = "gunbc compile: "
-data dcc_not_executed_phases: List<String> = [
-  "root-admission",
-  "entry-admission",
-  "target-admission",
-  "subject-admission",
-  "admission",
-  "source-discovery",
-  "subject-read",
-  "entry-read"
-]
 data dcc_stage_template_suffix: String = "/target/dcc_stage_XXXXXX"
 data dcc_perturb_fixture_template_suffix: String = "/target/dcc_perturb_fixture_XXXXXX"
 data dcc_instrument_earlier_phase: String = "instrument"
+data dcc_cli_not_executed_phase: String = "not-executed"
 
-fn dcc_earlier_phase_from_compile_output(out: String) -> String {
-  fold(
-    dcc_not_executed_phases,
-    init: "",
-    f: (acc, phase) => if acc != "" {
-      acc
-    } else if string_contains(
-      s: out,
-      pattern: concat(dcc_compile_not_executed_prefix, concat(phase, ":"))
-    ) {
-      phase
-    } else {
-      acc
+fn dcc_compile_report_from_bin(exit_code: Int, stdout: String, stderr: String) -> DccCompileReport {
+  if exit_code == compile_cli_exit_completed {
+    SubjectGreen
+  } else if exit_code == compile_cli_exit_refused {
+    SubjectRed
+  } else {
+    RefusedBeforeSubject {
+      earlier_phase: if exit_code == compile_cli_exit_not_executed {
+        dcc_cli_not_executed_phase
+      } else {
+        dcc_instrument_earlier_phase
+      },
+      cause: concat(stdout, stderr)
     }
-  )
+  }
 }
 
-fn dcc_compile_report_from_bin(success: Bool, stdout: String, stderr: String) -> DccCompileReport {
-  if success {
-    SubjectGreen
-  } else {
-    let out = concat(stdout, stderr)
-    let phase = dcc_earlier_phase_from_compile_output(out: out)
-    if phase != "" {
-      RefusedBeforeSubject { earlier_phase: phase, cause: out }
-    } else {
-      SubjectRed
-    }
+fn dcc_compile_report_arm(report: DccCompileReport) -> String {
+  match report {
+    SubjectGreen => "SubjectGreen"
+    SubjectRed => "SubjectRed"
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => concat("RefusedBeforeSubject:", p)
   }
 }
 
@@ -175,7 +140,7 @@ fn run_clean_tree_compile_typed() -> Bool {
       )
       let cleaned = shell.Remove.RecursiveForce(path: out.path)
       match dcc_compile_report_from_bin(
-        success: compile.success,
+        exit_code: compile.exit_code,
         stdout: compile.stdout,
         stderr: compile.stderr
       ) {
@@ -234,7 +199,7 @@ fn dcc_perturb_compile_with_args(
     let cleaned = shell.Remove.RecursiveForce(path: tmp_path)
     if cleaned.success {
       dcc_compile_report_from_bin(
-        success: compile.success,
+        exit_code: compile.exit_code,
         stdout: compile.stdout,
         stderr: compile.stderr
       )

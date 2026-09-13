@@ -43,7 +43,7 @@ fn single_module_shard_compile_typed(entry_rel_path: String) -> DccCompileReport
         let cleaned_stage = shell.Remove.RecursiveForce(path: stage.path)
         if cleaned_stage.success {
           dcc_compile_report_from_bin(
-            success: compile.success,
+            exit_code: compile.exit_code,
             stdout: compile.stdout,
             stderr: compile.stderr
           )
