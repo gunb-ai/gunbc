@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.two_modules_answer_to_one_logical_qualified_name
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data two_modules_answer_to_one_logical_qualified_name: RecurringFailureMode = RecurringFailureMode {
+  identity: "two_modules_answer_to_one_logical_qualified_name" as NonEmptyStr,
+
+  receipts: [
+    "**two modules answer to ONE logical qualified name, so a citation that names its module is still not an identity** (INVALID STATE: the declaration index's logical qualified name strips a leading `v2.` -- v2.std.decl_index logical_qualified_name_from_module -- so under the v2-mirror layout `v2.std.integer` and `std.integer` both answer to `std.integer`. A caller that cites module plus declaration name, believing it has said exactly which declaration it means, has said something two declarations satisfy. HARM: a route keyed on the qualified name binds ONE GRAIN DOWN to whichever row the keyed read ordered first -- the same first-match-without-a-diagnostic shape a bare spelling has, arrived at by a caller who did the right thing and named the module.",
+
+    "WHY IT IS NOT THE BARE-SPELLING CLASS WEARING A NEW NAME, because the resemblance is close enough to merge them by mistake. A bare spelling is ambiguous BY CONSTRUCTION: it carries no scope, so every consumer knows it must be disambiguated. This state is ambiguity SURVIVING disambiguation -- the caller supplied the scope the bare form lacked, and the index collapsed it anyway. The repair is therefore not `make callers cite their module`, which they already did; it is that the identity a citation resolves to must carry scope the strip cannot erase.",
+
+    "DISTINGUISHING FACT, AND IT IS WHAT MAKES THE STATE AUTHORABLE RATHER THAN HYPOTHETICAL: the collision is not inside a module, where a duplicate declaration is refused at resolve, but BETWEEN two modules whose logical names coincide after the strip. That is why an author checking `can one module declare this name twice` concludes the state is unconstructible and writes no test for it. Derived over dag and src/v2 by intersecting the type names declared by each `v2.X` module with those declared by `X`: TWELVE module pairs collide and EIGHTEEN type names are declared under both halves of a pair, among them std.integer.Int and std.float.Float. The figures are a re-derivable reading rather than an oracle -- the rule that produces them is stated here so a reader recomputes rather than trusts, and a reference-grain instrument over this relation does not exist yet.",
+
+    "RECOGNITION RULE: when a lookup is keyed on a qualified name, ask whether the key is the AUTHORED module path or a NORMALISED one, and if it is normalised, whether the normalisation can map two authored modules onto one key. If it can, a multiplicity arm is required at that key's grain even though the citation looks exact. The reviewer tell: a route that refuses the ZERO case of a keyed read and sends every non-zero multiplicity into an accept path that takes a head -- the refusal reads as complete because absent and present are both handled, and the third state is the one nobody named.",
+
+    "SPECIMEN, gunbc#11291. The citation route added for scope-carrying type reflection refused a cited name that resolved to nothing and accepted everything else, so two declarations under one logical qualified name would have been answered from whichever came first. Found by review rather than by the claim family, which had no discriminating RED for it. The route now refuses that multiplicity typed and located on its own arm, and the RED enrolled against it -- v2.test.manual.scoped_type_reflection_conformance cited_ambiguous_qualified_name_refuses_rather_than_taking_the_head -- cites a LIVE pair (v2.std.integer and std.integer, both declaring Int) rather than a fixture, which is the whole reason this row is filed as a class and not as that PR's bug.",
+
+    "RUNG FOUND AT: mitigatable, and only at the one route that has been repaired. The citation route refuses, typed and located, so the harm is contained where it was found. Nothing prevents the next keyed-on-qualified-name consumer from being written without the multiplicity arm, and nothing enumerates the consumers that already exist -- so the class is contained at one site rather than closed.",
+
+    "ATTAINABLE CEILING: STRUCTURALLY IMPOSSIBLE, and the authority that would reach it is already being built rather than merely imagined. The invalid state is that an identity is representable which does not determine a declaration; a scope-carrying occurrence identity -- crisp-carp-634's ScopedOccurrenceRef, with ContainmentPath -- makes the module path part of the identity rather than a normalised string beside it, so two declarations cannot share one. Until such an identity is what citations resolve THROUGH, this stays a multiplicity arm each consumer must remember, which is mechanically preventable at best.",
+
+    "NEXT-RUNG TRIGGER, a capability and not an artifact: a citation resolves through a scope-carrying occurrence identity whose equality distinguishes v2.std.integer.Int from std.integer.Int, ANSWERING BY EXECUTION over that pair -- sufficient that no keyed-on-qualified-name consumer can reach two declarations under one key. It is NOT satisfied by the identity type being declared, nor by one route growing a multiplicity arm, which is what this row records as already done and explicitly does not count as the climb.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.decl_index", decl_name: "logical_qualified_name_from_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node_reflection", decl_name: "resolve_type_node_at", field: WholeDeclaration },
+  ],
+}
