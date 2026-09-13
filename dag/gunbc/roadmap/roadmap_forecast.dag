@@ -875,7 +875,7 @@ fn roadmap_schedule_forecast_over(
     RoadmapAuthorityProjected { doc: _, accepted: accepted } =>
       let builds = roadmap_cycle_time_observation_builds()
       schedule_forecast(
-        nodes: active_roadmap_nodes_for_accepted(accepted: accepted),
+        nodes: active_roadmap_nodes_for_accepted(declared: declared_roadmap_nodes(), accepted: accepted),
         edges: active_roadmap_edges_for_accepted(accepted: accepted),
         observations: accepted_cycle_time_observations(builds: builds),
         history_refusals: cycle_time_history_refusals(builds: builds),

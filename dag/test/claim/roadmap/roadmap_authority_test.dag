@@ -115,7 +115,7 @@ fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
 fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
 fn active_nodes() -> List<RoadmapNode> {
   match live_accepted_node_ids() {
-    Present { value: accepted } => active_roadmap_nodes_for_accepted(accepted: accepted)
+    Present { value: accepted } => active_roadmap_nodes_for_accepted(declared: nodes(), accepted: accepted)
     Absent => []
   }
 }
