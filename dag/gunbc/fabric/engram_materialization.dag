@@ -828,24 +828,73 @@ fn route_hop_reaches_storage(h: RouteHop) -> Bool {
   !placement_is_in_memory_pool(p: route_hop_placement(h: h))
 }
 
+// ── THE CHAIN'S SHAPE IS ITS TYPE, NOT A FAMILY OF CHECKS OVER A FLAT LIST ─────────────────────
+//
+// This carried `hops: List<RouteHop>` with an in-band role tag, and five hand-written checks asked
+// whether the list happened to be a chain: non-empty, exactly one durable origin, exactly one
+// token-time hop, head is the origin, tail is the token-time hop. Every one of those invalid states
+// was WRITABLE, and DESIGN section 5 ranks making a state unwritable above catching it. Section 4b
+// puts the ceiling for a decidable, fully modeled class at structural impossibility and says
+// below-ceiling is a correctness gap rather than optional elegance.
+//
+// THE DIFF THAT ADDED THOSE CHECKS IS THE EVIDENCE AGAINST THEM (review 65676). An earlier cut's
+// shape checks missed the peer-as-fill-source chain, and the remedy was to ADD ANOTHER VALIDATOR.
+// With the positions as fields, "another check nobody remembered" is not a class that exists.
+//
+// THE POSITIONS CARRY PROVIDERS, NOT ROLE-TAGGED HOPS, AND THAT IS THE WHOLE POINT. The review
+// sketched `{ origin: RouteHop, fill: List<RouteHop>, token_time: RouteHop }`, which keeps each hop's
+// own `role` tag inside a field whose position already states the role -- so a hop tagged FillSource
+// could sit in `token_time`. That trades one writable-invalid state for another and calls it
+// construction: one fact written twice, with nothing able to keep the two spellings honest. Here the
+// role IS the position, so there is no second representation to disagree with the first, and
+// `route_hop` is derived on demand for the consumers that want the pair.
+//
+// `retained` EXISTS BECAUSE ROUTES B AND D HAVE RETAINED WORKING SETS. A shape that cannot express a
+// page cache is not a model of these four routes.
 type MaterializationRoute sole_constructor {
   identity: DeclarationRef
   label: NonEmptyStr
-  hops: List<RouteHop>
+  origin: CacheProvider
+  fill: List<CacheProvider>
+  retained: List<CacheProvider>
+  token_time: CacheProvider
   digest_verified_at: RouteRole
 }
 
 fn materialization_route(
   identity: DeclarationRef,
   label: NonEmptyStr,
-  hops: List<RouteHop>,
+  origin: CacheProvider,
+  fill: List<CacheProvider>,
+  retained: List<CacheProvider>,
+  token_time: CacheProvider,
   digest_verified_at: RouteRole,
 ) -> MaterializationRoute {
-  MaterializationRoute { identity: identity, label: label, hops: hops, digest_verified_at: digest_verified_at }
+  MaterializationRoute {
+    identity: identity,
+    label: label,
+    origin: origin,
+    fill: fill,
+    retained: retained,
+    token_time: token_time,
+    digest_verified_at: digest_verified_at,
+  }
+}
+
+// THE CHAIN IN ORDER, DERIVED. Consumers that want the old flat view get it as a projection, with the
+// role supplied BY THE POSITION THAT PRODUCED IT rather than read off the hop.
+fn route_chain(r: MaterializationRoute) -> List<RouteHop> {
+  concat(
+    concat(
+      [route_hop(provider: r.origin, role: DurableOrigin)],
+      map(r.fill, p => route_hop(provider: p, role: FillSource))),
+    concat(
+      map(r.retained, p => route_hop(provider: p, role: RetainedWorkingSet)),
+      [route_hop(provider: r.token_time, role: TokenTimeAccess)]))
 }
 
 fn route_hops_with_role(r: MaterializationRoute, role: RouteRole) -> List<RouteHop> {
-  filter(r.hops, h => route_role_eq(a: h.role, b: role))
+  filter(route_chain(r: r), h => route_role_eq(a: h.role, b: role))
 }
 
 fn route_role_count(r: MaterializationRoute, role: RouteRole) -> Nat {
@@ -856,7 +905,7 @@ fn route_key(r: MaterializationRoute) -> String {
   join([
     declaration_ref_display_key(ref: r.identity),
     "|",
-    join(map(r.hops, h => join([h.provider.id, ":", route_role_wire(r: h.role) as String], "")), ">"),
+    join(map(route_chain(r: r), h => join([h.provider.id, ":", route_role_wire(r: h.role) as String], "")), ">"),
     "|verify@", route_role_wire(r: r.digest_verified_at) as String,
   ], "")
 }
@@ -893,7 +942,7 @@ fn route_defects(
 }
 
 fn route_provider_admission_defects(r: MaterializationRoute, admitted_provider_ids: List<String>) -> List<NonEmptyStr> {
-  flat_map(r.hops, h =>
+  flat_map(route_chain(r: r), h =>
     if any(admitted_provider_ids, id => id == h.provider.id) {
       []
     } else {
@@ -905,60 +954,37 @@ fn route_provider_admission_defects(r: MaterializationRoute, admitted_provider_i
     })
 }
 
+// ── WHAT SURVIVED THE CLIMB, AND WHAT DID NOT (DESIGN 4b(4)) ──────────────────────────────────
+//
+// Five checks stood here. A climb dissolves the redundant lower-rung PRODUCTION machinery, and the
+// decision is taken per check rather than for the family, because the question is whether each
+// invalid state is still authorable AS FIXTURE SOURCE -- not merely whether production can reach it.
+//
+// RETIRED, because the state now has no constructor anywhere, fixture source included:
+//   "a route with no hops"          -- `origin` and `token_time` are required fields
+//   "N durable-origin hops"         -- there is exactly one `origin` field
+//   "N token-time hops"             -- there is exactly one `token_time` field
+//   "the chain does not end at the token-time hop"  -- the tail IS `token_time`, by projection
+// None of those four can be written in any `.dag` a fixture could hand the compiler, so their checks
+// and their controls retire together. A check whose RED cannot be authored is a decoration that would
+// be cited as coverage.
+//
+// KEPT, NARROWED TO THE HALF THAT IS STILL WRITABLE: the head check asked two things at once -- that
+// the first hop plays the durable-origin role, AND that it is the DECLARED admitted origin provider.
+// The first half is now structural. The second is not a shape fact at all: it compares the route's
+// origin against a parameter, and a route naming some other provider as its origin is perfectly
+// constructible. So that half stays, and stays as an executing check rather than a comment.
 fn route_shape_defects(r: MaterializationRoute, origin_provider_id: String) -> List<NonEmptyStr> {
-  concat(
-    concat(
-      if count(r.hops) > 0 {
-        []
-      } else {
-        ["a route with no hops is not a chain from an origin to the bytes the runtime touches" as NonEmptyStr]
-      },
-      if route_role_count(r: r, role: DurableOrigin) == 1 {
-        []
-      } else {
-        [join([
-          "route ", declaration_ref_display_key(ref: r.identity), " declares ",
-          to_string(route_role_count(r: r, role: DurableOrigin)),
-          " durable-origin hops; FABRIC-M0 admits exactly one, so a peer serving host can never stand in as a fill origin",
-        ], "") as NonEmptyStr]
-      }),
-    concat(
-      concat(
-        if route_role_count(r: r, role: TokenTimeAccess) == 1 {
-          []
-        } else {
-          [join([
-            "route ", declaration_ref_display_key(ref: r.identity), " declares ",
-            to_string(route_role_count(r: r, role: TokenTimeAccess)),
-            " token-time hops; the place the runtime reads on every token is exactly one",
-          ], "") as NonEmptyStr]
-        },
-        match r.hops.first() {
-          Absent => []
-          Present { value: head } =>
-            if route_role_eq(a: head.role, b: DurableOrigin) && head.provider.id == origin_provider_id {
-              []
-            } else {
-              [join([
-                "route ", declaration_ref_display_key(ref: r.identity),
-                " begins at ", head.provider.id, " playing ", route_role_wire(r: head.role) as String,
-                "; every chain's head is the declared durable origin ", origin_provider_id,
-              ], "") as NonEmptyStr]
-            }
-        }),
-      match r.hops.last() {
-        Absent => []
-        Present { value: tail } =>
-          if route_role_eq(a: tail.role, b: TokenTimeAccess) {
-            []
-          } else {
-            [join([
-              "route ", declaration_ref_display_key(ref: r.identity),
-              " ends at ", route_role_wire(r: tail.role) as String,
-              " rather than the token-time hop, so the chain does not reach what the runtime reads",
-            ], "") as NonEmptyStr]
-          }
-      }))
+  if r.origin.id == origin_provider_id {
+    []
+  } else {
+    [join([
+      "route ", declaration_ref_display_key(ref: r.identity),
+      " begins at ", r.origin.id,
+      "; every chain's head is the declared durable origin ", origin_provider_id,
+      ". The ROLE of that hop is no longer checkable here because it is no longer writable -- the head is the origin by construction -- but WHICH provider stands at the origin is a value this type cannot constrain",
+    ], "") as NonEmptyStr]
+  }
 }
 
 type RouteStructuralStanding
@@ -2568,46 +2594,40 @@ data engram_route_d_identity: DeclarationRef = decl_ref(module_path: "gunbc.fabr
 data engram_route_a_resident: MaterializationRoute = materialization_route(
   identity: engram_route_a_identity,
   label: "A: origin to RAM-resident component, the status quo" as NonEmptyStr,
-  hops: [
-    route_hop(provider: engram_origin_provider, role: DurableOrigin),
-    route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
-  ],
+  origin: engram_origin_provider,
+  fill: [],
+  retained: [],
+  token_time: engram_resident_provider,
   digest_verified_at: DurableOrigin,
 )
 
 data engram_route_b_host_nvme: MaterializationRoute = materialization_route(
   identity: engram_route_b_identity,
   label: "B: origin to per-host NVMe, then the runtime page cache" as NonEmptyStr,
-  hops: [
-    route_hop(provider: engram_origin_provider, role: DurableOrigin),
-    route_hop(provider: engram_host_nvme_provider, role: FillSource),
-    route_hop(provider: engram_page_cache_provider, role: RetainedWorkingSet),
-    route_hop(provider: engram_host_nvme_provider, role: TokenTimeAccess),
-  ],
+  origin: engram_origin_provider,
+  fill: [engram_host_nvme_provider],
+  retained: [engram_page_cache_provider],
+  token_time: engram_host_nvme_provider,
   digest_verified_at: DurableOrigin,
 )
 
 data engram_route_c_nfs_token_time: MaterializationRoute = materialization_route(
   identity: engram_route_c_identity,
   label: "C: origin over NFS, directly on the token-time access path, no local copy" as NonEmptyStr,
-  hops: [
-    route_hop(provider: engram_origin_provider, role: DurableOrigin),
-    route_hop(provider: engram_page_cache_provider, role: RetainedWorkingSet),
-    route_hop(provider: engram_nfs_provider, role: TokenTimeAccess),
-  ],
+  origin: engram_origin_provider,
+  fill: [],
+  retained: [engram_page_cache_provider],
+  token_time: engram_nfs_provider,
   digest_verified_at: DurableOrigin,
 )
 
 data engram_route_d_nfs_fill_then_nvme: MaterializationRoute = materialization_route(
   identity: engram_route_d_identity,
   label: "D: origin over NFS for fill, then local NVMe and page cache at token time" as NonEmptyStr,
-  hops: [
-    route_hop(provider: engram_origin_provider, role: DurableOrigin),
-    route_hop(provider: engram_nfs_provider, role: FillSource),
-    route_hop(provider: engram_host_nvme_provider, role: FillSource),
-    route_hop(provider: engram_page_cache_provider, role: RetainedWorkingSet),
-    route_hop(provider: engram_host_nvme_provider, role: TokenTimeAccess),
-  ],
+  origin: engram_origin_provider,
+  fill: [engram_nfs_provider, engram_host_nvme_provider],
+  retained: [engram_page_cache_provider],
+  token_time: engram_host_nvme_provider,
   digest_verified_at: DurableOrigin,
 )
 
@@ -2620,7 +2640,7 @@ data engram_routes: List<MaterializationRoute> = [
 
 // THE PREDICATE THAT KEEPS C AND D APART, derived from the roles rather than from the labels.
 fn route_provider_roles(r: MaterializationRoute, provider_id: String) -> List<RouteRole> {
-  map(filter(r.hops, h => h.provider.id == provider_id), h => h.role)
+  map(filter(route_chain(r: r), h => h.provider.id == provider_id), h => h.role)
 }
 
 fn route_provider_serves_token_time(r: MaterializationRoute, provider_id: String) -> Bool {

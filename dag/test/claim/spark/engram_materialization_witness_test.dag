@@ -622,12 +622,15 @@ test fn the_four_declared_routes_are_well_formed() -> Bool {
     })
 }
 
-fn malformed(hops: List<RouteHop>, verify: RouteRole) -> Bool {
+fn malformed(origin: CacheProvider, fill: List<CacheProvider>, retained: List<CacheProvider>, token_time: CacheProvider, verify: RouteRole) -> Bool {
   match route_structural_standing(
     r: materialization_route(
       identity: fixture_route_identity(),
       label: "fixture route" as NonEmptyStr,
-      hops: hops,
+      origin: origin,
+      fill: fill,
+      retained: retained,
+      token_time: token_time,
       digest_verified_at: verify),
     origin_provider_id: engram_origin_provider_id,
     admitted_provider_ids: engram_admitted_provider_ids) {
@@ -646,28 +649,27 @@ fn peer_host_provider() -> CacheProvider {
   )
 }
 
-// THE NO-PEER-MESH WALL, AS A RED. A chain headed by a serving peer is refused, and so is one with
-// a second durable origin -- so there is no spelling in which another host becomes a fill origin.
-test fn a_peer_origin_or_a_second_origin_refuses() -> Bool {
-  malformed(hops: [
-    route_hop(provider: peer_host_provider(), role: DurableOrigin),
-    route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
-  ], verify: DurableOrigin)
-    && malformed(hops: [
-      route_hop(provider: engram_origin_provider, role: DurableOrigin),
-      route_hop(provider: peer_host_provider(), role: DurableOrigin),
-      route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
-    ], verify: DurableOrigin)
-    && malformed(hops: [], verify: DurableOrigin)
-    && malformed(hops: [
-      route_hop(provider: engram_origin_provider, role: DurableOrigin),
-      route_hop(provider: engram_host_nvme_provider, role: FillSource),
-    ], verify: DurableOrigin)
-    && malformed(hops: [
-      route_hop(provider: engram_origin_provider, role: DurableOrigin),
-      route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
-      route_hop(provider: engram_nfs_provider, role: TokenTimeAccess),
-    ], verify: DurableOrigin)
+// THE NO-PEER-MESH WALL, AS A RED -- AND FOUR ARMS RETIRED WITH THE CHECKS THEY EXERCISED.
+//
+// This control used to carry five arms. Four of them handed the compiler a shape that no longer has a
+// constructor: a SECOND durable origin, a chain with NO hops, a chain with no token-time hop, and TWO
+// token-time hops. `MaterializationRoute` now has one `origin` field and one `token_time` field, so
+// none of those four states is writable in any .dag a fixture could author -- and DESIGN 4b is explicit
+// that a check whose RED cannot be authored is not a weak wall but a decoration, permanently green by
+// construction and worse than absent because it would be cited as coverage. They retire WITH the
+// production checks they exercised; that pairing is the 4b(4) rule and the reason this comment exists
+// rather than the arms being quietly deleted.
+//
+// THE ARM THAT SURVIVES IS THE ONE WHOSE RED IS STILL AUTHORABLE. A peer host standing at the origin is
+// a perfectly constructible route -- `origin` accepts any provider -- so the question "is the origin the
+// DECLARED origin" remains a value check with a reachable red, and it stays enrolled.
+test fn a_peer_origin_refuses() -> Bool {
+  malformed(
+    origin: peer_host_provider(),
+    fill: [],
+    retained: [],
+    token_time: engram_resident_provider,
+    verify: DurableOrigin)
 }
 
 // PLACEMENT IS READ OFF THE TIER, NOT WRITTEN BESIDE IT, so a hop cannot disagree with its provider.
@@ -708,10 +710,10 @@ test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addresse
     && match route_integrity_standing(r: materialization_route(
       identity: fixture_route_verified_at_nfs_token_time(),
       label: "fixture: verified only where the runtime reads over NFS" as NonEmptyStr,
-      hops: [
-        route_hop(provider: engram_origin_provider, role: DurableOrigin),
-        route_hop(provider: engram_nfs_provider, role: TokenTimeAccess),
-      ],
+      origin: engram_origin_provider,
+      fill: [],
+      retained: [],
+      token_time: engram_nfs_provider,
       digest_verified_at: TokenTimeAccess)) {
       IntegrityNotContentAddressed { role: _, because: _ } => true
       IntegrityContentAddressedAt { role: _, provider_id: _ } => false
@@ -720,10 +722,10 @@ test fn a_route_verifying_only_at_an_existence_keyed_hop_is_not_content_addresse
     && match route_integrity_standing(r: materialization_route(
       identity: fixture_route_naming_an_absent_verification_role(),
       label: "fixture: names a verification role it has no hop in" as NonEmptyStr,
-      hops: [
-        route_hop(provider: engram_origin_provider, role: DurableOrigin),
-        route_hop(provider: engram_nfs_provider, role: TokenTimeAccess),
-      ],
+      origin: engram_origin_provider,
+      fill: [],
+      retained: [],
+      token_time: engram_nfs_provider,
       digest_verified_at: FillSource)) {
       IntegrityVerificationPointAbsent { role: _ } => true
       IntegrityContentAddressedAt { role: _, provider_id: _ } => false
@@ -1889,16 +1891,18 @@ test fn the_resident_encoding_has_no_established_identity_so_route_a_defers() ->
 // is over the provider roster for EVERY hop now, so this refuses, and so would a peer in any position
 // added later.
 test fn a_peer_serving_host_as_a_fill_source_refuses() -> Bool {
-  malformed(hops: [
-    route_hop(provider: engram_origin_provider, role: DurableOrigin),
-    route_hop(provider: peer_host_provider(), role: FillSource),
-    route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
-  ], verify: DurableOrigin)
-    && malformed(hops: [
-      route_hop(provider: engram_origin_provider, role: DurableOrigin),
-      route_hop(provider: peer_host_provider(), role: RetainedWorkingSet),
-      route_hop(provider: engram_resident_provider, role: TokenTimeAccess),
-    ], verify: DurableOrigin)
+  malformed(
+    origin: engram_origin_provider,
+    fill: [peer_host_provider()],
+    retained: [],
+    token_time: engram_resident_provider,
+    verify: DurableOrigin)
+    && malformed(
+      origin: engram_origin_provider,
+      fill: [],
+      retained: [peer_host_provider()],
+      token_time: engram_resident_provider,
+      verify: DurableOrigin)
     && count(engram_admitted_provider_ids) == 5
     && !any(engram_admitted_provider_ids, id => id == "peer-serving-host")
 }
