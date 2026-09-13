@@ -70,9 +70,10 @@ import gunbc.fabric_m0_origin_readback {
 //
 // WHAT "INSIDE THE ROOT" MEANS, AT ITS HONEST GRAIN. Segment admission refuses lexical traversal - an
 // empty segment, ".", "..", an embedded separator. Pathname resolution still follows symbolic links in
-// intermediate components, so every directory a key passes through is also observed to be a real
-// directory and NOT a symbolic link (POSIX test -d and test -h) before any effect, and a symlinked
-// component refuses. That observation and the effect that follows are separate operations: a symbolic
+// intermediate components, so the origin root and every directory a key passes through are also
+// observed to be real directories and NOT symbolic links (POSIX test -d and test -h) before any effect,
+// a symlinked component refuses, and a fetch observes the object leaf itself to be a regular file and
+// not a symbolic link before it syncs or copies it. That observation and the effect that follows are separate operations: a symbolic
 // link substituted between them is not prevented here. Closing that window is a beneath-root
 // resolution capability (openat2 RESOLVE_BENEATH or directory file descriptors) this substrate does not
 // model; until it does, the host binding owes the guarantee that only the origin's service account
@@ -135,7 +136,8 @@ fn origin_object_path(root: FilesystemOriginRoot, segments: List<String>) -> Str
 }
 
 // The directories a key passes through, outermost first: objects/ itself, then each prefix of the
-// key's segments except the last.
+// key's segments except the last. The origin root is observed separately by every put and fetch, so a
+// root that is itself a symbolic link refuses before anything beneath it is touched.
 fn origin_key_directories(root: FilesystemOriginRoot, segments: List<String>) -> List<String> {
   concat(
     [origin_objects_directory(root: root)],
@@ -237,7 +239,7 @@ fn put_filesystem_origin_object(root: FilesystemOriginRoot, local_path: FilePath
   match admit_origin_key(key: key as String) {
     OriginKeyRefused { key: _, cause } => OriginPutRefused { key: key, cause: cause }
     OriginKeyAdmitted { key: admitted, segments } => {
-      let unestablished = first_unestablished(paths: concat([origin_staging_directory(root: root)], origin_key_directories(root: root, segments: segments)))
+      let unestablished = first_unestablished(paths: concat([root.root as String, origin_staging_directory(root: root)], origin_key_directories(root: root, segments: segments)))
       if unestablished != "" {
         OriginPutRefused { key: admitted, cause: unestablished as NonEmptyStr }
       } else {
@@ -275,6 +277,34 @@ type OriginObjectListing
   | OriginObjectNotListed
   | OriginObjectListingIndeterminate { cause: NonEmptyStr }
 
+// WHAT THE LISTED LEAF IS. A listing says a name exists; it does not say the name is a regular file
+// inside the tree. A leaf that is a symbolic link would be followed by sync and copy to wherever it
+// points, and a confirming reading minted from bytes the origin does not hold - so before stabilizing
+// or copying, the leaf is observed not to be a symbolic link (test -h) and to be a regular file
+// (test -f). Anything else is unavailable, never a reading.
+type OriginObjectLeafStanding
+  = OriginObjectRegularFile
+  | OriginObjectSymbolicLink { path: String }
+  | OriginObjectNotRegularFile { path: String }
+
+fn origin_object_leaf_standing(path: String, is_symbolic_link: Bool, is_regular_file: Bool) -> OriginObjectLeafStanding {
+  if is_symbolic_link {
+    OriginObjectSymbolicLink { path: path }
+  } else if is_regular_file {
+    OriginObjectRegularFile
+  } else {
+    OriginObjectNotRegularFile { path: path }
+  }
+}
+
+fn observe_origin_object_leaf(path: String) -> OriginObjectLeafStanding {
+  origin_object_leaf_standing(
+    path: path,
+    is_symbolic_link: shell.Test.IsSymbolicLink(path: path as FilePath).is_symbolic_link,
+    is_regular_file: shell.Test.IsFile(path: path as FilePath).is_file,
+  )
+}
+
 type OriginStabilization
   = OriginStabilized
   | OriginNotStabilized { cause: NonEmptyStr }
@@ -292,20 +322,25 @@ fn origin_object_listing(presence: FilesystemEntryPresence) -> OriginObjectListi
   }
 }
 
-fn filesystem_fetch_decide(key: NonEmptyStr, listing: OriginObjectListing, stabilization: OriginStabilization, copy: OriginCopyObservation) -> OriginFetchOutcome {
+fn filesystem_fetch_decide(key: NonEmptyStr, listing: OriginObjectListing, leaf: OriginObjectLeafStanding, stabilization: OriginStabilization, copy: OriginCopyObservation) -> OriginFetchOutcome {
   match listing {
     OriginObjectNotListed => OriginObjectAbsent { key: key }
     OriginObjectListingIndeterminate { cause } => OriginFetchUnavailable { key: key, cause: cause }
     OriginObjectListed =>
-      match stabilization {
-        OriginNotStabilized { cause } => OriginFetchUnavailable { key: key, cause: join(["the object at ", key as String, " is visible but its durability could not be established, so no reading is minted: ", cause as String], "") as NonEmptyStr }
-        OriginStabilized =>
-          match copy {
-            OriginCopyFailed => OriginFetchUnavailable { key: key, cause: join(["the object at ", key as String, " is listed but could not be copied out for reading"], "") as NonEmptyStr }
-            OriginCopyStaged { staged_path } =>
-              match read_origin_staged_file(staged_path: staged_path) {
-                OriginReadingTaken { reading } => OriginObjectStaged { key: key, reading: reading }
-                OriginReadingUnavailable { staged_path: _, cause } => OriginFetchUnavailable { key: key, cause: cause }
+      match leaf {
+        OriginObjectSymbolicLink { path } => OriginFetchUnavailable { key: key, cause: join(["the object at ", path, " is a symbolic link; following it would read bytes the origin does not hold, so no reading is minted"], "") as NonEmptyStr }
+        OriginObjectNotRegularFile { path } => OriginFetchUnavailable { key: key, cause: join(["the listed name ", path, " is not a regular file, so it is not an installed object"], "") as NonEmptyStr }
+        OriginObjectRegularFile =>
+          match stabilization {
+            OriginNotStabilized { cause } => OriginFetchUnavailable { key: key, cause: join(["the object at ", key as String, " is visible but its durability could not be established, so no reading is minted: ", cause as String], "") as NonEmptyStr }
+            OriginStabilized =>
+              match copy {
+                OriginCopyFailed => OriginFetchUnavailable { key: key, cause: join(["the object at ", key as String, " is listed but could not be copied out for reading"], "") as NonEmptyStr }
+                OriginCopyStaged { staged_path } =>
+                  match read_origin_staged_file(staged_path: staged_path) {
+                    OriginReadingTaken { reading } => OriginObjectStaged { key: key, reading: reading }
+                    OriginReadingUnavailable { staged_path: _, cause } => OriginFetchUnavailable { key: key, cause: cause }
+                  }
               }
           }
       }
@@ -326,7 +361,7 @@ fn fetch_filesystem_origin_object(root: FilesystemOriginRoot, key: NonEmptyStr) 
   match admit_origin_key(key: key as String) {
     OriginKeyRefused { key: _, cause } => OriginFetchUnavailable { key: key, cause: cause }
     OriginKeyAdmitted { key: admitted, segments } => {
-      let unestablished = first_unestablished(paths: origin_key_directories(root: root, segments: segments))
+      let unestablished = first_unestablished(paths: concat([root.root as String], origin_key_directories(root: root, segments: segments)))
       if unestablished != "" {
         OriginFetchUnavailable { key: admitted, cause: unestablished as NonEmptyStr }
       } else {
@@ -334,20 +369,25 @@ fn fetch_filesystem_origin_object(root: FilesystemOriginRoot, key: NonEmptyStr) 
         let object_path = origin_object_path(root: root, segments: segments)
         match origin_object_listing(presence: filesystem_entry_presence(listing: list_directory(directory: parent), name: last_segment(segments: segments))) {
           OriginObjectListed =>
-            match stabilize_origin_object(object_path: object_path, parent: parent) {
-              OriginNotStabilized { cause } => filesystem_fetch_decide(key: admitted, listing: OriginObjectListed, stabilization: OriginNotStabilized { cause: cause }, copy: OriginCopyFailed)
-              OriginStabilized => {
-                let staging = shell.Mktemp.Dir()
-                if !staging.success {
-                  OriginFetchUnavailable { key: admitted, cause: "no private directory could be minted to stage the object's bytes, so nothing was read" }
-                } else {
-                  let staged = join([trim(staging.path as String), "/object"], "")
-                  let copied = shell.Copy.File(source: object_path as FilePath, destination: staged as FilePath).success
-                  filesystem_fetch_decide(key: admitted, listing: OriginObjectListed, stabilization: OriginStabilized, copy: if copied { OriginCopyStaged { staged_path: staged as NonEmptyStr } } else { OriginCopyFailed })
+            match observe_origin_object_leaf(path: object_path) {
+              OriginObjectSymbolicLink { path } => filesystem_fetch_decide(key: admitted, listing: OriginObjectListed, leaf: OriginObjectSymbolicLink { path: path }, stabilization: OriginStabilized, copy: OriginCopyFailed)
+              OriginObjectNotRegularFile { path } => filesystem_fetch_decide(key: admitted, listing: OriginObjectListed, leaf: OriginObjectNotRegularFile { path: path }, stabilization: OriginStabilized, copy: OriginCopyFailed)
+              OriginObjectRegularFile =>
+                match stabilize_origin_object(object_path: object_path, parent: parent) {
+                  OriginNotStabilized { cause } => filesystem_fetch_decide(key: admitted, listing: OriginObjectListed, leaf: OriginObjectRegularFile, stabilization: OriginNotStabilized { cause: cause }, copy: OriginCopyFailed)
+                  OriginStabilized => {
+                    let staging = shell.Mktemp.Dir()
+                    if !staging.success {
+                      OriginFetchUnavailable { key: admitted, cause: "no private directory could be minted to stage the object's bytes, so nothing was read" }
+                    } else {
+                      let staged = join([trim(staging.path as String), "/object"], "")
+                      let copied = shell.Copy.File(source: object_path as FilePath, destination: staged as FilePath).success
+                      filesystem_fetch_decide(key: admitted, listing: OriginObjectListed, leaf: OriginObjectRegularFile, stabilization: OriginStabilized, copy: if copied { OriginCopyStaged { staged_path: staged as NonEmptyStr } } else { OriginCopyFailed })
+                    }
+                  }
                 }
-              }
             }
-          other => filesystem_fetch_decide(key: admitted, listing: other, stabilization: OriginStabilized, copy: OriginCopyFailed)
+          other => filesystem_fetch_decide(key: admitted, listing: other, leaf: OriginObjectRegularFile, stabilization: OriginStabilized, copy: OriginCopyFailed)
         }
       }
     }

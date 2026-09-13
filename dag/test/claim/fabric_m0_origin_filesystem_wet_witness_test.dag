@@ -203,3 +203,35 @@ test fn a_key_that_escapes_lexically_is_refused_before_any_effect_by_real_execut
   let removed = shell.Remove.RecursiveForce(path: base)
   base != "" && put == "refused" && fetch == "unavailable" && !escaped && removed.success
 }
+
+// The origin root itself is a symbolic link to a converged tree elsewhere: nothing beneath it is used.
+test fn an_origin_root_that_is_a_symbolic_link_is_refused_by_real_execution() -> Bool {
+  let base = new_base()
+  let made = mkdirs(paths: [join([base, "/real/objects/sha256"], ""), join([base, "/real/staging"], "")])
+  let linked = shell.Symlink.AtomicReplace(target: join([base, "/real"], "") as FilePath, link: join([base, "/root"], "") as FilePath).success
+  let local = local_file(base: base, name: "a.txt", content: "bytes\n")
+  let put = put_arm(p: put_filesystem_origin_object(root: root_of(base: base), local_path: local, key: "sha256/abc" as NonEmptyStr))
+  let fetch = fetch_arm(f: fetch_filesystem_origin_object(root: root_of(base: base), key: "sha256/abc" as NonEmptyStr))
+  let landed = lists(directory: join([base, "/real/objects/sha256"], ""), name: "abc")
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && made && linked && put == "refused" && fetch == "unavailable" && !landed && removed.success
+}
+
+// The object leaf is a symbolic link to a file OUTSIDE the root that holds exactly the expected bytes.
+// A fetch that followed it would mint a reading that satisfies the verdict; it must be unavailable.
+test fn an_object_leaf_that_is_a_symbolic_link_is_never_staged_even_with_the_expected_bytes_by_real_execution() -> Bool {
+  let base = converged_root()
+  let outside = local_file(base: base, name: "outside.txt", content: "workflow bytes\n")
+  let verdict = match digest_of(path: outside) {
+    Absent => false
+    Present { value: d } => {
+      let key = content_addressed_origin_key(digest: d)
+      let linked = shell.Symlink.AtomicReplace(target: outside, link: join([base, "/root/objects/", key as String], "") as FilePath).success
+      let fetched = fetch_filesystem_origin_object(root: root_of(base: base), key: key)
+      linked && fetch_arm(f: fetched) == "unavailable"
+        && verdict_arm(v: readback_digest_verdict(subject: key, recorded: d, readback: origin_readback_of_fetch(fetch: fetched))) == "undetermined"
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: base)
+  base != "" && verdict && removed.success
+}

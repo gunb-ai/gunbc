@@ -20,6 +20,7 @@ import gunbc.fabric_m0_origin_filesystem {
   origin_directory_standing,
   OriginLinkObservation, OriginLinkInstalled, OriginLinkFailed, filesystem_put_decide,
   OriginObjectListing, OriginObjectListed, OriginObjectNotListed, OriginObjectListingIndeterminate,
+  OriginObjectLeafStanding, OriginObjectRegularFile, OriginObjectSymbolicLink, OriginObjectNotRegularFile, origin_object_leaf_standing,
   OriginStabilization, OriginStabilized, OriginNotStabilized,
   OriginCopyObservation, OriginCopyStaged, OriginCopyFailed, filesystem_fetch_decide,
 }
@@ -118,13 +119,13 @@ test fn a_failed_link_is_occupied_only_when_the_directory_lists_the_name() -> Bo
 }
 
 test fn a_fetch_is_absent_only_when_a_listing_established_it() -> Bool {
-  fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectNotListed, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "absent"
-    && fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectListingIndeterminate { cause: "permission denied" }, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "unavailable"
-    && fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "unavailable"
+  fetch_arm(f: filesystem_fetch_decide(key: key(), leaf: OriginObjectRegularFile, listing: OriginObjectNotListed, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "absent"
+    && fetch_arm(f: filesystem_fetch_decide(key: key(), leaf: OriginObjectRegularFile, listing: OriginObjectListingIndeterminate { cause: "permission denied" }, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "unavailable"
+    && fetch_arm(f: filesystem_fetch_decide(key: key(), leaf: OriginObjectRegularFile, listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyFailed)) == "unavailable"
 }
 
 test fn a_listed_object_whose_copy_was_staged_is_read_through_the_sole_mint() -> Bool {
-  fetch_arm(f: filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })) == "staged"
+  fetch_arm(f: filesystem_fetch_decide(key: key(), leaf: OriginObjectRegularFile, listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })) == "staged"
 }
 
 // THE LAUNDERING COUNTEREXAMPLE, AND ITS RECONCILIATION. A put whose directory fsync failed is unknown;
@@ -136,11 +137,29 @@ test fn an_unknown_put_is_never_confirmed_by_a_visible_but_unstabilized_object()
     OriginReadingTaken { reading } => {
       let recorded = origin_reading_digest(reading: reading)
       let unknown_put = filesystem_put_decide(key: key(), link: OriginLinkInstalled { durable: false })
-      let unstabilized = filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginNotStabilized { cause: "the object's directory could not be fsynced" }, copy: OriginCopyStaged { staged_path: fixture_staged_object })
-      let stabilized = filesystem_fetch_decide(key: key(), listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })
+      let unstabilized = filesystem_fetch_decide(key: key(), leaf: OriginObjectRegularFile, listing: OriginObjectListed, stabilization: OriginNotStabilized { cause: "the object's directory could not be fsynced" }, copy: OriginCopyStaged { staged_path: fixture_staged_object })
+      let stabilized = filesystem_fetch_decide(key: key(), leaf: OriginObjectRegularFile, listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })
       put_arm(p: unknown_put) == "unknown"
         && verdict_arm(v: readback_digest_verdict(subject: key(), recorded: recorded, readback: object_readback_of_origin_put(put: unknown_put, fetch: unstabilized))) == "undetermined"
         && verdict_arm(v: readback_digest_verdict(subject: key(), recorded: recorded, readback: object_readback_of_origin_put(put: unknown_put, fetch: stabilized))) == "satisfied"
     }
   }
+}
+
+fn leaf_arm(l: OriginObjectLeafStanding) -> String {
+  match l {
+    OriginObjectRegularFile => "regular_file"
+    OriginObjectSymbolicLink { path: _ } => "symbolic_link"
+    OriginObjectNotRegularFile { path: _ } => "not_regular_file"
+  }
+}
+
+// A listed leaf is read only when it is a regular file and not a symbolic link: a symlinked leaf
+// whose target holds the expected bytes must not mint a reading, because those bytes are not the origin's.
+test fn a_listed_leaf_that_is_a_symbolic_link_or_not_a_file_is_never_read() -> Bool {
+  leaf_arm(l: origin_object_leaf_standing(path: "/o/objects/sha256/x", is_symbolic_link: false, is_regular_file: true)) == "regular_file"
+    && leaf_arm(l: origin_object_leaf_standing(path: "/o/objects/sha256/x", is_symbolic_link: true, is_regular_file: true)) == "symbolic_link"
+    && leaf_arm(l: origin_object_leaf_standing(path: "/o/objects/sha256/x", is_symbolic_link: false, is_regular_file: false)) == "not_regular_file"
+    && fetch_arm(f: filesystem_fetch_decide(key: key(), leaf: OriginObjectSymbolicLink { path: "/o/objects/sha256/x" }, listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })) == "unavailable"
+    && fetch_arm(f: filesystem_fetch_decide(key: key(), leaf: OriginObjectNotRegularFile { path: "/o/objects/sha256/x" }, listing: OriginObjectListed, stabilization: OriginStabilized, copy: OriginCopyStaged { staged_path: fixture_staged_object })) == "unavailable"
 }
