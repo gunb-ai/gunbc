@@ -1,0 +1,94 @@
+module extdeps.github.repositories
+
+import std.types { Bool, Int, String, Secret }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome, RestOk }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/repos/repos#get-a-repository"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.repositories",
+      decl_name: "github.Repositories",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE FULL REPOSITORY REPRESENTATION, WHICH IS WHERE default_branch LIVES. A code-search item carries
+// a reduced repository object with no default_branch (extdeps.github.code_search says so beside
+// CodeSearchRepository), so a caller holding a hit cannot name a revision without this read.
+//
+// NOT extdeps.github.github.Repository, for the same reason code_search gives: that type flattens
+// `owner` to a String and carries no `id` or `fork`, while this endpoint returns `owner` as an
+// object and returns both. It is upstream's "full-repository" schema, and what is modelled is the
+// subset a consumer reads - the numeric id is the one that matters, because a full_name is a
+// display field that a rename or transfer changes and an id does not.
+type FullRepository {
+  id: Int
+  name: String
+  full_name: String
+  private: Bool
+  fork: Bool
+  default_branch: String
+}
+
+data hermetic_full_repository: FullRepository = FullRepository {
+  id: 75821432,
+  name: "llvm-project",
+  full_name: "llvm/llvm-project",
+  private: false,
+  fork: false,
+  default_branch: "main",
+}
+
+data hermetic_full_repository_outcome: RestOutcome = RestOk
+
+service github.Repositories {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation Get {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+    }
+    output {
+      repository: FullRepository
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}"
+    }
+    response {
+      200 => FullRepository
+      301 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+    }
+    mock_response {
+      200 => {
+        repository: hermetic_full_repository,
+        outcome: hermetic_full_repository_outcome
+      } "hermetic decoded-200 shape for the get-a-repository read: the real 2026-09-13 reading for llvm/llvm-project, the same repository and id as extdeps.github.code_search's hermetic hit, so a composed read over the published mocks joins on a matching id"
+    }
+  }
+}
