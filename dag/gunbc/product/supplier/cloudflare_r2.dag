@@ -33,7 +33,16 @@ import product.fabric.provider_admission {
 // supposed to rest on. ProviderPathAbsent is also not taken: nobody has stated that any of these
 // nine paths do not exist.
 //
-// BOTH THE REFUSING PRODUCTION ROW AND THE DISCRIMINATING PAIR ARE THE DELIVERABLE.
+// THE REGION SLOT IS NOT A PLACE TO RECORD THAT FINDING. product.fabric.provider_route says the
+// cited region is where the work actually runs, observed at a declared boundary and never
+// fabricated. extdeps.cloudflare.r2_data_location r2_placement_automatic is a CHOICE MECHANISM,
+// and putting it in ProviderRoute.region would make Automatic an admitted location the moment a
+// roster row and a resolved path closure exist -- which is validation standing where construction
+// was available (DESIGN section 5). product.supplier.ubicloud already ruled that shape out:
+// a ProviderRoute is minted ONLY from a read region. Automatic stays in the location module as
+// the reading of the choice; it does not occupy this slot.
+//
+// BOTH THE REFUSING PRODUCTION STANDING AND THE DISCRIMINATING PAIR ARE THE DELIVERABLE.
 
 fn cloudflare_r2_provider_ref() -> DeclarationRef {
   decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare")
@@ -43,16 +52,39 @@ fn cloudflare_r2_service_ref() -> DeclarationRef {
   decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "extdeps_external_authority_anchor")
 }
 
-fn cloudflare_r2_region_ref() -> DeclarationRef {
-  decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "r2_placement_automatic")
+type CloudflareR2RegionObservation
+  = CloudflareR2RegionRead { region: DeclarationRef }
+  | CloudflareR2RegionUnread { obligation: DeclarationRef }
+
+type CloudflareR2RouteStanding
+  = CloudflareR2RouteObserved { route: ProviderRoute }
+  | CloudflareR2RouteRegionUnobserved { obligation: DeclarationRef }
+
+data cloudflare_r2_region_unread_obligation: NonEmptyStr = "Where this fleet's durable origin actually runs is UNREAD. gunbc.cloudflare.r2_origin fabric_durable_origin_standing places bucket gunbai-fabric-origin under R2JurisdictionDefault. extdeps.cloudflare.r2_data_location r2_data_location_reading states that Automatic placement chooses a region from the caller's location at create time and that Location Hints are a best effort, not a guarantee. Automatic is therefore a CHOICE, not a location, and it is not a value of ProviderRoute.region. RESOLVED BY a Cloudflare statement that names the jurisdiction or operating region of gunbai-fabric-origin the way Jurisdictional Restrictions do, or by recreating the origin under such a restriction -- at which point this standing takes CloudflareR2RegionRead with that named location as region. It is NOT resolved by citing r2_placement_automatic, R2JurisdictionDefault, a dashboard Location label, or a Location Hint."
+
+fn cloudflare_r2_durable_origin_region() -> CloudflareR2RegionObservation {
+  CloudflareR2RegionUnread {
+    obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
+  }
 }
 
-fn cloudflare_r2_durable_origin_route() -> ProviderRoute {
-  ProviderRoute {
-    provider: cloudflare_r2_provider_ref(),
-    service: cloudflare_r2_service_ref(),
-    region: cloudflare_r2_region_ref(),
+fn cloudflare_r2_route(region: CloudflareR2RegionObservation) -> CloudflareR2RouteStanding {
+  match region {
+    CloudflareR2RegionUnread { obligation } =>
+      CloudflareR2RouteRegionUnobserved { obligation: obligation },
+    CloudflareR2RegionRead { region: observed } =>
+      CloudflareR2RouteObserved {
+        route: ProviderRoute {
+          provider: cloudflare_r2_provider_ref(),
+          service: cloudflare_r2_service_ref(),
+          region: observed,
+        },
+      },
   }
+}
+
+fn cloudflare_r2_durable_origin_route_standing() -> CloudflareR2RouteStanding {
+  cloudflare_r2_route(region: cloudflare_r2_durable_origin_region())
 }
 
 data cloudflare_r2_execution_location_obligation: NonEmptyStr = "Where R2 executes object operations for a default-jurisdiction bucket is UNREAD. extdeps.cloudflare.r2_data_location r2_how_r2_works_reading states that the R2 Gateway is deployed across Cloudflare's global network via Cloudflare Workers, close to the user, and that the Gateway then writes to a storage cluster within the location set for the bucket. That is an architecture of a CHOICE, not a location of this fleet's bucket. RESOLVED BY a Cloudflare statement naming the jurisdiction or operating entity of request handling for a named default-jurisdiction bucket -- at which point this path takes Located with that entity as operator. It is NOT resolved by R2JurisdictionDefault, by Automatic placement, or by a Location Hint."
@@ -113,9 +145,9 @@ fn cloudflare_r2_downstream() -> DownstreamProviderPopulation {
   }
 }
 
-fn cloudflare_r2_durable_origin_route_facts() -> ProviderRouteFacts {
+fn cloudflare_r2_facts(route: ProviderRoute) -> ProviderRouteFacts {
   ProviderRouteFacts {
-    route: cloudflare_r2_durable_origin_route(),
+    route: route,
     contract_terms: decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "cloudflare_customer_dpa_reading"),
     data_paths: cloudflare_r2_data_paths(),
     downstream: cloudflare_r2_downstream(),
@@ -125,7 +157,10 @@ fn cloudflare_r2_durable_origin_route_facts() -> ProviderRouteFacts {
 }
 
 fn cloudflare_r2_route_facts_population() -> List<ProviderRouteFacts> {
-  [cloudflare_r2_durable_origin_route_facts()]
+  match cloudflare_r2_durable_origin_route_standing() {
+    CloudflareR2RouteRegionUnobserved { obligation } => [],
+    CloudflareR2RouteObserved { route } => [cloudflare_r2_facts(route: route)],
+  }
 }
 
 // THIS MODULE DECLARES NO SANCTION ROSTER AND NO POSTURE REVISION. Nobody has stated that we are
