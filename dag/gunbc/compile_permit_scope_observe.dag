@@ -66,44 +66,26 @@ fn join_host_slot_realizations(
   host: HostIdentity,
   reads: List<SlotRealizationRead>,
 ) -> HostCompileCancellationStanding {
-  if length(reads) == 0 {
-    HostCancellationUnreadable {
-      host: host,
-      cause: "committed runner-slot population was empty; refusing a host standing with no slots" as NonEmptyStr,
-    }
-  } else {
-    let unread = filter(reads, r => match r {
-      SlotRealizationUnreadable { cause: _ } => true
-      SlotRealizationObserved { realization: _ } => false
-    })
-    if length(unread) > 0 {
+  match reads.first() {
+    Absent =>
       HostCancellationUnreadable {
         host: host,
-        cause: "one or more committed runner slots were unreadable; refusing a narrowed host standing" as NonEmptyStr,
+        cause: "committed runner-slot population was empty; refusing a host standing with no slots" as NonEmptyStr,
       }
-    } else {
-      match reads.first() {
-        Absent =>
-          HostCancellationUnreadable {
-            host: host,
-            cause: "committed runner-slot population was empty; refusing a host standing with no slots" as NonEmptyStr,
-          }
-        Present { value: SlotRealizationUnreadable { cause: why } } =>
-          HostCancellationUnreadable { host: host, cause: why }
-        Present { value: SlotRealizationObserved { realization: first } } =>
-          if any(reads, r => match r {
-            SlotRealizationObserved { realization: other } => !realizations_agree(a: first, b: other)
-            SlotRealizationUnreadable { cause: _ } => true
-          }) {
-            HostCancellationUnreadable {
-              host: host,
-              cause: "committed runner slots did not jointly evidence one realization" as NonEmptyStr,
-            }
-          } else {
-            HostCancellationObserved { host: host, realization: first }
-          }
+    Present { value: SlotRealizationUnreadable { cause: why } } =>
+      HostCancellationUnreadable { host: host, cause: why }
+    Present { value: SlotRealizationObserved { realization: first } } =>
+      if any(reads, r => match r {
+        SlotRealizationObserved { realization: other } => !realizations_agree(a: first, b: other)
+        SlotRealizationUnreadable { cause: _ } => true
+      }) {
+        HostCancellationUnreadable {
+          host: host,
+          cause: "committed runner slots did not jointly evidence one realization" as NonEmptyStr,
+        }
+      } else {
+        HostCancellationObserved { host: host, realization: first }
       }
-    }
   }
 }
 
@@ -213,23 +195,6 @@ fn realization_from_unit_text(
 
 data permit_scope_unit_text_unreadable_cause: NonEmptyStr = "runner unit Environment/After/Wants did not jointly evidence a fifo pool or an invocation-local cargo bound" as NonEmptyStr
 
-fn host_standing_from_unit_text(
-  host: HostIdentity,
-  environment: String,
-  after: String,
-  wants: String,
-) -> HostCompileCancellationStanding {
-  match realization_from_unit_text(environment: environment, after: after, wants: wants) {
-    Present { value: realization } =>
-      HostCancellationObserved { host: host, realization: realization }
-    Absent =>
-      HostCancellationUnreadable {
-        host: host,
-        cause: permit_scope_unit_text_unreadable_cause,
-      }
-  }
-}
-
 fn observe_slot_realization(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
@@ -291,16 +256,12 @@ fn observe_fleet_compile_cancellation_observations() -> List<HostCompileCancella
   map(fleet_hosts(), h => observe_host_compile_cancellation_for_fleet_host(host: h))
 }
 
+// WET ENTRY. Hermetic evaluation of this fn classifies mock ssh stdout as unreadable, which is
+// NotSafe. A session with fleet SSH identity reaches the live units. Do not bind this into
+// fleet_compile_cancellation_standing: that row is consumed by witnesses.yml emit.
 fn observe_fleet_compile_cancellation_standing() -> FleetCompileCancellationStanding {
   fleet_cancellation_standing(
     eligible_hosts: fleet_hosts(),
     observations: observe_fleet_compile_cancellation_observations(),
   )
-}
-
-// WET ENTRY. Hermetic evaluation of this fn classifies mock ssh stdout as unreadable, which is
-// NotSafe. A session with fleet SSH identity reaches the live units. Do not bind this into
-// fleet_compile_cancellation_standing: that row is consumed by witnesses.yml emit.
-fn observe_fleet_compile_permit_scope() -> FleetCompileCancellationStanding {
-  observe_fleet_compile_cancellation_standing()
 }

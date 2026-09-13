@@ -227,7 +227,8 @@ fn fleet_cancellation_standing(
 // the one systemctl-show handler and returns HostCompileCancellationStanding. This production row does
 // NOT call it: hermetic emit of witnesses.yml would then classify ssh.Session.ExecPortableWords mock
 // stdout as a host realization, and a mock that happened to look like CARGO_BUILD_JOBS would mint
-// Safe. Wet observation is a func in that module; YAML follows this row, which stays NotSafe until
+// Safe. Wet observation is observe_fleet_compile_cancellation_standing in that module; YAML follows
+// this row, which stays NotSafe until
 // a later change binds a non-mockable observed set that still cannot construct Safe by authoring.
 //
 // A note the eventual boundary owes: an active-unit readback alone cannot establish server

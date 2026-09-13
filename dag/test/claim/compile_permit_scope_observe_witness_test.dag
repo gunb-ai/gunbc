@@ -8,6 +8,7 @@ import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_fifo_path_fr
 import gunbc.compile_permit_scope {
   BorrowerHeldCooperativeHostFifo,
   InvocationLocalCargo,
+  HostCompileCancellationStanding,
   HostCancellationObserved,
   HostCancellationUnreadable,
   fleet_cancellation_standing,
@@ -16,7 +17,6 @@ import gunbc.compile_permit_scope {
 }
 import gunbc.compile_permit_scope_observe {
   realization_from_unit_text,
-  host_standing_from_unit_text,
   join_host_slot_realizations,
   SlotRealizationObserved,
   SlotRealizationUnreadable,
@@ -159,8 +159,32 @@ test fn w_makeflags_without_ordering_is_unreadable_not_a_realization() -> Bool {
   }
 }
 
+fn standing_from_unit_text_via_host_join(
+  host: HostIdentity,
+  environment: String,
+  after: String,
+  wants: String,
+) -> HostCompileCancellationStanding {
+  match realization_from_unit_text(environment: environment, after: after, wants: wants) {
+    Present { value: realization } =>
+      join_host_slot_realizations(
+        host: host,
+        reads: [SlotRealizationObserved { realization: realization }],
+      )
+    Absent =>
+      join_host_slot_realizations(
+        host: host,
+        reads: [
+          SlotRealizationUnreadable {
+            cause: "unit text did not evidence a realization" as NonEmptyStr,
+          },
+        ],
+      )
+  }
+}
+
 test fn w_observation_carries_realization_not_a_safety_verdict() -> Bool {
-  match host_standing_from_unit_text(
+  match standing_from_unit_text_via_host_join(
     host: operator_host_srv3,
     environment: fifo_environment(),
     after: fifo_after(),
@@ -181,7 +205,7 @@ test fn w_partial_fleet_observations_cannot_be_safe() -> Bool {
   match fleet_cancellation_standing(
     eligible_hosts: [operator_host_srv1, operator_host_srv3],
     observations: [
-      host_standing_from_unit_text(
+      standing_from_unit_text_via_host_join(
         host: operator_host_srv3,
         environment: fifo_environment(),
         after: fifo_after(),
