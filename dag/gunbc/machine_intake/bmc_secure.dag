@@ -550,15 +550,14 @@ fn adjudicate_published_probe(
   }
 }
 
+fn later_int(a: Int, b: Int) -> Int {
+  if a < b { b } else { a }
+}
+
 fn later_admitted_probe_at(previous: EpochMs?, observed_at: EpochMs) -> EpochMs {
   match previous {
     Absent => observed_at
-    Present { value: prev } =>
-      if (observed_at as Int) < (prev as Int) {
-        prev
-      } else {
-        observed_at
-      }
+    Present { value: prev } => later_int(a: prev as Int, b: observed_at as Int) as EpochMs
   }
 }
 
