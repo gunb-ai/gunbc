@@ -1792,186 +1792,27 @@ pub struct TransitionAdmission {
 /// with the transition present at the base there is no delta left for these to admit, so deleting
 /// them removes nothing that could still fire.
 ///
-/// gunbc#11214 operator-supplied-token realizer move (2026-09-13). Fifteen rows for one move:
-/// `read_supplied_access_token`, `SuppliedTokenReady` and `SuppliedTokenUnavailable` relocate from
-/// `gunbc.auth.gcp_secret_access` to `gunbc.auth.access_token_source`. The realizer of the
-/// `OperatorSuppliedToken` arm was authored one module away from the coproduct it inhabits --
-/// `gcp_secret_access`'s own annotation said so in as many words -- and the consequence was
-/// mechanical rather than cosmetic: every entry wanting an operator token imported it from the
-/// GRANT ENSURE's module, so no caller could resolve any OTHER arm and the `WorkloadIdentityToken`
-/// arm was unreachable from all of them. Moving the realizer beside the arm is what made a
-/// selection fold authorable at all.
+/// gunbc#11214 DISSOLUTION (2026-09-13). The fifteen `operator-supplied-token realizer moves beside
+/// its arm` rows are deleted, and the description that stood above them goes with them.
 ///
-/// FIVE DECLARATIONS TIMES THREE SPELLINGS, ENUMERATED BY EXACT IDENTITY. Every row is
-/// `TargetChanged` and the claim is the same one this roster's header states: a spelling authored
-/// on both sides now resolves to a different module, and NOT ONE of them changes which declaration
-/// the spelling denotes -- the three declarations are moved verbatim, so a binding whose meaning
-/// had actually moved would refuse on its own row rather than be covered here. The rows are
-/// enumerated rather than patterned over the module pair, because a pattern would admit a genuine
-/// rebind that happened to land in the same two modules.
+/// THEIR OWN TRIGGER FIRED. That block authored `DISSOLVE-ON: gunbc#11214 merging. Once the
+/// relocation is on main, base and head of every pull_request build both carry it, all fifteen
+/// report stale and refuse every unrelated PR.` #11214 merged, so
+/// `read_supplied_access_token`, `SuppliedTokenReady` and `SuppliedTokenUnavailable` are in
+/// `gunbc.auth.access_token_source` on both sides of every comparison, the fifteen `TargetChanged`
+/// deltas stopped being producible, and what the rows admit no longer exists.
 ///
-/// THIS POPULATION IS NOT NUMBERED, AND THE OMISSION IS THE POINT. An earlier draft of this
-/// paragraph called itself the NINETEENTH, counted against the roster as this branch saw it. The
-/// merge that brought it here swept 181 consumed rows and their prose, so the ordinal was wrong
-/// before it was ever read -- the same shape the paragraphs above record twice: a claim about the
-/// WHOLE roster, made from inside one transition's own paragraph, goes stale at the next merge. A
-/// claim about this transition's own rows does not.
+/// WHY THIS IS ITS OWN CHANGE, AUTHORED BEFORE ITS CARRIER WAS ENQUEUED. gunbc.v1_maintenance_standing
+/// admits a NAMESPACE_TRANSITION_ADMISSIONS row as a CONSUMED LEDGER ENTRY rather than
+/// `MaintenanceRefusal::NewEscapeHatchOrAdmissionRow` on the condition that its deletion follow-up
+/// exists before the carrying PR is enqueued and then lands. A row that adjudicates one measured
+/// delta by exact identity and is consumed by its own merge does not exempt anything; a row with no
+/// deletion in flight is indistinguishable from one that does. This PR is that condition.
 ///
-/// DISSOLVE-ON: gunbc#11214 merging. Once the relocation is on main, base and head of every
-/// pull_request build both carry it, all fifteen report stale and refuse every unrelated PR -- the
-/// shape every shrink above records. Remove them by that trigger, not by reinterpreting it.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "read_supplied_access_token",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenReady",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.org_actions_converge",
-            in_declaration: "org_admin_app_key_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenUnavailable",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.printer_credential_migration_run",
-            in_declaration: "run",
-            spelling: "read_supplied_access_token",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.printer_credential_migration_run",
-            in_declaration: "run",
-            spelling: "SuppliedTokenReady",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.printer_credential_migration_run",
-            in_declaration: "run",
-            spelling: "SuppliedTokenUnavailable",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.printer_delivery_wet_run",
-            in_declaration: "run",
-            spelling: "read_supplied_access_token",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.printer_delivery_wet_run",
-            in_declaration: "run",
-            spelling: "SuppliedTokenReady",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.fleet.printer_delivery_wet_run",
-            in_declaration: "run",
-            spelling: "SuppliedTokenUnavailable",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "read_supplied_access_token",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenReady",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.secret_access_ensure",
-            in_declaration: "spark_secret_access_converge_with_supplied_token",
-            spelling: "SuppliedTokenUnavailable",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "tools.fabric_m0_origin_object_probe",
-            in_declaration: "probe_token_source",
-            spelling: "read_supplied_access_token",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "tools.fabric_m0_origin_object_probe",
-            in_declaration: "probe_token_source",
-            spelling: "SuppliedTokenReady",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "operator-supplied-token realizer moves beside its arm (gunbc#11214)",
-        subject: AdmissionSubject::Binding {
-            module: "tools.fabric_m0_origin_object_probe",
-            in_declaration: "probe_token_source",
-            spelling: "SuppliedTokenUnavailable",
-            expected_candidates: &["gunbc.auth.access_token_source"],
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the relocation present at the base there is no delta left for these to admit.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
