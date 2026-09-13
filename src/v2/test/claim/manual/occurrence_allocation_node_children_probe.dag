@@ -1,0 +1,25 @@
+module v2.test.manual.occurrence_allocation_node_children_probe
+
+import std.occurrence_identity { OccurrenceAllocation, occurrence_allocation_fold, occurrence_id_allocator_initial }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, TypeNode, node_synthetic }
+import v2.test.manual.occurrence_allocation_callback_control { allocation_callback_probe_edges }
+
+// This preserves the production call shape: Node.children is List<Edge>, whose
+// declared authority is FreeMonoid<Edge>. The direct FreeMonoid control in
+// generic_allocation_edge_callback_reads_target uses the same edge population.
+fn allocation_callback_probe_parent() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: allocation_callback_probe_edges())
+}
+
+test fn generic_allocation_node_children_callback_reads_target() -> Bool {
+  let parent = allocation_callback_probe_parent()
+  let result = occurrence_allocation_fold(
+    xs: parent.children,
+    init: OccurrenceAllocation { value: 0, alloc: occurrence_id_allocator_initial() },
+    f: fn(total, edge, alloc) {
+      OccurrenceAllocation { value: total + 1 + count(edge.target.children), alloc: alloc }
+    }
+  )
+  result.value == 1
+}

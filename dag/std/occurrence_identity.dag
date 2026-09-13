@@ -353,6 +353,26 @@ fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceAllocation<Occ
   }
 }
 
+// Sequencing for normalize, body_lowering_fold and namespace_graft: the next
+// production receives the allocator left by the previous one, including when
+// the produced value is an Optional or Outcome with its own refusal semantics.
+fn occurrence_allocation_bind<T, U>(
+  production: OccurrenceAllocation<T>,
+  f: fn(T, OccurrenceIdAllocator) -> OccurrenceAllocation<U>
+) -> OccurrenceAllocation<U> {
+  f(production.value, production.alloc)
+}
+
+// Ordered child production used by lowering and grafting. Each child's input
+// allocator is the preceding child's output; a sibling cannot restart it.
+fn occurrence_allocation_fold<T, U>(
+  xs: FreeMonoid<T>,
+  init: OccurrenceAllocation<U>,
+  f: fn(U, T, OccurrenceIdAllocator) -> OccurrenceAllocation<U>
+) -> OccurrenceAllocation<U> {
+  fold(xs, init: init, f: fn(state, item) { f(state.value, item, state.alloc) })
+}
+
 fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
   left.value == right.value
 }

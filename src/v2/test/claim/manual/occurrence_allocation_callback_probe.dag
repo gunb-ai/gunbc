@@ -1,0 +1,19 @@
+module v2.test.manual.occurrence_allocation_callback_probe
+
+import std.occurrence_identity { OccurrenceAllocation, occurrence_allocation_fold, occurrence_id_allocator_initial }
+import v2.std.logic { Bool }
+import v2.test.manual.occurrence_allocation_callback_control { allocation_callback_probe_edges }
+
+// The call's population instantiates T as Edge. A refusal naming T at the field
+// access discriminates missing callback specialization from invalid Edge data;
+// concrete_edge_callback_reads_target executes the concrete positive control.
+test fn generic_allocation_edge_callback_reads_target() -> Bool {
+  let result = occurrence_allocation_fold(
+    xs: allocation_callback_probe_edges(),
+    init: OccurrenceAllocation { value: 0, alloc: occurrence_id_allocator_initial() },
+    f: fn(total, edge, alloc) {
+      OccurrenceAllocation { value: total + 1 + count(edge.target.children), alloc: alloc }
+    }
+  )
+  result.value == 1
+}
