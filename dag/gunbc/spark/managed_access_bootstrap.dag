@@ -257,7 +257,12 @@ type SparkManagedGrant
 // NODE_IP, the upstream build host's private address, which every create overrides. Labels are
 // micromamba-docker's OCI labels. This is a reading of the declared base, so it holds for the
 // running container only while the local tag was built from this Dockerfile; the tag being unpinned
-// is the weaker link, not the environment.
+// is the weaker link, not the environment. THIS GRANT IS ALSO THAT GAP'S OBSERVER: inspect returns
+// .Image, the running container's image id, which is its config digest, so the unpinned tag closes when
+// that id is compared against a digest produced by building gunbc_spark_pair_runtime_dockerfile.
+// TRIGGER: this grant installed AND a build-digest producer for that Dockerfile, SUFFICIENT FOR the
+// running pair container's image to be identified by digest rather than by a host-local tag. No
+// comparison is built here; both halves are missing.
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
 // "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
