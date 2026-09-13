@@ -152,7 +152,7 @@ fn mtcollins_memory_evidence_from_capture(configuration: MemoryConfiguration, pa
   }
 }
 
-func replay_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeAssessment, List<MtCollinsPopulationRoleRefusal>> {
+fn replay_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeAssessment, List<MtCollinsPopulationRoleRefusal>> {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals } => ObservationRefused { cause: refusals }
     PopulationRolesResolved { roles } => {
@@ -172,7 +172,7 @@ func replay_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeAssessme
   }
 }
 
-func explain_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeExplanation, List<MtCollinsPopulationRoleRefusal>> {
+fn explain_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeExplanation, List<MtCollinsPopulationRoleRefusal>> {
   match replay_mtcollins_memory_change() {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed } => ObservationEstablished { observed: explain_memory_change(assessment: observed) }
@@ -181,7 +181,7 @@ func explain_mtcollins_memory_change() -> ObservationAttempt<MemoryChangeExplana
 
 // Read-only assessment command. Its failure exit is the proposed production
 // admission refusal, not a claim that a new hardware experiment was executed.
-func assess_mtcollins_memory_change() -> ProcessExit {
+fn assess_mtcollins_memory_change() -> ProcessExit {
   match explain_mtcollins_memory_change() {
     ObservationRefused { cause } => exit_failure(reason: concat("UNEVALUATED: population-role authority refused: ", to_string(cause)))
     ObservationEstablished { observed: explanation } =>
