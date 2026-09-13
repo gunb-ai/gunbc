@@ -589,7 +589,7 @@ data deepseek_v4_1_flash_engram_population_reading: SafetensorsPopulationReading
 // is carried as an obligation a fold can read, because a scoped claim whose remainder lives in a
 // comment is how a partial gets consumed as complete.
 data deepseek_v4_1_flash_engram_membership_closure: MembershipClosure = MembershipScopedToReadRows {
-  read_rows: 12,
+  read_rows: deepseek_v4_1_flash_engram_tensor_count,
   unenumerated: join([
     "the ", to_string(deepseek_v4_1_flash_index_tensor_count),
     " names in ", deepseek_v4_1_flash_safetensors_index_path as String,

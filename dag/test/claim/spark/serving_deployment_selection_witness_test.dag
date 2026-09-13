@@ -11,7 +11,8 @@ import std.decision { HardConstraint, SelectionEvidenceNeed, UnfundedAxis, Candi
 import std.roster_frontier {
   FrontierRow, frontier_rows_well_formed, frontier_rows_keyed_roster_build, frontier_path_subjects,
 }
-import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey, keyed_roster_build }
 import gunbc.spark.v41_published_image_observation {
   v41_published_arm64_reference,
   v41_published_distribution_name,
@@ -1119,6 +1120,19 @@ fn route_produced_causes(needs: List<SelectionEvidenceNeed>) -> List<NonEmptyStr
 
 // ── THE FIELD SURVIVES, AND THE SHARING ITSELF IS NOT OBSERVABLE FROM HERE ────────────────────
 //
+// THE EXACTLY-ONCE CHECK WAS QUADRATIC IN THIS WITNESS'S OWN ARITHMETIC, which DESIGN section 6 says
+// is always fixed regardless of the realized n. It ran one `filter` over the routed rows PER candidate
+// -- about 3600 `declaration_ref_eq` calls at sixty candidates -- and that cost was the INSTRUMENT's,
+// not the subject's, so it inflated the only completing full-field measurement this cut has.
+//
+// AND MOST OF WHAT IT ASSERTED WAS TRUE BY CONSTRUCTION. `routed_candidates` is `map(field.candidates,
+// k => RoutedCandidate { candidate: k, ... })`, so each row CARRIES THE CANDIDATE VALUE ITSELF rather
+// than a key that has to be resolved back: "every routed candidate belongs to the field" cannot fail,
+// and "every field candidate appears in routed" follows from `map` together with the count equality
+// below. What remains at risk is a producer that drops one candidate and duplicates another, which
+// count equality alone would not see -- so uniqueness is the whole residual content, and
+// `std.keyed_roster` is its authority, the same one this cut consumed for the safetensors rosters.
+//
 // WHAT THIS ESTABLISHES, and the claim is deliberately narrower than the one it replaces. It checks
 // that the parent population is preserved -- every candidate returns exactly once, each with a
 // standings list positionally aligned to its own artifact's component list -- and that this field
@@ -1145,8 +1159,13 @@ test fn the_candidate_field_survives_route_production_and_shares_a_demand() -> B
   let routed = routed_candidates(field: field)
   let demands = resolved_route_demands(field: field)
   count(routed) == count(field.candidates)
-    && all(field.candidates, k =>
-         count(filter(routed, rc => declaration_ref_eq(a: rc.candidate.identity, b: k.identity))) == 1)
+    && match keyed_roster_build(
+      incomings: map(routed, rc => KeyedRow { row_key: rc.candidate.identity, value: rc }),
+      key_eq: declaration_ref_eq,
+    ) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+    }
     && all(routed, rc => count(rc.route_standings) == count(rc.candidate.artifact.components))
     && count(demands) > 0
     && count(demands) < count(field.candidates)
