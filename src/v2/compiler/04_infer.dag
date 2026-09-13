@@ -1543,9 +1543,11 @@ fn infer_transform_argument_targets(node: Node) -> List<Node> {
 }
 
 fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<Node> {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(_n) { optional_absent() },
+      step: fn(acc, e, child) {
         match acc {
           Present { value: _ } => acc
           Absent =>
@@ -1555,23 +1557,17 @@ fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<
                   match e.target.kind {
                     TypeNode { connective: Arrow } =>
                       optional_present(value: e.target)
-                    _ => infer_arrow_declaration_for_binding(root: e.target, binding: binding)
+                    _ => child
                   }
                 } else {
-                  infer_arrow_declaration_for_binding(root: e.target, binding: binding)
+                  child
                 }
-              Positional => infer_arrow_declaration_for_binding(root: e.target, binding: binding)
+              Positional => child
             }
         }
-      })
-    _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => infer_arrow_declaration_for_binding(root: e.target, binding: binding)
-        }
-      })
-  }
+      }
+    }
+  )
 }
 
 fn infer_operator_arrow(operator: Node, tree: Node) -> Optional<Node> {
