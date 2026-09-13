@@ -9,7 +9,7 @@ import gunbc.generated_artifact {
   artifact_path,
   artifact_location,
   generated_artifact_registry,
-  committed_generated_artifacts,
+  artifact_is_committed,
   DesignArtifact,
   DesignFailureModesArtifact,
   DesignRungDropsArtifact,
@@ -59,7 +59,7 @@ data docs_projection_directory: String = "docs"
 // WHY THIS IS THE COMPILE REFUSAL THE TRIGGER ASKS FOR AND NOT A THIRD ARM. The match below is
 // total over `GeneratedArtifact` with NO wildcard, so adding a registry variant does not compile
 // until it is classified here; and the two folds beneath it enumerate nothing, deriving their
-// population from `generated_artifact_registry` and `committed_generated_artifacts` filtered on
+// population from `generated_artifact_registry` and the commit policy, filtered on
 // the location authority's own `directory`. A new `docs/` artifact therefore cannot be added
 // without either its producer or a refusal. The remaining honesty: the CLASSIFICATION is still
 // authored, so a `docs/`-located artifact answered `Absent` here is a reachable mistake -- and
@@ -109,8 +109,20 @@ fn docs_located_artifacts() -> List<GeneratedArtifact> {
   filter(generated_artifact_registry, a => artifact_is_docs_located(a: a))
 }
 
+// THE COMMITTED POPULATION IS A FILTER OF THE DOCS POPULATION, NOT A SECOND WALK OF THE REGISTRY.
+//
+// It used to filter committed_generated_artifacts(), which itself filters the whole registry -- so
+// anything wanting both populations resolved the registry twice. Committed is a SUBSET of the
+// registry and the two predicates commute, so filtering the docs-located list by the commit policy
+// yields the identical set for one walk instead of two.
+//
+// This is the same DESIGN section 2 repair review 65295 named one level down, found by following
+// its own reasoning outward: the floor reported this module's regen_writes_more_than_main_agrees
+// over the diagnostic cost line at 39962 eval steps while passing, and a witness that passes today
+// on a fast host is the one that refuses tomorrow on a slow one -- which is how the enrolment
+// margin already refused an arm of this module once.
 fn committed_docs_located_artifacts() -> List<GeneratedArtifact> {
-  filter(committed_generated_artifacts(), a => artifact_is_docs_located(a: a))
+  filter(docs_located_artifacts(), a => artifact_is_committed(a: a))
 }
 
 // RESOLVE ONCE AND CARRY THE BYTES (review 65295).
@@ -275,7 +287,7 @@ fn agree_one_resolution(r: DocsProjectionResolution) -> ProcessExit {
 
 // MAIN AGREES EVERY COMMITTED `docs/`-LOCATED PROJECTION.
 //
-// The population is `committed_generated_artifacts` filtered on the same location authority, so a
+// The population is the docs-located list filtered by the commit policy, so a
 // NotCommitted projection is excluded by construction rather than by a hand-written exception.
 // That is what the previous revision achieved with a comment: it did not call agree for the
 // failure-mode ledger because there are no committed bytes to agree, and agreeing them would have
