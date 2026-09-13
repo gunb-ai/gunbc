@@ -33,6 +33,7 @@
 // src/gunbc_cli_dispatch_generated.rs
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
+// src/gunbc_reference_derived_candidate.rs
 // src/gunbc_rust_decl_type_overlay.rs
 // src/gunbc_rust_source_type_bindings.rs
 // src/gunbc_stage0_crate_layout_generated.rs
