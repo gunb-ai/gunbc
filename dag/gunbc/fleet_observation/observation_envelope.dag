@@ -20,6 +20,8 @@ import gunbc.fleet_observation_collector_ownership {
 }
 import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
+  SourceStreamId,
+  source_stream_eq,
   SourceStreamRange,
   StreamContinuity,
   ContinuityEstablished,
@@ -162,9 +164,24 @@ type ObservationEnvelope {
 // be returned ONLY when the bytes are durably committed, continuity is established, and the
 // committed range actually covers the range being asked about. Any shortfall returns a COVERAGE
 // GAP naming what is missing -- never silence.
+// THE SEAL ON THE ONE ARM THIS WHOLE LANE EXISTS TO MAKE HARD. Every guard below was derivable and
+// checked, and the arm they guard was still writable: a foreign module could author
+// SourceProducedNoBytesInRange { range } directly, never call this fold, and publish "the host
+// produced no bytes" with no evidence whatsoever. Measured, and the compiler accepted it. So the
+// claim that the guards made silence unmintable was true only of values that happened to come
+// through here, which is a claim about callers rather than about the type.
+//
+// SilenceProof is sole_constructor, so only this module can build one, and source_byte_fact is the
+// only place that does. The arm now cannot be spelled without it. THIS is what makes the 2026-09-12
+// reading -- a quiet channel published as a successful boot -- unwritable rather than reviewed
+// against.
+type SilenceProof sole_constructor {
+  range: SourceStreamRange
+}
+
 type SourceByteFact
   = SourceBytesObserved { digest: ContentHash }
-  | SourceProducedNoBytesInRange { range: SourceStreamRange }
+  | SourceProducedNoBytesInRange { proof: SilenceProof }
   | CoverageGapNotDurablyCommitted { standing: LocalCommitStanding }
   | CoverageGapCommitDoesNotBindThisChunk { binding: CommitBinding }
   | CoverageGapContinuityBroken { continuity: StreamContinuity }
@@ -198,6 +215,10 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
           CoverageGapEvidenceNamesAnotherSubject { disagreement: OwnershipGenerationDisagrees { owner: a, chunk: b } }
         BindingMachineDisagrees { binding: a, owner: b } =>
           CoverageGapEvidenceNamesAnotherSubject { disagreement: BindingMachineDisagrees { binding: a, owner: b } }
+        ChunkStreamDisagrees { binding_machine: bm, binding_source: bs, chunk_machine: cm, chunk_source: cs } =>
+          CoverageGapEvidenceNamesAnotherSubject {
+            disagreement: ChunkStreamDisagrees { binding_machine: bm, binding_source: bs, chunk_machine: cm, chunk_source: cs }
+          }
         EvidenceNamesOneSubject =>
         match commit_attests_chunk(standing: envelope.local_commit, chunk: envelope.chunk) {
           CommitNoReceipt { standing: standing } =>
@@ -226,7 +247,7 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
                     CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
                   }
                 } else {
-                  SourceProducedNoBytesInRange { range: requested }
+                  SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
                 }
             }
         }
@@ -302,7 +323,7 @@ fn retention_exposure(envelope: ObservationEnvelope) -> RetentionExposure {
     DownstreamRejected { cause: cause } => ForwardRefused { cause: cause }
     DownstreamNotOffered =>
       match envelope.local_commit {
-        LocallyCommitted { committed_content: _ } =>
+        LocallyCommitted { proof: _ } =>
           ExposedToCollectorHostLoss {
             refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
           }
@@ -328,6 +349,7 @@ type SubjectAgreement
   | EnrolledMachineDisagrees { owner: NonEmptyStr, chunk: NonEmptyStr }
   | OwnershipGenerationDisagrees { owner: Int, chunk: Int }
   | BindingMachineDisagrees { binding: NonEmptyStr, owner: NonEmptyStr }
+  | ChunkStreamDisagrees { binding_machine: NonEmptyStr, binding_source: NonEmptyStr, chunk_machine: NonEmptyStr, chunk_source: NonEmptyStr }
 
 fn subject_agreement(
   owner_session: CollectorSessionId,
@@ -349,6 +371,16 @@ fn subject_agreement(
     OwnershipGenerationDisagrees { owner: owner_generation, chunk: chunk.occurrence.ownership_generation }
   } else if (binding.enrolled_machine as String) != (owner_session.enrolled_machine as String) {
     BindingMachineDisagrees { binding: binding.enrolled_machine, owner: owner_session.enrolled_machine }
+  } else if !source_stream_eq(
+    a: chunk.source,
+    b: SourceStreamId { enrolled_machine: binding.enrolled_machine, source_identity: binding.source_identity },
+  ) {
+    ChunkStreamDisagrees {
+      binding_machine: binding.enrolled_machine
+      binding_source: binding.source_identity
+      chunk_machine: chunk.source.enrolled_machine
+      chunk_source: chunk.source.source_identity
+    }
   } else {
     EvidenceNamesOneSubject
   }

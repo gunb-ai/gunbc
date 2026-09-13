@@ -63,7 +63,24 @@ type ChunkOccurrence {
   receive_sequence: Nat
 }
 
+// WHICH STREAM THESE BYTES CAME FROM, and it is the SUBJECT of a run rather than part of an
+// occurrence. Occurrence answers WHO received the bytes and WHEN; this answers WHAT they are bytes OF.
+// The two were conflated until the run subject needed stating: with no stream identity on a chunk,
+// "the same source stream observed by two different collector sessions" was not expressible, so a
+// session change had to be treated as a change of subject -- which made the most common real break
+// unaskable. A chunk is a window on ONE stream, so the stream names itself here.
+type SourceStreamId {
+  enrolled_machine: NonEmptyStr
+  source_identity: NonEmptyStr
+}
+
+fn source_stream_eq(a: SourceStreamId, b: SourceStreamId) -> Bool {
+  ((a.enrolled_machine as String) == (b.enrolled_machine as String))
+  && ((a.source_identity as String) == (b.source_identity as String))
+}
+
 type CaptureChunk {
+  source: SourceStreamId
   occurrence: ChunkOccurrence
   range: SourceStreamRange
   payload_digest: ContentHash
@@ -171,8 +188,18 @@ type CapturePersistenceRefusal
 // a refusal rather than a fabricated agreement.
 //
 // There is no longer any caller-authored digest for a binding to line up with.
+// THE TOKEN THAT MAKES THE COMMITTED ARM UNMINTABLE FROM OUTSIDE. A sum ARM is not sealable directly
+// -- sole_constructor is a record property -- so the arm carries a sealed record instead, and only
+// this module can build one. Measured before this landed: a foreign module could write
+// LocallyCommitted { committed_content: <any hash> } and the compiler accepted it, which meant the
+// durability guard in the silence law could be satisfied without any store ever having committed
+// anything. The guarantee was in the prose and not in the type, for the third time on this branch.
+type DurableCommitProof sole_constructor {
+  committed_content: ContentHash
+}
+
 type LocalCommitStanding
-  = LocallyCommitted { committed_content: ContentHash }
+  = LocallyCommitted { proof: DurableCommitProof }
   | LocalCommitFailed { cause: CapturePersistenceRefusal }
   | LocalCommitNotAttempted
 
@@ -192,7 +219,7 @@ type DownstreamAcceptanceStanding
 fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
   match outcome {
     CasCommitted { committed: committed } =>
-      LocallyCommitted { committed_content: committed.content }
+      LocallyCommitted { proof: DurableCommitProof { committed_content: committed.content } }
     CasPreconditionFailed { expected: expected, observed: observed } =>
       LocalCommitFailed {
         cause: ChunkCommitLostRace {
@@ -231,13 +258,13 @@ type CommitBinding
 
 fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> CommitBinding {
   match standing {
-    LocallyCommitted { committed_content: committed } =>
-      match compare_content_hash(left: committed, right: chunk.payload_digest) {
+    LocallyCommitted { proof: proof } =>
+      match compare_content_hash(left: proof.committed_content, right: chunk.payload_digest) {
         ContentHashEqual => CommitAttestsThisChunk
         ContentHashDifferent =>
-          CommitAttestsOtherPayload { attested: committed, chunk_payload: chunk.payload_digest }
+          CommitAttestsOtherPayload { attested: proof.committed_content, chunk_payload: chunk.payload_digest }
         ContentHashCrossFamilyIncomparable =>
-          CommitBindingIncomparable { attested: committed, chunk_payload: chunk.payload_digest }
+          CommitBindingIncomparable { attested: proof.committed_content, chunk_payload: chunk.payload_digest }
       }
     LocalCommitFailed { cause: _ } => CommitNoReceipt { standing: standing }
     LocalCommitNotAttempted => CommitNoReceipt { standing: standing }
@@ -271,7 +298,13 @@ fn chunk_byte_count(chunk: CaptureChunk) -> Nat {
 // A CHUNK PAIRED WITH THE PROOF THAT ITS BYTES WERE KEPT. The only route in is the constructor below,
 // which refuses unless the commit receipt attests THIS chunk -- so a List<CommittedChunk> cannot be
 // assembled out of chunks nobody stored.
-type CommittedChunk {
+// sole_constructor IS THE WHOLE CLAIM. Without it this was an ordinary record any module could build
+// -- and the witness module did exactly that, minting one with the chunk's own payload digest as the
+// committed content when the real constructor refused. So "the only route in" was prose, not a
+// property: an authorable bypass sitting in the accepted corpus, which is the validation-standing-
+// where-construction-was-available tell one more time. Sealed, the refusal below is the only way to
+// obtain one, and a fixture that wants a CommittedChunk must satisfy the attestation like production.
+type CommittedChunk sole_constructor {
   chunk: CaptureChunk
   committed_content: ContentHash
 }
@@ -280,8 +313,8 @@ fn committed_chunk(chunk: CaptureChunk, standing: LocalCommitStanding) -> Commit
   match commit_attests_chunk(standing: standing, chunk: chunk) {
     CommitAttestsThisChunk =>
       match standing {
-        LocallyCommitted { committed_content: committed } =>
-          Present { value: CommittedChunk { chunk: chunk, committed_content: committed } }
+        LocallyCommitted { proof: proof } =>
+          Present { value: CommittedChunk { chunk: chunk, committed_content: proof.committed_content } }
         LocalCommitFailed { cause: _ } => Absent
         LocalCommitNotAttempted => Absent
       }
@@ -298,14 +331,13 @@ fn committed_chunk(chunk: CaptureChunk, standing: LocalCommitStanding) -> Commit
 // the observer published as a fact about the subject, which is this lane's founding error.
 type ContinuityDerivation
   = DerivedContinuity { continuity: StreamContinuity }
-  | RunCrossesSubjects { expected_generation: Int, chunk_generation: Int }
+  | RunCrossesSubjects { expected: SourceStreamId, chunk: SourceStreamId }
   | RunOutOfReceiveOrder { previous: Nat, observed: Nat }
   | RunRangesOverlapOrReverse { verified_through: Nat, chunk: SourceStreamRange }
 
 fn continuity_from_committed_chunks(
   committed: List<CommittedChunk>,
-  session: CollectorSessionId,
-  generation: Int,
+  subject: SourceStreamId,
   from: Nat,
 ) -> ContinuityDerivation {
   match committed.first() {
@@ -314,21 +346,8 @@ fn continuity_from_committed_chunks(
         continuity: ContinuityUnknown { detail: "no committed chunk accounts for this range" }
       }
     Present { value: head } =>
-      if !chunk_same_session(chunk: head.chunk, session: session) {
-        RunCrossesSubjects {
-          expected_generation: generation
-          chunk_generation: head.chunk.occurrence.ownership_generation
-        }
-      } else if head.chunk.occurrence.ownership_generation != generation {
-        DerivedContinuity {
-          continuity: ContinuityGap {
-            gap: SourceStreamRange { first_offset: from, length: byte_size(count: 0) }
-            cause: CollectorLostOwnership {
-              from_generation: generation
-              to_generation: head.chunk.occurrence.ownership_generation
-            }
-          }
-        }
+      if !source_stream_eq(a: head.chunk.source, b: subject) {
+        RunCrossesSubjects { expected: subject, chunk: head.chunk.source }
       } else if head.chunk.range.first_offset > from {
         DerivedContinuity {
           continuity: ContinuityGap {
@@ -342,49 +361,59 @@ fn continuity_from_committed_chunks(
       } else {
         continuity_walk(
           committed: committed.skip(n: 1),
-          session: session,
-          generation: generation,
+          subject: subject,
           verified_through: range_end(range: head.chunk.range),
+          previous_session: head.chunk.occurrence.session,
+          previous_generation: head.chunk.occurrence.ownership_generation,
           previous_sequence: head.chunk.occurrence.receive_sequence,
         )
       }
   }
 }
 
-// A DIFFERENT MACHINE OR COLLECTOR SESSION IS A CALLER ERROR -- the run was assembled wrong, and no
-// statement about any stream follows from it. A different OWNERSHIP GENERATION within one session is
-// a different thing: the collector genuinely lost and retook the endpoint, so the stream really does
-// break there, and the break is COLLECTOR-side. Those two must not share an answer.
-fn chunk_same_session(chunk: CaptureChunk, session: CollectorSessionId) -> Bool {
-  ((chunk.occurrence.session.collector_session as String) == (session.collector_session as String))
-  && ((chunk.occurrence.session.enrolled_machine as String) == (session.enrolled_machine as String))
-}
-
-// THE WALK REFUSES EVERY WAY A RUN CAN BE ILL-FORMED before it will call anything established.
-// Receive order must strictly increase, and a range must begin EXACTLY where the previous one ended:
-// starting earlier is an overlap or a reversal, starting later is a gap in the source. Only the last
-// of those three is a statement about the host.
+// THE ORDER OF THESE GUARDS IS THE ARGUMENT. Only a change of STREAM is a caller error -- a run that
+// spans two streams supports no statement about either. Everything else is a real break in one
+// stream, and the two collector-side breaks come BEFORE the offset checks because they explain the
+// discontinuity that would otherwise be measured as a hole in the host's output.
+//
+// A COLLECTOR SESSION CHANGE IS THE MOST COMMON REAL BREAK AND IT IS THIS INVESTIGATION'S OWN CASE:
+// one client exited at three seconds and was relaunched, another was killed before it flushed, a
+// third attached late, and a topology control lost its console to a stale session from an earlier
+// probe. A timeline asking "was this console continuous across that window" must get back NO, BROKEN
+// BY THE COLLECTOR RESTARTING -- not a caller error, and not silence. Receive sequences are per
+// session, so they are only compared WITHIN one.
 fn continuity_walk(
   committed: List<CommittedChunk>,
-  session: CollectorSessionId,
-  generation: Int,
+  subject: SourceStreamId,
   verified_through: Nat,
+  previous_session: CollectorSessionId,
+  previous_generation: Int,
   previous_sequence: Nat,
 ) -> ContinuityDerivation {
   match committed.first() {
-    Absent => DerivedContinuity { continuity: ContinuityEstablished { verified_through: verified_through } }
+    Absent =>
+      DerivedContinuity {
+        continuity: ContinuityEstablished { reach: ContinuityReach { verified_through: verified_through } }
+      }
     Present { value: head } =>
-      if !chunk_same_session(chunk: head.chunk, session: session) {
-        RunCrossesSubjects {
-          expected_generation: generation
-          chunk_generation: head.chunk.occurrence.ownership_generation
+      if !source_stream_eq(a: head.chunk.source, b: subject) {
+        RunCrossesSubjects { expected: subject, chunk: head.chunk.source }
+      } else if (head.chunk.occurrence.session.collector_session as String) != (previous_session.collector_session as String) {
+        DerivedContinuity {
+          continuity: ContinuityGap {
+            gap: SourceStreamRange { first_offset: verified_through, length: byte_size(count: 0) }
+            cause: CollectorSessionChanged {
+              previous_session: previous_session.collector_session
+              current_session: head.chunk.occurrence.session.collector_session
+            }
+          }
         }
-      } else if head.chunk.occurrence.ownership_generation != generation {
+      } else if head.chunk.occurrence.ownership_generation != previous_generation {
         DerivedContinuity {
           continuity: ContinuityGap {
             gap: SourceStreamRange { first_offset: verified_through, length: byte_size(count: 0) }
             cause: CollectorLostOwnership {
-              from_generation: generation
+              from_generation: previous_generation
               to_generation: head.chunk.occurrence.ownership_generation
             }
           }
@@ -409,9 +438,10 @@ fn continuity_walk(
       } else {
         continuity_walk(
           committed: committed.skip(n: 1),
-          session: session,
-          generation: generation,
+          subject: subject,
           verified_through: range_end(range: head.chunk.range),
+          previous_session: head.chunk.occurrence.session,
+          previous_generation: head.chunk.occurrence.ownership_generation,
           previous_sequence: head.chunk.occurrence.receive_sequence,
         )
       }
@@ -436,11 +466,11 @@ fn continuity_covers(continuity: StreamContinuity, through: Nat) -> ContinuityCo
       ContinuityNotEstablished { continuity: ContinuityGap { gap: gap, cause: cause } }
     ContinuityUnknown { detail: detail } =>
       ContinuityNotEstablished { continuity: ContinuityUnknown { detail: detail } }
-    ContinuityEstablished { verified_through: verified } =>
-      if verified >= through {
+    ContinuityEstablished { reach: reach } =>
+      if reach.verified_through >= through {
         ContinuityCoversRange
       } else {
-        ContinuityShortOfRange { verified_through: verified, requested_end: through }
+        ContinuityShortOfRange { verified_through: reach.verified_through, requested_end: through }
       }
   }
 }
@@ -467,11 +497,21 @@ type ContinuityBreakCause
   | SourceRestarted { previous_generation: NonEmptyStr, current_generation: NonEmptyStr }
   | SourceGenerationUncertain { detail: NonEmptyStr }
   | CollectorStoppedRecording
+  | CollectorSessionChanged { previous_session: NonEmptyStr, current_session: NonEmptyStr }
   | CollectorLostOwnership { from_generation: Int, to_generation: Int }
   | CollectorPipeUnread
 
+// THE SAME SEAL FOR THE OFFSET THE SILENCE ARM LEANS ON HARDEST. ContinuityEstablished was the sole
+// evidence spanning a requested range on the silence path, and a foreign module could author
+// ContinuityEstablished { verified_through: 999999 } directly -- measured, and accepted by the
+// compiler. Deriving the offset inside this module was necessary and not sufficient while the arm
+// itself stayed writable.
+type ContinuityReach sole_constructor {
+  verified_through: Nat
+}
+
 type StreamContinuity
-  = ContinuityEstablished { verified_through: Nat }
+  = ContinuityEstablished { reach: ContinuityReach }
   | ContinuityGap { gap: SourceStreamRange, cause: ContinuityBreakCause }
   | ContinuityUnknown { detail: NonEmptyStr }
 

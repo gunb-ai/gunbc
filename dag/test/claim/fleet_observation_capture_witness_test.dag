@@ -55,6 +55,8 @@ import gunbc.fleet_observation_collector_ownership {
 import gunbc.fleet_observation_capture_chunk {
   CaptureChunk,
   ChunkOccurrence,
+  SourceStreamId,
+  source_stream_eq,
   SourceStreamRange,
   LocalCommitStanding,
   LocallyCommitted,
@@ -74,6 +76,8 @@ import gunbc.fleet_observation_capture_chunk {
   ContinuityEstablished,
   ContinuityGap,
   ContinuityUnknown,
+  ContinuityReach,
+  DurableCommitProof,
   ContinuityBreakCause,
   SourceLogCleared,
   SourceRestarted,
@@ -81,6 +85,7 @@ import gunbc.fleet_observation_capture_chunk {
   GapCauseUnattributed,
   SourceRetainedLogRolledOver,
   CollectorLostOwnership,
+  CollectorSessionChanged,
   CollectorStoppedRecording,
   CollectorPipeUnread,
   local_commit_from_cas,
@@ -124,6 +129,7 @@ import gunbc.fleet_observation_observation_envelope {
   SourceByteFact,
   SourceBytesObserved,
   SourceProducedNoBytesInRange,
+  SilenceProof,
   CoverageGapNotDurablyCommitted,
   CoverageGapCommitDoesNotBindThisChunk,
   RetentionExposure,
@@ -143,6 +149,7 @@ import gunbc.fleet_observation_observation_envelope {
   EnrolledMachineDisagrees,
   OwnershipGenerationDisagrees,
   BindingMachineDisagrees,
+  ChunkStreamDisagrees,
   subject_agreement,
   source_byte_fact,
 }
@@ -168,6 +175,26 @@ data t_authority: DeclarationRef = DeclarationRef {
   module_path: "test.claim.fleet_observation_capture_witness"
   decl_name: "t_authority"
   field: WholeDeclaration
+}
+
+// CONTINUITY CANNOT BE AUTHORED EITHER, so the fixture derives a reach from a real committed run of
+// exactly the span it needs. A witness that wants "verified through 100" has to produce 100 committed
+// bytes, which is the point of the seal.
+fn t_reach(through: Nat) -> StreamContinuity {
+  match continuity_from_committed_chunks(
+    committed: t_one(c: t_committed_chunk(seq: 1, generation: 4, payload: "reach", first: 0, len: through)),
+    subject: t_stream,
+    from: 0,
+  ) {
+    DerivedContinuity { continuity: c } => c
+    RunCrossesSubjects { expected: _, chunk: _ } => ContinuityUnknown { detail: "fixture run crossed subjects" }
+    RunOutOfReceiveOrder { previous: _, observed: _ } => ContinuityUnknown { detail: "fixture run out of order" }
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => ContinuityUnknown { detail: "fixture run overlapped" }
+  }
+}
+
+fn t_one(c: CommittedChunk?) -> List<CommittedChunk> {
+  match c { Present { value: v } => [v], Absent => [] }
 }
 
 fn t_range(first: Nat, len: Nat) -> SourceStreamRange {
@@ -204,8 +231,14 @@ fn t_instant(origin: NonEmptyStr, since: Nat) -> ObservationInstant {
   }
 }
 
+data t_stream: SourceStreamId = SourceStreamId {
+  enrolled_machine: "synthetic-machine-1"
+  source_identity: "synthetic-sol"
+}
+
 fn t_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CaptureChunk {
   CaptureChunk {
+    source: t_stream
     occurrence: ChunkOccurrence {
       session: t_session
       ownership_generation: generation
@@ -252,6 +285,8 @@ fn t_envelope(
 // point of the repair: a receipt exists only because a compare-and-set committed something, and what
 // it attests is what the store committed. A fixture that built LocallyCommitted directly could still
 // line the digests up by hand, which is the circularity being removed.
+// THE COMMIT FIXTURE GOES THROUGH THE REAL CONSTRUCTOR, and now it MUST: LocallyCommitted carries a
+// sealed DurableCommitProof, so a witness cannot author a committed standing at all.
 fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding {
   let outcome: CasOutcome<NonEmptyStr> = CasCommitted {
     committed: CasSlotVersion {
@@ -280,7 +315,7 @@ test fn w_silence_requires_committed_covered_continuous_bytes() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: empty_chunk,
     local_commit: LocalCommitNotAttempted,
-    continuity: ContinuityEstablished { verified_through: 100 },
+    continuity: t_reach(through: 100),
     downstream: DownstreamNotOffered,
   )
   let broken = t_envelope(
@@ -297,7 +332,7 @@ test fn w_silence_requires_committed_covered_continuous_bytes() -> Bool {
     ownership: FollowerReadOnly { session: t_other_session },
     chunk: empty_chunk,
     local_commit: commit,
-    continuity: ContinuityEstablished { verified_through: 100 },
+    continuity: t_reach(through: 100),
     downstream: DownstreamNotOffered,
   )
   is_not_durably_committed(fact: source_byte_fact(envelope: uncommitted, requested: requested))
@@ -316,12 +351,12 @@ test fn w_continuity_must_reach_the_requested_end() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
     local_commit: commit,
-    continuity: ContinuityEstablished { verified_through: 10 },
+    continuity: t_reach(through: 10),
     downstream: DownstreamNotOffered,
   )
   is_continuity_short(fact: source_byte_fact(envelope: short, requested: requested))
-  && continuity_covers_range(c: continuity_covers(continuity: ContinuityEstablished { verified_through: 100 }, through: 100))
-  && continuity_falls_short(c: continuity_covers(continuity: ContinuityEstablished { verified_through: 99 }, through: 100))
+  && continuity_covers_range(c: continuity_covers(continuity: t_reach(through: 100), through: 100))
+  && continuity_falls_short(c: continuity_covers(continuity: t_reach(through: 99), through: 100))
 }
 
 // A COMMIT RECEIPT MUST ATTEST THIS CHUNK'S BYTES. A valid receipt for a DIFFERENT payload used to
@@ -335,7 +370,7 @@ test fn w_commit_must_attest_this_chunks_payload() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
     local_commit: t_commit_for(payload: "a-different-chunks-payload"),
-    continuity: ContinuityEstablished { verified_through: 100 },
+    continuity: t_reach(through: 100),
     downstream: DownstreamNotOffered,
   )
   is_commit_unbound(fact: source_byte_fact(envelope: mismatched, requested: requested))
@@ -351,7 +386,7 @@ test fn w_evidence_must_name_one_subject() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 9, payload: "no-host-bytes-received", first: 0, len: 0),
     local_commit: t_commit_for(payload: "no-host-bytes-received"),
-    continuity: ContinuityEstablished { verified_through: 100 },
+    continuity: t_reach(through: 100),
     downstream: DownstreamNotOffered,
   )
   is_another_subject(fact: source_byte_fact(envelope: crossed, requested: requested))
@@ -368,14 +403,14 @@ test fn w_full_evidence_licenses_silence_and_payload() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "no-host-bytes-received", first: 0, len: 0),
     local_commit: t_commit_for(payload: "no-host-bytes-received"),
-    continuity: ContinuityEstablished { verified_through: 100 },
+    continuity: t_reach(through: 100),
     downstream: DownstreamNotOffered,
   )
   let spoke = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: t_chunk(seq: 1, generation: 4, payload: "host bytes", first: 0, len: 100),
     local_commit: t_commit_for(payload: "host bytes"),
-    continuity: ContinuityEstablished { verified_through: 100 },
+    continuity: t_reach(through: 100),
     downstream: DownstreamNotOffered,
   )
   is_silence(fact: source_byte_fact(envelope: silent, requested: requested))
@@ -402,7 +437,7 @@ test fn w_commit_over_other_bytes_cannot_bind_this_chunk() -> Bool {
       ownership: t_owner(fencing: t_unfenced),
       chunk: chunk_of_y,
       local_commit: commit_of_x,
-      continuity: ContinuityEstablished { verified_through: 100 },
+      continuity: t_reach(through: 100),
       downstream: DownstreamNotOffered,
     ),
     requested: t_range(first: 0, len: 100),
@@ -611,14 +646,14 @@ test fn w_local_commit_does_not_imply_forwarding() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: chunk,
     local_commit: commit,
-    continuity: ContinuityEstablished { verified_through: 10 },
+    continuity: t_reach(through: 10),
     downstream: DownstreamNotOffered,
   )
   let forwarded = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: chunk,
     local_commit: commit,
-    continuity: ContinuityEstablished { verified_through: 10 },
+    continuity: t_reach(through: 10),
     downstream: DownstreamAccepted { accepted_content: content_hash_of_value(value: "x") },
   )
   is_exposed(exposure: retention_exposure(envelope: spooled))
@@ -637,21 +672,21 @@ test fn w_retention_exposure_reads_the_refused_promise() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: chunk,
     local_commit: commit,
-    continuity: ContinuityEstablished { verified_through: 10 },
+    continuity: t_reach(through: 10),
     downstream: DownstreamNotOffered,
   )
   let forwarded = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: chunk,
     local_commit: commit,
-    continuity: ContinuityEstablished { verified_through: 10 },
+    continuity: t_reach(through: 10),
     downstream: DownstreamAccepted { accepted_content: content_hash_of_value(value: "x") },
   )
   let unkept = t_envelope(
     ownership: t_owner(fencing: t_unfenced),
     chunk: chunk,
     local_commit: LocalCommitNotAttempted,
-    continuity: ContinuityEstablished { verified_through: 10 },
+    continuity: t_reach(through: 10),
     downstream: DownstreamNotOffered,
   )
   is_exposed(exposure: retention_exposure(envelope: spooled))
@@ -697,7 +732,7 @@ test fn w_refused_forward_keeps_its_cause() -> Bool {
     ownership: t_owner(fencing: t_unfenced),
     chunk: chunk,
     local_commit: commit,
-    continuity: ContinuityEstablished { verified_through: 10 },
+    continuity: t_reach(through: 10),
     downstream: DownstreamRejected {
       cause: ChunkCorruptOnReadBack {
         expected: content_hash_of_value(value: "x")
@@ -726,12 +761,12 @@ test fn w_continuity_is_derived_from_committed_chunks() -> Bool {
   let far = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 80, len: 20)
   let overlapping = t_committed_chunk(seq: 2, generation: 4, payload: "b", first: 20, len: 60)
   let backwards = t_committed_chunk(seq: 1, generation: 4, payload: "b", first: 40, len: 60)
-  derived_reaches(d: continuity_from_committed_chunks(committed: [a, b], session: t_session, generation: 4, from: 0), through: 100)
-  && derived_gapped(d: continuity_from_committed_chunks(committed: [a, far], session: t_session, generation: 4, from: 0))
-  && overlaps(d: continuity_from_committed_chunks(committed: [a, overlapping], session: t_session, generation: 4, from: 0))
-  && out_of_order(d: continuity_from_committed_chunks(committed: [a, backwards], session: t_session, generation: 4, from: 0))
-  && derived_unknown(d: continuity_from_committed_chunks(committed: [], session: t_session, generation: 4, from: 0))
-  && gap_is_unattributed(d: continuity_from_committed_chunks(committed: [a, far], session: t_session, generation: 4, from: 0))
+  derived_reaches(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: b), subject: t_stream, from: 0), through: 100)
+  && derived_gapped(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: far), subject: t_stream, from: 0))
+  && overlaps(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: overlapping), subject: t_stream, from: 0))
+  && out_of_order(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: backwards), subject: t_stream, from: 0))
+  && derived_unknown(d: continuity_from_committed_chunks(committed: [], subject: t_stream, from: 0))
+  && gap_is_unattributed(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: far), subject: t_stream, from: 0))
 }
 
 // A WALK OVER OFFSETS MAY NOT DIAGNOSE THE SOURCE. Both gap arms used to hardcode a rolled-over
@@ -751,12 +786,13 @@ fn gap_is_unattributed(d: ContinuityDerivation) -> Bool {
             SourceGenerationUncertain { detail: _ } => false
             CollectorStoppedRecording => false
             CollectorLostOwnership { from_generation: _, to_generation: _ } => false
+            CollectorSessionChanged { previous_session: _, current_session: _ } => false
             CollectorPipeUnread => false
           }
-        ContinuityEstablished { verified_through: _ } => false
+        ContinuityEstablished { reach: _ } => false
         ContinuityUnknown { detail: _ } => false
       }
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
   }
@@ -769,10 +805,94 @@ fn gap_is_unattributed(d: ContinuityDerivation) -> Bool {
 test fn w_a_collector_side_gap_is_not_blamed_on_the_source() -> Bool {
   let a = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
   let regained = t_committed_chunk(seq: 2, generation: 5, payload: "b", first: 40, len: 60)
-  lost_ownership(d: continuity_from_committed_chunks(committed: [a, regained], session: t_session, generation: 4, from: 0))
+  lost_ownership(d: continuity_from_committed_chunks(committed: t_pair(left: a, right: regained), subject: t_stream, from: 0))
   && crosses_subjects(d: continuity_from_committed_chunks(
-       committed: [a, t_committed_chunk_for(session: t_other_session, seq: 2, generation: 4, payload: "b", first: 40, len: 60)],
-       session: t_session, generation: 4, from: 0))
+       committed: t_pair(left: a, right: t_committed_chunk_on_stream(stream: t_other_stream, seq: 2, generation: 4, payload: "b", first: 40, len: 60)),
+       subject: t_stream, from: 0))
+}
+
+// THE PARENT'S DISCRIMINATING RED, AND THIS LANE'S OWN FOUNDING CASE. Two committed, BYTE-CONTIGUOUS
+// chunks on ONE source stream, recorded by TWO different collector sessions -- one client exiting and
+// another being launched, which is what happened four times on 2026-09-11/12. The answer must be a
+// continuity BREAK ATTRIBUTED TO THE COLLECTOR. It must NOT be RunCrossesSubjects, because a timeline
+// asking "was this console continuous" would get a caller error instead of an answer; and it must NOT
+// be ContinuityEstablished, because the bytes abutting is exactly what makes the break invisible.
+test fn w_a_session_change_breaks_the_stream_and_is_ours() -> Bool {
+  let first = t_committed_chunk(seq: 1, generation: 4, payload: "a", first: 0, len: 40)
+  let relaunched = t_committed_chunk_for_session(session: t_other_session, seq: 1, generation: 4, payload: "b", first: 40, len: 60)
+  session_changed(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: 0))
+  && !derived_reaches(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: 0), through: 100)
+  && !crosses_subjects(d: continuity_from_committed_chunks(committed: t_pair(left: first, right: relaunched), subject: t_stream, from: 0))
+}
+
+data t_other_stream: SourceStreamId = SourceStreamId {
+  enrolled_machine: "synthetic-machine-1"
+  source_identity: "a-different-source-stream"
+}
+
+fn t_committed_chunk_on_stream(stream: SourceStreamId, seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk? {
+  committed_chunk(
+    chunk: CaptureChunk {
+      source: stream
+      occurrence: ChunkOccurrence { session: t_session, ownership_generation: generation, receive_sequence: seq }
+      range: t_range(first: first, len: len)
+      payload_digest: content_hash_of_value(value: payload)
+      artifact_ref: "synthetic://chunk"
+    },
+    standing: t_commit_for(payload: payload),
+  )
+}
+
+fn t_committed_chunk_for_session(session: CollectorSessionId, seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk? {
+  committed_chunk(
+    chunk: CaptureChunk {
+      source: t_stream
+      occurrence: ChunkOccurrence { session: session, ownership_generation: generation, receive_sequence: seq }
+      range: t_range(first: first, len: len)
+      payload_digest: content_hash_of_value(value: payload)
+      artifact_ref: "synthetic://chunk"
+    },
+    standing: t_commit_for(payload: payload),
+  )
+}
+
+// A RUN OF TWO, OR THE WITNESS FAILS. Every continuity assertion goes through this, so a constructor
+// that refused anywhere collapses the run to nothing and the assertion cannot quietly pass.
+fn t_pair(left: CommittedChunk?, right: CommittedChunk?) -> List<CommittedChunk> {
+  match left {
+    Absent => []
+    Present { value: a } =>
+      match right {
+        Absent => []
+        Present { value: b } => [a, b]
+      }
+  }
+}
+
+fn session_changed(d: ContinuityDerivation) -> Bool {
+  match d {
+    DerivedContinuity { continuity: c } =>
+      match c {
+        ContinuityGap { gap: _, cause: cause } =>
+          match cause {
+            CollectorSessionChanged { previous_session: _, current_session: _ } => true
+            GapCauseUnattributed => false
+            SourceRetainedLogRolledOver { lost_through: _ } => false
+            SourceLogCleared => false
+            SourceRestarted { previous_generation: _, current_generation: _ } => false
+            SourceGenerationUncertain { detail: _ } => false
+            CollectorStoppedRecording => false
+            CollectorLostOwnership { from_generation: _, to_generation: _ } => false
+            CollectorSessionChanged { previous_session: _, current_session: _ } => false
+            CollectorPipeUnread => false
+          }
+        ContinuityEstablished { reach: _ } => false
+        ContinuityUnknown { detail: _ } => false
+      }
+    RunCrossesSubjects { expected: _, chunk: _ } => false
+    RunOutOfReceiveOrder { previous: _, observed: _ } => false
+    RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
+  }
 }
 
 fn lost_ownership(d: ContinuityDerivation) -> Bool {
@@ -788,43 +908,32 @@ fn lost_ownership(d: ContinuityDerivation) -> Bool {
             SourceRestarted { previous_generation: _, current_generation: _ } => false
             SourceGenerationUncertain { detail: _ } => false
             CollectorStoppedRecording => false
+            CollectorSessionChanged { previous_session: _, current_session: _ } => false
             CollectorPipeUnread => false
           }
-        ContinuityEstablished { verified_through: _ } => false
+        ContinuityEstablished { reach: _ } => false
         ContinuityUnknown { detail: _ } => false
       }
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
   }
 }
 
-fn t_committed_chunk_for(session: CollectorSessionId, seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk {
-  let chunk = CaptureChunk {
-    occurrence: ChunkOccurrence { session: session, ownership_generation: generation, receive_sequence: seq }
-    range: t_range(first: first, len: len)
-    payload_digest: content_hash_of_value(value: payload)
-    artifact_ref: "synthetic://chunk"
-  }
-  match committed_chunk(chunk: chunk, standing: t_commit_for(payload: payload)) {
-    Present { value: c } => c
-    Absent => committed_chunk_fixture_unreachable(chunk: chunk)
-  }
-}
 
 // THE FIXTURE MINTS THROUGH THE ATTESTED CONSTRUCTOR. A CommittedChunk cannot be authored, so a run
 // cannot be assembled out of chunks nobody stored -- which is the whole point of the repair.
-fn t_committed_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk {
-  let chunk = t_chunk(seq: seq, generation: generation, payload: payload, first: first, len: len)
-  match committed_chunk(chunk: chunk, standing: t_commit_for(payload: payload)) {
-    Present { value: c } => c
-    Absent => committed_chunk_fixture_unreachable(chunk: chunk)
-  }
+// THE FIXTURES PROPAGATE THE OPTIONAL RATHER THAN FABRICATING ONE. A helper that manufactured a
+// CommittedChunk when the constructor refused is exactly the bypass the seal exists to remove, so a
+// refusing constructor now makes the witness FAIL rather than silently supplying a value production
+// could never obtain.
+fn t_committed_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat) -> CommittedChunk? {
+  committed_chunk(
+    chunk: t_chunk(seq: seq, generation: generation, payload: payload, first: first, len: len),
+    standing: t_commit_for(payload: payload),
+  )
 }
 
-fn committed_chunk_fixture_unreachable(chunk: CaptureChunk) -> CommittedChunk {
-  CommittedChunk { chunk: chunk, committed_content: chunk.payload_digest }
-}
 
 // AN UNCOMMITTED OR CROSS-BOUND CHUNK HAS NO ROUTE INTO A RUN.
 test fn w_committed_chunk_requires_an_attesting_receipt() -> Bool {
@@ -845,7 +954,7 @@ fn present_commit(o: CommittedChunk?) -> Bool {
 fn derived_reaches(d: ContinuityDerivation, through: Nat) -> Bool {
   match d {
     DerivedContinuity { continuity: c } => reaches(c: c, through: through)
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
   }
@@ -854,7 +963,7 @@ fn derived_reaches(d: ContinuityDerivation, through: Nat) -> Bool {
 fn derived_gapped(d: ContinuityDerivation) -> Bool {
   match d {
     DerivedContinuity { continuity: c } => gapped(c: c)
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
   }
@@ -863,7 +972,7 @@ fn derived_gapped(d: ContinuityDerivation) -> Bool {
 fn derived_unknown(d: ContinuityDerivation) -> Bool {
   match d {
     DerivedContinuity { continuity: c } => unknown(c: c)
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
   }
@@ -873,7 +982,7 @@ fn overlaps(d: ContinuityDerivation) -> Bool {
   match d {
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => true
     DerivedContinuity { continuity: _ } => false
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunCrossesSubjects { expected: _, chunk: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
   }
 }
@@ -882,14 +991,14 @@ fn out_of_order(d: ContinuityDerivation) -> Bool {
   match d {
     RunOutOfReceiveOrder { previous: _, observed: _ } => true
     DerivedContinuity { continuity: _ } => false
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => false
+    RunCrossesSubjects { expected: _, chunk: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
   }
 }
 
 fn crosses_subjects(d: ContinuityDerivation) -> Bool {
   match d {
-    RunCrossesSubjects { expected_generation: _, chunk_generation: _ } => true
+    RunCrossesSubjects { expected: _, chunk: _ } => true
     DerivedContinuity { continuity: _ } => false
     RunOutOfReceiveOrder { previous: _, observed: _ } => false
     RunRangesOverlapOrReverse { verified_through: _, chunk: _ } => false
@@ -922,6 +1031,7 @@ fn agrees(a: SubjectAgreement) -> Bool {
     EnrolledMachineDisagrees { owner: _, chunk: _ } => false
     OwnershipGenerationDisagrees { owner: _, chunk: _ } => false
     BindingMachineDisagrees { binding: _, owner: _ } => false
+    ChunkStreamDisagrees { binding_machine: _, binding_source: _, chunk_machine: _, chunk_source: _ } => false
   }
 }
 
@@ -932,6 +1042,7 @@ fn generation_disagrees(a: SubjectAgreement) -> Bool {
     CollectorSessionDisagrees { owner: _, chunk: _ } => false
     EnrolledMachineDisagrees { owner: _, chunk: _ } => false
     BindingMachineDisagrees { binding: _, owner: _ } => false
+    ChunkStreamDisagrees { binding_machine: _, binding_source: _, chunk_machine: _, chunk_source: _ } => false
   }
 }
 
@@ -942,6 +1053,7 @@ fn binding_disagrees(a: SubjectAgreement) -> Bool {
     CollectorSessionDisagrees { owner: _, chunk: _ } => false
     EnrolledMachineDisagrees { owner: _, chunk: _ } => false
     OwnershipGenerationDisagrees { owner: _, chunk: _ } => false
+    ChunkStreamDisagrees { binding_machine: _, binding_source: _, chunk_machine: _, chunk_source: _ } => false
   }
 }
 
@@ -952,12 +1064,13 @@ fn session_disagrees(a: SubjectAgreement) -> Bool {
     EnrolledMachineDisagrees { owner: _, chunk: _ } => false
     OwnershipGenerationDisagrees { owner: _, chunk: _ } => false
     BindingMachineDisagrees { binding: _, owner: _ } => false
+    ChunkStreamDisagrees { binding_machine: _, binding_source: _, chunk_machine: _, chunk_source: _ } => false
   }
 }
 
 fn reaches(c: StreamContinuity, through: Nat) -> Bool {
   match c {
-    ContinuityEstablished { verified_through: v } => v == through
+    ContinuityEstablished { reach: r } => r.verified_through == through
     ContinuityGap { gap: _, cause: _ } => false
     ContinuityUnknown { detail: _ } => false
   }
@@ -966,7 +1079,7 @@ fn reaches(c: StreamContinuity, through: Nat) -> Bool {
 fn gapped(c: StreamContinuity) -> Bool {
   match c {
     ContinuityGap { gap: _, cause: _ } => true
-    ContinuityEstablished { verified_through: _ } => false
+    ContinuityEstablished { reach: _ } => false
     ContinuityUnknown { detail: _ } => false
   }
 }
@@ -974,7 +1087,7 @@ fn gapped(c: StreamContinuity) -> Bool {
 fn unknown(c: StreamContinuity) -> Bool {
   match c {
     ContinuityUnknown { detail: _ } => true
-    ContinuityEstablished { verified_through: _ } => false
+    ContinuityEstablished { reach: _ } => false
     ContinuityGap { gap: _, cause: _ } => false
   }
 }
@@ -983,7 +1096,7 @@ fn unknown(c: StreamContinuity) -> Bool {
 
 fn is_silence(fact: SourceByteFact) -> Bool {
   match fact {
-    SourceProducedNoBytesInRange { range: _ } => true
+    SourceProducedNoBytesInRange { proof: _ } => true
     SourceBytesObserved { digest: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
@@ -998,7 +1111,7 @@ fn is_silence(fact: SourceByteFact) -> Bool {
 fn is_observed(fact: SourceByteFact) -> Bool {
   match fact {
     SourceBytesObserved { digest: _ } => true
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
@@ -1013,7 +1126,7 @@ fn is_not_durably_committed(fact: SourceByteFact) -> Bool {
   match fact {
     CoverageGapNotDurablyCommitted { standing: _ } => true
     SourceBytesObserved { digest: _ } => false
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
@@ -1027,7 +1140,7 @@ fn is_continuity_broken(fact: SourceByteFact) -> Bool {
   match fact {
     CoverageGapContinuityBroken { continuity: _ } => true
     SourceBytesObserved { digest: _ } => false
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
@@ -1041,7 +1154,7 @@ fn is_range_not_covered(fact: SourceByteFact) -> Bool {
   match fact {
     CoverageGapRangeNotCovered { requested: _, committed: _ } => true
     SourceBytesObserved { digest: _ } => false
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapNotTheRecordingOwner { ownership: _ } => false
@@ -1055,7 +1168,7 @@ fn is_not_owner(fact: SourceByteFact) -> Bool {
   match fact {
     CoverageGapNotTheRecordingOwner { ownership: _ } => true
     SourceBytesObserved { digest: _ } => false
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapRangeNotCovered { requested: _, committed: _ } => false
@@ -1069,7 +1182,7 @@ fn is_continuity_short(fact: SourceByteFact) -> Bool {
   match fact {
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => true
     SourceBytesObserved { digest: _ } => false
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
@@ -1083,7 +1196,7 @@ fn is_commit_unbound(fact: SourceByteFact) -> Bool {
   match fact {
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => true
     SourceBytesObserved { digest: _ } => false
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
     CoverageGapContinuityShortOfRange { verified_through: _, requested_end: _ } => false
@@ -1097,7 +1210,7 @@ fn is_another_subject(fact: SourceByteFact) -> Bool {
   match fact {
     CoverageGapEvidenceNamesAnotherSubject { disagreement: _ } => true
     SourceBytesObserved { digest: _ } => false
-    SourceProducedNoBytesInRange { range: _ } => false
+    SourceProducedNoBytesInRange { proof: _ } => false
     CoverageGapNotDurablyCommitted { standing: _ } => false
     CoverageGapCommitDoesNotBindThisChunk { binding: _ } => false
     CoverageGapContinuityBroken { continuity: _ } => false
@@ -1119,7 +1232,7 @@ fn is_recording_owner(id: RecordingOwnerIdentity) -> Bool {
 
 fn is_committed(standing: LocalCommitStanding) -> Bool {
   match standing {
-    LocallyCommitted { committed_content: _ } => true
+    LocallyCommitted { proof: _ } => true
     LocalCommitFailed { cause: _ } => false
     LocalCommitNotAttempted => false
   }
@@ -1136,7 +1249,7 @@ fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
         ChunkCommitRefused { detail: _ } => false
         ChunkCommitLostRace { expected: _, observed: _ } => false
       }
-    LocallyCommitted { committed_content: _ } => false
+    LocallyCommitted { proof: _ } => false
     LocalCommitNotAttempted => false
   }
 }
@@ -1152,7 +1265,7 @@ fn is_commit_refused(standing: LocalCommitStanding) -> Bool {
         ChunkRetentionExpired { artifact_ref: _ } => false
         ChunkCommitLostRace { expected: _, observed: _ } => false
       }
-    LocallyCommitted { committed_content: _ } => false
+    LocallyCommitted { proof: _ } => false
     LocalCommitNotAttempted => false
   }
 }
