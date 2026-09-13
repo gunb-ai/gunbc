@@ -39,6 +39,7 @@ import gunbc.public_workload_census {
   candidate_openobserve_amd64, candidate_biome_blob_mismatch_control,
   candidate_biome_matrix_selector_mismatch_control,
   candidate_biome_job_key_mismatch_control,
+  candidate_biome_job_key_titlecase_uninspected_control,
 }
 
 fn catalog_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
@@ -103,7 +104,7 @@ test fn witness_every_row_is_job_scoped_and_versioned() -> Bool {
         && (workflow_blob_sha as String) == (c.workflow_blob_sha as String)
         && inspected_commit != observed_head
     RunIdentityMismatched { cause } => true
-    RunIdentityUnresolved { cause } => false
+    RunIdentityUnresolved { cause } => true
   })
 }
 
@@ -250,13 +251,30 @@ test fn witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
       )
   same_display_matrix_and_observation
     && match candidate_run_identity(c: candidate_biome_job_key_mismatch_control) {
-      RunIdentityMismatched { cause } => match baseline_admission(c: candidate_biome_job_key_mismatch_control) {
+      RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_biome_job_key_mismatch_control) {
         BaselineRefused { cause } => true
         BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
       }
       ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
       WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } => false
-      RunIdentityUnresolved { cause } => false
+      RunIdentityMismatched { cause } => false
+    }
+}
+
+test fn witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key() -> Bool {
+  (candidate_biome_job_key_titlecase_uninspected_control.job_key as String) == "Test"
+    && (candidate_biome_job_key_titlecase_uninspected_control.job_display_name as String)
+      == (candidate_biome_test.job_display_name as String)
+    && candidate_biome_job_key_titlecase_uninspected_control.matrix_selector
+      == candidate_biome_test.matrix_selector
+    && match candidate_run_identity(c: candidate_biome_job_key_titlecase_uninspected_control) {
+      RunIdentityUnresolved { cause } => match baseline_admission(c: candidate_biome_job_key_titlecase_uninspected_control) {
+        BaselineRefused { cause } => true
+        BaselineAdmitted { job_id, run_id, run_attempt, head_sha, test_step, observed_label } => false
+      }
+      ObservedAtInspectedRevision { repository, revision, workflow_path, job_key, matrix_selector } => false
+      WorkflowBlobEquivalent { repository, inspected_commit, observed_head, workflow_path, workflow_blob_sha, job_key, matrix_selector } => false
+      RunIdentityMismatched { cause } => false
     }
 }
 
@@ -324,6 +342,7 @@ fn all_claims_hold() -> Bool {
     && witness_blob_mismatch_is_refused_even_when_tests_ran()
     && witness_matrix_selector_mismatch_is_refused_when_display_name_matches()
     && witness_job_key_mismatch_is_refused_when_display_name_and_matrix_match()
+    && witness_uninspected_yaml_job_name_is_not_defaulted_to_job_key()
     && witness_a_green_job_without_tests_is_not_a_baseline()
     && witness_matrix_name_rendering_stays_an_uncited_bet()
 }
