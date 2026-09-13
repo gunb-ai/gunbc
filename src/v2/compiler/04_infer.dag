@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { any, Empty, length, list_snoc_item }
+import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_snoc_item, list_tail }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -1536,43 +1536,11 @@ fn infer_unify_transform_operand_types(
   }
 }
 
-type InferSkipFirstAcc {
-  skipped: Bool
-  args: List<Node>
-}
-
 fn infer_transform_argument_targets(node: Node) -> List<Node> {
-  fold(
-    node_positional_child_targets(node: node),
-    init: InferSkipFirstAcc { skipped: false, args: Empty },
-    f: fn(acc, target) {
-      if acc.skipped {
-        InferSkipFirstAcc {
-          skipped: true,
-          args: list_snoc_item(xs: acc.args, item: target)
-        }
-      } else {
-        InferSkipFirstAcc { skipped: true, args: Empty }
-      }
-    }
-  ).args
-}
-
-fn infer_list_drop_first(xs: List<Node>) -> List<Node> {
-  fold(
-    xs,
-    init: InferSkipFirstAcc { skipped: false, args: Empty },
-    f: fn(acc, target) {
-      if acc.skipped {
-        InferSkipFirstAcc {
-          skipped: true,
-          args: list_snoc_item(xs: acc.args, item: target)
-        }
-      } else {
-        InferSkipFirstAcc { skipped: true, args: Empty }
-      }
-    }
-  ).args
+  match list_tail(xs: node_positional_child_targets(node: node)) {
+    TailAbsent => Empty
+    TailFound { tail: t } => t
+  }
 }
 
 fn infer_arrow_declaration_for_binding(root: Node, binding: Symbol) -> Optional<Node> {
@@ -1764,6 +1732,10 @@ fn infer_application_argument_inhabitance(
                       )
                     }
                   Present { value: arg } =>
+                    let rest = match list_tail(xs: acc.remaining) {
+                      TailAbsent => Empty
+                      TailFound { tail: t } => t
+                    }
                     match infer_judge_application_argument(
                       application: node,
                       entries: entries,
@@ -1772,12 +1744,12 @@ fn infer_application_argument_inhabitance(
                     ) {
                       Rejected { diagnostics: r } =>
                         InferInhabitanceZipAcc {
-                          remaining: infer_list_drop_first(xs: acc.remaining),
+                          remaining: rest,
                           result: Rejected { diagnostics: r }
                         }
                       Accepted { value: _, diagnostics: jd } =>
                         InferInhabitanceZipAcc {
-                          remaining: infer_list_drop_first(xs: acc.remaining),
+                          remaining: rest,
                           result: Accepted {
                             value: true,
                             diagnostics: diagnostics_merge(outer: pd, inner: jd)
