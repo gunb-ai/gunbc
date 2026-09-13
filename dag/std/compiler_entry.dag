@@ -126,12 +126,12 @@ type NativeDriverProducer {
 type NativeDriverProducerCount {
   producer: String
   executions: Int
-  nanos: Int
+  nanos: Nanosecond
 }
 
-// nanos is the checked integer count of host monotonic nanoseconds, matching the existing
-// native-prepare-split wire unit. Negative/overflowing counts and backwards clocks refuse at
-// the realization boundary rather than fabricating a zero or saturating observation.
+// Host monotonic counts become std.measure Nanosecond at the snapshot boundary.
+// Negative/overflowing counts and backwards clocks refuse at the realization boundary
+// rather than fabricating a zero or saturating observation.
 data native_driver_producer_roster: List<NativeDriverProducer> = [
   NativeDriverProducer { producer: "dag_language_model", declaration: decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_language_model") },
   NativeDriverProducer { producer: "validate_module_roots", declaration: decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots") },

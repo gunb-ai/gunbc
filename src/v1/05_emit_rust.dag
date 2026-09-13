@@ -17652,7 +17652,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // tolerance before row_serialization was a measured row, which is what put that row on", "\n",
       "    // the type rather than a wider tolerance on this arm.", "\n",
       "    let producer_counts: Vec<NativeDriverProducerCount> = ", crate_name, "::__native_producers::snapshot().into_iter()", "\n",
-      "        .map(|(producer, executions, nanos)| NativeDriverProducerCount \{ producer: producer.to_string(), executions, nanos \}).collect();", "\n",
+      "        .map(|(producer, executions, nanos)| NativeDriverProducerCount \{ producer: producer.to_string(), executions, nanos: nanosecond(nanos) \}).collect();", "\n",
       "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!(\{", "\n",
       "        \"basis\": \"native_driver_wall\",", "\n",
       "        \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\",", "\n",

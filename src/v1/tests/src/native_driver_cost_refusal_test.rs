@@ -290,6 +290,7 @@ fn producer_observations_are_siblings_not_exclusive_rows() {
     let main = driver_main();
     assert!(main.contains("\"producer_counts\": producer_counts"));
     assert!(main.contains("Vec<NativeDriverProducerCount>"));
+    assert!(main.contains("nanos: nanosecond(nanos)"));
     let exclusive = main
         .split("let exclusive =")
         .nth(1)
