@@ -1,12 +1,12 @@
 module gunbc.test.claim.witness_execution_class_live_census_test
 
-import v2.workflow.floor_discovery_producer {
-  FloorDiscoveryWalkState,
-  floor_discovery_walk_state_zero,
-  floor_discovery_walk_dir,
-  floor_discovery_resolve_entry_live_tree,
+import v2.workflow.floor_discovery_producer { floor_discovery_walk_dir }
+import v2.workflow.floor_discovery_source_authority {
+  EntryLiveTreeDispositionRefused,
   EntryLiveTreeResolved,
-  EntryLiveTreeDispositionRefused
+  FloorDiscoveryWalkState,
+  floor_discovery_resolve_entry_live_tree,
+  floor_discovery_walk_state_zero
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs }
