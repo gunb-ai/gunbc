@@ -35,8 +35,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // another standing drop's population would report a rung the executed evidence does not establish, so it
 // stays Standing until that half executes on the acceptance path.
 data seed_whole_corpus_demand_population_blind_population: List<String> = [
-  "v1_compiler.memory_governor whole_corpus_compile_admission — every whole-root (PrimaryRoot) compile admitted or refused by v1_compiler.cli_run compile_emission",
-  "test.claim.seed_mirror_constant_lens_witness_test seed_mirror_constant_rows — the DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES row, whose authority_symbol still spells the deleted whole_corpus_compile_measured_peak_demand",
+  "v1_compiler.memory_governor tests whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe and whole_corpus_compile_admission_is_tight_at_the_measured_demand -- the seed's discriminating red and positive control for the per-root join, which execute on no acceptance-path step (their home, cargo unit tests, is gunbc.rung_drop rust_unit_tests_off_the_merge_path)",
 ]
 
 data seed_whole_corpus_demand_population_blind: RungDrop = RungDrop {

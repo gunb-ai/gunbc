@@ -44,10 +44,6 @@ fn dcc_compile_tail_args(out_dir: String) -> List<String> {
   )
 }
 
-fn dcc_clean_tree_compile_args(out_dir: String) -> List<String> {
-  concat(["compile"], dcc_compile_tail_args(out_dir: out_dir))
-}
-
 // THE PERTURB AND FIXTURE SUBJECTS ARE ONE STAGED MODULE, SO THEY ARE --entry COMPILES. A staged
 // tmpdir is not a repository root: it has no measured demand and can never acquire one under a path
 // identity, so whole-root admission (gunbc.whole_corpus_compile_admission) would refuse it forever.
@@ -77,26 +73,6 @@ fn dcc_gunbc_ready(root: String) -> Bool {
 
 fn dcc_gunbc_path(root: String) -> String {
   witness_bin_release_path(root: root, bin_name: "gunbc")
-}
-
-fn run_clean_tree_compile_typed() -> Bool {
-  let root = git.Inspect.Toplevel()
-  if dcc_gunbc_ready(root: root.path) {
-    let out = shell.Mktemp.Dir()
-    if out.success {
-      let compile = gunbc.WitnessBin.Run(
-        workdir: root.path,
-        bin_path: dcc_gunbc_path(root: root.path),
-        args: dcc_clean_tree_compile_args(out_dir: out.path)
-      )
-      let cleaned = shell.Remove.RecursiveForce(path: out.path)
-      compile.success && cleaned.success
-    } else {
-      false
-    }
-  } else {
-    false
-  }
 }
 
 // The name is unchanged and the return type is not: this used to answer Bool via
@@ -241,10 +217,3 @@ fn run_dag_shell_primary_precedence_receipt() -> Bool {
   )
 }
 
-fn run_dag_compile_clean_gate_shell() -> Bool {
-  run_clean_tree_compile_typed()
-    && run_perturb_optional_skew_red_receipt()
-    && run_perturb_unresolved_import_red_receipt()
-    && run_cross_tree_import_green_receipt()
-    && run_dag_shell_primary_precedence_receipt()
-}
