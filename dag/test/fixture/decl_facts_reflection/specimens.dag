@@ -104,8 +104,6 @@ data planted_plain_string_specimen: String = "hello"
 
 data planted_string_list_specimen: List<String> = ["list-alpha", "list-beta"]
 
-data planted_concat_string_specimen: String = concat("concat-left", "concat-right")
-
 fn uses_param_only(x: Int) -> Int {
   x
 }

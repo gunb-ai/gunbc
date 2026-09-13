@@ -20,6 +20,7 @@ import test.claim.decl_facts_reflection_witness_support {
 }
 import v2.std.decl_facts_skeleton {
   skeleton_contains_authored_string_literal,
+  skeleton_contains_all_authored_string_literals,
   skeleton_authored_string_absent_from_marshal_atom_channel,
 }
 import v2.std.decl_index { DeclFact, decl_facts_at }
@@ -60,7 +61,7 @@ data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflectio
 data unimported_globally_unique_specimen_qn: String = "test.fixture.decl_facts_reflection.unimported_globally_unique_user.unimported_globally_unique_specimen"
 data planted_plain_string_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_plain_string_specimen"
 data planted_string_list_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_string_list_specimen"
-data planted_concat_string_qn: String = "test.fixture.decl_facts_reflection.specimens.planted_concat_string_specimen"
+data planted_concat_string_qn: String = "test.fixture.decl_facts_authored_string_channel.specimens.planted_concat_string_specimen"
 data authored_string_channel_pool_roots: List<String> = ["dag/test/fixture/decl_facts_authored_string_channel"]
 data authored_string_channel_qn: String = "test.fixture.decl_facts_authored_string_channel.specimens.planted_constructor_spelling_string_specimen"
 data scaffold_named_field_bind_qn: String = "test.fixture.decl_facts_reflection.specimens.scaffold_named_field_bind"
@@ -321,11 +322,16 @@ test fn decl_facts_list_string_initializer_carries_authored_lexemes() -> Bool {
 }
 
 test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool {
-  match decl_facts_reflection_fact_node(qn: planted_concat_string_qn) {
-    Present { value: node } =>
-      skeleton_contains_authored_string_literal(node: node, lexeme: "concat-left")
-        && skeleton_contains_authored_string_literal(node: node, lexeme: "concat-right")
-    Absent => false
+  match list_head(xs: decl_facts_at(
+    pool_roots: authored_string_channel_pool_roots,
+    qualified_name: planted_concat_string_qn
+  )) {
+    HeadFound { value: fact } =>
+      skeleton_contains_all_authored_string_literals(
+        node: fact.node,
+        lexemes: ["concat-left", "concat-right"]
+      )
+    HeadAbsent => false
   }
 }
 
