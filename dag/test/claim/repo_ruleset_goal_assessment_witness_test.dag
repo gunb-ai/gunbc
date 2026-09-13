@@ -13,9 +13,9 @@ import extdeps.github.rulesets {
   RulesetBypassActor,
   RulesetActive,
   BranchTarget,
-  MergeQueueRule,
+  PullRequestRule,
   ThisReaderCannotBypass,
-  NoMergeQueueRule,
+  MergeQueueConfigured,
   BypassActorRosterObservation,
 }
 import gunbc.repo_ruleset {
@@ -27,6 +27,8 @@ import gunbc.repo_ruleset {
   desired_ruleset_rule_types,
   desired_ruleset_rules,
   desired_merge_queue_policy,
+  desired_merge_queue_standing,
+  desired_bypass_actors,
   gunbc_merge_queue_proposal,
   gunbc_passing_ci_ruleset_name,
   required_status_check_standing,
@@ -55,12 +57,12 @@ fn fixture_observed(
     include: [default_branch_ref_alias],
     exclude: [],
     rule_types: if rule_types_extra {
-      append(desired_ruleset_rule_types(), items: [MergeQueueRule])
+      append(desired_ruleset_rule_types(), items: [PullRequestRule])
     } else {
       desired_ruleset_rule_types()
     },
     standing: required_status_check_standing(rules: desired_ruleset_rules()),
-    merge_queue: NoMergeQueueRule,
+    merge_queue: desired_merge_queue_standing(),
     bypass_roster: roster,
   }
 }
@@ -133,7 +135,7 @@ test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
     ),
   ) {
     GoalDiverged { deviations: ds } =>
-      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "merge_queue")
+      string_contains(s: render_divergences(ds: non_empty_to_list(xs: ds)), pattern: "pull_request")
     _ => false
   }
 }
@@ -146,7 +148,10 @@ test fn an_undeclared_live_rule_is_a_deviation_that_names_the_rule() -> Bool {
 // the same value. Without this claim every claim above is satisfied by an assessor that refuses
 // everything identically.
 test fn a_clean_observed_ruleset_satisfies_the_goal() -> Bool {
-  match ruleset_assess(goal: desired_repo_ruleset_goal(), observed: observed_clean(roster: BypassRosterObserved { actors: [] })) {
+  match ruleset_assess(
+    goal: desired_repo_ruleset_goal(),
+    observed: observed_clean(roster: BypassRosterObserved { actors: desired_bypass_actors() }),
+  ) {
     GoalSatisfied { evidence: e } => e.writes_applied == 0 && e.removals_applied == 0
     _ => false
   }
@@ -200,7 +205,7 @@ test fn a_self_consistent_merge_queue_desire_contributes_no_unknown() -> Bool {
 test fn RED_a_signed_policy_the_projection_does_not_carry_is_an_unknown_on_that_dimension() -> Bool {
   let us = merge_queue_desire_unknowns(
     policy: Present { value: gunbc_merge_queue_proposal },
-    rules: desired_ruleset_rules(),
+    rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
   )
   length(us) == 1
     && string_contains(s: render_unknowns(us: us), pattern: "WHICH ONE IS THE DESIRE is undetermined")
