@@ -502,8 +502,49 @@ fn observed_digest_value(ctx: &v1_interpreter::InterpContext, hex: &str) -> Resu
     )
 }
 
+fn cargo_profile_from_argv(argv: &[String]) -> Result<String, String> {
+    let mut observed: Option<String> = None;
+    let mut words = argv.iter();
+    while let Some(word) = words.next() {
+        let next_profile = if word == "--release" {
+            Some("release".to_string())
+        } else if let Some(name) = word.strip_prefix("--profile=") {
+            if name.is_empty() || name.starts_with('-') {
+                return Err(
+                    "stored cargo argv has --profile= with no observed profile name".to_string(),
+                );
+            }
+            Some(name.to_string())
+        } else if word == "--profile" {
+            match words.next() {
+                Some(name) if !name.is_empty() && !name.starts_with('-') => Some(name.clone()),
+                _ => {
+                    return Err(
+                        "stored cargo argv has --profile with no observed profile name".to_string(),
+                    )
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(profile) = next_profile {
+            if observed.is_some() {
+                return Err(
+                    "stored cargo argv names more than one cargo profile; the axis cannot choose"
+                        .to_string(),
+                );
+            }
+            observed = Some(profile);
+        }
+    }
+    observed.ok_or_else(|| {
+        "stored cargo argv does not name a cargo profile (--release or --profile)".to_string()
+    })
+}
+
 fn named_build_configuration_hash(
     ctx: &v1_interpreter::InterpContext,
+    cargo_profile: &str,
     remap_from: &str,
     remap_to: &str,
 ) -> Result<Value, String> {
@@ -518,7 +559,7 @@ fn named_build_configuration_hash(
     let config = Value::Record {
         type_name: ctx.sym("NamedBuildConfiguration"),
         fields: Rc::new(vec![
-            (ctx.sym("cargo_profile"), str_value("release")),
+            (ctx.sym("cargo_profile"), str_value(cargo_profile)),
             (ctx.sym("remapping"), remapping),
         ]),
     };
@@ -545,6 +586,10 @@ fn native_generation_from_store(
         .ok_or_else(|| unverified("build-path remap_from was not stored"))?;
     let remap_to = read_ancestry_text(&ancestry_remap_to_path(workspace))
         .ok_or_else(|| unverified("build-path remap_to was not stored"))?;
+    let cargo_argv = read_ancestry_lines(&ancestry_build_argv_path(workspace))
+        .map_err(|_| unverified("build cargo argv was not stored"))?;
+    let cargo_profile =
+        cargo_profile_from_argv(&cargo_argv).map_err(|detail| unverified(&detail))?;
     let seed_hex = read_ancestry_text(&ancestry_seed_binary_path(workspace))
         .ok_or_else(|| unverified("GenesisFromSeed.seed_binary was not stored"))?;
     let generation_paths = read_ancestry_lines(&ancestry_generation_closure_path(workspace))
@@ -576,7 +621,7 @@ fn native_generation_from_store(
             ),
             (
                 Some("build_configuration".to_string()),
-                named_build_configuration_hash(ctx, &remap_from, &remap_to)?,
+                named_build_configuration_hash(ctx, &cargo_profile, &remap_from, &remap_to)?,
             ),
             (
                 Some("materialized_artifact".to_string()),
@@ -1816,5 +1861,41 @@ mod tests {
         refuse_if_genesis_already_executed(&empty).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&empty);
+    }
+
+    #[test]
+    fn cargo_profile_is_observed_from_stored_argv() {
+        let release = cargo_profile_from_argv(&[
+            "cargo".into(),
+            "build".into(),
+            "--release".into(),
+            "--manifest-path".into(),
+            "Cargo.toml".into(),
+        ])
+        .expect("--release names the release profile");
+        assert_eq!(release, "release");
+        let named = cargo_profile_from_argv(&[
+            "cargo".into(),
+            "build".into(),
+            "--profile".into(),
+            "dev".into(),
+        ])
+        .expect("--profile names the observed profile");
+        assert_eq!(named, "dev");
+        assert!(
+            cargo_profile_from_argv(&["cargo".into(), "build".into()]).is_err(),
+            "an argv with no profile flag must not mint a profile"
+        );
+        assert!(
+            cargo_profile_from_argv(&[
+                "cargo".into(),
+                "build".into(),
+                "--release".into(),
+                "--profile".into(),
+                "dev".into()
+            ])
+            .is_err(),
+            "two profile observations must refuse rather than pick one"
+        );
     }
 }

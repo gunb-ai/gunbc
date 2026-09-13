@@ -453,7 +453,10 @@ fn build_path_treatment_digest(treatment: BuildPathTreatment) -> Hash {
   match treatment {
     BuildPathRemapped { remap_prefix_from: from, remap_prefix_to: to } =>
       combine_hash(
-        a: symbol_identity_digest(sym: from),
+        a: combine_hash(
+          a: symbol_identity_digest(sym: ^build_path_remapped),
+          b: symbol_identity_digest(sym: from)
+        ),
         b: symbol_identity_digest(sym: to)
       )
     BuildPathPinned { directory: d } =>

@@ -48,6 +48,7 @@ import v2.compiler.self_host.generation {
   GenerationIdentity,
   NamedBuildConfiguration,
   build_configuration_axis_digest,
+  build_path_treatment_digest,
   compiler_artifact_identity,
   generation_identity_agrees,
   observed_artifact_digest
@@ -266,6 +267,19 @@ test fn remapping_is_part_of_build_configuration_identity() -> Bool {
     }
   )
   unspecified != remapped && remapped != remapped_elsewhere
+}
+
+test fn remapped_and_pinned_do_not_share_build_path_digest() -> Bool {
+  let remapped = build_path_treatment_digest(
+    treatment: BuildPathRemapped {
+      remap_prefix_from: "build_path_pinned",
+      remap_prefix_to: "/build/dir"
+    }
+  )
+  let pinned = build_path_treatment_digest(
+    treatment: BuildPathPinned { directory: "/build/dir" }
+  )
+  remapped != pinned
 }
 
 test fn admitted_native_closure_is_old_route_absent_by_construction() -> Bool {
