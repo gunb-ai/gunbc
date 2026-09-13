@@ -1,0 +1,109 @@
+module extdeps.ci_runner.buildkite
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { MoneyPerMinute, hardware_thread_count, money_amount_micro }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.currency.currency { Usd }
+import extdeps.ci_runner.types {
+  ArmSiliconUnread,
+  ArmUsdPerVcpuMinute,
+  CapacityChannelUnread,
+  CatalogSnapshot,
+  EntitlementUnstated,
+  label_catalog_of_shapes,
+  QuotedWithoutBasis,
+  RunnerCatalogAvailability,
+  RunnerLabelCatalog,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "buildkite.com/docs/agent/buildkite-hosted/linux",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.buildkite",
+      decl_name: "buildkite_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "buildkite.com/pricing" },
+    },
+  ],
+}
+
+data buildkite_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data buildkite_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.buildkite",
+  decl_name: "buildkite_catalog_authority",
+)
+
+fn buildkite_arm_shape(label: NonEmptyStr, vcpus: Nat, quoted_numeral: Nat) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: buildkite_provider_identity,
+    label: label,
+    architecture: Aarch64,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+  }
+}
+
+data buildkite_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    buildkite_arm_shape(label: "LINUX_ARM64_2X4", vcpus: 2, quoted_numeral: 4),
+    buildkite_arm_shape(label: "LINUX_ARM64_4X16", vcpus: 4, quoted_numeral: 16),
+    buildkite_arm_shape(label: "LINUX_ARM64_8X32", vcpus: 8, quoted_numeral: 32),
+    buildkite_arm_shape(label: "LINUX_ARM64_16X64", vcpus: 16, quoted_numeral: 64),
+    buildkite_arm_shape(label: "LINUX_ARM64_32X128", vcpus: 32, quoted_numeral: 128),
+    buildkite_arm_shape(label: "LINUX_ARM64_64X256", vcpus: 64, quoted_numeral: 256),
+  ],
+}
+
+data buildkite_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Buildkite hosted Linux ARM64 instance shapes from buildkite.com/docs/agent/buildkite-hosted/linux. ARM64 is Enterprise-plan on request. AMD64 and Mac hosted agents are not modelled here.",
+}
+
+data buildkite_instance_shape_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.buildkite",
+  decl_name: "buildkite_instance_shape_surface",
+)
+
+data buildkite_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.buildkite", decl_name: "buildkite_label_catalog"),
+  provider: buildkite_provider_identity,
+  selection_surface: buildkite_instance_shape_surface,
+  snapshot: buildkite_catalog_snapshot,
+  availability: buildkite_runner_catalog,
+)
+
+data buildkite_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: buildkite_provider_identity,
+  snapshot: buildkite_catalog_snapshot,
+  shapes: buildkite_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: ArmUsdPerVcpuMinute {
+    per_vcpu_minute: MoneyPerMinute {
+      amount: money_amount_micro(count: 4000),
+      currency: Usd,
+    },
+  },
+}

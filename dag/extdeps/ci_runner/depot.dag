@@ -2,11 +2,14 @@ module extdeps.ci_runner.depot
 
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { hardware_thread_count }
+import std.measure { MoneyPerMinute, hardware_thread_count, money_amount_micro }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
+  ArmSiliconCitedWords,
+  ArmUsdPerMinute,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
@@ -15,6 +18,8 @@ import extdeps.ci_runner.types {
   RunnerLabelCatalog,
   RunnerShapeRow,
   RunnerShapesCited,
+  ResoldNamedCloud,
+  SellerArmLinuxOffer,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -109,3 +114,20 @@ data depot_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: depot_catalog_snapshot,
   availability: depot_runner_catalog,
 )
+
+// Live-fetched 2026-09-13 from the same runner-types page: Arm runners use Graviton4
+// EC2 instances; the Ubuntu 24.04 arm 2 vCPU row is $0.006/min. That is a resale of
+// AWS ARM, in Depot's own words.
+data depot_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: depot_provider_identity,
+  snapshot: depot_catalog_snapshot,
+  shapes: depot_runner_catalog,
+  silicon: ArmSiliconCitedWords { quoted_family: "Graviton4 EC2" },
+  capacity: ResoldNamedCloud { vendor_words: "Graviton4 EC2 instances" },
+  list_price: ArmUsdPerMinute {
+    per_minute: MoneyPerMinute {
+      amount: money_amount_micro(count: 6000),
+      currency: Usd,
+    },
+  },
+}

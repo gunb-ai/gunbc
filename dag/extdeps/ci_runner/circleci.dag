@@ -6,6 +6,9 @@ import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
+  ArmCreditsPerMinute,
+  ArmSiliconUnread,
+  CapacityChannelUnread,
   CatalogSnapshot,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
@@ -14,6 +17,7 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
+  SellerArmLinuxOffer,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -117,3 +121,17 @@ data circleci_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: circleci_catalog_snapshot,
   availability: circleci_runner_catalog,
 )
+
+// Credit price live-fetched 2026-09-13 from circleci.com/pricing/price-list (dated
+// 2026-08-31 on that page): (Arm) Docker / Remote Docker 2 CPU / 8 GB is 13 credits/min,
+// matching the Docker executor classes this module models. USD is unread: CircleCI
+// sells credits, not a published USD-per-minute ARM rate. Silicon and capacity channel
+// are unread on the configuration-reference and price-list pages.
+data circleci_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: circleci_provider_identity,
+  snapshot: circleci_catalog_snapshot,
+  shapes: circleci_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: ArmCreditsPerMinute { credits: 13 },
+}

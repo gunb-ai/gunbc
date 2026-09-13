@@ -1,0 +1,92 @@
+module gunbc.arm_ci_seller_census
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.ci_runner.types {
+  CustomerAccountNamedCloud,
+  ResoldNamedCloud,
+  SellerArmLinuxOffer,
+  SellerOwnMetalStated,
+  SoftwareOnCustomerHosts,
+  CloudOperatorIsTheSeller,
+  CapacityChannelUnread,
+}
+import extdeps.ci_runner.actuated { actuated_arm_linux_offer }
+import extdeps.ci_runner.aws_codebuild { aws_codebuild_arm_linux_offer }
+import extdeps.ci_runner.blacksmith { blacksmith_arm_linux_offer }
+import extdeps.ci_runner.buildjet { buildjet_arm_linux_offer }
+import extdeps.ci_runner.buildkite { buildkite_arm_linux_offer }
+import extdeps.ci_runner.circleci { circleci_arm_linux_offer }
+import extdeps.ci_runner.cirrus_runners { cirrus_runners_arm_linux_offer }
+import extdeps.ci_runner.depot { depot_arm_linux_offer }
+import extdeps.ci_runner.github_actions { github_actions_arm_linux_offer }
+import extdeps.ci_runner.gitlab { gitlab_arm_linux_offer }
+import extdeps.ci_runner.google_cloud_build { google_cloud_build_arm_linux_offer }
+import extdeps.ci_runner.namespace { namespace_arm_linux_offer }
+import extdeps.ci_runner.runs_on { runs_on_arm_linux_offer }
+import extdeps.ci_runner.semaphore { semaphore_arm_linux_offer }
+import extdeps.ci_runner.sprinters { sprinters_arm_linux_offer }
+import extdeps.ci_runner.warpbuild { warpbuild_arm_linux_offer }
+import extdeps.cloud.ubicloud { ubicloud_arm_linux_offer }
+
+// WHICH ARM LINUX CI SELLERS THIS REPOSITORY HAS READ. Observation layer: DESIGN
+// forbids the extdeps hub from enumerating products. Adding a seller is one module
+// plus one line here.
+
+fn surveyed_arm_linux_offers() -> List<SellerArmLinuxOffer> {
+  [
+    blacksmith_arm_linux_offer,
+    depot_arm_linux_offer,
+    warpbuild_arm_linux_offer,
+    circleci_arm_linux_offer,
+    github_actions_arm_linux_offer,
+    ubicloud_arm_linux_offer,
+    namespace_arm_linux_offer,
+    buildjet_arm_linux_offer,
+    runs_on_arm_linux_offer,
+    actuated_arm_linux_offer,
+    cirrus_runners_arm_linux_offer,
+    buildkite_arm_linux_offer,
+    gitlab_arm_linux_offer,
+    aws_codebuild_arm_linux_offer,
+    sprinters_arm_linux_offer,
+    semaphore_arm_linux_offer,
+    google_cloud_build_arm_linux_offer,
+  ]
+}
+
+fn offer_resells_named_cloud(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.capacity {
+    ResoldNamedCloud { vendor_words: _ } => true
+    CustomerAccountNamedCloud { vendor_words: _ } => false
+    SellerOwnMetalStated => false
+    CloudOperatorIsTheSeller { vendor_words: _ } => false
+    SoftwareOnCustomerHosts => false
+    CapacityChannelUnread => false
+  }
+}
+
+fn offer_launches_customer_cloud(offer: SellerArmLinuxOffer) -> Bool {
+  match offer.capacity {
+    CustomerAccountNamedCloud { vendor_words: _ } => true
+    ResoldNamedCloud { vendor_words: _ } => false
+    SellerOwnMetalStated => false
+    CloudOperatorIsTheSeller { vendor_words: _ } => false
+    SoftwareOnCustomerHosts => false
+    CapacityChannelUnread => false
+  }
+}
+
+fn cloud_arm_reseller_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_resells_named_cloud(offer: o))
+}
+
+fn customer_account_cloud_arm_offers() -> List<SellerArmLinuxOffer> {
+  filter(surveyed_arm_linux_offers(), o => offer_launches_customer_cloud(offer: o))
+}
+
+// Mac/Apple-silicon CI (Bitrise, Codemagic, MacStadium, and macOS rows on
+// otherwise-Linux sellers) is a different market: excluded by scope, not modelled
+// as ARM Linux runner shapes.
+data mac_apple_silicon_ci_excluded_by_scope: NonEmptyStr = "Bitrise, Codemagic, and MacStadium, and macOS/Apple-silicon runner families on mixed sellers, are a different market from Linux aarch64 CI runners and are excluded by scope: no shapes, prices, or silicon rows are modelled for them."
+
+data hetzner_not_a_ci_seller: NonEmptyStr = "extdeps.cloud.hetzner / extdeps.pricing.hetzner_dedicated is ARM SUPPLY, not a CI-runner seller. CAX was not orderable to our account on three dated readings. It is not enrolled as a CI seller offer."

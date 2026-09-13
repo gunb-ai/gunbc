@@ -1,0 +1,121 @@
+module extdeps.ci_runner.namespace
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { MoneyPerMinute, hardware_thread_count, money_amount_micro }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.currency.currency { Usd }
+import extdeps.ci_runner.types {
+  ArmSiliconCitedWords,
+  ArmUsdPerMinute,
+  CapacityChannelUnread,
+  CatalogSnapshot,
+  EntitlementUnstated,
+  label_catalog_of_shapes,
+  QuotedWithoutBasis,
+  RunnerCatalogAvailability,
+  RunnerLabelCatalog,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "namespace.so/docs/architecture/compute/machine-shapes",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.namespace",
+      decl_name: "namespace_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "namespace.so/docs/solutions/github-actions" },
+    },
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "namespace.so/pricing" },
+    },
+  ],
+}
+
+data namespace_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data namespace_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.namespace",
+  decl_name: "namespace_catalog_authority",
+)
+
+// Live-fetched 2026-09-13 from the machine-shapes page. GitHub runs-on labels are
+// customer profile names (namespace-profile-*), so the rows below are the published
+// Linux sizes that page prices identically for AMD64 and ARM64, restricted to
+// the ARM Linux subject. The 1 vCPU / 2 GB row is the unit of the multiplier table.
+fn namespace_arm_shape(label: NonEmptyStr, vcpus: Nat, quoted_numeral: Nat) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: namespace_provider_identity,
+    label: label,
+    architecture: Aarch64,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+  }
+}
+
+data namespace_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    namespace_arm_shape(label: "1 vCPU 2 GB", vcpus: 1, quoted_numeral: 2),
+    namespace_arm_shape(label: "2 vCPU 4 GB", vcpus: 2, quoted_numeral: 4),
+    namespace_arm_shape(label: "2 vCPU 8 GB", vcpus: 2, quoted_numeral: 8),
+    namespace_arm_shape(label: "4 vCPU 8 GB", vcpus: 4, quoted_numeral: 8),
+    namespace_arm_shape(label: "4 vCPU 16 GB", vcpus: 4, quoted_numeral: 16),
+    namespace_arm_shape(label: "8 vCPU 16 GB", vcpus: 8, quoted_numeral: 16),
+    namespace_arm_shape(label: "8 vCPU 32 GB", vcpus: 8, quoted_numeral: 32),
+    namespace_arm_shape(label: "16 vCPU 32 GB", vcpus: 16, quoted_numeral: 32),
+    namespace_arm_shape(label: "16 vCPU 64 GB", vcpus: 16, quoted_numeral: 64),
+    namespace_arm_shape(label: "32 vCPU 64 GB", vcpus: 32, quoted_numeral: 64),
+    namespace_arm_shape(label: "32 vCPU 128 GB", vcpus: 32, quoted_numeral: 128),
+  ],
+}
+
+data namespace_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Linux ARM64 sizes from namespace.so/docs/architecture/compute/machine-shapes (identical prepaid table for AMD64 and ARM64). GitHub profile labels are customer-named and not modelled as a closed roster. High-memory rows above 128 GB and Apple Silicon Linux early-access are not modelled here.",
+}
+
+data namespace_resource_shape_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.namespace",
+  decl_name: "namespace_resource_shape_surface",
+)
+
+data namespace_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.namespace", decl_name: "namespace_label_catalog"),
+  provider: namespace_provider_identity,
+  selection_surface: namespace_resource_shape_surface,
+  snapshot: namespace_catalog_snapshot,
+  availability: namespace_runner_catalog,
+)
+
+data namespace_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: namespace_provider_identity,
+  snapshot: namespace_catalog_snapshot,
+  shapes: namespace_runner_catalog,
+  silicon: ArmSiliconCitedWords { quoted_family: "AmpereOne" },
+  capacity: CapacityChannelUnread,
+  list_price: ArmUsdPerMinute {
+    per_minute: MoneyPerMinute {
+      amount: money_amount_micro(count: 4000),
+      currency: Usd,
+    },
+  },
+}

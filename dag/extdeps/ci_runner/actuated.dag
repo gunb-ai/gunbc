@@ -1,0 +1,63 @@
+module extdeps.ci_runner.actuated
+
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.ci_runner.types {
+  ArmListPriceUnread,
+  ArmSiliconUnread,
+  CatalogSnapshot,
+  RunnerCatalogAvailability,
+  RunnerShapesUnavailable,
+  SellerArmLinuxOffer,
+  SoftwareOnCustomerHosts,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.actuated.dev",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.actuated",
+      decl_name: "actuated_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "docs.actuated.dev/faq" },
+    },
+  ],
+}
+
+data actuated_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data actuated_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.actuated",
+  decl_name: "actuated_catalog_authority",
+)
+
+data actuated_runner_catalog: RunnerCatalogAvailability = RunnerShapesUnavailable {
+  cause: "Actuated (read 2026-09-13) sells Firecracker microVM scheduling on the customer's hosts (bare-metal or nested-virt VMs), not a hosted ARM size catalog. The comparison table states 64-bit Arm support: Yes; hosts may be AWS Metal / Graviton or on-premises.",
+}
+
+data actuated_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "docs.actuated.dev introduction and FAQ. No hosted ARM vCPU/memory table is published; capacity is the subscriber's machines.",
+}
+
+data actuated_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: actuated_provider_identity,
+  snapshot: actuated_catalog_snapshot,
+  shapes: actuated_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: SoftwareOnCustomerHosts,
+  list_price: ArmListPriceUnread,
+}

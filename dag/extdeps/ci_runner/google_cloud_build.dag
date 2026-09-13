@@ -1,0 +1,59 @@
+module extdeps.ci_runner.google_cloud_build
+
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.ci_runner.types {
+  ArmListPriceUnread,
+  ArmSiliconUnread,
+  CapacityChannelUnread,
+  CatalogSnapshot,
+  RunnerCatalogAvailability,
+  RunnerShapesUnavailable,
+  SellerArmLinuxOffer,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/build/docs/api/reference/rest/v1/projects.builds",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.google_cloud_build",
+      decl_name: "google_cloud_build_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data google_cloud_build_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data google_cloud_build_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.google_cloud_build",
+  decl_name: "google_cloud_build_catalog_authority",
+)
+
+data google_cloud_build_runner_catalog: RunnerCatalogAvailability = RunnerShapesUnavailable {
+  cause: "cloud.google.com/build/docs/api/reference/rest/v1/projects.builds MachineType (read 2026-09-13) enumerates E2_HIGHCPU_8 and E2_HIGHCPU_32. No ARM/Axion/C4A Cloud Build hosted SKU is named on that page.",
+}
+
+data google_cloud_build_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Default-pool MachineType enum on the Cloud Build projects.builds reference only. Private-pool C4A/Axion, if offered elsewhere, is unread here.",
+}
+
+data google_cloud_build_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: google_cloud_build_provider_identity,
+  snapshot: google_cloud_build_catalog_snapshot,
+  shapes: google_cloud_build_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: ArmListPriceUnread,
+}

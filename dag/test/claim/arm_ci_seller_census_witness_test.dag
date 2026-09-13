@@ -1,0 +1,183 @@
+module test.claim.arm_ci_seller_census_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types {
+  ArmSiliconUnread,
+  ArmListPriceUnread,
+  CapacityChannelUnread,
+  CatalogSnapshot,
+  EntitlementUnstated,
+  QuotedWithoutBasis,
+  RunnerCatalogAvailability,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+  aarch64_rows_missing_cited_label,
+  aarch64_shape_rows,
+  runner_shape_rows,
+}
+import extdeps.ci_runner.blacksmith { blacksmith_arm_linux_offer, blacksmith_catalog_snapshot }
+import extdeps.ci_runner.depot { depot_arm_linux_offer }
+import extdeps.ci_runner.warpbuild { warpbuild_arm_linux_offer }
+import extdeps.ci_runner.circleci { circleci_arm_linux_offer }
+import extdeps.ci_runner.github_actions { github_actions_arm_linux_offer }
+import extdeps.ci_runner.namespace { namespace_arm_linux_offer }
+import extdeps.ci_runner.buildjet { buildjet_arm_linux_offer }
+import extdeps.ci_runner.runs_on { runs_on_arm_linux_offer }
+import extdeps.ci_runner.actuated { actuated_arm_linux_offer }
+import extdeps.ci_runner.cirrus_runners { cirrus_runners_arm_linux_offer }
+import extdeps.ci_runner.buildkite { buildkite_arm_linux_offer }
+import extdeps.ci_runner.gitlab { gitlab_arm_linux_offer }
+import extdeps.ci_runner.aws_codebuild { aws_codebuild_arm_linux_offer }
+import extdeps.ci_runner.sprinters { sprinters_arm_linux_offer }
+import extdeps.ci_runner.semaphore { semaphore_arm_linux_offer }
+import extdeps.ci_runner.google_cloud_build { google_cloud_build_arm_linux_offer }
+import extdeps.cloud.ubicloud { ubicloud_arm_linux_offer }
+import gunbc.arm_ci_seller_census {
+  cloud_arm_reseller_offers,
+  customer_account_cloud_arm_offers,
+  hetzner_not_a_ci_seller,
+  mac_apple_silicon_ci_excluded_by_scope,
+  surveyed_arm_linux_offers,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn offer_scope_nonempty(offer: SellerArmLinuxOffer) -> Bool {
+  string_length(s: offer.snapshot.declared_scope) > 0
+}
+
+fn every_aarch64_row_has_cited_label(offer: SellerArmLinuxOffer) -> Bool {
+  let rows = aarch64_shape_rows(availability: offer.shapes)
+  let cited = map(rows, r => r.label)
+  count(aarch64_rows_missing_cited_label(availability: offer.shapes, cited_labels: cited)) == 0
+}
+
+test fn surveyed_arm_linux_offers_are_seventeen() -> Bool {
+  count(surveyed_arm_linux_offers()) == 17
+}
+
+test fn every_surveyed_offer_declares_scope() -> Bool {
+  all(surveyed_arm_linux_offers(), o => offer_scope_nonempty(offer: o))
+}
+
+test fn every_surveyed_aarch64_shape_carries_a_cited_label() -> Bool {
+  all(surveyed_arm_linux_offers(), o => every_aarch64_row_has_cited_label(offer: o))
+}
+
+test fn blacksmith_snapshot_declares_scope() -> Bool {
+  string_length(s: blacksmith_catalog_snapshot.declared_scope) > 0
+    && offer_scope_nonempty(offer: blacksmith_arm_linux_offer)
+}
+
+test fn depot_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: depot_arm_linux_offer)
+}
+
+test fn warpbuild_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: warpbuild_arm_linux_offer)
+}
+
+test fn circleci_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: circleci_arm_linux_offer)
+}
+
+test fn github_actions_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: github_actions_arm_linux_offer)
+}
+
+test fn ubicloud_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: ubicloud_arm_linux_offer)
+}
+
+test fn namespace_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: namespace_arm_linux_offer)
+}
+
+test fn buildjet_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: buildjet_arm_linux_offer)
+}
+
+test fn runs_on_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: runs_on_arm_linux_offer)
+}
+
+test fn actuated_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: actuated_arm_linux_offer)
+}
+
+test fn cirrus_runners_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: cirrus_runners_arm_linux_offer)
+}
+
+test fn buildkite_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: buildkite_arm_linux_offer)
+}
+
+test fn gitlab_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: gitlab_arm_linux_offer)
+}
+
+test fn aws_codebuild_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: aws_codebuild_arm_linux_offer)
+}
+
+test fn sprinters_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: sprinters_arm_linux_offer)
+}
+
+test fn semaphore_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: semaphore_arm_linux_offer)
+}
+
+test fn google_cloud_build_offer_is_surveyed() -> Bool {
+  offer_scope_nonempty(offer: google_cloud_build_arm_linux_offer)
+}
+
+test fn wholesale_join_names_github_depot_and_gitlab() -> Bool {
+  count(cloud_arm_reseller_offers()) == 3
+}
+
+test fn customer_account_cloud_join_names_runs_on_and_sprinters() -> Bool {
+  count(customer_account_cloud_arm_offers()) == 2
+}
+
+test fn mac_market_is_excluded_by_scope() -> Bool {
+  string_length(s: mac_apple_silicon_ci_excluded_by_scope) > 0
+}
+
+test fn hetzner_is_named_as_supply_not_ci_seller() -> Bool {
+  string_length(s: hetzner_not_a_ci_seller) > 0
+}
+
+data rogue_provider: DeclarationRef = decl_ref(
+  module_path: "test.claim.arm_ci_seller_census_witness",
+  decl_name: "rogue_provider",
+)
+
+data rogue_aarch64_without_cited_label: RunnerShapeRow = RunnerShapeRow {
+  provider: rogue_provider,
+  label: "uncited-arm",
+  architecture: Aarch64,
+  entitlement: EntitlementUnstated,
+  vcpus: hardware_thread_count(2),
+  memory: QuotedWithoutBasis { numeral: 8, unit_label: "GB" },
+}
+
+data rogue_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [rogue_aarch64_without_cited_label],
+}
+
+test fn a_row_claiming_aarch64_without_a_cited_label_is_red() -> Bool {
+  count(
+    aarch64_rows_missing_cited_label(
+      availability: rogue_catalog,
+      cited_labels: ["blacksmith-2vcpu-ubuntu-2404-arm"],
+    ),
+  ) == 1
+}

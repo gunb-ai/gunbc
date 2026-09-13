@@ -2,11 +2,14 @@ module extdeps.ci_runner.github_actions
 
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { hardware_thread_count }
+import std.measure { MoneyPerMinute, hardware_thread_count, money_amount_micro }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
+  ArmSiliconCitedWords,
+  ArmUsdPerMinute,
   CatalogSnapshot,
   EntitlementUnstated,
   label_catalog_of_shapes,
@@ -15,6 +18,8 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
+  ResoldNamedCloud,
+  SellerArmLinuxOffer,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -112,3 +117,24 @@ data github_actions_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: github_actions_catalog_snapshot,
   availability: github_actions_runner_catalog,
 )
+
+// Linux 2-core arm64 larger-runner rate live-fetched 2026-09-13 from
+// docs.github.com/en/billing/reference/actions-runner-pricing: $0.005/min
+// (SKU actions_linux_arm / linux_2_core_arm). Silicon: the 2025-01-16 changelog
+// names Cobalt 100-based processors for the 4 vCPU public ubuntu-*-arm runners;
+// that sentence is not a SKU for the larger-runner table, so the quoted family is
+// carried as GitHub's words rather than projected onto every size. Capacity:
+// GitHub names Microsoft Azure's Arm VMs in that changelog.
+data github_actions_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: github_actions_provider_identity,
+  snapshot: github_actions_catalog_snapshot,
+  shapes: github_actions_runner_catalog,
+  silicon: ArmSiliconCitedWords { quoted_family: "Cobalt 100-based processors" },
+  capacity: ResoldNamedCloud { vendor_words: "Microsoft Azure Arm VMs" },
+  list_price: ArmUsdPerMinute {
+    per_minute: MoneyPerMinute {
+      amount: money_amount_micro(count: 5000),
+      currency: Usd,
+    },
+  },
+}

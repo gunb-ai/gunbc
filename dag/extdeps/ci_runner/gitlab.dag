@@ -1,0 +1,100 @@
+module extdeps.ci_runner.gitlab
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types {
+  ArmListPriceUnread,
+  ArmSiliconUnread,
+  CatalogSnapshot,
+  EntitlementUnstated,
+  label_catalog_of_shapes,
+  QuotedWithoutBasis,
+  ResoldNamedCloud,
+  RunnerCatalogAvailability,
+  RunnerLabelCatalog,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.gitlab.com/ci/runners/hosted_runners/linux",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.gitlab",
+      decl_name: "gitlab_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "docs.gitlab.com/ci/pipelines/compute_minutes" },
+    },
+  ],
+}
+
+data gitlab_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data gitlab_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.gitlab",
+  decl_name: "gitlab_catalog_authority",
+)
+
+fn gitlab_arm_shape(label: NonEmptyStr, vcpus: Nat, quoted_numeral: Nat) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: gitlab_provider_identity,
+    label: label,
+    architecture: Aarch64,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+  }
+}
+
+data gitlab_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    gitlab_arm_shape(label: "saas-linux-small-arm64", vcpus: 2, quoted_numeral: 8),
+    gitlab_arm_shape(label: "saas-linux-medium-arm64", vcpus: 4, quoted_numeral: 16),
+    gitlab_arm_shape(label: "saas-linux-large-arm64", vcpus: 8, quoted_numeral: 32),
+  ],
+}
+
+data gitlab_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "GitLab.com hosted Linux Arm64 tags from docs.gitlab.com/ci/runners/hosted_runners/linux. medium/large are Premium and Ultimate only. x86-64, Windows and macOS hosted runners are not modelled here.",
+}
+
+data gitlab_tags_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.gitlab",
+  decl_name: "gitlab_tags_surface",
+)
+
+data gitlab_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.gitlab", decl_name: "gitlab_label_catalog"),
+  provider: gitlab_provider_identity,
+  selection_surface: gitlab_tags_surface,
+  snapshot: gitlab_catalog_snapshot,
+  availability: gitlab_runner_catalog,
+)
+
+data gitlab_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: gitlab_provider_identity,
+  snapshot: gitlab_catalog_snapshot,
+  shapes: gitlab_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: ResoldNamedCloud { vendor_words: "Google Cloud Compute Engine" },
+  list_price: ArmListPriceUnread,
+}

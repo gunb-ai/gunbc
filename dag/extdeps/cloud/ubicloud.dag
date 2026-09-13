@@ -6,14 +6,19 @@ import extdeps.toolchain.types { Architecture }
 import std.measure {
   ByteSize,
   HardwareThreadCount,
+  MoneyPerMinute,
   byte_size,
   byte_size_count,
   gigabyte,
   hardware_thread_count,
+  money_amount_micro,
 }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
+  ArmSiliconCitedSku,
+  ArmUsdPerMinute,
   CatalogSnapshot,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
@@ -24,6 +29,8 @@ import extdeps.ci_runner.types {
   QuotedDecimalGigabytes,
   RunnerShapeRow,
   RunnerShapesCited,
+  CapacityChannelUnread,
+  SellerArmLinuxOffer,
   SmtSharedVcpu,
 }
 import std.types { List, NonEmptyStr, String }
@@ -289,3 +296,27 @@ data ubicloud_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: ubicloud_catalog_snapshot,
   availability: ubicloud_runner_catalog_shapes,
 )
+
+data ubicloud_q8030_sku_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cpu.ampere",
+  decl_name: "altra_q8030_catalog",
+  field: WholeDeclaration,
+}
+
+// ARM standard-2 list price is owned by extdeps.pricing.ubicloud (1250 micros/min,
+// 2026-08-22 read). Silicon is the runner-types page's Ampere Altra Q80-30, already
+// a catalog row. Capacity channel unread: that page names the SKU, not whether the
+// metal is Ubicloud-owned or resold.
+data ubicloud_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: ubicloud_provider_identity,
+  snapshot: ubicloud_catalog_snapshot,
+  shapes: ubicloud_runner_catalog_shapes,
+  silicon: ArmSiliconCitedSku { cpu: ubicloud_q8030_sku_ref },
+  capacity: CapacityChannelUnread,
+  list_price: ArmUsdPerMinute {
+    per_minute: MoneyPerMinute {
+      amount: money_amount_micro(count: 1250),
+      currency: Usd,
+    },
+  },
+}

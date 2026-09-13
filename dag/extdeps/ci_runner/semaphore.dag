@@ -1,0 +1,102 @@
+module extdeps.ci_runner.semaphore
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types {
+  ArmListPriceUnread,
+  ArmSiliconCitedSku,
+  CatalogSnapshot,
+  CapacityChannelUnread,
+  EntitlementUnstated,
+  label_catalog_of_shapes,
+  QuotedWithoutBasis,
+  RunnerCatalogAvailability,
+  RunnerLabelCatalog,
+  RunnerShapeRow,
+  RunnerShapesCited,
+  SellerArmLinuxOffer,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.semaphore.io/reference/machine-types",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.semaphore",
+      decl_name: "semaphore_runner_catalog",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data semaphore_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data semaphore_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.semaphore",
+  decl_name: "semaphore_catalog_authority",
+)
+
+fn semaphore_arm_shape(label: NonEmptyStr, vcpus: Nat, quoted_numeral: Nat) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: semaphore_provider_identity,
+    label: label,
+    architecture: Aarch64,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+  }
+}
+
+data semaphore_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    semaphore_arm_shape(label: "r1-standard-2", vcpus: 2, quoted_numeral: 4),
+    semaphore_arm_shape(label: "r1-standard-4", vcpus: 4, quoted_numeral: 8),
+    semaphore_arm_shape(label: "r1-standard-8", vcpus: 8, quoted_numeral: 16),
+  ],
+}
+
+data semaphore_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Semaphore Cloud R1 ARM machine types from docs.semaphore.io/reference/machine-types. The page states CPU: emulated ARM on Ampere Altra Q80-30. F1/E1/E2 x86 and Apple a2 types are not modelled here.",
+}
+
+data semaphore_machine_type_surface: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.semaphore",
+  decl_name: "semaphore_machine_type_surface",
+)
+
+data semaphore_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
+  catalog: decl_ref(module_path: "extdeps.ci_runner.semaphore", decl_name: "semaphore_label_catalog"),
+  provider: semaphore_provider_identity,
+  selection_surface: semaphore_machine_type_surface,
+  snapshot: semaphore_catalog_snapshot,
+  availability: semaphore_runner_catalog,
+)
+
+data semaphore_q8030_sku_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cpu.ampere",
+  decl_name: "altra_q8030_catalog",
+  field: WholeDeclaration,
+}
+
+data semaphore_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: semaphore_provider_identity,
+  snapshot: semaphore_catalog_snapshot,
+  shapes: semaphore_runner_catalog,
+  silicon: ArmSiliconCitedSku { cpu: semaphore_q8030_sku_ref },
+  capacity: CapacityChannelUnread,
+  list_price: ArmListPriceUnread,
+}

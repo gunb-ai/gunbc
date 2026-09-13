@@ -2,11 +2,15 @@ module extdeps.ci_runner.warpbuild
 
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { hardware_thread_count }
+import std.measure { MoneyPerMinute, hardware_thread_count, money_amount_micro }
 import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.github.actions { github_actions_runs_on_surface }
+import extdeps.currency.currency { Usd }
 import extdeps.ci_runner.types {
+  ArmSiliconUnread,
+  ArmUsdPerMinute,
+  CapacityChannelUnread,
   CatalogSnapshot,
   label_catalog_of_shapes,
   RunnerLabelCatalog,
@@ -15,6 +19,7 @@ import extdeps.ci_runner.types {
   QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
+  SellerArmLinuxOffer,
 }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -68,7 +73,7 @@ fn warpbuild_shape(
 
 data warpbuild_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
   rows: [
-    warpbuild_shape(label: "warp-ubuntu-latest-arm64-2x", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-2x", architecture: Aarch64, vcpus: 2, quoted_numeral: 7),
     warpbuild_shape(label: "warp-ubuntu-latest-arm64-4x", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
     warpbuild_shape(label: "warp-ubuntu-latest-arm64-8x", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
     warpbuild_shape(label: "warp-ubuntu-latest-arm64-16x", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
@@ -85,8 +90,8 @@ data warpbuild_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
 // fetch time and the declared scope both have to be carried: a consumer that meets a label this
 // catalog lacks must be able to tell a finding about the observed repository from a gap in ours.
 data warpbuild_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
-  fetched_at: "2026-08-18T00:00:00Z",
-  declared_scope: "Linux ubuntu-latest cloud-runner families only, both architectures, from the cloud-runners documentation cited above. Any other family that documentation publishes is absent from this catalog because this repository has not read it.",
+  fetched_at: "2026-09-13T00:00:00Z",
+  declared_scope: "Linux ubuntu-latest cloud-runner families only, both architectures, from the cloud-runners documentation cited above, re-read 2026-09-13. The ARM 2x memory figure on that page is 7 GB. Any other family that documentation publishes is absent from this catalog because this repository has not read it.",
 }
 
 data warpbuild_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
@@ -96,3 +101,20 @@ data warpbuild_label_catalog: RunnerLabelCatalog = label_catalog_of_shapes(
   snapshot: warpbuild_catalog_snapshot,
   availability: warpbuild_runner_catalog,
 )
+
+// Hosted ARM 2x list price live-fetched 2026-09-13 from the same cloud-runners table:
+// $0.003/min. Silicon and wholesale channel for the HOSTED fleet are unread: BYOC
+// docs name AWS/GCP/Azure for customer-account runners, which is a different product.
+data warpbuild_arm_linux_offer: SellerArmLinuxOffer = SellerArmLinuxOffer {
+  provider: warpbuild_provider_identity,
+  snapshot: warpbuild_catalog_snapshot,
+  shapes: warpbuild_runner_catalog,
+  silicon: ArmSiliconUnread,
+  capacity: CapacityChannelUnread,
+  list_price: ArmUsdPerMinute {
+    per_minute: MoneyPerMinute {
+      amount: money_amount_micro(count: 3000),
+      currency: Usd,
+    },
+  },
+}
