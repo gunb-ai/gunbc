@@ -272,7 +272,7 @@ test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
-      fold([true, false], init: true, f: (ok, failed) => ok && match mtcollins_training_mixture_finding(expected_byte: 145,
+      fold([true, false], init: true, f: (ok, failed) => ok && match mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 145,
         attempt: "control", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: memory_test_broken_collector(fixture_roles: fixture_roles, failed: failed)) {
           ObservationRefused { cause } => !failed || contains(cause as String, "controlled collector failure")
           ObservationEstablished { observed: _ } => false
@@ -354,7 +354,7 @@ test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
         Present { value: cause } => contains(cause as String, "repeated capture digest") && contains(cause as String, "required stimulus interval")
         Absent => false
       }
-      explained && match mtcollins_training_mixture_finding(expected_byte: 145, attempt: "control",
+      explained && match mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 145, attempt: "control",
         configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: repeated) {
           ObservationEstablished { observed: _ } => true
           ObservationRefused { cause: _ } => false
@@ -589,7 +589,7 @@ test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool {
         expected_stimulus: c.expected_stimulus, observed_stimulus: c.observed_stimulus,
         coverage: c.coverage, process_exit: c.process_exit, payload: c.payload,
         capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
-      match mtcollins_training_mixture_finding(expected_byte: 145, attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: unbound) {
+      match mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 145, attempt: "missing token binding", configuration: mtcollins_witnessed_configuration(roles: fixture_roles), collector: unbound) {
         ObservationRefused { cause } => contains(cause as String, "binding")
         ObservationEstablished { observed: _ } => false
       }
@@ -708,7 +708,7 @@ test fn w_collector_format_belongs_to_observing_producer() -> Bool {
         }
         ok && match memory_collector_refusal(c: collector) { Absent => true, Present { value: _ } => false }
           && memory_capture_covers_population(configuration: configuration, collector: collector) == complete
-          && match mtcollins_training_mixture_finding(expected_byte: 145, attempt: "alternate-format control", configuration: configuration, collector: collector) {
+          && match mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 145, attempt: "alternate-format control", configuration: configuration, collector: collector) {
             ObservationRefused { cause: _ } => true
             ObservationEstablished { observed: _ } => false
           }

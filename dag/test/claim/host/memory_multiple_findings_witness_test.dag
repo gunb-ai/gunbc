@@ -83,6 +83,25 @@ fn multiple_test_satisfies(a: MemoryConfigurationAssessment, obligation: MemoryO
   any(a.results, r => r.obligation == obligation && match r.assessment { GoalSatisfied { evidence: _ } => true, _ => false })
 }
 
+// A reported byte must match the same transcript token that admits the finding.
+// The second capture has Samsung at the mismatch coordinate, independently of
+// the first capture's Hynix package observation.
+test fn w_actual_byte_must_match_cited_capture() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles } => {
+      let configuration = mtcollins_3ds_configuration(roles: roles)
+      let cycle = multiple_test_cycle(configuration: configuration)
+      let collector = mtcollins_3ds_collector(configuration: configuration, payload: concat(cycle, cycle))
+      all([0, 1], actual => match mtcollins_training_mixture_finding(actual_byte: actual, expected_byte: 178,
+        attempt: "controlled actual-byte recognition", configuration: configuration, collector: collector) {
+        ObservationEstablished { observed } => actual == 0 && observed.actual_byte == 0 && observed.expected_byte == 178
+        ObservationRefused { cause: _ } => actual == 1
+      })
+    }
+  }
+}
+
 test fn w_both_observations_survive_with_distinct_values_and_sources() -> Bool {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
@@ -204,7 +223,7 @@ test fn w_each_captured_cycle_must_cover_the_whole_claimed_inventory() -> Bool {
       let configuration = mtcollins_3ds_configuration(roles: roles)
       let partial = concat(multiple_test_cycle(configuration: configuration),
         "NOTICE:  DRAM FW version 210525\nDRAM populated DIMMs:\nERROR:   Non-identical DIMM mixture NOT supported!\n")
-      match mtcollins_training_mixture_finding(expected_byte: 178, attempt: "controlled partial second cycle", configuration: configuration,
+      match mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 178, attempt: "controlled partial second cycle", configuration: configuration,
         collector: mtcollins_3ds_collector(configuration: configuration, payload: partial)) {
         ObservationRefused { cause: _ } => true
         ObservationEstablished { observed: _ } => false
@@ -219,7 +238,7 @@ test fn w_one_cycle_or_banner_only_cannot_claim_two_complete_stimuli() -> Bool {
     PopulationRolesResolved { roles } => {
       let configuration = mtcollins_3ds_configuration(roles: roles)
       all([multiple_test_cycle(configuration: configuration), "[SOL Session operational]\n[SOL Session operational]\n"], payload =>
-        match mtcollins_training_mixture_finding(expected_byte: 178, attempt: "controlled insufficient stimuli", configuration: configuration,
+        match mtcollins_training_mixture_finding(actual_byte: 0, expected_byte: 178, attempt: "controlled insufficient stimuli", configuration: configuration,
           collector: mtcollins_3ds_collector(configuration: configuration, payload: payload)) {
           ObservationRefused { cause: _ } => true
           ObservationEstablished { observed: _ } => false

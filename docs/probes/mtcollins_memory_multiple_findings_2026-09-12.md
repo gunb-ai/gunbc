@@ -24,7 +24,7 @@ gunbc run --source-root dag --source-root src/v2 \
   --function assess_mtcollins_two_configurations
 ```
 
-The committed-file replay verified both hashes and exited 1 with the expected production-admission refusal. It retained expected values 145 and 178 with their separate sources and coverage, located found 0 at J9/MCU4, reported the independent per-socket capacity violation (68719476736 versus 17179869184 bytes), and left the Samsung catalog binding unresolved. No hardware action occurred.
+`assess_mtcollins_two_configurations` re-derives the hash-verified production-admission refusals, distinct observed byte pairs and sources, located mismatch, independent per-socket capacity conflict, and unresolved Samsung catalog binding. This is a read-only replay; it performs no hardware action.
 
 The controls live in `dag/test/claim/host/memory_multiple_findings_witness_test.dag`, with the original assessment, fulfillment and selection controls in their sibling witness modules. They cover both known pairs, an unobserved pair, order and duplicate findings, missing/failed observations, every-cycle inventory coverage, firmware and socket applicability, unbound identity, independent capacity, and the real production fulfillment refusal. For example, dispatch the identity-join and production-consumer controls through the existing instrument:
 
