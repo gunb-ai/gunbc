@@ -66,14 +66,29 @@ type CompilerEntryDriver
   | DirectIngestDriver
   | SourceRootEvalDriver
 
-// MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED (SUCC3,
-// 2026-09-12). The per-module loop closed its prepare span and then let the module's resolved tree
-// fall out of scope at the end of the iteration, so freeing it was paid inside parent_span and
-// covered by no row: the full corpus refused at RemainderExceedsTolerance with a 238.5 ms residual
-// while the reduced subject, whose modules almost all refuse before a tree is built, reconciled at
-// 1.5 ms. The row is MEASURED around an explicit release, never derived as parent minus the others
-// -- a row defined as the remainder forces the residual to zero and makes the tolerance arm
-// unfireable, which is the defect this partition exists to catch.
+// MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED. The per-module
+// loop closed its prepare span and then let the module's resolved tree fall out of scope at the end
+// of the iteration, so freeing it was paid inside parent_span and covered by no row.
+//
+// WHAT THIS ROW DOES NOT EXPLAIN, CORRECTED BY MEASUREMENT. An earlier version of this paragraph
+// said the full corpus's residual WAS this release cost. That was a hypothesis written as history
+// and it is false: measured on the full corpus, module_release is 1.9 ms while the residual stood
+// at 244.8 ms, and a third fold measured 1.86 ms against 238.8 ms. The row is real, measured and
+// non-overlapping, and it accounts for roughly one part in a hundred of what was unattributed. The
+// span that does account for it is relay_emit below. A row placed around the wrong span leaves the
+// residual intact while the class reads as repaired, which is why the correction is recorded here
+// rather than quietly replaced.
+//
+// RELAY EMIT IS THE PER-MODULE RECEIPT LINE, and it was outside every span. The loop prints one
+// [native-prepare-split] line per unique module to stderr, which the host runner drains through a
+// pipe, and that write was paid inside parent_span with no row over it. Three folds on three heads
+// put the residual at 334.0, 342.9 and 334.5 microseconds per unique module -- a per-module
+// constant, stable across different host loads, which is the signature of fixed per-iteration work
+// rather than contention.
+//
+// BOTH ROWS ARE MEASURED AROUND THE WORK, never derived as parent minus the others -- a row defined
+// as the remainder forces the residual to zero and makes the tolerance arm unfireable, which is the
+// defect this partition exists to catch.
 // THE NATIVE DRIVER'S EXCLUSIVE WALL PARTITION. claim_batch prints `[cost-partition]` over
 // resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
 // single-threaded wall. The grains are the driver's own, not a restatement of the resolve-split
@@ -119,6 +134,7 @@ type NativeDriverExclusiveRows {
   receipt_admission: Nanosecond
   row_serialization: Nanosecond
   module_release: Nanosecond
+  relay_emit: Nanosecond
 }
 
 type NativeDriverCostAccounting
@@ -131,7 +147,7 @@ type NativeDriverCostAccounting
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {
-  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release))
+  nanosecond(count: nanosecond_count(n: rows.load) + nanosecond_count(n: rows.universe_derivation) + nanosecond_count(n: rows.context) + nanosecond_count(n: rows.prepare) + nanosecond_count(n: rows.eval) + nanosecond_count(n: rows.receipt_admission) + nanosecond_count(n: rows.row_serialization) + nanosecond_count(n: rows.module_release) + nanosecond_count(n: rows.relay_emit))
 }
 
 fn native_driver_cost_account(

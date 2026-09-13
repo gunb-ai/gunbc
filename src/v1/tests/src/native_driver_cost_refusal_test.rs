@@ -39,6 +39,7 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             receipt_admission: nanosecond(0),
             row_serialization: nanosecond(0),
             module_release: nanosecond(0),
+            relay_emit: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -67,6 +68,7 @@ fn reconciled_parent_passes() {
             receipt_admission: nanosecond(0),
             row_serialization: nanosecond(0),
             module_release: nanosecond(0),
+            relay_emit: nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
