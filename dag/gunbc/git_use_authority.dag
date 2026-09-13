@@ -20,8 +20,13 @@ type NativeAuthorityMode
   = BridgeAuthority
   | NativeAuthority
 
-// This selector has no fallback. The census reader is its first consumer; the production SCM
-// facade is a declared later consumer once authoring, proposal and landing execution exists.
+// DECLARED CONSUMPTION FRONTIER, not an executing census reader: the separate census-completion
+// follow-up will supply the planned gunbc.git_use_census.report report_git_uses entry. Its route
+// reads git_use_rows, selects each row's disposition through git_use_disposition, and renders
+// the selected disposition beside that use's identity. That entry does not exist yet. The
+// trigger is execution of this identity-bound report for both modes on the enrolled population.
+// The production authority route is separate work in ticket 6, not the Phase 1 CAS consumer.
+// No current production consumption is claimed for this selector or the two disposition fields.
 // These modes do NOT seal gunbc.native_scm_interaction_contract Landed. A bridge landing mint
 // still needs independently acquired merge read-back bound to the exact projection and imported
 // native baseline. Until that producer and its exclusive mint execute, no construction rung is

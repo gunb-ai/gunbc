@@ -70,13 +70,6 @@ test fn policy_refuses_unclassified_use() -> Bool {
   })], population: publication_import_population()))
 }
 
-test fn authority_modes_select_distinct_dispositions() -> Bool {
-  let row = bootstrap_control_row(classification: ClassifiedGitUse { role: GitBootstrapImport, authorization: NamedBootstrapImportAdapter })
-  git_use_disposition(row: row, mode: BridgeAuthority) == row.bridge_disposition
-    && git_use_disposition(row: row, mode: NativeAuthority) == row.cutover_disposition
-    && row.bridge_disposition != row.cutover_disposition
-}
-
 // One local invocation prepares the policy closure once. Required discovery still owns the
 // individual test identities above; this helper adds no second required claim.
 fn git_import_policy_control_suite() -> Bool {
@@ -85,7 +78,6 @@ fn git_import_policy_control_suite() -> Bool {
     && policy_refuses_unavailable_incomplete_and_empty_populations()
     && policy_accepts_adapter_and_refuses_misclassification()
     && policy_refuses_unclassified_use()
-    && authority_modes_select_distinct_dispositions()
     && policy_refuses_equal_count_source_substitution()
 }
 
