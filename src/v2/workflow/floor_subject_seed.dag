@@ -73,18 +73,44 @@ fn arm_set_match_read_disposition(
 // A MODULE IS PLANNED IF ANY of its reads of the coproduct's arms is planned, and it is a
 // RESOLVED consumer if any read resolves to the declarer -- the flat count is for modules that
 // reach the coproduct by no other route. Stated as a fold over the reads so the host's join
-// is a projection of this rule rather than a second one.
+// is a projection of this rule rather than a second one. THE MODULE-GRAIN ANSWER HAS ITS OWN
+// TYPE: reusing the one-read disposition here would make `ArmReadBoundToAnotherDeclarer` mean
+// "this module is not planned" -- one name, two contracts, the meaning fork DESIGN 3 refuses --
+// and the host already keeps the grains apart (`ArmSetMatchConsumer.binding` vs an absent
+// consumer), so the model must not be the one place they share a name (review 65426).
+type ModuleArmSetBinding
+  = ModulePlanned { binding: ArmSetMatchConsumerBinding }
+  | ModuleNotPlanned
+
 fn arm_set_match_consumer_binding(
   reads: List<ArmSetMatchReadDisposition>,
-) -> ArmSetMatchReadDisposition {
+) -> ModuleArmSetBinding {
   if any(xs: reads, predicate: fn(read) { arm_read_is_bound_to_declarer(read: read) }) {
-    ArmReadPlanned { binding: BoundToDeclaringModule }
+    ModulePlanned { binding: BoundToDeclaringModule }
   } else {
     if any(xs: reads, predicate: fn(read) { arm_read_is_planned(read: read) }) {
-      ArmReadPlanned { binding: BoundThroughFlatBareChannel }
+      ModulePlanned { binding: BoundThroughFlatBareChannel }
     } else {
-      ArmReadBoundToAnotherDeclarer
+      ModuleNotPlanned
     }
+  }
+}
+
+fn module_is_planned(binding: ModuleArmSetBinding) -> Bool {
+  match binding {
+    ModulePlanned { binding: _ } => true
+    ModuleNotPlanned => false
+  }
+}
+
+fn module_is_resolved_consumer(binding: ModuleArmSetBinding) -> Bool {
+  match binding {
+    ModulePlanned { binding: b } =>
+      match b {
+        BoundToDeclaringModule => true
+        BoundThroughFlatBareChannel => false
+      }
+    ModuleNotPlanned => false
   }
 }
 

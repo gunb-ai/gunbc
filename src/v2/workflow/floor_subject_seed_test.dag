@@ -14,6 +14,11 @@ import v2.workflow.floor_subject_seed {
   ArmReadBoundToAnotherDeclarer,
   arm_set_match_read_disposition,
   arm_set_match_consumer_binding,
+  ModuleArmSetBinding,
+  ModulePlanned,
+  ModuleNotPlanned,
+  module_is_planned,
+  module_is_resolved_consumer,
   arm_read_is_planned,
   arm_read_is_bound_to_declarer,
   seed_ground_wire_name,
@@ -55,10 +60,10 @@ test fn a_module_binding_is_the_strongest_of_its_reads() -> Bool {
   let flat = ArmReadPlanned { binding: BoundThroughFlatBareChannel }
   let resolved = ArmReadPlanned { binding: BoundToDeclaringModule }
   let other = ArmReadBoundToAnotherDeclarer
-  arm_read_is_bound_to_declarer(read: arm_set_match_consumer_binding(reads: [flat, resolved, other]))
-    && arm_read_is_planned(read: arm_set_match_consumer_binding(reads: [flat, other]))
-    && !arm_read_is_bound_to_declarer(read: arm_set_match_consumer_binding(reads: [flat, other]))
-    && !arm_read_is_planned(read: arm_set_match_consumer_binding(reads: [other]))
+  module_is_resolved_consumer(binding: arm_set_match_consumer_binding(reads: [flat, resolved, other]))
+    && module_is_planned(binding: arm_set_match_consumer_binding(reads: [flat, other]))
+    && !module_is_resolved_consumer(binding: arm_set_match_consumer_binding(reads: [flat, other]))
+    && !module_is_planned(binding: arm_set_match_consumer_binding(reads: [other]))
 }
 
 // THE TWO MATCHING RULES ARE A FACT OF THE GROUND, not of the list the host happened to put a
