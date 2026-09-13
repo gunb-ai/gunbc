@@ -185,7 +185,7 @@ import v1.compiler.infer_emit_info {
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields
 }
 import v1.compiler.infer_items {
-  ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
+  ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind
@@ -11866,7 +11866,6 @@ fn interface_cache_from_module(cache: TypeEnvCache) -> TypeEnvCache {
 fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
   match kind {
     FnItem => Present { value: ExportFn }
-    FuncItem => Present { value: ExportFn }
     TypeItem => Present { value: ExportType }
     DataItem => Present { value: ExportData }
     ServiceItem => Present { value: ExportService }
@@ -13251,17 +13250,6 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
   let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_indices: source_indices))
   let item_name_str = authored_name_at(source_indices: source_indices, node: item)
   match kind {
-    FuncItem =>
-      ItemInfo {
-        name: item_name_str,
-        module_name: module_name,
-        kind: kind,
-        service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
-        resource_names: res_names,
-        params: item.params,
-        is_self_recursive: false,
-        has_non_tail_self_call: false
-      }
     FnItem =>
       ItemInfo {
         name: item_name_str,

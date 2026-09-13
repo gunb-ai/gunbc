@@ -118,7 +118,7 @@ pub use crate::v1_compiler_infer_env::{
     UnitVariantContribution,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
-    DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
+    DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
 };
 use crate::v1_compiler_infer_items::ModuleTypecheckProgress::{AbandonedBeforeItems, ItemsChecked};
 pub use crate::v1_compiler_infer_items::{
@@ -20949,7 +20949,6 @@ pub fn interface_cache_from_module(cache: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> 
 pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
     match kind.clone() {
         ItemKind::FnItem => Some(ExportKind::ExportFn),
-        ItemKind::FuncItem => Some(ExportKind::ExportFn),
         ItemKind::TypeItem => Some(ExportKind::ExportType),
         ItemKind::DataItem => Some(ExportKind::ExportData),
         ItemKind::ServiceItem => Some(ExportKind::ExportService),
@@ -24303,23 +24302,6 @@ pub fn build_item_info(
         let item_name_str =
             crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
         match kind.clone() {
-            ItemKind::FuncItem => Rc::new(ItemInfo {
-                name: item_name_str.clone(),
-                module_name: module_name.clone(),
-                kind: kind.clone(),
-                service_names: if (item.body.clone() == std::option::Option::None) {
-                    Rc::new(vec![])
-                } else {
-                    crate::v1_compiler_infer_service::collect_typed_service_calls(
-                        item.body.clone().clone().unwrap(),
-                        source_indices.clone(),
-                    )
-                },
-                resource_names: res_names.clone(),
-                params: item.params.clone(),
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-            }),
             ItemKind::FnItem => Rc::new(ItemInfo {
                 name: item_name_str.clone(),
                 module_name: module_name.clone(),
