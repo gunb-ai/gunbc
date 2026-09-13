@@ -1,0 +1,78 @@
+module gunbc.machine_intake_sol_collector_observation
+
+import std.types { Int }
+import std.measure { Second }
+
+// ATTEMPT OBSERVATION: what one SOL collector covered and received. Platform capability
+// (what an implementation can provide: SolAbsent | SolPresentSilent | SolPresentEmitting,
+// SEL, OEM-decode, and the other PreOs axes) is gunbc.machine_intake_pre_os_observation_capabilities
+// on gunbc#11110. This module does not mint that file.
+//
+// Coverage exists only after session activation is acknowledged. SolCoverageComplete cannot
+// coexist with an unacknowledged session, with a still-running client, or with stdin-EOF:
+// those pairs have no constructor. Complete coverage is the deadline having terminated the
+// client. Local client banner bytes (ipmitool tcgetattr / SOL Session operational) are not
+// host payload. A window that elapses while the client stays attached is
+// SolCoverageStillRunningPastDeadline, not complete. No compiler fixture harness for the
+// old record product is enrolled; that missing harness is the next-rung trigger for a
+// typecheck RED of Complete × StillRunning. The executing control is
+// sol_host_fact_from_collector on NotAcknowledged and on StillRunningPastDeadline with no
+// payload, neither of which can return SolHostProducedNoConsoleBytes.
+// Frontier after #11110 lands: ConsoleSessionHeldPastActivation derives from
+// SolCoverageStillRunningPastDeadline; SolBannerOnly / SolHostBytesObserved derive from
+// host_payload standing.
+
+type SolCollectorTermination
+  = CollectorStillRunning
+  | CollectorTerminatedExitZeroStdinEof
+  | CollectorTerminatedByDeadline
+  | CollectorTerminatedOtherwise { exit_status: Int }
+
+type SolHostPayloadStanding
+  = SolHostPayloadReceived
+  | SolHostPayloadNotReceived
+
+type SolAcknowledgedCoverage
+  = SolCoverageNeverEstablished { termination: SolCollectorTermination }
+  | SolCoverageInterrupted { termination: SolCollectorTermination }
+  | SolCoverageComplete
+  | SolCoverageStillRunningPastDeadline
+
+type SolCollectorObservation
+  = SolCollectorSessionNotAcknowledged {
+      termination: SolCollectorTermination
+      host_payload: SolHostPayloadStanding
+      terminate_deadline: Second
+    }
+  | SolCollectorSessionAcknowledged {
+      coverage: SolAcknowledgedCoverage
+      host_payload: SolHostPayloadStanding
+      terminate_deadline: Second
+    }
+
+type SolHostFactFromCollector
+  = SolHostPayloadAdmitted
+  | SolHostProducedNoConsoleBytes
+  | SolCollectorDidNotEstablishCoverage { coverage: SolAcknowledgedCoverage }
+  | SolSessionNeverAcknowledged
+
+fn sol_host_fact_from_collector(obs: SolCollectorObservation) -> SolHostFactFromCollector {
+  match obs {
+    SolCollectorSessionNotAcknowledged { termination: _, host_payload: _, terminate_deadline: _ } =>
+      SolSessionNeverAcknowledged
+    SolCollectorSessionAcknowledged { coverage: coverage, host_payload: host_payload, terminate_deadline: _ } =>
+      match host_payload {
+        SolHostPayloadReceived => SolHostPayloadAdmitted
+        SolHostPayloadNotReceived =>
+          match coverage {
+            SolCoverageComplete => SolHostProducedNoConsoleBytes
+            SolCoverageNeverEstablished { termination: _ } =>
+              SolCollectorDidNotEstablishCoverage { coverage: coverage }
+            SolCoverageInterrupted { termination: _ } =>
+              SolCollectorDidNotEstablishCoverage { coverage: coverage }
+            SolCoverageStillRunningPastDeadline =>
+              SolCollectorDidNotEstablishCoverage { coverage: coverage }
+          }
+      }
+  }
+}

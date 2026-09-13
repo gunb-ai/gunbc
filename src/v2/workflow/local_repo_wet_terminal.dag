@@ -549,6 +549,48 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
       function: "a_batch_answers_each_request_by_real_execution",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_early_exit_refuses_absence_on_real_bytes" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_early_exit_refuses_absence_on_real_bytes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_four_real_captures_retain_statement_inventory_and_missing_receipts" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_four_real_captures_retain_statement_inventory_and_missing_receipts",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_truncated_configuration_cannot_support_absence" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_truncated_configuration_cannot_support_absence",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_real_host_userspace_positive_and_truncated_negative" },
+      entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
+      function: "w_real_host_userspace_positive_and_truncated_negative",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness", function: "committed_spx_ui_surface_hashes_to_the_catalog_identity" },
+      entry: "dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
+      function: "committed_spx_ui_surface_hashes_to_the_catalog_identity",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness", function: "committed_spx_ui_surface_redfish_absent_fru_and_aep_dimm_present" },
+      entry: "dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
+      function: "committed_spx_ui_surface_redfish_absent_fru_and_aep_dimm_present",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness", function: "committed_sol_host_payload_hashes_to_the_positive_control_identity" },
+      entry: "dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
+      function: "committed_sol_host_payload_hashes_to_the_positive_control_identity",
+      expectation: ExpectedToHold {}
     }
   ]
 }

@@ -1,0 +1,178 @@
+module test.claim.pre_os_replay_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import gunbc.fleet_observation_collector_ownership { FollowerReadOnly }
+import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate }
+import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceGenerationObserved, SourceGenerationUnavailable, NativeCursor, ExposedToCollectorHostLoss, RetainedBeyondCollectorHost, ForwardRefused }
+import gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityUnknown, DownstreamNotOffered, DownstreamAccepted, DownstreamRejected, ChunkCommitRefused, LocalCommitStanding, LocalCommitNotAttempted }
+import test.claim.fleet_observation_capture_witness { t_envelope, t_chunk, t_owner, t_unfenced, t_commit_for, t_other_session }
+import gunbc.machine_intake_pre_os_replay { pre_os_sel_cursor, pre_os_ingest_sel, pre_os_unique_occurrences, pre_os_occurrence_conflicts }
+
+import gunbc.machine_intake_pre_os_timeline { pre_os_console_span, pre_os_utf8_size, PreOsReplayObservation, PreOsConsoleText, pre_os_machine_timeline, pre_os_timeline_view }
+import test.claim.pre_os_observer_witness { observer_test_boot_payload }
+
+fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> ObservationEnvelope {
+  let base = t_envelope(ownership: t_owner(fencing: t_unfenced), chunk: t_chunk(seq: seq, generation: 4, payload: "identical-payload", first: 0, len: 100),
+    local_commit: t_commit_for(payload: "identical-payload"), continuity: ContinuityEstablished { verified_through: 100 }, downstream: DownstreamNotOffered)
+  ObservationEnvelope { binding: base.binding, source_generation: SourceGenerationObserved { generation: generation }, native_cursor: NativeCursor { record_identity: record },
+    ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received, local_commit: base.local_commit,
+    downstream: base.downstream, continuity: base.continuity }
+}
+
+fn baseline_text() -> String { "685 | 09/12/2026 | 10:59:50 AM | Fan #0x1 | Device Present | Asserted" }
+fn stimulus_text() -> String { concat(baseline_text(), "\n686 | 09/12/2026 | 10:59:51 AM | System Boot Initiated #0x0 | Initiated by power up | Asserted") }
+
+test fn w_generation_change_retained_without_new_stimulus() -> Bool {
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let positive = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-a", record: "686"), payload: stimulus_text())
+  let reset = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-b", record: "686"), payload: stimulus_text())
+  count(first.new_records) == 0 && count(positive.new_records) == 1 && count(reset.new_records) == 0
+    && reset.payload == stimulus_text()
+    && match reset.continuity { ObservationRefused { cause: _ } => true _ => false }
+}
+
+test fn w_sel_continuity_refusal_retains_the_observed_cause() -> Bool {
+  let first = pre_os_ingest_sel(previous: ObservationRefused { cause: "no prior cursor" }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
+  let base = replay_fixture(seq: 2, generation: "sel-a", record: "686")
+  all([ContinuityEstablished { verified_through: 10 }, ContinuityUnknown { detail: "source reset not observed" }], continuity => {
+    let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+      ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+      local_commit: base.local_commit, downstream: base.downstream, continuity: continuity }
+    let reading = pre_os_ingest_sel(previous: first.cursor, envelope: envelope, payload: stimulus_text())
+    count(reading.new_records) == 0 && reading.payload == stimulus_text()
+      && match reading.continuity {
+        ObservationEstablished { observed: _ } => false
+        ObservationRefused { cause } => match continuity {
+          ContinuityEstablished { verified_through: _ } => contains(cause as String, "ContinuityShortOfRange") && contains(cause as String, "100")
+          ContinuityUnknown { detail } => contains(cause as String, detail as String)
+          _ => false
+        }
+      }
+  })
+}
+
+test fn w_duplicate_application_is_idempotent_but_equal_payload_occurrences_survive() -> Bool {
+  let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let b = replay_fixture(seq: 2, generation: "sel-a", record: "685")
+  let once = pre_os_unique_occurrences(envelopes: [a, b])
+  count(once) == 2 && count(pre_os_unique_occurrences(envelopes: [a, b, a, b])) == 2
+    && count(pre_os_unique_occurrences(envelopes: once)) == 2
+}
+
+test fn w_same_occurrence_changed_source_generation_is_conflict() -> Bool {
+  let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let b = replay_fixture(seq: 1, generation: "sel-b", record: "685")
+  count(pre_os_unique_occurrences(envelopes: [a, b])) == 2
+    && pre_os_occurrence_conflicts(envelopes: [a, b], subject: a)
+}
+
+
+test fn w_timeline_separates_os_milestone_from_boot_identity_and_present_admission() -> Bool {
+  let envelope = replay_fixture(seq: 1, generation: "console-a", record: "685")
+  let observation = PreOsReplayObservation { envelope: envelope, format: PreOsConsoleText,
+    payload: ObservationEstablished { observed: concat("NOTICE:  DRAM FW version 210525\n", observer_test_boot_payload()) } }
+  let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: [observation, observation], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
+    inventory_question: ObservationRefused { cause: "OS milestone question supplies no memory inventory expectation" })
+  let other_machine = pre_os_machine_timeline(machine: "another-machine", observations: [observation], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
+    inventory_question: ObservationRefused { cause: "no question" })
+  count(rows) == 1 && match rows.first() {
+    Absent => false
+    Present { value: row } => count(row.cycles) == 1
+      && match row.boot { GoalSatisfied { evidence: _ } => true _ => false }
+      && match row.present_admission { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false }
+      && all(row.cycles, cycle => match cycle.firmware_attempt { ObservationRefused { cause: _ } => true _ => false })
+      && contains(pre_os_timeline_view(rows: rows), "kernel_boot")
+  } && all(other_machine, row => count(row.cycles) == 0 && match row.association { ObservationRefused { cause: _ } => true _ => false })
+}
+
+// A delivery receipt is new evidence about an existing occurrence, not a new
+// host event and not an unchanged retry that may be discarded.
+test fn w_same_occurrence_new_continuity_receipt_is_retained() -> Bool {
+  let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let b = ObservationEnvelope { binding: a.binding, source_generation: a.source_generation, native_cursor: a.native_cursor,
+    ownership: a.ownership, chunk: a.chunk, producer_timestamp: a.producer_timestamp, received: a.received, local_commit: a.local_commit,
+    downstream: a.downstream, continuity: ContinuityEstablished { verified_through: 200 } }
+  count(pre_os_unique_occurrences(envelopes: [a, a, b, b])) == 2
+    && !pre_os_occurrence_conflicts(envelopes: [a, b], subject: a)
+}
+
+// Delivery changes retention for the same occurrence; it must neither erase
+// the earlier exposure nor establish an OS boot from the delivery receipt.
+test fn w_timeline_retains_local_exposure_and_downstream_acceptance() -> Bool {
+  let local = replay_fixture(seq: 1, generation: "console-a", record: "685")
+  let delivered = ObservationEnvelope { binding: local.binding, source_generation: local.source_generation, native_cursor: local.native_cursor,
+    ownership: local.ownership, chunk: local.chunk, producer_timestamp: local.producer_timestamp, received: local.received,
+    local_commit: local.local_commit, continuity: local.continuity,
+    downstream: DownstreamAccepted { accepted_content: local.chunk.payload_digest } }
+  let rejected = ObservationEnvelope { binding: local.binding, source_generation: local.source_generation, native_cursor: local.native_cursor,
+    ownership: local.ownership, chunk: local.chunk, producer_timestamp: local.producer_timestamp, received: local.received,
+    local_commit: local.local_commit, continuity: local.continuity,
+    downstream: DownstreamRejected { cause: ChunkCommitRefused { detail: "downstream fixture refused this chunk" } } }
+  let rows = pre_os_machine_timeline(machine: "synthetic-machine-1", observations: [
+    PreOsReplayObservation { envelope: local, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
+    PreOsReplayObservation { envelope: rejected, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
+    PreOsReplayObservation { envelope: delivered, format: PreOsConsoleText, payload: ObservationEstablished { observed: "no host milestone" } },
+  ], host_mac: "28:c1:3c:8a:d6:4a", rendered_host_mac: "28-C1-3C-8A-D6-4A",
+    inventory_question: ObservationRefused { cause: "no inventory question" })
+  count(rows) == 3
+    && match rows.first() { Present { value: row } => match row.retention { ExposedToCollectorHostLoss { refusal: _ } => true _ => false } Absent => false }
+    && match rows.skip(n: 1).first() { Present { value: row } => match row.retention { ForwardRefused { cause: ChunkCommitRefused { detail } } => detail == "downstream fixture refused this chunk" _ => false } Absent => false }
+    && match rows.skip(n: 2).first() { Present { value: row } => match row.retention { RetainedBeyondCollectorHost => true _ => false } Absent => false }
+    && all(rows, row => match row.boot { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false })
+    && contains(pre_os_timeline_view(rows: rows), "retention=")
+}
+
+fn replay_console_chunk(seq: Nat, first: Nat, payload: NonEmptyStr, continuity: StreamContinuity) -> PreOsReplayObservation {
+  let base = replay_fixture(seq: seq, generation: "console-a", record: "685")
+  let chunk = t_chunk(seq: seq, generation: 4, payload: payload, first: first, len: pre_os_utf8_size(text: payload as String))
+  PreOsReplayObservation {
+    envelope: ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+      ownership: base.ownership, chunk: chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+      local_commit: t_commit_for(payload: payload), downstream: base.downstream, continuity: continuity },
+    format: PreOsConsoleText, payload: ObservationEstablished { observed: payload as String },
+  }
+}
+
+test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool {
+  let a = replay_console_chunk(seq: 1, first: 0, payload: "NOTICE:  DRAM FW ver", continuity: ContinuityEstablished { verified_through: 20 })
+  let b = replay_console_chunk(seq: 2, first: 20, payload: "sion 210525", continuity: ContinuityEstablished { verified_through: 31 })
+  let gap = replay_console_chunk(seq: 2, first: 20, payload: "sion 210525", continuity: ContinuityUnknown { detail: "reconnect lost continuity" })
+  let before = pre_os_console_span(previous: Absent, current: a)
+  let joined = pre_os_console_span(previous: Present { value: before }, current: b)
+  let interrupted = pre_os_console_span(previous: Present { value: before }, current: gap)
+  joined.payload == "NOTICE:  DRAM FW version 210525" && count(joined.chunks) == 2
+    && interrupted.payload == "sion 210525" && count(interrupted.chunks) == 1
+    && match joined.composition { ObservationEstablished { observed: combined } => combined == joined.payload _ => false }
+    && match interrupted.composition { ObservationRefused { cause } => contains(cause as String, "current chunk") && contains(cause as String, "reconnect lost continuity") _ => false }
+}
+
+// The SEL cursor consumer must preserve independent commit and ownership causes.
+// These fixtures change the evidence, not the observer's refusal implementation.
+test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
+  let base = replay_fixture(seq: 1, generation: "sel-a", record: "685")
+  let positive = pre_os_sel_cursor(envelope: base, payload: baseline_text())
+  let commits: List<LocalCommitStanding> = [LocalCommitNotAttempted, t_commit_for(payload: "different payload")]
+  match positive { ObservationEstablished { observed: _ } => true _ => false }
+    && all(commits, standing => {
+      let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+        ownership: base.ownership, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+        local_commit: standing, downstream: base.downstream, continuity: base.continuity }
+      match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
+        ObservationRefused { cause } => match standing {
+          LocalCommitNotAttempted => contains(cause as String, "CommitNoReceipt")
+          _ => contains(cause as String, "CommitAttestsOtherPayload")
+        }
+        _ => false
+      }
+    })
+    && {
+      let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+        ownership: FollowerReadOnly { session: t_other_session }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+        local_commit: base.local_commit, downstream: base.downstream, continuity: base.continuity }
+      match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
+        ObservationRefused { cause } => contains(cause as String, "FollowerReadOnly")
+        _ => false
+      }
+    }
+}

@@ -1,0 +1,285 @@
+module test.claim.fleet_observation_supervision_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  ByteSize,
+  byte_size,
+  ObservationInstant,
+  ClockDomain,
+  SharedMonotonic,
+  ProcessMonotonic,
+  ClockBasis,
+  WallClock,
+  Nanosecond,
+  nanosecond,
+}
+import std.process_termination {
+  ProcessTermination,
+  ProcessExited,
+  ProcessSignaled,
+  ProcessTerminationUnobserved,
+}
+import gunbc.fleet_observation_collector_supervision {
+  SpawnOutcome,
+  SpawnProducedChild,
+  SpawnRefused,
+  DrainProgress,
+  DrainedDuringOperation,
+  DrainObservedEmpty,
+  DrainNotObserved,
+  SupervisionDisposition,
+  ClosedAtDeadline,
+  InterruptedBeforeDeadline,
+  TerminationNotObserved,
+  NeverSpawned,
+  CleanupFailed,
+  SupervisionUndecidable,
+  supervision_disposition,
+  SupervisionCoverage,
+  WindowCovered,
+  WindowNotCoveredPipeUnread,
+  WindowNotCoveredSupervision,
+  supervision_coverage,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SYNTHETIC SUBJECTS ONLY -- every value is declared here; nothing reads a real collector.
+
+fn t_at(since: Nat) -> ObservationInstant {
+  ObservationInstant {
+    domain: SharedMonotonic { origin: "synthetic-supervisor-origin" }
+    basis: WallClock
+    since_origin: nanosecond(count: since)
+  }
+}
+
+fn t_foreign_clock(since: Nat) -> ObservationInstant {
+  ObservationInstant {
+    domain: ProcessMonotonic { process: "synthetic-other-process" }
+    basis: WallClock
+    since_origin: nanosecond(count: since)
+  }
+}
+
+data t_child: SpawnOutcome = SpawnProducedChild { child_identity: "synthetic-child" }
+
+data t_drained: DrainProgress = DrainedDuringOperation {
+  bytes: byte_size(count: 4096)
+  last_progress_at: ObservationInstant {
+    domain: SharedMonotonic { origin: "synthetic-supervisor-origin" }
+    basis: WallClock
+    since_origin: nanosecond(count: 410)
+  }
+}
+
+// ── THE SPECIMEN ───────────────────────────────────────────────────────────────────────────────
+
+// A CLEAN EXIT BEFORE THE DEADLINE IS AN INTERRUPTION. This is the 2026-09-11 defect as a test: the
+// console client reached stdin EOF and exited RC=0 at about three seconds of a four-hundred-and-
+// twenty-second window, and every status-shaped check passed because the status was genuinely
+// success. Here the same facts produce InterruptedBeforeDeadline, and there is no path on which
+// exit code zero alone reaches ClosedAtDeadline.
+//
+// THE DISCRIMINATING RED: if the fold consulted the exit code instead of the ordering, this goes
+// false while the deadline-reached conjunct below stays true.
+test fn w_clean_exit_before_deadline_is_an_interruption() -> Bool {
+  let early = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 3),
+    drained: t_drained,
+  )
+  let at_deadline = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 420),
+    drained: t_drained,
+  )
+  is_interrupted(d: early)
+  && not_covered(c: supervision_coverage(disposition: early))
+  && is_closed_at_deadline(d: at_deadline)
+  && covered(c: supervision_coverage(disposition: at_deadline))
+}
+
+// A SIGNAL DEATH BEFORE THE DEADLINE IS ALSO AN INTERRUPTION, and it is a different TERMINATION
+// than a clean exit while being the same DISPOSITION. That separation is why std.process_termination
+// is consumed rather than flattened: the deadline SIGTERM that killed `script` before it flushed was
+// a signal death, and rendering it as an ordinary nonzero exit is what hid it.
+test fn w_signal_death_keeps_its_termination_and_its_disposition() -> Bool {
+  let signalled = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessSignaled { signal: 15 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 200),
+    drained: t_drained,
+  )
+  is_interrupted(d: signalled) && carries_signal(d: signalled, signal: 15)
+}
+
+// AN UNOBSERVED PIPE IS NOT AN EMPTY ONE, AND LIVENESS IS NOT COVERAGE. A child that ran its full
+// deadline while nobody read its pipe covered nothing, because a collector that does not drain can
+// cause the silence it then reports. DrainObservedEmpty -- somebody WATCHED and saw nothing -- is a
+// real observation and does cover the window.
+test fn w_unobserved_drain_is_not_coverage() -> Bool {
+  let unwatched = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 420),
+    drained: DrainNotObserved,
+  )
+  let watched_empty = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 420),
+    drained: DrainObservedEmpty { watched_until: t_at(since: 420) },
+  )
+  is_closed_at_deadline(d: unwatched)
+  && pipe_unread(c: supervision_coverage(disposition: unwatched))
+  && covered(c: supervision_coverage(disposition: watched_empty))
+  && pipe_unread(c: supervision_coverage(disposition: unwatched))
+}
+
+// TWO CLOCKS WITH NO SHARED ORIGIN CANNOT BE ORDERED, so the disposition REFUSES rather than
+// defaulting to expected. Defaulting an undecidable ordering to a closure would fabricate exactly
+// the claim this module exists to withhold.
+test fn w_incomparable_clocks_refuse_rather_than_default() -> Bool {
+  let crossed = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessExited { code: 0 },
+    deadline: t_at(since: 420),
+    observed_end: t_foreign_clock(since: 3),
+    drained: t_drained,
+  )
+  is_undecidable(d: crossed) && not_covered(c: supervision_coverage(disposition: crossed))
+}
+
+// A TRANSPORT THAT REFUSED BEFORE THE PROCESS EXISTED PRODUCED NO STATUS, and that is the absence of
+// a process rather than a failure of one -- the third of the three lost captures, whose replacement
+// "never started" and was relied on anyway.
+test fn w_never_spawned_is_not_a_process_failure() -> Bool {
+  let refused = supervision_disposition(
+    spawn: SpawnRefused { cause: "synthetic transport refusal before the child existed" },
+    termination: ProcessTerminationUnobserved,
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 0),
+    drained: DrainNotObserved,
+  )
+  let still_running = supervision_disposition(
+    spawn: t_child,
+    termination: ProcessTerminationUnobserved,
+    deadline: t_at(since: 420),
+    observed_end: t_at(since: 420),
+    drained: t_drained,
+  )
+  is_never_spawned(d: refused)
+  && not_covered(c: supervision_coverage(disposition: refused))
+  && is_termination_unobserved(d: still_running)
+  && not_covered(c: supervision_coverage(disposition: still_running))
+}
+
+fn covered(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowCovered => true
+    WindowNotCoveredPipeUnread { disposition: _ } => false
+    WindowNotCoveredSupervision { disposition: _ } => false
+  }
+}
+
+// THE UNREAD-PIPE CASE IS ASSERTED SEPARATELY FROM THE REST, which is the distinction the Bool used
+// to destroy: a full-deadline child whose pipe nobody read is a DIFFERENT failure from an interrupted
+// or unspawned one, and it is the one that looks like success.
+fn pipe_unread(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowNotCoveredPipeUnread { disposition: _ } => true
+    WindowCovered => false
+    WindowNotCoveredSupervision { disposition: _ } => false
+  }
+}
+
+fn not_covered(c: SupervisionCoverage) -> Bool {
+  match c {
+    WindowNotCoveredSupervision { disposition: _ } => true
+    WindowNotCoveredPipeUnread { disposition: _ } => true
+    WindowCovered => false
+  }
+}
+
+// ── readers ────────────────────────────────────────────────────────────────────────────────────
+
+fn is_interrupted(d: SupervisionDisposition) -> Bool {
+  match d {
+    InterruptedBeforeDeadline { termination: _, drained: _ } => true
+    ClosedAtDeadline { termination: _, drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
+    NeverSpawned { cause: _ } => false
+    CleanupFailed { detail: _ } => false
+    SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
+  }
+}
+
+fn is_closed_at_deadline(d: SupervisionDisposition) -> Bool {
+  match d {
+    ClosedAtDeadline { termination: _, drained: _ } => true
+    InterruptedBeforeDeadline { termination: _, drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
+    NeverSpawned { cause: _ } => false
+    CleanupFailed { detail: _ } => false
+    SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
+  }
+}
+
+fn is_termination_unobserved(d: SupervisionDisposition) -> Bool {
+  match d {
+    TerminationNotObserved { drained: _ } => true
+    ClosedAtDeadline { termination: _, drained: _ } => false
+    InterruptedBeforeDeadline { termination: _, drained: _ } => false
+    NeverSpawned { cause: _ } => false
+    CleanupFailed { detail: _ } => false
+    SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
+  }
+}
+
+fn is_never_spawned(d: SupervisionDisposition) -> Bool {
+  match d {
+    NeverSpawned { cause: _ } => true
+    ClosedAtDeadline { termination: _, drained: _ } => false
+    InterruptedBeforeDeadline { termination: _, drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
+    CleanupFailed { detail: _ } => false
+    SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
+  }
+}
+
+fn is_undecidable(d: SupervisionDisposition) -> Bool {
+  match d {
+    SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => true
+    ClosedAtDeadline { termination: _, drained: _ } => false
+    InterruptedBeforeDeadline { termination: _, drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
+    NeverSpawned { cause: _ } => false
+    CleanupFailed { detail: _ } => false
+  }
+}
+
+fn carries_signal(d: SupervisionDisposition, signal: Int) -> Bool {
+  match d {
+    InterruptedBeforeDeadline { termination: termination, drained: _ } =>
+      match termination {
+        ProcessSignaled { signal: s } => s == signal
+        ProcessExited { code: _ } => false
+        ProcessTerminationUnobserved => false
+      }
+    ClosedAtDeadline { termination: _, drained: _ } => false
+    TerminationNotObserved { drained: _ } => false
+    NeverSpawned { cause: _ } => false
+    CleanupFailed { detail: _ } => false
+    SupervisionUndecidable { deadline_domain: _, observed_domain: _ } => false
+  }
+}

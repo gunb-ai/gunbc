@@ -50,13 +50,19 @@ type MemoryCollectorReceipt {
 }
 
 fn memory_capture_coverage_refusal(c: MemoryCollectorReceipt) -> NonEmptyStr? {
-  match c.coverage {
+  memory_cycle_coverage_refusal(coverage: c.coverage, payload: c.payload)
+}
+
+// Inventory reads do not manufacture a process exit receipt for archived chunks.
+// Both the collector and archive paths consume the same coverage authority.
+fn memory_cycle_coverage_refusal(coverage: MemoryCaptureCoverage, payload: String) -> NonEmptyStr? {
+  match coverage {
     MemoryCaptureInterval { required_start, required_end, collector_start, collector_end } =>
       if required_end <= required_start || collector_start > required_start || collector_end < required_end {
         Present { value: "collector did not cover the required stimulus interval" as NonEmptyStr }
       } else { none }
     MemoryCaptureCycles { required_cycles, start_token, completion_token } => {
-      let cycles = split(s: c.payload, delimiter: start_token as String).skip(n: 1)
+      let cycles = split(s: payload, delimiter: start_token as String).skip(n: 1)
       if required_cycles == 0 || count(cycles) < required_cycles
         || !all(cycles, cycle => contains(cycle, completion_token as String)) {
         Present { value: "collector did not capture the required complete stimulus cycles" as NonEmptyStr }
@@ -97,11 +103,16 @@ fn memory_capture_repetition_suspected(c: MemoryCollectorReceipt) -> Bool {
 // Require the positioned inventory in addition to a syndrome. A header or a
 // partial table cannot bind this finding to a whole captured configuration.
 fn memory_payload_covers_population(configuration: MemoryConfiguration, collector: MemoryCollectorReceipt, payload: String) -> Bool {
+  memory_inventory_in_payload(configuration: configuration, printed_parts: collector.printed_parts,
+    printed_positions: collector.printed_positions, expected_payload_token: collector.expected_payload_token, payload: payload)
+}
+
+fn memory_inventory_in_payload(configuration: MemoryConfiguration, printed_parts: List<MemoryPrintedPartBinding>, printed_positions: List<MemoryPrintedPositionBinding>, expected_payload_token: NonEmptyStr, payload: String) -> Bool {
   let lines = split(s: payload, delimiter: "\n")
-  count(configuration.population) > 0 && contains(payload, collector.expected_payload_token as String)
+  count(configuration.population) > 0 && contains(payload, expected_payload_token as String)
     && fold(configuration.population, init: true, f: (covered, dimm) => {
-      let coordinates = filter(collector.printed_positions, binding => binding.position == dimm.position)
-      let bindings = filter(collector.printed_parts, binding => declaration_ref_eq(a: binding.part, b: dimm.part))
+      let coordinates = filter(printed_positions, binding => binding.position == dimm.position)
+      let bindings = filter(printed_parts, binding => declaration_ref_eq(a: binding.part, b: dimm.part))
       covered && count(coordinates) == 1 && count(bindings) == 1 && any(coordinates, coordinate => any(bindings, binding =>
         any(lines, line => contains(line, coordinate.printed as String) && contains(line, binding.printed as String)
           && all(binding.required_descriptors, descriptor => contains(line, descriptor as String)))))
@@ -109,13 +120,19 @@ fn memory_payload_covers_population(configuration: MemoryConfiguration, collecto
 }
 
 fn memory_capture_covers_population(configuration: MemoryConfiguration, collector: MemoryCollectorReceipt) -> Bool {
-  match collector.coverage {
+  memory_inventory_in_capture(configuration: configuration, printed_parts: collector.printed_parts,
+    printed_positions: collector.printed_positions, expected_payload_token: collector.expected_payload_token,
+    coverage: collector.coverage, payload: collector.payload)
+}
+
+fn memory_inventory_in_capture(configuration: MemoryConfiguration, printed_parts: List<MemoryPrintedPartBinding>, printed_positions: List<MemoryPrintedPositionBinding>, expected_payload_token: NonEmptyStr, coverage: MemoryCaptureCoverage, payload: String) -> Bool {
+  match coverage {
     MemoryCaptureInterval { required_start: _, required_end: _, collector_start: _, collector_end: _ } =>
-      memory_payload_covers_population(configuration: configuration, collector: collector, payload: collector.payload)
+      memory_inventory_in_payload(configuration: configuration, printed_parts: printed_parts, printed_positions: printed_positions, expected_payload_token: expected_payload_token, payload: payload)
     MemoryCaptureCycles { required_cycles, start_token, completion_token: _ } => {
-      let cycles = split(s: collector.payload, delimiter: start_token as String).skip(n: 1)
+      let cycles = split(s: payload, delimiter: start_token as String).skip(n: 1)
       required_cycles > 0 && count(cycles) >= required_cycles
-        && all(cycles, cycle => memory_payload_covers_population(configuration: configuration, collector: collector, payload: cycle))
+        && all(cycles, cycle => memory_inventory_in_payload(configuration: configuration, printed_parts: printed_parts, printed_positions: printed_positions, expected_payload_token: expected_payload_token, payload: cycle))
     }
   }
 }

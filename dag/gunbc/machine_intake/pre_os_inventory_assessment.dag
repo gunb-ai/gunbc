@@ -1,0 +1,50 @@
+module gunbc.machine_intake_pre_os_inventory_assessment
+
+import std.types { List, NonEmptyStr, String }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
+import std.algebra { FreeSemigroup, Empty }
+import gunbc.memory_configuration { MemoryConfiguration }
+import gunbc.memory_observation { MemoryCaptureCoverage, MemoryCaptureInterval, MemoryCaptureCycles, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, memory_cycle_coverage_refusal, memory_inventory_in_capture }
+import gunbc.fleet_observation_observation_envelope { SourceByteFact, SourceBytesObserved }
+import gunbc.machine_intake_pre_os_observer { pre_os_terminal_from_console }
+
+// The question names its expected configuration and emitting phase before any
+// collector reports. Coverage itself remains #11198's MemoryCaptureCoverage.
+type PreOsInventoryQuestion {
+  configuration: MemoryConfiguration
+  coverage: MemoryCaptureCoverage
+  printed_parts: List<MemoryPrintedPartBinding>
+  printed_positions: List<MemoryPrintedPositionBinding>
+  expected_payload_token: NonEmptyStr
+}
+
+fn pre_os_inventory_observation(question: PreOsInventoryQuestion, payload: String) -> ObservationAttempt<MemoryConfiguration, NonEmptyStr> {
+  match question.coverage {
+    MemoryCaptureInterval { required_start: _, required_end: _, collector_start: _, collector_end: _ } => ObservationRefused { cause: "wall-clock interval cannot establish pre-OS phase coverage" }
+    MemoryCaptureCycles { required_cycles: _, start_token: _, completion_token: _ } => match memory_cycle_coverage_refusal(coverage: question.coverage, payload: payload) {
+    Present { value: cause } => ObservationRefused { cause: cause }
+    Absent => if memory_inventory_in_capture(configuration: question.configuration, coverage: question.coverage, payload: payload,
+      printed_parts: question.printed_parts, printed_positions: question.printed_positions, expected_payload_token: question.expected_payload_token) {
+      ObservationEstablished { observed: question.configuration }
+    } else { ObservationRefused { cause: "complete positioned inventory is absent from a captured cycle" } }
+  }
+  }
+}
+
+// This answers ONLY absence of the named diagnostic in the covered phase. It
+// cannot establish host success. The source fact comes from acquisition's
+// persisted/owned/continuous range fold; inventory is an independent obligation.
+fn pre_os_diagnostic_absence(question: PreOsInventoryQuestion, payload: String, source: SourceByteFact, diagnostic: NonEmptyStr) -> GoalAssessment<NonEmptyStr, NonEmptyStr, NonEmptyStr, NonEmptyStr> {
+  match source {
+    SourceBytesObserved { digest: _ } => match pre_os_terminal_from_console(text: payload) {
+      ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+      ObservationEstablished { observed: _ } => match pre_os_inventory_observation(question: question, payload: payload) {
+        ObservationRefused { cause } => GoalAssessmentRefused { cause: cause }
+        ObservationEstablished { observed: _ } => if contains(payload, diagnostic as String) {
+          GoalDiverged { deviations: FreeSemigroup { head: "named diagnostic was observed", tail: Empty } }
+        } else { GoalSatisfied { evidence: "named diagnostic absent from the captured complete inventory phase only" } }
+      }
+    }
+    gap => GoalAssessmentRefused { cause: to_string(gap) as NonEmptyStr }
+  }
+}

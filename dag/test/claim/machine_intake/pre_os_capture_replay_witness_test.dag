@@ -1,0 +1,142 @@
+module test.claim.pre_os_capture_replay_witness
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.goal_assessment { ObservationEstablished, ObservationRefused, GoalSatisfied, GoalIndeterminate, GoalDiverged, GoalAssessmentRefused }
+import gunbc.memory_observation { read_verified_memory_capture }
+import gunbc.machine_intake_pre_os_capture_replay { pre_os_archive_specs, pre_os_archive_classify, pre_os_quiet_archive_assessment, pre_os_host_archive_assessment, pre_os_archive_inventory_question }
+import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
+import gunbc.machine_intake_pre_os_observer { pre_os_host_userspace_boot, pre_os_milestones, pre_os_boot_assessment, pre_os_firmware_boot_selection }
+import std.content_hash { content_hash_of_value }
+import gunbc.fleet_observation_observation_envelope { SourceBytesObserved, CoverageGapContinuityBroken, CoverageGapEvidenceNamesAnotherSubject, BindingMachineDisagrees }
+import gunbc.fleet_observation_capture_chunk { ContinuityUnknown, ContinuityGap, SourceStreamRange, GapCauseUnattributed, CollectorLostOwnership }
+import std.measure { byte_size }
+import gunbc.machine_intake_pre_os_inventory_assessment { pre_os_diagnostic_absence }
+import gunbc.host_memory_qualification { BootReachedOperatingSystem, TrainingOutcomeUnobserved, BootOutcomeUnobserved }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Actual committed source bytes reach the SAME inventory/parser path as replay.
+// First cycle of socket0-only is partial, but its later cycle has the complete
+// inventory. Missing process footers on two files are kept separate from that.
+test fn w_four_real_captures_retain_statement_inventory_and_missing_receipts() -> Bool {
+  match pre_os_archive_specs() {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: specs } => count(specs) == 4 && all(specs, spec =>
+      match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {
+        ObservationRefused { cause: _ } => false
+        ObservationEstablished { observed: payload } => {
+          let reading = pre_os_archive_classify(spec: spec, payload: payload)
+          reading.banner_present
+            && reading.script_exit_footer_present == (contains(spec.path as String, "3ds-mixture") || contains(spec.path as String, "socket0-reseated"))
+            && match reading.firmware { TrainingRefusedByFirmware { statement, locus: _ } => contains(statement as String, spec.completion as String) _ => false }
+            && match reading.inventory { ObservationEstablished { observed: configuration } => configuration == reading.spec.configuration _ => false }
+        }
+      })
+  }
+}
+
+// A synthetic acquisition receipt exercises the absence consumer against real
+// bytes; it does not claim the historical collector had that receipt.
+test fn w_truncated_configuration_cannot_support_absence() -> Bool {
+  match pre_os_archive_specs() {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: specs } => all(specs, spec =>
+      match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {
+        ObservationRefused { cause: _ } => false
+        ObservationEstablished { observed: payload } => {
+          let incomplete = join(filter(split(s: payload, delimiter: "\n"), line => !contains(line, "DRAM populated DIMMs:") && !contains(line, "RDIMM[")), "\n")
+          let positive = pre_os_archive_classify(spec: spec, payload: payload)
+          let negative = pre_os_archive_classify(spec: spec, payload: incomplete)
+          let source = SourceBytesObserved { digest: content_hash_of_value(value: payload) }
+          let question = pre_os_archive_inventory_question(spec: spec)
+          let diagnostic = "Non-identical DIMM mixture NOT supported!"
+          let absence = pre_os_diagnostic_absence(question: question, payload: payload, source: source, diagnostic: diagnostic)
+          match positive.inventory { ObservationEstablished { observed: _ } => match negative.inventory { ObservationRefused { cause: _ } => true _ => false } _ => false }
+            && match absence { GoalSatisfied { evidence: _ } => !contains(payload, diagnostic) GoalDiverged { deviations: _ } => contains(payload, diagnostic) _ => false }
+            && match pre_os_diagnostic_absence(question: question, payload: incomplete, source: source, diagnostic: diagnostic) { GoalAssessmentRefused { cause: _ } => true _ => false }
+
+        }
+      })
+  }
+}
+
+fn quiet_archive_regression() -> Bool {
+  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-known-good-socket0-2026-09-12.txt",
+    expected_sha256: "81137a1169d3d1bc4fde2ae91910a85e9b70c4195e53d248d7d668adc347eb64") {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: payload } => {
+      let assessed = pre_os_quiet_archive_assessment(payload: payload)
+      assessed.milestones.training == TrainingOutcomeUnobserved
+        && assessed.milestones.boot == BootOutcomeUnobserved
+        && match assessed.sel { ObservationEstablished { observed: summary } =>
+          starts_with(s: summary as String, prefix: "no restart observed in supplied SEL rows only:")
+            && contains(summary as String, "702") && contains(summary as String, "70d")
+          _ => false }
+        && match pre_os_boot_assessment(milestones: assessed.milestones) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true _ => false }
+        && match assessed.configuration { ObservationRefused { cause: _ } => true _ => false }
+    }
+  }
+}
+
+test fn w_real_host_userspace_positive_and_truncated_negative() -> Bool {
+  quiet_archive_regression() && firmware_selection_regression() &&
+  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-first-own-image-boot.log", expected_sha256: "19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3") {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: payload } => {
+      let assessed = pre_os_host_archive_assessment(payload: payload, host_mac: "28:c1:3c:8a:d6:4a")
+      let milestones = assessed.milestones
+      let truncated = split(s: payload, delimiter: "marker-end=gunbc-runner-host-boot").first()
+      contains(payload, "DMI: Memory slots populated: 16/32")
+        && match assessed.population_statement { ObservationEstablished { observed: statement } => contains(statement as String, "16/32") _ => false }
+        && milestones.boot == BootReachedOperatingSystem
+        && match pre_os_boot_assessment(milestones: milestones) { GoalSatisfied { evidence: _ } => true _ => false }
+        && match truncated { Present { value: text } => match pre_os_host_userspace_boot(text: text, host_mac: "28:c1:3c:8a:d6:4a") { ObservationRefused { cause: _ } => true _ => false } Absent => false }
+    }
+  }
+}
+
+fn firmware_selection_regression() -> Bool {
+  match read_verified_memory_capture(path: "artifacts/bmc/mtcollins1-topology-control-rerun-attached-before-stimulus-2026-09-12.txt",
+    expected_sha256: "c0ca51569050d46c225881eee7de46bad436953e8564a2509f016ceed5475eb7") {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: payload } => {
+      let selection = pre_os_firmware_boot_selection(text: payload, rendered_host_mac: "28-C1-3C-8A-D6-4A")
+      let without_selection = join(filter(split(s: payload, delimiter: "\n"), line => !starts_with(s: line, prefix: ">>Start PXE over IPv")), "\n")
+      match selection { ObservationEstablished { observed: _ } => true _ => false }
+        && match pre_os_firmware_boot_selection(text: without_selection, rendered_host_mac: "28-C1-3C-8A-D6-4A") { ObservationRefused { cause: _ } => true _ => false }
+        && match pre_os_host_userspace_boot(text: payload, host_mac: "28:c1:3c:8a:d6:4a") { ObservationRefused { cause: _ } => true _ => false }
+        && contains(payload, "HMA82GR7AFR8N-VK") && contains(payload, "HMA82GR7CJR8N-VK") && contains(payload, "HMA82GR7AFR4N-VK")
+    }
+  }
+}
+
+test fn w_early_exit_refuses_absence_on_real_bytes() -> Bool {
+  match pre_os_archive_specs() {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: specs } => all(specs, spec => match read_verified_memory_capture(path: spec.path, expected_sha256: spec.sha256) {
+      ObservationRefused { cause: _ } => false
+      ObservationEstablished { observed: payload } => {
+        let question = pre_os_archive_inventory_question(spec: spec)
+        let diagnostic = "Non-identical DIMM mixture NOT supported!"
+        let positive = pre_os_diagnostic_absence(question: question, payload: payload, source: SourceBytesObserved { digest: content_hash_of_value(value: payload) }, diagnostic: diagnostic)
+        let early = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapContinuityBroken { continuity: ContinuityUnknown { detail: "stdin EOF before phase coverage" } }, diagnostic: diagnostic)
+        let mismatch = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapEvidenceNamesAnotherSubject {
+          disagreement: BindingMachineDisagrees { binding: "wrong-fixture-machine", owner: "recording-fixture-machine" }
+        }, diagnostic: diagnostic)
+        let missing_range = SourceStreamRange { first_offset: 0, length: byte_size(count: 10) }
+        let unattributed = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapContinuityBroken {
+          continuity: ContinuityGap { gap: missing_range, cause: GapCauseUnattributed }
+        }, diagnostic: diagnostic)
+        let collector_loss = pre_os_diagnostic_absence(question: question, payload: payload, source: CoverageGapContinuityBroken {
+          continuity: ContinuityGap { gap: missing_range, cause: CollectorLostOwnership { from_generation: 17, to_generation: 18 } }
+        }, diagnostic: diagnostic)
+        match positive { GoalSatisfied { evidence: _ } => true GoalDiverged { deviations: _ } => true _ => false }
+          && match early { GoalAssessmentRefused { cause } => contains(cause as String, "stdin EOF before phase coverage") _ => false }
+          && match mismatch { GoalAssessmentRefused { cause } => contains(cause as String, "wrong-fixture-machine") && contains(cause as String, "recording-fixture-machine") _ => false }
+          && match unattributed { GoalAssessmentRefused { cause } => contains(cause as String, "GapCauseUnattributed") && !contains(cause as String, "SourceRetainedLogRolledOver") _ => false }
+          && match collector_loss { GoalAssessmentRefused { cause } => contains(cause as String, "CollectorLostOwnership") && contains(cause as String, "17") && contains(cause as String, "18") _ => false }
+      }
+    })
+  }
+}
