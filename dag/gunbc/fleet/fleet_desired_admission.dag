@@ -445,7 +445,7 @@ fn fleet_desired_advance_input_wet(
 
 // THE ACTUATION TAIL, shared by both admission routes: everything after an accepted revision is
 // one path, so the two routes cannot drift in how an admitted revision becomes a CAS action.
-func fleet_desired_actuate_accepted_wet(
+fn fleet_desired_actuate_accepted_wet(
   accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>,
 ) -> ProcessExit {
   match fleet_desired_action_from_decision(
@@ -483,7 +483,7 @@ func fleet_desired_actuate_accepted_wet(
   }
 }
 
-func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
+fn admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
   match workflow_run_event_from_event_path(path: fleet_desired_admission_event_payload_path) {
     WorkflowRunEventObserved { event: event } =>
       match fleet_desired_accepted_from_event(
@@ -516,7 +516,7 @@ func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
 // A push whose revision has no qualifying merge_group run refuses as RequiredCiMergeGroupRunAbsent.
 // An operator's admin-bypass merge or a direct push is one SCENARIO that produces that absent
 // evidence; the refusal reports only the absence, never a diagnosed cause.
-func admit_fleet_desired_from_push_wet() -> ProcessExit {
+fn admit_fleet_desired_from_push_wet() -> ProcessExit {
   match push_ref_update_from_event_path(path: fleet_desired_admission_event_payload_path) {
     PushRefUpdateObserved { update: push } =>
       match fleet_desired_branch_from_push(push: push) {

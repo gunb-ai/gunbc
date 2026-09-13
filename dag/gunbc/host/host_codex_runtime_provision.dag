@@ -83,7 +83,7 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
   }
 }
 
-func materialize_codex_runtime_on_local_host() -> ProcessExit
+fn materialize_codex_runtime_on_local_host() -> ProcessExit
   uses net: Network
 {
   match provider_runtime_placement_for_host(host: "srv1" as HostIdentity) {
@@ -108,7 +108,7 @@ func materialize_codex_runtime_on_local_host() -> ProcessExit
   }
 }
 
-func provision_codex_runtime(host: HostIdentity) -> ProcessExit
+fn provision_codex_runtime(host: HostIdentity) -> ProcessExit
   uses net: Network
 {
   host_toolchain_ensure(host: host, kind: CodexRuntime)

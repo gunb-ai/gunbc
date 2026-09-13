@@ -103,7 +103,7 @@ fn boot_image_staging_path(published_path: NonEmptyStr) -> NonEmptyStr {
 // composed path and a directory as two parameters would let a caller pass a path that does not live
 // in the directory that was admitted -- admitting one place and writing to another, which is the
 // same seam defect as verifying one artifact and attaching a different one.
-func fetch_verified_boot_image(
+fn fetch_verified_boot_image(
   url: NonEmptyStr,
   export_dir: NonEmptyStr,
   image_name: NonEmptyStr,
@@ -133,7 +133,7 @@ func fetch_verified_boot_image(
 // separate func rather than statements following an `if`. The same shape keeps the boot handoff's
 // power cycle behind a confirmed read-back: a refusal cannot be reordered past it and nothing can
 // fall through to it.
-func verify_and_publish_boot_image(
+fn verify_and_publish_boot_image(
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   export_dir: NonEmptyStr,
@@ -175,7 +175,7 @@ func verify_and_publish_boot_image(
 // IT IS CHECKED AFTER THE DIGEST AGREES AND BEFORE THE MOVE, deliberately, so the two refusals stay
 // distinguishable. Checking it first would make every wrong-pin fetch on an unwritable export report
 // an ownership problem, hiding the artifact defect behind an environment one.
-func admit_then_publish_boot_image(
+fn admit_then_publish_boot_image(
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   export_dir: NonEmptyStr,
@@ -210,7 +210,7 @@ func admit_then_publish_boot_image(
 // group-writable by the automation account rather than exclusively held. A disagreement here means
 // the export does not contain what this program published, which is the one state that must never be
 // reported as an admission.
-func publish_verified_boot_image(
+fn publish_verified_boot_image(
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
@@ -244,7 +244,7 @@ func publish_verified_boot_image(
 // one this repository keeps having to redraw, and it decides whether the arm should exist: it
 // should. NEXT-RUNG TRIGGER: a fixture harness able to interpose on shell.Move.File, at which point
 // the red is authorable and this arm is owed one.
-func confirm_published_boot_image(
+fn confirm_published_boot_image(
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome

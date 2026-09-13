@@ -1056,7 +1056,7 @@ fn repository_bootstrap_branch() -> String {
 // the same authority the ordinary path uses, not a bootstrap-specific notion of success. `before`
 // and `after` are the same observation deliberately: an empty root had no refs or worktrees to
 // preserve, so the preservation comparison is vacuous rather than skipped.
-func repository_bootstrap_wet(
+fn repository_bootstrap_wet(
   repo: String,
   remote: String,
   base_ref: String,
@@ -1121,7 +1121,7 @@ func repository_bootstrap_wet(
 // arm also called unobservable, now reaches the bootstrap that can make it observable. The stall
 // this closes rules out relaxing the refusal, and this does not: it separates two states the
 // refusal had collapsed.
-func repository_converge_wet(
+fn repository_converge_wet(
   repo: String,
   remote: String,
   base_ref: String,
