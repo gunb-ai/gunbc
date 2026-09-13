@@ -99,7 +99,7 @@ import v1.compiler.infer_types {
   resolve_type_variables_from_template, template_return_has_variables, template_return_is_receiver_self,
   bare_map_node, bare_set_node,
   callable_inferred,
-  normalize_access_type_node,
+  normalize_access_type_node, value_binding_expr_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   node_type_deps,
@@ -11502,7 +11502,10 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
+          // Resolved application children carry the argument in inferred, beside
+          // the declaration's parameter name. Bind the argument, not that wrapper;
+          // infer_call_arguments_generic_pass carries this substitution to callbacks.
+          Present { value: ac } => unify_generics(formal: fc, actual: value_binding_expr_type_node(resolved: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
           Absent => acc
         }
       Absent => acc
