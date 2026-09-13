@@ -1011,6 +1011,33 @@ pub fn expected_variant_owner_instantiation(
     }
 }
 
+pub fn variant_owner_application(owner: Rc<Node>, arguments: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name: owner.name.clone(),
+        span: owner.span.clone(),
+        ident_span: owner.ident_span.clone(),
+        children: arguments.clone(),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved {
+            node: owner.clone(),
+        })),
+        return_cardinality: owner.return_cardinality.clone(),
+        uses: owner.uses.clone(),
+        body: owner.body.clone(),
+        transport: owner.transport.clone(),
+        properties: owner.properties.clone(),
+        type_annotation: owner.type_annotation.clone(),
+        is_self_recursive: owner.is_self_recursive.clone(),
+        has_non_tail_self_call: owner.has_non_tail_self_call.clone(),
+        match_pattern: owner.match_pattern.clone(),
+        module_item_kind: owner.module_item_kind.clone(),
+        expr_data: owner.expr_data.clone(),
+        ident: None,
+    })
+}
+
 pub fn variant_reference_inferred_node(
     expected: Option<Rc<Node>>,
     name: String,
@@ -1018,34 +1045,57 @@ pub fn variant_reference_inferred_node(
     scope: Rc<InferScope>,
     fallback: Rc<Node>,
 ) -> Rc<Node> {
-    match expected.clone() {
-        Some(exp) => {
-            if ((exp.return_cardinality.clone() == Cardinality::Required)
-                && (owner_name.clone() != "".to_string()))
-            {
-                match expected_variant_owner_instantiation(
-                    expected.clone(),
-                    name.clone(),
-                    scope.clone(),
-                ) {
-                    Some(exp_enum) => {
-                        if (crate::v1_std_core::authored_name_at(
-                            scope.type_env.clone().source_indices.clone(),
-                            exp_enum.clone(),
-                        ) == owner_name.clone())
-                        {
-                            exp.clone()
-                        } else {
-                            fallback
+    {
+        let selected_owner = match expected.clone() {
+            Some(exp) => {
+                if ((exp.return_cardinality.clone() == Cardinality::Required)
+                    && (owner_name.clone() != "".to_string()))
+                {
+                    match expected_variant_owner_instantiation(
+                        expected.clone(),
+                        name.clone(),
+                        scope.clone(),
+                    ) {
+                        Some(exp_enum) => {
+                            if (crate::v1_std_core::authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                exp_enum.clone(),
+                            ) == owner_name.clone())
+                            {
+                                exp.clone()
+                            } else {
+                                fallback.clone()
+                            }
                         }
+                        std::option::Option::None => fallback.clone(),
                     }
-                    std::option::Option::None => fallback,
+                } else {
+                    fallback.clone()
                 }
-            } else {
-                fallback
             }
+            std::option::Option::None => fallback.clone(),
+        };
+        if ((selected_owner.connective.clone() == Connective::Disj)
+            && ((selected_owner.params.clone().len() as i64) > 0))
+        {
+            variant_owner_application(
+                selected_owner.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in selected_owner.params.clone().iter().cloned() {
+                        __result.push(type_variable_node(
+                            crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ),
+                        ));
+                    }
+                    __result
+                }),
+            )
+        } else {
+            selected_owner.clone()
         }
-        std::option::Option::None => fallback,
     }
 }
 
@@ -9926,7 +9976,7 @@ match scope_parent.clone() {
     parent_enum: crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), exp_enum.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: exp_enum.clone(),
+    node: variant_reference_inferred_node(expected.clone(), name.clone(), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), exp_enum.clone()), scope.clone(), exp_enum.clone()),
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
@@ -9953,7 +10003,7 @@ match expected_variant_enum.clone() {
     parent_enum: crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), exp_enum.clone()),
 })),
 }), Rc::new(vec![]), Some(Rc::new(InferredNode::Resolved {
-    node: exp_enum.clone(),
+    node: variant_reference_inferred_node(expected.clone(), name.clone(), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), exp_enum.clone()), scope.clone(), exp_enum.clone()),
 })), span.clone(), span.clone()),
     diagnostics: variant_value_reference_diagnostics(scope.clone(), name.clone(), span.clone(), Some(exp_enum.clone())),
 }),
@@ -14449,7 +14499,7 @@ Rc::new(FieldInferResult {
                 let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())
                     && (local_variant_parent.clone().as_deref()
                         == expected_optional_parent.clone().as_deref()));
-                let resolved_node = if is_present_ctor.clone() {
+                let resolved_node_result = if is_present_ctor.clone() {
                     {
                         let val_field = Rc::new({
                             let mut __result = Vec::new();
@@ -14466,18 +14516,48 @@ Rc::new(FieldInferResult {
                         })
                         .first()
                         .cloned();
+                        let optional_owner = match owner_from_locals.clone() {
+                            Some(owner) => Some(owner.clone()),
+                            std::option::Option::None => match owner_from_variant_node.clone() {
+                                Some(owner) => Some(owner.clone()),
+                                std::option::Option::None => expected_owner.clone(),
+                            },
+                        };
                         match val_field.clone() {
-                            Some(val_fir) => crate::v1_std_core::with_optional_cardinality(
-                                crate::v1_compiler_infer_types::resolved_type(
-                                    val_fir.infer_result.clone().typed.clone(),
-                                ),
-                            ),
-                            std::option::Option::None => raw_resolved.clone(),
+                            Some(val_fir) => match optional_owner.clone() {
+                                Some(owner) => Rc::new(NodeResolveResult {
+                                    resolved: variant_owner_application(
+                                        owner.clone(),
+                                        Rc::new(vec![
+                                            crate::v1_compiler_infer_types::resolved_type(
+                                                val_fir.infer_result.clone().typed.clone(),
+                                            ),
+                                        ]),
+                                    ),
+                                    diagnostics: Rc::new(vec![]),
+                                }),
+                                std::option::Option::None => Rc::new(NodeResolveResult {
+                                    resolved: raw_resolved.clone(),
+                                    diagnostics: Rc::new(vec![inference_error(
+                                        "optional constructor owner unavailable".to_string(),
+                                        span.clone(),
+                                        scope.module_name.clone(),
+                                    )]),
+                                }),
+                            },
+                            std::option::Option::None => Rc::new(NodeResolveResult {
+                                resolved: raw_resolved.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            }),
                         }
                     }
                 } else {
-                    raw_resolved.clone()
+                    Rc::new(NodeResolveResult {
+                        resolved: raw_resolved.clone(),
+                        diagnostics: Rc::new(vec![]),
+                    })
                 };
+                let resolved_node = resolved_node_result.resolved.clone();
                 let type_diags = match effective_lookup.clone() {
                     Some(_) => Rc::new(vec![]),
                     std::option::Option::None => {
@@ -14525,14 +14605,17 @@ Rc::new(FieldInferResult {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
-                                    type_diags.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                                        type_diags.clone(),
+                                    ),
+                                    sole_ctor_diags.clone(),
                                 ),
-                                sole_ctor_diags.clone(),
+                                missing_field_diags.clone(),
                             ),
-                            missing_field_diags.clone(),
+                            presence_ambiguity_diags.clone(),
                         ),
-                        presence_ambiguity_diags.clone(),
+                        resolved_node_result.diagnostics.clone(),
                     ),
                 })
             }
@@ -20266,6 +20349,11 @@ pub fn refine_generic_constraint(
                         }
                     } else {
                         {
+                            let application_arguments = (exposure_is_application(
+                                expected_type_head_exposure(established.clone(), scope.clone()),
+                            ) && exposure_is_application(
+                                expected_type_head_exposure(incoming.clone(), scope.clone()),
+                            ));
                             let child_results = Rc::new({
                                 let mut __result = Vec::new();
                                 for pair in Rc::new(
@@ -20281,30 +20369,18 @@ pub fn refine_generic_constraint(
                                 .iter()
                                 .cloned()
                                 {
-                                    __result.push(
-                                        match incoming
-                                            .children
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .skip(pair.0.clone() as usize)
-                                            .next()
-                                        {
-                                            Some(other) => refine_generic_constraint(
-                                                pair.1.clone(),
-                                                other.clone(),
-                                                span.clone(),
-                                                scope.clone(),
-                                            ),
-                                            std::option::Option::None => {
-                                                generic_constraint_refusal(
-                                                    pair.1.clone(),
-                                                    span.clone(),
-                                                    scope.clone(),
-                                                )
-                                            }
-                                        },
-                                    );
+                                    __result.push(match incoming.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
+    Some(other) => refine_generic_constraint(if application_arguments.clone() {
+                                    crate::v1_compiler_infer_types::type_argument_node(pair.1.clone())
+                                } else {
+                                    pair.1.clone()
+                                }, if application_arguments.clone() {
+                                    crate::v1_compiler_infer_types::type_argument_node(other.clone())
+                                } else {
+                                    other.clone()
+                                }, span.clone(), scope.clone()),
+    std::option::Option::None => generic_constraint_refusal(pair.1.clone(), span.clone(), scope.clone()),
+});
                                 }
                                 __result
                             });
@@ -20350,7 +20426,9 @@ pub fn refine_generic_constraint(
                                 }
                                 __result
                             });
-                            let payload_result =
+                            let payload_result = if application_arguments.clone() {
+                                std::option::Option::None
+                            } else {
                                 match established.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: left, .. }) => {
                                         match incoming.inferred.clone().as_deref().cloned() {
@@ -20366,7 +20444,8 @@ pub fn refine_generic_constraint(
                                         }
                                     }
                                     _ => std::option::Option::None,
-                                };
+                                }
+                            };
                             let payload_diags = match payload_result.clone() {
                                 Some(r) => r.diagnostics.clone(),
                                 std::option::Option::None => Rc::new(vec![]),
