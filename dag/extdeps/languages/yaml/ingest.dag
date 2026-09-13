@@ -15,6 +15,30 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// A BOUNDED READER OF YAML 1.2.2 BLOCK DOCUMENTS, AND THE BOUND IS STATED AS REFUSALS. What it
+// reads: block mappings and sequences at any consistent indentation, compact sequences at their
+// key's column, plain / single-quoted / double-quoted scalars, flow sequences and flow mappings
+// on one line, literal (`|`, `|-`) and strip-folded (`>-`) block scalars, blank lines, and
+// comments wherever the grammar permits them. What it refuses, each as a located
+// YamlIngestRejected rather than a tree: anchors, aliases and tags, quoted mapping keys, the
+// block-scalar headers it does not fold (`>`, `|+`, `>+`, explicit indentation), double-quoted
+// escapes outside the handled set, content after a quoted scalar, multi-document streams.
+//
+// COMMENT SEPARATION IS LEXICAL. A `#` begins a comment only where the grammar says it can - at the
+// start of a line, or after whitespace outside a quoted scalar, a flow collection's quotes and a
+// block scalar's content. An earlier revision could not separate an inline comment, so it refused
+// every `value # comment` rather than ingest the comment as scalar content; that refusal was the
+// honest interim rung (gunbc.recurring_failure_mode.yaml_inline_comment_ingested_as_scalar_content)
+// and it rejected almost every real third-party workflow, whose pinned `uses:` lines carry
+// `# v6.1.0`. Separation is now the production that decides where a scalar ends, so comment bytes
+// can reach scalar content only through a quoted or block scalar - where YAML says they are content.
+//
+// ONE DEVIATION FROM THE SPECIFICATION IS KEPT DELIBERATELY AND IS NAMED HERE. A clip-chomped
+// literal (`|`) ends in exactly one line break in YAML; this reader returns its content without
+// that final break, because extdeps.languages.yaml.emit `multiline_block_doc` writes `|` for a
+// string that has none, and the pair round-trips only if both sides agree. Changing it is a change
+// to both directions at once, never to one.
+
 type YamlIngestResult
   = IngestedYaml { value: YamlValue }
   | YamlIngestRejected { reason: String }
@@ -31,9 +55,46 @@ type YamlSeqItemResult
   = ParsedYamlSeqItem { value: YamlValue, next_index: Int }
   | YamlSeqItemRejected { reason: String }
 
-type YamlLiteralCollectResult {
-  text: String
+type YamlNodeResult
+  = YamlNodeParsed { value: YamlValue }
+  | YamlNodeRejected { reason: String }
+
+// WHAT FOLLOWS AN INDICATOR ON ITS OWN LINE. Absent is not the empty string: `key:` and `key: ''`
+// are different documents, and the first one's value is decided by the lines below it.
+type YamlInlineValue
+  = YamlInlineAbsent
+  | YamlInlineBlockScalarHeader { header: String }
+  | YamlInlineNode { value: YamlValue }
+  | YamlInlineRejected { reason: String }
+
+// The admitted headers differ only in style. `|` and `|-` produce the same content here, the first
+// by the named clip deviation and the second by specification, so chomping carries no decision.
+type YamlBlockScalarStyle
+  = YamlLiteralStyle
+  | YamlFoldedStyle
+
+type YamlBlockScalarHeaderRead
+  = YamlBlockScalarHeaderAdmitted { style: YamlBlockScalarStyle }
+  | YamlBlockScalarHeaderRefused { reason: String }
+
+type YamlBlockScalarLines {
+  lines: List<String>
   next_index: Int
+}
+
+type YamlFlowItemsResult
+  = YamlFlowItemsParsed { values: List<YamlValue> }
+  | YamlFlowItemsRejected { reason: String }
+
+type YamlFlowEntriesResult
+  = YamlFlowEntriesParsed { entries: List<YamlKeyValue> }
+  | YamlFlowEntriesRejected { reason: String }
+
+type YamlFoldAcc {
+  text: String
+  pending_breaks: Int
+  previous_more_indented: Bool
+  started: Bool
 }
 
 data yaml_digit_chars: String = "0123456789"
@@ -58,6 +119,27 @@ fn yaml_looks_like_int(s: String) -> Bool {
   }
 }
 
+fn yaml_is_separation_char(c: String) -> Bool {
+  (c == " ") || (c == "\t")
+}
+
+fn yaml_left_trim(s: String) -> String {
+  if (s != "") && yaml_is_separation_char(c: substring(s: s, start: 0, end: 1)) {
+    yaml_left_trim(s: substring(s: s, start: 1, end: s.length()))
+  } else {
+    s
+  }
+}
+
+fn yaml_right_trim(s: String) -> String {
+  let n = s.length()
+  if (n > 0) && yaml_is_separation_char(c: substring(s: s, start: n - 1, end: n)) {
+    yaml_right_trim(s: substring(s: s, start: 0, end: n - 1))
+  } else {
+    s
+  }
+}
+
 fn yaml_indent_of(line: String) -> Int {
   if starts_with(s: line, prefix: " ") {
     1 + yaml_indent_of(line: substring(s: line, start: 1, end: line.length()))
@@ -67,11 +149,23 @@ fn yaml_indent_of(line: String) -> Int {
 }
 
 fn yaml_strip_indent(line: String, indent: Int) -> String {
-  substring(s: line, start: indent, end: line.length())
+  if indent >= line.length() {
+    ""
+  } else {
+    substring(s: line, start: indent, end: line.length())
+  }
+}
+
+fn yaml_strip_carriage_return(line: String) -> String {
+  if ends_with(s: line, suffix: "\r") {
+    substring(s: line, start: 0, end: line.length() - 1)
+  } else {
+    line
+  }
 }
 
 fn yaml_lines_from_source(src: String) -> List<String> {
-  let raw = split(s: src, delimiter: "\n")
+  let raw = map(split(s: src, delimiter: "\n"), l => yaml_strip_carriage_return(line: l))
   let n = raw.length()
   if (n > 0) && (raw.skip(n: n - 1).first() == "") {
     raw.take(n: n - 1)
@@ -80,12 +174,15 @@ fn yaml_lines_from_source(src: String) -> List<String> {
   }
 }
 
-fn yaml_has_line_at(lines: List<String>, index: Int) -> Bool {
-  index < lines.length()
+fn yaml_line_at(lines: List<String>, index: Int) -> String {
+  match lines.get(n: index) {
+    Present { value: l } => l
+    Absent => ""
+  }
 }
 
-fn yaml_line_at(lines: List<String>, index: Int) -> String {
-  lines.skip(n: index).first()
+fn yaml_has_line_at(lines: List<String>, index: Int) -> Bool {
+  index < lines.length()
 }
 
 fn yaml_indent_at(lines: List<String>, index: Int) -> Int {
@@ -96,70 +193,110 @@ fn yaml_indent_at(lines: List<String>, index: Int) -> Int {
   }
 }
 
-fn yaml_line_is_full_comment_at_indent(lines: List<String>, index: Int, indent: Int) -> Bool {
-  if !yaml_has_line_at(lines: lines, index: index) {
-    false
-  } else if yaml_indent_at(lines: lines, index: index) != indent {
-    false
-  } else {
-    starts_with(
-      s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent),
-      prefix: "#"
-    )
-  }
+fn yaml_content_at(lines: List<String>, index: Int, indent: Int) -> String {
+  yaml_right_trim(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent))
 }
 
-fn yaml_skip_full_comments_at_indent(lines: List<String>, index: Int, indent: Int) -> Int {
-  if yaml_line_is_full_comment_at_indent(lines: lines, index: index, indent: indent) {
-    yaml_skip_full_comments_at_indent(lines: lines, index: index + 1, indent: indent)
+fn yaml_line_number(index: Int) -> String {
+  to_string(index + 1)
+}
+
+fn yaml_located(index: Int, reason: String) -> String {
+  join(["line ", yaml_line_number(index: index), ": ", reason], "")
+}
+
+// A LINE THAT CARRIES NO NODE: blank, or a comment. Outside a block scalar the grammar ignores both
+// at every indentation, which is why this predicate takes no indent - an earlier revision skipped
+// comments only at the enclosing block's own column and refused a real workflow's comment written
+// one level deeper. Inside a block scalar neither is ignorable, and the collector never calls this.
+fn yaml_line_is_ignorable(line: String) -> Bool {
+  let t = yaml_left_trim(s: line)
+  (t == "") || starts_with(s: t, prefix: "#")
+}
+
+fn yaml_next_content_index(lines: List<String>, index: Int) -> Int {
+  if yaml_has_line_at(lines: lines, index: index) && yaml_line_is_ignorable(line: yaml_line_at(lines: lines, index: index)) {
+    yaml_next_content_index(lines: lines, index: index + 1)
   } else {
     index
   }
 }
 
-// Inline comment separation is not yet modeled. Refuse the recognizable unquoted value form
-// instead of silently ingesting its comment as scalar content. This intentionally errs toward
-// refusal for richer scalar forms this bounded parser does not model; double-quoted scalars are
-// excluded, and block-literal content never passes through this predicate.
-fn yaml_has_unmodeled_inline_comment(text: String) -> Bool {
-  let double_quoted = starts_with(s: text, prefix: "\"") && ends_with(s: text, suffix: "\"")
-  !double_quoted && (
-    string_contains(s: text, pattern: " #")
-      || string_contains(s: text, pattern: "\t#")
+// -------------------------------------------------------------------------------------
+// Scalars and flow collections on one line.
+// -------------------------------------------------------------------------------------
+
+// The earliest `#` preceded by separation whitespace ends a plain scalar; a leading `#` is a comment
+// because the indicator before it (`: ` or `- `) already supplied the whitespace.
+fn yaml_plain_comment_cut(text: String) -> String {
+  if starts_with(s: text, prefix: "#") {
+    ""
+  } else {
+    yaml_right_trim(s: split(s: split(s: text, delimiter: " #").first(), delimiter: "\t#").first())
+  }
+}
+
+fn yaml_double_quote_close(s: String, i: Int) -> Int {
+  if i >= s.length() {
+    -1
+  } else if char_at(s, i) == "\\" {
+    yaml_double_quote_close(s: s, i: i + 2)
+  } else if char_at(s, i) == "\"" {
+    i
+  } else {
+    yaml_double_quote_close(s: s, i: i + 1)
+  }
+}
+
+fn yaml_single_quote_close(s: String, i: Int) -> Int {
+  if i >= s.length() {
+    -1
+  } else if char_at(s, i) == "'" {
+    if (i + 1 < s.length()) && (char_at(s, i + 1) == "'") {
+      yaml_single_quote_close(s: s, i: i + 2)
+    } else {
+      i
+    }
+  } else {
+    yaml_single_quote_close(s: s, i: i + 1)
+  }
+}
+
+// After a closed quoted scalar or flow collection only separation and a comment may follow.
+fn yaml_token_tail_is_empty(rest: String) -> Bool {
+  (rest == "") || (
+    yaml_is_separation_char(c: substring(s: rest, start: 0, end: 1)) && (
+      (yaml_left_trim(s: rest) == "") || starts_with(s: yaml_left_trim(s: rest), prefix: "#")
+    )
   )
 }
 
-fn yaml_unescape_double_quoted(s: String) -> String {
+fn yaml_unescape_double_quoted_from(s: String, acc: String) -> YamlNodeResult {
   if s == "" {
-    ""
-  } else if starts_with(s: s, prefix: "\\\"") {
-    concat("\"", yaml_unescape_double_quoted(s: substring(s: s, start: 2, end: s.length())))
-  } else if starts_with(s: s, prefix: "\\\\") {
-    concat("\\", yaml_unescape_double_quoted(s: substring(s: s, start: 2, end: s.length())))
+    YamlNodeParsed { value: YamlString { value: acc } }
+  } else if starts_with(s: s, prefix: "\\") {
+    let e = substring(s: s, start: 1, end: 2)
+    let rest = substring(s: s, start: 2, end: s.length())
+    if e == "\"" {
+      yaml_unescape_double_quoted_from(s: rest, acc: concat(acc, "\""))
+    } else if e == "\\" {
+      yaml_unescape_double_quoted_from(s: rest, acc: concat(acc, "\\"))
+    } else if e == "/" {
+      yaml_unescape_double_quoted_from(s: rest, acc: concat(acc, "/"))
+    } else if e == "n" {
+      yaml_unescape_double_quoted_from(s: rest, acc: concat(acc, "\n"))
+    } else if e == "t" {
+      yaml_unescape_double_quoted_from(s: rest, acc: concat(acc, "\t"))
+    } else {
+      YamlNodeRejected { reason: join(["the double-quoted escape \\", e, " is not modeled"], "") }
+    }
   } else {
-    concat(substring(s: s, start: 0, end: 1), yaml_unescape_double_quoted(s: substring(s: s, start: 1, end: s.length())))
+    yaml_unescape_double_quoted_from(s: substring(s: s, start: 1, end: s.length()), acc: concat(acc, substring(s: s, start: 0, end: 1)))
   }
 }
 
-fn yaml_is_flow_sequence_text(text: String) -> Bool {
-  starts_with(s: text, prefix: "[") && ends_with(s: text, suffix: "]")
-}
-
-fn yaml_parse_flow_sequence(text: String) -> YamlValue {
-  let inner = substring(s: text, start: 1, end: text.length() - 1)
-  if inner == "" {
-    YamlSequence { elements: [] }
-  } else {
-    YamlSequence { elements: map(split(s: inner, delimiter: ", "), t => yaml_parse_scalar_text(text: t)) }
-  }
-}
-
-fn yaml_parse_scalar_text(text: String) -> YamlValue {
-  if text == "''" {
-    YamlString { value: "" }
-  } else if starts_with(s: text, prefix: "\"") && ends_with(s: text, suffix: "\"") && (text.length() >= 2) {
-    YamlString { value: yaml_unescape_double_quoted(s: substring(s: text, start: 1, end: text.length() - 1)) }
-  } else if text == "true" {
+fn yaml_plain_scalar(text: String) -> YamlValue {
+  if text == "true" {
     YamlBool { value: true }
   } else if text == "false" {
     YamlBool { value: false }
@@ -170,90 +307,347 @@ fn yaml_parse_scalar_text(text: String) -> YamlValue {
   }
 }
 
-fn yaml_collect_literal_lines_from(lines: List<String>, index: Int, content_indent: Int, acc: List<String>) -> YamlLiteralCollectResult {
-  if yaml_has_line_at(lines: lines, index: index) && (yaml_line_at(lines: lines, index: index) == "") {
-    yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [""]))
+fn yaml_flow_end(s: String, i: Int, depth: Int) -> Int {
+  if i >= s.length() {
+    -1
+  } else {
+    let c = char_at(s, i)
+    if c == "\"" {
+      let close = yaml_double_quote_close(s: s, i: i + 1)
+      if close < 0 { -1 } else { yaml_flow_end(s: s, i: close + 1, depth: depth) }
+    } else if c == "'" {
+      let close = yaml_single_quote_close(s: s, i: i + 1)
+      if close < 0 { -1 } else { yaml_flow_end(s: s, i: close + 1, depth: depth) }
+    } else if (c == "[") || (c == "{") {
+      yaml_flow_end(s: s, i: i + 1, depth: depth + 1)
+    } else if (c == "]") || (c == "}") {
+      if depth == 1 { i } else { yaml_flow_end(s: s, i: i + 1, depth: depth - 1) }
+    } else {
+      yaml_flow_end(s: s, i: i + 1, depth: depth)
+    }
+  }
+}
+
+// Entries of a flow collection split at the commas that separate them, never at a comma inside a
+// quoted scalar or a nested collection - `[a, "b, c"]` has two entries.
+fn yaml_flow_split_from(s: String, i: Int, start: Int, depth: Int, acc: List<String>) -> List<String>? {
+  if i >= s.length() {
+    Present { value: concat(acc, [substring(s: s, start: start, end: s.length())]) }
+  } else {
+    let c = char_at(s, i)
+    if c == "\"" {
+      let close = yaml_double_quote_close(s: s, i: i + 1)
+      if close < 0 { none } else { yaml_flow_split_from(s: s, i: close + 1, start: start, depth: depth, acc: acc) }
+    } else if c == "'" {
+      let close = yaml_single_quote_close(s: s, i: i + 1)
+      if close < 0 { none } else { yaml_flow_split_from(s: s, i: close + 1, start: start, depth: depth, acc: acc) }
+    } else if (c == "[") || (c == "{") {
+      yaml_flow_split_from(s: s, i: i + 1, start: start, depth: depth + 1, acc: acc)
+    } else if (c == "]") || (c == "}") {
+      yaml_flow_split_from(s: s, i: i + 1, start: start, depth: depth - 1, acc: acc)
+    } else if (c == ",") && (depth == 0) {
+      yaml_flow_split_from(s: s, i: i + 1, start: i + 1, depth: depth, acc: concat(acc, [substring(s: s, start: start, end: i)]))
+    } else {
+      yaml_flow_split_from(s: s, i: i + 1, start: start, depth: depth, acc: acc)
+    }
+  }
+}
+
+fn yaml_quoted_scalar_node(t: String) -> YamlNodeResult {
+  if starts_with(s: t, prefix: "\"") {
+    let close = yaml_double_quote_close(s: t, i: 1)
+    if close < 0 {
+      YamlNodeRejected { reason: "unterminated double-quoted scalar" }
+    } else if !yaml_token_tail_is_empty(rest: substring(s: t, start: close + 1, end: t.length())) {
+      YamlNodeRejected { reason: "content follows a double-quoted scalar on the same line" }
+    } else {
+      yaml_unescape_double_quoted_from(s: substring(s: t, start: 1, end: close), acc: "")
+    }
+  } else {
+    let close = yaml_single_quote_close(s: t, i: 1)
+    if close < 0 {
+      YamlNodeRejected { reason: "unterminated single-quoted scalar" }
+    } else if !yaml_token_tail_is_empty(rest: substring(s: t, start: close + 1, end: t.length())) {
+      YamlNodeRejected { reason: "content follows a single-quoted scalar on the same line" }
+    } else {
+      YamlNodeParsed { value: YamlString { value: replace(substring(s: t, start: 1, end: close), "''", "'") } }
+    }
+  }
+}
+
+fn yaml_flow_entry_node(entry: String) -> YamlNodeResult {
+  let t = yaml_right_trim(s: yaml_left_trim(s: entry))
+  if t == "" {
+    YamlNodeRejected { reason: "empty flow collection entry" }
+  } else if starts_with(s: t, prefix: "\"") || starts_with(s: t, prefix: "'") {
+    yaml_quoted_scalar_node(t: t)
+  } else if starts_with(s: t, prefix: "[") || starts_with(s: t, prefix: "{") {
+    yaml_flow_collection_node(t: t)
+  } else if string_contains(s: t, pattern: " #") {
+    YamlNodeRejected { reason: "a comment inside a flow collection is not modeled" }
+  } else if starts_with(s: t, prefix: "&") || starts_with(s: t, prefix: "*") || starts_with(s: t, prefix: "!") {
+    YamlNodeRejected { reason: "YAML anchors, aliases and tags are not modeled" }
+  } else {
+    YamlNodeParsed { value: yaml_plain_scalar(text: t) }
+  }
+}
+
+fn yaml_flow_mapping_entry(entry: String) -> YamlFlowEntriesResult {
+  let t = yaml_left_trim(s: entry)
+  let parts = split(s: t, delimiter: ": ")
+  if (parts.length() < 2) || starts_with(s: t, prefix: "\"") || starts_with(s: t, prefix: "'") {
+    YamlFlowEntriesRejected { reason: concat("flow mapping entry is not a plain key followed by ': ' and a value: ", t) }
+  } else {
+    match yaml_flow_entry_node(entry: join(parts.skip(n: 1), ": ")) {
+      YamlNodeParsed { value: v } => YamlFlowEntriesParsed { entries: [kv(key: yaml_right_trim(s: parts.first()), value: v)] }
+      YamlNodeRejected { reason: r } => YamlFlowEntriesRejected { reason: r }
+    }
+  }
+}
+
+fn yaml_flow_collection_node(t: String) -> YamlNodeResult {
+  let end = yaml_flow_end(s: t, i: 0, depth: 0)
+  if end < 0 {
+    YamlNodeRejected { reason: "unterminated flow collection" }
+  } else if !yaml_token_tail_is_empty(rest: substring(s: t, start: end + 1, end: t.length())) {
+    YamlNodeRejected { reason: "content follows a flow collection on the same line" }
+  } else {
+    let inner = substring(s: t, start: 1, end: end)
+    let is_sequence = starts_with(s: t, prefix: "[")
+    if yaml_left_trim(s: inner) == "" {
+      if is_sequence { YamlNodeParsed { value: YamlSequence { elements: [] } } } else { YamlNodeParsed { value: YamlMapping { entries: [] } } }
+    } else {
+      match yaml_flow_split_from(s: inner, i: 0, start: 0, depth: 0, acc: []) {
+        Absent => YamlNodeRejected { reason: "unterminated quoted scalar inside a flow collection" }
+        Present { value: entries } =>
+          if is_sequence {
+            match yaml_flow_items(entries: entries) {
+              YamlFlowItemsParsed { values: vs } => YamlNodeParsed { value: YamlSequence { elements: vs } }
+              YamlFlowItemsRejected { reason: r } => YamlNodeRejected { reason: r }
+            }
+          } else {
+            match yaml_flow_entries(entries: entries) {
+              YamlFlowEntriesParsed { entries: es } => YamlNodeParsed { value: YamlMapping { entries: es } }
+              YamlFlowEntriesRejected { reason: r } => YamlNodeRejected { reason: r }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn yaml_flow_items(entries: List<String>) -> YamlFlowItemsResult {
+  fold(entries, init: YamlFlowItemsParsed { values: [] }, f: (acc, e) => match acc {
+    YamlFlowItemsRejected { reason: r } => YamlFlowItemsRejected { reason: r }
+    YamlFlowItemsParsed { values: sofar } => match yaml_flow_entry_node(entry: e) {
+      YamlNodeParsed { value: v } => YamlFlowItemsParsed { values: concat(sofar, [v]) }
+      YamlNodeRejected { reason: r } => YamlFlowItemsRejected { reason: r }
+    }
+  })
+}
+
+fn yaml_flow_entries(entries: List<String>) -> YamlFlowEntriesResult {
+  fold(entries, init: YamlFlowEntriesParsed { entries: [] }, f: (acc, e) => match acc {
+    YamlFlowEntriesRejected { reason: r } => YamlFlowEntriesRejected { reason: r }
+    YamlFlowEntriesParsed { entries: sofar } => match yaml_flow_mapping_entry(entry: e) {
+      YamlFlowEntriesParsed { entries: pair } => YamlFlowEntriesParsed { entries: concat(sofar, pair) }
+      YamlFlowEntriesRejected { reason: r } => YamlFlowEntriesRejected { reason: r }
+    }
+  })
+}
+
+fn yaml_inline_from_node(node: YamlNodeResult) -> YamlInlineValue {
+  match node {
+    YamlNodeParsed { value: v } => YamlInlineNode { value: v }
+    YamlNodeRejected { reason: r } => YamlInlineRejected { reason: r }
+  }
+}
+
+fn yaml_parse_inline(text: String) -> YamlInlineValue {
+  let t = yaml_left_trim(s: text)
+  if (t == "") || starts_with(s: t, prefix: "#") {
+    YamlInlineAbsent
+  } else if starts_with(s: t, prefix: "\"") || starts_with(s: t, prefix: "'") {
+    yaml_inline_from_node(node: yaml_quoted_scalar_node(t: t))
+  } else if starts_with(s: t, prefix: "[") || starts_with(s: t, prefix: "{") {
+    yaml_inline_from_node(node: yaml_flow_collection_node(t: t))
+  } else if starts_with(s: t, prefix: "|") || starts_with(s: t, prefix: ">") {
+    YamlInlineBlockScalarHeader { header: yaml_plain_comment_cut(text: t) }
+  } else if starts_with(s: t, prefix: "&") || starts_with(s: t, prefix: "*") || starts_with(s: t, prefix: "!") {
+    YamlInlineRejected { reason: "YAML anchors, aliases and tags are not modeled" }
+  } else if starts_with(s: t, prefix: "%") || starts_with(s: t, prefix: "@") || starts_with(s: t, prefix: "`") {
+    YamlInlineRejected { reason: concat("a plain scalar may not begin with the reserved indicator ", substring(s: t, start: 0, end: 1)) }
+  } else {
+    YamlInlineNode { value: yaml_plain_scalar(text: yaml_plain_comment_cut(text: t)) }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Block scalars.
+// -------------------------------------------------------------------------------------
+
+fn yaml_block_scalar_header(header: String) -> YamlBlockScalarHeaderRead {
+  if header == "|" {
+    YamlBlockScalarHeaderAdmitted { style: YamlLiteralStyle }
+  } else if header == "|-" {
+    YamlBlockScalarHeaderAdmitted { style: YamlLiteralStyle }
+  } else if header == ">-" {
+    YamlBlockScalarHeaderAdmitted { style: YamlFoldedStyle }
+  } else {
+    YamlBlockScalarHeaderRefused { reason: concat("the block scalar header is not modeled: ", header) }
+  }
+}
+
+fn yaml_first_block_scalar_indent(lines: List<String>, index: Int) -> Int {
+  if !yaml_has_line_at(lines: lines, index: index) {
+    -1
+  } else if yaml_left_trim(s: yaml_line_at(lines: lines, index: index)) == "" {
+    yaml_first_block_scalar_indent(lines: lines, index: index + 1)
+  } else {
+    yaml_indent_at(lines: lines, index: index)
+  }
+}
+
+fn yaml_collect_block_scalar_lines(lines: List<String>, index: Int, content_indent: Int, acc: List<String>) -> YamlBlockScalarLines {
+  if yaml_has_line_at(lines: lines, index: index) && (yaml_left_trim(s: yaml_line_at(lines: lines, index: index)) == "") {
+    yaml_collect_block_scalar_lines(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [""]))
   } else if yaml_has_line_at(lines: lines, index: index) && (yaml_indent_at(lines: lines, index: index) >= content_indent) {
-    let stripped = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: content_indent)
-    yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [stripped]))
+    yaml_collect_block_scalar_lines(
+      lines: lines,
+      index: index + 1,
+      content_indent: content_indent,
+      acc: concat(acc, [yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: content_indent)]),
+    )
   } else {
-    YamlLiteralCollectResult { text: join(acc, "\n"), next_index: index }
+    YamlBlockScalarLines { lines: acc, next_index: index }
   }
 }
 
-fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> YamlEntryResult {
-  let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent)
-  let parts = split(s: content, delimiter: ": ")
-  if parts.length() > 1 {
-    let key = parts.first()
-    let rest = join(parts.skip(n: 1), ": ")
-    if yaml_has_unmodeled_inline_comment(text: rest) {
-      YamlEntryRejected { reason: "inline YAML comments after values are not modeled" }
-    } else if rest == "|" {
-      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
-      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
-    } else if yaml_is_flow_sequence_text(text: rest) {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
-    } else {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
-    }
-  } else if ends_with(s: content, suffix: ":") {
-    let key = substring(s: content, start: 0, end: content.length() - 1)
-    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 2) {
-      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 2) {
-        ParsedYamlBlock { value: nested, next_index: ni } =>
-          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
-        YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
-      }
-    } else {
-      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
-    }
+fn yaml_drop_trailing_blank(lines: List<String>) -> List<String> {
+  let n = lines.length()
+  if (n > 0) && (lines.skip(n: n - 1).first() == "") {
+    yaml_drop_trailing_blank(lines: lines.take(n: n - 1))
   } else {
-    YamlEntryRejected { reason: concat("malformed mapping entry: ", content) }
+    lines
   }
 }
 
-fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: Int, indent: Int) -> YamlEntryResult {
-  let parts = split(s: text, delimiter: ": ")
-  if parts.length() > 1 {
-    let key = parts.first()
-    let rest = join(parts.skip(n: 1), ": ")
-    if yaml_has_unmodeled_inline_comment(text: rest) {
-      YamlEntryRejected { reason: "inline YAML comments after values are not modeled" }
-    } else if rest == "|" {
-      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 4, acc: [])
-      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
-    } else if yaml_is_flow_sequence_text(text: rest) {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
+fn yaml_repeat_break(n: Int) -> String {
+  if n <= 0 { "" } else { concat("\n", yaml_repeat_break(n: n - 1)) }
+}
+
+// FOLDING, per YAML 1.2.2 section 8.1.3: a line break between two ordinary lines becomes a space; a
+// run of empty lines between them becomes that many line breaks; breaks next to a more-indented
+// line are kept, because more-indented lines are preformatted.
+fn yaml_fold_lines(lines: List<String>) -> String {
+  let done = fold(lines, init: YamlFoldAcc { text: "", pending_breaks: 0, previous_more_indented: false, started: false }, f: (acc, l) => {
+    if l == "" {
+      YamlFoldAcc { text: acc.text, pending_breaks: acc.pending_breaks + 1, previous_more_indented: acc.previous_more_indented, started: acc.started }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
+      let more = yaml_is_separation_char(c: substring(s: l, start: 0, end: 1))
+      let joined = if !acc.started {
+        concat(yaml_repeat_break(n: acc.pending_breaks), l)
+      } else if more || acc.previous_more_indented {
+        join([acc.text, yaml_repeat_break(n: acc.pending_breaks + 1), l], "")
+      } else if acc.pending_breaks > 0 {
+        join([acc.text, yaml_repeat_break(n: acc.pending_breaks), l], "")
+      } else {
+        join([acc.text, " ", l], "")
+      }
+      YamlFoldAcc { text: joined, pending_breaks: 0, previous_more_indented: more, started: true }
     }
-  } else if ends_with(s: text, suffix: ":") {
-    let key = substring(s: text, start: 0, end: text.length() - 1)
-    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 4) {
-      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 4) {
-        ParsedYamlBlock { value: nested, next_index: ni } =>
-          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
+  })
+  done.text
+}
+
+fn yaml_parse_block_scalar(lines: List<String>, header_index: Int, parent_indent: Int, header: String) -> YamlBlockResult {
+  match yaml_block_scalar_header(header: header) {
+    YamlBlockScalarHeaderRefused { reason: r } => YamlBlockRejected { reason: yaml_located(index: header_index, reason: r) }
+    YamlBlockScalarHeaderAdmitted { style: style } => {
+      let content_indent = yaml_first_block_scalar_indent(lines: lines, index: header_index + 1)
+      if content_indent <= parent_indent {
+        ParsedYamlBlock { value: YamlString { value: "" }, next_index: header_index + 1 }
+      } else {
+        let collected = yaml_collect_block_scalar_lines(lines: lines, index: header_index + 1, content_indent: content_indent, acc: [])
+        let body = yaml_drop_trailing_blank(lines: collected.lines)
+        match style {
+          YamlLiteralStyle => ParsedYamlBlock { value: YamlString { value: join(body, "\n") }, next_index: collected.next_index }
+          YamlFoldedStyle => ParsedYamlBlock { value: YamlString { value: yaml_fold_lines(lines: body) }, next_index: collected.next_index }
+        }
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Block collections.
+// -------------------------------------------------------------------------------------
+
+// THE VALUE OF A KEY WHOSE LINE ENDS AT THE INDICATOR is the block below it: any deeper
+// indentation (YAML fixes no step), or a sequence at the key's own column (the compact form
+// `steps:\n- run: x`). Neither present means the value is null. The compact form belongs to mapping
+// keys only: after a sequence entry's own `- `, a `- ` at the same column is the next sibling.
+fn yaml_entry_value(lines: List<String>, index: Int, key_column: Int, rest: String, compact_sequence: Bool) -> YamlBlockResult {
+  match yaml_parse_inline(text: rest) {
+    YamlInlineRejected { reason: r } => YamlBlockRejected { reason: yaml_located(index: index, reason: r) }
+    YamlInlineNode { value: v } => ParsedYamlBlock { value: v, next_index: index + 1 }
+    YamlInlineBlockScalarHeader { header: h } => yaml_parse_block_scalar(lines: lines, header_index: index, parent_indent: key_column, header: h)
+    YamlInlineAbsent => {
+      let next = yaml_next_content_index(lines: lines, index: index + 1)
+      if yaml_has_line_at(lines: lines, index: next) && (yaml_indent_at(lines: lines, index: next) > key_column) {
+        yaml_parse_block(lines: lines, index: next, indent: yaml_indent_at(lines: lines, index: next))
+      } else if compact_sequence
+        && yaml_has_line_at(lines: lines, index: next)
+        && (yaml_indent_at(lines: lines, index: next) == key_column)
+        && yaml_is_sequence_entry(content: yaml_content_at(lines: lines, index: next, indent: key_column)) {
+        yaml_parse_seq_items(lines: lines, index: next, indent: key_column, acc: [])
+      } else {
+        ParsedYamlBlock { value: YamlNull, next_index: index + 1 }
+      }
+    }
+  }
+}
+
+fn yaml_is_sequence_entry(content: String) -> Bool {
+  starts_with(s: content, prefix: "- ") || (content == "-")
+}
+
+// A mapping key is the text before the first `: ` (or the line's trailing `:`). A quoted key is
+// refused: splitting `"a: b": c` at the first `: ` would mint a key that does not exist.
+fn yaml_mapping_entry_at(text: String, lines: List<String>, index: Int, key_column: Int) -> YamlEntryResult {
+  if starts_with(s: text, prefix: "\"") || starts_with(s: text, prefix: "'") {
+    YamlEntryRejected { reason: yaml_located(index: index, reason: "quoted mapping keys are not modeled") }
+  } else if starts_with(s: text, prefix: "? ") || starts_with(s: text, prefix: "&") || starts_with(s: text, prefix: "*") || starts_with(s: text, prefix: "!") {
+    YamlEntryRejected { reason: yaml_located(index: index, reason: "complex keys, anchors, aliases and tags are not modeled") }
+  } else {
+    let parts = split(s: text, delimiter: ": ")
+    if parts.length() > 1 {
+      match yaml_entry_value(lines: lines, index: index, key_column: key_column, rest: join(parts.skip(n: 1), ": "), compact_sequence: true) {
+        ParsedYamlBlock { value: v, next_index: ni } => ParsedYamlEntry { entry: kv(key: parts.first(), value: v), next_index: ni }
+        YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
+      }
+    } else if ends_with(s: text, suffix: ":") {
+      match yaml_entry_value(lines: lines, index: index, key_column: key_column, rest: "", compact_sequence: true) {
+        ParsedYamlBlock { value: v, next_index: ni } =>
+          ParsedYamlEntry { entry: kv(key: substring(s: text, start: 0, end: text.length() - 1), value: v), next_index: ni }
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
       }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
+      YamlEntryRejected { reason: yaml_located(index: index, reason: concat("malformed mapping entry: ", text)) }
     }
-  } else {
-    YamlEntryRejected { reason: concat("malformed sequence-item mapping entry: ", text) }
   }
 }
 
 fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_next_content_index(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
-  } else if starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: current), indent: indent), prefix: "- ") {
+  } else if yaml_is_sequence_entry(content: yaml_content_at(lines: lines, index: current, indent: indent)) {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
   } else {
-    match yaml_parse_mapping_entry(lines: lines, index: current, indent: indent) {
+    match yaml_mapping_entry_at(text: yaml_content_at(lines: lines, index: current, indent: indent), lines: lines, index: current, key_column: indent) {
       ParsedYamlEntry { entry: e, next_index: ni } =>
         yaml_parse_mapping_entries(lines: lines, index: ni, indent: indent, acc: concat(acc, [e]))
       YamlEntryRejected { reason: r } => YamlBlockRejected { reason: r }
@@ -261,37 +655,46 @@ fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc:
   }
 }
 
+fn yaml_item_opens_mapping(item_text: String) -> Bool {
+  !starts_with(s: item_text, prefix: "\"")
+    && !starts_with(s: item_text, prefix: "'")
+    && !starts_with(s: item_text, prefix: "[")
+    && !starts_with(s: item_text, prefix: "{")
+    && !starts_with(s: item_text, prefix: "|")
+    && !starts_with(s: item_text, prefix: ">")
+    && !starts_with(s: item_text, prefix: "#")
+    && (string_contains(s: item_text, pattern: ": ") || ends_with(s: item_text, suffix: ":"))
+}
+
 fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqItemResult {
-  let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent)
-  let item_text = substring(s: content, start: 2, end: content.length())
-  if item_text == "|" {
-    let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
-    ParsedYamlSeqItem { value: YamlString { value: lit.text }, next_index: lit.next_index }
-  } else if yaml_is_flow_sequence_text(text: item_text) {
-    ParsedYamlSeqItem { value: yaml_parse_flow_sequence(text: item_text), next_index: index + 1 }
-  } else if string_contains(s: item_text, pattern: ": ") || ends_with(s: item_text, suffix: ":") {
-    match yaml_parse_mapping_entry_from_text(text: item_text, lines: lines, index: index, indent: indent) {
+  let content = yaml_content_at(lines: lines, index: index, indent: indent)
+  let after_dash = if content == "-" { "" } else { substring(s: content, start: 2, end: content.length()) }
+  let item_text = yaml_left_trim(s: after_dash)
+  let item_column = indent + 2 + (after_dash.length() - item_text.length())
+  if yaml_item_opens_mapping(item_text: item_text) {
+    match yaml_mapping_entry_at(text: item_text, lines: lines, index: index, key_column: item_column) {
       ParsedYamlEntry { entry: first_entry, next_index: ni } =>
-        match yaml_parse_mapping_entries(lines: lines, index: ni, indent: indent + 2, acc: [first_entry]) {
+        match yaml_parse_mapping_entries(lines: lines, index: ni, indent: item_column, acc: [first_entry]) {
           ParsedYamlBlock { value: v, next_index: fi } => ParsedYamlSeqItem { value: v, next_index: fi }
           YamlBlockRejected { reason: r } => YamlSeqItemRejected { reason: r }
         }
       YamlEntryRejected { reason: r } => YamlSeqItemRejected { reason: r }
     }
-  } else if yaml_has_unmodeled_inline_comment(text: item_text) {
-    YamlSeqItemRejected { reason: "inline YAML comments after values are not modeled" }
   } else {
-    ParsedYamlSeqItem { value: yaml_parse_scalar_text(text: item_text), next_index: index + 1 }
+    match yaml_entry_value(lines: lines, index: index, key_column: indent, rest: item_text, compact_sequence: false) {
+      ParsedYamlBlock { value: v, next_index: ni } => ParsedYamlSeqItem { value: v, next_index: ni }
+      YamlBlockRejected { reason: r } => YamlSeqItemRejected { reason: r }
+    }
   }
 }
 
 fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_next_content_index(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
-  } else if !starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: current), indent: indent), prefix: "- ") {
+  } else if !yaml_is_sequence_entry(content: yaml_content_at(lines: lines, index: current, indent: indent)) {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
   } else {
     match yaml_parse_seq_item(lines: lines, index: current, indent: indent) {
@@ -303,18 +706,26 @@ fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<
 }
 
 fn yaml_parse_block(lines: List<String>, index: Int, indent: Int) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_next_content_index(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     YamlBlockRejected { reason: "expected a YAML block, found end of input" }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
-    YamlBlockRejected { reason: concat("indentation mismatch at line ", to_string(current)) }
+    YamlBlockRejected { reason: yaml_located(index: current, reason: "indentation mismatch") }
+  } else if yaml_is_sequence_entry(content: yaml_content_at(lines: lines, index: current, indent: indent)) {
+    yaml_parse_seq_items(lines: lines, index: current, indent: indent, acc: [])
   } else {
-    let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: current), indent: indent)
-    if starts_with(s: content, prefix: "- ") {
-      yaml_parse_seq_items(lines: lines, index: current, indent: indent, acc: [])
-    } else {
-      yaml_parse_mapping_entries(lines: lines, index: current, indent: indent, acc: [])
-    }
+    yaml_parse_mapping_entries(lines: lines, index: current, indent: indent, acc: [])
+  }
+}
+
+// `---` opens the one document this reader accepts; a second `---` is a second document, which
+// arrives as trailing content and refuses.
+fn yaml_document_start(lines: List<String>) -> Int {
+  let first = yaml_next_content_index(lines: lines, index: 0)
+  if yaml_has_line_at(lines: lines, index: first) && (yaml_right_trim(s: yaml_line_at(lines: lines, index: first)) == "---") {
+    yaml_next_content_index(lines: lines, index: first + 1)
+  } else {
+    first
   }
 }
 
@@ -323,13 +734,16 @@ fn ingest_yaml_source(src: String) -> YamlIngestResult {
   if lines.length() == 0 {
     YamlIngestRejected { reason: "empty document" }
   } else {
-    match yaml_parse_block(lines: lines, index: 0, indent: 0) {
-      ParsedYamlBlock { value: v, next_index: ni } =>
-        if ni == lines.length() {
+    let start = yaml_document_start(lines: lines)
+    match yaml_parse_block(lines: lines, index: start, indent: 0) {
+      ParsedYamlBlock { value: v, next_index: ni } => {
+        let rest = yaml_next_content_index(lines: lines, index: ni)
+        if rest == lines.length() {
           IngestedYaml { value: v }
         } else {
-          YamlIngestRejected { reason: concat("trailing content at line ", to_string(ni)) }
+          YamlIngestRejected { reason: yaml_located(index: rest, reason: "trailing content") }
         }
+      }
       YamlBlockRejected { reason: r } => YamlIngestRejected { reason: r }
     }
   }

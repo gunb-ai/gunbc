@@ -1,0 +1,779 @@
+module extdeps.languages.yaml.gha_workflow_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlKeyValue,
+  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping,
+  yaml_mapping_lookup
+}
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
+import extdeps.languages.yaml.gha_workflow { runner_label_string, shell_type_string }
+import extdeps.github.actions {
+  Job, Step, RunStep, UsesStep, ActionRef,
+  RunnerSpec, HostedRunner, SelfHosted, RunsOnLabel, RunsOnExpression, RunnerLabel,
+  ShellType,
+  JobStrategy, MatrixSpec, MatrixAxis,
+  MatrixExpansion, MatrixCombinations, MatrixCombinationLimitExceeded, matrix_combinations,
+  github_hosted_runner_labels, all_shell_types, self_hosted_provenance_label,
+}
+import extdeps.github.expressions {
+  ExpressionContext, Matrix,
+  ExpressionEvaluation, ExpressionValue, ExpressionEvaluationRefused, ExpressionEvaluationRefusal,
+  GithubPathResolution, GithubPathValue, GithubPathUnmodeled,
+  ingest_template, evaluate_template_in_contexts,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+  }
+}
+
+// THE EMITTER READ BACKWARD, OVER THE SAME MODEL, AND BOUNDED ON PURPOSE.
+//
+// extdeps.languages.yaml.gha_workflow writes the Actions model as YAML; this module reads a parsed
+// workflow back into that model's own types - Step, RunnerSpec, MatrixSpec, and a Job when every
+// key of one is accounted for - using the emitter's wire spellings (runner_label_string,
+// shell_type_string) rather than a second copy of them. It is not a GitHub Actions interpreter:
+// nothing here resolves a provider from a label (gunbc.runner_label_resolution owns that), runs a
+// step, or evaluates an expression the evaluator in extdeps.github.expressions does not.
+//
+// THE UNIT OF ANSWER IS A JOB, NEVER A WORKFLOW. A real workflow routinely carries shapes this model
+// does not have - a reusable-workflow call, a container, a dynamic matrix, a local action - and a
+// Workflow value built around them would silently omit whatever did not fit. So every job answers
+// for itself: JobUnresolved when the job as a whole cannot be read, and JobInterpreted otherwise,
+// whose runs-on, strategy, instances and steps each carry their own located outcome, and whose
+// uninterpreted_keys names every job key the reading did not consume. job_read_as_job is the one
+// place a complete Job is minted, and it refuses whenever any of those is short.
+
+type WorkflowDocumentRefusal
+  = WorkflowYamlRejected { reason: String }
+  | WorkflowDocumentNotAMapping
+  | WorkflowJobsKeyMissing
+  | WorkflowJobsNotAMapping
+
+type WorkflowJobsRead
+  = WorkflowJobsInterpreted { jobs: List<JobRead> }
+  | WorkflowDocumentRefused { refusal: WorkflowDocumentRefusal }
+
+type RunsOnUnresolvedCause
+  = RunsOnMissing
+  | RunsOnEmptyLabel
+  | RunsOnGroupMapping
+  | RunsOnLabelListWithoutSelfHosted
+  | RunsOnListElementNotAString
+  | RunsOnNotAStringListOrMapping
+
+type RunsOnRead
+  = RunsOnInterpreted { runner: RunnerSpec }
+  | RunsOnUnresolved { location: String, cause: RunsOnUnresolvedCause }
+
+type MatrixUnresolvedCause
+  = MatrixIsExpression { expression: String }
+  | MatrixNotAMapping
+  | MatrixAxisIsExpression { axis: String, expression: String }
+  | MatrixAxisNotASequence { axis: String }
+  | MatrixCombinationListNotMappings { key: String }
+  | MatrixOverCombinationLimit { at_least: Int, limit: Int }
+
+type StrategyUnresolvedCause
+  = StrategyNotAMapping
+  | StrategyMatrixUnresolved { cause: MatrixUnresolvedCause }
+  | StrategyFieldNotStatic { key: String }
+  | StrategyKeyNotModeled { key: String }
+
+type StrategyRead
+  = StrategyAbsent
+  | StrategyInterpreted { strategy: JobStrategy }
+  | StrategyUnresolved { location: String, cause: StrategyUnresolvedCause }
+
+// ONE INSTANCE PER MATRIX COMBINATION, with the runner that combination selects. A runs-on
+// expression is evaluated per instance with exactly one context answered - the combination's own
+// matrix values - and every other context refuses as the evaluator always has.
+type InstanceRunnerUnresolvedCause
+  = InstanceRunnerTemplateUnparsed
+  | InstanceRunnerEvaluationRefused { refusal: ExpressionEvaluationRefusal }
+  | InstanceRunnerDeclarationUnresolved { cause: RunsOnUnresolvedCause }
+  | InstanceRunnerEvaluatedToUnresolved { value: String, cause: RunsOnUnresolvedCause }
+
+type InstanceRunnerRead
+  = InstanceRunner { runner: RunnerSpec }
+  | InstanceRunnerUnresolved { cause: InstanceRunnerUnresolvedCause }
+
+type JobInstance {
+  matrix_selector: List<YamlKeyValue>
+  runner: InstanceRunnerRead
+}
+
+type JobInstancesRead
+  = JobInstances { instances: List<JobInstance> }
+  | JobInstancesUnknownWhileStrategyUnresolved
+
+type StepUnresolvedCause
+  = StepNotAMapping
+  | StepHasNeitherRunNorUses
+  | StepHasBothRunAndUses
+  | StepUsesNotARepositoryAction { uses: String }
+  | StepShellNotModeled { shell: String }
+  | StepFieldShapeNotModeled { key: String }
+  | StepKeyNotModeled { key: String }
+
+type StepRead
+  = StepInterpreted { step: Step }
+  | StepUnresolved { location: String, cause: StepUnresolvedCause }
+
+type JobUnresolvedCause
+  = JobNotAMapping
+  | JobCallsReusableWorkflow { uses: String }
+  | JobStepsNotASequence
+
+type JobRead
+  = JobInterpreted {
+      job_key: String
+      runs_on: RunsOnRead
+      strategy: StrategyRead
+      instances: JobInstancesRead
+      steps: List<StepRead>
+      uninterpreted_keys: List<String>
+      interpreted: JobFieldsRead
+    }
+  | JobUnresolved { job_key: String, location: String, cause: JobUnresolvedCause }
+
+// The job keys whose value this reading consumed into a model field. A key outside this list is
+// reported in uninterpreted_keys, which is what stops `container:` or `services:` from vanishing.
+data gha_read_job_keys: List<String> = [
+  "name", "runs-on", "strategy", "steps", "needs", "if", "timeout-minutes", "continue-on-error", "env", "outputs"
+]
+
+data gha_read_run_step_keys: List<String> = [
+  "name", "id", "run", "shell", "env", "working-directory", "if", "continue-on-error", "timeout-minutes"
+]
+
+data gha_read_uses_step_keys: List<String> = [
+  "name", "id", "uses", "with", "env", "if", "continue-on-error", "timeout-minutes"
+]
+
+data gha_read_strategy_keys: List<String> = ["matrix", "fail-fast", "max-parallel"]
+
+// The scalar job fields, read once so that job_read_as_job can mint a Job without re-reading YAML.
+// A field whose value had the wrong shape is carried as a shape refusal, never as Absent.
+type OptionalStringRead
+  = OptionalStringAbsent
+  | OptionalStringPresent { value: String }
+  | OptionalStringShapeNotModeled
+
+type OptionalIntRead
+  = OptionalIntAbsent
+  | OptionalIntPresent { value: Int }
+  | OptionalIntShapeNotModeled
+
+type OptionalBoolRead
+  = OptionalBoolAbsent
+  | OptionalBoolPresent { value: Bool }
+  | OptionalBoolShapeNotModeled
+
+type OptionalEntriesRead
+  = OptionalEntriesAbsent
+  | OptionalEntriesPresent { entries: List<YamlKeyValue> }
+  | OptionalEntriesShapeNotModeled
+
+type NeedsRead
+  = NeedsListed { needs: List<String> }
+  | NeedsShapeNotModeled
+
+type JobFieldsRead {
+  name: OptionalStringRead
+  needs: NeedsRead
+  if_condition: OptionalStringRead
+  timeout_minutes: OptionalIntRead
+  continue_on_error: OptionalBoolRead
+  env: OptionalEntriesRead
+  outputs: OptionalEntriesRead
+}
+
+type JobModelRead
+  = JobModelComplete { job: Job }
+  | JobModelIncomplete { reasons: List<String> }
+
+// -------------------------------------------------------------------------------------
+// Shapes.
+// -------------------------------------------------------------------------------------
+
+fn gha_read_optional_string(v: YamlValue?) -> OptionalStringRead {
+  match v {
+    Absent => OptionalStringAbsent
+    Present { value: YamlString { value: s } } => OptionalStringPresent { value: s }
+    Present { value: _ } => OptionalStringShapeNotModeled
+  }
+}
+
+fn gha_read_optional_int(v: YamlValue?) -> OptionalIntRead {
+  match v {
+    Absent => OptionalIntAbsent
+    Present { value: YamlInt { lexeme: l } } => match parse_int(s: l) {
+      Present { value: n } => OptionalIntPresent { value: n }
+      Absent => OptionalIntShapeNotModeled
+    }
+    Present { value: _ } => OptionalIntShapeNotModeled
+  }
+}
+
+fn gha_read_optional_bool(v: YamlValue?) -> OptionalBoolRead {
+  match v {
+    Absent => OptionalBoolAbsent
+    Present { value: YamlBool { value: b } } => OptionalBoolPresent { value: b }
+    Present { value: _ } => OptionalBoolShapeNotModeled
+  }
+}
+
+fn gha_read_optional_entries(v: YamlValue?) -> OptionalEntriesRead {
+  match v {
+    Absent => OptionalEntriesAbsent
+    Present { value: YamlMapping { entries: es } } => OptionalEntriesPresent { entries: es }
+    Present { value: _ } => OptionalEntriesShapeNotModeled
+  }
+}
+
+fn gha_read_needs(v: YamlValue?) -> NeedsRead {
+  match v {
+    Absent => NeedsListed { needs: [] }
+    Present { value: YamlString { value: s } } => NeedsListed { needs: [s] }
+    Present { value: YamlSequence { elements: es } } =>
+      if all(es, e => match e { YamlString { value: _ } => true  _ => false }) {
+        NeedsListed { needs: map(es, e => match e { YamlString { value: s } => s  _ => "" }) }
+      } else {
+        NeedsShapeNotModeled
+      }
+    Present { value: _ } => NeedsShapeNotModeled
+  }
+}
+
+fn gha_read_located(parts: List<String>) -> String {
+  join(parts, ".")
+}
+
+// -------------------------------------------------------------------------------------
+// runs-on.
+// -------------------------------------------------------------------------------------
+
+fn gha_read_hosted_label(wire: String) -> RunnerLabel? {
+  match filter(github_hosted_runner_labels, l => runner_label_string(label: l) == wire).first() {
+    Present { value: l } => Present { value: l }
+    Absent => none
+  }
+}
+
+// A scalar runs-on names one runner: an expression when any interpolation appears in it, GitHub's
+// own label when it spells one, and otherwise a literal label whose provider this syntax cannot know.
+fn gha_read_runs_on_scalar(text: String) -> RunsOnRead {
+  if string_contains(s: text, pattern: "${{") {
+    RunsOnInterpreted { runner: RunsOnExpression { expression: text } }
+  } else if text == "" {
+    RunsOnUnresolved { location: "runs-on", cause: RunsOnEmptyLabel }
+  } else {
+    match gha_read_hosted_label(wire: text) {
+      Present { value: l } => RunsOnInterpreted { runner: HostedRunner { label: l } }
+      Absent => RunsOnInterpreted { runner: RunsOnLabel { label: text as NonEmptyStr } }
+    }
+  }
+}
+
+fn gha_read_runs_on(v: YamlValue?, location: String) -> RunsOnRead {
+  match v {
+    Absent => RunsOnUnresolved { location: location, cause: RunsOnMissing }
+    Present { value: YamlString { value: s } } => match gha_read_runs_on_scalar(text: s) {
+      RunsOnInterpreted { runner: r } => RunsOnInterpreted { runner: r }
+      RunsOnUnresolved { location: _, cause: c } => RunsOnUnresolved { location: location, cause: c }
+    }
+    Present { value: YamlSequence { elements: es } } =>
+      if !all(es, e => match e { YamlString { value: _ } => true  _ => false }) {
+        RunsOnUnresolved { location: location, cause: RunsOnListElementNotAString }
+      } else {
+        let labels = map(es, e => match e { YamlString { value: s } => s  _ => "" })
+        if any(labels, l => l == self_hosted_provenance_label) {
+          RunsOnInterpreted { runner: SelfHosted { labels: labels } }
+        } else {
+          RunsOnUnresolved { location: location, cause: RunsOnLabelListWithoutSelfHosted }
+        }
+      }
+    Present { value: YamlMapping { entries: _ } } => RunsOnUnresolved { location: location, cause: RunsOnGroupMapping }
+    Present { value: _ } => RunsOnUnresolved { location: location, cause: RunsOnNotAStringListOrMapping }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// strategy.
+// -------------------------------------------------------------------------------------
+
+fn gha_read_is_expression_value(v: YamlValue) -> Bool {
+  match v {
+    YamlString { value: s } => string_contains(s: s, pattern: "${{")
+    _ => false
+  }
+}
+
+type MatrixSpecRead
+  = MatrixSpecStatic { matrix: MatrixSpec }
+  | MatrixSpecUnresolved { cause: MatrixUnresolvedCause }
+
+type CombinationListRead
+  = CombinationList { combinations: List<List<YamlKeyValue>> }
+  | CombinationListNotMappings
+
+fn gha_read_combination_list(v: YamlValue?) -> CombinationListRead {
+  match v {
+    Absent => CombinationList { combinations: [] }
+    Present { value: YamlSequence { elements: es } } =>
+      if all(es, e => match e { YamlMapping { entries: _ } => true  _ => false }) {
+        CombinationList { combinations: map(es, e => match e { YamlMapping { entries: m } => m  _ => [] }) }
+      } else {
+        CombinationListNotMappings
+      }
+    Present { value: _ } => CombinationListNotMappings
+  }
+}
+
+fn gha_read_matrix(v: YamlValue) -> MatrixSpecRead {
+  match v {
+    YamlString { value: s } =>
+      if string_contains(s: s, pattern: "${{") {
+        MatrixSpecUnresolved { cause: MatrixIsExpression { expression: s } }
+      } else {
+        MatrixSpecUnresolved { cause: MatrixNotAMapping }
+      }
+    YamlMapping { entries: es } => {
+      let axis_entries = filter(es, e => (e.key != "include") && (e.key != "exclude"))
+      let expression_axis = filter(axis_entries, e => gha_read_is_expression_value(v: e.value)).first()
+      let non_sequence_axis = filter(axis_entries, e => match e.value { YamlSequence { elements: _ } => false  _ => true }).first()
+      match expression_axis {
+        Present { value: e } => MatrixSpecUnresolved { cause: MatrixAxisIsExpression { axis: e.key, expression: match e.value { YamlString { value: s } => s  _ => "" } } }
+        Absent => match non_sequence_axis {
+          Present { value: e } => MatrixSpecUnresolved { cause: MatrixAxisNotASequence { axis: e.key } }
+          Absent => match gha_read_combination_list(v: yaml_mapping_lookup(entries: es, key: "include")) {
+            CombinationListNotMappings => MatrixSpecUnresolved { cause: MatrixCombinationListNotMappings { key: "include" } }
+            CombinationList { combinations: include } => match gha_read_combination_list(v: yaml_mapping_lookup(entries: es, key: "exclude")) {
+              CombinationListNotMappings => MatrixSpecUnresolved { cause: MatrixCombinationListNotMappings { key: "exclude" } }
+              CombinationList { combinations: exclude } => MatrixSpecStatic {
+                matrix: MatrixSpec {
+                  axes: map(axis_entries, e => MatrixAxis { name: e.key, values: match e.value { YamlSequence { elements: vs } => vs  _ => [] } }),
+                  include: include,
+                  exclude: exclude,
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    _ => MatrixSpecUnresolved { cause: MatrixNotAMapping }
+  }
+}
+
+fn gha_read_strategy(v: YamlValue?, location: String) -> StrategyRead {
+  match v {
+    Absent => StrategyAbsent
+    Present { value: YamlMapping { entries: es } } =>
+      match filter(es, e => !any(gha_read_strategy_keys, k => k == e.key)).first() {
+        Present { value: extra } => StrategyUnresolved { location: location, cause: StrategyKeyNotModeled { key: extra.key } }
+        Absent => {
+          let fail_fast = gha_read_optional_bool(v: yaml_mapping_lookup(entries: es, key: "fail-fast"))
+          let max_parallel = gha_read_optional_int(v: yaml_mapping_lookup(entries: es, key: "max-parallel"))
+          match fail_fast {
+            OptionalBoolShapeNotModeled => StrategyUnresolved { location: gha_read_located(parts: [location, "fail-fast"]), cause: StrategyFieldNotStatic { key: "fail-fast" } }
+            _ => match max_parallel {
+              OptionalIntShapeNotModeled => StrategyUnresolved { location: gha_read_located(parts: [location, "max-parallel"]), cause: StrategyFieldNotStatic { key: "max-parallel" } }
+              _ => {
+                let matrix = match yaml_mapping_lookup(entries: es, key: "matrix") {
+                  Absent => MatrixSpecStatic { matrix: MatrixSpec { axes: [], include: [], exclude: [] } }
+                  Present { value: m } => gha_read_matrix(v: m)
+                }
+                match matrix {
+                  MatrixSpecUnresolved { cause: c } =>
+                    StrategyUnresolved { location: gha_read_located(parts: [location, "matrix"]), cause: StrategyMatrixUnresolved { cause: c } }
+                  MatrixSpecStatic { matrix: spec } => StrategyInterpreted {
+                    strategy: JobStrategy {
+                      matrix: match yaml_mapping_lookup(entries: es, key: "matrix") { Absent => none  Present { value: _ } => Present { value: spec } },
+                      fail_fast: match fail_fast { OptionalBoolPresent { value: b } => Present { value: b }  _ => none },
+                      max_parallel: match max_parallel { OptionalIntPresent { value: n } => Present { value: n }  _ => none },
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    Present { value: _ } => StrategyUnresolved { location: location, cause: StrategyNotAMapping }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Instances.
+// -------------------------------------------------------------------------------------
+
+// A matrix value reaches an expression as GitHub renders it: a string as itself, a number by its
+// lexeme, a boolean as true or false. A mapping or sequence value is not a string, and indexing
+// into one is not a form the evaluator reads, so the context refuses.
+fn gha_read_matrix_context(selector: List<YamlKeyValue>, context: ExpressionContext, path: List<String>) -> GithubPathResolution {
+  match context {
+    Matrix =>
+      if path.length() != 1 {
+        GithubPathUnmodeled
+      } else {
+        match yaml_mapping_lookup(entries: selector, key: path.first()) {
+          Present { value: YamlString { value: s } } => GithubPathValue { value: s }
+          Present { value: YamlInt { lexeme: l } } => GithubPathValue { value: l }
+          Present { value: YamlBool { value: b } } => GithubPathValue { value: if b { "true" } else { "false" } }
+          _ => GithubPathUnmodeled
+        }
+      }
+    _ => GithubPathUnmodeled
+  }
+}
+
+fn gha_read_instance_runner(runs_on: RunsOnRead, selector: List<YamlKeyValue>) -> InstanceRunnerRead {
+  match runs_on {
+    RunsOnUnresolved { location: _, cause: c } => InstanceRunnerUnresolved { cause: InstanceRunnerDeclarationUnresolved { cause: c } }
+    RunsOnInterpreted { runner: RunsOnExpression { expression: e } } =>
+      match ingest_template(src: e) {
+        Absent => InstanceRunnerUnresolved { cause: InstanceRunnerTemplateUnparsed }
+        Present { value: t } =>
+          match evaluate_template_in_contexts(template: t, context_path: fn(c, p) { gha_read_matrix_context(selector: selector, context: c, path: p) }) {
+            ExpressionEvaluationRefused { cause: r } => InstanceRunnerUnresolved { cause: InstanceRunnerEvaluationRefused { refusal: r } }
+            ExpressionValue { value: v } => match gha_read_runs_on_scalar(text: v) {
+              RunsOnInterpreted { runner: RunsOnExpression { expression: _ } } =>
+                InstanceRunnerUnresolved { cause: InstanceRunnerTemplateUnparsed }
+              RunsOnInterpreted { runner: r } => InstanceRunner { runner: r }
+              RunsOnUnresolved { location: _, cause: c } => InstanceRunnerUnresolved { cause: InstanceRunnerEvaluatedToUnresolved { value: v, cause: c } }
+            }
+          }
+      }
+    RunsOnInterpreted { runner: r } => InstanceRunner { runner: r }
+  }
+}
+
+fn gha_read_instances(runs_on: RunsOnRead, strategy: StrategyRead) -> JobInstancesRead {
+  match strategy {
+    StrategyUnresolved { location: _, cause: _ } => JobInstancesUnknownWhileStrategyUnresolved
+    StrategyAbsent => JobInstances { instances: [JobInstance { matrix_selector: [], runner: gha_read_instance_runner(runs_on: runs_on, selector: []) }] }
+    StrategyInterpreted { strategy: st } => match st.matrix {
+      Absent => JobInstances { instances: [JobInstance { matrix_selector: [], runner: gha_read_instance_runner(runs_on: runs_on, selector: []) }] }
+      Present { value: m } => match matrix_combinations(matrix: m) {
+        MatrixCombinationLimitExceeded { at_least: _, limit: _ } => JobInstancesUnknownWhileStrategyUnresolved
+        MatrixCombinations { combinations: cs } =>
+          JobInstances { instances: map(cs, c => JobInstance { matrix_selector: c, runner: gha_read_instance_runner(runs_on: runs_on, selector: c) }) }
+      }
+    }
+  }
+}
+
+// The limit is part of reading the strategy, not of expanding it: a matrix GitHub would refuse to
+// run has no instances, and the strategy that declared it is unresolved at the same location.
+fn gha_read_strategy_within_limit(strategy: StrategyRead, location: String) -> StrategyRead {
+  match strategy {
+    StrategyInterpreted { strategy: st } => match st.matrix {
+      Absent => strategy
+      Present { value: m } => match matrix_combinations(matrix: m) {
+        MatrixCombinations { combinations: _ } => strategy
+        MatrixCombinationLimitExceeded { at_least: n, limit: l } =>
+          StrategyUnresolved { location: gha_read_located(parts: [location, "matrix"]), cause: StrategyMatrixUnresolved { cause: MatrixOverCombinationLimit { at_least: n, limit: l } } }
+      }
+    }
+    _ => strategy
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Steps.
+// -------------------------------------------------------------------------------------
+
+fn gha_read_shell(v: YamlValue?) -> ShellReadOutcome {
+  match v {
+    Absent => ShellReadAbsent
+    Present { value: YamlString { value: s } } => match filter(all_shell_types, t => shell_type_string(shell: t) == s).first() {
+      Present { value: t } => ShellReadPresent { shell: t }
+      Absent => ShellReadNotModeled { shell: s }
+    }
+    Present { value: _ } => ShellReadShapeNotModeled
+  }
+}
+
+type ShellReadOutcome
+  = ShellReadAbsent
+  | ShellReadPresent { shell: ShellType }
+  | ShellReadNotModeled { shell: String }
+  | ShellReadShapeNotModeled
+
+// `owner/repo@ref` is the only uses form ActionRef can carry. A local action (`./path`), a docker
+// image (`docker://...`) and an action in a repository subdirectory (`owner/repo/path@ref`) are real
+// forms with no field to hold their difference, so each is unresolved rather than squeezed in.
+fn gha_read_action_ref(uses: String) -> ActionRef? {
+  let at = split(s: uses, delimiter: "@")
+  if (at.length() != 2) || starts_with(s: uses, prefix: "./") || starts_with(s: uses, prefix: "docker://") {
+    none
+  } else {
+    let slash = split(s: at.first(), delimiter: "/")
+    if slash.length() != 2 {
+      none
+    } else {
+      Present { value: ActionRef { owner: slash.first(), repo: slash.skip(n: 1).first(), ref: at.skip(n: 1).first() } }
+    }
+  }
+}
+
+type StepCommonRead
+  = StepCommon {
+      name: String?
+      id: String?
+      env: List<YamlKeyValue>?
+      if_condition: String?
+      continue_on_error: Bool?
+      timeout_minutes: Int?
+    }
+  | StepCommonShapeNotModeled { key: String }
+
+fn gha_read_step_common(es: List<YamlKeyValue>) -> StepCommonRead {
+  let name = gha_read_optional_string(v: yaml_mapping_lookup(entries: es, key: "name"))
+  let id = gha_read_optional_string(v: yaml_mapping_lookup(entries: es, key: "id"))
+  let env = gha_read_optional_entries(v: yaml_mapping_lookup(entries: es, key: "env"))
+  let cond = gha_read_optional_string(v: yaml_mapping_lookup(entries: es, key: "if"))
+  let coe = gha_read_optional_bool(v: yaml_mapping_lookup(entries: es, key: "continue-on-error"))
+  let tm = gha_read_optional_int(v: yaml_mapping_lookup(entries: es, key: "timeout-minutes"))
+  match name {
+    OptionalStringShapeNotModeled => StepCommonShapeNotModeled { key: "name" }
+    _ => match id {
+      OptionalStringShapeNotModeled => StepCommonShapeNotModeled { key: "id" }
+      _ => match env {
+        OptionalEntriesShapeNotModeled => StepCommonShapeNotModeled { key: "env" }
+        _ => match cond {
+          OptionalStringShapeNotModeled => StepCommonShapeNotModeled { key: "if" }
+          _ => match coe {
+            OptionalBoolShapeNotModeled => StepCommonShapeNotModeled { key: "continue-on-error" }
+            _ => match tm {
+              OptionalIntShapeNotModeled => StepCommonShapeNotModeled { key: "timeout-minutes" }
+              _ => StepCommon {
+                name: match name { OptionalStringPresent { value: s } => Present { value: s }  _ => none },
+                id: match id { OptionalStringPresent { value: s } => Present { value: s }  _ => none },
+                env: match env { OptionalEntriesPresent { entries: e } => Present { value: e }  _ => none },
+                if_condition: match cond { OptionalStringPresent { value: s } => Present { value: s }  _ => none },
+                continue_on_error: match coe { OptionalBoolPresent { value: b } => Present { value: b }  _ => none },
+                timeout_minutes: match tm { OptionalIntPresent { value: n } => Present { value: n }  _ => none },
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn gha_read_step(v: YamlValue, location: String) -> StepRead {
+  match v {
+    YamlMapping { entries: es } => {
+      let run = yaml_mapping_lookup(entries: es, key: "run")
+      let uses = yaml_mapping_lookup(entries: es, key: "uses")
+      match run {
+        Present { value: run_value } => match uses {
+          Present { value: _ } => StepUnresolved { location: location, cause: StepHasBothRunAndUses }
+          Absent => gha_read_run_step(es: es, run_value: run_value, location: location)
+        }
+        Absent => match uses {
+          Present { value: uses_value } => gha_read_uses_step(es: es, uses_value: uses_value, location: location)
+          Absent => StepUnresolved { location: location, cause: StepHasNeitherRunNorUses }
+        }
+      }
+    }
+    _ => StepUnresolved { location: location, cause: StepNotAMapping }
+  }
+}
+
+fn gha_read_run_step(es: List<YamlKeyValue>, run_value: YamlValue, location: String) -> StepRead {
+  match filter(es, e => !any(gha_read_run_step_keys, k => k == e.key)).first() {
+    Present { value: extra } => StepUnresolved { location: gha_read_located(parts: [location, extra.key]), cause: StepKeyNotModeled { key: extra.key } }
+    Absent => match run_value {
+      YamlString { value: run_text } => match gha_read_step_common(es: es) {
+        StepCommonShapeNotModeled { key: k } => StepUnresolved { location: gha_read_located(parts: [location, k]), cause: StepFieldShapeNotModeled { key: k } }
+        StepCommon { name: n, id: i, env: e, if_condition: c, continue_on_error: coe, timeout_minutes: tm } =>
+          match gha_read_optional_string(v: yaml_mapping_lookup(entries: es, key: "working-directory")) {
+            OptionalStringShapeNotModeled => StepUnresolved { location: gha_read_located(parts: [location, "working-directory"]), cause: StepFieldShapeNotModeled { key: "working-directory" } }
+            wd => match gha_read_shell(v: yaml_mapping_lookup(entries: es, key: "shell")) {
+              ShellReadNotModeled { shell: s } => StepUnresolved { location: gha_read_located(parts: [location, "shell"]), cause: StepShellNotModeled { shell: s } }
+              ShellReadShapeNotModeled => StepUnresolved { location: gha_read_located(parts: [location, "shell"]), cause: StepFieldShapeNotModeled { key: "shell" } }
+              shell => StepInterpreted {
+                step: RunStep {
+                  name: n,
+                  id: i,
+                  run: run_text,
+                  shell: match shell { ShellReadPresent { shell: t } => Present { value: t }  _ => none },
+                  env: e,
+                  working_directory: match wd { OptionalStringPresent { value: s } => Present { value: s }  _ => none },
+                  if_condition: c,
+                  continue_on_error: coe,
+                  timeout_minutes: tm,
+                }
+              }
+            }
+          }
+      }
+      _ => StepUnresolved { location: gha_read_located(parts: [location, "run"]), cause: StepFieldShapeNotModeled { key: "run" } }
+    }
+  }
+}
+
+fn gha_read_uses_step(es: List<YamlKeyValue>, uses_value: YamlValue, location: String) -> StepRead {
+  match filter(es, e => !any(gha_read_uses_step_keys, k => k == e.key)).first() {
+    Present { value: extra } => StepUnresolved { location: gha_read_located(parts: [location, extra.key]), cause: StepKeyNotModeled { key: extra.key } }
+    Absent => match uses_value {
+      YamlString { value: uses_text } => match gha_read_action_ref(uses: uses_text) {
+        Absent => StepUnresolved { location: gha_read_located(parts: [location, "uses"]), cause: StepUsesNotARepositoryAction { uses: uses_text } }
+        Present { value: action } => match gha_read_step_common(es: es) {
+          StepCommonShapeNotModeled { key: k } => StepUnresolved { location: gha_read_located(parts: [location, k]), cause: StepFieldShapeNotModeled { key: k } }
+          StepCommon { name: n, id: i, env: e, if_condition: c, continue_on_error: coe, timeout_minutes: tm } =>
+            match gha_read_optional_entries(v: yaml_mapping_lookup(entries: es, key: "with")) {
+              OptionalEntriesShapeNotModeled => StepUnresolved { location: gha_read_located(parts: [location, "with"]), cause: StepFieldShapeNotModeled { key: "with" } }
+              w => StepInterpreted {
+                step: UsesStep {
+                  name: n,
+                  id: i,
+                  uses: action,
+                  with: match w { OptionalEntriesPresent { entries: x } => Present { value: x }  _ => none },
+                  env: e,
+                  if_condition: c,
+                  continue_on_error: coe,
+                  timeout_minutes: tm,
+                }
+              }
+            }
+        }
+      }
+      _ => StepUnresolved { location: gha_read_located(parts: [location, "uses"]), cause: StepFieldShapeNotModeled { key: "uses" } }
+    }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// Jobs and the document.
+// -------------------------------------------------------------------------------------
+
+fn gha_read_job(job_key: String, v: YamlValue) -> JobRead {
+  let location = gha_read_located(parts: ["jobs", job_key])
+  match v {
+    YamlMapping { entries: es } =>
+      match yaml_mapping_lookup(entries: es, key: "uses") {
+        Present { value: YamlString { value: u } } => JobUnresolved { job_key: job_key, location: gha_read_located(parts: [location, "uses"]), cause: JobCallsReusableWorkflow { uses: u } }
+        Present { value: _ } => JobUnresolved { job_key: job_key, location: gha_read_located(parts: [location, "uses"]), cause: JobCallsReusableWorkflow { uses: "" } }
+        Absent => {
+          let step_values = match yaml_mapping_lookup(entries: es, key: "steps") {
+            Absent => Present { value: [] }
+            Present { value: YamlSequence { elements: ss } } => Present { value: ss }
+            Present { value: _ } => none
+          }
+          match step_values {
+            Absent => JobUnresolved { job_key: job_key, location: gha_read_located(parts: [location, "steps"]), cause: JobStepsNotASequence }
+            Present { value: ss } => {
+              let runs_on = gha_read_runs_on(v: yaml_mapping_lookup(entries: es, key: "runs-on"), location: gha_read_located(parts: [location, "runs-on"]))
+              let strategy_location = gha_read_located(parts: [location, "strategy"])
+              let strategy = gha_read_strategy_within_limit(
+                strategy: gha_read_strategy(v: yaml_mapping_lookup(entries: es, key: "strategy"), location: strategy_location),
+                location: strategy_location,
+              )
+              let fields = JobFieldsRead {
+                name: gha_read_optional_string(v: yaml_mapping_lookup(entries: es, key: "name")),
+                needs: gha_read_needs(v: yaml_mapping_lookup(entries: es, key: "needs")),
+                if_condition: gha_read_optional_string(v: yaml_mapping_lookup(entries: es, key: "if")),
+                timeout_minutes: gha_read_optional_int(v: yaml_mapping_lookup(entries: es, key: "timeout-minutes")),
+                continue_on_error: gha_read_optional_bool(v: yaml_mapping_lookup(entries: es, key: "continue-on-error")),
+                env: gha_read_optional_entries(v: yaml_mapping_lookup(entries: es, key: "env")),
+                outputs: gha_read_optional_entries(v: yaml_mapping_lookup(entries: es, key: "outputs")),
+              }
+              JobInterpreted {
+                job_key: job_key,
+                runs_on: runs_on,
+                strategy: strategy,
+                instances: gha_read_instances(runs_on: runs_on, strategy: strategy),
+                steps: map(enumerate(ss), pair => gha_read_step(v: pair.second, location: join([location, ".steps[", to_string(pair.first), "]"], ""))),
+                uninterpreted_keys: map(filter(es, e => !any(gha_read_job_keys, k => k == e.key)), e => e.key),
+                interpreted: fields,
+              }
+            }
+          }
+        }
+      }
+    _ => JobUnresolved { job_key: job_key, location: location, cause: JobNotAMapping }
+  }
+}
+
+fn read_workflow_jobs_from_yaml(document: YamlValue) -> WorkflowJobsRead {
+  match document {
+    YamlMapping { entries: es } => match yaml_mapping_lookup(entries: es, key: "jobs") {
+      Absent => WorkflowDocumentRefused { refusal: WorkflowJobsKeyMissing }
+      Present { value: YamlMapping { entries: jobs } } =>
+        WorkflowJobsInterpreted { jobs: map(jobs, j => gha_read_job(job_key: j.key, v: j.value)) }
+      Present { value: _ } => WorkflowDocumentRefused { refusal: WorkflowJobsNotAMapping }
+    }
+    _ => WorkflowDocumentRefused { refusal: WorkflowDocumentNotAMapping }
+  }
+}
+
+fn read_workflow_jobs(source: String) -> WorkflowJobsRead {
+  match ingest_yaml_source(src: source) {
+    YamlIngestRejected { reason: r } => WorkflowDocumentRefused { refusal: WorkflowYamlRejected { reason: r } }
+    IngestedYaml { value: doc } => read_workflow_jobs_from_yaml(document: doc)
+  }
+}
+
+// THE ONLY PLACE A Job IS MINTED FROM A READING, and it answers with every reason it cannot. A
+// reading short in any respect - a runs-on it could not interpret, an unresolved strategy or step, a
+// field of an unmodeled shape, a key it did not consume - is JobModelIncomplete, never a Job with
+// that part silently defaulted.
+fn job_read_as_job(read: JobRead) -> JobModelRead {
+  match read {
+    JobUnresolved { job_key: k, location: l, cause: _ } => JobModelIncomplete { reasons: [join(["job ", k, " is unresolved at ", l], "")] }
+    JobInterpreted { job_key: k, runs_on: ro, strategy: st, instances: _, steps: ss, uninterpreted_keys: extra, interpreted: f } => {
+      let reasons = fold([
+        match ro { RunsOnUnresolved { location: l, cause: _ } => [concat("runs-on unresolved at ", l)]  RunsOnInterpreted { runner: _ } => [] },
+        match st { StrategyUnresolved { location: l, cause: _ } => [concat("strategy unresolved at ", l)]  _ => [] },
+        fold(ss, init: [], f: (acc, s) => match s {
+          StepUnresolved { location: l, cause: _ } => concat(acc, [concat("step unresolved at ", l)])
+          StepInterpreted { step: _ } => acc
+        }),
+        map(extra, key => concat("job key not interpreted: ", key)),
+        match f.name { OptionalStringShapeNotModeled => ["name has an unmodeled shape"]  _ => [] },
+        match f.needs { NeedsShapeNotModeled => ["needs has an unmodeled shape"]  _ => [] },
+        match f.if_condition { OptionalStringShapeNotModeled => ["if has an unmodeled shape"]  _ => [] },
+        match f.timeout_minutes { OptionalIntShapeNotModeled => ["timeout-minutes has an unmodeled shape"]  _ => [] },
+        match f.continue_on_error { OptionalBoolShapeNotModeled => ["continue-on-error has an unmodeled shape"]  _ => [] },
+        match f.env { OptionalEntriesShapeNotModeled => ["env has an unmodeled shape"]  _ => [] },
+        match f.outputs { OptionalEntriesShapeNotModeled => ["outputs has an unmodeled shape"]  _ => [] },
+      ], init: [], f: (acc, xs) => concat(acc, xs))
+      match ro {
+        RunsOnInterpreted { runner: runner } =>
+          if reasons.length() > 0 {
+            JobModelIncomplete { reasons: reasons }
+          } else {
+            JobModelComplete {
+              job: extdeps.github.actions.Job {
+                id: k,
+                name: match f.name { OptionalStringPresent { value: s } => Present { value: s }  _ => none },
+                runner: runner,
+                steps: fold(ss, init: [], f: (acc, s) => match s { StepInterpreted { step: step } => concat(acc, [step])  StepUnresolved { location: _, cause: _ } => acc }),
+                needs: match f.needs { NeedsListed { needs: ns } => ns  NeedsShapeNotModeled => [] },
+                env: match f.env { OptionalEntriesPresent { entries: e } => Present { value: e }  _ => none },
+                outputs: match f.outputs { OptionalEntriesPresent { entries: e } => Present { value: e }  _ => none },
+                if_condition: match f.if_condition { OptionalStringPresent { value: s } => Present { value: s }  _ => none },
+                timeout_minutes: match f.timeout_minutes { OptionalIntPresent { value: n } => Present { value: n }  _ => none },
+                continue_on_error: match f.continue_on_error { OptionalBoolPresent { value: b } => Present { value: b }  _ => none },
+                concurrency: none,
+                permissions: none,
+                strategy: match st { StrategyInterpreted { strategy: s } => Present { value: s }  _ => none },
+              }
+            }
+          }
+        RunsOnUnresolved { location: _, cause: _ } => JobModelIncomplete { reasons: reasons }
+      }
+    }
+  }
+}

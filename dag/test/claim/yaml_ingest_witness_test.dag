@@ -59,17 +59,29 @@ test fn witness_indented_full_line_comment_is_lexically_ignored() -> Bool {
   }
 }
 
-test fn witness_inline_trailing_comment_refuses_instead_of_becoming_scalar_content() -> Bool {
+// THESE TWO WERE REFUSAL CONTROLS AND ARE NOW SEPARATION CONTROLS. While comment separation was
+// unmodeled the honest arm was to refuse `x # comment`; separation is now lexical, so the same inputs
+// must ingest with the comment gone. What they guard is unchanged - comment bytes never become scalar
+// content - and the discriminating half is the hash that is NOT preceded by separation, below, which
+// must stay content.
+test fn witness_inline_trailing_comment_is_separated_not_scalar_content() -> Bool {
   match ingest_yaml_source(src: "name: x # trailing comment\n") {
-    IngestedYaml { value: _ } => false
-    YamlIngestRejected { reason } => reason == "inline YAML comments after values are not modeled"
+    IngestedYaml { value } => serialize_yaml(v: value) == "name: x\n"
+    YamlIngestRejected { reason: _ } => false
   }
 }
 
-test fn witness_tab_separated_inline_comment_refuses_instead_of_becoming_scalar_content() -> Bool {
+test fn witness_tab_separated_inline_comment_is_separated_not_scalar_content() -> Bool {
   match ingest_yaml_source(src: "name: x\t# trailing comment\n") {
-    IngestedYaml { value: _ } => false
-    YamlIngestRejected { reason } => reason == "inline YAML comments after values are not modeled"
+    IngestedYaml { value } => serialize_yaml(v: value) == "name: x\n"
+    YamlIngestRejected { reason: _ } => false
+  }
+}
+
+test fn witness_hash_without_preceding_separation_is_plain_scalar_content() -> Bool {
+  match ingest_yaml_source(src: "ref: main#1 # the comment\n") {
+    IngestedYaml { value } => serialize_yaml(v: value) == "ref: main#1\n"
+    YamlIngestRejected { reason: _ } => false
   }
 }
 
@@ -92,8 +104,9 @@ test fn witness_comment_only_document_is_rejected() -> Bool {
 test fn witness_yaml_comment_boundary_controls_hold() -> Bool {
   witness_column_zero_full_line_comment_is_lexically_ignored()
     && witness_indented_full_line_comment_is_lexically_ignored()
-    && witness_inline_trailing_comment_refuses_instead_of_becoming_scalar_content()
-    && witness_tab_separated_inline_comment_refuses_instead_of_becoming_scalar_content()
+    && witness_inline_trailing_comment_is_separated_not_scalar_content()
+    && witness_tab_separated_inline_comment_is_separated_not_scalar_content()
+    && witness_hash_without_preceding_separation_is_plain_scalar_content()
     && witness_hash_inside_double_quoted_scalar_is_content()
     && witness_shell_issue_reference_inside_block_literal_is_content()
     && witness_comment_only_document_is_rejected()
@@ -103,8 +116,66 @@ test fn witness_malformed_scalar_line_rejected() -> Bool {
   yaml_source_parses(src: "just a bare word\n") == false
 }
 
+// YAML fixes no indentation step, so three spaces is a valid nested block; what is malformed is a
+// line whose column matches no open block. This control used to assert the first input refused,
+// which pinned a parser limitation as if it were the grammar.
 test fn witness_bad_nested_indent_rejected() -> Bool {
-  yaml_source_parses(src: "a:\n   b: 1\n") == false
+  yaml_source_parses(src: "a:\n   b: 1\n")
+    && !yaml_source_parses(src: "a:\n    b: 1\n  c: 2\n")
+}
+
+test fn witness_single_quoted_scalar_unescapes_doubled_quote() -> Bool {
+  match ingest_yaml_source(src: "q: 'it''s'\n") {
+    IngestedYaml { value: YamlMapping { entries: es } } => match es.first() {
+      Present { value: e } => match e.value { YamlString { value: v } => v == "it's"  _ => false }
+      Absent => false
+    }
+    _ => false
+  }
+}
+
+test fn witness_flow_sequence_splits_only_at_separating_commas() -> Bool {
+  match ingest_yaml_source(src: "xs: [a, \"b, c\", 'd']\n") {
+    IngestedYaml { value: YamlMapping { entries: es } } => match es.first() {
+      Present { value: e } => match e.value { YamlSequence { elements: vs } => vs.length() == 3  _ => false }
+      Absent => false
+    }
+    _ => false
+  } && match ingest_yaml_source(src: "permissions: {}\n") {
+    IngestedYaml { value: YamlMapping { entries: es } } => match es.first() {
+      Present { value: e } => match e.value { YamlMapping { entries: inner } => inner.length() == 0  _ => false }
+      Absent => false
+    }
+    _ => false
+  }
+}
+
+test fn witness_blank_lines_and_compact_sequences_parse() -> Bool {
+  match ingest_yaml_source(src: "a: 1\n\nsteps:\n- run: x\n\n- run: y\n") {
+    IngestedYaml { value: YamlMapping { entries: es } } => (es.length() == 2) && match es.skip(n: 1).first() {
+      Present { value: e } => match e.value { YamlSequence { elements: vs } => vs.length() == 2  _ => false }
+      Absent => false
+    }
+    _ => false
+  }
+}
+
+test fn witness_strip_folded_scalar_folds_and_unmodeled_headers_refuse() -> Bool {
+  match ingest_yaml_source(src: "o: >-\n  one\n  two\n\n  three\n") {
+    IngestedYaml { value: YamlMapping { entries: es } } => match es.first() {
+      Present { value: e } => match e.value { YamlString { value: v } => v == "one two\nthree"  _ => false }
+      Absent => false
+    }
+    _ => false
+  } && !yaml_source_parses(src: "o: >\n  one\n")
+    && !yaml_source_parses(src: "o: |+\n  one\n")
+}
+
+test fn witness_aliases_anchors_and_tags_refuse_rather_than_read_as_text() -> Bool {
+  !yaml_source_parses(src: "a: *ref\n")
+    && !yaml_source_parses(src: "a: &ref x\n")
+    && !yaml_source_parses(src: "a: !!str x\n")
+    && yaml_source_parses(src: "a: x\n")
 }
 
 test fn witness_rejection_discriminates_from_valid() -> Bool {

@@ -606,7 +606,7 @@ fn apply_format_arg0(template: String, arg0: String) -> ExpressionEvaluation {
   }
 }
 
-fn eval_format_args(args: List<Expression>, github_path: fn(List<String>) -> GithubPathResolution) -> ExpressionEvaluation {
+fn eval_format_args(args: List<Expression>, context_path: fn(ExpressionContext, List<String>) -> GithubPathResolution) -> ExpressionEvaluation {
   let n = length(xs: args)
   if n != 2 {
     ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: n } } }
@@ -619,7 +619,7 @@ fn eval_format_args(args: List<Expression>, github_path: fn(List<String>) -> Git
             match list_head(xs: skip(xs: args, n: 1)) {
               HeadAbsent => ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: n } } }
               HeadFound { value: arg } =>
-                match evaluate_expression(expression: arg, github_path: github_path) {
+                match evaluate_expression_in_contexts(expression: arg, context_path: context_path) {
                   ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
                   ExpressionValue { value: arg0 } => apply_format_arg0(template: t, arg0: arg0)
                 }
@@ -641,44 +641,75 @@ fn eval_format_args(args: List<Expression>, github_path: fn(List<String>) -> Git
   }
 }
 
+// ONE EVALUATOR, AND THE CALLER SAYS WHICH CONTEXTS IT CAN ANSWER. The resolver used to be
+// github-only, which made every other context an UnmodeledContext refusal by construction rather
+// than by the caller's knowledge: a reader that holds one matrix combination knows `matrix.os`
+// exactly, and the only way to use that was a second evaluator beside this one. The resolver now
+// takes the context too; a caller that answers nothing for a context answers GithubPathUnmodeled
+// and the refusal is the same UnmodeledContext it always was. GithubPathResolution keeps its name
+// because the product is GitHub's expression language; nothing about it was ever github-context
+// specific except the one caller that constructed it.
 fn evaluate_expression(expression: Expression, github_path: fn(List<String>) -> GithubPathResolution) -> ExpressionEvaluation {
-  match expression {
-    ContextAccess { context: Github, path: p } =>
-      match github_path(p) {
-        GithubPathValue { value: v } => ExpressionValue { value: v }
-        GithubPathUnmodeled => ExpressionEvaluationRefused { cause: UnmodeledContext { context: Github, path: p } }
+  evaluate_expression_in_contexts(expression: expression, context_path: fn(c, p) {
+    match c {
+      Github => github_path(p)
+      _ => GithubPathUnmodeled
+    }
+  })
+}
+
+// A TEMPLATE IS ITS SEGMENTS IN ORDER: literal text as written, each interpolation by the evaluator
+// above. The first refusal is the answer, because a template with one unevaluable segment has no
+// value - concatenating the segments that did evaluate would name a runner nobody declared.
+fn evaluate_template_in_contexts(template: ExpressionTemplate, context_path: fn(ExpressionContext, List<String>) -> GithubPathResolution) -> ExpressionEvaluation {
+  fold(template.segments, init: ExpressionValue { value: "" }, f: (acc, segment) => match acc {
+    ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
+    ExpressionValue { value: sofar } => match segment {
+      LiteralText { text: t } => ExpressionValue { value: concat(sofar, t) }
+      Interpolation { expression: e } => match evaluate_expression_in_contexts(expression: e, context_path: context_path) {
+        ExpressionValue { value: v } => ExpressionValue { value: concat(sofar, v) }
+        ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
       }
+    }
+  })
+}
+
+fn evaluate_expression_in_contexts(expression: Expression, context_path: fn(ExpressionContext, List<String>) -> GithubPathResolution) -> ExpressionEvaluation {
+  match expression {
     ContextAccess { context: c, path: p } =>
-      ExpressionEvaluationRefused { cause: UnmodeledContext { context: c, path: p } }
-    FunctionCall { function: Format, args: a } => eval_format_args(args: a, github_path: github_path)
+      match context_path(c, p) {
+        GithubPathValue { value: v } => ExpressionValue { value: v }
+        GithubPathUnmodeled => ExpressionEvaluationRefused { cause: UnmodeledContext { context: c, path: p } }
+      }
+    FunctionCall { function: Format, args: a } => eval_format_args(args: a, context_path: context_path)
     FunctionCall { function: f, args: _ } =>
       ExpressionEvaluationRefused { cause: UnmodeledFunction { function: f } }
     StringLiteral { value: v } => ExpressionValue { value: v }
     LogicalOr { left: l, right: r } =>
-      match evaluate_expression(expression: l, github_path: github_path) {
+      match evaluate_expression_in_contexts(expression: l, context_path: context_path) {
         ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
         ExpressionValue { value: lv } =>
           if gha_value_is_truthy(s: lv) {
             ExpressionValue { value: lv }
           } else {
-            evaluate_expression(expression: r, github_path: github_path)
+            evaluate_expression_in_contexts(expression: r, context_path: context_path)
           }
       }
     LogicalAnd { left: l, right: r } =>
-      match evaluate_expression(expression: l, github_path: github_path) {
+      match evaluate_expression_in_contexts(expression: l, context_path: context_path) {
         ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
         ExpressionValue { value: lv } =>
           if gha_value_is_truthy(s: lv) {
-            evaluate_expression(expression: r, github_path: github_path)
+            evaluate_expression_in_contexts(expression: r, context_path: context_path)
           } else {
             ExpressionValue { value: lv }
           }
       }
     Equals { left: l, right: r } =>
-      match evaluate_expression(expression: l, github_path: github_path) {
+      match evaluate_expression_in_contexts(expression: l, context_path: context_path) {
         ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
         ExpressionValue { value: lv } =>
-          match evaluate_expression(expression: r, github_path: github_path) {
+          match evaluate_expression_in_contexts(expression: r, context_path: context_path) {
             ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
             ExpressionValue { value: rv } =>
               if lv == rv {
@@ -689,10 +720,10 @@ fn evaluate_expression(expression: Expression, github_path: fn(List<String>) -> 
           }
       }
     NotEquals { left: l, right: r } =>
-      match evaluate_expression(expression: l, github_path: github_path) {
+      match evaluate_expression_in_contexts(expression: l, context_path: context_path) {
         ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
         ExpressionValue { value: lv } =>
-          match evaluate_expression(expression: r, github_path: github_path) {
+          match evaluate_expression_in_contexts(expression: r, context_path: context_path) {
             ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
             ExpressionValue { value: rv } =>
               if lv == rv {

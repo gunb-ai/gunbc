@@ -18,8 +18,9 @@ import extdeps.github.actions {
   ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
   CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
-  RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner, RunnerLabel,
-  UbuntuLatest, ShellType, Bash
+  RunnerSpec, SelfHosted, RunsOnLabel, RunsOnExpression, HostedRunner, RunnerLabel,
+  UbuntuLatest, ShellType, Bash,
+  JobStrategy, MatrixSpec, MatrixAxis
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -265,6 +266,7 @@ fn runner_yaml(spec: RunnerSpec) -> YamlValue {
   match spec {
     HostedRunner { label: l } => yaml_string(s: runner_label_string(label: l))
     SelfHosted { labels: ls } => string_list_flow(items: ls)
+    RunsOnLabel { label: l } => yaml_string(s: l as String)
     RunsOnExpression { expression: e } => yaml_string(s: e)
   }
 }
@@ -413,34 +415,60 @@ fn optional_job_permissions_kv(perms: WorkflowPermissions?) -> List<YamlKeyValue
   }
 }
 
-// job_yaml projected SEVEN of the Job type's eleven emittable fields and silently dropped four —
-// concurrency, name, outputs, and strategy — so setting any of them was a no-op that still
-// typechecked. That is the specification-without-execution trap (DESIGN §5) at the emitter seam,
-// and it is worse than an unsupported field: the model reads as configured while the running
-// workflow has nothing, and the ci.yml drift gate cannot catch it because BOTH sides agree the key
-// does not appear. Named as the first of two drops in srv1-deploy-serialization-and-false-greens.md
-// §4, whose §7 item 4 rules them closable INDEPENDENTLY of any deploy decision, because a declared
-// field the serializer discards is a fail-open in every future consumer. THE FIELD-BY-FIELD
-// DISPOSITION, because 'project everything' and 'delete everything' are both wrong here:
-// concurrency, name, and outputs are now PROJECTED — each is a real GitHub job key, each is cheap
-// (a String or a List<YamlKeyValue>), and concurrency is load-bearing for the srv1 lane. strategy
-// is DELETED from the model instead, along with the MatrixStrategy type it referenced: no site
-// anywhere in the corpus ever set a MatrixStrategy VALUE — every one of the eight occurrences was a
-// field initializer supplying the empty optional — and realizing it would require iterating
-// MatrixStrategy.dimensions (a Map), which std offers no order-stable traversal for — a bare
-// map_keys reach is exactly what v2.lens.determinism.determinism_compile_gate reds, so the honest
-// options were an unrealizable declaration or removal, and DESIGN §5 picks removal. It returns as a
-// modeled field when a real matrix consumer arrives WITH a determinism-safe map projection, not
-// before. BYTE-STABILITY: every Job in the corpus currently sets name/outputs/concurrency to none,
-// so adding these three projections changes no generated artifact — the new keys are proven to work
-// by a synthetic all-fields job in gha_job_projection_witness_test rather than by any change to
-// ci.yml or falsifier.yml, and that witness also pins that an absent field stays absent so the
-// projections cannot start emitting empty keys.
+// EVERY Job FIELD IS PROJECTED, and the reason is a defect this emitter once shipped: job_yaml
+// projected seven of eleven fields and silently dropped the rest, so setting one was a no-op that
+// still typechecked and the ci.yml drift gate could not see it, because both sides agreed the key
+// was absent. strategy was then deleted from the model rather than realized, since its only shape
+// kept the matrix in a Map with no order-stable traversal. It returns here as JobStrategy, whose
+// axes are an ordered List, WITH its projection and with a consumer that reads the same key back
+// (extdeps.languages.yaml.gha_workflow_read), so a field the model can carry is a field the
+// emitted file carries. BYTE-STABILITY: no Job in the corpus sets a strategy, so no generated
+// workflow changes; gha_workflow_reverse_read_witness_test executes the projection both ways.
 
 fn optional_job_concurrency_kv(spec: ConcurrencySpec?) -> List<YamlKeyValue> {
   match spec {
     Absent => []
     Present { value: c } => [kv(key: "concurrency", value: concurrency_yaml(spec: c))]
+  }
+}
+
+// fail-fast DEFAULTS TO TRUE, so an explicit false is the only value that changes behaviour and is
+// exactly the one optional_bool_kv drops (it omits false because continue-on-error defaults to
+// false). The strategy booleans are written whenever they are present, whichever value they hold.
+fn present_bool_kv(key: String, value: Bool?) -> List<YamlKeyValue> {
+  match value {
+    Absent => []
+    Present { value: b } => [kv(key: key, value: yaml_bool(b: b))]
+  }
+}
+
+fn matrix_combinations_yaml(combinations: List<List<YamlKeyValue>>) -> YamlValue {
+  yaml_sequence(elements: map(combinations, c => yaml_mapping(entries: c)))
+}
+
+fn matrix_yaml(matrix: MatrixSpec) -> YamlValue {
+  yaml_mapping(entries: concat(
+    map(matrix.axes, a => kv(key: a.name, value: yaml_sequence(elements: a.values))),
+    concat(
+      if matrix.include.length() == 0 { [] } else { [kv(key: "include", value: matrix_combinations_yaml(combinations: matrix.include))] },
+      if matrix.exclude.length() == 0 { [] } else { [kv(key: "exclude", value: matrix_combinations_yaml(combinations: matrix.exclude))] }
+    )
+  ))
+}
+
+fn optional_job_strategy_kv(strategy: JobStrategy?) -> List<YamlKeyValue> {
+  match strategy {
+    Absent => []
+    Present { value: st } => [kv(key: "strategy", value: yaml_mapping(entries: concat(
+      match st.matrix {
+        Absent => []
+        Present { value: m } => [kv(key: "matrix", value: matrix_yaml(matrix: m))]
+      },
+      concat(
+        present_bool_kv(key: "fail-fast", value: st.fail_fast),
+        optional_int_kv(key: "max-parallel", value: st.max_parallel)
+      )
+    )))]
   }
 }
 
@@ -452,37 +480,20 @@ fn optional_job_outputs_kv(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
 }
 
 fn job_yaml(job: Job) -> YamlValue {
-  yaml_mapping(entries: concat(
+  yaml_mapping(entries: fold([
     optional_string_kv(key: "name", value: job.name),
-    concat(
-      [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
-      concat(
-        optional_string_list_kv(key: "needs", items: job.needs),
-        concat(
-          optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
-          concat(
-            optional_string_kv(key: "if", value: job.if_condition),
-            concat(
-              optional_job_permissions_kv(perms: job.permissions),
-              concat(
-                optional_job_concurrency_kv(spec: job.concurrency),
-                concat(
-                  optional_job_outputs_kv(entries: job.outputs),
-                  concat(
-                    [kv(key: "steps", value: steps_yaml(steps: job.steps))],
-                    concat(
-                      optional_env_mapping(entries: job.env),
-                      optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  ))
+    [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
+    optional_job_strategy_kv(strategy: job.strategy),
+    optional_string_list_kv(key: "needs", items: job.needs),
+    optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
+    optional_string_kv(key: "if", value: job.if_condition),
+    optional_job_permissions_kv(perms: job.permissions),
+    optional_job_concurrency_kv(spec: job.concurrency),
+    optional_job_outputs_kv(entries: job.outputs),
+    [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+    optional_env_mapping(entries: job.env),
+    optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+  ], init: [], f: (acc, entries) => concat(acc, entries)))
 }
 
 fn jobs_yaml(jobs: List<Job>) -> YamlValue {

@@ -12,7 +12,7 @@ import extdeps.github.log_annotations {
   annotation_set_output_prefix, annotation_add_mask_prefix,
   annotation_stop_commands_prefix
 }
-import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, kv, yaml_value_eq, yaml_mapping_lookup }
 import std.types { NonEmptyStr, SecretName, Unit, String, List }
 import std.os.types { KernelFamily }
 import extdeps.toolchain.types { Architecture }
@@ -206,6 +206,132 @@ type Job {
   concurrency: ConcurrencySpec?
 
   permissions: WorkflowPermissions?
+
+  strategy: JobStrategy?
+}
+
+// `jobs.<job_id>.strategy`, cited to the workflow-syntax authority this module is anchored on
+// (sections jobs.<job_id>.strategy.matrix, .fail-fast and .max-parallel, read 2026-09-13).
+//
+// THE MATRIX IS THE STATIC FORM ONLY. GitHub also accepts an expression anywhere a matrix value or
+// the whole matrix may appear (`fromJSON(needs.x.outputs.y)`), and that value does not exist until
+// an earlier job has run. No field below can hold one, so a model value always names its complete
+// set of axes; a reader that meets the dynamic form answers unresolved rather than constructing a
+// MatrixSpec with the expression's axis silently missing.
+//
+// AXIS VALUES ARE YamlValue BECAUSE GITHUB'S ARE. A matrix value may be a string, number, boolean
+// or a whole mapping (`- os: ubuntu-latest` next to `- {os: windows, shell: pwsh}`), and include
+// and exclude compare them structurally. Narrowing to String would make a mapping-valued axis
+// unrepresentable and silently equal every number to its decimal spelling.
+type JobStrategy {
+  matrix: MatrixSpec?
+  fail_fast: Bool?
+  max_parallel: Int?
+}
+
+type MatrixAxis {
+  name: String
+  values: List<YamlValue>
+}
+
+type MatrixSpec {
+  axes: List<MatrixAxis>
+  include: List<List<YamlKeyValue>>
+  exclude: List<List<YamlKeyValue>>
+}
+
+// WHAT A STATIC MATRIX RUNS, per the workflow-syntax authority's jobs.<job_id>.strategy.matrix
+// sections (read 2026-09-13), and the three rules are the ones a string filter gets wrong:
+//
+// - the base combinations are the product of the axes, and a matrix with no axes has NONE - not one
+//   empty combination - so an include-only matrix runs exactly its include entries;
+// - exclude runs first and removes every base combination its entry PARTIALLY matches;
+// - include runs after exclude. An entry is added to every remaining base combination whose ORIGINAL
+//   axis values it does not contradict (its non-axis keys extend the combination, overwriting what an
+//   earlier include added, never an axis value); an entry that contradicts all of them becomes a new
+//   combination, and combinations created that way are not candidates for later entries.
+//
+// The limit is GitHub's per-matrix job ceiling, max_matrix_combinations, checked on the product's
+// SIZE before any combination is built, so an over-limit matrix costs its axis lengths rather than
+// the combinations it would refuse.
+type MatrixExpansion
+  = MatrixCombinations { combinations: List<List<YamlKeyValue>> }
+  | MatrixCombinationLimitExceeded { at_least: Int, limit: Int }
+
+type MatrixIncludeAcc {
+  extended: List<List<YamlKeyValue>>
+  created: List<List<YamlKeyValue>>
+}
+
+data empty_matrix_combinations: List<List<YamlKeyValue>> = []
+
+data unit_matrix_product: List<List<YamlKeyValue>> = [[]]
+
+fn matrix_product_size(axes: List<MatrixAxis>) -> Int {
+  fold(axes, init: 1, f: (acc, axis) => if acc > max_matrix_combinations { acc } else { acc * axis.values.length() })
+}
+
+fn matrix_axis_product(axes: List<MatrixAxis>) -> List<List<YamlKeyValue>> {
+  if axes.length() == 0 {
+    empty_matrix_combinations
+  } else {
+    fold(axes, init: unit_matrix_product, f: (acc, axis) =>
+      fold(acc, init: empty_matrix_combinations, f: (out, combo) =>
+        concat(out, map(axis.values, v => concat(combo, [kv(key: axis.name, value: v)])))))
+  }
+}
+
+fn matrix_combination_matches(combination: List<YamlKeyValue>, partial: List<YamlKeyValue>) -> Bool {
+  fold(partial, init: true, f: (acc, pair) => acc && match yaml_mapping_lookup(entries: combination, key: pair.key) {
+    Present { value: v } => yaml_value_eq(a: v, b: pair.value)
+    Absent => false
+  })
+}
+
+fn matrix_combination_set(combination: List<YamlKeyValue>, pair: YamlKeyValue) -> List<YamlKeyValue> {
+  match yaml_mapping_lookup(entries: combination, key: pair.key) {
+    Present { value: _ } => map(combination, e => if e.key == pair.key { pair } else { e })
+    Absent => concat(combination, [pair])
+  }
+}
+
+fn matrix_include_one(
+  originals: List<List<YamlKeyValue>>,
+  axis_names: List<String>,
+  acc: MatrixIncludeAcc,
+  entry: List<YamlKeyValue>,
+) -> MatrixIncludeAcc {
+  let axis_pairs = filter(entry, pair => any(axis_names, n => n == pair.key))
+  let matched = map(originals, o => matrix_combination_matches(combination: o, partial: axis_pairs))
+  if any(matched, m => m) {
+    MatrixIncludeAcc {
+      extended: map(enumerate(acc.extended), pair => match matched.get(n: pair.first) {
+        Present { value: m } => if m { fold(entry, init: pair.second, f: (c, e) => matrix_combination_set(combination: c, pair: e)) } else { pair.second }
+        Absent => pair.second
+      }),
+      created: acc.created,
+    }
+  } else {
+    MatrixIncludeAcc { extended: acc.extended, created: concat(acc.created, [entry]) }
+  }
+}
+
+fn matrix_combinations(matrix: MatrixSpec) -> MatrixExpansion {
+  let size = matrix_product_size(axes: matrix.axes)
+  if (matrix.axes.length() > 0) && (size > max_matrix_combinations) {
+    MatrixCombinationLimitExceeded { at_least: size, limit: max_matrix_combinations }
+  } else {
+    let originals = filter(matrix_axis_product(axes: matrix.axes), c =>
+      !any(matrix.exclude, x => matrix_combination_matches(combination: c, partial: x)))
+    let included = fold(matrix.include, init: MatrixIncludeAcc { extended: originals, created: empty_matrix_combinations }, f: (acc, entry) =>
+      matrix_include_one(originals: originals, axis_names: map(matrix.axes, a => a.name), acc: acc, entry: entry))
+    let all = concat(included.extended, included.created)
+    if all.length() > max_matrix_combinations {
+      MatrixCombinationLimitExceeded { at_least: all.length(), limit: max_matrix_combinations }
+    } else {
+      MatrixCombinations { combinations: all }
+    }
+  }
 }
 
 type CancelInProgressSpec
@@ -261,9 +387,18 @@ data github_actions_runs_on_surface: DeclarationRef = decl_ref(
   decl_name: "RunnerSpec",
 )
 
+// RunsOnLabel IS A SINGLE LITERAL LABEL THAT IS NOT ONE OF GITHUB'S OWN, and it says nothing about
+// who hosts the machine. `runs-on: depot-ubuntu-24.04-arm` and `runs-on: srv1` are the same syntax:
+// the first is a third-party provider's label, the second a custom label on a self-hosted runner,
+// and the workflow file cannot tell them apart. So this arm is neither HostedRunner (RunnerLabel is
+// GitHub's closed catalog) nor SelfHosted (which asserts the provenance label), and it is not an
+// expression either - forcing a literal into RunsOnExpression would tell every consumer the value
+// is resolved at dispatch when it is fixed in the file. Which provider answers a label is a catalog
+// reading, owned by gunbc.runner_label_resolution, never by this syntax.
 type RunnerSpec
   = HostedRunner { label: RunnerLabel }
   | SelfHosted { labels: List<String> }
+  | RunsOnLabel { label: NonEmptyStr }
 
   | RunsOnExpression { expression: String }
 
@@ -341,6 +476,15 @@ type RunnerLabel
   | Macos14
   | WindowsLatest
 
+// THE CLOSED ROSTERS A READER INVERTS THE WIRE NAMES OVER. A wire name has no match arm to invert,
+// so reading `ubuntu-latest` back into HostedRunner walks the variants and asks the emitter's own
+// spelling of each - one spelling, two directions. What this cannot prevent, named rather than
+// hoped away: a variant added to the type and not to its roster is emitted correctly and read back
+// as a literal label. The roster sits directly under its type so that edit is one screen.
+data github_hosted_runner_labels: List<RunnerLabel> = [
+  UbuntuLatest, Ubuntu2404, Ubuntu2404Arm, Ubuntu2204, UbuntuSlim, MacosLatest, Macos14, WindowsLatest
+]
+
 type Step
   = RunStep {
       name: String?,
@@ -366,6 +510,8 @@ type Step
     }
 
 type ShellType = Bash | Sh | Pwsh | Python | Cmd
+
+data all_shell_types: List<ShellType> = [Bash, Sh, Pwsh, Python, Cmd]
 
 type ActionRef {
   owner: String
