@@ -26,7 +26,8 @@ import v2.workflow.legacy_repair_observation {
   LegacyRepairObservation,
   LegacyRepairObservationRow,
   LegacyRepairObservationSubject,
-  repair_site_roster_identity
+  repair_site_roster_identity,
+  repair_subject_field_label
 }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
@@ -235,7 +236,7 @@ fn lbc_run(
                   LegacyBaselineObservationIncomplete { completeness: _ } => "observation-incomplete"
                   LegacyBaselineRepairRosterMalformed { sites: _ } => "repair-roster-malformed"
                   LegacyBaselineRepairRosterMismatch { subject_digest: _, roster_digest: _ } => "repair-roster-mismatch"
-                  LegacyBaselineRepairSubjectDiverged { field: f } => concat("repair-subject-diverged:", subject_field_label(f: f) as String)
+                  LegacyBaselineRepairSubjectDiverged { field: f } => concat("repair-subject-diverged:", repair_subject_field_label(f: f) as String)
                   LegacyBaselineRepairIncomplete { completeness: _ } => "repair-incomplete"
                   LegacyBaselineExecutionRefused { phase: _, cause: _ } => "execution-refused"
                 }

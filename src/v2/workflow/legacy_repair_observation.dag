@@ -356,9 +356,32 @@ type CompleteLegacyRepairObservation<O> sole_constructor {
   observation: LegacyRepairObservation<O>
 }
 
+type LegacyRepairSubjectField
+  = RepairSemanticSourceDigestField
+  | RepairSourceSetDigestField
+  | RepairCompilerArtifactDigestField
+  | RepairerIdentityModulePathField
+  | RepairerIdentityDeclNameField
+  | RepairerIdentityFieldField
+  | RepairSiteRosterDigestField
+  | ResolutionRegistryDigestField
+
+fn repair_subject_field_label(f: LegacyRepairSubjectField) -> NonEmptyStr {
+  match f {
+    RepairSemanticSourceDigestField => "semantic_source_digest" as NonEmptyStr
+    RepairSourceSetDigestField => "source_set_digest" as NonEmptyStr
+    RepairCompilerArtifactDigestField => "compiler_artifact_digest" as NonEmptyStr
+    RepairerIdentityModulePathField => "repairer_identity.module_path" as NonEmptyStr
+    RepairerIdentityDeclNameField => "repairer_identity.decl_name" as NonEmptyStr
+    RepairerIdentityFieldField => "repairer_identity.field" as NonEmptyStr
+    RepairSiteRosterDigestField => "repair_site_roster_digest" as NonEmptyStr
+    ResolutionRegistryDigestField => "resolution_registry_digest" as NonEmptyStr
+  }
+}
+
 type LegacyRepairAdmission<O>
   = RepairObservationAdmitted { admitted: CompleteLegacyRepairObservation<O> }
-  | RepairObservationSubjectDiverged { field: String }
+  | RepairObservationSubjectDiverged { field: LegacyRepairSubjectField }
   | RepairObservationRefused { completeness: ObservationCompleteness<RepairSite> }
 
 // THE OBSERVATION'S OWN SUBJECT MUST BE THE PROVEN ONE, AND THAT IS WHY THE CARRIER HOLDS BOTH.
@@ -407,28 +430,28 @@ fn admit_over_proven_subject<O>(
 // spelled its own.
 type LegacyRepairSubjectApplicability
   = LegacyRepairSubjectApplicable
-  | LegacyRepairSubjectDiverged { field: String }
+  | LegacyRepairSubjectDiverged { field: LegacyRepairSubjectField }
 
 fn legacy_repair_subject_applicability(
   left: LegacyRepairObservationSubject,
   right: LegacyRepairObservationSubject
 ) -> LegacyRepairSubjectApplicability {
   if left.semantic_source_digest.digest != right.semantic_source_digest.digest {
-    LegacyRepairSubjectDiverged { field: "semantic_source_digest" }
+    LegacyRepairSubjectDiverged { field: RepairSemanticSourceDigestField }
   } else if left.source_set_digest.digest != right.source_set_digest.digest {
-    LegacyRepairSubjectDiverged { field: "source_set_digest" }
+    LegacyRepairSubjectDiverged { field: RepairSourceSetDigestField }
   } else if left.compiler_artifact_digest.digest != right.compiler_artifact_digest.digest {
-    LegacyRepairSubjectDiverged { field: "compiler_artifact_digest" }
+    LegacyRepairSubjectDiverged { field: RepairCompilerArtifactDigestField }
   } else if left.repairer_identity.module_path != right.repairer_identity.module_path {
-    LegacyRepairSubjectDiverged { field: "repairer_identity.module_path" }
+    LegacyRepairSubjectDiverged { field: RepairerIdentityModulePathField }
   } else if left.repairer_identity.decl_name != right.repairer_identity.decl_name {
-    LegacyRepairSubjectDiverged { field: "repairer_identity.decl_name" }
+    LegacyRepairSubjectDiverged { field: RepairerIdentityDeclNameField }
   } else if !decl_field_eq(a: left.repairer_identity.field, b: right.repairer_identity.field) {
-    LegacyRepairSubjectDiverged { field: "repairer_identity.field" }
+    LegacyRepairSubjectDiverged { field: RepairerIdentityFieldField }
   } else if left.repair_site_roster_digest.digest != right.repair_site_roster_digest.digest {
-    LegacyRepairSubjectDiverged { field: "repair_site_roster_digest" }
+    LegacyRepairSubjectDiverged { field: RepairSiteRosterDigestField }
   } else if left.resolution_registry_digest.digest != right.resolution_registry_digest.digest {
-    LegacyRepairSubjectDiverged { field: "resolution_registry_digest" }
+    LegacyRepairSubjectDiverged { field: ResolutionRegistryDigestField }
   } else {
     LegacyRepairSubjectApplicable
   }
