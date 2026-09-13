@@ -290,9 +290,9 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         match symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
           Present { value: resolved } =>
             if (resolved.connective == Disj) {
-              match find_child_named(n: resolved, name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
+              match find_variant_child_keyed(n: resolved, variant_name: variant_name, source_indices: source_indices) {
                 Present { value: variant_child } =>
-                  match find_child_named(n: expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env), name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
+                  match find_variant_child_keyed(n: expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env), variant_name: variant_name, source_indices: source_indices) {
                     Present { value: scrut_child } => node_lookup_resolved(node: scrut_child)
                     Absent => node_lookup_resolved(node: variant_child)
                   }
@@ -326,7 +326,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
 
           let optional_coproduct_subject = scrut_name == "Optional"
             && (variant_name == "Present" || variant_name == "Absent")
-          let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
+          let direct_match = find_variant_child_keyed(n: scrut_node, variant_name: variant_name, source_indices: source_indices)
 
           let record_destructure = field_binding_count > 0
             && scrut_node.connective == Conj
@@ -383,6 +383,24 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
 fn variant_pattern_coverage_key(name: String) -> String {
   let segs = split(name, separator: ".")
   if segs |> count == 0 { name } else { fold(segs, init: "", f: (_, seg) => seg) }
+}
+
+// VARIANT LOOKUP IS THE SAME IDENTITY QUESTION AS COVERAGE, so it is keyed by the same function on
+// both sides. The three variant-lookup sites in lookup_variant_in_type each compared a name against
+// a child's RAW authored name: the qualified branch reduced only the pattern, and the bare branch
+// reduced neither, so a bare arm could not resolve against a child declared under a dotted authored
+// name and refused with VariantNotFound -- the coverage defect one function up, one layer down.
+// Unlike the coverage key that is a lost symmetry, this asymmetry is as old as the function.
+//
+// THIS IS DELIBERATELY NOT find_child_named. That helper also resolves FIELDS, at
+// lookup_field_in_variant; keying it would make field matching leaf-keyed, which widens what a
+// field name may match rather than repairing an identity, so it is left exactly as it is.
+fn find_variant_child_keyed(n: Node, variant_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  let key = variant_pattern_coverage_key(name: variant_name)
+  match n.children |> filter(c => variant_pattern_coverage_key(name: authored_name_at(source_indices: source_indices, node: c)) == key) |> first {
+    Present { value: ch } => Present { value: ch }
+    Absent => none
+  }
 }
 
 // -- NESTED PATTERN EXHAUSTIVENESS: THE COLUMNS ARE CARRIED JOINTLY --
