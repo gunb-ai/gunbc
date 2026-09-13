@@ -30,7 +30,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.tax.new_jersey_sales_and_use",
-      decl_name: "nj_statewide_sales_tax_rate",
+      decl_name: "nj_statewide_sales_tax",
       field: WholeDeclaration
     }
   },
