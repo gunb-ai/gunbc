@@ -1704,21 +1704,25 @@ pub(crate) struct RequiredFloorIdentityBlocker {
 /// same function; a test-local AND would survive a production short-circuit of the changed
 /// rows for a declared identity — the absorbing move this arm is not allowed to enable.
 ///
-/// `changed_row` is `None` exactly when the identity is newly enrolled and absent from the
-/// changed projection. A standing that defers to changed-witness then REFUSES — the pairing
-/// invariant made executable, not argued.
+/// `standing` is `None` when this run did not adjudicate enrolment for the identity (it is
+/// not in the newly enrolled set). That is absence, not a synthesized
+/// `OutsideThisRunsExecution`. `changed_row` is `None` exactly when the identity is newly
+/// enrolled and absent from the changed projection. A standing that defers to
+/// changed-witness then REFUSES — the pairing invariant made executable, not argued.
 pub(crate) fn required_floor_blockers_for(
     identity: &str,
-    standing: &EnrolmentMarginStanding,
+    standing: Option<&EnrolmentMarginStanding>,
     changed_row: Option<&ChangedWitnessProjectionRow>,
 ) -> Vec<RequiredFloorIdentityBlocker> {
     let mut blockers = Vec::new();
-    if standing.blocks() {
-        blockers.push(RequiredFloorIdentityBlocker {
-            identity: identity.to_string(),
-            cause: standing.cause().to_string(),
-            origin: RequiredFloorBlockerOrigin::Enrolment,
-        });
+    if let Some(standing) = standing {
+        if standing.blocks() {
+            blockers.push(RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: standing.cause().to_string(),
+                origin: RequiredFloorBlockerOrigin::Enrolment,
+            });
+        }
     }
     match changed_row {
         Some(row) => {
@@ -1731,25 +1735,27 @@ pub(crate) fn required_floor_blockers_for(
             }
         }
         None => {
-            if !standing.blocks() {
-                match standing.unpaired_pairing_hole() {
-                    EnrolmentPairingHole::None => {}
-                    EnrolmentPairingHole::Declared => {
-                        blockers.push(RequiredFloorIdentityBlocker {
-                            identity: identity.to_string(),
-                            cause: "declared_expensiveness_without_changed_witness_pairing"
-                                .to_string(),
-                            origin: RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing,
-                        });
-                    }
-                    EnrolmentPairingHole::OutsideExecution => {
-                        blockers.push(RequiredFloorIdentityBlocker {
-                            identity: identity.to_string(),
-                            cause: "enrolment_outside_execution_without_changed_witness_pairing"
-                                .to_string(),
-                            origin:
-                                RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing,
-                        });
+            if let Some(standing) = standing {
+                if !standing.blocks() {
+                    match standing.unpaired_pairing_hole() {
+                        EnrolmentPairingHole::None => {}
+                        EnrolmentPairingHole::Declared => {
+                            blockers.push(RequiredFloorIdentityBlocker {
+                                identity: identity.to_string(),
+                                cause: "declared_expensiveness_without_changed_witness_pairing"
+                                    .to_string(),
+                                origin: RequiredFloorBlockerOrigin::DeclaredWithoutChangedPairing,
+                            });
+                        }
+                        EnrolmentPairingHole::OutsideExecution => {
+                            blockers.push(RequiredFloorIdentityBlocker {
+                                identity: identity.to_string(),
+                                cause: "enrolment_outside_execution_without_changed_witness_pairing"
+                                    .to_string(),
+                                origin:
+                                    RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing,
+                            });
+                        }
                     }
                 }
             }
@@ -8667,13 +8673,8 @@ pub fn run_required_floor(
     let mut enrolment_blocking: Vec<ChangedWitnessBlocker> = Vec::new();
     if let Some(rows) = &changed_projection_rows {
         for r in rows {
-            let standing = enrolment_standing_by_identity
-                .get(&r.identity)
-                .cloned()
-                .unwrap_or(EnrolmentMarginStanding::OutsideThisRunsExecution {
-                    disposition: "not_in_newly_enrolled_set".to_string(),
-                });
-            for blocker in required_floor_blockers_for(&r.identity, &standing, Some(r)) {
+            let standing = enrolment_standing_by_identity.get(&r.identity);
+            for blocker in required_floor_blockers_for(&r.identity, standing, Some(r)) {
                 match blocker.origin {
                     RequiredFloorBlockerOrigin::Changed => {
                         changed_blocking.push(ChangedWitnessBlocker {
@@ -8705,7 +8706,7 @@ pub fn run_required_floor(
             let standing = enrolment_standing_by_identity
                 .get(identity)
                 .expect("standing recorded for every newly enrolled identity");
-            for blocker in required_floor_blockers_for(identity, standing, None) {
+            for blocker in required_floor_blockers_for(identity, Some(standing), None) {
                 match blocker.origin {
                     RequiredFloorBlockerOrigin::Changed => {
                         changed_blocking.push(ChangedWitnessBlocker {
@@ -10033,8 +10034,11 @@ mod changed_witness_projection_tests {
             "enrolment admits; that is the per-gate fact, not the composition"
         );
         assert_eq!(composed.enrolment.cause(), "");
-        let blockers =
-            required_floor_blockers_for(identity, &composed.enrolment, Some(&composed.changed));
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
         assert_eq!(
             blockers,
             vec![RequiredFloorIdentityBlocker {
@@ -10067,8 +10071,11 @@ mod changed_witness_projection_tests {
         );
         assert_eq!(composed.enrolment.name(), "expensiveness_declared");
         assert!(!composed.enrolment.blocks());
-        let blockers =
-            required_floor_blockers_for(identity, &composed.enrolment, Some(&composed.changed));
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
         assert_eq!(
             blockers,
             vec![RequiredFloorIdentityBlocker {
@@ -10108,8 +10115,11 @@ mod changed_witness_projection_tests {
         assert_eq!(composed.enrolment.name(), "expensiveness_declared");
         assert!(!composed.enrolment.blocks());
         assert_eq!(composed.enrolment.cause(), "");
-        let blockers =
-            required_floor_blockers_for(identity, &composed.enrolment, Some(&composed.changed));
+        let blockers = required_floor_blockers_for(
+            identity,
+            Some(&composed.enrolment),
+            Some(&composed.changed),
+        );
         assert_eq!(
             blockers,
             vec![RequiredFloorIdentityBlocker {
@@ -10142,7 +10152,7 @@ mod changed_witness_projection_tests {
         );
         assert_eq!(standing.name(), "expensiveness_declared");
         assert!(!standing.blocks());
-        let blockers = required_floor_blockers_for(identity, &standing, None);
+        let blockers = required_floor_blockers_for(identity, Some(&standing), None);
         assert_eq!(
             blockers,
             vec![RequiredFloorIdentityBlocker {
@@ -10167,13 +10177,43 @@ mod changed_witness_projection_tests {
             enrolment_margin_standing_for(identity, &cost_owned, &dispositions, 302, None);
         assert_eq!(standing.name(), "outside_this_runs_execution");
         assert!(!standing.blocks());
-        let blockers = required_floor_blockers_for(identity, &standing, None);
+        let blockers = required_floor_blockers_for(identity, Some(&standing), None);
         assert_eq!(
             blockers,
             vec![RequiredFloorIdentityBlocker {
                 identity: identity.to_string(),
                 cause: "enrolment_outside_execution_without_changed_witness_pairing".to_string(),
                 origin: RequiredFloorBlockerOrigin::OutsideExecutionWithoutChangedPairing,
+            }]
+        );
+    }
+
+    /// review 65732: a changed-projection identity this run did not enrol is absence of
+    /// enrolment standing, not a synthesized `OutsideThisRunsExecution`. Pairing does not
+    /// fire; only the changed gate can block.
+    #[test]
+    fn a_changed_identity_outside_the_enrolled_set_has_no_enrolment_standing() {
+        let identity = "fixture.changed_not_enrolled";
+        let composed = enrolment_and_changed_composition(
+            identity,
+            EnrolmentExpensivenessGround::LongHome,
+            None,
+            None,
+            &HashMap::new(),
+        );
+        let blockers = required_floor_blockers_for(identity, None, Some(&composed.changed));
+        assert!(
+            blockers
+                .iter()
+                .all(|b| b.origin == RequiredFloorBlockerOrigin::Changed),
+            "no enrolment origin from a missing standing"
+        );
+        assert_eq!(
+            blockers,
+            vec![RequiredFloorIdentityBlocker {
+                identity: identity.to_string(),
+                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                origin: RequiredFloorBlockerOrigin::Changed,
             }]
         );
     }
