@@ -11488,6 +11488,9 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// Resolved application children carry the argument in inferred, beside the
+// declaration's parameter name. Bind the argument, not that wrapper;
+// infer_call_arguments_generic_pass carries this substitution to callbacks.
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
@@ -11502,9 +11505,6 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
-          // Resolved application children carry the argument in inferred, beside
-          // the declaration's parameter name. Bind the argument, not that wrapper;
-          // infer_call_arguments_generic_pass carries this substitution to callbacks.
           Present { value: ac } => unify_generics(formal: fc, actual: value_binding_expr_type_node(resolved: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
           Absent => acc
         }
