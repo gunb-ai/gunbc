@@ -69,7 +69,6 @@ import gunbc.runner_unit_file {
   RunnerUnitTextRefused,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
-import gunbc.fleet_posix_accounts { PosixAccountObservation }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
 
@@ -86,15 +85,11 @@ import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_princi
 // the vanished rustc, registry sources and toolchain components the CI floor reported that morning.
 // srv1's dpkg log shows needrestart restarting runner units on ten separate days since June.
 //
-// FOUR FILES, OR A REFUSAL. Teardown drop-in and needrestart deferral are the two halves of the
-// orphan class. The unit fragment and the depriv drop-in are the modeled runner bytes: installing
-// the fragment without depriv would keep those facts in force only because a drop-in the model has
-// never read happens to override the render, so the modeled unit would be correct by accident on
-// some hosts and wrong on any host missing that file. Modeling depriv's facts is the cut that lets
-// the fragment be delivered. Production still has no ProcessReceipt PosixAccountObservation for
-// ghrunner, so the population refuses with that cause rather than shipping a partial set. A refuse
-// writes nothing; it does not assert that a hand-placed depriv.conf is present. The fragment still
-// names deploy.runner_user, not root.
+// FOUR FILES. Teardown drop-in and needrestart deferral are the two halves of the orphan class.
+// The unit fragment and the depriv drop-in are the modeled runner bytes: installing the fragment
+// without depriv would keep those facts in force only because a drop-in the model has never read
+// happens to override the render. Modeling depriv's facts is the cut that lets the fragment be
+// delivered. The fragment still names deploy.runner_user, not root.
 //
 // WHO WRITES, AND WHY NOT THE CI JOB USER. Both files are evaluated by root: systemd merges the drop-in
 // and needrestart `eval`s its conf.d snippet as Perl. A sudo grant letting the fleet-converge job user
@@ -131,13 +126,6 @@ data runner_host_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" a
 data runner_needrestart_conf_d_stem: NonEmptyStr = "50-gunbc-actions-runner" as NonEmptyStr
 
 fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesiredPopulation {
-  runner_host_file_desired_population_observed(host: host, observation: none)
-}
-
-fn runner_host_file_desired_population_observed(
-  host: HostIdentity,
-  observation: PosixAccountObservation?,
-) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
     NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
@@ -150,7 +138,7 @@ fn runner_host_file_desired_population_observed(
           match gunbc_runner_unit_fragment_for_host(host: host) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
-              match gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host, observation: observation) {
+              match gunbc_runner_unit_depriv_dropin_text(deploy: d, host: host) {
                 RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
                 RunnerUnitText { text: depriv } =>
                   RunnerHostFilesDesired {

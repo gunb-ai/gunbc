@@ -1,6 +1,6 @@
 module test.claim.runner_host_file_converge_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int }
+import std.types { Bool, String, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
@@ -32,9 +32,7 @@ import gunbc.runner_host_file_converge {
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
-  RunnerHostFileDesiredPopulation,
   runner_host_file_desired_population,
-  runner_host_file_desired_population_observed,
   RunnerHostFileSubject,
   RunnerHostFileSubjectAdmitted,
   RunnerHostFileSubjectRefused,
@@ -100,46 +98,9 @@ import gunbc.runner_host_file_converge {
   run_runner_host_files,
 }
 
-import gunbc.runner_host_deploy { srv1_runner_host_deploy }
-import gunbc.fleet_posix_accounts {
-  PosixAccountObservation,
-  PosixAccountOccurrence,
-  FleetAccountCiRunner,
-}
-import gunbc.fleet_lifecycle_observation { process_receipt }
-import std.content_hash { content_hash_atom }
-import extdeps.access.posix { PosixUser, LoginShellUnobserved }
-
 // Every claim here is a function of declared rows except the route test, whose every remote leg is
 // answered by the hermetic ssh mock; nothing reads the live tree.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-fn srv1_ci_runner_observation() -> PosixAccountObservation? {
-  Present {
-    value: PosixAccountObservation {
-      occurrence: PosixAccountOccurrence {
-        host: "srv1" as HostIdentity,
-        principal: FleetAccountCiRunner,
-      },
-      observed_user: PosixUser {
-        name: srv1_runner_host_deploy.job_user,
-        uid: 4242,
-        gid: 4242,
-        shell: LoginShellUnobserved,
-      },
-      effect_receipt: process_receipt(label: "fixture-id-probe" as NonEmptyStr, exit_status: 0),
-      raw_output_identity: content_hash_atom(value: "fixture-id" as NonEmptyStr),
-      observed_at: "2026-09-13T00:00:00Z",
-    },
-  }
-}
-
-fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
-  runner_host_file_desired_population_observed(
-    host: "srv1" as HostIdentity,
-    observation: srv1_ci_runner_observation(),
-  )
-}
 
 // ── The bytes, against independently authored oracles ─────────────────────────────────────────────
 
@@ -173,7 +134,7 @@ test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
 data expected_needrestart_text: String = "$nrconf\{override_rc\}->\{qr(^actions\\-runner\\@)\} = 0;\n"
 
 fn desired_content(subject: String) -> String {
-  match srv1_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.content } else { acc })
@@ -181,7 +142,7 @@ fn desired_content(subject: String) -> String {
 }
 
 fn desired_path(subject: String) -> String {
-  match srv1_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => ""
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: "", f: (acc, f) => if (f.subject as String) == subject { f.path as String } else { acc })
@@ -193,15 +154,8 @@ test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool
     && desired_path(subject: "needrestart-runner-deferral") == "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"
 }
 
-test fn production_desired_population_refuses_without_a_posix_account_observation() -> Bool {
-  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
-    RunnerHostFilesDesired { files: _ } => false
-    RunnerHostFilesDesiredRefused { cause: c } => string_contains(s: c as String, pattern: "PosixAccountObservation")
-  }
-}
-
 test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
-  match srv1_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs } =>
       length(fs) == 4
@@ -247,7 +201,7 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
 // Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
 // would refuse at the seal rather than reaching a sudo leg.
 test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
-  match srv1_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: true, f: (ok, f) => ok && match runner_host_file_write_admission(file: f) {
@@ -499,7 +453,7 @@ test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool
 // ── Terminal ─────────────────────────────────────────────────────────────────────────────────────
 
 fn teardown_desired() -> RunnerHostFileDesired? {
-  match srv1_desired_population() {
+  match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => none
     RunnerHostFilesDesired { files: fs } =>
       fold(fs, init: none, f: (acc, f) => if (f.subject as String) == "runner-teardown-dropin" { Present { value: f } } else { acc })
@@ -568,7 +522,7 @@ test fn the_apply_route_refuses_what_the_host_did_not_report() -> Bool {
       match fleet_ssh_execution_context_hermetic_witness_fixture() {
         Absent => false
         Present { value: context } =>
-          match srv1_desired_population() {
+          match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
             RunnerHostFilesDesiredRefused { cause: _ } => false
             RunnerHostFilesDesired { files: fs } => {
               let run = run_runner_host_files(subject: s, context: context, files: fs, mode: RunnerHostFilesApply)

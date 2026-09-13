@@ -1,6 +1,6 @@
 module test.claim.runner_unit_file_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int }
+import std.types { Bool, String, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
 import extdeps.systemd.unit_file {
@@ -39,14 +39,8 @@ import gunbc.fleet_intent_network { operator_host_srv3 }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_user,
-  fleet_ci_runner_reported_contradiction,
-  PosixAccountObservation,
-  PosixAccountOccurrence,
-  FleetAccountCiRunner,
 }
-import gunbc.fleet_lifecycle_observation { process_receipt }
-import std.content_hash { content_hash_atom }
-import extdeps.access.posix { PosixUser, LoginShellUnobserved }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
@@ -74,6 +68,7 @@ import gunbc.runner_unit_file {
   runner_slot_instance_directory,
   gunbc_runner_unit_depriv_dropin_text,
   gunbc_runner_unit_fragment_for_host,
+  runner_job_user_xdg_runtime_uid,
 }
 
 // Every claim here is a function of declared substrate rows -- a render and its serialization -- so
@@ -225,42 +220,8 @@ test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
     && !string_contains(s: text, pattern: "\nUser=root\n")
 }
 
-data fixture_observed_ci_runner_uid: Int = 4242
-
-fn fixture_ci_runner_observation(host: HostIdentity, uid: Int, name: NonEmptyStr) -> PosixAccountObservation {
-  PosixAccountObservation {
-    occurrence: PosixAccountOccurrence {
-      host: host,
-      principal: FleetAccountCiRunner,
-    },
-    observed_user: PosixUser {
-      name: name,
-      uid: uid,
-      gid: uid,
-      shell: LoginShellUnobserved,
-    },
-    effect_receipt: process_receipt(label: "fixture-id-probe" as NonEmptyStr, exit_status: 0),
-    raw_output_identity: content_hash_atom(value: "fixture-id" as NonEmptyStr),
-    observed_at: "2026-09-13T00:00:00Z",
-  }
-}
-
-fn srv3_ci_runner_observation() -> PosixAccountObservation? {
-  Present {
-    value: fixture_ci_runner_observation(
-      host: operator_host_srv3,
-      uid: fixture_observed_ci_runner_uid,
-      name: srv1_runner_host_deploy.job_user,
-    ),
-  }
-}
-
 test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_docker() -> Bool {
-  match gunbc_runner_unit_depriv_dropin_text(
-    deploy: srv1_runner_host_deploy,
-    host: operator_host_srv3,
-    observation: srv3_ci_runner_observation(),
-  ) {
+  match gunbc_runner_unit_depriv_dropin_text(deploy: srv1_runner_host_deploy, host: operator_host_srv3) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: text } =>
       string_contains(s: text, pattern: "\nUser=root\n")
@@ -269,7 +230,7 @@ test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_do
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock\n")
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_IDLE_TIMEOUT=0\n")
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log\n")
-        && string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: fixture_observed_ci_runner_uid), "\n"))
+        && string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: runner_job_user_xdg_runtime_uid.uid), "\n"))
   }
 }
 
@@ -283,11 +244,7 @@ test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
     app: srv1_runner_host_deploy.app,
     runner_count: srv1_runner_host_deploy.runner_count,
   }
-  match gunbc_runner_unit_depriv_dropin_text(
-    deploy: poisoned,
-    host: operator_host_srv3,
-    observation: srv3_ci_runner_observation(),
-  ) {
+  match gunbc_runner_unit_depriv_dropin_text(deploy: poisoned, host: operator_host_srv3) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: text } =>
       string_contains(s: text, pattern: "\nUser=fixture-unit\n")
@@ -295,30 +252,12 @@ test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
   }
 }
 
-test fn the_depriv_docker_host_is_the_observed_uid_not_a_reported_contradiction() -> Bool {
-  (fixture_observed_ci_runner_uid != fleet_posix_ci_runner_user.uid)
-    && (fixture_observed_ci_runner_uid != fleet_ci_runner_reported_contradiction().reported_uid)
-}
-
-test fn production_depriv_without_observation_refuses_rather_than_promoting_a_bet() -> Bool {
-  match gunbc_runner_unit_depriv_dropin_text(
-    deploy: srv1_runner_host_deploy,
-    host: operator_host_srv3,
-    observation: none,
-  ) {
-    RunnerUnitTextRefused { reason: r } => string_contains(s: r as String, pattern: "PosixAccountObservation")
-    RunnerUnitText { text: _ } => false
-  }
-}
-
-test fn a_host_mismatched_observation_refuses_depriv() -> Bool {
-  match gunbc_runner_unit_depriv_dropin_text(
-    deploy: srv1_runner_host_deploy,
-    host: "srv9" as HostIdentity,
-    observation: srv3_ci_runner_observation(),
-  ) {
-    RunnerUnitTextRefused { reason: r } => string_contains(s: r as String, pattern: "PosixAccountObservation")
-    RunnerUnitText { text: _ } => false
+test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> Bool {
+  match runner_job_user_xdg_runtime_uid.evidence {
+    TranscribedUncited { read_obligation: o } =>
+      (runner_job_user_xdg_runtime_uid.uid != fleet_posix_ci_runner_user.uid)
+        && string_contains(s: o as String, pattern: "id -u")
+    CitedToAuthority { authority: _ } => false
   }
 }
 
