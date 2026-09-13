@@ -57,7 +57,9 @@ import gunbc.runner_host_deploy {
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
   runner_host_deploy_for,
+  runner_job_user_env_name,
 }
+import gunbc.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
 import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
 import gunbc.ci_fleet { fleet_compute_offer_for }
@@ -388,23 +390,24 @@ fn gunbc_fleet_runner_permit_scope() -> CompileParallelismRealization {
 }
 
 // jit-runner.sh reads this name after unit_user mints the JIT config, then setpriv-drops to it.
-data runner_unit_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
-
 // THE XDG RUNTIME UID THE ROOTLESS DOCKER SOCKET PATH IS FORMED FROM.
 // fleet_posix_ci_runner_user.uid claims 1001 and is recorded in that module as wrong; consuming it
-// here would point DOCKER_HOST at another principal's socket. This figure is TranscribedUncited
-// until id(1) of RunnerHostDeploy.job_user grounds PosixUser.uid. It is a path ingredient, not a
-// safety verdict; the standing travels with the number.
+// here would point DOCKER_HOST at another principal's socket. The NUMBER is
+// fleet_ci_runner_reported_contradiction.reported_uid — one fact, not a second 999. The figure is
+// TranscribedUncited until id(1) of RunnerHostDeploy.job_user grounds PosixUser.uid. It is a path
+// ingredient, not a safety verdict; the standing travels with the number.
 type RunnerJobUserRuntimeUidFigure {
   uid: Int
   evidence: CitedFigureStanding
 }
 
-data runner_job_user_xdg_runtime_uid: RunnerJobUserRuntimeUidFigure = RunnerJobUserRuntimeUidFigure {
-  uid: 999,
-  evidence: TranscribedUncited {
-    read_obligation: "id -u of RunnerHostDeploy.job_user on the host; do not substitute fleet_posix_ci_runner_user.uid" as NonEmptyStr,
-  },
+fn runner_job_user_xdg_runtime_uid() -> RunnerJobUserRuntimeUidFigure {
+  RunnerJobUserRuntimeUidFigure {
+    uid: fleet_ci_runner_reported_contradiction().reported_uid,
+    evidence: TranscribedUncited {
+      read_obligation: "id -u of RunnerHostDeploy.job_user on the host; do not substitute fleet_posix_ci_runner_user.uid" as NonEmptyStr,
+    },
+  }
 }
 
 type RunnerUnitDeprivRendering
@@ -412,9 +415,8 @@ type RunnerUnitDeprivRendering
   | RunnerUnitDeprivRefused { reason: NonEmptyStr }
 
 // DOCKER_HOST is formed from the uid only when the figure is CitedToAuthority. TranscribedUncited
-// is a bet (DESIGN 4d): installing it would promote the bet, and the same 999 already lives as
-// fleet_ci_runner_reported_contradiction.reported_uid. The figure stays; the consumer must not
-// treat it as a deployable socket path.
+// is a bet (DESIGN 4d): installing it would promote the bet. The uid is the contradiction row's
+// reported_uid, not a second literal.
 fn docker_host_from_runtime_uid_figure(figure: RunnerJobUserRuntimeUidFigure) -> String? {
   match figure.evidence {
     TranscribedUncited { read_obligation: _ } => none
@@ -440,7 +442,7 @@ fn runner_unit_depriv_directives(
             DropInServiceSection {
               directives: [
                 ServiceUser { name: deploy.unit_user },
-                runner_unit_environment(name: runner_unit_job_user_env_name, value: deploy.job_user as String),
+                runner_unit_environment(name: runner_job_user_env_name, value: deploy.job_user as String),
                 Environment { assignment: sccache_cache_dir_env_assignment(instance: cache) },
                 Environment { assignment: sccache_endpoint_env_assignment(instance: cache) },
                 Environment { assignment: sccache_idle_timeout_never_env_assignment() as NonEmptyStr },
@@ -476,7 +478,7 @@ fn gunbc_runner_unit_depriv_dropin_text(deploy: RunnerHostDeploy, host: HostIden
   gunbc_runner_unit_depriv_dropin_text_from_figure(
     deploy: deploy,
     host: host,
-    figure: runner_job_user_xdg_runtime_uid,
+    figure: runner_job_user_xdg_runtime_uid(),
   )
 }
 

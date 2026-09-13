@@ -56,6 +56,8 @@ type RunnerHostDeploy {
   runner_count: Int
 }
 
+data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
+
 // runner_user is the fragment's User= (the account that owns the runner tree). unit_user is the
 // depriv drop-in's User= (root mints the JIT config). job_user is CTRL_RUNNER_JOB_USER after
 // setpriv. Borrowing another host's principal for any of the three is the neighbour-row arm
@@ -304,7 +306,7 @@ fn runner_host_installer_command_argv(deploy: RunnerHostDeploy, installer_path: 
     bindings: [
       EnvSet { name: "CTRL_RUNNER_HOST_LABEL", value: deploy.host_label as String },
       EnvSet { name: "CTRL_RUNNER_USER", value: deploy.runner_user as String },
-      EnvSet { name: "CTRL_RUNNER_JOB_USER", value: deploy.job_user as String },
+      EnvSet { name: runner_job_user_env_name, value: deploy.job_user as String },
       EnvSet { name: "CTRL_RUNNER_APP_PEM_SRC", value: pem_src_path as String },
     ],
     command: sudo_preserve_environment_command(

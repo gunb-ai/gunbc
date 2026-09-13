@@ -38,6 +38,7 @@ import gunbc.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_j
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_user,
+  fleet_ci_runner_reported_contradiction,
 }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, File }
@@ -251,7 +252,7 @@ test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_do
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_IDLE_TIMEOUT=0\n")
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log\n")
         && string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: 4242), "\n"))
-        && !string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: runner_job_user_xdg_runtime_uid.uid), "\n"))
+        && !string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: runner_job_user_xdg_runtime_uid().uid), "\n"))
   }
 }
 
@@ -285,9 +286,10 @@ test fn production_depriv_refuses_transcribed_uncited_docker_host() -> Bool {
 }
 
 test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> Bool {
-  match runner_job_user_xdg_runtime_uid.evidence {
+  match runner_job_user_xdg_runtime_uid().evidence {
     TranscribedUncited { read_obligation: o } =>
-      (runner_job_user_xdg_runtime_uid.uid != fleet_posix_ci_runner_user.uid)
+      (runner_job_user_xdg_runtime_uid().uid == fleet_ci_runner_reported_contradiction().reported_uid)
+        && (runner_job_user_xdg_runtime_uid().uid != fleet_posix_ci_runner_user.uid)
         && string_contains(s: o as String, pattern: "id -u")
     CitedToAuthority { authority: _ } => false
   }

@@ -15,6 +15,7 @@ import extdeps.needrestart {
   RestartDeferredByDefault,
   NeedrestartUnitNamePrefixAdmitted,
   NeedrestartUnitNamePrefixRefused,
+  NeedrestartUnitNamePrefix,
   needrestart_unit_name_prefix,
   needrestart_conf_d_path,
   needrestart_conf_d_text,
@@ -133,7 +134,60 @@ data runner_host_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" a
 data runner_needrestart_conf_d_stem: NonEmptyStr = "50-gunbc-actions-runner" as NonEmptyStr
 
 fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesiredPopulation {
-  runner_host_file_desired_population_from_uid_figure(host: host, figure: runner_job_user_xdg_runtime_uid)
+  runner_host_file_desired_population_from_uid_figure(host: host, figure: runner_job_user_xdg_runtime_uid())
+}
+
+fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> List<RunnerHostFileDesired> {
+  [
+    RunnerHostFileDesired {
+      subject: "runner-teardown-dropin" as NonEmptyStr,
+      path: runner_unit_teardown_dropin_path() as FilePath,
+      content: gunbc_runner_unit_teardown_dropin_text(),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+    },
+    RunnerHostFileDesired {
+      subject: "needrestart-runner-deferral" as NonEmptyStr,
+      path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
+      content: needrestart_conf_d_text(overrides: [
+        NeedrestartServiceSelectionOverride { units: prefix, selection: RestartDeferredByDefault },
+      ]),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+    },
+  ]
+}
+
+fn runner_host_fragment_file(fragment: String) -> RunnerHostFileDesired {
+  RunnerHostFileDesired {
+    subject: "runner-unit-fragment" as NonEmptyStr,
+    path: runner_unit_system_path as FilePath,
+    content: fragment,
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+  }
+}
+
+fn runner_host_depriv_file(depriv: String) -> RunnerHostFileDesired {
+  RunnerHostFileDesired {
+    subject: "runner-depriv-dropin" as NonEmptyStr,
+    path: runner_unit_depriv_dropin_path() as FilePath,
+    content: depriv,
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+  }
+}
+
+fn runner_host_files_with_optional_depriv(
+  fragment: String,
+  prefix: NeedrestartUnitNamePrefix,
+  depriv: String?,
+) -> List<RunnerHostFileDesired> {
+  let tail = runner_host_teardown_and_needrestart(prefix: prefix)
+  match depriv {
+    Absent => concat([runner_host_fragment_file(fragment: fragment)], tail)
+    Present { value: text } =>
+      concat(
+        [runner_host_fragment_file(fragment: fragment), runner_host_depriv_file(depriv: text)],
+        tail,
+      )
+  }
 }
 
 fn runner_host_file_desired_population_from_uid_figure(
@@ -155,28 +209,11 @@ fn runner_host_file_desired_population_from_uid_figure(
               match gunbc_runner_unit_depriv_dropin_text_from_figure(deploy: d, host: host, figure: figure) {
                 RunnerUnitTextRefused { reason: r } =>
                   RunnerHostFilesDesired {
-                    files: [
-                      RunnerHostFileDesired {
-                        subject: "runner-unit-fragment" as NonEmptyStr,
-                        path: runner_unit_system_path as FilePath,
-                        content: fragment,
-                        mode: RemoteFileModeOwnerReadWriteWorldRead,
-                      },
-                      RunnerHostFileDesired {
-                        subject: "runner-teardown-dropin" as NonEmptyStr,
-                        path: runner_unit_teardown_dropin_path() as FilePath,
-                        content: gunbc_runner_unit_teardown_dropin_text(),
-                        mode: RemoteFileModeOwnerReadWriteWorldRead,
-                      },
-                      RunnerHostFileDesired {
-                        subject: "needrestart-runner-deferral" as NonEmptyStr,
-                        path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
-                        content: needrestart_conf_d_text(overrides: [
-                          NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
-                        ]),
-                        mode: RemoteFileModeOwnerReadWriteWorldRead,
-                      },
-                    ],
+                    files: runner_host_files_with_optional_depriv(
+                      fragment: fragment,
+                      prefix: p,
+                      depriv: none,
+                    ),
                     withheld: [
                       RunnerHostFileWithheld {
                         subject: "runner-depriv-dropin" as NonEmptyStr,
@@ -186,34 +223,11 @@ fn runner_host_file_desired_population_from_uid_figure(
                   }
                 RunnerUnitText { text: depriv } =>
                   RunnerHostFilesDesired {
-                    files: [
-                      RunnerHostFileDesired {
-                        subject: "runner-unit-fragment" as NonEmptyStr,
-                        path: runner_unit_system_path as FilePath,
-                        content: fragment,
-                        mode: RemoteFileModeOwnerReadWriteWorldRead,
-                      },
-                      RunnerHostFileDesired {
-                        subject: "runner-depriv-dropin" as NonEmptyStr,
-                        path: runner_unit_depriv_dropin_path() as FilePath,
-                        content: depriv,
-                        mode: RemoteFileModeOwnerReadWriteWorldRead,
-                      },
-                      RunnerHostFileDesired {
-                        subject: "runner-teardown-dropin" as NonEmptyStr,
-                        path: runner_unit_teardown_dropin_path() as FilePath,
-                        content: gunbc_runner_unit_teardown_dropin_text(),
-                        mode: RemoteFileModeOwnerReadWriteWorldRead,
-                      },
-                      RunnerHostFileDesired {
-                        subject: "needrestart-runner-deferral" as NonEmptyStr,
-                        path: needrestart_conf_d_path(stem: runner_needrestart_conf_d_stem) as FilePath,
-                        content: needrestart_conf_d_text(overrides: [
-                          NeedrestartServiceSelectionOverride { units: p, selection: RestartDeferredByDefault },
-                        ]),
-                        mode: RemoteFileModeOwnerReadWriteWorldRead,
-                      },
-                    ],
+                    files: runner_host_files_with_optional_depriv(
+                      fragment: fragment,
+                      prefix: p,
+                      depriv: Present { value: depriv },
+                    ),
                     withheld: [],
                   }
               }
