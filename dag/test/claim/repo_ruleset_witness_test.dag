@@ -23,6 +23,8 @@ import gunbc.repo_ruleset {
   desired_merge_queue,
   desired_merge_queue_policy,
   merge_queue_floor_aligned_policy,
+  merge_queue_timeout_below_floor,
+  MergeQueuePolicy,
   MergeQueueUnsigned,
   MergeQueueSignedOff,
   signed_desire_projection_refusal_for,
@@ -38,7 +40,6 @@ import gunbc.repo_ruleset {
   required_contexts_declaration_refusals,
   repo_ruleset_ensure_decision,
   ruleset_observation_satisfies_goal,
-  gunbc_passing_ci_merge_queue_policy,
   desired_repo_ruleset_goal,
   repo_ruleset_converge_entry,
   repo_ruleset_converge_function,
@@ -362,7 +363,7 @@ test fn w_RED_two_status_check_rules_refuse_rather_than_merging() -> Bool {
 test fn w_the_signed_policy_is_projected_as_a_merge_queue_rule() -> Bool {
   let signed = match desired_merge_queue {
     MergeQueueUnsigned { proposal: _, awaiting: _ } => false
-    MergeQueueSignedOff { policy: _, ruling: r, aligned: _, floor_alignment: _ } => (r as String) != ""
+    MergeQueueSignedOff { policy: _, ruling: r } => (r as String) != ""
   }
   let has_policy = match desired_merge_queue_policy() {
     Absent => false
@@ -395,7 +396,24 @@ test fn w_the_queue_is_commissioned_building_one_entry_at_a_time() -> Bool {
 // ordering rather than 210 means raising the floor lane's timeout cannot silently invert it; a
 // literal here would have gone stale on that edit with nothing going red.
 test fn w_the_queue_timeout_is_never_below_the_floors_execution_envelope() -> Bool {
-  minute_count(merge_queue_floor_aligned_policy().check_response_timeout) > minute_count(witness_floor_lane_timeout)
+  match desired_merge_queue_policy() {
+    Absent => false
+    Present { value: p } =>
+      minute_count(p.check_response_timeout) > minute_count(witness_floor_lane_timeout)
+        && !merge_queue_timeout_below_floor(policy: p)
+  }
+}
+
+test fn w_RED_a_timeout_at_or_below_the_floor_envelope_is_below_floor() -> Bool {
+  merge_queue_timeout_below_floor(policy: MergeQueuePolicy {
+    grouping_strategy: AllGreenGrouping,
+    merge_method: QueueSquash,
+    check_response_timeout: minute(count: 90),
+    max_entries_to_build: merge_queue_entry_count(count: 1),
+    max_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge: merge_queue_entry_count(count: 1),
+    min_entries_to_merge_wait: minute(count: 1),
+  })
 }
 
 // A LIVE QUEUE NOBODY SIGNED OFF IS REPORTED. This is the web-form change the module exists to stop
@@ -418,12 +436,12 @@ fn divergences_with_live_queue(standing: MergeQueueStanding) -> List<RulesetDive
 fn live_queue(grouping: MergeQueueGroupingStrategy) -> MergeQueueStanding {
   MergeQueueConfigured {
     grouping_strategy: grouping,
-    merge_method: gunbc_passing_ci_merge_queue_policy.merge_method,
-    check_response_timeout: gunbc_passing_ci_merge_queue_policy.check_response_timeout,
-    max_entries_to_build: gunbc_passing_ci_merge_queue_policy.max_entries_to_build,
-    max_entries_to_merge: gunbc_passing_ci_merge_queue_policy.max_entries_to_merge,
-    min_entries_to_merge: gunbc_passing_ci_merge_queue_policy.min_entries_to_merge,
-    min_entries_to_merge_wait: gunbc_passing_ci_merge_queue_policy.min_entries_to_merge_wait,
+    merge_method: merge_queue_floor_aligned_policy().merge_method,
+    check_response_timeout: merge_queue_floor_aligned_policy().check_response_timeout,
+    max_entries_to_build: merge_queue_floor_aligned_policy().max_entries_to_build,
+    max_entries_to_merge: merge_queue_floor_aligned_policy().max_entries_to_merge,
+    min_entries_to_merge: merge_queue_floor_aligned_policy().min_entries_to_merge,
+    min_entries_to_merge_wait: merge_queue_floor_aligned_policy().min_entries_to_merge_wait,
   }
 }
 
@@ -492,13 +510,13 @@ fn fixture_merge_queue_rule(strategy: String, max_build: Int) -> RulesetRuleWire
       strict_required_status_checks_policy: none,
       do_not_enforce_on_create: none,
       required_status_checks: none,
-      check_response_timeout_minutes: Present { value: minute_count(gunbc_passing_ci_merge_queue_policy.check_response_timeout) },
+      check_response_timeout_minutes: Present { value: minute_count(merge_queue_floor_aligned_policy().check_response_timeout) },
       grouping_strategy: Present { value: strategy },
       max_entries_to_build: Present { value: max_build },
-      max_entries_to_merge: Present { value: merge_queue_entry_count_value(gunbc_passing_ci_merge_queue_policy.max_entries_to_merge) },
+      max_entries_to_merge: Present { value: merge_queue_entry_count_value(merge_queue_floor_aligned_policy().max_entries_to_merge) },
       merge_method: Present { value: "SQUASH" },
-      min_entries_to_merge: Present { value: merge_queue_entry_count_value(gunbc_passing_ci_merge_queue_policy.min_entries_to_merge) },
-      min_entries_to_merge_wait_minutes: Present { value: minute_count(gunbc_passing_ci_merge_queue_policy.min_entries_to_merge_wait) },
+      min_entries_to_merge: Present { value: merge_queue_entry_count_value(merge_queue_floor_aligned_policy().min_entries_to_merge) },
+      min_entries_to_merge_wait_minutes: Present { value: minute_count(merge_queue_floor_aligned_policy().min_entries_to_merge_wait) },
     },
   }
 }
@@ -511,7 +529,7 @@ fn fixture_merge_queue_rule(strategy: String, max_build: Int) -> RulesetRuleWire
 // a check reading the desire row alone would be permanently green and would assert nothing.
 test fn w_RED_signing_off_without_wiring_the_projection_refuses_to_actuate() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_passing_ci_merge_queue_policy },
+    policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: filter(desired_ruleset_rules(), r => r.type != "merge_queue"),
   ) {
     Present { value: cause } =>
@@ -526,7 +544,7 @@ test fn w_RED_signing_off_without_wiring_the_projection_refuses_to_actuate() -> 
 // refusal could be `always refuse when signed` and every RED above would still pass.
 test fn w_a_projection_carrying_the_signed_policy_is_admitted() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_passing_ci_merge_queue_policy },
+    policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: desired_ruleset_rules(),
   ) {
     Absent => true
@@ -540,7 +558,7 @@ test fn w_a_projection_carrying_the_signed_policy_is_admitted() -> Bool {
 // names the field, the declared value and the projected one.
 test fn w_RED_a_projected_queue_with_the_wrong_strategy_refuses_and_names_the_field() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_passing_ci_merge_queue_policy },
+    policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: append(filter(desired_ruleset_rules(), r => r.type != "merge_queue"), items: [fixture_merge_queue_rule(strategy: "HEADGREEN", max_build: 1)]),
   ) {
     Present { value: cause } =>
@@ -555,7 +573,7 @@ test fn w_RED_a_projected_queue_with_the_wrong_strategy_refuses_and_names_the_fi
 // operator's ruling silently reversed, and it refuses with both numbers rather than a Bool.
 test fn w_RED_a_projected_queue_with_a_drifted_entry_count_refuses_with_both_numbers() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_passing_ci_merge_queue_policy },
+    policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: append(filter(desired_ruleset_rules(), r => r.type != "merge_queue"), items: [fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 5)]),
   ) {
     Present { value: cause } =>
@@ -568,7 +586,7 @@ test fn w_RED_a_projected_queue_with_a_drifted_entry_count_refuses_with_both_num
 // TWO PROJECTED QUEUE RULES ARE AMBIGUOUS RATHER THAN THE FIRST ONE WINNING.
 test fn w_RED_two_projected_merge_queue_rules_refuse_as_ambiguous() -> Bool {
   match signed_desire_projection_refusal_for(
-    policy: Present { value: gunbc_passing_ci_merge_queue_policy },
+    policy: Present { value: merge_queue_floor_aligned_policy() },
     rules: append(desired_ruleset_rules(), items: [
       fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1),
       fixture_merge_queue_rule(strategy: "ALLGREEN", max_build: 1),

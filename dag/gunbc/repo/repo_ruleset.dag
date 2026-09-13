@@ -211,7 +211,7 @@ fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
 }
 
 // THE PUT IS WHOLE-RULESET. deletion and non_fast_forward protect history; required_status_checks
-// gates; merge_queue is signed desired state matching the 2026-09-13 live GET.
+// gates; merge_queue timeout is derived from witness_floor_lane_timeout, never a transcribed GET.
 fn desired_ruleset_rules() -> List<RulesetRuleWire> {
   [
     parameterless_rule(t: DeletionRule),
@@ -221,7 +221,7 @@ fn desired_ruleset_rules() -> List<RulesetRuleWire> {
       strict: desired_strict_required_status_checks_policy,
       do_not_enforce_on_create: desired_do_not_enforce_on_create,
     ),
-    merge_queue_rule_from_policy(policy: gunbc_passing_ci_merge_queue_policy),
+    merge_queue_rule_from_policy(policy: merge_queue_floor_aligned_policy()),
   ]
 }
 
@@ -281,7 +281,7 @@ type MergeQueuePolicy {
 
 type MergeQueueDesire
   = MergeQueueUnsigned { proposal: MergeQueuePolicy, awaiting: DissolutionCondition }
-  | MergeQueueSignedOff { policy: MergeQueuePolicy, ruling: NonEmptyStr, aligned: MergeQueuePolicy, floor_alignment: DissolutionCondition }
+  | MergeQueueSignedOff { policy: MergeQueuePolicy, ruling: NonEmptyStr }
 
 type BypassRosterDesire
   = BypassRosterUnsigned { awaiting: DissolutionCondition }
@@ -365,6 +365,10 @@ fn merge_queue_check_response_timeout() -> Minute {
 // available without a queue -- resolve once, at the moment of landing, and let the branch sit behind
 // its base until then -- is the same discipline enforced by hand, which is why it works and why it
 // does not scale past the lanes willing to observe it.
+fn merge_queue_timeout_below_floor(policy: MergeQueuePolicy) -> Bool {
+  minute_count(policy.check_response_timeout) <= minute_count(witness_floor_lane_timeout)
+}
+
 fn merge_queue_floor_aligned_policy() -> MergeQueuePolicy {
   MergeQueuePolicy {
     grouping_strategy: AllGreenGrouping,
@@ -377,24 +381,9 @@ fn merge_queue_floor_aligned_policy() -> MergeQueuePolicy {
   }
 }
 
-data merge_queue_in_force_to_floor_alignment: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: operator ruling that gunbc_passing_ci_merge_queue_policy is replaced by merge_queue_floor_aligned_policy (timeout from merge_queue_check_response_timeout, wait 5). Until then the signed in-force policy is what observe_repo_ruleset / passing_ci_ruleset_observation read on 2026-09-13 for ruleset 16178731.")
-
-// In-force signed policy. Re-derive from passing_ci_ruleset_observation, not from this comment.
-data gunbc_passing_ci_merge_queue_policy: MergeQueuePolicy = MergeQueuePolicy {
-  grouping_strategy: AllGreenGrouping,
-  merge_method: QueueSquash,
-  check_response_timeout: minute(count: 90),
-  max_entries_to_build: merge_queue_entry_count(count: 1),
-  max_entries_to_merge: merge_queue_entry_count(count: 1),
-  min_entries_to_merge: merge_queue_entry_count(count: 1),
-  min_entries_to_merge_wait: minute(count: 1),
-}
-
 data desired_merge_queue: MergeQueueDesire = MergeQueueSignedOff {
-  policy: gunbc_passing_ci_merge_queue_policy,
-  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand." as NonEmptyStr,
-  aligned: merge_queue_floor_aligned_policy(),
-  floor_alignment: merge_queue_in_force_to_floor_alignment,
+  policy: merge_queue_floor_aligned_policy(),
+  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand. Timeout is merge_queue_check_response_timeout, not the live GET's 90." as NonEmptyStr,
 }
 
 data desired_bypass_roster: BypassRosterDesire = BypassRosterSignedOff {
@@ -435,7 +424,7 @@ fn desired_repo_ruleset_goal() -> RepositoryRulesetGoal {
 fn desired_merge_queue_policy() -> MergeQueuePolicy? {
   match desired_merge_queue {
     MergeQueueUnsigned { proposal: _, awaiting: _ } => none
-    MergeQueueSignedOff { policy: p, ruling: _, aligned: _, floor_alignment: _ } => Present { value: p }
+    MergeQueueSignedOff { policy: p, ruling: _ } => Present { value: p }
   }
 }
 
@@ -1599,16 +1588,36 @@ fn repo_ruleset_ensure_plan(observed: RulesetObservation) -> EnsurePlan<RepoRule
                 "",
               )
             }
-          BypassRosterObserved { actors: _ } =>
-            EnsurePlanAvailable {
-              plan: RepoRulesetApplyPlan {
-                ruleset_id: gunbc_passing_ci_ruleset_id,
-                rules: desired_ruleset_rules(),
-                bypass_actors: desired_bypass_actors(),
-              }
-            }
+          BypassRosterObserved { actors: _ } => merge_queue_put_plan()
         }
     }
+  }
+}
+
+fn merge_queue_put_plan() -> EnsurePlan<RepoRulesetApplyPlan> {
+  match desired_merge_queue_policy() {
+    Absent =>
+      EnsurePlanAvailable {
+        plan: RepoRulesetApplyPlan {
+          ruleset_id: gunbc_passing_ci_ruleset_id,
+          rules: desired_ruleset_rules(),
+          bypass_actors: desired_bypass_actors(),
+        }
+      }
+    Present { value: p } =>
+      if merge_queue_timeout_below_floor(policy: p) {
+        EnsurePlanUnavailable {
+          reason: "refusing to PUT a merge_queue check_response_timeout at or below the floor lane envelope",
+        }
+      } else {
+        EnsurePlanAvailable {
+          plan: RepoRulesetApplyPlan {
+            ruleset_id: gunbc_passing_ci_ruleset_id,
+            rules: desired_ruleset_rules(),
+            bypass_actors: desired_bypass_actors(),
+          }
+        }
+      }
   }
 }
 
