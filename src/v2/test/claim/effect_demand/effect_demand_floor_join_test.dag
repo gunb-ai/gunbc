@@ -20,7 +20,7 @@ import v2.std.collection { List }
 import v2.std.live_tree { SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.workflow.floor_discovery { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.required_floor {
   DeclinedCostDebt,
   DeclinedFixtureMember,

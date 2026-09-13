@@ -1716,6 +1716,82 @@ pub struct TransitionAdmission {
 /// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
 /// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
 /// Empty is the resting state; this touch deletes the row rather than inheriting it.
+/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
+/// CONSUMED outcome is authored here.
+/// THE SAME DISSOLUTION, WITH THE DISPOSITION WRITTEN DOWN -- a continuation of the paragraph
+/// above rather than a second ordinal for one event. Main recorded the retirement and cited the
+/// floor run that reported the row stale; what follows is why the disposition was nearly the
+/// wrong one, which is the part that generalises. The `gunbc#11137
+/// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
+/// description that stood above it goes with it. Its trigger, authored as "this row goes when
+/// #11137 merges", FIRED: #11137 merged as 34d2a8db32 ("Qualify the extdeps.tools bare-name reads
+/// by their declaring module"), so the base carries the named import, the delta stopped being
+/// producible, and the row became CONSUMED.
+///
+/// THE DISTINCTION IS WORTH WRITING DOWN BECAUSE IT NEARLY WENT THE OTHER WAY. The row was
+/// reported as matching no delta on any open PR, and the required floor refused
+/// `namespace-wave-admission` on every branch carrying it, which makes DELETING IT look like
+/// roster hygiene -- an unmatched entry swept up by whoever the wall stopped. That is a different
+/// disposition from the one recorded here, and DESIGN section 4b(3) turns on exactly that
+/// difference: a declared row is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a deletion
+/// performed for the convenience of a green wall, written up as a trigger firing, would launder an
+/// unpaid debt into a discharged one and leave the next such row unprotected. The merge was
+/// checked by identity (`git log --oneline 34d2a8db32`) before this paragraph was written, not
+/// inferred from the refusal. Had #11137 still been open, the honest record here would have said
+/// the row was deleted unmatched, and the debt would have stayed visible.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-12). The 181 `v2-native-route module split` and
+/// `v2-native-route policy split` rows are deleted, and the four paragraphs that described them
+/// go with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT WAS CHECKED BY IDENTITY RATHER THAN INFERRED FROM THE REFUSAL.
+/// The block above them authored `DISSOLVE-ON: this PR merging, after which the base binds these
+/// spellings to exactly these targets and the rows read as consumed`. #10940 merged as
+/// `6c7b081961` ("v2-native route: closure-scoped ingest and native adjudication over a
+/// seed-prepared artifact"), verified with `git log --oneline 6c7b081961` before this paragraph
+/// was written. So the base carries the four module splits, the deltas stopped being producible,
+/// and the required floor on this branch reported all 181 as `CONSUMED ADMISSION ... already
+/// satisfied at the base -- consumed by its own merge`. That is the trigger discharging the debt,
+/// not a wall being tidied: the THIRTY-SIXTH entry above records why that distinction is worth
+/// paying attention to, and the same discipline is applied here.
+///
+/// THE PARTITION, so the count is not one number standing for a population nobody enumerated.
+/// All 181 carry a `v2-native-route ` label prefix: 175 `module split` rows over the four moved
+/// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
+/// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
+/// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
+/// Main's roster held exactly these 181 rows and nothing else, so the array is empty of inherited
+/// rows after this deletion and carries only this change's own two.
+///
+/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
+/// so the debt is paid here rather than inherited by an unrelated lane.
+///
+/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
+/// description that stood above them goes with them.
+///
+/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
+/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
+/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
+/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
+/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
+/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
+/// from a row swept up by whoever the wall stopped.
+///
+/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
+/// next touch, and on main it is the FIRST of those: main's push runs fail
+/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
+/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
+/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
+/// else. Both rows are this author's, which is why this lane pays rather than passing an
+/// unexamined deletion to whoever next touched the file.
+///
+/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
+/// with the transition present at the base there is no delta left for these to admit, so deleting
+/// them removes nothing that could still fire.
+///
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

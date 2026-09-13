@@ -14,7 +14,8 @@ import v2.workflow.legacy_baseline_capture {
   LegacyBaselineRepairRosterMismatch,
   LegacyBaselineRepairSubjectDiverged,
   LegacyBaselineRepairIncomplete,
-  LegacyBaselineExecutionRefused
+  LegacyBaselineExecutionRefused,
+  LegacyBaselineObservedTransportRefused
 }
 
 // PERSISTENCE IS THE CAPTURE CARRIER, NOT A RECEIPTS ROSTER. A row of (base, identity) is a
@@ -23,10 +24,12 @@ import v2.workflow.legacy_baseline_capture {
 // compares the requested GitObjectId to capture.base_commit; a different id cannot be written onto
 // a held capture.
 //
-// THIS MODULE DOES NOT CLAIM A CORPUS ORACLE. The live pin is PreCutBaseUnpinned until ACT-0 names
-// a base. A fixture capture may be held in tests; it does not enroll HEAD. Consumers: capture
-// mint, gunbc.compiler_frontend_program_status NamespaceBaselineObservationComplete (outstanding
-// fold), ACT-0 BaselineCaptureReceipt (later digest of a re-run), XL-2 chain prerequisite via XL-1
+// THIS MODULE DOES NOT CLAIM A CORPUS ORACLE AND DOES NOT PIN THE PRE-CUT BASE. Pinning B is
+// ACT-0's operator decision. Production is PreCutBaseUnpinned; persisted_legacy_baseline_outstanding
+// reports outstanding until that pin. A fixture capture may be joined to PreCutBasePinned inside
+// a witness via persisted_enrollment_outstanding; that join is not the live pin. Consumers:
+// persist_legacy_baseline, persist_named_base_from_primary_root_tap, NamespaceBaselineObservationComplete
+// (outstanding fold), ACT-0 BaselineCaptureReceipt (later digest of a re-run), XL-2 via XL-1
 // capability, and the discriminating witnesses.
 
 type PersistedLegacyBaseline<O, R> sole_constructor {
@@ -52,6 +55,7 @@ fn persist_legacy_baseline<O, R>(
     LegacyBaselineRepairSubjectDiverged { field: _ } => PersistRefusedNotCaptured
     LegacyBaselineRepairIncomplete { completeness: _ } => PersistRefusedNotCaptured
     LegacyBaselineExecutionRefused { phase: _, cause: _ } => PersistRefusedNotCaptured
+    LegacyBaselineObservedTransportRefused { refusal: _ } => PersistRefusedNotCaptured
   }
 }
 

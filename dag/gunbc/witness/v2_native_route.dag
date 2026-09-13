@@ -1,22 +1,23 @@
 module gunbc.witness_v2_native_route
 
-import v2.std.algebra { any, filter, fold_list, is_empty, length, list_snoc_item }
+import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
-import v2.compiler.compile {
+import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.workflow.compile_door_ledger {
-  DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup
+import v2.workflow.compile_door_cause_ownership {
+  CauseLane, DiagnosticGrain, FatalGrain, HeadGrain, cause_ownership_lookup, known_frontier_causes
 }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import gunbc.repo_self_build { repo_self_warning_denial_rustflags }
+import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -52,10 +53,13 @@ data required_v2_native_job_name: String = "required-v2-native"
 // discovery by prefix membership — a hand-listed roster would silently drift from the tree it
 // claims to cover. The prefix is the same `v2.test.` the required floor gates on
 // (v2.workflow.required_floor required_gate_prefixes): the native lane's universe is the floor's
-// witness universe asked of a different route. The universe is derived by the host harness from
-// the floor's own discovery producer (v2.workflow.floor_discovery_producer) joined against each
-// entry's authored module header, and carried on the receipt; admission checks its shape and
-// joins the observed population against it exactly.
+// witness universe asked of a different route. The universe is derived INSIDE the emitted native
+// compiler from the floor's own discovery producer (v2.workflow.floor_discovery_producer), read
+// per source beside that source's authored module header, and carried on the receipt; admission
+// checks its shape and joins the observed population against it exactly. The seed derived it
+// through the v1 interpreter until 2026-09-10; the derivation and this admission are now the same
+// process, and what the join still discriminates is discovery's textual answer against the
+// execution route's — two readings of the same bytes, not two processes.
 data native_route_universe_prefix: String = "v2.test."
 
 fn native_route_universe_member(module_qn: String) -> Bool {
@@ -416,7 +420,8 @@ fn native_route_census(
 // the population is then worthless) and the true control RETURN TRUE (a route that falsifies or
 // refuses everything cannot green either). Both controls live in v2.native_lane_fixture.control
 // — outside the universe prefix, plain `fn` so floor discovery enrolls no rows for them — and
-// the host names them to the binary explicitly, beside the derived universe. Absent is
+// this authority names them (native_route_live_control_module and its two declarations), so the
+// route executes them beside the derived universe. Absent is
 // representable so a missing observation refuses by name rather than pattern-matching to a
 // default.
 //
@@ -441,8 +446,40 @@ type NativeRouteMalformedControl
 // admission can refuse it by name: a receipt that cannot say how fallback was closed has not
 // closed it. The empty-string arm is refused alongside the absent arm: a control whose identity
 // names nothing is not an observation.
+//
+// A ROUTE THAT IS NOT PRESENT CANNOT BE FALLEN BACK TO, and the harness must not REQUIRE the old
+// route to exist so that it can move it (operator design review 2026-09-11, C5). Withdrawal is one
+// way to close the fallback and presence-at-the-window is not a precondition of the contract, so
+// the absent case is its own OBSERVATION rather than a refusal: the harness records the path it
+// looked for and that nothing was there for the whole spawn window.
+//
+// HOW THE WINDOW CLAIM IS ESTABLISHED, because the arm asserts a property of an INTERVAL while a
+// filesystem test answers about an INSTANT (review 64075). The withdrawn arm closes its window by
+// CONSTRUCTION: the rename holds the path empty and the guard restores it after the last spawn.
+// This arm holds nothing, so it is established by reading the path at BOTH ENDS -- before the
+// first spawn and after the last, the second read taken before the guard drops -- and a path that
+// became occupied in between REFUSES the run (OldRouteAppearedDuringWindow) instead of widening
+// the arm to mean "absent at some point". A single read before the spawns would be evidence about
+// t0 presented as evidence about the window, which is exactly the inference-promoted-to-deduction
+// DESIGN section 4d forbids, on the one clause whose whole job is to show no fallback was
+// reachable.
+//
+// THIS IS NOT THE ANCESTRY LANE'S ARM AND MUST NOT BE READ AS IT. OldRouteNotPresentAtWindow says
+// only that this path held no file while the native spawns ran; the stronger property — no v1
+// emitter or interpreter reachable at all, the closure admitted by native ancestry — is
+// OldRouteAbsentByConstruction, which the native ancestry acquisition lane introduces together
+// with the producer that establishes it. DISSOLVE-ON: that lane lands and every consumer of this
+// arm can assert the stronger fact instead, at which point this arm deletes rather than being
+// relabelled.
+// THE DISSOLVE-ON ABOVE IS A ROW, NOT ONLY PROSE (review 64181, DESIGN section 4c). The sibling
+// module this PR adds states its dissolution as a DissolutionCondition that a fold can read;
+// stating this one only in a `//` block would leave the condition invisible to every Accepted
+// program, which is the same defect one file over.
+data native_route_old_route_not_present_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: OldRouteNotPresentAtWindow — the native ancestry acquisition lane lands a producer that establishes OldRouteAbsentByConstruction (no v1 emitter or interpreter reachable at all, the closure admitted by native ancestry). At that point every consumer of this arm asserts the stronger fact and this arm DELETES rather than being relabelled: the two say different things, and keeping the weaker one beside the stronger would let a receipt claim the window property while the reader assumed the closure property.")
+
 type NativeRouteOldRouteControl
   = OldRouteWithdrawn { withdrawn_executable: String }
+  | OldRouteNotPresentAtWindow { expected_executable: String }
   | OldRouteFalsifierArmed { falsifier_identity: String }
   | OldRouteControlAbsent
 
@@ -454,7 +491,7 @@ type NativeRouteOldRouteControl
 // crate compiled on one and refused with status 101 on the other with the receipt unable to say
 // why. The five facts here are the ones that decide whether one run's "compiled" can be compared
 // with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that spawn
-// (never inherited -- the value is the repository's own row, gunbc.repo_self_build
+// (never inherited -- the value is the repository's own row, gunbc.repo_self_warning_policy
 // repo_self_warning_denial_rustflags, applied at the invocation, on BOTH channels cargo reads),
 // the one compiler executable cargo was BOUND to (RUSTC set on the spawn, both wrapper channels
 // disabled there -- a receipt naming a compiler cargo was free to replace via config or a
@@ -694,6 +731,41 @@ fn native_route_file_refusals_attributed(receipt: NativeRouteReceipt) -> Bool {
   })
 }
 
+// THE FILE REFUSALS' COMPOSITION, COUNTED BY THE RECEIPT RATHER THAN BY A READER. The clause
+// above only says every fatal reason is OWNED; it says nothing about how the population divides
+// among the owners, and that division is the question the closure-scoped ingest is asked (which
+// rostered frontier causes the universe's own import closure actually carries, and how many files
+// each). One row per fatal-grain row of the ownership table, in table order, zeros included: a cause
+// whose count falls to zero is the evidence its flip_trigger fired, so an omitted zero would hide
+// exactly the change worth seeing. The rows sum to the receipt's file refusals whenever
+// native_route_file_refusals_attributed holds, because that clause is what makes every refusal
+// land on some row. Consumer: the emitted route's terminal line (`file_refusal_tally`).
+type NativeRouteCauseTally {
+  cause: Symbol
+  lane: CauseLane
+  file_refusals: Int
+}
+
+fn native_route_file_refusal_tally(receipt: NativeRouteReceipt) -> List<NativeRouteCauseTally> {
+  fold_list(
+    xs: known_frontier_causes,
+    empty: [],
+    cons: fn(acc, row) {
+      match row.grain {
+        HeadGrain => acc
+        FatalGrain =>
+          list_snoc_item(xs: acc, item: NativeRouteCauseTally {
+            cause: row.cause,
+            lane: row.lane,
+            file_refusals: count_where(xs: receipt.file_refusals, predicate: fn(fr) {
+              fr.fatal_reason == row.cause
+            })
+          })
+      }
+    }
+  )
+}
+
 // THE HEAD REASON IS NOT DEAD RECEIPT DATA. rejected_with_pending prepends the non-fatal
 // advisory, so the head reason is a real observation of the frontier at a different grain — the
 // same observation the door ledger's own rows carry. Every file refusal's head reason must be
@@ -739,6 +811,20 @@ fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
   })
 }
 
+// THE LIVE-VERDICT CONTROLS ARE NAMED BY THE AUTHORITY, NOT BY THE HARNESS. The pair sits
+// OUTSIDE the universe prefix on purpose — discovery enrols no row for it, so nothing but this
+// declaration can put it in front of the route — and the clauses below judge the verdicts it
+// produced. While the seed derived the universe, these two names lived as Rust constants beside
+// the derivation; the derivation is now the emitted binary's own fold, and a control the route
+// must execute is a fact of the lane's contract, so it is declared beside the clause that reads
+// it. A control whose declaration is renamed and not re-declared here stops being observed, and
+// the false/true clauses refuse an Absent verdict by name.
+data native_route_live_control_module: String = "v2.native_lane_fixture.control"
+
+data native_route_live_control_false_declaration: String = "native_lane_false_control"
+
+data native_route_live_control_true_declaration: String = "native_lane_true_control"
+
 fn native_route_false_control_holds(receipt: NativeRouteReceipt) -> Bool {
   match receipt.false_control {
     Present { value: v } =>
@@ -775,6 +861,7 @@ fn native_route_malformed_control_holds(receipt: NativeRouteReceipt) -> Bool {
 fn native_route_old_route_closed(receipt: NativeRouteReceipt) -> Bool {
   match receipt.old_route_control {
     OldRouteWithdrawn { withdrawn_executable: p } => p != ""
+    OldRouteNotPresentAtWindow { expected_executable: p } => p != ""
     OldRouteFalsifierArmed { falsifier_identity: f } => f != ""
     OldRouteControlAbsent => false
   }

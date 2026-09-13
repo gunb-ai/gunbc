@@ -10,7 +10,7 @@ import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
 import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.git
 import extdeps.git.plumbing
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.devboot.transport {
   devboot_witness_run,
   devboot_ensure_directory,
