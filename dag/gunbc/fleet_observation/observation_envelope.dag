@@ -251,17 +251,36 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
                 CoverageGapPositionsIncomparable { left: left, right: right }
               ContinuityCoversRange =>
                 match compare_positions(a: envelope.chunk.range.first, b: requested.first) {
-                  PositionIncomparable { left, right } => CoverageGapPositionsIncomparable { left: left, right: right }
-                  PositionAfter => CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-                  _ => if chunk_byte_count(chunk: envelope.chunk) > 0 {
-                    match compare_positions(a: requested_end, b: range_end(range: envelope.chunk.range)) {
-                      PositionIncomparable { left, right } => CoverageGapPositionsIncomparable { left: left, right: right }
-                      PositionAfter => CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
-                      _ => SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                  PositionIncomparable { left: left, right: right } =>
+                    CoverageGapPositionsIncomparable { left: left, right: right }
+                  PositionAfter =>
+                    CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                  PositionBefore =>
+                    if chunk_byte_count(chunk: envelope.chunk) > 0 {
+                      match compare_positions(a: requested_end, b: range_end(range: envelope.chunk.range)) {
+                        PositionIncomparable { left: l2, right: r2 } =>
+                          CoverageGapPositionsIncomparable { left: l2, right: r2 }
+                        PositionAfter =>
+                          CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                        PositionBefore => SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                        PositionSame => SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                      }
+                    } else {
+                      SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
                     }
-                  } else {
-                    SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
-                  }
+                  PositionSame =>
+                    if chunk_byte_count(chunk: envelope.chunk) > 0 {
+                      match compare_positions(a: requested_end, b: range_end(range: envelope.chunk.range)) {
+                        PositionIncomparable { left: l2, right: r2 } =>
+                          CoverageGapPositionsIncomparable { left: l2, right: r2 }
+                        PositionAfter =>
+                          CoverageGapRangeNotCovered { requested: requested, committed: envelope.chunk.range }
+                        PositionBefore => SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                        PositionSame => SourceBytesObserved { digest: envelope.chunk.payload_digest }
+                      }
+                    } else {
+                      SourceProducedNoBytesInRange { proof: SilenceProof { range: requested } }
+                    }
                 }
             }
         }
