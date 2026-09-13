@@ -19,16 +19,16 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Wave 1 Gate 1 C1 green-by-execution: per-op copied-port indices derive from cost lens over cited
-// combiner Arrow ^arrow_body_edge bodies — matching the retired hand registry (list_append/left=0,
-// list_snoc_item/left=0, map_merge/overlay=1). Discriminating RED: unpriceable combiner lookup
+// combiner Arrow ^arrow_body_edge bodies — list_append/right=1 (concat copies the appended
+// side), list_snoc_item/left=0, map_merge/overlay=1. Discriminating RED: unpriceable combiner lookup
 // yields Absent; multi-linear ambiguous body yields Absent (no tiebreak); citation-retained
 // frontier count is 3.
 
-test fn derived_list_append_copied_port_index_is_zero() -> Bool {
+test fn derived_list_append_copied_port_index_is_one() -> Bool {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_append.arrow
   ) {
-    Present { value: idx } => idx == 0
+    Present { value: idx } => idx == 1
     Absent => false
   }
 }
@@ -57,7 +57,7 @@ test fn derived_registry_lookup_matches_hand_retired_indices() -> Bool {
       match copied_port_index_of(combiner: ^list_snoc_item) {
         Present { value: b } =>
           match copied_port_index_of(combiner: ^map_merge) {
-            Present { value: c } => (a == 0) && (b == 0) && (c == 1)
+            Present { value: c } => (a == 1) && (b == 0) && (c == 1)
             Absent => false
           }
         Absent => false

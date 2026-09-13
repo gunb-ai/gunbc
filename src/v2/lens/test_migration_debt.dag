@@ -82,9 +82,14 @@ fn retained_module_identity_prefix(source_file: String) -> String {
   concat(retained_module_path(source_file: source_file), "::")
 }
 
+// Split from the live read so the planted controls can exercise the DECISION on
+// fixture identity lists: the tree cannot be perturbed from inside a witness.
+fn retained_module_has_a_discovered_test_among(source_file: String, ids: List<String>) -> Bool {
+  ids |> any(id => string_contains(s: id, pattern: retained_module_identity_prefix(source_file: source_file)))
+}
+
 fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
-  discovered_legacy_behavior_ids()
-    |> any(id => string_contains(s: id, pattern: retained_module_identity_prefix(source_file: source_file)))
+  retained_module_has_a_discovered_test_among(source_file: source_file, ids: discovered_legacy_behavior_ids())
 }
 
 fn every_retained_module_has_a_test() -> Bool {

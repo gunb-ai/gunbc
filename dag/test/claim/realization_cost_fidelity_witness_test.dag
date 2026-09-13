@@ -34,16 +34,13 @@ import std.induction {
 import std.realization_cost_fidelity {
   ModeledCostPreserved,
   ModeledCostNotStructured,
-  ModeledCostBoundFact,
   CostGrowthNotOrderable,
   RealizationCostBodyDependent,
   FidelityInputRefused,
   FidelityRows,
-  PrimitiveIsBothStructuredAndUnstructured,
   RealizationCostFact,
   RealizationCostFidelityReport,
-  StructuredPrimitiveDuplicated,
-  UnstructuredPrimitiveDuplicated,
+  PrimitiveDuplicatedInSubjects,
   count_cost_facts_contradicted,
   cost_fidelity_counts,
   RealizationCostUnknown,
@@ -58,9 +55,17 @@ import std.realization_cost_fidelity {
   count_cost_model_unmigrated,
   realization_cost_fidelity_rows,
 }
-import std.primitive_identity { EmitRust, InterpreterHost }
+import std.primitive_identity {
+  CoarseCostOnly,
+  CostParamNotRecoverableFromSignature,
+  EmitRust,
+  InterpreterHost,
+  PrimitiveCostFact,
+  PrimitiveCostStructureUnavailable,
+  StructuredCost,
+}
 import std.primitive_projection { PrimitiveIdentity }
-import std.types { Bool, List, String }
+import std.types { Bool, List, NonEmptyStr, String }
 
 fn concat_modeled_cost() -> CostBound {
   cost_graph_linear(v_param: "left", e_param: "right")
@@ -88,6 +93,17 @@ fn quadratic(param: String) -> CostBound {
 // refused report means the INPUT was contradictory, so there is no honest row set to count; handing
 // back an empty list makes every population assertion below fail loudly rather than quietly reading
 // as "nothing to report", which is the one reading that would hide a refusal.
+// THE COARSE-ONLY FIXTURE. The unmigrated population used to be a second argument of bare
+// identities; it is now a row like any other, distinguished by its arm. That is the whole point of
+// the cut, and it is why these witnesses can no longer construct a primitive that is both.
+data probe_no_structure_cause: PrimitiveCostStructureUnavailable = CostParamNotRecoverableFromSignature {
+    signature_reason: "probe fixture: this primitive's parameter is deliberately unrecoverable" as NonEmptyStr,
+  }
+
+fn probe_coarse(p: PrimitiveIdentity) -> PrimitiveCostFact {
+  PrimitiveCostFact { primitive: p, cost: CoarseCostOnly { shape: ShapeLinearScan, cause: probe_no_structure_cause } }
+}
+
 fn rows_of(report: RealizationCostFidelityReport) -> List<RealizationCostFidelityRow> {
   match report {
     FidelityRows { rows: r } => r
@@ -100,9 +116,7 @@ fn refusal_kind(report: RealizationCostFidelityReport) -> String {
     FidelityRows { rows: _ } => "rows"
     FidelityInputRefused { cause: c } =>
       match c {
-        PrimitiveIsBothStructuredAndUnstructured { primitive: _ } => "both-structured-and-unstructured"
-        StructuredPrimitiveDuplicated { primitive: _ } => "structured-duplicated"
-        UnstructuredPrimitiveDuplicated { primitive: _ } => "unstructured-duplicated"
+        PrimitiveDuplicatedInSubjects { primitive: _ } => "primitive-duplicated"
       }
   }
 }
@@ -368,8 +382,7 @@ data probe_primitive_b: PrimitiveIdentity = PrimitiveIdentity { slug: "cost_fide
 
 test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
   let rows = rows_of(report: realization_cost_fidelity_rows(
-    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
-    unstructured: [probe_primitive_b],
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: concat_modeled_cost() } }, probe_coarse(p: probe_primitive_b)],
     target: EmitRust,
     facts: [],
   ))
@@ -380,8 +393,7 @@ test fn unmeasured_and_unmigrated_are_counted_separately() -> Bool {
 
 test fn realization_fact_does_not_cross_targets() -> Bool {
   let rows = rows_of(report: realization_cost_fidelity_rows(
-    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
-    unstructured: [],
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: concat_modeled_cost() } }],
     target: EmitRust,
     facts: [
       RealizationCostFact {
@@ -396,8 +408,7 @@ test fn realization_fact_does_not_cross_targets() -> Bool {
 
 test fn measured_target_reports_the_finding() -> Bool {
   let rows = rows_of(report: realization_cost_fidelity_rows(
-    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: concat_modeled_cost() }],
-    unstructured: [],
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: concat_modeled_cost() } }],
     target: InterpreterHost,
     facts: [
       RealizationCostFact {
@@ -414,8 +425,7 @@ test fn measured_target_reports_the_finding() -> Bool {
 // one ledger, so the type cannot gain an arm without the accounting being revisited.
 test fn the_undecided_arm_appears_in_a_reported_population() -> Bool {
   let rows = rows_of(report: realization_cost_fidelity_rows(
-    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
-    unstructured: [],
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }],
     target: InterpreterHost,
     facts: [
       RealizationCostFact {
@@ -498,8 +508,7 @@ test fn two_constants_still_compare_as_preserved() -> Bool {
 // defect this module shipped one round earlier.
 test fn the_unorderable_arm_appears_in_a_reported_population() -> Bool {
   let rows = rows_of(report: realization_cost_fidelity_rows(
-    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
-    unstructured: [],
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }],
     target: InterpreterHost,
     facts: [
       RealizationCostFact {
@@ -571,8 +580,7 @@ test fn an_unorderable_growth_projects_to_no_shape() -> Bool {
 // subject changed is the fabricated plausible output section 5 forbids.
 fn contradicted_report(first: CostBound, second: CostBound) -> RealizationCostFidelityReport {
   realization_cost_fidelity_rows(
-    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
-    unstructured: [],
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }],
     target: InterpreterHost,
     facts: [
       RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: first },
@@ -602,8 +610,7 @@ test fn a_contradicted_key_is_not_counted_as_unmeasured() -> Bool {
 // ONE FACT PER KEY STILL ANSWERS NORMALLY, so the repair did not turn every lookup into a refusal.
 test fn a_single_fact_for_one_key_still_compares() -> Bool {
   let rows = rows_of(report: realization_cost_fidelity_rows(
-    modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
-    unstructured: [],
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }],
     target: InterpreterHost,
     facts: [
       RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: cost_nlogn(param: "n") },
@@ -612,53 +619,55 @@ test fn a_single_fact_for_one_key_still_compares() -> Bool {
   count_cost_facts_contradicted(rows: rows) == 0 && count_cost_fidelity_findings(rows: rows) == 1
 }
 
-// THE PARTITION IS ENFORCED, NOT ASSUMED. A primitive in BOTH lists is a contradiction about the
-// same key -- it would have produced two rows, one with a real fidelity and one
-// ModeledCostNotStructured -- so the whole report refuses rather than emitting rows from a premise
-// that does not hold.
-test fn a_primitive_in_both_lists_refuses_the_report() -> Bool {
+// THE CONTRADICTION SURVIVES AS A SPECIMEN, AT A DIFFERENT RUNG. When this join took two lists, a
+// primitive in BOTH was its own refusal arm. It cannot be written that way any more -- there is one
+// list, and a row's arm is a field of the row -- so what used to be a distinct contradiction is now
+// an ordinary DUPLICATE: the same primitive carried twice, once structured and once coarse. The
+// coverage did not move down the ladder and was not deleted; the state it described became a case
+// of a broader writable one, and this witness keeps exercising it under the arm that survives. That
+// is what DESIGN section 4b(4) asks for -- the evidence stays enrolled when the production
+// machinery it justified dissolves.
+test fn one_primitive_carrying_both_a_structured_and_a_coarse_row_refuses() -> Bool {
   refusal_kind(
     report: realization_cost_fidelity_rows(
-      modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
-      unstructured: [probe_primitive_a],
+      modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }, probe_coarse(p: probe_primitive_a)],
       target: InterpreterHost,
       facts: [],
     )
-  ) == "both-structured-and-unstructured"
+  ) == "primitive-duplicated"
 }
 
-test fn a_duplicated_structured_primitive_refuses_the_report() -> Bool {
+test fn a_primitive_duplicated_across_two_structured_rows_refuses() -> Bool {
   refusal_kind(
     report: realization_cost_fidelity_rows(
       modeled: [
-        ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") },
-        ModeledCostBoundFact { primitive: probe_primitive_a, cost: quadratic(param: "n") },
+        PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } },
+        PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: quadratic(param: "n") } },
       ],
-      unstructured: [],
       target: InterpreterHost,
       facts: [],
     )
-  ) == "structured-duplicated"
+  ) == "primitive-duplicated"
 }
 
-test fn a_duplicated_unstructured_primitive_refuses_the_report() -> Bool {
+test fn a_primitive_duplicated_across_two_coarse_rows_refuses() -> Bool {
   refusal_kind(
     report: realization_cost_fidelity_rows(
-      modeled: [],
-      unstructured: [probe_primitive_b, probe_primitive_b],
+      modeled: [probe_coarse(p: probe_primitive_b), probe_coarse(p: probe_primitive_b)],
       target: InterpreterHost,
       facts: [],
     )
-  ) == "unstructured-duplicated"
+  ) == "primitive-duplicated"
 }
 
-// THE BOUNDARY: a well-formed partition still reports rows, so the refusals above are arms rather
-// than a report that refuses whenever two lists are non-empty.
-test fn a_disjoint_partition_still_reports_rows() -> Bool {
+// THE BOUNDARY: distinct primitives, one structured and one coarse, still report rows -- so the
+// refusals above are arms keyed on the duplicate, not a report that refuses whenever a coarse row
+// is present. Without this control the three specimens above would be satisfied by a join that
+// refused everything.
+test fn distinct_primitives_across_both_arms_still_report_rows() -> Bool {
   refusal_kind(
     report: realization_cost_fidelity_rows(
-      modeled: [ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") }],
-      unstructured: [probe_primitive_b],
+      modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }, probe_coarse(p: probe_primitive_b)],
       target: InterpreterHost,
       facts: [],
     )
@@ -673,9 +682,7 @@ test fn a_disjoint_partition_still_reports_rows() -> Bool {
 test fn the_reported_populations_exhaust_the_rows() -> Bool {
   let rows = rows_of(report: realization_cost_fidelity_rows(
     modeled: [
-      ModeledCostBoundFact { primitive: probe_primitive_a, cost: cost_linear(param: "n") },
-    ],
-    unstructured: [probe_primitive_b],
+      PrimitiveCostFact { primitive: probe_primitive_a, cost: StructuredCost { bound: cost_linear(param: "n") } }, probe_coarse(p: probe_primitive_b)],
     target: InterpreterHost,
     facts: [
       RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: cost_nlogn(param: "n") },

@@ -55,9 +55,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // than mirrors, and which is what would have caught the reading error that cut shipped.
 //
 // WHAT IS STILL NOT CHECKED, SAID PLAINLY. Nothing here asserts that the census's row set equals the
-// contents of always_required_root_lenses and always_required_lenses: that is an identity join over
-// two list literals no reader available here can walk, so a lens de-enrolled from the roster would
-// leave a stale row standing. Cited-symbol resolution is uncovered corpus-wide under the existing
+// contents of required_compile_lens_roster: that is an identity join over a list literal no reader
+// available here can walk, so a lens de-enrolled from the roster would leave a stale row standing.
+// (The roster was two grain-specific lists when this was written and is one roster carrying a grain
+// per row since gunbc#11004; the gap is unchanged, and it never turned on how many lists there
+// were.) Cited-symbol resolution is uncovered corpus-wide under the existing
 // declared drop gunbc.rung_drop cited_symbol_census, and the entry paths below inherit it. Both are
 // the census's own next trigger, not silences.
 

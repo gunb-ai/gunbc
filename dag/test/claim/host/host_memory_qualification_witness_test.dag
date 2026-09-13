@@ -3,6 +3,7 @@ module test.claim.host_memory_qualification_witness_test
 import std.types { Bool, List, NonEmptyStr }
 import extdeps.boards.types {
   AsrockRackAltrad8ud1l2t,
+  AmpereMtCollins,
   DimmPopulation,
   PopulationSupported,
   PopulationUnsupported,
@@ -44,10 +45,17 @@ import gunbc.host_memory_qualification {
   EvidenceUnobserved,
   PartImplicatedByFailingStep,
   PartNotImplicated,
+  PartEvidenceUnresolved,
   PartSampleQualificationRequired,
   PlatformTrainingFailure,
   altrad8ud_mrep_failure_observation,
   part_implication,
+}
+import product.build_fulfillment {
+  CompatibilityEstablished,
+  CompatibilityEvidenceUnread,
+  CompatibilityRefutedForPlatform,
+  compatibility_of,
 }
 import gunbc.host_diagnostic_channel {
   projection_absence_establishes_source_absence,
@@ -312,6 +320,7 @@ test fn an_association_requires_a_sample_rather_than_refusing() -> Bool {
     PartSampleQualificationRequired { step: _, standing: _ } => true
     PartImplicatedByFailingStep { step: _, standing: _ } => false
     PartNotImplicated => false
+    PartEvidenceUnresolved { step: _ } => false
   }
 }
 
@@ -329,16 +338,14 @@ test fn a_decoded_syndrome_does_refuse() -> Bool {
   }
 }
 
-// FAIL-OPEN CONTROL IN THE OTHER DIRECTION: an unevidenced row must not
-// implicate anything at all. Refusing on EvidenceUnobserved would let a row
-// nobody measured remove parts from the market.
-test fn an_unobserved_standing_implicates_nothing() -> Bool {
+// Missing evidence is neither a counterexample nor a satisfied qualification.
+test fn an_unobserved_standing_names_the_missing_step() -> Bool {
   match part_implication(
     candidate: lrdimm_32g,
     failures: [unobserved_failure],
     target_board: AsrockRackAltrad8ud1l2t,
   ) {
-    PartNotImplicated => true
+    PartEvidenceUnresolved { step: s } => s == LrdimmDataBufferMrep
     _ => false
   }
 }
@@ -359,4 +366,89 @@ test fn registered_module_is_untouched_even_by_a_decoded_failure() -> Bool {
 test fn only_the_load_reduced_module_executes_mrep() -> Bool {
   module_executes_step(module: lrdimm_32g, step: LrdimmDataBufferMrep)
     && !module_executes_step(module: rdimm_32g, step: LrdimmDataBufferMrep)
+}
+
+// Exercises the purchasing qualification seam with an actual unobserved row.
+// Restoring the fail-open mappings makes this claim false.
+test fn unobserved_evidence_never_establishes_purchasing_compatibility() -> Bool {
+  match compatibility_of(implication: part_implication(
+    candidate: lrdimm_32g,
+    failures: [unobserved_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  )) {
+    CompatibilityEstablished => false
+    _ => true
+  }
+}
+
+test fn unobserved_evidence_names_a_purchasing_obligation() -> Bool {
+  match compatibility_of(implication: part_implication(
+    candidate: lrdimm_32g,
+    failures: [unobserved_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  )) {
+    CompatibilityEvidenceUnread { obligation: o } =>
+      o == "observe platform training evidence for LRDIMM data-buffer read-phase calibration (MREP)"
+    _ => false
+  }
+}
+
+test fn empty_failure_screen_does_not_establish_compatibility() -> Bool {
+  match compatibility_of(implication: part_implication(
+    candidate: lrdimm_32g,
+    failures: [],
+    target_board: AsrockRackAltrad8ud1l2t,
+  )) {
+    CompatibilityEvidenceUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
+test fn inapplicable_unobserved_step_does_not_establish_compatibility() -> Bool {
+  match compatibility_of(implication: part_implication(
+    candidate: rdimm_32g,
+    failures: [unobserved_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  )) {
+    CompatibilityEvidenceUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
+test fn unresolved_evidence_does_not_hide_a_counterexample_in_either_order() -> Bool {
+  let before = compatibility_of(implication: part_implication(
+    candidate: lrdimm_32g,
+    failures: [unobserved_failure, decoded_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ))
+  let after = compatibility_of(implication: part_implication(
+    candidate: lrdimm_32g,
+    failures: [decoded_failure, unobserved_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ))
+  match before {
+    CompatibilityRefutedForPlatform { reason: r } => match after {
+      CompatibilityRefutedForPlatform { reason: s } => r == s
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn an_unrelated_failure_cannot_erase_the_missing_step() -> Bool {
+  let unrelated = PlatformTrainingFailure {
+    board: AmpereMtCollins,
+    step: LrdimmDataBufferMrep,
+    standing: DecodedFromPlatformSyndrome { register: "B5" },
+    observed_population: ["A1"],
+    observed_at: 1786590000000,
+  }
+  match part_implication(
+    candidate: lrdimm_32g,
+    failures: [unobserved_failure, unrelated],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartEvidenceUnresolved { step: s } => s == LrdimmDataBufferMrep
+    _ => false
+  }
 }

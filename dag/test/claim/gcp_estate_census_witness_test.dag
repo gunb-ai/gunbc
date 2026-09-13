@@ -5,6 +5,7 @@ import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible, Drifted, Apply }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.google.sheets { sheets_serviceusage_api_id }
 import gunbc.gcp_estate_observation {
   operator_audit_census,
   operator_prose_disagrees_with_sa_derived_project_id,
@@ -49,7 +50,6 @@ import gunbc.gcp_estate_observation {
   SheetsCallingHomeUnresolved,
   project_enables_service,
   sts_api_service_id,
-  sheets_api_service_id,
   named_projects_are_observed_in_census,
   every_census_observed_project_is_named,
   named_wif_providers_are_in_census,
@@ -451,7 +451,7 @@ test fn gunb_test_and_other_projects_are_gaps_not_observed_homes() -> Bool {
   let census = operator_audit_census()
   gunb_test_is_enumerated_not_selected(census: census)
     && gcp_project_int_number_is_the_string_authority()
-    && !project_enables_service(project_id: gunb_test_project_id, service: sheets_api_service_id)
+    && !project_enables_service(project_id: gunb_test_project_id, service: sheets_serviceusage_api_id)
     && project_enables_service(project_id: gunb_test_project_id, service: sts_api_service_id)
     && none_of_the_three_sandboxes_has_sheets()
     && sheets_home_is_create_purpose_scoped_unminted()

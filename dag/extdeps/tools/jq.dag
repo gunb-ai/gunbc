@@ -1,7 +1,8 @@
 module extdeps.tools.jq
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.types { NonEmptyStr, Bool, Int, List, Unit }
+import std.string_type { String }
 import std.algebra { Cons, Empty, trim }
 import v2.std.algebra { list_append, list_snoc_item, fold_list }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }

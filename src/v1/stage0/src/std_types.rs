@@ -225,6 +225,22 @@ pub type RetryCount = i64;
 
 pub type HttpStatus = i64;
 
+pub fn http_status_min() -> i64 {
+    100
+}
+
+pub fn http_status_max() -> i64 {
+    599
+}
+
+pub fn http_status_of(n: i64) -> Option<i64> {
+    if ((n.clone() < http_status_min()) || (n.clone() > http_status_max())) {
+        std::option::Option::None
+    } else {
+        Some(n.clone())
+    }
+}
+
 pub type Email = String;
 
 pub type Port = i64;

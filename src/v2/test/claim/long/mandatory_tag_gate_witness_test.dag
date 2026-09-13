@@ -3,7 +3,7 @@ module v2.test.long.mandatory_tag_gate_witness
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.normalize { normalize }
-import v2.compiler.compile { CompileLens, always_required_root_lenses }
+import v2.compiler.compile { CompileLens, CompileLensRoot, required_lenses_at_grain }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // RED/GREEN controls for the mandatory-tag compile gate at the two grains the accumulator-copy
 // precedent fixed (gate grain = the tree shape the lens provably reads; door grain = the
-// always_required_root_lenses roster). LONG-lane resident (operator 5s rule 2026-07-12,
+// CompileLensRoot partition of required_compile_lens_roster). LONG-lane resident (operator 5s rule 2026-07-12,
 // gunbc.ci_layer_roots long_lane_exclusion_note): each witness tokenizes/parses a module through
 // the interpreted v2 frontend with the full dag language model, ~5s+ per witness, over the per-PR
 // fast-lane eval budget - discovery excludes test/claim/long/ at dir grain and the run-29892063728
@@ -177,7 +177,7 @@ fn roster_rejects_with(probe: GrainProbe, reason: Symbol) -> Bool {
     GrainStageRejected => false
     GrainTree { root: root } =>
       let inferred = InferredTree { root: root, facts: empty_map() }
-      fold(always_required_root_lenses(), init: false, f: fn(acc, lens) {
+      fold(required_lenses_at_grain(grain: CompileLensRoot), init: false, f: fn(acc, lens) {
         acc
           || match lens.gate(inferred) {
             Accepted { value: _, diagnostics: _ } => false

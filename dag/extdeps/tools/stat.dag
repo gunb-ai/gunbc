@@ -1,6 +1,7 @@
 module extdeps.tools.stat
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, NonEmptyStr, List, Unit }
+import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }

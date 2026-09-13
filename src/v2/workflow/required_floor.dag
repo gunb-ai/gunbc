@@ -1401,7 +1401,8 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
 // per-claim limits above may be asked to answer for.
 //
 // WHY IT IS DECLARED RATHER THAN LEFT AS A HOST DETAIL. The bare-reference edge index
-// (`v1_compiler.cli_run` `both_closure_edge_index`, and through it `tree_bare_census_for_root`)
+// (`v1_compiler.cli_run` `whole_pool_closure_edge_index`, explicitly demanded by
+// `warm_bare_reference_edge_index`, which also warms `tree_bare_census_for_root` for reconciliation)
 // is memoized once per index -- the census trace reports two misses over two source roots
 // against ONE index address, `edge_index_construction { builds: 1 }` -- so its ~28s is neither
 // duplicated nor repeated. It was simply BILLED to whichever claim resolved an entry first:

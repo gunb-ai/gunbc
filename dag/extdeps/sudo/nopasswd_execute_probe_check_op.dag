@@ -1,6 +1,7 @@
 module extdeps.sudo.nopasswd_execute_probe_check_op
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { NonEmptyStr, Bool, Int, List, Unit }
+import std.string_type { String }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
   SudoNopasswdGrantListProbeShape,

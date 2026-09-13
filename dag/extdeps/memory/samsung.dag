@@ -1,7 +1,7 @@
 module extdeps.memory.samsung
 
 import std.measure { ByteSize, byte_size, bit_width }
-import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, MonolithicDie, ThreeDimensionalStacked }
+import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4, DualDiePackage, ThreeDimensionalStacked }
 import extdeps.vendor.samsung { samsung }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -51,6 +51,15 @@ data stick_capacity_bytes_32g: ByteSize = byte_size(34359738368)
 // ONE PRECISION, since the derived count reads as a package count and is not one: at x4 with
 // ECC the module carries 18 dies per rank and 72 across four ranks, which this part reaches
 // as 36 dual-die packages. dram_chips_per_rank counts DIES, the unit that determines density.
+//
+// die_stacking IS DualDiePackage FOR THE REASON THE SENTENCE ABOVE ALREADY GAVE (2026-09-12).
+// Until DramDieStacking had a multi-load-stack arm this row was written MonolithicDie, which
+// contradicted its own provenance: 72 dies on 36 packages is a dual-die package per site, the
+// JEDEC "multi load stack" class, and not a monolithic device. The value has the same label
+// standing as every other field of this row -- it is derived from the stated die and package
+// counts, not read from a Samsung datasheet -- and it dissolves with the rest of the row when
+// a Samsung document carrying this part lands. No consumer folds this row's stacking today;
+// the correction is so the first one that does is not handed a class the part does not belong to.
 data m386a4g40dm0_cpb_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "M386A4G40DM0-CPB",
   manufacturer: samsung,
@@ -59,7 +68,7 @@ data m386a4g40dm0_cpb_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   data_rate_mts: 2133,
   ecc: true,
   buffering: LoadReduced,
-  die_stacking: MonolithicDie,
+  die_stacking: DualDiePackage,
   chip_width: bit_width(4),
 
   rank_count: 4,

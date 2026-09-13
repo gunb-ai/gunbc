@@ -1,6 +1,7 @@
 module extdeps.linux.cgroup_v2
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, Unit }
+import std.string_type { String }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

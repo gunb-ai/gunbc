@@ -1,0 +1,50 @@
+module v2.test.lens_mock_totality.sheets_mock_totality
+
+import extdeps.google.sheets_mock_corpus { sheets_published_mock_corpus }
+import v2.std.diagnostic { outcome_accepted }
+import v2.lens.mock_totality { mock_unhandled_rejection }
+import v2.test.lens_mock_totality.witness_template { mock_totality_green_holds, mock_totality_red_on_omission_holds, omit_consumer_handles, outcome_accepted_p }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type MaterializedSheetsMock {
+  tag: Symbol
+}
+
+data sheets_red_omit_keys: List<String> = ["sheets.Spreadsheets.BatchUpdateValues"]
+
+fn materialize_sheets_mock(case: PublishedMockCase) -> Outcome<MaterializedSheetsMock> {
+  if case.operation_key == "sheets.Spreadsheets.GetValues" {
+    outcome_accepted(value: MaterializedSheetsMock { tag: ^materialized_get_values })
+  } else if case.operation_key == "sheets.Spreadsheets.BatchUpdateValues" {
+    outcome_accepted(value: MaterializedSheetsMock { tag: ^materialized_batch_update_values })
+  } else {
+    mock_unhandled_rejection()
+  }
+}
+
+fn sheets_real_consumer_handles(case: PublishedMockCase) -> Bool {
+  outcome_accepted_p(outcome: materialize_sheets_mock(case: case))
+}
+
+fn sheets_omits_batch_update_consumer_handles(case: PublishedMockCase) -> Bool {
+  omit_consumer_handles(
+    case: case,
+    omit_keys: sheets_red_omit_keys,
+    total_consumer_handles: sheets_real_consumer_handles
+  )
+}
+
+test fn sheets_mock_consumer_is_total_holds() -> Bool {
+  mock_totality_green_holds(
+    published: sheets_published_mock_corpus,
+    consumer_handles: sheets_real_consumer_handles
+  )
+}
+
+test fn sheets_mock_omitted_member_is_red_holds() -> Bool {
+  mock_totality_red_on_omission_holds(
+    published: sheets_published_mock_corpus,
+    consumer_handles: sheets_omits_batch_update_consumer_handles
+  )
+}

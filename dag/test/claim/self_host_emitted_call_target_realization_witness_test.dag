@@ -284,8 +284,8 @@ test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
 // THE BOUNDARY CONTROL FOR THE LENGTH REPAIR, AND THE ONE THAT PROVES THE GATE IS REGISTRY
 // MEMBERSHIP RATHER THAN "ROSTER ROW MEANS DECLARATION". empty_map has a roster row AND a
 // registry row, so it must still lower to the bridge. A repair that had simply routed every
-// ModeledProjection to its declaration would go red here -- and would also emit
-// v2.std.collection map_insert's `Map { lookup: fn .. }` body against an Rc<BTreeMap> carrier.
+// ModeledProjection to its declaration would go red here -- and would also have emitted
+// v2.std.collection map_insert's former `Map { lookup: fn .. }` body against an Rc map carrier.
 test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.bridged_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
@@ -897,5 +897,26 @@ test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
     "src/test_claim_depth_one_shared_refutation_probe.rs",
     ["matches!(value.as_ref(), PNat::PSucc { .. })"],
     ["if matches!(prev.as_ref()"]
+  )
+}
+
+// REALIZATION IDENTITY FOR list_append'S CONCAT ROUTING. The probe CALLS production
+// list_append (the length-sibling pattern: the probe file must reach the declaration, not
+// inline a concat). The body surface is src/v2_std_algebra.rs: algebra.dag has one concat
+// call, list_append's `left |> concat(right)`, so a revert to fold_list_right drops
+// `v1_rt::concat` from that file. fold_list_right stays elsewhere in algebra, so it is not
+// a whole-file exclude. Not a doubling-ratio timing witness: both arms are linear.
+test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {
+  let source = "module test.claim.list_append_concat_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, list_append }\nfn probe(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: left, right: right) }\n"
+  compile_dag_rust_emit_check(
+    source,
+    "src/test_claim_list_append_concat_probe.rs",
+    ["crate::v2_std_algebra::list_append("],
+    ["v1_rt::concat", "fold_list_right"]
+  ) && compile_dag_rust_emit_check(
+    source,
+    "src/v2_std_algebra.rs",
+    ["v1_rt::concat"],
+    []
   )
 }

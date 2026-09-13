@@ -82,11 +82,24 @@ import extdeps.crypto.hash
 // MITIGATABLE and only this sub-class reaches structural impossibility. A class's rung is the
 // minimum across its paths, so the honest report for the enclosing class is the lower one.
 //
-// NEXT-RUNG TRIGGER, AS A CAPABILITY: a durable-origin read operation that STAGES ITS OWN OUTPUT at
-// a path it mints, so the path a digest is computed over is produced by the read rather than chosen
-// by its caller -- SUFFICIENT FOR removing caller-chosen paths from every confirming readback in
-// fabric-M0, not merely for the commit manifest. A trigger naming one call site would be satisfied
-// while the capability stayed dead (DESIGN 4b(3)).
+// THE CAPABILITY THE TRIGGER NAMED NOW EXISTS, AND THE CLASS HAS NOT CLIMBED, stated in that order
+// so the second half is not lost behind the first. gunbc.cloudflare.r2_origin_object
+// fetch_origin_object is a durable-origin read that STAGES ITS OWN OUTPUT: it mints a private
+// directory, tells the transport to write the object there, and hands THAT path -- and only that
+// path -- to read_origin_staged_file. Its caller names an object KEY and never a path, and the
+// value it receives is OriginFetchOutcome below, whose staged arm carries the OriginReading the
+// read produced. That is the route a confirming readback should take, and gunbc.fabric_m0_commit
+// manifest_read_of_origin_fetch folds it into the manifest observation.
+//
+// WHAT KEEPS THE ENCLOSING CLASS AT MITIGATABLE is that this function is still callable with a
+// caller-chosen path: the hermetic witnesses digest committed fixture files through it, and nothing
+// in the language makes the fetch the ONLY caller. The trigger is therefore restated one rung
+// further in, still as a capability: read_origin_staged_file's admitted callers narrow to the
+// origin fetch alone -- which requires the witnesses to reach a confirming reading THROUGH the
+// fetch under the hermetic envelope, i.e. a mocked S3 transport whose staged bytes are a fixture
+// rather than a canned digest -- at which point a caller-chosen path is a compile refusal and the
+// class is structurally guaranteed on the source-to-.dag path. A trigger naming one call site would
+// be satisfied while the capability stayed dead (DESIGN 4b(3)).
 //
 // RUNG HONESTY, PATH-SCOPED. The emitted Rust mirror of a sole_constructor type is a public struct
 // with public fields (gunbc.model.population), so a consumer writing Rust against the seed is
@@ -111,6 +124,23 @@ type OriginReading sole_constructor {
 type OriginReadingOutcome
   = OriginReadingTaken { reading: OriginReading }
   | OriginReadingUnavailable { staged_path: NonEmptyStr, cause: NonEmptyStr }
+
+// WHAT A SELF-STAGING ORIGIN READ ANSWERS, keyed by the object it was asked for and never by a
+// path. Three arms and no fourth: the object was fetched and its staged bytes digested (the reading
+// is the one this module minted over the file the fetch wrote); the origin answered that no such
+// object exists; or nothing usable was obtained -- a refused request, a transport that never
+// answered, a staging directory that could not be made, a digest that could not be taken -- each a
+// located cause. Absent and Unavailable are kept apart because they have opposite remedies
+// downstream: gunbc.fabric_m0_commit reads absence as ManifestNotFound and unavailability as
+// ManifestReadUnavailable, and collapsing one into the other is the empty-observation narrow.
+//
+// THE SHAPE LIVES HERE AND THE PRODUCER DOES NOT. This module owns what a confirming reading IS;
+// which store answers, and over which transport, is gunbc.cloudflare.r2_origin_object's. A second
+// origin realization produces this same type.
+type OriginFetchOutcome
+  = OriginObjectStaged { key: NonEmptyStr, reading: OriginReading }
+  | OriginObjectAbsent { key: NonEmptyStr }
+  | OriginFetchUnavailable { key: NonEmptyStr, cause: NonEmptyStr }
 
 // THE SOLE MINT. One operation obtains the bytes' digest and the name of the file it was taken
 // from, so the two cannot describe different objects.

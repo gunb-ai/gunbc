@@ -29,7 +29,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // is in one of two arms depending on WHEN it can be forced, and the arm decides its treatment:
 //
 //   PREPARATION-FORCEABLE -- every identity it can be asked for is knowable before the fold, so
-//     the floor BUILDS it ahead and bills preparation. both_closure_edge_index is this arm:
+//     the floor BUILDS it ahead and bills preparation. whole_pool_closure_edge_index is this arm:
 //     run_required_floor warms it over both index identities its resolves can reach, and the run
 //     reports provenance=built-by-preparation. No claim window ever contains that build, which is
 //     why it correctly carries no fill bracket -- absence of a bracket is not evidence of a defect

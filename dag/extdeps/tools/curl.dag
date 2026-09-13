@@ -101,3 +101,108 @@ fn curl_ftps_upload_command(
     ),
   )
 }
+
+// --aws-sigv4 LANDED IN curl 7.75.0 (curl.se/docs/manpage.html, "--aws-sigv4 <provider1[:prvdr2[:reg[:srv]]]>",
+// "Added in 7.75.0"). The two S3 builders below are unspellable on an older curl, so they name a
+// SECOND CliTool whose min_version is this constraint rather than silently raising curl_pinned_version:
+// the download and FTPS builders above genuinely need no more than 7.68, and a fleet host that
+// carries 7.68 still runs them correctly. curl_cli_tool stays the 7.68 pin; the SigV4 builders
+// emit curl_aws_sigv4_cli_tool.name so a 7.68 host that satisfies curl_cli_tool still owes 7.75
+// on the path that spells --aws-sigv4.
+data curl_aws_sigv4_min_version: VersionConstraint = ">= 7.75"
+
+data curl_aws_sigv4_cli_tool: CliTool = CliTool {
+  name: curl_program,
+  min_version: Present { value: curl_aws_sigv4_min_version },
+  installable_via: [SourceApt { package: package_curl }],
+}
+
+// THE SIGV4 PROVIDER STRING FOR AN S3-SHAPED ENDPOINT. curl's --aws-sigv4 value is
+// provider1[:provider2[:region[:service]]]; "aws:amz" is the algorithm/header prefix pair every
+// AWS-signature-compatible store expects, and region and service are the two variables an S3
+// clone actually differs on. They are received rather than spelled here, because which region a
+// particular store signs under is that store's fact (Cloudflare R2 signs under "auto",
+// extdeps.cloudflare.r2 r2_s3_sigv4_region) and this module may not carry one product's value.
+fn curl_aws_sigv4_s3_provider(region: NonEmptyStr) -> String {
+  join(["aws:amz:", region as String, ":s3"], "")
+}
+
+// THE S3 UPLOAD AND DOWNLOAD, SIGNED, WITH THE CREDENTIAL REACHING curl THROUGH A NETRC FILE.
+//
+// THE CREDENTIAL IS NEVER AN ARGV WORD. --aws-sigv4 documents its credential as --user
+// <key>:<secret>, which on this fleet is readable from /proc/PID/cmdline by any co-tenant of the
+// runner slot (gunbc.credential_argv_exposure). curl also reads the same login/password pair from
+// --netrc-file for the request's host, and signs with it -- measured, not assumed: against a local
+// listener, a netrc carrying `machine <host> login <key> password <secret>` produced
+// `Authorization: AWS4-HMAC-SHA256 Credential=<key>/...` with no --user on the command line
+// (tidy-hawk-349, 2026-09-12). So these builders, like curl_ftps_upload_command above, have NO
+// parameter that could carry a secret: the netrc path crosses into argv, the bytes do not.
+//
+// -f IS LOAD-BEARING ON BOTH. Without it curl exits 0 on a 403 or a 404 and, on the download,
+// writes the store's XML error document to the destination -- a "staged object" that is really an
+// error page, digested and confirmed downstream. With -f a non-2xx exits 22 and writes NOTHING to
+// the destination (measured: a 404 left no file behind), so a staged path either holds the object's
+// bytes or does not exist.
+//
+// THE STATUS IS STILL REPORTED, ON STDOUT, so the caller can tell 404 from 403 without parsing
+// stderr prose: -w '%{http_code}' prints the three digits after the transfer, and prints 000 when
+// no HTTP status was ever received (connect failure, timeout), which is how a caller separates
+// "the store answered" from "nothing answered" -- the distinction gunbc.fabric_m0_commit's
+// CommitTransportOutcome exists to keep.
+//
+// THE CONDITIONAL WRITE IS A PARAMETER, NOT A DEFAULT. If-None-Match: * turns the PUT into
+// create-if-absent (RFC 9110 section 13.1.2, honoured by S3-shaped stores that implement
+// conditional writes); whether a given object may ever be overwritten is the STORE POLICY of the
+// caller, so it is passed in rather than spelled here, and the header goes into SignedHeaders
+// (measured: `SignedHeaders=host;if-none-match;...`) so a proxy cannot strip it unsigned.
+//
+// -T names the local file to upload and the URL names the remote object EXACTLY; the trailing-slash
+// directory behaviour curl_ftps_upload_command warns about is avoided the same way, by never
+// emitting a URL that ends in "/".
+data curl_http_code_write_out_format: String = "%\{http_code\}"
+
+data curl_if_none_match_any_header: String = "If-None-Match: *"
+
+fn curl_sigv4_s3_upload_command(
+  url: String,
+  local_path: String,
+  netrc_path: FilePath,
+  sigv4_region: NonEmptyStr,
+  create_only: Bool,
+) -> ArgvCommand {
+  argv_command(
+    program: curl_aws_sigv4_cli_tool.name,
+    arguments: concat(
+      [
+        "-fsS",
+        "--netrc-file", netrc_path as String,
+        "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
+        "-o", "/dev/null",
+        "-w", curl_http_code_write_out_format,
+      ],
+      concat(
+        if create_only { ["-H", curl_if_none_match_any_header] } else { [] },
+        ["-T", local_path, url],
+      ),
+    ),
+  )
+}
+
+fn curl_sigv4_s3_download_command(
+  url: String,
+  destination: String,
+  netrc_path: FilePath,
+  sigv4_region: NonEmptyStr,
+) -> ArgvCommand {
+  argv_command(
+    program: curl_aws_sigv4_cli_tool.name,
+    arguments: [
+      "-fsS",
+      "--netrc-file", netrc_path as String,
+      "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
+      "-o", destination,
+      "-w", curl_http_code_write_out_format,
+      url,
+    ],
+  )
+}

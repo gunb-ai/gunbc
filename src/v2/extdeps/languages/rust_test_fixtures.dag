@@ -4158,8 +4158,8 @@ fn rust_string_literal_transform() -> TokenClassEmitTransform {
     open: "\"",
     close: "\"",
     escapes: [
-      EmitSpellingEscape { from: "\\", to: "\\\\" },
-      EmitSpellingEscape { from: "\"", to: "\\\"" }
+      EmitSpellingEscape { from: chars(s: "\\"), to: chars(s: "\\\\") },
+      EmitSpellingEscape { from: chars(s: "\""), to: chars(s: "\\\"") }
     ]
   }
 }

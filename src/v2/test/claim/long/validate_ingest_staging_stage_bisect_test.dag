@@ -3,7 +3,9 @@ module v2.test.long.validate_ingest_staging_stage_bisect
 import v2.compiler.normalized_tree { NormalizedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.compile {
-  LensGateWitness,  always_required_lenses,
+  CompileLensSubtree,
+  LensGateWitness,
+  required_lenses_at_grain,
   run_required_lens_gates_on_subtree
 }
 import v2.compiler.infer { infer, InferredTree }

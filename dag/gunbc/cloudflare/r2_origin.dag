@@ -1,6 +1,7 @@
 module gunbc.cloudflare.r2_origin
 
 import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.allocation_roster { allocated_value }
 import extdeps.securities { Securities }
 import extdeps.vendor { Vendor }
@@ -84,11 +85,35 @@ fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
 type DurableOriginAdmission
   = FabricCommitManifestsAndContentAddressedOutputs {}
 
+// A CREDENTIAL FOR THE ORIGIN IS TWO FACTS AND A STANDING. The S3 access key id IS the Cloudflare
+// token id (extdeps.cloudflare.r2 R2S3AccessPair, cited) and is not a secret: it is what the
+// account's own token listing shows, and it is a data row here for the same reason the secret
+// VERSION is -- a fetch that could not name which token it holds could not sign a request. The
+// token VALUE stays in custody and is named only by its SecretRef locus. And a credential this
+// fleet has not minted yet is an ARM, not a placeholder pair: the read token was minted
+// (gunbc#10947) and the write token is minted by gunbc.cloudflare.r2_token_mint_run run_object_write,
+// so until that entry has executed and its stored version is pinned here, every PUT refuses at this
+// declaration -- typed and before any fetch -- rather than addressing a secret nobody wrote.
+//
+// ONE STANDING FOR BOTH DIRECTIONS. An earlier revision carried the read locus as a bare SecretRef
+// and would have grown a differently shaped write field beside it; two shapes for one concept is the
+// fork DESIGN section 3 forbids, so both directions inhabit OriginCredentialStanding and the field
+// names carry the direction.
+type OriginCredentialStanding
+  = OriginCredentialPinned {
+      access_key_id: NonEmptyStr
+      token_value: SecretRef
+    }
+  | OriginCredentialUnminted {
+      mint_entry: DeclarationRef
+    }
+
 type DurableOriginBucket {
   bucket_name: NonEmptyStr
   jurisdiction: R2Jurisdiction
   admits: DurableOriginAdmission
-  read_credential: SecretRef
+  read_credential: OriginCredentialStanding
+  write_credential: OriginCredentialStanding
 }
 
 // THE BUCKET NAME IS OURS TO CHOOSE AND THE ACCOUNT ID IS NOT, which is why one is allocated here
@@ -159,6 +184,19 @@ data fabric_durable_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-origin-r
 
 data fabric_durable_origin_read_secret_version: NonEmptyStr = "1"
 
+// THE STORED READ MINT'S TOKEN ID, which gunbc.cloudflare.r2_token_mint_run's annotation names as
+// the third Create and the mint receipt reported. It is the S3 access key id for the read
+// credential. It is a pin like the version above: the instrument that re-derives it is the
+// account's token listing (gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile),
+// and a rotation changes this row and the version together.
+data fabric_durable_origin_read_access_key_id: NonEmptyStr = "3f43e1c7f8fbcfc97139cb5d9dc4e984"
+
+// THE WRITE CREDENTIAL'S CUSTODY LOCUS, NAMED BEFORE IT IS MINTED so the mint entry stores into the
+// container this declaration will read from, and so that the two cannot be spelled differently.
+// There is no version and no access key id here yet: those are answers the executed mint gives, and
+// they land as the OriginCredentialPinned arm of fabric_durable_origin_standing's write_credential.
+data fabric_durable_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-origin-write-token"
+
 // AN UNALLOCATED PURPOSE HAS NO BUCKET, AND THAT IS AN ARM RATHER THAN A DEFAULT. Reconstructing a
 // name at this seam is the derivation the roster exists to forbid, and returning an empty one would
 // address the account's root instead of a bucket.
@@ -178,24 +216,31 @@ fn fabric_durable_origin_standing() -> DurableOriginStanding {
           bucket_name: name,
           jurisdiction: R2JurisdictionDefault,
           admits: FabricCommitManifestsAndContentAddressedOutputs {},
-          read_credential: secret_ref_pin_version(
-            ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
-            version: fabric_durable_origin_read_secret_version,
-          )
+          read_credential: OriginCredentialPinned {
+            access_key_id: fabric_durable_origin_read_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+              version: fabric_durable_origin_read_secret_version,
+            ),
+          },
+          write_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(
+              module_path: "gunbc.cloudflare.r2_token_mint_run",
+              decl_name: "run_object_write",
+            ),
+          },
         }
       }
   }
 }
 
-// ONLY READ IS MODELED, AND THE ORIGIN MUST PUT. r2_object_read_grant and the Workers R2 Storage
-// Bucket Item Read permission group are the whole of extdeps.cloudflare.r2's grant vocabulary, so the
-// credential this module names is a READ credential and is named as one. The write half is a
-// separate, cited follow-up: the Workers R2 Storage Bucket Item Write permission group id must come
-// from Cloudflare's permission-group listing with a retrieval date, and an uncited id would be worse
-// than the absent one, because it would be indistinguishable from a checked fact.
-//
-// THE FIELD IS read_credential RATHER THAN credential FOR THAT REASON. A name that did not say READ
-// would let the write gap hide behind a field that reads as though it covered both.
+// READ AND WRITE ARE TWO CREDENTIALS, NOT ONE TOKEN WITH TWO GRANTS, and the fields say which is
+// which. The read token is what every confirming readback signs with, and it is held by whoever
+// reads back; the write token is spent only at commit. A single read-and-write token would hand
+// every reader the power to overwrite the origin it is confirming, which is the laundering
+// gunbc.fabric_m0_origin_readback exists to make unwritable. The write grant's id is an
+// OBSERVATION (gunbc.cloudflare.r2_permission_group_observe) inhabiting extdeps.cloudflare.r2's
+// r2_object_write_grant shape; it is not authored here either.
 
 // THE BOOTSTRAP CUSTODY LOCUS IS ALSO A STANDING, AND THIS IS WHERE THE FAIL-CLOSED ORDERING COMES
 // FROM. gunbc.auth.secret_ref_credential fetches an EXACT version and refuses when the resolved

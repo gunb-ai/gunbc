@@ -45,8 +45,16 @@ import gunbc.cloudflare.r2_origin {
   fleet_cloudflare_account_id,
   fabric_durable_origin_read_secret_id,
   fabric_durable_origin_read_secret_version,
+  fabric_durable_origin_read_access_key_id,
+  fabric_durable_origin_write_secret_id,
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
+  OriginCredentialStanding,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
+}
+import gunbc.cloudflare.r2_permission_group_observe {
+  cloudflare_r2_bucket_item_write_observed_permission_group_id,
 }
 import gunbc.cloudflare.r2_permission_group_observe {
   ObservedPermissionGroup,
@@ -55,6 +63,9 @@ import gunbc.cloudflare.r2_permission_group_observe {
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.cloudflare.r2_token_mint_run {
   classify_r2_mint,
+  R2OriginObjectRead,
+  R2OriginObjectWrite,
+  origin_credential_pin_is_exact,
   R2MintReady,
   R2MintBootstrapCustodyUnrecorded,
   R2MintAccountUnallocated,
@@ -76,6 +87,7 @@ import gunbc.cloudflare.r2_token_mint_run {
 // becoming permanently green. Every future fleet credential begins in this arm.
 test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
   match classify_r2_mint(
+    profile: R2OriginObjectRead,
     account: fleet_cloudflare_account_standing(),
     custody: BootstrapCustodyUnrecorded { intervention: cloudflare_bootstrap_custody_intervention() },
     origin: fabric_durable_origin_standing(),
@@ -98,6 +110,7 @@ test fn r2_origin_mint_refuses_for_absent_bootstrap_custody() -> Bool {
 // what this test checks, not incidental to it.
 test fn r2_origin_declared_custody_is_pinned_to_an_exact_version() -> Bool {
   match classify_r2_mint(
+    profile: R2OriginObjectRead,
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
@@ -130,6 +143,7 @@ fn declared_bucket_name() -> String {
 
 test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> Bool {
   match classify_r2_mint(
+    profile: R2OriginObjectRead,
     account: fleet_cloudflare_account_standing(),
     custody: fleet_cloudflare_bootstrap_custody(),
     origin: fabric_durable_origin_standing(),
@@ -162,6 +176,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
 // place.
 test fn r2_origin_mint_refuses_an_unallocated_account_from_a_fixture() -> Bool {
   match classify_r2_mint(
+    profile: R2OriginObjectRead,
     account: CloudflareAccountUnallocated {
       company: cloudflare,
       intervention: cloudflare_account_allocation_intervention(),
@@ -260,14 +275,70 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
   match fabric_durable_origin_standing() {
     DurableOriginUnallocated { purpose: _ } => false
     DurableOriginAllocated { bucket: bucket } =>
-      (bucket.read_credential.secret as String) == (fabric_durable_origin_read_secret_id as String)
-        && (bucket.read_credential.project as String) == (fleet_secrets_gcp_project as String)
-        && (bucket.read_credential.version as String) == (fabric_durable_origin_read_secret_version as String)
-        && (bucket.read_credential.version as String) != "latest"
+      match bucket.read_credential {
+        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
+          (locus.secret as String) == (fabric_durable_origin_read_secret_id as String)
+            && (locus.project as String) == (fleet_secrets_gcp_project as String)
+            && (locus.version as String) == (fabric_durable_origin_read_secret_version as String)
+            && (locus.version as String) != "latest"
+            && (access_key_id as String) == (fabric_durable_origin_read_access_key_id as String)
+      }
         && (bucket.bucket_name as String) == (declared_bucket_name())
         && match bucket.admits {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
            }
+  }
+}
+
+// THE WRITE CREDENTIAL IS UNMINTED AND SAYS WHICH ENTRY MINTS IT. This is the state the origin is
+// declared in until run_object_write has executed; the test pins the arm AND the entry it names,
+// so a pin that lands later must retire this test deliberately (turning it into the write twin of
+// the read test above) rather than leaving a stale expectation green.
+test fn r2_origin_bucket_write_credential_is_unminted_and_names_its_mint_entry() -> Bool {
+  match fabric_durable_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: bucket } =>
+      match bucket.write_credential {
+        OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+        OriginCredentialUnminted { mint_entry: entry } =>
+          (entry.module_path as String) == "gunbc.cloudflare.r2_token_mint_run"
+            && (entry.decl_name as String) == "run_object_write"
+      }
+        && !origin_credential_pin_is_exact(credential: bucket.write_credential)
+  }
+}
+
+// THE WRITE MINT CLASSIFIES READY ON THE SAME DECLARATIONS AND CARRIES THE OBSERVED WRITE GROUP,
+// NOT THE PINNED READ ONE. The join is cross-authority: the group id comes from the observation
+// module, the bucket resource from the origin, the account from the account standing; if the
+// profile dispatch handed the write entry the read request, the group check fails while the
+// classification still says Ready.
+test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> Bool {
+  match classify_r2_mint(
+    profile: R2OriginObjectWrite,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_durable_origin_standing(),
+  ) {
+    R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
+      string_contains(s: request.name, pattern: "-object-write")
+        && all(request.policies, p =>
+             any(p.permission_groups, g =>
+               (g.id as String) == (cloudflare_r2_bucket_item_write_observed_permission_group_id as String))
+             && !any(p.permission_groups, g =>
+               (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
+             && match map_get(p.resources, r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: declared_bucket_name())) {
+                  Present { value: scope } => scope == "*"
+                  none => false
+                })
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
   }
 }
 
@@ -279,11 +350,15 @@ test fn r2_origin_read_pin_names_this_project_version() -> Bool {
   match fabric_durable_origin_standing() {
     DurableOriginUnallocated { purpose: _ } => false
     DurableOriginAllocated { bucket: bucket } =>
-      gcp_resource_names_this_version(
-        returned: secret_ref_version_resource(ref: bucket.read_credential),
-        ref: bucket.read_credential,
-        project_number: fleet_secrets_project_number,
-      )
+      match bucket.read_credential {
+        OriginCredentialUnminted { mint_entry: _ } => false
+        OriginCredentialPinned { access_key_id: _, token_value: locus } =>
+          gcp_resource_names_this_version(
+            returned: secret_ref_version_resource(ref: locus),
+            ref: locus,
+            project_number: fleet_secrets_project_number,
+          )
+      }
   }
 }
 
@@ -293,10 +368,20 @@ fn origin_with_latest_read_pin() -> DurableOriginStanding {
       bucket_name: "gunbai-fabric-origin",
       jurisdiction: R2JurisdictionDefault,
       admits: FabricCommitManifestsAndContentAddressedOutputs {},
-      read_credential: secret_ref_pin_version(
-        ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
-        version: "latest",
-      ),
+      read_credential: OriginCredentialPinned {
+        access_key_id: fabric_durable_origin_read_access_key_id,
+        token_value: secret_ref_pin_version(
+          ref: fleet_secret_ref(secret_id: fabric_durable_origin_read_secret_id),
+          version: "latest",
+        ),
+      },
+      write_credential: OriginCredentialPinned {
+        access_key_id: fabric_durable_origin_read_access_key_id,
+        token_value: secret_ref_pin_version(
+          ref: fleet_secret_ref(secret_id: fabric_durable_origin_write_secret_id),
+          version: "latest",
+        ),
+      },
     }
   }
 }

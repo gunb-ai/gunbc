@@ -3,9 +3,11 @@ module v2.test.manual.validate_then_compile_public_terminal
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 
+import std.decl_ref { decl_ref }
 import v2.compiler.compile {
   CompileMode,
   CompileLens,
+  CompileLensRoot,
   CompileOutput,
   TranslateResult,
   TranslateTo,
@@ -72,13 +74,21 @@ fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data rejecting_lens: CompileLens = CompileLens { gate: always_reject_lens_gate }
+data rejecting_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.test.manual.validate_then_compile_public_terminal", decl_name: "always_reject_lens_gate"),
+  grain: CompileLensRoot,
+  gate: always_reject_lens_gate
+}
 
 fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   outcome_accepted(Holds { value: tree.root })
 }
 
-data grounding_sanity_lens: CompileLens = CompileLens { gate: grounding_sanity_gate }
+data grounding_sanity_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.test.manual.validate_then_compile_public_terminal", decl_name: "grounding_sanity_gate"),
+  grain: CompileLensRoot,
+  gate: grounding_sanity_gate
+}
 
 fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutput>> {
   validate_then_compile(

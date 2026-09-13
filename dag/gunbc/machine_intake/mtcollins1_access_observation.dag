@@ -113,6 +113,48 @@ data mtcollins1_identity: BmcObservedIdentity = BmcObservedIdentity {
   firmware: mtcollins1_firmware,
 }
 
+// THE CONTROLLER SIDE OF THE UNIT JOIN, TYPED SO IT CAN BE FOLDED. Review 64267 found that the
+// corroboration claim -- host SMBIOS and controller FRU reading the SAME serial, which is what
+// makes this an observation of a UNIT rather than of an address -- existed only as prose on BOTH
+// ends: an annotation here and a String field in the census. DESIGN section 4c is explicit that an
+// annotation is never evidence a machine claim holds, because no Accepted program can read one. So
+// the equality that carries the whole claim was unfoldable, and the census witness had substituted
+// a literal copied from the declaration it was testing.
+//
+// Re-read from the controller rather than transcribed from the older capture. The capture carries
+// its argv on the first lines and exit=0 on the last, so a missing read is distinguishable from a
+// zero one, and both serials corroborate rather than only the board serial.
+//
+// THE CAPTURE'S PATH AND DIGEST ARE DELIBERATELY NOT DECLARED HERE. Review 64291 found that the two
+// rows I first added for them were dangling: no fold read either one, which is DESIGN section 3c's
+// own tell for a data row, and being well-formed evidence rows does not excuse it. The review
+// offered a frontier or removal; removal is the smaller change. A frontier carrier for artifact
+// identity already exists in the census module, but its constructor fixes the module path to that
+// module, so admitting rows HERE would mean generalizing that carrier -- more machinery than two
+// unconsumed rows are worth, and DESIGN section 2 is explicit that net concepts must not grow by
+// re-invention. The artifact lands with its digest in its own evidence PR, where the bytes and the
+// hash are reviewed together; when a modelled capture producer exists it can mint these rows with
+// its own consumer, which is the trigger that would make declaring them earn something.
+//
+// NOT FIXED HERE, and stated rather than silently left: mtcollins1_intake_capture_artifact_path and
+// mtcollins1_write_exercise_artifact_path above are dangling by the same test. They predate this
+// change, the review correctly scoped to the rows this PR adds, and sweeping them would widen a
+// review fix into an unrelated cleanup.
+type MtCollins1ControllerFruIdentity {
+  board_serial: NonEmptyStr
+  product_serial: NonEmptyStr
+  board_part_number: NonEmptyStr
+  board_manufacturer: NonEmptyStr
+}
+
+data mtcollins1_controller_fru_identity: MtCollins1ControllerFruIdentity = MtCollins1ControllerFruIdentity {
+  board_serial: "02030A800TEXFT02L",
+  product_serial: "MXX2080619",
+  board_part_number: "02030A800-600-G",
+  board_manufacturer: "FOXCONN",
+}
+
+
 // THE OBSERVATION'S raw_response NAMES A MANIFEST, NOT ONE CAPTURE, and that is a correction rather
 // than a refinement. It previously named the intake capture alone, while the observation's own
 // fields made claims that capture does not contain: the SEL read behind SurfaceEventLog, the clock

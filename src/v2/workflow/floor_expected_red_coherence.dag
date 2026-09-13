@@ -186,14 +186,17 @@ fn floor_expected_red_chunk_coherence_check(
     }
   }
 
-  let per_chunk_causes = list_reverse(xs: fold(chunks, init: Empty, f: fn(acc, chunk) {
+  let per_chunk_causes = fold(chunks, init: Empty, f: fn(acc, chunk) {
     let resolution = resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
     match decl_fact_skeleton_for_resolution(resolution: resolution) {
       Absent =>
-        Cons {
-          head: ChunkDeclarationUnresolved { qualified_name: chunk.qualified_name, resolution: resolution },
-          tail: acc
-        }
+        list_append(
+          left: acc,
+          right: Cons {
+            head: ChunkDeclarationUnresolved { qualified_name: chunk.qualified_name, resolution: resolution },
+            tail: Empty
+          }
+        )
       Present { value: chunk_node } => {
         let identity_causes = chunk_authored_identities_against_roster(node: chunk_node, chunk: chunk, roster: evaluated_roster)
         let link_causes = match decl_fact_skeleton_for_resolution(resolution: aggregator_resolution) {
@@ -212,10 +215,10 @@ fn floor_expected_red_chunk_coherence_check(
             }
           Absent => Empty
         }
-        list_append(left: identity_causes, right: list_append(left: link_causes, right: acc))
+        list_append(left: acc, right: list_append(left: identity_causes, right: link_causes))
       }
     }
-  }))
+  })
 
   let roster_causes = roster_identities_missing_from_authored_chunks(facts: facts, chunks: chunks, roster: evaluated_roster)
 

@@ -395,8 +395,8 @@ fn output_obligations_revision(declared: DeclaredOutputObligations) -> OutputObl
 // seal another's roster. judgment is required and stamped so start-vs-gate
 // policy is readable from the value.
 //
-// Named join: gunbc.fabric_m0_publication publish_work (declared frontier on
-// ResolvedOutputObligations until a run-path ending consumes that join).
+// Named join: gunbc.fabric_m0_publication publish_work, consumed by
+// gunbc.fabric_m0_job_ending end_required_job (required-CI wire still a frontier).
 // Witnesses below exercise both arms.
 fn resolve_output_obligations(
   contract: WorkContract,

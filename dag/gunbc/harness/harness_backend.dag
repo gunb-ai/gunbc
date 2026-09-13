@@ -26,12 +26,14 @@ import gunbc.serving.serving_enrollment {
 import gunbc.serving.admitted_model {
   ServingModelAdmitted, ServingModelNotAdmitted, serving_admit_advertised,
 }
+import gunbc.spark.vllm_observed {
+  VllmModelsRouteReadbackStanding, vllm_models_route_standing, vllm_models_route_standing_wire,
+  vllm_models_advertised_ids,
+}
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
 import extdeps.languages.json.parse {
-  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, parse_json_document,
-  json_object_unique_member, json_document_gap_text,
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
 }
 
 
@@ -76,14 +78,14 @@ fn harness_models_url(endpoint: ServingRouteEndpoint) -> String {
 // request is shaped -- its reasoning kwargs, its tool-call parser, its context window. Carrying only
 // the id would force every consumer to resolve the unit again from a name.
 type HarnessBackendStanding
-  = HarnessBackendServing { model: NonEmptyStr, unit: HarnessServingUnit }
+  = HarnessBackendServing { model: NonEmptyStr, unit: HarnessServingUnit, readback: VllmModelsRouteReadbackStanding }
   | HarnessBackendModelNotAdmitted { advertised: String }
   | HarnessBackendUnreachable { url: String }
   | HarnessBackendUnreadable { cause: String }
 
 fn harness_standing_label(standing: HarnessBackendStanding) -> String {
   match standing {
-    HarnessBackendServing { model: _, unit: _ } => "serving"
+    HarnessBackendServing { model: _, unit: _, readback: _ } => "serving"
     HarnessBackendModelNotAdmitted { advertised: _ } => "model-not-admitted"
     HarnessBackendUnreachable { url: _ } => "unreachable"
     HarnessBackendUnreadable { cause: _ } => "unreadable"
@@ -92,8 +94,12 @@ fn harness_standing_label(standing: HarnessBackendStanding) -> String {
 
 fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
   match standing {
-    HarnessBackendServing { model: m, unit: u } =>
-      join(["route advertises ", m as String, ", which this harness speaks to as ", harness_serving_unit_wire(unit: u) as String], "")
+    HarnessBackendServing { model: m, unit: u, readback: r } =>
+      join([
+        "route advertises ", m as String,
+        ", which this harness speaks to as ", harness_serving_unit_wire(unit: u) as String,
+        "; /v1/models ", vllm_models_route_standing_wire(s: r),
+      ], "")
     HarnessBackendModelNotAdmitted { advertised: a } =>
       join([
         "route is reachable but advertises no model this harness is admitted to ask; it advertises: ", a,
@@ -110,25 +116,13 @@ fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
 // to quote the name back -- which is exactly the shape of the not_found_error this backend returns.
 // Four states, and the middle two are the ones a weaker check would fuse: reachable-but-wrong-model
 // is a different remedy from unreachable, and both are different from a malformed answer.
-fn harness_model_ids(doc: JsonValue) -> List<String> {
-  match json_object_unique_member(v: doc, key: "data") {
-    JsonMemberFound { value: d } =>
-      match d {
-        JsonArray { elements: els } =>
-          els |> flat_map(e => match json_object_unique_member(v: e, key: "id") {
-            JsonMemberFound { value: idv } =>
-              match idv {
-                JsonString { value: s } => [s]
-                _ => []
-              }
-            _ => []
-          })
-        _ => []
-      }
-    _ => []
-  }
-}
-
+// THE ID WALK IS NOT THIS MODULE'S, AND KEEPING A COPY OF IT HERE WAS A SECOND SOURCE FOR ONE FACT.
+// gunbc.spark.vllm_observed owns what a vLLM /v1/models entry is -- it decodes the same document
+// into the readback this standing carries -- and this function walked the data array and the id
+// member again to build the admitted-model input. Two walkers can disagree about what counts as an
+// advertised id, and the one here silently dropped every entry it could not read (review 64265). It
+// now consumes the one producer, which drops unreadable entries from the ADVERTISED list while
+// counting them on the readback, so the two answers come from one reading.
 // THE ADMITTED SET DECIDES, AND THE ROUTE'S OWN LIST IS WHAT IT DECIDES OVER. Every advertised id is
 // offered to gunbc.serving.admitted_model in the order the route reported them; the first one this
 // harness can express a turn for wins, and if none can, the whole advertised list travels on the
@@ -144,8 +138,13 @@ fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStan
       JsonDocumentUnreadable { gap: g } =>
         HarnessBackendUnreadable { cause: json_document_gap_text(gap: g) }
       JsonDocumentParsed { value: doc } => {
-        match serving_admit_advertised(advertised: harness_model_ids(doc: doc)) {
-          ServingModelAdmitted { id: i, unit: u } => HarnessBackendServing { model: i, unit: u }
+        match serving_admit_advertised(advertised: vllm_models_advertised_ids(doc: doc)) {
+          ServingModelAdmitted { id: i, unit: u } =>
+            HarnessBackendServing {
+              model: i,
+              unit: u,
+              readback: vllm_models_route_standing(doc: doc, served_model_id: i),
+            }
           ServingModelNotAdmitted { advertised: a } => HarnessBackendModelNotAdmitted { advertised: a }
         }
       }
@@ -199,7 +198,7 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
     ServingRouteResolved { endpoint: e, ceiling: _ } => {
       let standing = harness_observe_replica(endpoint: e)
       match standing {
-        HarnessBackendServing { model: m, unit: u } =>
+        HarnessBackendServing { model: m, unit: u, readback: _ } =>
           HarnessRosterFold {
             serving: concat(acc.serving, [HarnessRouteServing {
               endpoint: serving_route_endpoint_wire(e: e),

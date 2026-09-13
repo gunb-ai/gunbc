@@ -1,6 +1,7 @@
 module gunbc.cli_services
 
-import std.types { FilePath, String }
+import std.types { FilePath, Unit }
+import std.string_type { String }
 import gunbc.cli_invoke {
   claim_executor_verify_artifacts_transport_argv,
   gunbc_run_transport_argv

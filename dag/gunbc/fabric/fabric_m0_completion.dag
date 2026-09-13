@@ -8,6 +8,10 @@ import gunbc.fabric_m0_origin_readback {
   OriginReadingOutcome,
   OriginReadingTaken,
   OriginReadingUnavailable,
+  OriginFetchOutcome,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
   origin_reading_digest,
   origin_reading_path,
 }
@@ -91,6 +95,19 @@ fn origin_readback_of(outcome: OriginReadingOutcome) -> OriginReadback {
   match outcome {
     OriginReadingTaken { reading: r } => ReadbackConfirmed { reading: r }
     OriginReadingUnavailable { staged_path: _, cause: c } => ReadbackUnknown { cause: c }
+  }
+}
+
+// The same translation for a read that staged its own output. The fetch's absent arm is a store
+// answer -- the origin was asked at the key and said there is nothing -- so it is ReadbackAbsent,
+// not unknown; an unreachable fetch stays UNKNOWN. The key is dropped here on purpose: the subject
+// this readback is joined under is the obligation the caller names, and carrying the key beside it
+// would be a second spelling of one identity.
+fn origin_readback_of_fetch(fetch: OriginFetchOutcome) -> OriginReadback {
+  match fetch {
+    OriginObjectStaged { key: _, reading: r } => ReadbackConfirmed { reading: r }
+    OriginObjectAbsent { key: _ } => ReadbackAbsent
+    OriginFetchUnavailable { key: _, cause: c } => ReadbackUnknown { cause: c }
   }
 }
 

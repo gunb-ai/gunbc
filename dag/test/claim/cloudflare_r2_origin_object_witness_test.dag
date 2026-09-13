@@ -1,0 +1,396 @@
+module test.claim.cloudflare_r2_origin_object
+
+import std.types { Bool, String, NonEmptyStr, List, FilePath, Int }
+import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq }
+import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed }
+import extdeps.shell.exec { process_observation }
+import extdeps.exec.command { argv_words }
+import extdeps.cloudflare.account_api_tokens { PermissionGroupRef }
+import extdeps.cloudflare.r2 {
+  R2S3Endpoint,
+  R2JurisdictionDefault,
+  R2JurisdictionEu,
+  R2ObjectLocator,
+  r2_object_url,
+  r2_s3_sigv4_region,
+  r2_object_write_create_request,
+  r2_object_read_create_request,
+  workers_r2_storage_bucket_item_read_permission_group_id,
+  cloudflare_r2_frontier_rows,
+}
+import extdeps.tools.curl {
+  curl_sigv4_s3_upload_command,
+  curl_sigv4_s3_download_command,
+  curl_aws_sigv4_s3_provider,
+  curl_aws_sigv4_cli_tool,
+  curl_aws_sigv4_min_version,
+  curl_cli_tool,
+}
+import gunbc.cloudflare.r2_origin {
+  fleet_cloudflare_account_id,
+  fabric_durable_origin_read_access_key_id,
+  fabric_durable_origin_read_secret_id,
+  FabricDurableOrigin,
+  allocated_bucket_name,
+}
+import gunbc.cloudflare.r2_permission_group_observe {
+  r2_bucket_item_write_permission_group,
+  cloudflare_r2_bucket_item_write_observed_permission_group_id,
+  cloudflare_permission_group_observation_frontier_rows,
+}
+import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
+import gunbc.cloudflare.r2_origin_object {
+  S3TransferAnswer,
+  S3Answered,
+  S3NotAnswered,
+  classify_s3_transfer,
+  classify_origin_put,
+  classify_origin_fetch,
+  OriginPutOutcome,
+  OriginObjectStored,
+  OriginObjectAlreadyPresent,
+  OriginPutRefused,
+  OriginPutOutcomeUnknown,
+  OriginFetchVerdict,
+  OriginFetchStagedAt,
+  OriginFetchAbsent,
+  OriginFetchRefused,
+  OriginRead,
+  OriginWrite,
+  OriginTargetReady,
+  OriginTargetRefused,
+  resolve_origin_target,
+  OriginPut,
+  WriteCredentialShredded,
+  WriteCredentialResidueRemains,
+  put_is_clean,
+}
+import gunbc.fabric_m0_origin_readback {
+  OriginReading,
+  OriginReadingOutcome,
+  OriginReadingTaken,
+  OriginReadingUnavailable,
+  OriginObjectStaged,
+  OriginObjectAbsent,
+  OriginFetchUnavailable,
+  read_origin_staged_file,
+}
+import gunbc.fabric_m0_commit {
+  ManifestRead,
+  ManifestNotFound,
+  ManifestReadUnavailable,
+  manifest_read_of_origin_fetch,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// READS THE LIVE TREE for one reason only: the staged arm of manifest_read_of_origin_fetch needs an
+// OriginReading, and the only way to obtain one is to digest a file through the sole mint. The
+// fixture is the one every other fabric-M0 witness digests, and under the hermetic envelope its
+// digest is the canned constant -- enough for the fold's arm selection, which is what is tested.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data fixture_staged_manifest: NonEmptyStr = "dag/test/fixture/fabric_m0_origin_readback/staged_manifest.txt"
+
+fn fixture_endpoint() -> R2S3Endpoint {
+  R2S3Endpoint { account_id: "4793d734c0b8e484dfc37ec392b5fa8a", jurisdiction: R2JurisdictionDefault }
+}
+
+fn fixture_locator(key: NonEmptyStr) -> R2ObjectLocator {
+  R2ObjectLocator { endpoint: fixture_endpoint(), bucket_name: "a-bucket", key: key }
+}
+
+// THE OBJECT ADDRESS IS PATH-STYLE UNDER THE ENDPOINT HOST, AND THE JURISDICTION MOVES THE HOST.
+test fn r2_object_url_is_path_style_under_the_jurisdiction_host() -> Bool {
+  r2_object_url(locator: fixture_locator(key: "fabric-m0/v1/commit/attempt-1"))
+    == "https://4793d734c0b8e484dfc37ec392b5fa8a.r2.cloudflarestorage.com/a-bucket/fabric-m0/v1/commit/attempt-1"
+    && r2_object_url(locator: R2ObjectLocator {
+         endpoint: R2S3Endpoint { account_id: "4793d734c0b8e484dfc37ec392b5fa8a", jurisdiction: R2JurisdictionEu },
+         bucket_name: "a-bucket",
+         key: "k",
+       }) == "https://4793d734c0b8e484dfc37ec392b5fa8a.eu.r2.cloudflarestorage.com/a-bucket/k"
+    && (r2_s3_sigv4_region as String) == "auto"
+    && curl_aws_sigv4_s3_provider(region: r2_s3_sigv4_region) == "aws:amz:auto:s3"
+}
+
+fn words_of_upload(create_only: Bool) -> List<String> {
+  argv_words(command: curl_sigv4_s3_upload_command(
+    url: "https://h/b/k",
+    local_path: "/work/obj",
+    netrc_path: "/private/netrc" as FilePath,
+    sigv4_region: r2_s3_sigv4_region,
+    create_only: create_only,
+  ))
+}
+
+fn has_word(words: List<String>, word: String) -> Bool {
+  any(words, w => w == word)
+}
+
+fn last_word(words: List<String>) -> String {
+  fold(words, init: "", f: (acc, w) => w)
+}
+
+// THE CREDENTIAL IS NOT AN ARGV WORD AND THE NETRC PATH IS. The builder has no parameter that could
+// carry a secret, so this asserts the positive half -- the netrc file and the SigV4 provider are
+// on the line -- and the negative half that --user, the documented argv form, is never emitted.
+test fn curl_sigv4_upload_signs_through_the_netrc_and_never_through_argv() -> Bool {
+  let words = words_of_upload(create_only: true)
+  has_word(words: words, word: "--netrc-file")
+    && has_word(words: words, word: "/private/netrc")
+    && has_word(words: words, word: "--aws-sigv4")
+    && has_word(words: words, word: "aws:amz:auto:s3")
+    && !has_word(words: words, word: "--user")
+    && !has_word(words: words, word: "-u")
+    && has_word(words: words, word: "-fsS")
+    && has_word(words: words, word: "-T")
+    && has_word(words: words, word: "/work/obj")
+    && last_word(words: words) == "https://h/b/k"
+}
+
+fn first_word(words: List<String>) -> String {
+  fold(words, init: "", f: (acc, w) => if acc == "" { w } else { acc })
+}
+
+// THE SIGV4 BUILDERS NAME THE 7.75 REQUIREMENT, NOT THE 7.68 FLEET PIN. curl_cli_tool still admits
+// 7.68 for download/FTPS; a host that satisfies that pin and lacks --aws-sigv4 must fail the
+// SigV4 path at the requirement, not as an opaque curl usage error.
+test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool {
+  match curl_aws_sigv4_cli_tool.min_version {
+    Present { value: v } =>
+      (v as String) == (curl_aws_sigv4_min_version as String)
+        && (curl_aws_sigv4_min_version as String) == ">= 7.75"
+        && first_word(words: words_of_upload(create_only: true)) == (curl_aws_sigv4_cli_tool.name as String)
+        && match curl_cli_tool.min_version {
+          Present { value: fleet } => (fleet as String) == ">= 7.68"
+          none => false
+        }
+    none => false
+  }
+}
+
+// CREATE-IF-ABSENT IS A PARAMETER: the conditional header is present exactly when asked for.
+test fn curl_sigv4_upload_emits_the_conditional_header_only_when_create_only() -> Bool {
+  has_word(words: words_of_upload(create_only: true), word: "If-None-Match: *")
+    && !has_word(words: words_of_upload(create_only: false), word: "If-None-Match: *")
+}
+
+test fn curl_sigv4_download_names_the_destination_and_reports_the_status() -> Bool {
+  let words = argv_words(command: curl_sigv4_s3_download_command(
+    url: "https://h/b/k",
+    destination: "/staged/dir/object",
+    netrc_path: "/private/netrc" as FilePath,
+    sigv4_region: r2_s3_sigv4_region,
+  ))
+  has_word(words: words, word: "-o")
+    && has_word(words: words, word: "/staged/dir/object")
+    && has_word(words: words, word: "-w")
+    && has_word(words: words, word: "%\{http_code\}")
+    && has_word(words: words, word: "--netrc-file")
+    && !has_word(words: words, word: "--user")
+    && !has_word(words: words, word: "-T")
+    && last_word(words: words) == "https://h/b/k"
+}
+
+fn answered(status: Int) -> Bool {
+  match classify_s3_transfer(observation: process_observation(exit_code: 22, stdout: concat(to_string(status), "\n"), stderr: "")) {
+    S3Answered { status: s } => s == status
+    S3NotAnswered { cause: _ } => false
+  }
+}
+
+fn not_answered(stdout: String) -> Bool {
+  match classify_s3_transfer(observation: process_observation(exit_code: 7, stdout: stdout, stderr: "could not connect")) {
+    S3Answered { status: _ } => false
+    S3NotAnswered { cause: _ } => true
+  }
+}
+
+// THE STATUS IS READ FROM STDOUT, NOT FROM THE EXIT CODE: exit 22 with 404 on stdout is an ANSWER.
+// 000 is curl's no-status word, and anything that is not a status in range is not an answer.
+test fn s3_transfer_status_is_read_from_stdout_and_000_is_not_an_answer() -> Bool {
+  answered(status: 200) && answered(status: 404) && answered(status: 412) && answered(status: 500)
+    && not_answered(stdout: "000")
+    && not_answered(stdout: "")
+    && not_answered(stdout: "curl: (7) Failed")
+    && not_answered(stdout: "999")
+    && not_answered(stdout: "99")
+}
+
+fn put_of(answer: S3TransferAnswer) -> OriginPutOutcome {
+  classify_origin_put(key: "k", answer: answer, stderr: "")
+}
+
+// FOUR PUT ARMS, EACH REACHED FROM A FIXTURE: 2xx stored, 412 present, 4xx refused, 5xx and
+// no-status unknown. The 5xx-is-unknown arm is the discriminating one -- an earlier shape of the
+// token mint mapped every non-2xx to refused and classified a possibly-committed write as safely
+// retryable.
+test fn origin_put_classifies_stored_present_refused_and_unknown() -> Bool {
+  match put_of(answer: S3Answered { status: 200 }) {
+       OriginObjectStored { key: k } => k == "k"
+       other => false
+     }
+    && match put_of(answer: S3Answered { status: 412 }) {
+         OriginObjectAlreadyPresent { key: _ } => true
+         other => false
+       }
+    && match put_of(answer: S3Answered { status: 403 }) {
+         OriginPutRefused { key: _, cause: _ } => true
+         other => false
+       }
+    && match put_of(answer: S3Answered { status: 500 }) {
+         OriginPutOutcomeUnknown { key: _, cause: _ } => true
+         other => false
+       }
+    && match put_of(answer: S3Answered { status: 503 }) {
+         OriginPutOutcomeUnknown { key: _, cause: _ } => true
+         other => false
+       }
+    && match put_of(answer: S3NotAnswered { cause: "no status" }) {
+         OriginPutOutcomeUnknown { key: _, cause: _ } => true
+         other => false
+       }
+}
+
+// A CREDENTIAL THAT COULD NOT BE SHREDDED IS NEVER CLEAN, WHATEVER THE STORE SAID -- and the
+// store's verdict is not demoted to say so. The earlier shape folded the residue into the verdict's
+// cause string; a consumer that then confirmed the object by fetch published success over a leaked
+// token (gunbc#11157 review 64512). Custody is its own field, and a stored verdict stays stored.
+test fn origin_put_with_credential_residue_is_never_clean_and_keeps_its_verdict() -> Bool {
+  let leaked = OriginPut { verdict: OriginObjectStored { key: "k" }, credential: WriteCredentialResidueRemains { cause: "left on disk" } }
+  let clean = OriginPut { verdict: OriginObjectStored { key: "k" }, credential: WriteCredentialShredded }
+  (put_is_clean(put: leaked) == false)
+    && put_is_clean(put: clean)
+    && (match leaked.verdict { OriginObjectStored { key: _ } => true  other => false })
+}
+
+fn fetch_of(answer: S3TransferAnswer) -> OriginFetchVerdict {
+  classify_origin_fetch(answer: answer, staged_path: "/staged/object", stderr: "")
+}
+
+// THE FETCH'S THREE ARMS, AND 404 IS ABSENCE ONLY BECAUSE THE ORIGIN SAID SO: a refused 403 and a
+// transport that never answered are both UNAVAILABLE, never absent.
+test fn origin_fetch_classifies_staged_absent_and_refused() -> Bool {
+  match fetch_of(answer: S3Answered { status: 200 }) {
+       OriginFetchStagedAt { staged_path: p } => p == "/staged/object"
+       other => false
+     }
+    && match fetch_of(answer: S3Answered { status: 404 }) {
+         OriginFetchAbsent => true
+         other => false
+       }
+    && match fetch_of(answer: S3Answered { status: 403 }) {
+         OriginFetchRefused { cause: _ } => true
+         other => false
+       }
+    && match fetch_of(answer: S3Answered { status: 500 }) {
+         OriginFetchRefused { cause: _ } => true
+         other => false
+       }
+    && match fetch_of(answer: S3NotAnswered { cause: "no status" }) {
+         OriginFetchRefused { cause: _ } => true
+         other => false
+       }
+}
+
+// THE COMMIT FOLD OVER A SELF-STAGING FETCH: absence reaches ManifestNotFound (which manifest_read_of
+// cannot reach), unavailability stays unknown, and a staged reading confirms.
+test fn manifest_read_of_origin_fetch_maps_each_arm() -> Bool {
+  match manifest_read_of_origin_fetch(fetch: OriginObjectAbsent { key: "k" }) {
+       ManifestNotFound => true
+       other => false
+     }
+    && match manifest_read_of_origin_fetch(fetch: OriginFetchUnavailable { key: "k", cause: "c" }) {
+         ManifestReadUnavailable { cause: c } => (c as String) == "c"
+         other => false
+       }
+    && match read_origin_staged_file(staged_path: fixture_staged_manifest) {
+         OriginReadingUnavailable { staged_path: _, cause: _ } => false
+         OriginReadingTaken { reading: r } =>
+           match manifest_read_of_origin_fetch(fetch: OriginObjectStaged { key: "k", reading: r }) {
+             ManifestRead { reading: _ } => true
+             other => false
+           }
+       }
+}
+
+fn declared_bucket_name() -> String {
+  match allocated_bucket_name(purpose: FabricDurableOrigin {}) {
+    Present { value: name } => name as String
+    Absent => "<unallocated>"
+  }
+}
+
+// THE READ TARGET RESOLVES FROM THE DECLARATIONS -- account, bucket, pinned read credential -- and
+// the locator's URL is the declared bucket under the declared account, with the key as given.
+test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential() -> Bool {
+  match resolve_origin_target(direction: OriginRead, key: "fabric-m0/v1/commit/attempt-1") {
+    OriginTargetRefused { cause: _ } => false
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus } =>
+      (locator.bucket_name as String) == declared_bucket_name()
+        && locator.endpoint.account_id == (fleet_cloudflare_account_id as String)
+        && (locator.key as String) == "fabric-m0/v1/commit/attempt-1"
+        && (access_key_id as String) == (fabric_durable_origin_read_access_key_id as String)
+        && (locus.secret as String) == (fabric_durable_origin_read_secret_id as String)
+        && string_contains(
+             s: r2_object_url(locator: locator),
+             pattern: concat(fleet_cloudflare_account_id as String, ".r2.cloudflarestorage.com/"))
+  }
+}
+
+// THE WRITE TARGET REFUSES TODAY, NAMING THE ENTRY THAT MINTS ITS CREDENTIAL. This is the declared
+// state until run_object_write executes and its version is pinned; when that lands this test is
+// retired into the write twin of the read test above, deliberately.
+test fn origin_write_target_refuses_until_the_write_credential_is_pinned() -> Bool {
+  match resolve_origin_target(direction: OriginWrite, key: "k") {
+    OriginTargetReady { locator: _, access_key_id: _, token_value: _ } => false
+    OriginTargetRefused { cause: cause } =>
+      string_contains(s: cause as String, pattern: "run_object_write")
+        && string_contains(s: cause as String, pattern: "gunbc.cloudflare.r2_token_mint_run")
+  }
+}
+
+// THE WRITE GRANT CARRIES THE OBSERVED GROUP, NOT THE PINNED READ ONE, and it is the observation
+// module's id that arrives -- the builder took it as a parameter and did not author one.
+test fn r2_object_write_request_carries_the_observed_write_group_only() -> Bool {
+  let request = r2_object_write_create_request(
+    name: "n",
+    write_group: r2_bucket_item_write_permission_group(),
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "a-bucket",
+  )
+  let read_request = r2_object_read_create_request(
+    name: "n",
+    account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
+    jurisdiction: R2JurisdictionDefault,
+    bucket_name: "a-bucket",
+  )
+  all(request.policies, p =>
+    any(p.permission_groups, g => (g.id as String) == (cloudflare_r2_bucket_item_write_observed_permission_group_id as String))
+      && !any(p.permission_groups, g => (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String)))
+    && all(read_request.policies, p =>
+         !any(p.permission_groups, g => (g.id as String) == (cloudflare_r2_bucket_item_write_observed_permission_group_id as String)))
+    && (cloudflare_r2_bucket_item_write_observed_permission_group_id as String)
+         != (workers_r2_storage_bucket_item_read_permission_group_id as String)
+}
+
+fn frontier_row_names_decl(row: FrontierRow, ref: DeclarationRef) -> Bool {
+  match row.subject {
+    DeclSubject { ref: r } => declaration_ref_eq(a: r, b: ref)
+    PathSubject { path: _ } => false
+  }
+}
+
+// THE FRONTIER MOVED AND SAYS WHERE IT STANDS: the S3 endpoint row is retired (r2_object_url reaches
+// it on the executing entries), the write-mint admission row is open until its Create executes, and
+// the observed-write-id row is still open for the same reason.
+test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
+  frontier_rows_well_formed(rows: cloudflare_r2_frontier_rows)
+    && !any(cloudflare_r2_frontier_rows, row => frontier_row_names_decl(
+         row: row, ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_s3_endpoint_url")))
+    && frontier_rows_well_formed(rows: cloudflare_r2_token_mint_frontier_rows)
+    && any(cloudflare_r2_token_mint_frontier_rows, row => frontier_row_names_decl(
+         row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint")))
+    && any(cloudflare_permission_group_observation_frontier_rows, row => frontier_row_names_decl(
+         row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id")))
+}

@@ -213,8 +213,11 @@ type PlatformTrainingFailure {
 // enough to demand a sample before committing to eight modules, but not strong
 // enough to declare a part incompatible sight-unseen — only a decode of this
 // platform's own syndrome register is.
+// Not implicated by the supplied failures is not positive compatibility evidence.
+// Unresolved names the training step whose platform evidence is missing.
 type PartImplication
   = PartNotImplicated
+  | PartEvidenceUnresolved { step: MemoryTrainingStep }
   | PartSampleQualificationRequired {
       step: MemoryTrainingStep
       standing: TrainingEvidenceStanding
@@ -235,7 +238,7 @@ fn implication_severity(
       PartSampleQualificationRequired { step: step, standing: standing }
     InferredFromSequencePosition =>
       PartSampleQualificationRequired { step: step, standing: standing }
-    EvidenceUnobserved => PartNotImplicated
+    EvidenceUnobserved => PartEvidenceUnresolved { step: step }
   }
 }
 
@@ -274,6 +277,15 @@ fn part_implication(
             PartImplicatedByFailingStep { step: s2, standing: st2 } =>
               PartImplicatedByFailingStep { step: s2, standing: st2 }
             _ => PartSampleQualificationRequired { step: s, standing: st }
+          }
+        PartEvidenceUnresolved { step: s } =>
+          match implication_for_step(
+            candidate: candidate,
+            failure: failure,
+            target_board: target_board,
+          ) {
+            PartNotImplicated => PartEvidenceUnresolved { step: s }
+            next => next
           }
         PartNotImplicated =>
           implication_for_step(

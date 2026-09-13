@@ -24,6 +24,7 @@ data control_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
 test fn row_axes_match_the_labelled_module_organization() -> Bool {
   m386a4g40dm0_cpb_catalog.part_number == ("M386A4G40DM0-CPB" as NonEmptyStr)
     && m386a4g40dm0_cpb_catalog.buffering == LoadReduced
+    && m386a4g40dm0_cpb_catalog.die_stacking == DualDiePackage
     && bit_width_count(b: m386a4g40dm0_cpb_catalog.chip_width) == 4
     && m386a4g40dm0_cpb_catalog.rank_count == 4
     && m386a4g40dm0_cpb_catalog.data_rate_mts == 2133

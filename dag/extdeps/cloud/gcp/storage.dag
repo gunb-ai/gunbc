@@ -1,0 +1,147 @@
+module extdeps.cloud.gcp.storage
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Int, List, String }
+import extdeps.cloud.gcp.gcp { GcpService, GcpStorage }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/storage/docs/json_api/v1/objects"
+  }
+}
+
+// GOOGLE CLOUD STORAGE JSON API v1 -- THE INTERFACE FACTS A MATERIALIZATION-STORE REALIZATION
+// WOULD BIND TO, AND NOTHING ELSE. This module owns the upstream's shape (DESIGN section 3: the
+// interface is extdeps', the transport handler is one realization bound to it, the policy is the
+// workflow's). It carries no handler and no dispatch: the handler lands when the operator says
+// (operator provider ruling, 2026-09-11). These rows are therefore a DECLARED FRONTIER in DESIGN
+// section 3c's middle state -- consumed by a NAMED consumer in a NAMED later change -- and the row
+// group gcs_storage_frontier_rows below carries that as data, not prose. The consumer is the GCS
+// realization handler, extdeps.realization.materialization_store_gcs, the sibling of
+// extdeps.realization.materialization_store_local: it binds these rows to
+// std.materialization_object's observations exactly as the local handler binds the filesystem
+// operations. The change is dispatch step 5 of the ruled order (1 recut #10940, 2 ancestry, 3
+// provider spine -- this change, 4 route integration, 5 NFS/GCS realization, 6 incubation), not an
+// open-ended discretion. GCS-readiness TODAY is carried by std.materialization_object's path-free
+// observation types, which are consumed now; these rows are the upstream facts (cited, upstream's
+// own names, API version v1) that the handler binds, so that nothing re-coins them when it lands.
+//
+// What the rows establish, cited:
+//   objects.get with alt=media returns the object's bytes; 404 is a typed absent object
+//     (cloud.google.com/storage/docs/json_api/v1/objects/get) -- the exact-read semantics, with no
+//     listing and no prefix fallback;
+//   objects.insert with ifGenerationMatch=0 succeeds only if no live object has that name and
+//     answers 412 Precondition Failed otherwise (cloud.google.com/storage/docs/request-preconditions)
+//     -- put-if-absent; an object becomes visible only when the upload completes, so a reader never
+//     observes a partial object;
+//   read-after-write and read-after-metadata-update are strongly consistent for objects
+//     (cloud.google.com/storage/docs/consistency) -- a commit's exact read-back is meaningful;
+//   401/403 are authorization refusals and 429/5xx are availability refusals
+//     (cloud.google.com/storage/docs/json_api/v1/status-codes) -- neither is ever an absent object.
+// The object NAME is the only locator; there is no rename and no directory, which is exactly why the
+// store's interface names neither.
+
+type GcsObjectOperation
+  = GcsObjectsGet
+  | GcsObjectsInsert
+
+// WHICH ENDPOINT, WITHOUT RESTATING ONE. objects.get is served by the JSON API, whose base URL is
+// already owned by extdeps.cloud.gcp.gcp api_endpoints (the GcpStorage row) -- so the fact here
+// names that authority and carries only the resource path relative to it (review 63888: the base
+// literal is not re-minted). objects.insert with uploadType=media is served by the MEDIA UPLOAD
+// endpoint, a distinct upstream URL that api_endpoints does not carry; it lives once, on this
+// variant, cited to the upload documentation.
+type GcsRequestEndpoint
+  = GcsJsonApiEndpoint { service: GcpService }
+  | GcsMediaUploadEndpoint { base_url: String, citation: String }
+
+type GcsObjectOperationFacts {
+  operation: GcsObjectOperation
+  method: String
+  endpoint: GcsRequestEndpoint
+  resource_path: String
+  required_query: List<String>
+  citation: String
+}
+
+data gcs_objects_get: GcsObjectOperationFacts = GcsObjectOperationFacts {
+  operation: GcsObjectsGet,
+  method: "GET",
+  endpoint: GcsJsonApiEndpoint { service: GcpStorage },
+  resource_path: "/b/\{bucket\}/o/\{object\}",
+  required_query: ["alt=media"],
+  citation: "cloud.google.com/storage/docs/json_api/v1/objects/get"
+}
+
+data gcs_objects_insert_if_absent: GcsObjectOperationFacts = GcsObjectOperationFacts {
+  operation: GcsObjectsInsert,
+  method: "POST",
+  endpoint: GcsMediaUploadEndpoint {
+    base_url: "https://storage.googleapis.com/upload/storage/v1",
+    citation: "cloud.google.com/storage/docs/uploading-objects"
+  },
+  resource_path: "/b/\{bucket\}/o",
+  required_query: ["uploadType=media", "name=\{object\}", "ifGenerationMatch=0"],
+  citation: "cloud.google.com/storage/docs/request-preconditions"
+}
+
+// The status codes the two operations answer, each with the upstream's own meaning. The mapping
+// of these meanings onto a store observation is the HANDLER's, not this module's.
+type GcsObjectStatusMeaning
+  = GcsObjectReturned
+  | GcsObjectNotFound
+  | GcsPreconditionFailed
+  | GcsUnauthenticated
+  | GcsForbidden
+  | GcsRateLimited
+  | GcsServerError
+
+type GcsObjectStatusFact {
+  status: Int
+  meaning: GcsObjectStatusMeaning
+}
+
+data gcs_object_status_facts: List<GcsObjectStatusFact> = [
+  GcsObjectStatusFact { status: 200, meaning: GcsObjectReturned },
+  GcsObjectStatusFact { status: 404, meaning: GcsObjectNotFound },
+  GcsObjectStatusFact { status: 412, meaning: GcsPreconditionFailed },
+  GcsObjectStatusFact { status: 401, meaning: GcsUnauthenticated },
+  GcsObjectStatusFact { status: 403, meaning: GcsForbidden },
+  GcsObjectStatusFact { status: 429, meaning: GcsRateLimited },
+  GcsObjectStatusFact { status: 500, meaning: GcsServerError },
+  GcsObjectStatusFact { status: 503, meaning: GcsServerError },
+]
+
+// The frontier, typed, and enrolled in gunbc.census_closure_frontier
+// census_closure_frontier_row_groups so gunbc.dissolution_census folds it like every sibling
+// extdeps frontier group, one row per declaration the handler will consume (review 63888), and the dissolution is
+// UNBOUND because its consumer does not exist yet -- a bound dissolution may only cite a declaration
+// the tree already carries (the required declarations phase refuses CITED-MODULE-ABSENT otherwise).
+// The description names the consumer declaration and the ruled dispatch step, so the row becomes
+// bindable to std.dissolution bound_dissolution in the change that lands the handler.
+data gcs_frontier_reason: String = "GCS JSON API v1 interface row landing ahead of its handler (operator provider ruling 2026-09-11: interface rows day one, handler later). Named consumer: extdeps.realization.materialization_store_gcs, which maps gcs_objects_get / gcs_objects_insert_if_absent and gcs_object_status_facts onto std.materialization_object StoreObjectRead / StoreObjectPublish. Named change: ruled dispatch step 5 (NFS/GCS realization), after 4 (route integration)."
+
+data gcs_frontier_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: extdeps.realization.materialization_store_gcs gcs_store_read_observation appears (the GCS realization handler, sibling of extdeps.realization.materialization_store_local, landed at ruled dispatch step 5 NFS/GCS realization); that change rebinds this row to bound_dissolution on that declaration.")
+
+data gcs_storage_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloud.gcp.storage", decl_name: "gcs_objects_get"),
+    reason: gcs_frontier_reason,
+    dissolution: gcs_frontier_dissolution
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloud.gcp.storage", decl_name: "gcs_objects_insert_if_absent"),
+    reason: gcs_frontier_reason,
+    dissolution: gcs_frontier_dissolution
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloud.gcp.storage", decl_name: "gcs_object_status_facts"),
+    reason: gcs_frontier_reason,
+    dissolution: gcs_frontier_dissolution
+  ),
+]

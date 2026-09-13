@@ -1160,6 +1160,7 @@ type FileResultChannel
   | FileChanByteCount
   | FileChanPath
   | FileChanError
+  | FileChanErrorKind
   | FileChanContent
 
 type FileResultField {
@@ -1203,6 +1204,7 @@ fn file_result_channel_of_key(key: String) -> FileResultChannel? {
   else if key == "bytes_written" || key == "bytes" || key == "byte_count" { Present { value: FileChanByteCount } }
   else if key == "path" { Present { value: FileChanPath } }
   else if key == "error" { Present { value: FileChanError } }
+  else if key == "error_kind" { Present { value: FileChanErrorKind } }
   else if key == "content" || key == "entries" { Present { value: FileChanContent } }
   else { none }
 }

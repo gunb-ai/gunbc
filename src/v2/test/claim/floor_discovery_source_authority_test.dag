@@ -1,10 +1,10 @@
 module v2.test.claim.floor_discovery_source_authority_test
 
-import v2.workflow.floor_discovery { FloorDiscoveryRow }
-import v2.workflow.floor_discovery_producer {
+import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_source_authority {
   FloorDiscoveryAccepted,
-  FloorDiscoveryRefused,
   FloorDiscoveryProducerResult,
+  FloorDiscoveryRefused,
   discover_floor_rows_for_source,
   floor_discovery_finalize_source_outcomes
 }

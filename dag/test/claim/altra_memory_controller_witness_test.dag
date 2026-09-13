@@ -12,6 +12,7 @@ import extdeps.memory.types {
   LoadReduced,
   DramDieStacking,
   MonolithicDie,
+  DualDiePackage,
   ThreeDimensionalStacked,
   DramModuleClass,
   dram_module_class_eq,
@@ -82,6 +83,21 @@ test fn w_stacking_is_independent_of_buffering() -> Bool {
     && altra_admits_module_class(c: reg_mono)
     && altra_admits_module_class(c: reg_3ds)
     && !altra_admits_module_class(c: DramModuleClass { buffering: LoadReduced, stacking: ThreeDimensionalStacked })
+}
+
+// THE THIRD STACKING VALUE IS NEITHER OF THE OTHER TWO, AND THE DATASHEET NAMES NO CLASS FOR IT.
+// A dual-die (multi-load stack) registered module is not the datasheet's "RDIMMs" row as this
+// module transcribes it (monolithic) and not its "Stacked (3DS) RDIMMs" row (single-load stack),
+// so the fold answers false for it. That is the absence of a listing -- Issue 1.55 §2.10 does not
+// mention DDP at all -- and NOT a withdrawal like UDIMM's; the two are kept apart above. The
+// control matters because before DualDiePackage existed such a module could only be written as
+// monolithic and would have been admitted as a class it does not belong to.
+test fn w_a_dual_die_registered_module_is_not_among_the_listed_classes() -> Bool {
+  let reg_ddp = DramModuleClass { buffering: Registered, stacking: DualDiePackage }
+  !altra_admits_module_class(c: reg_ddp)
+    && !dram_module_class_eq(a: reg_ddp, b: DramModuleClass { buffering: Registered, stacking: MonolithicDie })
+    && !dram_module_class_eq(a: reg_ddp, b: DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked })
+    && dram_module_class_eq(a: reg_ddp, b: DramModuleClass { buffering: Registered, stacking: DualDiePackage })
 }
 
 // THE WITHDRAWAL IS THE STANDING, not a missing entry. A board-down proposal must land on the

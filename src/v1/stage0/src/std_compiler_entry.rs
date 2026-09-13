@@ -2,7 +2,9 @@
 // Source module: std.compiler_entry
 
 use self::CompilerEntryDriver::*;
+use self::NativeDriverChildStanding::*;
 use self::NativeDriverCostAccounting::*;
+use self::NativeDriverCostRowStanding::*;
 pub use crate::std_measure::Nanosecond;
 pub use crate::std_measure::{
     millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count,
@@ -27,9 +29,13 @@ pub enum CompilerEntryDriver {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeDriverExclusiveRows {
     pub load: Nanosecond,
+    pub universe_derivation: Nanosecond,
     pub context: Nanosecond,
     pub prepare: Nanosecond,
     pub eval: Nanosecond,
+    pub receipt_admission: Nanosecond,
+    pub row_serialization: Nanosecond,
+    pub module_release: Nanosecond,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -60,10 +66,14 @@ pub fn native_driver_cost_remainder_tolerance_nanos() -> Nanosecond {
 
 pub fn native_driver_exclusive_sum(rows: Rc<NativeDriverExclusiveRows>) -> Nanosecond {
     crate::std_measure::nanosecond(
-        (((crate::std_measure::nanosecond_count(rows.load.clone())
+        (((((((crate::std_measure::nanosecond_count(rows.load.clone())
+            + crate::std_measure::nanosecond_count(rows.universe_derivation.clone()))
             + crate::std_measure::nanosecond_count(rows.context.clone()))
             + crate::std_measure::nanosecond_count(rows.prepare.clone()))
-            + crate::std_measure::nanosecond_count(rows.eval.clone())),
+            + crate::std_measure::nanosecond_count(rows.eval.clone()))
+            + crate::std_measure::nanosecond_count(rows.receipt_admission.clone()))
+            + crate::std_measure::nanosecond_count(rows.row_serialization.clone()))
+            + crate::std_measure::nanosecond_count(rows.module_release.clone())),
     )
 }
 
@@ -107,9 +117,61 @@ pub fn native_driver_cost_account(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeDriverChildStanding {
+    NativeDriverChildExited { stderr: String },
+    NativeDriverChildStillRunning,
+}
+impl NativeDriverChildStanding {
+    pub fn stderr(&self) -> String {
+        match self {
+            NativeDriverChildStanding::NativeDriverChildExited { stderr: __val, .. } => {
+                __val.clone()
+            }
+            NativeDriverChildStanding::NativeDriverChildStillRunning => {
+                panic!("no stderr on unit variant")
+            }
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NativeDriverCostRowStanding {
+    NativeDriverCostRowsObserved,
+    NativeDriverCostRowsUnobserved,
+    NativeDriverCostRowsPending,
+}
+
+pub fn native_driver_cost_row_standing(
+    child: Rc<NativeDriverChildStanding>,
+) -> NativeDriverCostRowStanding {
+    match (*child.clone()).clone() {
+        NativeDriverChildStanding::NativeDriverChildStillRunning => {
+            NativeDriverCostRowStanding::NativeDriverCostRowsPending
+        }
+        NativeDriverChildStanding::NativeDriverChildExited { stderr: stderr, .. } => {
+            if v1_rt::string_contains(&stderr, "[native-cost-partition] ".to_string()) {
+                NativeDriverCostRowStanding::NativeDriverCostRowsObserved
+            } else {
+                NativeDriverCostRowStanding::NativeDriverCostRowsUnobserved
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RetainedHostCliKernel;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DirectIngestDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRootEvalDriver;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeDriverCostRowsObserved;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeDriverCostRowsUnobserved;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeDriverCostRowsPending;

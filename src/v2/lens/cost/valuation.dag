@@ -270,21 +270,21 @@ type SummationState {
 // one place a zero here is earned; it is paired with the missing-binding refusal so that a zero in
 // a cost report is never ambiguous between nothing to do and nothing modelled.
 
-// Once the accumulator has refused, later iterations do not evaluate the body. This is a COST fix
-// with a soundness argument, not an optimisation, and both halves matter. The cost:
-// non_empty_append is linear in its left argument because list_append folds the left side, so
-// accumulating one cause per iteration is quadratic in the iteration count - and CostEffect refuses
-// unconditionally in this slice, so any loop containing an effect reaches it, at whatever size the
-// bound happens to be. The standing bare-minimum-cost rule fixes a proven quadratic fold regardless
-// of the realized n, because n is not a time-stable fact. The signal: those causes are IDENTICAL -
-// the body expression is fixed across iterations and only the binder VALUE changes - so
-// accumulating them amplified one deficit u times rather than counting u deficits, degrading the
-// very countability the accumulate rule exists to protect. The soundness argument for skipping,
-// stated so it can be re-checked rather than trusted: a refusal here is a property of the body
-// EXPRESSION, not of the binder's value - unboundness, an unmodelled effect, an invalid log base
-// and an unavailable integer logarithm are all value-independent - so a body that refuses at one
-// iteration refuses at every one. Dissolve-on: the first value-DEPENDENT refusal cause, at which
-// point this skip becomes unsound and the fix becomes cause-identity dedup instead.
+// Once the accumulator has refused, later iterations do not evaluate the body. This is a
+// countability fix with a soundness argument, not an optimisation, and both halves matter.
+// CostEffect refuses unconditionally in this slice, so any loop containing an effect reaches it
+// at whatever size the bound happens to be. Those causes are IDENTICAL - the body expression is
+// fixed across iterations and only the binder VALUE changes - so accumulating them amplified one
+// deficit u times rather than counting u deficits, degrading the very countability the accumulate
+// rule exists to protect. (non_empty_append is list_append of the tails after a snoc of the right
+// head; list_append is concat, which copies the RIGHT, so appending one cause onto a growing
+// accumulator is not the left-fold quadratic that used to justify this skip.) The soundness
+// argument for skipping, stated so it can be re-checked rather than trusted: a refusal here is a
+// property of the body EXPRESSION, not of the binder's value - unboundness, an unmodelled effect,
+// an invalid log base and an unavailable integer logarithm are all value-independent - so a body
+// that refuses at one iteration refuses at every one. Dissolve-on: the first value-DEPENDENT
+// refusal cause, at which point this skip becomes unsound and the fix becomes cause-identity
+// dedup instead.
 
 fn evaluate_summation(
   binder: SizeVariable,

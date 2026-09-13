@@ -193,8 +193,8 @@ fn grammar_coverage_census_fold_step(
         parsed_clean: acc.parsed_clean,
         rejected_count: acc.rejected_count + 1,
         rejected_rows: list_append(
-          left: [GrammarCoverageRejectedRow { stage: stage, reason: reason, count: 1 }],
-          right: acc.rejected_rows
+          left: acc.rejected_rows,
+          right: [GrammarCoverageRejectedRow { stage: stage, reason: reason, count: 1 }]
         ),
         file_rows: list_append(left: acc.file_rows, right: [file_row])
       }

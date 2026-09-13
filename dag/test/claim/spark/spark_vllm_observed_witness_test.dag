@@ -2,6 +2,10 @@ module test.claim.spark.spark_vllm_observed_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
+import extdeps.languages.json.emit { JsonValue, JsonNull }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document,
+}
 import std.measure { TokenCount, token_count, token_count_value, BasisPoint, basis_point, basis_point_count, basis_point_unity_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.vllm_observed {
@@ -31,6 +35,10 @@ import gunbc.spark.vllm_observed {
   vllm_served_id_is_not_derivable_from_configured_path,
   vllm_version_route_2026_09_03,
   vllm_readback_2026_09_03,
+  VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteEntryAbsent,
+  ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, ModelsRouteEntryDuplicated,
+  ModelsRouteDocumentUnreadable,
+  vllm_models_route_standing, vllm_models_advertised_ids,
 }
 import extdeps.vllm.server {
   VllmRoute,
@@ -333,4 +341,206 @@ test fn w_the_numeric_readbacks_are_measures_that_can_be_compared() -> Bool {
   token_count_value(vllm_readback_2026_09_03.models_route.max_model_len) == 262144
     && basis_point_count(vllm_readback_2026_09_03.cache_config_gauge.gpu_memory_utilization)
          < basis_point_unity_count()
+}
+
+// ── THE LIVE DECODE OF /v1/models, EXECUTED ON REAL DOCUMENT SHAPES ───────────────────────────
+//
+// The readback carriers above were authored from a hand transcription. These rows exercise the
+// producer that now fills them from the document the harness already fetches, and they are written
+// against the shape the live route actually returns -- the fixture body below is the group A
+// response with its long fields trimmed, not an invented object.
+//
+// EVERY ROW BUT THE FIRST IS A RED, and that is the point: a decode that answers with a readback for
+// a malformed entry is worse than no decode, because it fills a carrier whose annotation says the
+// path it holds is evidence about intent. The positive control is what stops the reds from being
+// satisfied by a producer that refuses everything.
+//
+// NONE OF THESE ROWS TOUCHES THE NETWORK, AND THAT IS DELIBERATE RATHER THAN INCIDENTAL. Every one
+// decodes a fixture string, so they establish what the decode DOES with a document and nothing about
+// whether any route is up; they pass with every Spark endpoint refusing connections, which is the
+// state the fleet was in when this was written. The one thing a live route contributed is the shape
+// of w_live_models_body: it was captured from group A at 192.168.1.225:30000 on 2026-09-12, before
+// that endpoint stopped answering, and trimmed. So a future red here is a defect in the decode, and
+// never a dead endpoint -- which is the confusion this note exists to prevent.
+fn w_models_doc(body: String) -> JsonValue {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: v } => v
+    JsonDocumentUnreadable { gap: _ } => JsonNull
+  }
+}
+
+data w_live_models_body: String = "\{\"object\":\"list\",\"data\":[\{\"id\":\"deepseek-v4-flash:iq3s-split\",\"object\":\"model\",\"owned_by\":\"vllm\",\"root\":\"/weights/models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1\",\"parent\":null,\"max_model_len\":1048576\}]\}"
+
+// POSITIVE CONTROL, AND IT ASSERTS BOTH FIELDS RATHER THAN THE ARM. A decode that returned
+// ModelsRouteRead while dropping the path on the floor would satisfy "it read" and leave the carrier
+// holding nothing worth having.
+test fn the_live_models_document_decodes_to_its_path_and_context() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: w_live_models_body),
+    served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+  ) {
+    ModelsRouteRead { readback: r } =>
+      (r.configured_model_path as String) == "/weights/models--deepseek-ai--DeepSeek-V4-Flash/snapshots/60d8d70770c6776ff598c94bb586a859a38244f1"
+        && token_count_value(r.max_model_len) == 1048576
+        && (r.served_model_id as String) == "deepseek-v4-flash:iq3s-split"
+    _ => false
+  }
+}
+
+// RED -- AN ID THE DOCUMENT DOES NOT ADVERTISE IS ABSENT, NOT A READBACK ABOUT SOMEBODY ELSE. This
+// is the join the selector exists for: a route advertising one model must not hand back a path for
+// a turn admitted against another.
+test fn an_unadvertised_id_is_entry_absent() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: w_live_models_body),
+    served_model_id: "some-other-model" as NonEmptyStr,
+  ) {
+    ModelsRouteEntryAbsent { served_model_id: i, unexaminable_entries: u } =>
+      (i as String) == "some-other-model" && u == 0
+    _ => false
+  }
+}
+
+// RED -- A MISSING root IS NAMED, NOT DEFAULTED. An upstream that stops carrying the member must
+// make this loud: an empty configured path would be a carrier filled with nothing, asserting that
+// the server was configured with "".
+test fn an_entry_without_root_names_the_field() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"max_model_len\":8\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldAbsent { served_model_id: _, field: f } => (f as String) == "root"
+    _ => false
+  }
+}
+
+// RED -- A QUOTED NUMBER IS NOT A CONTEXT LENGTH. It is the case extdeps.languages.json.number
+// separates from an unreadable numeral, and the one a lenient decode would coerce.
+test fn a_quoted_context_length_refuses() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":\"8\"\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: f, cause: _ } => (f as String) == "max_model_len"
+    _ => false
+  }
+}
+
+// RED -- A FRACTIONAL CONTEXT LENGTH REFUSES RATHER THAN ROUNDING. A rounded bound would be a
+// fabricated limit on every turn the route serves.
+test fn a_fractional_context_length_refuses() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8.5\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: f, cause: _ } => (f as String) == "max_model_len"
+    _ => false
+  }
+}
+
+// RED -- ONE ID ADVERTISED TWICE IS A ROUTE CONTRADICTING ITSELF. Folding the matches would pick a
+// winner by list order, which is the silent-wrong-answer shape rather than a refusal.
+test fn a_duplicated_id_refuses_rather_than_picking() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/a\",\"max_model_len\":8\},\{\"id\":\"m\",\"root\":\"/b\",\"max_model_len\":8\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteEntryDuplicated { served_model_id: i, count: n } => (i as String) == "m" && n == 2
+    _ => false
+  }
+}
+
+// RED -- THE TWO UNREADABLE CAUSES ARE TOLD APART, which is the half review 64178 found missing: a
+// quoted "8" is a defect in the route's document and an exponent is a limit of this substrate, and
+// an operator reading the refusal has to know which one to go and fix. Asserting only that both
+// refuse would be satisfied by the collapsed spelling this replaces.
+test fn an_exponent_length_and_a_quoted_length_refuse_for_different_reasons() -> Bool {
+  let quoted = match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":\"8\"\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: _, cause: c } => c as String
+    _ => ""
+  }
+  let exponent = match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":1e6\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: _, cause: c } => c as String
+    _ => ""
+  }
+  string_contains(s: quoted, pattern: "defect in the document")
+    && string_contains(s: exponent, pattern: "limit of ours")
+    && quoted != exponent
+}
+
+
+// RED -- A DOCUMENT THAT IS NOT A MODEL LIST IS NOT "NO ENTRY FOR THIS ID". The route advertised
+// something; what it advertised could not be read, and those name different remedies. Review 64194
+// found all four of these reported as an absent entry.
+test fn a_data_member_that_is_not_an_array_is_a_document_refusal() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":\"not-a-list\"\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteDocumentUnreadable { cause: c } => string_contains(s: c as String, pattern: "not an array")
+    _ => false
+  }
+}
+
+test fn a_document_with_two_data_members_refuses_naming_the_count() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[],\"data\":[]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteDocumentUnreadable { cause: c } => string_contains(s: c as String, pattern: "2 data members")
+    _ => false
+  }
+}
+
+// RED -- A SCALAR ENTRY HAS NO MEMBERS, WHICH IS NOT THE SAME AS OMITTING ONE. This is the
+// distinction extdeps.languages.json.parse draws in its own annotation: collapsing them would let a
+// bare string satisfy an absence check.
+test fn a_scalar_entry_is_not_reported_as_a_missing_field() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8\},\"bare\"]\}"),
+    served_model_id: "nope" as NonEmptyStr,
+  ) {
+    ModelsRouteEntryAbsent { served_model_id: _, unexaminable_entries: u } => u == 1
+    _ => false
+  }
+}
+
+// RED -- root TWICE IS A CONTRADICTION, NOT AN ABSENCE, and the count is in the cause so the reader
+// knows which it was.
+test fn a_duplicated_root_member_refuses_naming_the_count() -> Bool {
+  match vllm_models_route_standing(
+    doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/a\",\"root\":\"/b\",\"max_model_len\":8\}]\}"),
+    served_model_id: "m" as NonEmptyStr,
+  ) {
+    ModelsRouteFieldUnreadable { served_model_id: _, field: f, cause: c } =>
+      (f as String) == "root" && string_contains(s: c as String, pattern: "2 root members")
+    _ => false
+  }
+}
+
+// RED -- THE ADVERTISED-ID LIST AND THE READBACK COME FROM ONE READING. gunbc.harness.harness_backend
+// consumes vllm_models_advertised_ids to decide which model it is admitted to ask for, and this
+// module's selection decides the readback; before review 64265 those were two walkers over the same
+// document and could disagree about what counts as an advertised id. This row holds them to one
+// answer on a document carrying one readable entry and one unreadable one: the id list has exactly
+// the readable id, and the readback counts the other as unexaminable rather than forgetting it.
+test fn the_advertised_ids_and_the_readback_agree_on_one_reading() -> Bool {
+  let doc = w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8\},\{\"id\":7\}]\}")
+  let ids = vllm_models_advertised_ids(doc: doc)
+  count(ids) == 1
+    && fold(ids, init: false, f: (acc, i) => acc || i == "m")
+    && match vllm_models_route_standing(doc: doc, served_model_id: "m" as NonEmptyStr) {
+         ModelsRouteRead { readback: r } => (r.configured_model_path as String) == "/w"
+         _ => false
+       }
+    && match vllm_models_route_standing(doc: doc, served_model_id: "gone" as NonEmptyStr) {
+         ModelsRouteEntryAbsent { served_model_id: _, unexaminable_entries: u } => u == 1
+         _ => false
+       }
 }

@@ -1,0 +1,156 @@
+module gunbc.machine_intake_mtcollins1_memory_prediction
+
+import std.types { Bool, List, Milliseconds, NonEmptyStr }
+import std.nat { Nat }
+import std.claim_evidence { Claim, ClaimId, RecordedFact, RecordedFactId }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.cli_wire { CliWireResponse }
+import gunbc.machine_intake_predictive_review_render { predictive_review_cli }
+import std.predictive_claim {
+  AdversarialTestingObligation, Prediction, PredictionRestriction,
+  PredictionWindowNotRecorded, ConfoundedMechanisms,
+  PredictiveModelResult, PredictiveModelAccepted, PredictiveModelRefused,
+  PredictiveStanding, predictive_standing,
+  PredictiveNextObligation, predictive_next_obligation,
+  begin_predictive_model, record_conversation_prediction_test,
+}
+
+// First consumer: the machine-intake review of the 32-DIMM experiment. Execute with
+// gunbc run --source-root dag --source-root src/v2 --entry
+// dag/gunbc/machine_intake/mtcollins1_memory_prediction.dag --function memory_prediction_cli
+// The report carries the model and its derived standing together, never a bare supported Bool.
+// The census attachment is a declared frontier: #10965 is unmerged, so it is not imported here.
+type MemoryPredictionConsumerFrontier {
+  pending_change: NonEmptyStr
+  intended_attachment: NonEmptyStr
+  trigger: NonEmptyStr
+}
+
+data memory_prediction_census_frontier: MemoryPredictionConsumerFrontier = MemoryPredictionConsumerFrontier {
+  pending_change: "gunb-ai/gunbc#10965, open at authorship; dependency head 5970d8b7dd1",
+  intended_attachment: "The memory census review in #10965 consumes memory_prediction_review beside its cited support cells. That PR also owns upstream_non_affirmation_consumed_as_permission, the sibling class in the other direction; it is not re-minted here.",
+  trigger: "#10965 lands its census and sibling failure-mode authority. Resolve their declaration references at that point and attach this predictive standing without replacing the source's support vocabulary. Until landing these are proposed attachments, not resolvable DeclarationRef values.",
+}
+
+type MemoryTestConfiguration {
+  populated_dimms: Nat
+  channel_count: Nat
+  minimum_simultaneous_violations: Nat
+}
+
+type MemoryTrainingObservation
+  = RestartWithoutTrainingReceipt
+  | FullPopulationTrainingObserved
+  | TrainingObservationUnavailable
+
+// This is a report of the operator conversation, not a captured hardware artifact or a
+// preregistration. No timestamp, digest, exact slot layout, or preregistered deadline is invented.
+type MemoryExperimentConversationReport {
+  message_id: NonEmptyStr
+  prediction_reported_before_outcome: Bool
+  restart_after_power_on: Milliseconds
+  oem_payload_quotation: NonEmptyStr
+}
+
+data memory_experiment_conversation_report: MemoryExperimentConversationReport = MemoryExperimentConversationReport {
+  message_id: "msg_4ec94836-0e8b-489a-815e-81062edce503",
+  prediction_reported_before_outcome: true,
+  restart_after_power_on: 304000,
+  oem_payload_quotation: "0fde70330502",
+}
+
+data memory_experiment_configuration: MemoryTestConfiguration = MemoryTestConfiguration {
+  populated_dimms: 32,
+  channel_count: 16,
+  minimum_simultaneous_violations: 7,
+}
+
+data memory_prediction_testing_obligation: AdversarialTestingObligation = AdversarialTestingObligation {
+  owner: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_memory_prediction", decl_name: "memory_prediction_review"),
+  next_discriminator: "Before the operator touches the next population, commit its exact configuration, predicted observation, falsifier, observation window and confound assessment. Retain an independent receipt that publication preceded power-up. A full-population training receipt falsifies the unconditional failure prediction; a restart alone cannot attribute a cause. Continue testing edges after every surviving test and every narrowed revision.",
+}
+
+// Named parameter typing is forced by generic_lambda_parameter_receiver_evidence_stall.
+fn memory_configuration_in_prediction(configuration: MemoryTestConfiguration) -> Bool {
+  configuration.populated_dimms == 32 && configuration.channel_count == 16
+    && configuration.minimum_simultaneous_violations >= 7
+}
+
+fn memory_training_prediction() -> Prediction<MemoryTestConfiguration, MemoryTrainingObservation> {
+  Prediction {
+    claim: Claim {
+      id: "mtcollins1-same-channel-mixing-training-v1" as ClaimId,
+      subject: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity"),
+      target: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_memory_prediction", decl_name: "MemoryTrainingObservation"),
+      proposition: RestartWithoutTrainingReceipt,
+      scope: [PredictionRestriction {
+        reason: "Reported fully populated specimen with simultaneous same-channel violations; this is a derived prediction, not what Table 3 asserts.",
+        admits: memory_configuration_in_prediction,
+      }],
+      bound: PredictionWindowNotRecorded,
+    },
+    statement: "The reported 32-DIMM population will fail to train. A restart without a training receipt is only a weak proxy for that claim; NotSupported itself states qualification, not physical impossibility.",
+    factual_basis: decl_ref(module_path: "extdeps.ocp.mt_jade.memory_mixing", decl_name: "mt_jade_same_channel_mixing_row"),
+    further_factual_basis: [],
+    falsifier: FullPopulationTrainingObserved,
+    obligation: memory_prediction_testing_obligation,
+  }
+}
+
+fn memory_experiment_model() -> PredictiveModelResult<MemoryTestConfiguration, MemoryTrainingObservation> {
+  match begin_predictive_model(prediction: memory_training_prediction()) {
+    PredictiveModelRefused { cause: cause } => PredictiveModelRefused { cause: cause }
+    PredictiveModelAccepted { model: model } => record_conversation_prediction_test(
+      model: model,
+      configuration: memory_experiment_configuration,
+      observation: RecordedFact {
+        id: "msg_4ec94836-32-dimm-restart" as RecordedFactId,
+        value: RestartWithoutTrainingReceipt,
+      },
+      report: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_memory_prediction", decl_name: "memory_experiment_conversation_report"),
+      discrimination: ConfoundedMechanisms {
+        first_confound: "At least seven simultaneous same-channel violations; the restart does not identify which caused it.",
+        further_confounds: [
+          "Rank, width and density are not isolated from one another.",
+          "A restart and OEM payload alone do not establish whether training failed, nor whether firmware, power or a module caused the restart.",
+          "The prediction has no immutable pre-outcome receipt or recorded observation window.",
+        ],
+      },
+    )
+  }
+}
+
+type MemoryPredictionReview
+  = MemoryPredictionReported {
+      model: PredictiveModelResult<MemoryTestConfiguration, MemoryTrainingObservation>,
+      standing: PredictiveStanding,
+      next_obligation: PredictiveNextObligation,
+      report: MemoryExperimentConversationReport,
+      census_frontier: MemoryPredictionConsumerFrontier,
+    }
+  | MemoryPredictionReviewRefused { result: PredictiveModelResult<MemoryTestConfiguration, MemoryTrainingObservation> }
+
+fn memory_prediction_review() -> MemoryPredictionReview {
+  let result = memory_experiment_model()
+  match result {
+    PredictiveModelAccepted { model: model } => MemoryPredictionReported {
+      model: result, standing: predictive_standing(model: model),
+      next_obligation: predictive_next_obligation(model: model),
+      report: memory_experiment_conversation_report,
+      census_frontier: memory_prediction_census_frontier,
+    }
+    PredictiveModelRefused { cause: _ } => MemoryPredictionReviewRefused { result: result }
+  }
+}
+
+fn memory_prediction_cli() -> CliWireResponse {
+  let report = memory_experiment_conversation_report
+  predictive_review_cli(result: memory_experiment_model(), context: [
+    concat("Reported experiment: ", report.message_id),
+    concat("Restart after power-on (ms): ", to_string(report.restart_after_power_on)),
+    concat("OEM payload quotation: ", report.oem_payload_quotation),
+    memory_prediction_census_frontier.pending_change,
+    memory_prediction_census_frontier.intended_attachment,
+    memory_prediction_census_frontier.trigger,
+  ])
+}

@@ -1,7 +1,8 @@
 module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { String, NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Unit }
+import std.string_type { String }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

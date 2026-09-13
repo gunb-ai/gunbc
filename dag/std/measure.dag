@@ -756,6 +756,32 @@ fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
 }
 
+// MASS at gram grain: SI kilogram is Scale One of Quantity Mass, so a gram is Milli and
+// 0.2 kg is gram(200) with no rounding. Kilogram as a named alias waits on a consumer that
+// stores a whole-kilogram count; this sheet's 200 g is not one.
+type Gram = Measure<Mass, Milli, Nat>
+
+fn gram(count: Nat) -> Gram {
+  Measure { count: count }
+}
+
+fn gram_count(g: Gram) -> Nat {
+  measure_count(g)
+}
+
+// ELECTRIC CHARGE: Quantity ElectricCharge's One is the coulomb (ChargeMicro is already
+// microcoulombs of the same quantity). 3200 mAh is exactly 11520 C (1 mA·h = 3.6 C).
+// Milli of ElectricCharge would be millicoulomb, not milliampere-hour.
+type Coulomb = Measure<ElectricCharge, One, Nat>
+
+fn coulomb(count: Nat) -> Coulomb {
+  Measure { count: count }
+}
+
+fn coulomb_count(q: Coulomb) -> Nat {
+  measure_count(q)
+}
+
 fn nanometer(count: Nat) -> Nanometer {
   Measure { count: count }
 }

@@ -195,7 +195,7 @@ fn machine_shape_construction_findings(root: Node) -> List<Diagnostic> {
   }
 }
 
-data compile_gate_law: String = "MachineShape single-constructor compile gate (operator redirect 2026-07-16): a direct MachineShape record literal outside std.machine_shape, extdeps.*.machine_shape, and outside test/claim witnesses FAILS COMPILATION, inheriting compile's affected-set scoping. shape_from_catalog is the sanctioned producer; consumers match MachineShapeConstruction and never hand-author shapes. Grain: rooted whole-tree walk (module-context fold_node_topdown) — enrolls in always_required_root_lenses, not the per-node roster. Witness lane = RED controls in machine_shape_construction_wall_test; enforcement never the witness."
+data compile_gate_law: String = "MachineShape single-constructor compile gate (operator redirect 2026-07-16): a direct MachineShape record literal outside std.machine_shape, extdeps.*.machine_shape, and outside test/claim witnesses FAILS COMPILATION, inheriting compile's affected-set scoping. shape_from_catalog is the sanctioned producer; consumers match MachineShapeConstruction and never hand-author shapes. Grain: rooted whole-tree walk (module-context fold_node_topdown) — registers at CompileLensRoot grain in required_compile_lens_roster, not at CompileLensSubtree. Witness lane = RED controls in machine_shape_construction_wall_test; enforcement never the witness."
 
 fn machine_shape_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match machine_shape_construction_findings(root: node) {

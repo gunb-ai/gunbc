@@ -987,10 +987,12 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
 
 // The needle is handed to string_replace as the nonempty carrier it demands; an escape row whose
 // `from` is empty names no occurrence (the same reasoning that makes string_split's delimiter a
-// FreeSemigroup), so the fold passes the spelling through unchanged. Below ceiling: the rung-4
-// shape declares `from` itself as FreeSemigroup<Char> so the empty row is unwritable; the climb
-// trigger is char-level literal sugar in the .dag realization, without which producers cannot
-// author the nonempty carrier from an escape row's quoted spelling.
+// FreeSemigroup), so the fold passes the spelling through unchanged. `to` is passed through: the
+// field is already v2.std.text.String, and authors that conform (bash) already hand a char spine.
+// Re-chars at this consumer would double-convert those rows. Below ceiling: the rung-4 shape
+// declares `from` itself as FreeSemigroup<Char> so the empty row is unwritable; the climb trigger
+// is char-level literal sugar in the .dag realization, without which producers cannot author the
+// nonempty carrier from an escape row's quoted spelling.
 fn apply_emit_spelling_escapes(spelling: v2.std.text.String, escapes: List<EmitSpellingEscape>) -> v2.std.text.String {
   fold_list(
     xs: escapes,

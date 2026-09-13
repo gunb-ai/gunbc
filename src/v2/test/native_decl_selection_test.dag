@@ -5,9 +5,11 @@ import v2.compiler.compile {
   native_test_eval_one,
   native_test_infer_resolved,
   native_test_resolve_module,
+  NativeTestPreparedModule
+}
+import v2.compiler.native_test_vocabulary {
   NativeTestObservation,
   NativeTestPassed,
-  NativeTestPreparedModule,
   NativeTestRefused,
   NativeTestStageEntry
 }

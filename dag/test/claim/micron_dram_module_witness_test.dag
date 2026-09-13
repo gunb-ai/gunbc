@@ -1,0 +1,186 @@
+module test.claim.micron_dram_module
+
+import std.types { Bool, NonEmptyStr, list_length }
+import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.memory.types {
+  DramModuleCatalogRow,
+  DramModuleClass,
+  DualDiePackage,
+  MonolithicDie,
+  Registered,
+  ThreeDimensionalStacked,
+  dram_chips_per_rank,
+  dram_generation_ddr4,
+  dram_generation_eq,
+  dram_module_class_eq,
+  dram_module_is_realizable,
+  dram_module_required_die_density,
+}
+import extdeps.memory.jedec { ddr4_generation_catalog, ddr5_generation_catalog }
+import extdeps.memory.micron {
+  extdeps_model_scope,
+  micron_ddr4_module_part_numbering_rev_2018_12_05,
+  micron_ddr4_rdimm_core_rev_b_2021_12,
+  micron_part_catalog_mta36ads2g72pz_2g1a1,
+  micron_part_catalog_mta36asf2g72pz_2g1a2,
+  mta36ads2g72pz_2g1a1_catalog,
+  mta36ads2g72pz_2g1a1_catalog_citation,
+  mta36ads2g72pz_2g1a1_numbering_citation,
+  mta36asf2g72pz_2g1a2_catalog,
+  mta36asf2g72pz_2g1a2_catalog_citation,
+}
+import extdeps.vendor.micron { micron }
+import extdeps.cpu.ampere_altra_memory_controller { altra_admits_module_class }
+import product.installed_bom_reconcile {
+  DimmPopulationConfirmed,
+  DimmPopulationRefused,
+  DimmPopulationUnconfirmed,
+  DimmObservationHostMismatch,
+  DimmSlotLocator,
+  DimmSlotsObserved,
+  HostDimmExpectation,
+  ObservedDimmCataloged,
+  ObservedDimmSlot,
+  dimm_reconcile_verdict,
+}
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_ads_row_axes_match_the_numbering_decode_and_spd() -> Bool {
+  mta36ads2g72pz_2g1a1_catalog.part_number == ("MTA36ADS2G72PZ-2G1A1" as NonEmptyStr)
+    && mta36ads2g72pz_2g1a1_catalog.manufacturer == micron
+    && mta36ads2g72pz_2g1a1_catalog.buffering == Registered
+    && mta36ads2g72pz_2g1a1_catalog.die_stacking == DualDiePackage
+    && bit_width_count(b: mta36ads2g72pz_2g1a1_catalog.chip_width) == 4
+    && mta36ads2g72pz_2g1a1_catalog.rank_count == 2
+    && mta36ads2g72pz_2g1a1_catalog.data_rate_mts == 2133
+    && mta36ads2g72pz_2g1a1_catalog.ecc
+    && byte_size_count(b: mta36ads2g72pz_2g1a1_catalog.capacity_bytes) == 17179869184
+    && dram_generation_eq(a: mta36ads2g72pz_2g1a1_catalog.generation, b: dram_generation_ddr4)
+}
+
+// THE TWO SIBLINGS AGREE ON EVERY FIELD BUT ONE, which is the finding the module exists to
+// carry: the axis Micron's own data separates them on is package construction, and nothing
+// else on the row. A control that let them differ elsewhere would let a wrong transcription of
+// either row masquerade as the finding.
+test fn w_siblings_differ_only_in_die_stacking() -> Bool {
+  mta36asf2g72pz_2g1a2_catalog.die_stacking == MonolithicDie
+    && mta36asf2g72pz_2g1a2_catalog.manufacturer == mta36ads2g72pz_2g1a1_catalog.manufacturer
+    && byte_size_count(b: mta36asf2g72pz_2g1a2_catalog.capacity_bytes) == byte_size_count(b: mta36ads2g72pz_2g1a1_catalog.capacity_bytes)
+    && mta36asf2g72pz_2g1a2_catalog.data_rate_mts == mta36ads2g72pz_2g1a1_catalog.data_rate_mts
+    && mta36asf2g72pz_2g1a2_catalog.ecc == mta36ads2g72pz_2g1a1_catalog.ecc
+    && mta36asf2g72pz_2g1a2_catalog.buffering == mta36ads2g72pz_2g1a1_catalog.buffering
+    && bit_width_count(b: mta36asf2g72pz_2g1a2_catalog.chip_width) == bit_width_count(b: mta36ads2g72pz_2g1a1_catalog.chip_width)
+    && mta36asf2g72pz_2g1a2_catalog.rank_count == mta36ads2g72pz_2g1a1_catalog.rank_count
+    && mta36asf2g72pz_2g1a2_catalog.part_number != mta36ads2g72pz_2g1a1_catalog.part_number
+    && !dram_module_class_eq(
+      a: DramModuleClass { buffering: Registered, stacking: mta36asf2g72pz_2g1a2_catalog.die_stacking },
+      b: DramModuleClass { buffering: Registered, stacking: mta36ads2g72pz_2g1a1_catalog.die_stacking },
+    )
+}
+
+// SPD byte 4 says 4 Gb per die; the row's capacity, width and rank count must divide back out
+// to it, for BOTH siblings, so the density corroboration does not depend on the stacking value.
+test fn w_both_rows_derive_eighteen_dies_per_rank_and_four_gigabit() -> Bool {
+  dram_chips_per_rank(module: mta36ads2g72pz_2g1a1_catalog) == 18
+    && dram_chips_per_rank(module: mta36asf2g72pz_2g1a2_catalog) == 18
+    && byte_size_count(b: dram_module_required_die_density(module: mta36ads2g72pz_2g1a1_catalog)) == 536870912
+    && byte_size_count(b: dram_module_required_die_density(module: mta36asf2g72pz_2g1a2_catalog)) == 536870912
+}
+
+test fn w_both_rows_are_realizable_on_ddr4_and_not_ddr5() -> Bool {
+  dram_module_is_realizable(module: mta36ads2g72pz_2g1a1_catalog, jedec: ddr4_generation_catalog)
+    && dram_module_is_realizable(module: mta36asf2g72pz_2g1a2_catalog, jedec: ddr4_generation_catalog)
+    && !dram_module_is_realizable(module: mta36ads2g72pz_2g1a1_catalog, jedec: ddr5_generation_catalog)
+}
+
+// THE ALTRA ADMISSION FOLD NOW ANSWERS DIFFERENTLY FOR THE TWO SIBLINGS, and the answer for the
+// DDP part is "not among the classes the Rev A1 datasheet names" -- RDIMM, LRDIMM, 3DS RDIMM --
+// which is the absence of a listing and not a withdrawal (extdeps.cpu.ampere_altra_memory_controller
+// keeps those two apart). Before DualDiePackage existed the ADS row could only be written as
+// monolithic and this fold would have admitted it as a class it does not belong to.
+test fn w_altra_fold_separates_the_siblings_on_the_stacking_axis() -> Bool {
+  altra_admits_module_class(c: DramModuleClass { buffering: Registered, stacking: mta36asf2g72pz_2g1a2_catalog.die_stacking })
+    && !altra_admits_module_class(c: DramModuleClass { buffering: Registered, stacking: mta36ads2g72pz_2g1a1_catalog.die_stacking })
+    && altra_admits_module_class(c: DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked })
+}
+
+// THE PURCHASING/INTAKE CONSUMER: an observed Micron part on Mt. Collins unit 1 now resolves to
+// a cited catalog row instead of refusing as ObservedDimmUncataloged. One slot, one expectation,
+// and the reconciliation CONFIRMS -- which it could not do for any Micron part before this module.
+test fn w_observed_micron_part_on_mtcollins1_reconciles_against_a_cited_row() -> Bool {
+  match dimm_reconcile_verdict(
+    expectation: HostDimmExpectation {
+      host: operator_host_mtcollins1,
+      catalog: mta36ads2g72pz_2g1a1_catalog,
+      stick_count: 1,
+    },
+    observation: DimmSlotsObserved {
+      host: operator_host_mtcollins1,
+      slots: [
+        ObservedDimmSlot {
+          locator: "DIMM_A1" as DimmSlotLocator,
+          identity: ObservedDimmCataloged { catalog: mta36ads2g72pz_2g1a1_catalog },
+          serial: none,
+        },
+      ],
+    },
+  ) {
+    DimmPopulationConfirmed { host: _, stick_count: n } => n == 1
+    DimmPopulationRefused { host: _, discrepancies: _, count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
+  }
+}
+
+// AND THE DISCRIMINATING CONTROL ON THAT CONSUMER: expecting the monolithic sibling and observing
+// the dual-die one is a part difference the reconciliation must name, not absorb. If the two rows
+// ever collapsed into one identity this would pass Confirmed and the finding would be gone.
+test fn w_expecting_the_asf_sibling_and_observing_the_ads_part_refuses() -> Bool {
+  match dimm_reconcile_verdict(
+    expectation: HostDimmExpectation {
+      host: operator_host_mtcollins1,
+      catalog: mta36asf2g72pz_2g1a2_catalog,
+      stick_count: 1,
+    },
+    observation: DimmSlotsObserved {
+      host: operator_host_mtcollins1,
+      slots: [
+        ObservedDimmSlot {
+          locator: "DIMM_A1" as DimmSlotLocator,
+          identity: ObservedDimmCataloged { catalog: mta36ads2g72pz_2g1a1_catalog },
+          serial: none,
+        },
+      ],
+    },
+  ) {
+    DimmPopulationRefused { host: _, discrepancies: d, count: _ } => list_length(items: d) == 1
+    DimmPopulationConfirmed { host: _, stick_count: _ } => false
+    DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
+    DimmPopulationUnconfirmed { host: _, cause: _ } => false
+  }
+}
+
+test fn w_citations_bind_each_row_to_micron_hosted_authorities() -> Bool {
+  declaration_ref_eq(
+    a: mta36ads2g72pz_2g1a1_catalog_citation.fact,
+    b: decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36ads2g72pz_2g1a1_catalog"),
+  )
+    && mta36ads2g72pz_2g1a1_catalog_citation.authority == micron_part_catalog_mta36ads2g72pz_2g1a1
+    && declaration_ref_eq(
+      a: mta36ads2g72pz_2g1a1_numbering_citation.fact,
+      b: mta36ads2g72pz_2g1a1_catalog_citation.fact,
+    )
+    && mta36ads2g72pz_2g1a1_numbering_citation.authority == micron_ddr4_module_part_numbering_rev_2018_12_05
+    && declaration_ref_eq(
+      a: mta36asf2g72pz_2g1a2_catalog_citation.fact,
+      b: decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36asf2g72pz_2g1a2_catalog"),
+    )
+    && mta36asf2g72pz_2g1a2_catalog_citation.authority == micron_part_catalog_mta36asf2g72pz_2g1a2
+    && extdeps_model_scope.first_citation == micron_part_catalog_mta36ads2g72pz_2g1a1
+    && list_length(items: extdeps_model_scope.further_citations) == 2
+    && extdeps_model_scope.first_citation.uri.locator != micron_ddr4_rdimm_core_rev_b_2021_12.uri.locator
+}
