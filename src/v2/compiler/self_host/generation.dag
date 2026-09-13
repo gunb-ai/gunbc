@@ -13,7 +13,7 @@ import v2.std.node { combine_hash, Hash, Symbol, symbol_identity_digest }
 import v2.std.text { String, string_is_empty }
 import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
 
-// Generation identity is SIX independent axes, never one scalar. A single opaque
+// Generation identity is INDEPENDENT AXES, never one scalar. A single opaque
 // compiler_identity digest can report THAT a generation went stale and cannot report
 // WHICH fact moved, so every per-axis invalidation control collapses into one
 // indistinguishable refusal — the state-space conflation DESIGN §5 forbids, and an
@@ -95,7 +95,7 @@ type GeneratedArtifactIdentity
   = ArtifactMaterialized { digest: ObservedArtifactDigest }
   | ArtifactNotMaterialized
 
-// THESE SIX AXES DO NOT DETERMINE THE ARTIFACT, and the gap is named here rather than
+// THESE AXES DO NOT DETERMINE THE ARTIFACT, and the gap is named here rather than
 // left to be rediscovered. A Rust debug binary embeds its build directory, so the same
 // source compiled in two different directories yields different bytes while every axis
 // below agrees; the same directory rebuilt yields byte-identical output. Measured by
