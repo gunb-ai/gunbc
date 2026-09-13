@@ -45,7 +45,7 @@ fn cloudflare_r2_provider_ref() -> DeclarationRef {
 }
 
 fn cloudflare_r2_service_ref() -> DeclarationRef {
-  decl_ref(module_path: "extdeps.cloudflare.r2_data_location", decl_name: "extdeps_external_authority_anchor")
+  decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "R2S3Endpoint")
 }
 
 type CloudflareR2RegionObservation

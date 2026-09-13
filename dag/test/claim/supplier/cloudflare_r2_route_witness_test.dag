@@ -270,6 +270,10 @@ test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool {
           b: decl_ref(module_path: "extdeps.vendor.cloudflare", decl_name: "cloudflare"),
         )
           && declaration_ref_eq(
+            a: permit.route.service,
+            b: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "R2S3Endpoint"),
+          )
+          && declaration_ref_eq(
             a: permit.route.region,
             b: decl_ref(module_path: "test.claim.supplier.cloudflare_r2_route_witness", decl_name: "r2_witness_synthetic_region"),
           )
