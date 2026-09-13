@@ -1,6 +1,8 @@
 module test.claim.fleet_host_assembly_witness
 
 import std.types { Bool, String }
+import product.inventory { mint_inventory_lot_identity }
+import gunbc.fleet_acquisition_census { q80_lot_identity, alloc_after_cooler_srv3 }
 import product.placement_supply {
   ChassisContainsHost,
   HostContainsComponent,
@@ -125,4 +127,21 @@ test fn w_missing_installed_cooler_edge_refuses() -> Bool {
   })
   assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
     && !assembly_containments_join(rows: srv_assembly_components, containments: missing)
+}
+
+// The Q80 acquisition is in the census but outside the former three-lot whitelist.
+// This checks only acquisition membership, not the board/catalog compatibility relation.
+test fn w_component_lot_membership_reads_the_census() -> Bool {
+  let from_census = map(srv_assembly_components, row => AssembledComponent {
+    host: row.host, component: row.component, catalog: row.catalog,
+    acquisition: ComponentAcquiredFromLot { lot: q80_lot_identity },
+  })
+  let after_last_lot = mint_inventory_lot_identity(alloc: alloc_after_cooler_srv3).alloc
+  let absent_lot = mint_inventory_lot_identity(alloc: after_last_lot).id
+  let outside_census = map(srv_assembly_components, row => AssembledComponent {
+    host: row.host, component: row.component, catalog: row.catalog,
+    acquisition: ComponentAcquiredFromLot { lot: absent_lot },
+  })
+  every_recorded_component_lot_is_admitted(rows: from_census)
+    && !every_recorded_component_lot_is_admitted(rows: outside_census)
 }

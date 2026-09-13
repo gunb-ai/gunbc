@@ -1,7 +1,7 @@
 module gunbc.fleet_host_assembly
 
 import std.types { List, NonEmptyStr, Bool }
-import std.list { list_cover }
+import std.list { list_cover, index_first_occurrences }
 import product.placement_supply {
   HostIdentity,
   PhysicalAssetIdentity,
@@ -38,6 +38,7 @@ import gunbc.fleet_asset_identity {
 }
 import gunbc.fleet_physical_inventory { installed_cooler_containments }
 import gunbc.fleet_acquisition_census {
+  fleet_ledger_identities,
   altrad8ud_catalog_ref,
   cooler_catalog_ref,
   altrad8ud_board_lot_identity,
@@ -243,15 +244,14 @@ data srv_assembly_containments: List<PhysicalContainment> = concat([
   HostContainsComponent { host: operator_host_srv4, component: drive_srv4 },
 ], installed_cooler_containments)
 
-fn recorded_component_lot_is_admitted(lot: InventoryLotIdentity) -> Bool {
-  inventory_lot_identity_eq(left: lot, right: altrad8ud_board_lot_identity)
-    || inventory_lot_identity_eq(left: lot, right: cooler_srv3_lot_identity)
-    || inventory_lot_identity_eq(left: lot, right: cooler_srv4_lot_identity)
-}
-
+// Admission membership follows the census ledger population, not a component-lot roster.
 fn every_recorded_component_lot_is_admitted(rows: List<AssembledComponent>) -> Bool {
+  let census = index_first_occurrences(xs: fleet_ledger_identities(), key: id => id)
   rows.all(row => match row.acquisition {
-    ComponentAcquiredFromLot { lot: lot } => recorded_component_lot_is_admitted(lot: lot)
+    ComponentAcquiredFromLot { lot: lot } => match lookup(census.positions, lot) {
+      Present { value: _ } => true
+      Absent => false
+    }
     ComponentAcquisitionUnrecorded { read_obligation: _ } => true
   })
 }
