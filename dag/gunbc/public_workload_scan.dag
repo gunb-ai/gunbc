@@ -3,12 +3,12 @@ module gunbc.public_workload_scan
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.resources { Network }
 import extdeps.github.github { max_per_page }
-import extdeps.github.code_search { CodeSearchHit, CodeSearchPage }
+import extdeps.github.code_search { CodeSearchHit, CodeSearchPage, CodeSearchRepository }
 import extdeps.transports.rest { RestExchangePerformance }
 import gunbc.ci_workflow_source_read {
   CodeSearchPageRead, CodeSearchPageComplete, CodeSearchPageTruncated, CodeSearchPageRefused,
-  HitRevisionResolution,
-  perform_code_search_page, perform_hit_revision_resolution,
+  HitRevisionResolution, RepositoryHeadResolution,
+  perform_code_search_page, perform_repository_head_resolution, perform_hit_read_at_repository_head,
 }
 
 // A BOUNDED, READ-ONLY WALK OF GITHUB CODE SEARCH, AND THE RECEIPT THAT SAYS WHAT IT COVERED.
@@ -207,6 +207,43 @@ func walk_query(auth_token: Secret, policy: WorkloadScanPolicy, query: NonEmptyS
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Resolution: one repository and branch read per distinct repository, then one file read per hit.
+
+fn repository_eq(a: CodeSearchRepository, b: CodeSearchRepository) -> Bool {
+  a.id == b.id && a.name == b.name && a.full_name == b.full_name && a.private == b.private && a.fork == b.fork
+}
+
+type RepositoryResolutionEntry {
+  repository: CodeSearchRepository
+  resolution: RepositoryHeadResolution
+}
+
+type HitResolutionAccumulated {
+  heads: List<RepositoryResolutionEntry>
+  receipts: List<ScanHitReceipt>
+}
+
+// One fold: a hit whose repository already has an entry reuses it, and a hit whose repository does
+// not resolves it and adds the entry in the same step, so no hit can reach a lookup that misses.
+func resolve_distinct_hits(auth_token: Secret, seen: List<DistinctHit>) -> List<ScanHitReceipt> uses net: Network {
+  fold(seen, init: HitResolutionAccumulated { heads: [], receipts: [] }, f: fn(acc, d) {
+    match filter(acc.heads, e => repository_eq(a: e.repository, b: d.hit.repository)) |> first {
+      Present { value: e } => HitResolutionAccumulated {
+        heads: acc.heads,
+        receipts: concat(acc.receipts, [ScanHitReceipt { resolution: perform_hit_read_at_repository_head(auth_token: auth_token, hit: d.hit, resolution: e.resolution), sightings: d.sightings }]),
+      }
+      Absent => {
+        let resolved = perform_repository_head_resolution(auth_token: auth_token, hit: d.hit)
+        HitResolutionAccumulated {
+          heads: concat(acc.heads, [RepositoryResolutionEntry { repository: d.hit.repository, resolution: resolved }]),
+          receipts: concat(acc.receipts, [ScanHitReceipt { resolution: perform_hit_read_at_repository_head(auth_token: auth_token, hit: d.hit, resolution: resolved), sightings: d.sightings }]),
+        }
+      }
+    }
+  }).receipts
+}
+
 // Queries share one distinct-hit population: a file found by two queries is one hit with two
 // sightings, and the bound counts it once.
 type ScanWalkAccumulated {
@@ -230,10 +267,7 @@ func perform_workload_scan(auth_token: Secret, policy: WorkloadScanPolicy) -> Wo
         receipt: WorkloadScanReceipt {
           policy: admitted,
           queries: walked.receipts,
-          hits: map(walked.seen, d => ScanHitReceipt {
-            resolution: perform_hit_revision_resolution(auth_token: auth_token, hit: d.hit),
-            sightings: d.sightings,
-          }),
+          hits: resolve_distinct_hits(auth_token: auth_token, seen: walked.seen),
         },
       }
     }

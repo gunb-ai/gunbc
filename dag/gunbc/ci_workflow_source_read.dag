@@ -434,13 +434,24 @@ type HitRevisionResolution
   | HitBranchReadRefused { hit: CodeSearchHit, repository: FullRepository, performance: RestExchangePerformance }
   | HitBranchHeadNotExact { hit: CodeSearchHit, repository: FullRepository, observed: String, cause: NonEmptyStr }
 
-func perform_hit_revision_resolution(auth_token: Secret, hit: CodeSearchHit) -> HitRevisionResolution uses net: Network {
+// ONE REPOSITORY, ONE HEAD. The repository and branch reads depend only on the hit's REPOSITORY
+// (hit_repository_address and classify_repository_observation read nothing else), so every hit in one
+// repository shares one resolution. A scan that re-resolved per hit spent two extra requests per
+// additional workflow file against search's tight rate limit, and could read two files of one
+// repository at two different heads if a push landed between them - two observations that do not
+// describe one revision. Resolving once makes both unwritable for a consumer that groups by repository.
+type RepositoryHeadResolution
+  = RepositoryHeadResolved { owner: String, repo: String, repository: FullRepository, head: CommitSha }
+  | RepositoryHeadUnaddressable { address: HitRepositoryAddress }
+  | RepositoryHeadReadRefused { performance: RestExchangePerformance }
+  | RepositoryHeadDisagrees { disagreement: RepositoryObservationDisagreement }
+  | RepositoryHeadBranchReadRefused { repository: FullRepository, performance: RestExchangePerformance }
+  | RepositoryHeadNotExact { repository: FullRepository, observed: String, cause: NonEmptyStr }
+
+func perform_repository_head_resolution(auth_token: Secret, hit: CodeSearchHit) -> RepositoryHeadResolution uses net: Network {
   match hit_repository_address(hit: hit) {
     HitRepositoryUnaddressable { full_name, name, cause } =>
-      HitRevisionUnaddressable {
-        hit: hit,
-        address: HitRepositoryUnaddressable { full_name: full_name, name: name, cause: cause },
-      }
+      RepositoryHeadUnaddressable { address: HitRepositoryUnaddressable { full_name: full_name, name: name, cause: cause } }
     HitRepositoryAddressed { owner, repo } => {
       let got_repository = github.Repositories.Get(auth_token: auth_token, owner: owner, repo: repo)
       match classify_repository_observation(
@@ -448,8 +459,8 @@ func perform_hit_revision_resolution(auth_token: Secret, hit: CodeSearchHit) -> 
         performance: classify_rest_outcome(standing: RestReadExchange { rest: got_repository.outcome }),
         repository: got_repository.repository,
       ) {
-        RepositoryReadRefused { performance } => HitRepositoryReadRefused { hit: hit, performance: performance }
-        RepositoryDisagreesWithHit { disagreement } => HitRepositoryDisagrees { hit: hit, disagreement: disagreement }
+        RepositoryReadRefused { performance } => RepositoryHeadReadRefused { performance: performance }
+        RepositoryDisagreesWithHit { disagreement } => RepositoryHeadDisagrees { disagreement: disagreement }
         RepositoryResolved { repository } => {
           let got_branch = github.Branches.Get(
             auth_token: auth_token, owner: owner, repo: repo, branch: repository.default_branch)
@@ -458,23 +469,43 @@ func perform_hit_revision_resolution(auth_token: Secret, hit: CodeSearchHit) -> 
             branch: got_branch.branch,
           ) {
             BranchReadRefused { performance } =>
-              HitBranchReadRefused { hit: hit, repository: repository, performance: performance }
+              RepositoryHeadBranchReadRefused { repository: repository, performance: performance }
             BranchHeadNotExact { observed, cause } =>
-              HitBranchHeadNotExact { hit: hit, repository: repository, observed: observed, cause: cause }
+              RepositoryHeadNotExact { repository: repository, observed: observed, cause: cause }
             BranchHeadResolved { head } =>
-              HitReadAtResolvedRevision {
-                hit: hit,
-                repository: repository,
-                head: head,
-                canonicalization: canonicalize_hit(
-                  hit: hit,
-                  read: perform_workflow_source_read(
-                    auth_token: auth_token, owner: owner, repo: repo, path: hit.path, ref: head),
-                ),
-              }
+              RepositoryHeadResolved { owner: owner, repo: repo, repository: repository, head: head }
           }
         }
       }
     }
   }
+}
+
+// The file read for one hit against its repository's already-resolved head. A caller must pass the
+// resolution computed for a hit with the SAME repository; the scan guarantees that by grouping on the
+// full CodeSearchRepository value.
+func perform_hit_read_at_repository_head(auth_token: Secret, hit: CodeSearchHit, resolution: RepositoryHeadResolution) -> HitRevisionResolution uses net: Network {
+  match resolution {
+    RepositoryHeadUnaddressable { address } => HitRevisionUnaddressable { hit: hit, address: address }
+    RepositoryHeadReadRefused { performance } => HitRepositoryReadRefused { hit: hit, performance: performance }
+    RepositoryHeadDisagrees { disagreement } => HitRepositoryDisagrees { hit: hit, disagreement: disagreement }
+    RepositoryHeadBranchReadRefused { repository, performance } =>
+      HitBranchReadRefused { hit: hit, repository: repository, performance: performance }
+    RepositoryHeadNotExact { repository, observed, cause } =>
+      HitBranchHeadNotExact { hit: hit, repository: repository, observed: observed, cause: cause }
+    RepositoryHeadResolved { owner, repo, repository, head } =>
+      HitReadAtResolvedRevision {
+        hit: hit,
+        repository: repository,
+        head: head,
+        canonicalization: canonicalize_hit(
+          hit: hit,
+          read: perform_workflow_source_read(auth_token: auth_token, owner: owner, repo: repo, path: hit.path, ref: head),
+        ),
+      }
+  }
+}
+
+func perform_hit_revision_resolution(auth_token: Secret, hit: CodeSearchHit) -> HitRevisionResolution uses net: Network {
+  perform_hit_read_at_repository_head(auth_token: auth_token, hit: hit, resolution: perform_repository_head_resolution(auth_token: auth_token, hit: hit))
 }
