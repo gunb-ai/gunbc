@@ -92,8 +92,9 @@ import v2.extdeps.languages.dag {
 // fixed regardless of the realised n, because "n is small here" is not a time-stable fact.
 //
 // The O(1) shape gate is the fold's own first step (qualified_name_from_node refuses a root that
-// is not a two-child head/tail Conj with ^qualified_name_shape_absent before folding any child),
-// so this walk carries no spine-label knowledge of its own: it dispatches on the connective only
+// is neither the empty name nor a two-child head/tail Conj before folding any child, with the
+// same acceptance set qn_fold_init / qn_fold_step always had), so this walk carries no
+// spine-label knowledge of its own: it dispatches on the connective only
 // and keys on the fold's Outcome. A Conj the fold rejects is walked as an ordinary tree; a Conj it
 // accepts is emitted as ONE site and never descended into, so no subtree is ever both folded and
 // walked, and a later admission of a new spine shape lands in one place.
