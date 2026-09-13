@@ -549,6 +549,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
       function: "a_batch_answers_each_request_by_real_execution",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "perturb_optional_skew_fixture_red_holds" },
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      function: "perturb_optional_skew_fixture_red_holds",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "perturb_unresolved_import_fixture_red_holds" },
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      function: "perturb_unresolved_import_fixture_red_holds",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "perturb_fixture_green_holds" },
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      function: "perturb_fixture_green_holds",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "outside_workspace_root_staging_is_refused_before_subject" },
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      function: "outside_workspace_root_staging_is_refused_before_subject",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "outside_workspace_root_does_not_satisfy_expected_failure" },
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      function: "outside_workspace_root_does_not_satisfy_expected_failure",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "under_workspace_root_green_fixture_reaches_subject" },
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      function: "under_workspace_root_green_fixture_reaches_subject",
+      expectation: ExpectedToHold {}
     }
   ]
 }
