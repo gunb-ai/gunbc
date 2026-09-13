@@ -1,7 +1,6 @@
 module v2.std.decl_index
 type ItemKind
   = FnItem
-  | FuncItem
   | TypeItem
   | DataItem
   | ServiceItem
@@ -71,7 +70,6 @@ fn logical_qualified_name_from_module(module_name: String, name: String) -> Stri
 fn decl_facts_is_fn_like(kind: ItemKind) -> Bool {
   match kind {
     FnItem => true
-    FuncItem => true
     _ => false
   }
 }

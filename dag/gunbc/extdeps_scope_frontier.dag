@@ -311,6 +311,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/toolchain/icestorm/subject.dag",
   "dag/extdeps/firmware/openbmc/subject.dag",
   "dag/extdeps/firmware/tianocore_edk2/subject.dag",
+  "dag/extdeps/firmware/tianocore_edk2/sdram_spd_ddr4.dag",
   "dag/extdeps/firmware/trusted_firmware_a/subject.dag",
   "dag/extdeps/simulators/icarus_verilog/subject.dag",
   "dag/extdeps/simulators/ngspice/subject.dag",

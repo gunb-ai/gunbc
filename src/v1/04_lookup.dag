@@ -1,7 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
-import v1.compiler.infer_items { ItemKind, FnItem, FuncItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
+import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -303,9 +303,9 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // reads "declared" -- the authority-substitution geometry the outcome type exists to remove.
 //
 // THE KIND GATE EXCLUDES WHAT IS NOT CALLABLE; IT DOES NOT DEMAND PROOF OF WHAT IS.
-// `item_kind` reads FnItem and FuncItem off the presence of a BODY, and a census node is a
+// `item_kind` reads FnItem off the presence of a BODY, and a census node is a
 // borrowed declaration surface that carries a signature without one -- so a nullary fn reached
-// this way reads as OtherItem, and an admit-list of the two callable kinds refuses every member
+// this way reads as OtherItem, and an admit-list of the callable kind refuses every member
 // of the population this arm exists to serve. The call position is what establishes that the name
 // is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
 // a DATA row, none of which a call may target.

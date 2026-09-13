@@ -132,7 +132,8 @@ data native_driver_producer_roster: List<DeclarationRef> = [
   decl_ref(module_path: "v2.compiler.name_resolve", decl_name: "validate_module_roots"),
   decl_ref(module_path: "v2.compiler.symbol_index_fill", decl_name: "symbol_index_fill_module_roots"),
   decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_resolve_module"),
-  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved")
+  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_infer_resolved"),
+  decl_ref(module_path: "v2.compiler.compile", decl_name: "native_test_context_from_ingest")
 ]
 
 type NativeDriverExclusiveRows {

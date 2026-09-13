@@ -230,7 +230,7 @@ fn rostered_producer_observer_counts_executions_and_missing_guard_is_red() {
     ));
     std::fs::create_dir(&root).expect("scratch directory");
     let roster = native_driver_producer_roster();
-    assert_eq!(roster.len(), 5);
+    assert_eq!(roster.len(), 6);
     assert!(
         emit_native_producer_entry("unrelated.module".into(), "dag_language_model".into())
             .is_empty()
