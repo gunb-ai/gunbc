@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.unconstrained_type_variable_field_access_is_accepted
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumed by the recurring-failure-mode projection and by review of the seed
+// field-admission repair. The executing discriminator is named in the receipt.
+data unconstrained_type_variable_field_access_is_accepted: RecurringFailureMode = RecurringFailureMode {
+  identity: "unconstrained_type_variable_field_access_is_accepted" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a callback reads a field of an unconstrained type parameter and the seed accepts the source without deriving a field obligation or refusing the read. The field is not entailed by the declared generic parameter.",
+    "EXECUTED INSTRUMENT: test.claim.generic_collection_callback_binding_witness.unbound_callback_refuses, through compile_dag_diagnostic_census on the local claim_batch route. At b72b7b7505c this claim fails because the expected InternalError is absent, while missing_field_callback_refuses passes for a concrete Element lacking the requested field. The population, source, and expected observation are carried by that witness, not inferred from a carrier declaration.",
+    "MECHANISM: v1.compiler.infer.infer_expr_body calls is_deferred_field_access_base and, on a missing field of a type variable, constructs field_of_type_var without adding a diagnostic. A deferred judgment has no later consumer establishing the field in this observed compile-accept path.",
+    "HARM AND RUNG: acceptance permits a field operation unsupported by the declared type. This is outside the guarantee ladder at the observed seed compile-accept boundary. No emitted-runtime result or native v2 result is claimed.",
+    "DISTINCTION: the collection callback substitution repair binds a concrete argument hidden in a Resolved child wrapper. This specimen has no concrete argument to recover, so projecting the wrapper cannot establish its field. It is not a missing-argument-projection instance and must not be credited as repaired by that change.",
+    "CEILING AND NEXT TRIGGER: the declared field obligation is a modeled compiler fact; a field-admission judgment must derive it from generic constraints or refuse it before compile acceptance, retaining concrete-field acceptance and absent-field refusal controls. The permanent unbound_callback_refuses RED must flip when that capability executes; a diagnostic name or model declaration alone does not discharge it.",
+  ],
+  evidence: [],
+}
