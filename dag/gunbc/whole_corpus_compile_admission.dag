@@ -263,15 +263,17 @@ fn whole_corpus_compile_demand_for_root(
 fn whole_corpus_compile_measurement_recipe(root: WholeCorpusCompileRootIdentity) -> NonEmptyStr {
   concat(
     concat(
-      "measure once on the runner that will host it: gunbc compile --source-root ",
-      concat(root.primary_root as String,
-        concat(root.dependency_pools |> map(p => concat(" --source-root ", p as String)) |> join(separator: ""),
-          " --target dag under /usr/bin/time -v, with a binary built from the subject sha, on a host whose budget does not censor the peak"))
+      "measure once, on a host where an enforceable cgroup memory limit binds the process: gunbc measure-root-demand --repository ",
+      concat(root.repository as String,
+        concat(" --source-root ",
+          concat(root.primary_root as String,
+            concat(root.dependency_pools |> map(p => concat(" --source-root ", p as String)) |> join(separator: ""),
+              " --receipt <receipt.json>"))))
     ),
     concat(
-      "; record EXIT and peak resident set together, then add a MeasuredForRoot row for ",
+      "; the run's only product is that receipt. Author the MeasuredForRoot row for ",
       concat(whole_corpus_compile_root_identity_label(r: root) as String,
-        " to that repository's own measured-root demands carrying the source count and bytes the run reported, the peak rounded up to whole-gibibyte grain, and a dated receipt naming the run; regenerate the repository's demand projection and hand its location to the compile")
+        " from it with gunbc.root_demand_measurement measured_for_root_from_receipt in that repository's own measured-root demands, regenerate the repository's demand projection, and hand its location to the compile")
     )
   ) as NonEmptyStr
 }
@@ -436,6 +438,25 @@ data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = S
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "whole_corpus_compile_measurement_recipe", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "whole_corpus_compile_refusal_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "RootDemandDeclaration", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "AdmittedRootDemandMeasurement", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementAdmission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_refusal_diagnostic", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementWait", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementCensus", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementRun", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "RootDemandMeasurementReceipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "SIGKILL_SIGNAL", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "ROOT_DEMAND_MEASUREMENT_RECEIPT_SCHEMA", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "root_demand_measurement_receipt_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor", decl_name: "parse_root_demand_measurement_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "measure_root_demand", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_declared_budget_refuses_as_the_model_does", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_needs_an_enforceable_limit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_receipt_types_the_kill", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "root_demand_measurement_census_line_round_trips", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_admission_is_tight_at_the_measured_demand", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_unmeasured_root_refuses_naming_the_recipe", field: WholeDeclaration },
@@ -443,7 +464,7 @@ data whole_corpus_compile_seed_growth_justification: SeedGrowthJustification = S
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_undeclared_or_unreadable_projection_refuses", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.memory_governor.tests", decl_name: "whole_corpus_compile_unreadable_budget_refuses_rather_than_widening", field: WholeDeclaration }
   ],
-  reason: "WHY RUST IS STILL NEEDED: this decides whether resolving the corpus may BEGIN, so it cannot be a value obtained by resolving the corpus; whole_corpus_compile_seed_mirror_note carries the argument. WHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE, and this is seed maintenance serving the self-host program's own instrument -- the whole-root compile that tools.emission_entry_instrument drives -- which was admitting every root on one root's measured peak. WHAT CHANGED IN THE SEED: the demand constant DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES is DELETED (a declaration removed, not listed); the admission coproduct, its fold and its diagnostic are modified to join on the root's identity; the identity, the projection read and its parser, the unmeasured cause, the recipe renderer and RootDemandDeclaration are added, with the tests that discriminate each refusal arm beside the at-peak positive control. The CLI surface's two flags are generated from gunbc.cli_dispatch_surface and the emitted driver's CompileRequest literal from v1.compiler.emit_rust, so neither is hand-authored growth.",
+  reason: "WHY RUST IS STILL NEEDED: this decides whether resolving the corpus may BEGIN, so it cannot be a value obtained by resolving the corpus; whole_corpus_compile_seed_mirror_note carries the argument. WHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits a change by PURPOSE, and this is seed maintenance serving the self-host program's own instrument -- the whole-root compile that tools.emission_entry_instrument drives -- which was admitting every root on one root's measured peak. WHAT CHANGED IN THE SEED: the demand constant DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES is DELETED (a declaration removed, not listed); the admission coproduct, its fold and its diagnostic are modified to join on the root's identity; the identity, the projection read and its parser, the unmeasured cause, the recipe renderer and RootDemandDeclaration are added, with the tests that discriminate each refusal arm beside the at-peak positive control. THE MEASUREMENT SUBJECT (direction ruling on review 65495): CompileSubject gains a RootDemandMeasurement arm constructible only from AdmittedRootDemandMeasurement, CompileRun gains closure_source_bytes for the census, and measure_root_demand is the parent/child measurement whose only product is a receipt. The CLI surface's two flags and the measure-root-demand verb are generated from gunbc.cli_dispatch_surface and the emitted driver's CompileRequest literal from v1.compiler.emit_rust, so neither is hand-authored growth.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete these declarations when the emit path bakes gunbc.whole_corpus_compile_admission into the seed and compile_emission reads the modeled admission instead of composing it -- the same trigger gunbc.host_budget_source host_budget_source_seed_mirror_note carries for its own mirror, joined rather than restated.",
   current_boundary: "gunbc.whole_corpus_compile_admission whole_corpus_compile_admission -> v1_compiler.memory_governor whole_corpus_compile_admission -> v1_compiler.cli_run compile_emission"

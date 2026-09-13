@@ -218,6 +218,7 @@ fn refuses_as_unmeasured(a: WholeCorpusCompileAdmission, root: WholeCorpusCompil
         && (r.primary_root as String) == (root.primary_root as String)
         && string_contains(s: rc as String, pattern: concat("--source-root ", root.primary_root as String))
         && string_contains(s: rc as String, pattern: "MeasuredForRoot")
+        && string_contains(s: rc as String, pattern: "gunbc measure-root-demand")
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand { budget: _, required: _, source: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false

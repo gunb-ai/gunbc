@@ -6799,6 +6799,9 @@ pub struct CompileRun {
     /// meanings, which is the §3 violation the fork closure exists to remove.
     pub subject: CompileSubject,
     pub closure_modules: usize,
+    /// Bytes of the resolved closure's sources: the byte half of the population a run measured,
+    /// read by the root demand measurement's census.
+    pub closure_source_bytes: u64,
     pub census_modules: usize,
     pub blocking_diagnostics: usize,
     pub advisory_diagnostics: usize,
@@ -7294,6 +7297,7 @@ fn compile_not_executed(
     CompileRun {
         subject: subject.clone(),
         closure_modules: 0,
+        closure_source_bytes: 0,
         census_modules: 0,
         blocking_diagnostics: 0,
         advisory_diagnostics: 0,
@@ -7339,6 +7343,13 @@ pub enum CompileSubject {
     /// Every module under this source root, plus their transitive import closure. The
     /// remaining roots stay a dependency pool.
     PrimaryRoot(String),
+    /// THE ROOT DEMAND MEASUREMENT: the same population as `PrimaryRoot`, compiled as its OWN
+    /// subject whose only product is a measurement receipt. Constructible only from an admitted
+    /// measurement (`memory_governor::AdmittedRootDemandMeasurement` has private fields), so it is
+    /// not the whole-root compile with its demand refusal skipped: whole-root admission is not
+    /// asked of it because `root_demand_measurement_admission` already required an enforceable
+    /// limit, and its caller emits nothing (`measure_root_demand`).
+    RootDemandMeasurement(crate::memory_governor::AdmittedRootDemandMeasurement),
 }
 
 /// THE EXACT TEXT `gunbc.emit_diagnostic_observation` `emit_entry_scope_marker` MATCHES ON.
@@ -7378,6 +7389,16 @@ impl CompileScopeReceipt {
 }
 
 impl CompileSubject {
+    /// The primary root a POPULATION subject compiles, or `None` for an entry. Both population
+    /// arms share every step after admission, so they read the root from one place.
+    pub fn population_root(&self) -> Option<&str> {
+        match self {
+            CompileSubject::Entry(_) => None,
+            CompileSubject::PrimaryRoot(root) => Some(root.as_str()),
+            CompileSubject::RootDemandMeasurement(m) => Some(m.root().primary_root.as_str()),
+        }
+    }
+
     /// The scope receipt for this subject. Total over the coproduct, so a new subject cannot be
     /// added without deciding what it measures.
     pub fn scope_receipt(&self) -> CompileScopeReceipt {
@@ -7387,6 +7408,11 @@ impl CompileSubject {
             },
             CompileSubject::PrimaryRoot(root) => {
                 CompileScopeReceipt::PrimaryRootPopulation { root: root.clone() }
+            }
+            CompileSubject::RootDemandMeasurement(m) => {
+                CompileScopeReceipt::PrimaryRootPopulation {
+                    root: m.root().primary_root.clone(),
+                }
             }
         }
     }
@@ -7398,6 +7424,9 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => path.clone(),
             CompileSubject::PrimaryRoot(root) => format!("{root} (whole root)"),
+            CompileSubject::RootDemandMeasurement(m) => {
+                format!("{} (root demand measurement)", m.root().primary_root)
+            }
         }
     }
 
@@ -7410,6 +7439,9 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => format!("entry:{path}"),
             CompileSubject::PrimaryRoot(root) => format!("primary-root:{root}"),
+            CompileSubject::RootDemandMeasurement(m) => {
+                format!("root-demand-measurement:{}", m.root().primary_root)
+            }
         }
     }
 }
@@ -7523,9 +7555,9 @@ impl CompileRequest {
     /// no spelling and this function has nothing to check -- dissolution on climb: this predicate
     /// is deleted by that carrier landing, not kept beside it.
     fn primary_root_agrees_with_precedence(&self) -> Result<(), String> {
-        match &self.subject {
-            CompileSubject::Entry(_) => Ok(()),
-            CompileSubject::PrimaryRoot(root) => match self.source_roots.first() {
+        match self.subject.population_root() {
+            None => Ok(()),
+            Some(root) => match self.source_roots.first() {
                 Some(first) if first == root => Ok(()),
                 Some(first) => Err(format!(
                     "subject is primary-root:{root} but the first --source-root is {first}, \
@@ -7648,13 +7680,9 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         let read = crate::memory_governor::read_whole_corpus_compile_demands(
             request.root_demand.measured_root_demands.as_deref(),
         );
-        let (budget, budget_source) = crate::memory_governor::read_host_budget_bytes();
-        let admission = crate::memory_governor::whole_corpus_compile_admission(
-            budget,
-            &budget_source,
-            &identity,
-            &read,
-        );
+        let budget = crate::memory_governor::read_host_budget_resolution();
+        let admission =
+            crate::memory_governor::whole_corpus_compile_admission(&budget, &identity, &read);
         if let Some(diagnostic) =
             crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
         {
@@ -7671,7 +7699,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // inspection. A root under the workspace that simply holds no module is a DIFFERENT state
     // and refuses at `subject-discovery` below -- outside-the-repository and empty-of-modules
     // have different remedies and are not collapsed.
-    if let CompileSubject::PrimaryRoot(root) = &request.subject {
+    if let Some(root) = request.subject.population_root() {
         let root_abs = if std::path::Path::new(root).is_absolute() {
             std::path::PathBuf::from(root)
         } else {
@@ -7695,6 +7723,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     let entry_path: &str = match &request.subject {
         CompileSubject::Entry(path) => path.as_str(),
         CompileSubject::PrimaryRoot(root) => root.as_str(),
+        CompileSubject::RootDemandMeasurement(m) => m.root().primary_root.as_str(),
     };
     if let CompileSubject::Entry(_) = &request.subject {
         // The entry is a FILE, so it is anchored against the workspace root directly rather
@@ -7839,7 +7868,11 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         // and reporting it as `Completed { emitted_count: 0 }` is the empty-observation
         // narrow DESIGN names -- the exact shape that makes a ratchet read zero errors from
         // a run that compiled nothing.
-        CompileSubject::PrimaryRoot(root) => {
+        CompileSubject::PrimaryRoot(_) | CompileSubject::RootDemandMeasurement(_) => {
+            let root = request
+                .subject
+                .population_root()
+                .expect("both population arms name a root");
             let root_prefix = workspace_relative_entry_path(root);
             let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
             let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
@@ -8056,6 +8089,10 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     CompileRun {
         subject: request.subject.clone(),
         closure_modules: closure.len(),
+        closure_source_bytes: closure
+            .iter()
+            .map(|source| source.content.len() as u64)
+            .sum(),
         census_modules,
         blocking_diagnostics: blocking,
         // Derived from one population rather than scanned twice, so the two counts cannot
@@ -19735,6 +19772,148 @@ fn serve_json_string(s: &str) -> String {
     }
     out.push('"');
     out
+}
+
+/// THE ROOT DEMAND MEASUREMENT — how a root acquires its first `MeasuredForRoot` row. Seed
+/// realization of `gunbc.root_demand_measurement`, DESIGN section 5's stopped-line audit: it
+/// reports, it does not green.
+///
+/// The PARENT (`measurement_child == false`) asks `root_demand_measurement_admission`, spawns this
+/// same verb as the measured CHILD, and observes it through `wait4`: exit status or signal, and the
+/// child's peak resident set from its rusage. A killed child cannot write a receipt, so the parent
+/// writes it — `Exceeded` on a kill at the limit — to `receipt_path`, and that receipt is the run's
+/// only product. The CHILD re-asks the admission under the cgroup it inherited, compiles the
+/// population as `CompileSubject::RootDemandMeasurement`, prints one census line, and exits with the
+/// compile's status. It is handed no output directory, so it has nowhere to emit an artifact, and it
+/// renders no diagnostics and no verdict.
+pub fn measure_root_demand(
+    source_roots: Vec<String>,
+    repository: String,
+    receipt_path: String,
+    measurement_child: bool,
+) -> ! {
+    let Some(primary_root) = source_roots.first().cloned() else {
+        eprintln!(
+            "gunbc measure-root-demand: admission: no --source-root names the root to measure"
+        );
+        std::process::exit(2);
+    };
+    let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
+        repository: repository.clone(),
+        primary_root,
+        dependency_pools: source_roots.iter().skip(1).cloned().collect(),
+    };
+    let budget = crate::memory_governor::read_host_budget_resolution();
+    let admission = crate::memory_governor::root_demand_measurement_admission(&budget, &identity);
+    if let Some(diagnostic) =
+        crate::memory_governor::root_demand_measurement_refusal_diagnostic(&admission)
+    {
+        eprintln!("gunbc measure-root-demand: admission: {diagnostic}");
+        std::process::exit(1);
+    }
+    let crate::memory_governor::RootDemandMeasurementAdmission::Admitted(admitted) = admission
+    else {
+        unreachable!("a refused admission returned above");
+    };
+    if measurement_child {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::RootDemandMeasurement(admitted),
+            root_demand: RootDemandDeclaration::default(),
+            source_roots: source_roots.clone(),
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Dag],
+        });
+        println!(
+            "{} {} {}",
+            crate::memory_governor::ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX,
+            run.closure_modules,
+            run.closure_source_bytes
+        );
+        let code = match run.disposition {
+            CompileDisposition::Completed { .. } => 0,
+            CompileDisposition::Refused { .. } => 1,
+            CompileDisposition::NotExecuted { .. } => 2,
+        };
+        std::process::exit(code);
+    }
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("gunbc measure-root-demand: spawn: cannot locate this executable: {e}");
+            std::process::exit(2);
+        }
+    };
+    let mut argv = vec![
+        "measure-root-demand".to_string(),
+        "--repository".to_string(),
+        repository,
+    ];
+    for r in &source_roots {
+        argv.push("--source-root".to_string());
+        argv.push(r.clone());
+    }
+    argv.push("--receipt".to_string());
+    argv.push(receipt_path.clone());
+    argv.push("--measurement-child".to_string());
+    let mut child = match std::process::Command::new(&exe)
+        .args(&argv)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("gunbc measure-root-demand: spawn: {e}");
+            std::process::exit(2);
+        }
+    };
+    let pid = child.id() as libc::pid_t;
+    let mut stdout = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        use std::io::Read;
+        let _ = out.read_to_string(&mut stdout);
+    }
+    let mut status: libc::c_int = 0;
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
+    if waited != pid {
+        eprintln!(
+            "gunbc measure-root-demand: wait4 on the measured child failed: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(2);
+    }
+    let wait = if libc::WIFSIGNALED(status) {
+        crate::memory_governor::RootDemandMeasurementWait::Signaled(libc::WTERMSIG(status))
+    } else {
+        crate::memory_governor::RootDemandMeasurementWait::Exited(libc::WEXITSTATUS(status))
+    };
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|h| h.trim().to_string())
+        .unwrap_or_else(|_| "hostname unreadable".to_string());
+    let run = crate::memory_governor::RootDemandMeasurementRun {
+        root: admitted.root().clone(),
+        limit_bytes: admitted.limit_bytes(),
+        limit_source: admitted.limit_source().to_string(),
+        measured_on_host: host,
+        instrument_run: format!(
+            "gunbc measure-root-demand ({}) child pid {pid} at unix {}",
+            env!("GUNBC_BUILD_IDENTITY"),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        ),
+        census: crate::memory_governor::parse_root_demand_measurement_census(&stdout),
+    };
+    let peak_bytes = (usage.ru_maxrss as u64).saturating_mul(1024);
+    let receipt = crate::memory_governor::root_demand_measurement_receipt(run, wait, peak_bytes);
+    let json = crate::memory_governor::root_demand_measurement_receipt_json(&receipt);
+    if let Err(e) = std::fs::write(&receipt_path, &json) {
+        eprintln!("gunbc measure-root-demand: receipt: cannot write {receipt_path}: {e}");
+        std::process::exit(2);
+    }
+    eprint!("gunbc measure-root-demand: receipt written to {receipt_path}: {json}");
+    std::process::exit(0);
 }
 
 pub fn handle_serve(
