@@ -19,7 +19,7 @@ use std::path::Path;
 use std::process::Command;
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    blob_id_at, evaluate_environment_in, load_parse_environment_at,
+    blob_id_at, evaluate_environment_in, load_parse_environment_at, materialize_revision_paths,
 };
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -98,17 +98,10 @@ fn the_loader_reads_the_revision_not_the_worktree() {
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).expect("create scratch repo");
 
-    // The whole `dag/` tree, so the closure resolves through the repository's own index.
-    let status = Command::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "cd {src} && git archive --format=tar HEAD dag | tar -xf - -C {dst}",
-            src = root.display(),
-            dst = scratch.display()
-        ))
-        .status()
-        .expect("materialize dag tree into scratch");
-    assert!(status.success(), "materializing the scratch corpus failed");
+    // The whole `dag/` tree, so the closure resolves through the repository's own index -- acquired
+    // through the loader's own route rather than a hand-shell pipeline beside it.
+    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"])
+        .unwrap_or_else(|e| panic!("materializing the scratch corpus failed: {e}"));
 
     git(&scratch, &["init", "--quiet"]);
     git(&scratch, &["config", "user.email", "probe@example.invalid"]);

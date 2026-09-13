@@ -27,7 +27,8 @@ use std::path::Path;
 use std::process::Command;
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    base_records, load_parse_environment_at, run_wave_admission_between, WaveAdmissionOutcome,
+    base_records, load_parse_environment_at, materialize_revision_paths,
+    run_wave_admission_between, WaveAdmissionOutcome,
 };
 use v1_compiler::cli_run::{run_dag_parse_sweep, workspace_root};
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -83,23 +84,23 @@ fn with_zzfunc(env_source: &str) -> String {
 }
 
 /// Build the scratch pair: base speaks `zzfunc`, head does not. Returns (repo, base, head).
-fn build_grammar_differing_pair() -> (std::path::PathBuf, String, String) {
+///
+/// `label` keeps each test's repository distinct. The two tests in this binary run on separate
+/// threads of ONE process, so a directory named by PID alone is shared mutable state: either test
+/// could delete or rewrite the other's repository mid-commit. One directory per invocation.
+fn build_grammar_differing_pair(label: &str) -> (std::path::PathBuf, String, String) {
     let root = workspace_root();
-    let scratch =
-        std::env::temp_dir().join(format!("gunbc-wave-grammar-differs-{}", std::process::id()));
+    let scratch = std::env::temp_dir().join(format!(
+        "gunbc-wave-grammar-differs-{}-{label}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).expect("create scratch repo");
 
-    let status = Command::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "cd {src} && git archive --format=tar HEAD dag | tar -xf - -C {dst}",
-            src = root.display(),
-            dst = scratch.display()
-        ))
-        .status()
-        .expect("materialize dag tree into scratch");
-    assert!(status.success(), "materializing the scratch corpus failed");
+    // The whole `dag/` tree, through the same acquisition route the loader itself uses -- one
+    // checked implementation rather than a hand-shell pipeline beside it.
+    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"])
+        .unwrap_or_else(|e| panic!("materializing the scratch corpus failed: {e}"));
 
     // BASE: the grammar admits `zzfunc`, and one module uses it.
     let env_path = scratch.join(ENVIRONMENT_MODULE_PATH);
@@ -156,7 +157,7 @@ fn build_grammar_differing_pair() -> (std::path::PathBuf, String, String) {
 /// `NotEvaluated` would be correct.
 #[test]
 fn the_base_probe_refuses_under_the_head_grammar_and_reads_under_its_own() {
-    let (scratch, base, _head) = build_grammar_differing_pair();
+    let (scratch, base, _head) = build_grammar_differing_pair("red");
     let base_probe = git(&scratch, &["show", &format!("{base}:{PROBE_PATH}")]);
     assert!(
         base_probe.contains("zzfunc probe_value"),
@@ -198,7 +199,7 @@ fn the_base_probe_refuses_under_the_head_grammar_and_reads_under_its_own() {
 /// read under the base's grammar.
 #[test]
 fn a_grammar_change_between_base_and_head_is_adjudicated_not_refused() {
-    let (scratch, base, head) = build_grammar_differing_pair();
+    let (scratch, base, head) = build_grammar_differing_pair("green");
 
     // The head index the way production builds it: the parse sweep over the scratch head tree.
     let sweep = run_dag_parse_sweep(&scratch, &["dag"]).unwrap_or_else(|errors| {

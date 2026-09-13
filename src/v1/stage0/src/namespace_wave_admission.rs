@@ -3208,15 +3208,38 @@ fn materialize_environment_closure_at(
     dest: &std::path::Path,
     closure_paths: &BTreeSet<String>,
 ) -> Result<(), EnvironmentLoadRefusal> {
+    let paths: Vec<&str> = closure_paths.iter().map(String::as_str).collect();
+    materialize_revision_paths(repo, revision, dest, &paths)?;
+    if !dest.join(ENVIRONMENT_MODULE_PATH).exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: ENVIRONMENT_MODULE_PATH.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Materialize the named paths of one revision under `dest`: one `git archive`, one `tar -x`.
+///
+/// THE ONE ACQUISITION ROUTE. Every consumer that needs a revision's bytes on disk -- the
+/// environment loader above for its closure, the grammar-differs and provenance witnesses for a
+/// whole `dag/` tree -- comes through here, so acquisition is checked once and a defect in it is
+/// found once. An earlier shape had the witnesses carrying their own `sh -c "git archive | tar"`
+/// string beside this function: the same pipeline twice over, one of them unchecked hand-shell. A
+/// pathspec may name a directory (`dag`) or a file; git archive accepts both.
+pub fn materialize_revision_paths(
+    repo: &std::path::Path,
+    revision: &str,
+    dest: &std::path::Path,
+    paths: &[&str],
+) -> Result<(), EnvironmentLoadRefusal> {
     std::fs::create_dir_all(dest).map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
         revision: revision.to_string(),
         step: "create materialization directory".to_string(),
         cause: e.to_string(),
     })?;
     let mut args: Vec<&str> = vec!["archive", "--format=tar", revision];
-    for path in closure_paths {
-        args.push(path.as_str());
-    }
+    args.extend_from_slice(paths);
     let archive = git_capture(repo, revision, "archive", &args)?;
     let tar_path = dest.join("dag-tree.tar");
     std::fs::write(&tar_path, &archive).map_err(|e| {
@@ -3245,12 +3268,6 @@ fn materialize_environment_closure_at(
         });
     }
     let _ = std::fs::remove_file(&tar_path);
-    if !dest.join(ENVIRONMENT_MODULE_PATH).exists() {
-        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
-            revision: revision.to_string(),
-            path: ENVIRONMENT_MODULE_PATH.to_string(),
-        });
-    }
     Ok(())
 }
 
