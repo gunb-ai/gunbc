@@ -11,6 +11,8 @@ import extdeps.github.actions {
   RunnerSpec, RunsOnExpression,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
+import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
+import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
@@ -1180,7 +1182,7 @@ fn fleet_converge_app_control_plane_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "app-control-plane-observation")),
-      kv(key: "path", value: yaml_string(s: "target/app-control-plane-observation-receipt.txt")),
+      kv(key: "path", value: yaml_string(s: app_control_plane_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
@@ -1198,7 +1200,7 @@ fn fleet_converge_org_actions_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: [
       kv(key: "name", value: yaml_string(s: "org-actions-credential-validation")),
-      kv(key: "path", value: yaml_string(s: "target/org-actions-credential-validation-receipt.txt")),
+      kv(key: "path", value: yaml_string(s: org_actions_validation_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
