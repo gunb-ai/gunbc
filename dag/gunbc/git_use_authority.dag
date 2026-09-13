@@ -156,17 +156,19 @@ fn git_use_row_findings(row: GitUseRow) -> List<GitImportAuthorityFinding> {
   }
 }
 
-fn git_use_covers_import(row: GitUseRow, module_name: String, imported_module: String) -> Bool {
+// WHETHER A ROW ADMITS ITS OWN IMPORT IS A QUESTION ABOUT THE ROW ALONE. An earlier shape asked
+// it as covers_import(row, module_name, imported_module) and the only caller passed the row's own
+// owner and target back in, so two of the three conjuncts compared a value to itself and the
+// surface match re-derived what the caller had already destructured. A conjunct that cannot fail
+// at its only call site is not a weaker check, it is a decoration that reads as coverage
+// (DESIGN 4b). The discriminating question is authorization-versus-role and nothing else; the
+// module/target pair is what the INDEX is keyed by, and answering membership is
+// git_import_authorized's job, not this predicate's.
+fn git_use_row_admits_its_import(row: GitUseRow) -> Bool {
   match row.classification {
     UnclassifiedGitUse { reason: _ } => false
     ClassifiedGitUse { role, authorization } =>
       git_authorization_matches_role(role: role, authorization: authorization)
-        && (row.consumer.module_path as String) == module_name
-        && match row.surface {
-          ParsedDagGitDependency { imported_module: target } => (target as String) == imported_module
-          RustGitDependency { operation: _ } => false
-          DagGitProcessDependency { operation: _ } => false
-        }
   }
 }
 
@@ -179,7 +181,7 @@ fn git_import_authorization_index(rows: List<GitUseRow>) -> Map<String, Map<Stri
       ParsedDagGitDependency { imported_module } => {
         let owner = row.consumer.module_path as String
         let target = imported_module as String
-        if git_use_covers_import(row: row, module_name: owner, imported_module: target) {
+        if git_use_row_admits_its_import(row: row) {
           let targets = match map_lookup(m: index, key: owner) {
             Present { value } => value
             Absent => empty_map()
