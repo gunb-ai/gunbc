@@ -3942,7 +3942,7 @@ fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
 // that are clean under the gate today, and leaving judged what can be judged keeps the excused
 // set as small as the facts require rather than as large as the category.
 fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool) -> TextFile {
-  let file_derived_names = all_module_paths |> map(lib_rs_mod_name_from_path)
+  let file_derived_names = all_module_paths |> map(path => lib_rs_mod_name_from_path(path: path))
   let shell_names = if has_compiler_tests {
     file_derived_names |> filter(n => !lib_rs_module_is_partition_owned(mod_name: n))
   } else {
