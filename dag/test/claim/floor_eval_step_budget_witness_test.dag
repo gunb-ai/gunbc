@@ -30,8 +30,9 @@ import v2.workflow.floor_eval_step_calibration {
 import v2.workflow.floor_grandfathered_roster {
   GrandfatheredRemoval, WitnessDeleted, WitnessRenamed, WitnessNowInsideNewTier,
   RosterChangeVerdict, RosterChangeAdmitted, RosterAdditionRefused, RosterRemovalWithoutDisposition,
-  roster_change_verdict, roster_change_admitted,
+  roster_change_verdict, roster_change_admitted, removal_identity,
   floor_grandfathered_holds, floor_grandfathered_roster_size,
+  floor_grandfathered_removals,
 }
 
 // THE REQUIRED FLOOR'S CLAIM CEILING IS TWO-TIER, GATES ON EVAL STEPS, AND ITS CPU READING IS
@@ -343,4 +344,39 @@ test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
   string_contains(s: new_witness_over_budget_first_remedy(), pattern: "map_insert")
     && string_contains(s: new_witness_over_budget_first_remedy(), pattern: "map_lookup")
     && (string_contains(s: new_witness_over_budget_first_remedy(), pattern: "CHECK n") == false)
+}
+
+// ── THE CONTRACT'S PRODUCTION INSTANCE, NOT ONLY ITS FIXTURES ──────────────────────────────
+//
+// The roster carries four declared removals: this lane's own witnesses, renamed or deleted between
+// the roster cut and the landing head. They were found by the identity join `G \ L` over the frozen
+// roster and floor run 34733276548's measured population, not by reading the file.
+//
+// THIS ASSERTS THE JOIN DIRECTION THAT MATTERS: every declared removal names an identity that IS in
+// the roster. A disposition naming something the roster never held would be a removal of nothing —
+// it would satisfy `roster_change_verdict` while retiring no row, which is the contract passing
+// vacuously. The complement direction (a roster row absent from the tree with no disposition) is
+// what `a_removal_without_a_typed_disposition_refuses` covers at fixture scale.
+test fn every_declared_removal_names_a_row_the_roster_actually_holds() -> Bool {
+  all_removals_name_roster_members(removals: floor_grandfathered_removals)
+    && (removal_count(removals: floor_grandfathered_removals) == 4)
+}
+
+fn all_removals_name_roster_members(removals: List<GrandfatheredRemoval>) -> Bool {
+  match removals {
+    Empty {} => true
+    Cons { head: r, tail: rest } =>
+      if floor_grandfathered_holds(name: removal_identity(removal: r)) {
+        all_removals_name_roster_members(removals: rest)
+      } else {
+        false
+      }
+  }
+}
+
+fn removal_count(removals: List<GrandfatheredRemoval>) -> Int {
+  match removals {
+    Empty {} => 0
+    Cons { head: _, tail: t } => int_add(a: 1, b: removal_count(removals: t))
+  }
 }

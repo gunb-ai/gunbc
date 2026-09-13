@@ -50,11 +50,45 @@ type GrandfatheredRemoval =
   | WitnessRenamed { previous_identity: NonEmptyStr, new_identity: NonEmptyStr, renamed_in: NonEmptyStr }
   | WitnessNowInsideNewTier { identity: NonEmptyStr, observed_eval_steps: Int, measured_by: NonEmptyStr }
 
-// EMPTY AT THE CUT, AND THAT IS THE HONEST STATE RATHER THAN A PLACEHOLDER. The roster is minted at
-// this commit, so nothing has left it yet. The carrier is declared now because the contract is
-// declared now: a removal path that arrives later, beside the first removal, is a path nobody
-// reviewed against the contract it is supposed to satisfy.
-data floor_grandfathered_removals: List<GrandfatheredRemoval> = []
+// FOUR REMOVALS, DECLARED, AND THEY ARE THIS CHANGE'S OWN.
+//
+// The roster was cut from a floor run taken part-way through this lane. Between that cut and the
+// landing head, four of this module's consumer witnesses were RENAMED or DELETED as the two-tier
+// model replaced the single-budget one -- so four roster rows have no live identity at the head
+// that ships. That is exactly a removal, and the contract above says a removal carries a typed
+// disposition. An earlier revision of this file left this list EMPTY and called that "the honest
+// state at the cut", which it was on the day it was written and stopped being the moment the
+// witnesses were renamed.
+//
+// IT WAS FOUND BY THE IDENTITY JOIN, NOT BY REVIEW OR BY THIS FILE'S PROSE. `G \ L` over the frozen
+// roster and the live measured population of floor run 34733276548 is exactly these four. A
+// contract whose only demonstration is a fixture is a contract nobody has run against real data;
+// this list is the production instance, and the join is what produced it.
+//
+// EACH ARM IS CHECKABLE AGAINST THE TREE. Three are renames -- the new identity is present and the
+// old one is not -- and one is a deletion, because the band-grounding check it named was replaced
+// by the floored-ratio grounding rather than renamed into it.
+data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
+  WitnessRenamed {
+    previous_identity: "test.claim.floor_eval_step_budget_witness_test.a_claim_over_the_eval_step_budget_refuses" as NonEmptyStr,
+    new_identity: "test.claim.floor_eval_step_budget_witness_test.a_cost_between_the_ceilings_refuses_for_a_new_identity" as NonEmptyStr,
+    renamed_in: "the two-tier fold: the single-budget RED became the tier-discriminating pair, refusing at a cost BETWEEN the two ceilings so only the tier can decide it" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "test.claim.floor_eval_step_budget_witness_test.a_claim_over_the_cpu_line_with_in_budget_steps_passes" as NonEmptyStr,
+    new_identity: "test.claim.floor_eval_step_budget_witness_test.a_claim_far_over_the_cpu_line_with_in_budget_steps_passes_on_either_tier" as NonEmptyStr,
+    renamed_in: "the two-tier fold: the CPU-observed-only control now asserts the same claim passes on BOTH tiers, so a tier-dependent CPU gate could not hide in one of them" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "test.claim.floor_eval_step_budget_witness_test.the_declared_budget_is_grounded_by_the_pinned_calibration" as NonEmptyStr,
+    new_identity: "test.claim.floor_eval_step_budget_witness_test.the_pinned_rate_is_the_floored_ratio_of_its_own_sample" as NonEmptyStr,
+    renamed_in: "the two-tier fold: the grounding moved from a band around one derived budget to the pinned RATE both budgets are derived through, so the check follows the figure that can drift" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.floor_eval_step_budget_witness_test.the_grounding_refuses_a_budget_out_of_band_in_either_direction" as NonEmptyStr,
+    deleted_in: "the two-tier fold: the two-sided band it exercised no longer exists. Its subject -- that both refusing arms of the grounding are authorable and both refuse -- survives inside the_pinned_rate_is_the_floored_ratio_of_its_own_sample and its RateAboveMeasuredRatio / RateBelowMeasuredRatio arms, so this is a deletion of the fixture and not of the coverage" as NonEmptyStr,
+  },
+]
 
 fn floor_grandfathered_chunk_000() -> List<String> {
   Cons { head: "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse", tail: Cons { head: "test.claim.arity_zero_import_refusal_witness.the_same_import_carrying_one_member_is_accepted", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.a_clean_report_states_the_coverage_it_does_not_have", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.an_empty_fact_population_refuses_too", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.a_subject_that_contributed_no_declarations_refuses_rather_than_reading_clean", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.a_subject_with_one_forked_name_among_several_reports_only_that_one", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.both_refusing_verdicts_fail_the_gate_and_the_clean_one_passes", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.every_peer_declarer_is_reported_and_repeats_are_collapsed", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.one_name_declared_in_two_files_is_a_fork_that_names_both", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.the_same_two_files_declaring_different_names_are_not_a_fork", tail: Cons { head: "test.claim.bare_name_fork_lens_witness_test.two_declarations_of_one_name_inside_the_subject_are_not_a_fork_with_itself", tail: Cons { head: "test.claim.bare_name_identity_consumer_census_test.derived_counts_bounded_by_roster", tail: Cons { head: "test.claim.bare_name_identity_consumer_census_test.interrupt_cell_is_exactly_its_two_predicates", tail: Cons { head: "test.claim.bare_name_identity_consumer_census_test.member_has_at_least_one_call_site", tail: Cons { head: "test.claim.bare_name_identity_consumer_census_test.sibling_claim_has_an_identity_to_feed_it", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.binding_refused_at_seam_accepts_clean_unresolved", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.binding_refused_at_seam_not_runnable_is_false", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.binding_refused_at_seam_rejects_unrelated_hard_diagnostic", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.row3_compile_production_refused_is_false", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.row3_not_runnable_observation_is_false", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.row3_production_refused_is_false", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.row4_compile_production_refused_is_false", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.row4_listed_import_on_produced_observation_fails", tail: Cons { head: "test.claim.class_b_import_closure_binding_refusal_witness.row4_production_refused_is_false", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.act0_startability_names_only_chain_stages", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
