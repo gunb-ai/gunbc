@@ -26,6 +26,7 @@ import gunbc.fleet_observation_capture_chunk {
   ContinuityGap,
   ContinuityUnknown,
   LocalCommitStanding,
+  LocallyCommitted,
   DownstreamAcceptanceStanding,
   DownstreamAccepted,
   DownstreamRejected,
@@ -309,4 +310,3 @@ fn evidence_names_one_subject(
   && (owner_generation == chunk.occurrence.ownership_generation)
   && ((binding.enrolled_machine as String) == (owner_session.enrolled_machine as String))
 }
-
