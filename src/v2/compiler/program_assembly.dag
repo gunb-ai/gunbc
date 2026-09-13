@@ -9,7 +9,16 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest
 }
 import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
+import v2.compiler.parse {
+  ParseArtifact,
+  ParseMemoStats,
+  ParseProductionMeasured,
+  PreparedGrammar,
+  parse_memo_stats_empty,
+  parse_module_prepared,
+  parse_module_prepared_measured,
+  prepare_grammar
+}
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
 import v2.std.integer { Int }
 import v2.compiler.normalize { normalize }
@@ -35,6 +44,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   bind_outcome,
+  bind_outcome_accepted,
   outcome_accepted,
   outcome_rejected
 }
@@ -84,17 +94,68 @@ fn program_assembly_phase_tokenize(
   }
 }
 
+// THE MEASURED PARSE PHASE, AND THE PLAIN ONE AS ITS PROJECTION. The memo accounting is a
+// realization fact about one execution, so it rides beside the outcome rather than inside the
+// artifact (see ParseProductionMeasured); a caller that does not report counters takes `.outcome`
+// and is byte-for-byte the fold it was before.
+//
+// THE REJECTED-INPUT ARM REPRODUCES bind_outcome EXACTLY, and is spelled out rather than reused
+// because bind_outcome cannot carry a second value out of the bound function: a Rejected token
+// stream passes its diagnostics through untouched and reports empty accounting, because no parse
+// ran -- an answer, not a missing measurement. The Accepted arm merges the incoming diagnostics
+// through bind_outcome_accepted, which is what bind_outcome itself calls.
+fn program_assembly_phase_parse_measured(
+  tokens: Outcome<TokenStream>,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> ParseProductionMeasured {
+  match tokens {
+    Rejected { diagnostics: d } =>
+      ParseProductionMeasured {
+        outcome: Rejected { diagnostics: d },
+        memo: parse_memo_stats_empty()
+      }
+    Accepted { value: token_stream, diagnostics: od } =>
+      let measured = parse_module_prepared_measured(
+        tokens: token_stream,
+        prepared: prepared,
+        validation_residue: residue
+      )
+      ParseProductionMeasured {
+        outcome: bind_outcome_accepted(od: od, inner: measured.outcome),
+        memo: measured.memo
+      }
+  }
+}
+
 fn program_assembly_phase_parse(
   tokens: Outcome<TokenStream>,
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> Outcome<ParseArtifact> {
-  bind_outcome(
-    o: tokens,
-    f: fn(token_stream) {
-      parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue)
-    }
-  )
+  program_assembly_phase_parse_measured(
+    tokens: tokens,
+    prepared: prepared,
+    residue: residue
+  ).outcome
+}
+
+// The three counters, read out one at a time because the driver prints scalars and a record does
+// not cross that boundary as one.
+fn program_assembly_memo_hits(measured: ParseProductionMeasured) -> Int {
+  measured.memo.hits
+}
+
+fn program_assembly_memo_misses(measured: ParseProductionMeasured) -> Int {
+  measured.memo.misses
+}
+
+fn program_assembly_memo_lookup_calls(measured: ParseProductionMeasured) -> Int {
+  measured.memo.lookup_calls
+}
+
+fn program_assembly_measured_outcome(measured: ParseProductionMeasured) -> Outcome<ParseArtifact> {
+  measured.outcome
 }
 
 fn program_assembly_phase_normalize(parsed: Outcome<ParseArtifact>) -> Outcome<NormalizedTree> {
