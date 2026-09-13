@@ -1,7 +1,9 @@
 module gunbc.arm_ci_seller_census
 
 import std.types { Bool, List }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import extdeps.ci_runner.types {
   CustomerAccountNamedCloud,
   ResoldNamedCloud,
@@ -42,21 +44,17 @@ import extdeps.pricing.ubicloud { ubicloud_arm_linux_offer }
 // supply, not a CI-runner seller, and is not enrolled here; CAX was unread as
 // orderable on three dated readings.
 //
-// CONSUMPTION (DESIGN §3c). This change's executing consumer is
-// test.claim.arm_ci_seller_census_witness: two-way identity joins over
-// surveyed_arm_linux_offers, cloud_arm_reseller_offers,
-// customer_account_cloud_arm_offers, not_accepting_arm_linux_offers,
-// unread_standing_arm_linux_offers, plus the uncited-aarch64 RED.
-//
-// DECLARED FRONTIER. Named later consumer: gunbc-private economics-regrounding
-// (private #88) imports surveyed_arm_linux_offers including SellerOfferStanding.
-// Trigger: this module present on public origin/main (that tree composes
-// gunb-ai/gunbc@main; it will not pin a PR head). Second named later consumer:
-// strategy.node_rental SupplierHypothesis folding the wholesale question
-// ArmCapacityChannel states (reseller of scarce cloud ARM as a candidate
-// Ampere buyer). Trigger: that module imports surveyed_arm_linux_offers or
-// cloud_arm_reseller_offers. Until those imports exist, the joins are
-// observation plus the witness, not a sourcing decision.
+// CONSUMPTION (DESIGN §3c). Executing consumer in this tree:
+// test.claim.arm_ci_seller_census_witness. Later consumers are the enrolled
+// FrontierRow below, not a second prose roster.
+data arm_ci_seller_census_later_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.arm_ci_seller_census", decl_name: "surveyed_arm_linux_offers"),
+    reason: "surveyed_arm_linux_offers and cloud_arm_reseller_offers are observation plus the census witness until a production join outside this public tree reads them. Named consumer: strategy.ci_compute_offer_catalog (gunbc-private #113 catalog; private #88 is closed and superseded) folding SellerArmLinuxOffer including SellerOfferStanding, and strategy.node_rental SupplierHypothesis folding ArmCapacityChannel (reseller of scarce cloud ARM as a candidate Ampere buyer). Trigger: that catalog, or SupplierHypothesis, imports surveyed_arm_linux_offers or cloud_arm_reseller_offers from public gunb-ai/gunbc@main. NOT satisfied by this witness, nor by pinning a PR head, nor by restating prices in private strategy.",
+    dissolution: unbound_dissolution(description: "dissolve-on: strategy.ci_compute_offer_catalog (or strategy.node_rental SupplierHypothesis) imports surveyed_arm_linux_offers or cloud_arm_reseller_offers from public origin/main; that change rebinds this row to bound_dissolution on the importing declaration. SUFFICIENT FOR deleting this row. Private modules are not DeclarationRefs in this tree (CITED-MODULE-ABSENT), so the dissolution stays unbound until the import exists as a public or overlay citation this corpus can name."),
+  ),
+]
+
 fn surveyed_arm_linux_offers() -> List<SellerArmLinuxOffer> {
   [
     blacksmith_arm_linux_offer,
