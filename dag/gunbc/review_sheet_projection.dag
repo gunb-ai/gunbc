@@ -1045,6 +1045,46 @@ fn judgement_for_listing(
   }
 }
 
+data buyer_review_identity_column: NonEmptyStr = "Listing"
+
+data buyer_review_operator_columns: List<ReviewColumn> = [
+  ReviewColumn { name: "Decision" as NonEmptyStr, kind: OperatorEntered },
+  ReviewColumn { name: "Units to buy" as NonEmptyStr, kind: OperatorEntered },
+  ReviewColumn { name: "Accepted on judgement" as NonEmptyStr, kind: OperatorEntered },
+  ReviewColumn { name: "Note" as NonEmptyStr, kind: OperatorEntered },
+]
+
+fn buyer_review_sheet_schema(derived_columns: List<ReviewColumn>) -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: buyer_review_identity_column,
+    columns: concat(derived_columns, buyer_review_operator_columns),
+  }
+}
+
+fn buyer_review_sheet_projection(
+  derived_columns: List<ReviewColumn>,
+  rows: List<ProjectionRow>,
+) -> ReviewSheetProjection {
+  ReviewSheetProjection {
+    schema: buyer_review_sheet_schema(derived_columns: derived_columns),
+    rows: rows,
+  }
+}
+
+// Trigger: a public caller of review_sheet_ensure supplies
+// buyer_review_sheet_projection (derived_columns from the buyer roster,
+// rows keyed by Browse itemId). That caller cannot live in this module:
+// the roster is private strategy.buyer_review_sheet. Live GetValues /
+// BatchUpdate is a different frontier (live_sheets_transport_frontier).
+data buyer_review_ensure_projection_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_sheets",
+    decl_name: "review_sheet_ensure",
+    field: WholeDeclaration
+  }
+}
+
 data buyer_review_judgement_read_frontier: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
