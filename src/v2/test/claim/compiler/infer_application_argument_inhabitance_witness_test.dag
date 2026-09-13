@@ -26,6 +26,7 @@ import v2.std.node {
   Named,
   Node,
   Positional,
+  Symbol,
   Transform,
   TypeNode,
   Value,

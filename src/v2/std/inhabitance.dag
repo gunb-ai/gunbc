@@ -80,6 +80,13 @@ fn position_direct_call_argument() -> DeclaredTypePosition {
   PositionDirectCallArgument
 }
 
+fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
+  match position {
+    PositionDirectCallArgument => ^position_direct_call_argument
+    PositionDeclaredReturn => ^position_declared_return
+  }
+}
+
 fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
   CandidateSet {
     candidates: [declared],
@@ -202,22 +209,29 @@ fn inhabitance_undecidable_diagnostic(
 }
 
 fn application_argument_does_not_inhabit_diagnostic(
-  application: Node,
-  parameter_identity: Symbol,
-  argument_type: Node,
-  parameter_type: Node,
+  obligation: DeclaredTypeObligation
 ) -> Diagnostic {
   Diagnostic {
     reason: ^application_argument_does_not_inhabit,
-    at: node_locus(node: application),
+    at: node_locus(node: obligation.application),
     correction: Suggested {
       node: Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: parameter_identity }, target: parameter_type },
-          Edge { label: Named { name: ^inhabitance_produced_type }, target: argument_type }
+          Edge {
+            label: Named { name: inhabitance_position_symbol(position: obligation.position) },
+            target: obligation.application
+          },
+          Edge {
+            label: Named { name: obligation.parameter_identity },
+            target: obligation.declared
+          },
+          Edge {
+            label: Named { name: ^inhabitance_produced_type },
+            target: obligation.produced
+          }
         ],
-        occurrence_id: application.occurrence_id
+        occurrence_id: obligation.application.occurrence_id
       }
     }
   }

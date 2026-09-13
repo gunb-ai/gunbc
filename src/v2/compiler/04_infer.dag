@@ -1659,32 +1659,26 @@ fn infer_judge_application_argument(
             reason: undecidable_argument_type_not_derived()
           )
         Holds { value: produced } =>
-          let verdict = declared_type_inhabitance(
-            obligation: DeclaredTypeObligation {
-              position: position_direct_call_argument(),
-              parameter_identity: formal.parameter_identity,
-              declared: formal.declared,
-              produced: produced,
-              application: application
-            }
-          )
+          let obligation = DeclaredTypeObligation {
+            position: position_direct_call_argument(),
+            parameter_identity: formal.parameter_identity,
+            declared: formal.declared,
+            produced: produced,
+            application: application
+          }
+          let verdict = declared_type_inhabitance(obligation: obligation)
           match inhabitance_inhabits_homomorphism(verdict: verdict) {
             Present { value: _ } => Accepted { value: true, diagnostics: None }
             Absent =>
               match inhabitance_undecidable_reason(verdict: verdict) {
                 Present { value: reason } =>
                   infer_inhabitance_undecidable_accepted(
-                    application: application,
+                    application: obligation.application,
                     reason: reason
                   )
                 Absent =>
                   outcome_rejected(
-                    application_argument_does_not_inhabit_diagnostic(
-                      application: application,
-                      parameter_identity: formal.parameter_identity,
-                      argument_type: produced,
-                      parameter_type: formal.declared
-                    )
+                    application_argument_does_not_inhabit_diagnostic(obligation: obligation)
                   )
               }
           }
