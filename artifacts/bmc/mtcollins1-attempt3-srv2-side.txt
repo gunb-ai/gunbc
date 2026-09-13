@@ -14,11 +14,11 @@ arp_verdict=RESOLVED_EXPECTED_MAC
 10f9917a5259511970644a43b3e58218c384d067ed5d5ccd698d2df0149d9c19  /srv/bmc/mtcollins1-census.iso
 ----EXIT boot-artifact: 0
 ----SECTION bmc-power----
-----ARGV bmc-power: ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin chassis power status
+----ARGV bmc-power: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> chassis power status
 Chassis Power is on
 ----EXIT bmc-power: 0
 ----SECTION bmc-bootparam----
-----ARGV bmc-bootparam: ipmitool -I lanplus -H 192.168.1.228 -U admin -P admin chassis bootparam get 5
+----ARGV bmc-bootparam: ipmitool -I lanplus -H 192.168.1.228 -U admin -P <redacted:published-factory-default> chassis bootparam get 5
 Boot parameter version: 1
 Boot parameter 5 is valid/unlocked
 Boot parameter data: 0000000000
