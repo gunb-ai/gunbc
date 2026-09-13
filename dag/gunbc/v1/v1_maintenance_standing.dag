@@ -685,6 +685,16 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 // coproduct: the five refused classes are exactly as they were, and this says where ONE of them
 // stops.
 //
+// AND NOT WIDENING THE ENUM IS NOT THE SAME AS NOT CHANGING POLICY -- said here rather than left
+// for a reviewer to extract, because the weaker claim is the one an author reaches for. THIS ROW
+// CHANGES HOW A REFUSED CLASS IS APPLIED. A shape that was being refused under
+// NewEscapeHatchOrAdmissionRow on the face of this standing is, under two conditions, not that
+// class; that is a policy change and it is the entire purpose of writing it down. What the
+// standalone record buys is narrower and worth exactly what it is: no growth on this carrier's
+// closed vocabularies, so the next author who needs an exception cannot cite a precedent for
+// adding an arm. It buys nothing about whether the policy change itself is right, which is
+// fierce-lark-661's call and is recorded above as theirs.
+//
 // THE CONDITIONS ARE FIELDS, NOT PROSE, because a condition written as narrative is one a later
 // reader satisfies by paraphrase. Both must hold. FAILING EITHER LEAVES THE ROWS IN THE REFUSED
 // CLASS -- a disposition that cannot fail is an exemption wearing a condition's clothes, which is
