@@ -141,8 +141,6 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.dag_collect_fingerprint_witness_test.dag_collect_fingerprint_witness_keystone_holds",
       tail: Cons {
-      head: "test.claim.dag_compile_clean_seam_witness.cross_shard_seam_preservation_holds_on_live_tree",
-      tail: Cons {
       head: "test.claim.dag_compile_clean_shard_a_witness.compile_clean_shard_a_exemplar_compile_green",
       tail:  Cons {
       head: "test.claim.diagnostics_test.diagnostics_constructor_owner_walls_hold",
@@ -200,8 +198,7 @@ fn floor_route_gap_chunk_00() -> List<String> {
     }
     }
     }
-    }
-    }
+}
 }
 
 fn floor_route_gap_chunk_01() -> List<String> {

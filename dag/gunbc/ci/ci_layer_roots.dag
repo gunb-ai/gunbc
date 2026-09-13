@@ -805,11 +805,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "dag_compile_clean_seam_witness_test.dag",
-    classification: BinWitnessWet,
-    reason: excl_bin_wet_reason,
-    dissolution: excl_bin_wet_dissolve},
-  WitnessExclusionRow {
     pattern: "frontier_probe_closure_matrix_integration_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "PR #7762 frontier probe closure integration matrix (operator msg_b51df9e7): frontier_probe_below_cap_complete_population_gates_pass_holds and frontier_probe_second_source_root_population_gates_pass_holds execute full receipt_for_subject with observed SourceRef rows through assemble — measured claim_batch --wet eval wall: below_cap 784772ms, second_root 742109ms (130x and 123x bin_witness_wet_per_row_wall_budget_seconds). Scheduled consumer: FalsifierCadenceJob enrollment plus falsifier_rehomed_bin_wet_rows. Cheap wet controls (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms measured eval) run per-PR on GithubActionsCiJob via src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag — not 523ms/181ms (those were erroneous full-resolve figures from an earlier exclusion row before read-through was split out).",
@@ -1440,12 +1435,6 @@ type RehomedBinWetRow {
 }
 
 data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
-  RehomedBinWetRow {
-    entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag",
-    function: "cross_shard_seam_preservation_holds_on_live_tree",
-    reason: "183s measured on run 30009199696 (3x the per-row budget): the live-tree seam-preservation leg compiles real cross-shard closures per seam; its cheap algebra sibling (cross_shard_seam_algebra_holds) stays per-PR as the smoke row for the concern",
-    dissolution: unbound_dissolution(description: "seam preservation gains a scoped or receipt-consuming realization measured under the per-row budget; then re-enroll per-PR and delete this row")
-  },
   RehomedBinWetRow {
     entry: "dag/test/claim/long/dag_compile_clean_perturb_corpus_witness_test.dag",
     function: "perturb_cross_tree_import_corpus_green_holds",
