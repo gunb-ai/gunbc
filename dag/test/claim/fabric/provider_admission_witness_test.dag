@@ -725,9 +725,10 @@ test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
 }
 
 // THE READING ROWS ARE EXERCISED, NOT MERELY COUNTED. A count equality over hetzner_published_readings
-// greens while the statements are emptied; these folds read locator and statement, so deleting a
-// row, retargeting a URI, or dropping the negative clause reds. The consulted decl_refs above
-// still name the declarations; this is the half that reads the values those names resolve to.
+// greens while the locators are retargeted or the silences dropped; these folds read locator and
+// silence membership, so deleting a row, retargeting a URI, or dropping a typed silence reds.
+// The consulted decl_refs above still name the declarations; this is the half that reads the
+// values those names resolve to.
 test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool {
   count(hetzner_published_readings()) == 2
     && count(hetzner_published_reading_locators()) == 2

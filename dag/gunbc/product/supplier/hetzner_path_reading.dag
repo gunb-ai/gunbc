@@ -11,8 +11,9 @@ import extdeps.cloud.hetzner {
 // REPOSITORY reading Hetzner's published pages against product.fabric.provider_route's
 // nine-path questions. DESIGN section 3: observations produced by this repository are
 // receipts in the observing product layer, never Unobserved properties authored inside the
-// upstream module. extdeps.cloud.hetzner therefore owns only the page URIs; read_on,
-// the paraphrase, and the silence coproduct live here.
+// upstream module. extdeps.cloud.hetzner therefore owns only the page URIs; read_on
+// and the silence coproduct live here. A statement blob would either duplicate the
+// silences or sit unread (DESIGN section 4c).
 //
 // The silences are OUR questions, not Hetzner vocabulary. FinlandOrHelsinkiUnmentioned is
 // a path-closure question, not a vendor concept. Matching a silence is how a later reader
@@ -30,14 +31,12 @@ type HetznerPathDocumentSilence
 type HetznerPathDocumentReading {
   authority: ExternalAuthority
   read_on: NonEmptyStr
-  statement: NonEmptyStr
   silences: List<HetznerPathDocumentSilence>
 }
 
 data hetzner_technical_organizational_measures_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
   authority: hetzner_technical_organizational_measures_page,
   read_on: "2026-09-12",
-  statement: "Only authorized Hetzner employees have administrative access, within the scope of the agreed service; via multi-level authentication and cryptographic protection. Our log system saves logins and administrative changes within the customer account. We store and save these in accordance with our company deletion plan and in compliance with the GDPR. Our data centers are staffed 24/7/365 by our own technical support employees.",
   silences: [
     LogSystemCountryUnstated,
     AdministrativeAccessJurisdictionUnstated,
@@ -48,7 +47,6 @@ data hetzner_technical_organizational_measures_reading: HetznerPathDocumentReadi
 data hetzner_data_protection_overview_reading: HetznerPathDocumentReading = HetznerPathDocumentReading {
   authority: hetzner_data_protection_overview_page,
   read_on: "2026-09-12",
-  statement: "The page names Falkenstein, Nuremberg and Helsinki as EU locations and Ashburn, Hillsboro and Singapore as non-EU ones; Hetzner US LLC operates the US locations and Hetzner Singapore Pte. Ltd. the Singapore one, while Hetzner Online GmbH remains the contractual partner. Only the data stored on a cloud server transfers to a non-EU location when one is selected; customer master data is processed exclusively within the EU. The subcontractor overview is referenced rather than reproduced, at www.hetzner.com/AV/subunternehmer.pdf.",
   silences: [],
 }
 
