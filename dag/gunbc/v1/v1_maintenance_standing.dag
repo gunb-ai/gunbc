@@ -757,6 +757,18 @@ type BoundarySpecimenStanding =
     InLifecycle { state: TransitionAdmissionLifecycleState }
   | PredatesBoundary
 
+// WHETHER THE CARRIER HAS MERGED AT ALL, as a coproduct rather than as empty strings in fields
+// typed CommitSha and Timestamp. Review 65450: an earlier head wrote `carrier_merged_as: ""` and
+// `carrier_merged_at: ""` for a carrier that has not merged and DEFENDED it in a note, which is
+// the dual of the conflation this row had just fixed one field over -- "not in the machine" was
+// pulled out of the machine while "not merged" stayed inside the merge fields as a sentinel.
+// DESIGN §5: "Stronger than CATCHING a wrong state is making it UNWRITABLE -- correctness by
+// construction, not validation." A sentinel is validation; this has no constructor for the
+// invalid state.
+type CarrierStanding =
+    Merged { as: CommitSha, at: Timestamp }
+  | NotEnqueued
+
 // A CONDITION'S VERDICT, with the three answers kept apart. `NotYetDue` is the arm whose absence
 // made an earlier draft of this row forbid its own sequence.
 type BoundaryConditionVerdict =
@@ -773,8 +785,7 @@ type BoundaryConditionVerdict =
 type BoundarySpecimen {
   carrier: NonEmptyStr
   rows: Int
-  carrier_merged_as: CommitSha
-  carrier_merged_at: Timestamp
+  carrier_standing: CarrierStanding
   deletion_follow_up: NonEmptyStr
   deletion_authored_at: Timestamp
   condition_one: BoundaryConditionVerdict
@@ -837,9 +848,8 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
     BoundarySpecimen {
       carrier: "gunbc#10940" as NonEmptyStr,
       rows: 181,
-      carrier_merged_as: "6c7b081961",
-      carrier_merged_at: "2026-09-12T22:45:52Z",
-      deletion_follow_up: "gunbc#11156, commit a5bc810f68" as NonEmptyStr,
+      carrier_standing: Merged { as: "6c7b081961", at: "2026-09-12T22:45:52Z" },
+      deletion_follow_up: "gunbc#11156" as NonEmptyStr,
       deletion_authored_at: "2026-09-12T23:55:07Z",
       condition_one: FailsAsChronology,
       condition_two: Met,
@@ -849,9 +859,8 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
     BoundarySpecimen {
       carrier: "gunbc#11156" as NonEmptyStr,
       rows: 2,
-      carrier_merged_as: "d7b7ab96c1f",
-      carrier_merged_at: "2026-09-13T02:50:04Z",
-      deletion_follow_up: "gunbc#11240, commit 1a0cb5c4749" as NonEmptyStr,
+      carrier_standing: Merged { as: "d7b7ab96c1f", at: "2026-09-13T02:50:04Z" },
+      deletion_follow_up: "gunbc#11240" as NonEmptyStr,
       deletion_authored_at: "2026-09-13T05:14:49Z",
       condition_one: FailsAsChronology,
       condition_two: Met,
@@ -861,14 +870,13 @@ data v1_transition_admission_refusal_boundary: RefusalClassBoundary = RefusalCla
     BoundarySpecimen {
       carrier: "gunbc#11214" as NonEmptyStr,
       rows: 15,
-      carrier_merged_as: "",
-      carrier_merged_at: "",
-      deletion_follow_up: "authored; carrier not yet enqueued" as NonEmptyStr,
-      deletion_authored_at: "",
+      carrier_standing: NotEnqueued,
+      deletion_follow_up: "gunbc#11259" as NonEmptyStr,
+      deletion_authored_at: "2026-09-13T09:07:38Z",
       condition_one: Met,
       condition_two: NotYetDue,
       standing: InLifecycle { state: Eligible },
-      note: "Its deletion follow-up is authored while the carrier has not yet been enqueued, so condition one is satisfied at the eligibility decision and condition two is neither satisfied nor failed. If the carrier lands, this specimen becomes Pending until the follow-up lands and removes the rows. The empty carrier_merged_as and carrier_merged_at are the honest reading of a carrier that has not merged, not a missing measurement." as NonEmptyStr,
+      note: "Its deletion follow-up is authored while the carrier has not yet been enqueued, so condition one is satisfied at the eligibility decision and condition two is neither satisfied nor failed. If the carrier lands, this specimen becomes Pending until the follow-up lands and removes the rows. Its follow-up is gunbc#11259, authored at commit bc5b6b4808 -- MEASURED for this row rather than asserted, because condition_one: Met is a claim about that timestamp against the carrier's enqueue and an earlier head made it with the evidence field empty." as NonEmptyStr,
     },
   ],
 
