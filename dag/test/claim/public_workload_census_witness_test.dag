@@ -8,6 +8,7 @@ import extdeps.github.workflow_runs {
   workflow_job_name_matrix_parenthetical_standing,
 }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_label_resolution {
   resolve_runner_label,
   arm_standing,
@@ -29,7 +30,7 @@ import gunbc.public_workload_census {
   observed_job_binds_inspected_leg,
   CandidateRejected, SelectedWorkload, CandidateUnresolved,
   DeclaredProviderKnown, DeclaredProviderUnresolved,
-  candidate_declared_architecture,
+  candidate_declared_architecture, candidate_observed_architecture,
   candidate_declared_provider, candidate_observed_provider,
   candidate_warm_cache_count,
   effect_disposition, CoverageUpload, WorkflowArtifactUpload,
@@ -45,6 +46,8 @@ import gunbc.public_workload_census {
   candidate_biome_job_key_titlecase_uninspected_control,
   candidate_biome_multi_label_control,
 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn catalog_not_arm(label: String, observed_at: Rfc3339Timestamp) -> Bool {
   match arm_standing(r: resolve_runner_label(label: label, observed_at: observed_at)) {
@@ -141,11 +144,10 @@ test fn witness_pdns_declared_architecture_stays_unresolved_while_observed_is_ar
     DeclaredArm { via } => false
     DeclaredNotArm { via, architecture } => false
   }
-  let observed_arm = match observed_label_standing(o: candidate_pdns_dnsdist_arm.observed) {
-    ObservedLabel { label } => catalog_is_arm(label: label, observed_at: candidate_pdns_dnsdist_arm.observation_time)
-    NoRunObservedForLabel { obligation } => false
-    JobResourceCarriedNoLabels { job_id } => false
-    JobResourceCarriedMultipleLabels { labels } => false
+  let observed_arm = match candidate_observed_architecture(c: candidate_pdns_dnsdist_arm) {
+    ArmConfirmed { label, snapshot } => true
+    NotArmConfirmed { label, architecture, snapshot } => false
+    ArmUndetermined { label, cause } => false
   }
   declared_unresolved && observed_arm
 }

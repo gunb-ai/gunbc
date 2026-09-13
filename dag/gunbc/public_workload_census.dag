@@ -16,7 +16,6 @@ import extdeps.github.workflow_runs {
   TimedOut,
   ActionRequired,
   StartupFailure,
-  workflow_job_name_encodes_matrix_values,
   workflow_job_name_matrix_value_parenthetical,
 }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
@@ -72,7 +71,7 @@ data public_workload_census_replay_consumer_frontier_rows: List<FrontierRow> = [
 data public_workload_census_run_attempt_consumer_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.public_workload_census", decl_name: "observed_job_run_attempt"),
-    reason: "WorkflowJobRun.labels reach observed_arm_standing and observed_provider_standing, which are compared with the declared readings. run_attempt is copied onto BaselineAdmitted.run_attempt; correctness_admitted_workloads matches only the admitted arm, and the other readers are witness binders. Copying is not the capability the retired workflow_job_run_observed_runner_frontier_rows trigger named: an OBSERVED attempt that a production fold can tell apart from attempt 1",
+    reason: "WorkflowJobRun.labels reach observed_arm_standing (via candidate_observed_architecture) and observed_provider_standing (via candidate_observed_provider), which are compared with the declared readings. run_attempt is copied onto BaselineAdmitted.run_attempt; correctness_admitted_workloads matches only the admitted arm, and the other readers are witness binders. Copying is not the capability the retired workflow_job_run_observed_runner_frontier_rows trigger named: an OBSERVED attempt that a production fold can tell apart from attempt 1",
     dissolution: unbound_dissolution(description: "NAMED CONSUMER: gunbc-private strategy.year_end_plan item incumbent-head-to-head. TRIGGER: a production func outside test.claim matches BaselineAdmitted.run_attempt or observed_job_run_attempt to select or refuse a run attempt. SUFFICIENT FOR deleting this row. NOT satisfied by copying run_attempt onto BaselineAdmitted, nor by a witness comparing the field to 1"),
   ),
 ]
@@ -426,16 +425,12 @@ fn observed_name_matches_inspected_prefix(
   match matrix {
     NoMatrix => job_name == prefix
     MatrixCombination { axes } =>
-      workflow_job_name_encodes_matrix_values(
-        job_name: job_name,
-        values: matrix_combination_values(axes: axes),
+      job_name == concat(
+        prefix,
+        workflow_job_name_matrix_value_parenthetical(
+          values: matrix_combination_values(axes: axes),
+        ),
       )
-        && job_name == concat(
-          prefix,
-          workflow_job_name_matrix_value_parenthetical(
-            values: matrix_combination_values(axes: axes),
-          ),
-        )
   }
 }
 
@@ -639,6 +634,10 @@ fn candidate_declared_architecture(c: WorkloadCandidate) -> DeclaredArchitecture
 
 fn candidate_declared_provider(c: WorkloadCandidate) -> DeclaredProviderStanding {
   declared_provider_standing(spec: c.declared_runner, observed_at: c.observation_time)
+}
+
+fn candidate_observed_architecture(c: WorkloadCandidate) -> ArmStanding {
+  observed_arm_standing(o: c.observed, observed_at: c.observation_time)
 }
 
 fn candidate_observed_provider(c: WorkloadCandidate) -> ProviderReading {
