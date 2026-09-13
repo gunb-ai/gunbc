@@ -154,16 +154,6 @@ fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)
 }
 
-fn join_with_separator(parts: List<String>, separator: String) -> String {
-  fold(parts, init: "", f: fn(acc, p) {
-    if acc == "" {
-      p
-    } else {
-      concat(acc, concat(separator, p))
-    }
-  })
-}
-
 type CommitSha    = String
 
 // The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here,

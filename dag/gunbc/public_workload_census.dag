@@ -1,6 +1,6 @@
 module gunbc.public_workload_census
 
-import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, join_with_separator }
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.toolchain.types { Architecture }
@@ -261,7 +261,13 @@ type ObservedLabelStanding
   | JobResourceCarriedMultipleLabels { labels: List<String> }
 
 fn observed_label_set_rendering(labels: List<String>) -> String {
-  join_with_separator(parts: labels, separator: ", ")
+  match labels.first() {
+    Absent => ""
+    Present { value: head } =>
+      fold(labels.skip(n: 1), init: head, f: fn(acc, l) {
+        concat(acc, concat(", ", l))
+      })
+  }
 }
 
 fn observed_label_standing(o: ObservedExecution) -> ObservedLabelStanding {
