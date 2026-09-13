@@ -40,8 +40,10 @@ import gunbc.cloudflare.r2_origin_object {
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackAbsent, ReadbackUnknown, origin_readback_of_fetch }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.data_category { BuildOutput }
-import product.data_class { Classified, DataEffectPermit, classify_build_output }
-import product.fabric.provider_route { ProviderRoute }
+import product.data_class {
+  Classified, DataEffectPermit, classify_build_output, SinkKind, DurableOrigin, DataOperation, StoreDurably,
+}
+import product.fabric.provider_route { ProviderRoute, provider_route_eq }
 import gunbc.fabric_m0_commit {
   CommitNamespace,
   CommitTransportOutcome,
@@ -235,12 +237,48 @@ type OriginObjectCommit sole_constructor {
   credential: WriteCredentialCustody
 }
 
-func commit_object_to_origin(permit: DataEffectPermit<BuildOutput, FilePath>, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {
-  let put = put_origin_object(local_path: permit.value, key: key, token_source: token_source)
-  let fetch = fetch_origin_object(key: key, token_source: token_source)
-  OriginObjectCommit {
-    readback: object_readback_of_origin_put(put: put.verdict, fetch: fetch),
-    credential: put.credential,
+// THE PERMIT MUST BE FOR THIS EFFECT, NOT MERELY FOR THIS CATEGORY (review 65175). The type binds
+// category and payload; it does not bind the sink or the operation, so a BuildOutput permit
+// admitted for a log channel, for another provider's route, or for transmission would otherwise
+// authorise a durable PUT here. One judgement, in the module that owns the effect: the permit's
+// sink is a DurableOrigin on the fleet R2 route and its operation is StoreDurably, or the write
+// refuses before any transport is touched. Same shape as product.fabric.provider_admission's
+// PermitStanding: the standing is a coproduct the caller matches, never a Bool.
+type OriginWritePermitStanding
+  = PermitAuthorisesThisOrigin
+  | PermitNamesAnotherSink { sink: SinkKind }
+  | PermitNamesAnotherOperation { operation: DataOperation }
+
+fn origin_write_permit_standing(permit: DataEffectPermit<BuildOutput, FilePath>) -> OriginWritePermitStanding {
+  match permit.sink.kind {
+    DurableOrigin { route: r } =>
+      if provider_route_eq(a: r, b: fabric_durable_origin_route()) {
+        match permit.operation {
+          StoreDurably => PermitAuthorisesThisOrigin
+          other => PermitNamesAnotherOperation { operation: permit.operation }
+        }
+      } else {
+        PermitNamesAnotherSink { sink: permit.sink.kind }
+      }
+    other => PermitNamesAnotherSink { sink: permit.sink.kind }
+  }
+}
+
+type OriginObjectWrite
+  = OriginObjectWritten { commit: OriginObjectCommit }
+  | OriginObjectWriteRefused { standing: OriginWritePermitStanding }
+
+func commit_object_to_origin(permit: DataEffectPermit<BuildOutput, FilePath>, key: NonEmptyStr, token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {
+  match origin_write_permit_standing(permit: permit) {
+    PermitAuthorisesThisOrigin => {
+      let put = put_origin_object(local_path: permit.value, key: key, token_source: token_source)
+      let fetch = fetch_origin_object(key: key, token_source: token_source)
+      OriginObjectWritten { commit: OriginObjectCommit {
+        readback: object_readback_of_origin_put(put: put.verdict, fetch: fetch),
+        credential: put.credential,
+      } }
+    }
+    other => OriginObjectWriteRefused { standing: other }
   }
 }
 

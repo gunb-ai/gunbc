@@ -28,7 +28,9 @@ import gunbc.fabric_m0_completion {
 }
 import gunbc.fabric_m0_commit { CommitNamespace, commit_slot_key }
 import gunbc.fabric_m0_origin_commit {
-  OriginCommitObservation, OriginObjectCommit, commit_manifest_to_origin, commit_object_to_origin,
+  OriginCommitObservation, OriginObjectCommit, OriginObjectWrite, OriginObjectWritten, OriginObjectWriteRefused,
+  OriginWritePermitStanding, PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherOperation,
+  commit_manifest_to_origin, commit_object_to_origin,
   process_exit_with_credential_custody, job_output_bytes, fabric_durable_origin_route,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -276,6 +278,14 @@ fn refusal_reason(cause: DataEffectRefusal) -> String {
   }
 }
 
+fn write_refusal_reason(standing: OriginWritePermitStanding) -> String {
+  match standing {
+    PermitAuthorisesThisOrigin => "authorised"
+    PermitNamesAnotherSink { sink: _ } => "the permit was admitted for another sink"
+    PermitNamesAnotherOperation { operation: _ } => "the permit was admitted for another operation"
+  }
+}
+
 func canary_ending() -> ProcessExit uses net: Network {
   canary_ending_under(handling_map: public_fabric_map(), posture: public_fabric_posture())
 }
@@ -288,31 +298,35 @@ func canary_ending_under(handling_map: DataHandlingMap, posture: CompliancePostu
       let sink = durable_origin_sink(category: build_output_category(), route: fabric_durable_origin_route(), purpose: canary_purpose(), recipient: canary_recipient())
       match admit_data_effect(classified: job_output_bytes(local_path: probe_fixture_path as FilePath), sink: sink, operation: StoreDurably, handling_map: handling_map, posture: posture) {
         DataEffectRefused { cause: cause } => exit_failure(reason: "canary output not admitted to the durable origin: " + refusal_reason(cause: cause))
-        DataEffectAdmitted { permit: permit } => {
-          let object = commit_object_to_origin(permit: permit, key: canary_object_key(), token_source: source)
-          let commit = commit_manifest_to_origin(
-            namespace: canary_namespace as CommitNamespace,
-            attempt: attempt,
-            manifest_path: canary_manifest_path as FilePath,
-            manifest_digest: expected_manifest_digest(),
-            token_source: source,
-          )
-          process_exit_with_credential_custody(
-            custodies: [object.credential, commit.credential],
-            ending: end_required_job(
-              work: canary_work(),
-              attempt: attempt,
-              computation: ComputationSucceeded,
-              committed: [CommittedOutput { obligation: canary_object(), attempt: attempt, recorded_digest: expected_fixture_digest() }],
-              observations: [OriginObservation { subject: ObligationSubject { obligation: canary_object() }, readback: object.readback }],
-              namespace: canary_namespace as CommitNamespace,
-              manifest_digest: expected_manifest_digest(),
-              members: [ManifestMember { obligation: canary_object(), content: expected_fixture_digest() }],
-              transport: commit.transport,
-              observed: commit.observed,
-            )
-          )
-        }
+        DataEffectAdmitted { permit: permit } =>
+          match commit_object_to_origin(permit: permit, key: canary_object_key(), token_source: source) {
+            OriginObjectWriteRefused { standing: standing } =>
+              exit_failure(reason: "canary permit does not authorise this origin: " + write_refusal_reason(standing: standing))
+            OriginObjectWritten { commit: object } => {
+              let commit = commit_manifest_to_origin(
+                namespace: canary_namespace as CommitNamespace,
+                attempt: attempt,
+                manifest_path: canary_manifest_path as FilePath,
+                manifest_digest: expected_manifest_digest(),
+                token_source: source,
+              )
+              process_exit_with_credential_custody(
+                custodies: [object.credential, commit.credential],
+                ending: end_required_job(
+                  work: canary_work(),
+                  attempt: attempt,
+                  computation: ComputationSucceeded,
+                  committed: [CommittedOutput { obligation: canary_object(), attempt: attempt, recorded_digest: expected_fixture_digest() }],
+                  observations: [OriginObservation { subject: ObligationSubject { obligation: canary_object() }, readback: object.readback }],
+                  namespace: canary_namespace as CommitNamespace,
+                  manifest_digest: expected_manifest_digest(),
+                  members: [ManifestMember { obligation: canary_object(), content: expected_fixture_digest() }],
+                  transport: commit.transport,
+                  observed: commit.observed,
+                )
+              )
+            }
+          }
       }
     }
   }

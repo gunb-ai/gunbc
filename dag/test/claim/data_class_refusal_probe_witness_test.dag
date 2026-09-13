@@ -117,7 +117,7 @@ test fn a_bare_string_cannot_be_walked_out_of_the_boundary_and_a_value_cannot_be
 // halves are enrolled: the literal form is the refusing control that shows the wall is reachable
 // one term away, and the zero at the FilePath form is the tripwire that flips when the exemption
 // closes.
-data durable_write_literal_control_source: String = "module probe_durable_write_literal\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.auth.access_token_source { AccessTokenSource }\nimport gunbc.fabric_m0_origin_commit { OriginObjectCommit, commit_object_to_origin }\nfunc write_the_literal(token_source: AccessTokenSource) -> OriginObjectCommit uses net: Network {\n  commit_object_to_origin(permit: \"dag/test/fixture/fabric_m0_origin_readback/other_object.txt\", key: \"probe/never\" as NonEmptyStr, token_source: token_source)\n}\n"
+data durable_write_literal_control_source: String = "module probe_durable_write_literal\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.auth.access_token_source { AccessTokenSource }\nimport gunbc.fabric_m0_origin_commit { OriginObjectWrite, commit_object_to_origin }\nfunc write_the_literal(token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {\n  commit_object_to_origin(permit: \"dag/test/fixture/fabric_m0_origin_readback/other_object.txt\", key: \"probe/never\" as NonEmptyStr, token_source: token_source)\n}\n"
 
 test fn the_durable_write_refuses_a_bare_string_literal_where_the_permit_is_declared() -> Bool {
   blocking_count_for_class_and_subject(c: census_of(source: durable_write_literal_control_source), wanted: "DeclaredTypeNotInhabited", subject: "direct call argument for parameter 'permit'") >= 1
@@ -132,6 +132,7 @@ test fn a_permit_cannot_be_authored_outside_the_fold() -> Bool {
   let c = census_of(source: probe_source(name: "data_effect_permit_forged_probe"))
   blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "DataEffectPermit") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "Sink") >= 1
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") >= 1
 }
 
 test fn an_unwrap_helper_cannot_be_written_outside_the_module() -> Bool {

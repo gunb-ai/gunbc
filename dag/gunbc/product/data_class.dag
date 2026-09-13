@@ -395,7 +395,11 @@ fn admit_data_effect<C, T>(
 }
 
 // THE SEED IS BUILT FROM THE ADMITTING ROWS, so its retention and lawful-basis references are the
-// row's own and not invented. When no row is current the seed is never the answer -- a refusal
+// row's own and not invented. IT IS SEALED TO THE FOLD: a module-level function is callable from
+// any importer, and this one reveals the payload into a permit, so left open it would be both the
+// unwrap and a permit mint that skips every refusal (review 65175). admit_callers names
+// admit_data_effect and nothing else; the call from anywhere else refuses as
+// ConstructorCallAdmissionRefused, enrolled in test.probe.data_effect_permit_forged_probe. When no row is current the seed is never the answer -- a refusal
 // precedes it in the fold -- and the references it carries are taken from the first current row
 // or, absent one, from the map authority itself, which is the only reference that is always true
 // of this decision.
@@ -406,7 +410,11 @@ fn admitted_seed<C, T>(
   handling_map: DataHandlingMap,
   posture: CompliancePostureRevision,
   current: List<DataHandlingRow>,
-) -> DataEffectAdmission<C, T> {
+) -> DataEffectAdmission<C, T>
+  admit_callers: [
+    decl_ref(module_path: "product.data_class", decl_name: "admit_data_effect"),
+  ]
+{
   let retention = match current |> first {
     Present { value: r } => r.retention
     Absent => handling_map.authority
