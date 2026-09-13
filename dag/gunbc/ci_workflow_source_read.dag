@@ -466,7 +466,7 @@ type RepositoryHeadResolution
   | RepositoryHeadBranchReadRefused { repository: FullRepository, performance: RestExchangePerformance }
   | RepositoryHeadNotExact { repository: FullRepository, observed: String, cause: NonEmptyStr }
 
-func perform_repository_head_resolution(auth_token: Secret, hit: CodeSearchHit) -> RepositoryHeadResolution uses net: Network {
+fn perform_repository_head_resolution(auth_token: Secret, hit: CodeSearchHit) -> RepositoryHeadResolution uses net: Network {
   match hit_repository_address(hit: hit) {
     HitRepositoryUnaddressable { full_name, name, cause } =>
       RepositoryHeadUnaddressable { address: HitRepositoryUnaddressable { full_name: full_name, name: name, cause: cause } }
@@ -502,7 +502,7 @@ func perform_repository_head_resolution(auth_token: Secret, hit: CodeSearchHit) 
 // The file read for one hit against its repository's already-resolved head. A caller must pass the
 // resolution computed for a hit with the SAME repository; the scan guarantees that by grouping on the
 // full CodeSearchRepository value.
-func perform_hit_read_at_repository_head(auth_token: Secret, hit: CodeSearchHit, resolution: RepositoryHeadResolution) -> HitRevisionResolution uses net: Network {
+fn perform_hit_read_at_repository_head(auth_token: Secret, hit: CodeSearchHit, resolution: RepositoryHeadResolution) -> HitRevisionResolution uses net: Network {
   match resolution {
     RepositoryHeadUnaddressable { address } => HitRevisionUnaddressable { hit: hit, address: address }
     RepositoryHeadReadRefused { performance } => HitRepositoryReadRefused { hit: hit, performance: performance }
@@ -524,6 +524,6 @@ func perform_hit_read_at_repository_head(auth_token: Secret, hit: CodeSearchHit,
   }
 }
 
-func perform_hit_revision_resolution(auth_token: Secret, hit: CodeSearchHit) -> HitRevisionResolution uses net: Network {
+fn perform_hit_revision_resolution(auth_token: Secret, hit: CodeSearchHit) -> HitRevisionResolution uses net: Network {
   perform_hit_read_at_repository_head(auth_token: auth_token, hit: hit, resolution: perform_repository_head_resolution(auth_token: auth_token, hit: hit))
 }

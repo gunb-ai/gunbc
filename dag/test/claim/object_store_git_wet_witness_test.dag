@@ -30,13 +30,13 @@ import extdeps.realization.object_store_git {
 // than as a second object, that different bytes under one key are refused across hosts, and that the
 // listing a second host takes names every object at the commit it names.
 
-func run(workdir: String, args: List<String>) -> Bool {
+fn run(workdir: String, args: List<String>) -> Bool {
   gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: "/usr/bin/git" as FilePath, args: args, expect: OutcomeIsData).success
 }
 
 // A bare remote with one commit on main, and two clones that can commit. The store's branch does not
 // exist yet: founding it is the first host's initialize.
-func fresh_fixture() -> String {
+fn fresh_fixture() -> String {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_objstore.XXXXXX").path as String
   let ok = run(workdir: root, args: ["init", "-q", "--bare", "remote.git"])
     && run(workdir: root, args: ["init", "-q", "-b", "main", "seed"])
@@ -82,7 +82,7 @@ fn is_opened(o: GitObjectStoreOpening) -> Bool {
   }
 }
 
-func initialized(l: GitObjectStoreLayout) -> GitObjectStoreOpening {
+fn initialized(l: GitObjectStoreLayout) -> GitObjectStoreOpening {
   match git_object_store_initialize(layout: l, label: "wet-witness" as NonEmptyStr) {
     GitObjectStoreInitialized { opening } => opening
     GitObjectStoreInitializationRefused { fault } => GitObjectStoreUnavailable { fault: fault }

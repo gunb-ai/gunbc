@@ -180,7 +180,7 @@ type GitWorktreeEnsure
   | GitWorktreeBranchAbsent
   | GitWorktreeRefused { fault: StoreFault }
 
-func git_object_store_ensure_worktree(layout: GitObjectStoreLayout) -> GitWorktreeEnsure {
+fn git_object_store_ensure_worktree(layout: GitObjectStoreLayout) -> GitWorktreeEnsure {
   let probe = Filesystem.List(path: layout.worktree as String)
   if probe.success {
     GitWorktreeReady
@@ -206,7 +206,7 @@ func git_object_store_ensure_worktree(layout: GitObjectStoreLayout) -> GitWorktr
 
 // Sync to the remote branch head: fetch, then reset the worktree hard to it. Unpushed local state is
 // discarded on purpose -- it is not in the store.
-func git_object_store_sync(layout: GitObjectStoreLayout) -> GitStoreExec {
+fn git_object_store_sync(layout: GitObjectStoreLayout) -> GitStoreExec {
   match git(layout: layout, workdir: layout.worktree as String, args: ["fetch", "-q", layout.remote as String, layout.branch as String]) {
     GitStoreExecFailed { exit_code, stderr } => GitStoreExecFailed { exit_code: exit_code, stderr: concat("fetch: ", stderr) }
     GitStoreExecOk { stdout: _ } =>
@@ -222,7 +222,7 @@ fn git_exact_read(path: String) -> FilesystemExactRead {
   filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind)
 }
 
-func git_object_store_open(layout: GitObjectStoreLayout) -> GitObjectStoreOpening {
+fn git_object_store_open(layout: GitObjectStoreLayout) -> GitObjectStoreOpening {
   match git_object_store_ensure_worktree(layout: layout) {
     GitWorktreeRefused { fault: f } => GitObjectStoreUnavailable { fault: f }
     GitWorktreeBranchAbsent => GitObjectStoreNotInitialized { marker_path: git_object_store_path(layout: layout, relative: git_object_store_marker_name) }
@@ -245,7 +245,7 @@ type GitObjectStoreInitialization
 // If another initializer won the race the root push is rejected, and the store opened afterwards is
 // THEIRS -- the same rule the local store's initializer follows: the returned opening is always what
 // the remote holds, never what this call intended.
-func git_object_store_initialize(layout: GitObjectStoreLayout, label: NonEmptyStr) -> GitObjectStoreInitialization {
+fn git_object_store_initialize(layout: GitObjectStoreLayout, label: NonEmptyStr) -> GitObjectStoreInitialization {
   match git_object_store_ensure_worktree(layout: layout) {
     GitWorktreeRefused { fault: f } => GitObjectStoreInitializationRefused { fault: f }
     GitWorktreeReady => GitObjectStoreInitialized { opening: git_object_store_open(layout: layout) }
@@ -267,7 +267,7 @@ func git_object_store_initialize(layout: GitObjectStoreLayout, label: NonEmptySt
   }
 }
 
-func git_commit_and_push(layout: GitObjectStoreLayout, relative: String, message: String) -> GitStoreExec {
+fn git_commit_and_push(layout: GitObjectStoreLayout, relative: String, message: String) -> GitStoreExec {
   match git(layout: layout, workdir: layout.worktree as String, args: shape_git_add_path_args(path: relative)) {
     GitStoreExecFailed { exit_code, stderr } => GitStoreExecFailed { exit_code: exit_code, stderr: concat("add: ", stderr) }
     GitStoreExecOk { stdout: _ } =>
@@ -287,7 +287,7 @@ func git_commit_and_push(layout: GitObjectStoreLayout, relative: String, message
 // at, and an operation that answered from that head without fetching would answer from a store of
 // unknown age.
 
-func git_object_store_read(store: GitObjectStoreOpening, name: String) -> StoreObjectRead {
+fn git_object_store_read(store: GitObjectStoreOpening, name: String) -> StoreObjectRead {
   match store {
     GitObjectStoreOpened { layout, head: _ } =>
       match git_object_store_sync(layout: layout) {
@@ -334,7 +334,7 @@ fn git_object_store_listing_decide(head: GitStoreExec, tree: GitStoreExec) -> St
   }
 }
 
-func git_object_store_list(store: GitObjectStoreOpening) -> StoreObjectListing {
+fn git_object_store_list(store: GitObjectStoreOpening) -> StoreObjectListing {
   match store {
     GitObjectStoreOpened { layout, head: _ } => {
       let head = git_object_store_sync(layout: layout)
@@ -384,7 +384,7 @@ fn git_publish_next(attempt: GitPublishAttempt, attempts_remaining: Int) -> GitP
   }
 }
 
-func git_publish_attempt(layout: GitObjectStoreLayout, name: String, content: NonEmptyStr) -> GitPublishAttempt {
+fn git_publish_attempt(layout: GitObjectStoreLayout, name: String, content: NonEmptyStr) -> GitPublishAttempt {
   match git_object_store_sync(layout: layout) {
     GitStoreExecFailed { exit_code, stderr } => GitPublishFault { fault: git_exec_fault(step: "sync", exit_code: exit_code, stderr: stderr) }
     GitStoreExecOk { stdout: _ } => {
@@ -416,7 +416,7 @@ func git_publish_attempt(layout: GitObjectStoreLayout, name: String, content: No
   }
 }
 
-func git_object_store_publish(store: GitObjectStoreOpening, name: String, content: NonEmptyStr, attempts: Int) -> StoreObjectPublish {
+fn git_object_store_publish(store: GitObjectStoreOpening, name: String, content: NonEmptyStr, attempts: Int) -> StoreObjectPublish {
   match store {
     GitObjectStoreOpened { layout, head: _ } =>
       match git_publish_next(attempt: git_publish_attempt(layout: layout, name: name, content: content), attempts_remaining: attempts - 1) {
@@ -434,7 +434,7 @@ func git_object_store_publish(store: GitObjectStoreOpening, name: String, conten
 // second, independent sync, so a publish this realization reported is verified against what the
 // remote actually holds rather than against the worktree that made it.
 
-func git_object_store_put_record(store: GitObjectStoreOpening, family: NonEmptyStr, key: NonEmptyStr, content: NonEmptyStr, attempts: Int) -> ImmutableRecordPut {
+fn git_object_store_put_record(store: GitObjectStoreOpening, family: NonEmptyStr, key: NonEmptyStr, content: NonEmptyStr, attempts: Int) -> ImmutableRecordPut {
   let name = immutable_record_name(family: family, key: key)
   let published = git_object_store_publish(store: store, name: name, content: content, attempts: attempts)
   match published {
