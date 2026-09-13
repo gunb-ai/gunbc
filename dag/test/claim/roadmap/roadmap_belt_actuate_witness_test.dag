@@ -834,9 +834,23 @@ fn d4_exemplars_reconcile(exemplars: List<BeltSpawnOutcome>) -> Bool {
     && all(produced, l => any(expected, x => x == l))
 }
 
+// THE SECOND CONJUNCT WAS THE FIRST ONE AGAIN, WEARING A PRODUCTION NAME. It read
+// `belt_dispatch_all_status_labels() == d4_wire_contract_labels()`, and belt_dispatch_all_status_labels
+// is DEFINITIONALLY map(belt_dispatch_result_exemplars(), belt_dispatch_status_label) -- the same
+// expression d4_exemplars_reconcile computes as `produced`. So it compared the same two lists the
+// helper compares, using the order-sensitive `==` the helper deliberately replaced, and the name is
+// what hid that: it reads as "the served labels" and is in fact "the exemplar map".
+//
+// ORDER IS NOT PART OF THE SERVED CONTRACT, which is why dropping it loses nothing. Every consumer
+// of belt_dispatch_all_status_labels reads it as a SET: roadmap_component maps it to terminal states
+// and totals coverage both directions, roadmap_sandbox maps it to gallery rows, roadmap_serve joins
+// it into an error message, and the sandbox and page witnesses use all() and length(). Nothing
+// indexes it, no positional wire encoding reads it. So the sequence is an artifact of the order the
+// exemplar roster happens to be authored in, and pinning it would oblige every future variant to be
+// inserted at the roster's position rather than appended -- a maintenance cost buying an ordering
+// guarantee nothing consumes.
 test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
   d4_exemplars_reconcile(exemplars: belt_dispatch_result_exemplars())
-    && belt_dispatch_all_status_labels() == d4_wire_contract_labels()
 }
 
 fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {
