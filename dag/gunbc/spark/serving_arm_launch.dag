@@ -36,7 +36,7 @@ import gunbc.spark.serving_compatibility {
 }
 import std.measure { TokenCount, token_count, BasisPoint, basis_point }
 import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.vllm.engine_args { VllmMemoryRequest }
+import extdeps.vllm.engine_args { VllmMemoryRequest, vllm_prefix_caching_argv }
 import extdeps.vllm.runtime_defaults { defaults_source_revision }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, artifact_glm_53_flash_native, artifact_glm_53_flash_2bit, artifact_deepseek_v4_flash_native,
@@ -365,6 +365,10 @@ fn arm_mount_plan(row: ServingCheckpointRow) -> ArmMountPlan {
 // them over the wireless LAN while a 200G switched fabric sat idle, and nothing would report an error --
 // the group would simply be slow. The rail address is derived from the lane observation via
 // gunbc.spark.fabric_rail_desired rather than authored here.
+// THE PROFILE'S PREFIX-CACHING REQUEST REACHES THE ENGINE HERE, which until now it could not: this argv
+// named no prefix-caching flag at all, so every launch took whatever the engine inferred. At the revision
+// this fleet runs that inference goes through the MODEL configuration rather than a declared default, so
+// "nothing said" was not a stable request -- it was a different request per checkpoint.
 fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRow, rrow: ServingRuntimeRow, ranks: Nat, profile: ServingLaunchProfile, utilization_basis_points: Nat) -> List<String> {
   concat([
     "docker", "run", "-d",
@@ -397,7 +401,9 @@ fn arm_container_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpoin
     "--enable-auto-tool-choice",
     "--host", "0.0.0.0",
     "--port", to_string(profile.serve_port),
-  ], concat(arm_quantization_argv(row: crow), arm_headless_argv(node: node)))
+  ], concat(
+    vllm_prefix_caching_argv(r: profile.prefix_caching),
+    concat(arm_quantization_argv(row: crow), arm_headless_argv(node: node))))
 }
 
 // ── THIS IMAGE CANNOT HOLD AN FP8 KV CACHE FOR THIS CHECKPOINT, AND THE CHECKPOINT SAYS WHY ────

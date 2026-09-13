@@ -170,6 +170,7 @@ fn serving_runtime_wire(r: ServingRuntime) -> String {
     GunbcSparkrunVllmDs4Gb10 => "gunbc-sparkrun-vllm-ds4-gb10"
     Tonyd2wildSm121Nvfp4 => "tonyd2wild-sm121-nvfp4"
     VllmOpenaiGlm53Flash => "vllm-openai-glm53-flash"
+    GunbcGlm53NopeDerivedGb10 => "gunbc-glm53-nope-derived-gb10"
   }
 }
 
@@ -403,10 +404,62 @@ data glm_native_on_gitcommit90_standing: RuntimeCompatibilityStanding = Executio
   receipt: "measured on group B 2026-09-10: this image's vLLM predates the GLM-5.3 native loader integration, so the native checkpoint's tensor names have no mapping" as NonEmptyStr,
 }
 
+
+// ── THE DERIVED NoPE RUNTIME AGAINST THE NATIVE CHECKPOINT, NOT YET EXECUTED ──────────────────
+//
+// A DIFFERENT IMAGE IS A DIFFERENT SUBJECT, WHICH IS WHAT THE TWO REFUSALS ABOVE SAY IN SO MANY WORDS.
+// glm_native_official_sm121_tp4_standing records a kernel shape refusal on the official image; the
+// gitcommit90 row records a tensor-name refusal on an image whose vLLM predates the native loader. Both
+// end with the same sentence: a different backend, layout or patched image must be MEASURED rather than
+// inferred. This subject is that measurement's subject, and it has not been measured yet.
+//
+// StaticallyPlausible IS THE HONEST RUNG AND IT LICENSES EXACTLY ONE THING. Everything below was read
+// from inside this exact image or from the checkpoint it will load, and none of it is a launch:
+//
+//   the kernel accepts the layout -- the SM120 sparse reader answers SM120_SPARSE_ACCEPTED_NOPE for
+//   kv_lora_rank 512, qk_rope_head_dim 0 and a 512-wide query when asked with arbitrary_fp32 scales, and
+//   the writer accepts pe_dim 0, zeroes the reserved tail 528:656 and leaves rows outside its slot
+//   mapping untouched;
+//
+//   the engine asks for that layout -- vLLM's SM120 sparse MLA backend selects its scale format with
+//   _kv_scale_format_for_model, which returns arbitrary_fp32 for any model_type beginning `glm`;
+//
+//   the checkpoint is that model -- zai-org/GLM-5.3-Flash at eb9eb208eb0d988989d07a6a12d0fdeb5f52574a
+//   declares model_type glm5_next, qk_rope_head_dim 0, kv_lora_rank 512 and the architecture
+//   Glm5NextForConditionalGeneration;
+//
+//   and this image can load it -- 378 registered architectures including that one, with the reasoning and
+//   tool parser names the launch argv requests both resolving.
+//
+// WHAT NONE OF THAT ESTABLISHES is that four ranks start, that weights map, that CUDA graphs capture, or
+// that a request is answered. The previous native attempt got as far as loading weights in 524 seconds
+// before refusing, so "everything inspectable agrees" is precisely the state that has already been
+// mistaken for sufficient once on this fleet.
+data glm_native_on_derived_nope_tp4: ServingCompatibilitySubject = ServingCompatibilitySubject {
+  checkpoint: Glm53NativeFp8,
+  runtime: GunbcGlm53NopeDerivedGb10,
+  topology: FourSparkTp4,
+  accelerator: spark_gb10_accelerator,
+  profile: glm_native_initial_profile,
+}
+
+data glm_native_on_derived_nope_standing: RuntimeCompatibilityStanding = StaticallyPlausible {
+  subject: glm_native_on_derived_nope_tp4,
+  evidence: [
+    "SM120 sparse MLA reader accepts kv_lora_rank 512 / qk_rope_head_dim 0 / query 512 with kv_scale_format arbitrary_fp32, probed on GPU inside sha256:41366caf...af9d on srv9 2026-09-13" as NonEmptyStr,
+    "concat_and_cache_mla accepts pe_dim 0 and zeroes the reserved tail: TAIL_ZEROED, LATENT_WRITTEN and SENTINEL_HELD all true in the same image" as NonEmptyStr,
+    "vLLM _kv_scale_format_for_model returns arbitrary_fp32 for model_type prefix glm, read from flashinfer_mla_sparse_sm120.py inside this image" as NonEmptyStr,
+    "zai-org/GLM-5.3-Flash at eb9eb208eb0d988989d07a6a12d0fdeb5f52574a declares model_type glm5_next, qk_rope_head_dim 0, kv_lora_rank 512, architecture Glm5NextForConditionalGeneration" as NonEmptyStr,
+    "378 architectures registered in this image including all three Glm5Next entries; reasoning parser glm45 and tool parser glm47 both resolve" as NonEmptyStr,
+    "the image is present on every required host of this topology at the identical id: srv9, srv10, srv11 and srv12, each read back independently" as NonEmptyStr,
+  ],
+}
+
 data measured_serving_compatibility: List<RuntimeCompatibilityStanding> = [
   glm_native_official_sm121_tp4_standing,
   glm_exl3_on_gitcommit90_standing,
   glm_native_on_gitcommit90_standing,
+  glm_native_on_derived_nope_standing,
 ]
 
 // ── ONE SELECTED VALUE PRODUCES THE LAUNCH, OR THE DECISION DOES NOT GOVERN IT ──────────────────
