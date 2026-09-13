@@ -17,8 +17,9 @@ import extdeps.github.workflow_runs {
   ActionRequired,
   StartupFailure,
   workflow_job_name_matrix_value_parenthetical,
+  workflow_job_name_matrix_parenthetical_standing,
 }
-import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import gunbc.runner_label_resolution {
@@ -446,12 +447,16 @@ fn observed_name_matches_inspected_prefix(
   match matrix {
     NoMatrix => job_name == prefix
     MatrixCombination { axes } =>
-      job_name == concat(
-        prefix,
-        workflow_job_name_matrix_value_parenthetical(
-          values: matrix_combination_values(axes: axes),
-        ),
-      )
+      match workflow_job_name_matrix_parenthetical_standing {
+        TranscribedUncited { read_obligation } =>
+          job_name == concat(
+            prefix,
+            workflow_job_name_matrix_value_parenthetical(
+              values: matrix_combination_values(axes: axes),
+            ),
+          )
+        CitedToAuthority { authority } => false
+      }
   }
 }
 

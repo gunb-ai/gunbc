@@ -5,7 +5,7 @@ import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome }
 import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
 import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import extdeps.github.workflow_runs_contracts {
   workflow_run_status_wire_contract,
@@ -157,6 +157,10 @@ type WorkflowJobRun {
 type WorkflowJobRunList {
   total_count: Int
   jobs: List<WorkflowJobRun>
+}
+
+data workflow_job_name_matrix_parenthetical_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "docs.github.com/en/rest/actions/workflow-jobs (X-GitHub-Api-Version 2026-03-10) publishes Job.name as a string and does not document a matrix object or that a combination is encoded as a parenthetical of the combination values in axis order; jobs.<job_id>.name in workflow-syntax-for-github-actions likewise does not state that encoding. The parenthetical is the rendering observed on Job.name in this tree, not a deduced REST field",
 }
 
 fn workflow_job_name_matrix_value_parenthetical(values: List<NonEmptyStr>) -> String {
