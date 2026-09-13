@@ -6,7 +6,7 @@ import std.content_hash { ContentHash, as_content_hash_structural, content_hash_
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }
 import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims }
-import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision }
+import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision, PermittedJurisdictionsEnumerated }
 import product.data_category { BuildOutput, PersonalIdentity, build_output_ref, personal_identity_ref }
 import product.data_class {
   Classified, Sink, SinkKind, DurableOrigin, LogChannel,
@@ -43,18 +43,24 @@ data fixture_retention: NonEmptyStr = "fixture-retention-row"
 data fixture_lawful_basis: NonEmptyStr = "fixture-lawful-basis-row"
 data fixture_purpose: NonEmptyStr = "fixture-purpose"
 data fixture_recipient: NonEmptyStr = "fixture-recipient"
+data fixture_jurisdiction: NonEmptyStr = "fixture-jurisdiction"
 
 fn fx_ref(name: String) -> DeclarationRef {
   decl_ref(module_path: "test.claim.fabric.data_class_admission_witness_test", decl_name: name)
 }
 
-fn fx_posture() -> CompliancePostureRevision {
-  CompliancePostureRevision { authority: fx_ref(name: "fixture_posture_authority"), revision: fx_hash(seed: "fixture-data-posture-r1") }
+fn fx_posture_at(seed: String) -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: fx_ref(name: "fixture_posture_authority"),
+    revision: fx_hash(seed: seed),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated { first: fx_ref(name: "fixture_jurisdiction"), further: [] },
+    jurisdiction_drop_enrollments: [],
+  }
 }
 
-fn fx_stale_posture() -> CompliancePostureRevision {
-  CompliancePostureRevision { authority: fx_ref(name: "fixture_posture_authority"), revision: fx_hash(seed: "fixture-data-posture-r2") }
-}
+fn fx_posture() -> CompliancePostureRevision { fx_posture_at(seed: "fixture-data-posture-r1") }
+
+fn fx_stale_posture() -> CompliancePostureRevision { fx_posture_at(seed: "fixture-data-posture-r2") }
 
 fn fx_other_route() -> ProviderRoute {
   ProviderRoute { provider: fx_ref(name: "other_provider"), service: fx_ref(name: "other_service"), region: fx_ref(name: "other_region") }

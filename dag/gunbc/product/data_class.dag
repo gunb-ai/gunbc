@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision }
+import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision, PermittedJurisdictionsUnread }
 import product.data_category {
   PersonalIdentity, BuildOutput,
   personal_identity_ref, build_output_ref,
@@ -256,10 +256,15 @@ fn public_fabric_map() -> DataHandlingMap {
 // It is never the revision any private row was authored under, so a private row handed in beside
 // it would refuse as PostureRevisionStale, which is correct: a private row is admitted only under
 // the private posture it names.
+// Its jurisdiction population is UNREAD, not enumerated: the public tree has read no posture, and
+// the Unread arm is the one that refuses rather than widens wherever a consumer does read it. The
+// fold in this module never reads it (revision equality only), so the arm is carried, not judged.
 fn public_fabric_posture() -> CompliancePostureRevision {
   CompliancePostureRevision {
     authority: public_fabric_map_authority(),
     revision: content_hash_of_value(value: "product.data_class public_fabric_map rows:0" as NonEmptyStr),
+    permitted_jurisdictions: PermittedJurisdictionsUnread { obligation: public_fabric_map_authority() },
+    jurisdiction_drop_enrollments: [],
   }
 }
 
