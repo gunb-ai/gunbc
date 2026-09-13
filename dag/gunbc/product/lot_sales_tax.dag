@@ -8,6 +8,8 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.tax.statutory_rate { StatutoryRate, statutory_rate_jurisdiction }
 import product.inventory { InventoryLotIdentity, InventoryLotRepetition, inventory_lot_identity_eq,
   inventory_lot_identities_contain,
+  empty_lot_repetition_scan,
+  scan_lot_for_repetition,
 }
 
 // SALES TAX STANDING FOR ONE PROCUREMENT LOT. This is the field the fleet acquisition
@@ -141,33 +143,13 @@ type LotTaxPopulation
 
 // Keep only the first position for each identity. A refusal retains its original
 // ordinals; successful admission returns the input rows without rebuilding their list.
-type LotTaxPopulationFold {
-  lot_positions: Map<InventoryLotIdentity, Nat>
-  repetition: InventoryLotRepetition?
-}
-
+// THE REPETITION SCAN IS product.inventory's, NOT A COPY OF IT. This fold used to re-author the
+// same first-occurrence-wins algorithm line for line while importing InventoryLotRepetition from
+// the module that already had the scan producing it - two sources for "is a lot repeated, and at
+// which two ordinals", each able to drift from the other without either going red. (review 65262)
 fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
-  let settled = fold(rows, init: LotTaxPopulationFold {
-    lot_positions: empty_map(),
-    repetition: none,
-  }, f: fn(acc, row) {
-    match acc.repetition {
-      Present { value: _ } => acc
-      Absent => match lookup(acc.lot_positions, row.lot) {
-        Present { value: first } => LotTaxPopulationFold {
-          lot_positions: acc.lot_positions,
-          repetition: Present { value: InventoryLotRepetition {
-            lot: row.lot,
-            first_ordinal: first,
-            ledger_ordinal: acc.lot_positions.length(),
-          } },
-        }
-        Absent => LotTaxPopulationFold {
-          lot_positions: map_insert(acc.lot_positions, row.lot, acc.lot_positions.length()),
-          repetition: none,
-        }
-      }
-    }
+  let settled = fold(rows, init: empty_lot_repetition_scan(), f: fn(acc, row) {
+    scan_lot_for_repetition(acc: acc, lot: row.lot)
   })
   match settled.repetition {
     Present { value: repeated } => LotTaxPopulationRepeatedLot {
@@ -181,12 +163,6 @@ fn admit_lot_tax_population(rows: List<LotTaxEvidence>) -> LotTaxPopulation {
 
 fn lot_eq(a: InventoryLotIdentity, b: InventoryLotIdentity) -> Bool {
   inventory_lot_identity_eq(left: a, right: b)
-}
-
-// The membership authority is product.inventory, beside the equality it closes over; this stays as
-// the spelling this module's own folds already use and adds no second implementation.
-fn identities_contain(lots: List<InventoryLotIdentity>, lot: InventoryLotIdentity) -> Bool {
-  inventory_lot_identities_contain(lots: lots, lot: lot)
 }
 
 fn lot_identities_cover(held: List<InventoryLotIdentity>, expected: List<InventoryLotIdentity>) -> Bool {
@@ -254,7 +230,7 @@ fn first_orphaned_tax(lots: List<InventoryLotIdentity>, tax: List<LotTaxEvidence
     match hit {
       Present { value: p } => Present { value: p }
       Absent =>
-        if identities_contain(lots: lots, lot: row.lot) { none } else { Present { value: row.lot } }
+        if inventory_lot_identities_contain(lots: lots, lot: row.lot) { none } else { Present { value: row.lot } }
     }
   })
 }

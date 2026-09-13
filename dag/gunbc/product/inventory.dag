@@ -1271,49 +1271,91 @@ type InventoryPopulationBalance
 
 // Internal fold state: positions are consumed by the repeated-lot diagnostic and
 // are not published as part of a successful population reading.
-type InventoryPopulationFold {
-  distribution: StockDistribution
+// THE REPEATED-LOT SCAN, AUTHORED ONCE. "Is there a repeated InventoryLotIdentity in this ordered
+// row list, and at which two ordinals" is one question, and it was answered by two line-for-line
+// copies of the same fold - this one and product.lot_sales_tax's LotTaxPopulationFold, which even
+// imported InventoryLotRepetition from here and then re-derived the scan that produces it. Two
+// sources for one fact, each free to drift: fix an off-by-one in one ordinal and the other keeps
+// answering the old way, silently, because both are green against their own fixtures. DESIGN
+// section 2 - model a concept once, derive every use, and net concepts must not grow by
+// re-invention. (review 65262)
+//
+// It lives HERE because InventoryLotIdentity and InventoryLotRepetition do, which is the same
+// reasoning that moved inventory_lot_identities_contain beside its equality one commit earlier.
+// The caller projects the identity out of whatever row shape it holds, so a tax evidence row and
+// an admitted ledger share the scan without sharing a row type.
+type LotRepetitionScan {
   lot_positions: Map<InventoryLotIdentity, Nat>
   repetition: InventoryLotRepetition?
+}
+
+fn empty_lot_repetition_scan() -> LotRepetitionScan {
+  LotRepetitionScan { lot_positions: empty_map(), repetition: none }
+}
+
+// FIRST OCCURRENCE WINS AND THE SCAN FREEZES ON THE FIRST REPEAT, so the reported pair is the
+// earliest collision rather than the last one seen. The ordinal is the map's size at insertion,
+// which is the row's position among DISTINCT lots - the same number both copies computed.
+fn scan_lot_for_repetition(acc: LotRepetitionScan, lot: InventoryLotIdentity) -> LotRepetitionScan {
+  match acc.repetition {
+    Present { value: found } => LotRepetitionScan {
+      lot_positions: acc.lot_positions,
+      repetition: Present { value: found },
+    }
+    Absent => match lookup(acc.lot_positions, lot) {
+      Present { value: first } => LotRepetitionScan {
+        lot_positions: acc.lot_positions,
+        repetition: Present { value: InventoryLotRepetition {
+          lot: lot,
+          first_ordinal: first,
+          ledger_ordinal: acc.lot_positions.length(),
+        } },
+      }
+      Absent => LotRepetitionScan {
+        lot_positions: map_insert(acc.lot_positions, lot, acc.lot_positions.length()),
+        repetition: none,
+      }
+    }
+  }
+}
+
+type InventoryPopulationFold {
+  distribution: StockDistribution
+  scan: LotRepetitionScan
 }
 
 fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPopulationBalance {
   let settled = fold(ledgers, init: InventoryPopulationFold {
     distribution: empty_stock_distribution(),
-    lot_positions: empty_map(),
-    repetition: none,
+    scan: empty_lot_repetition_scan(),
   }, f: fn(acc, ledger) {
-    match acc.repetition {
+    match acc.scan.repetition {
       Present { value: _ } => acc
-      Absent => match lookup(acc.lot_positions, ledger.lot.identity) {
-        Present { value: first } => InventoryPopulationFold {
-          distribution: acc.distribution,
-          lot_positions: acc.lot_positions,
-          repetition: Present { value: InventoryLotRepetition {
-            lot: ledger.lot.identity, first_ordinal: first, ledger_ordinal: acc.lot_positions.length(),
-          } },
-        }
-        Absent => {
-          let d = ledger.distribution
-          let total = acc.distribution
-          InventoryPopulationFold {
-            lot_positions: map_insert(acc.lot_positions, ledger.lot.identity, acc.lot_positions.length()),
-            repetition: none,
-            distribution: StockDistribution {
-              awaiting_receipt: total.awaiting_receipt + d.awaiting_receipt,
-              unqualified: total.unqualified + d.unqualified,
-              quarantined: total.quarantined + d.quarantined,
-              available: total.available + d.available,
-              reserved: total.reserved + d.reserved,
-              installed: total.installed + d.installed,
-              departed: total.departed + d.departed,
-            },
+      Absent => {
+        let next = scan_lot_for_repetition(acc: acc.scan, lot: ledger.lot.identity)
+        match next.repetition {
+          Present { value: _ } => InventoryPopulationFold { distribution: acc.distribution, scan: next }
+          Absent => {
+            let d = ledger.distribution
+            let total = acc.distribution
+            InventoryPopulationFold {
+              scan: next,
+              distribution: StockDistribution {
+                awaiting_receipt: total.awaiting_receipt + d.awaiting_receipt,
+                unqualified: total.unqualified + d.unqualified,
+                quarantined: total.quarantined + d.quarantined,
+                available: total.available + d.available,
+                reserved: total.reserved + d.reserved,
+                installed: total.installed + d.installed,
+                departed: total.departed + d.departed,
+              },
+            }
           }
         }
       }
     }
   })
-  match settled.repetition {
+  match settled.scan.repetition {
     Present { value: repeated } => InventoryPopulationRepeatedLot { repetition: repeated }
     Absent => InventoryPopulationSummed {
       balance: inventory_balance_from_distribution(distribution: settled.distribution),
