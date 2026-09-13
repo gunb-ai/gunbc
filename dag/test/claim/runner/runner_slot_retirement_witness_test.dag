@@ -404,7 +404,10 @@ test fn a_clean_census_and_a_complete_standing_admit_together() -> Bool {
 // refused `systemctl show` on, and it must never read as completion.
 test fn an_unreadable_observation_is_unobserved_rather_than_complete() -> Bool {
   match runner_retirement_standing(
-    o: retirement_observation_unreadable(unit: "actions-runner@srv4-13.service" as NonEmptyStr),
+    o: retirement_observation_unreadable(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      cause: "systemctl show refused",
+    ),
   ) {
     RetirementUnobserved { unit: _, cause: _ } => true
     RetirementComplete { unit: _ } => false
