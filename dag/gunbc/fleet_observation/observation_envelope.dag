@@ -171,7 +171,7 @@ type SourceByteFact
   | CoverageGapContinuityShortOfRange { verified_through: Nat, requested_end: Nat }
   | CoverageGapRangeNotCovered { requested: SourceStreamRange, committed: SourceStreamRange }
   | CoverageGapNotTheRecordingOwner { ownership: EndpointOwnership }
-  | CoverageGapEvidenceNamesAnotherSubject { detail: NonEmptyStr }
+  | CoverageGapEvidenceNamesAnotherSubject { disagreement: SubjectAgreement }
 
 // THE WALL. Read the order of the guards: every coverage question is answered BEFORE the payload
 // question, so there is no path on which an empty payload short-circuits to silence.
@@ -184,16 +184,21 @@ fn source_byte_fact(envelope: ObservationEnvelope, requested: SourceStreamRange)
     NotTheRecordingOwner =>
       CoverageGapNotTheRecordingOwner { ownership: envelope.ownership }
     RecordingOwner { session: owner_session, generation: owner_generation } =>
-      if !evidence_names_one_subject(
+      match subject_agreement(
         owner_session: owner_session,
         owner_generation: owner_generation,
         chunk: envelope.chunk,
         binding: envelope.binding,
       ) {
-        CoverageGapEvidenceNamesAnotherSubject {
-          detail: "the recording owner, the chunk occurrence and the source-machine binding do not name one subject"
-        }
-      } else {
+        CollectorSessionDisagrees { owner: a, chunk: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: CollectorSessionDisagrees { owner: a, chunk: b } }
+        EnrolledMachineDisagrees { owner: a, chunk: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: EnrolledMachineDisagrees { owner: a, chunk: b } }
+        OwnershipGenerationDisagrees { owner: a, chunk: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: OwnershipGenerationDisagrees { owner: a, chunk: b } }
+        BindingMachineDisagrees { binding: a, owner: b } =>
+          CoverageGapEvidenceNamesAnotherSubject { disagreement: BindingMachineDisagrees { binding: a, owner: b } }
+        EvidenceNamesOneSubject =>
         match commit_attests_chunk(standing: envelope.local_commit, chunk: envelope.chunk) {
           CommitNoReceipt { standing: standing } =>
             CoverageGapNotDurablyCommitted { standing: standing }
@@ -258,6 +263,15 @@ data retention_promise_this_slice: List<RetentionPromise> = [
 // this predicate is the only place they are read together -- it answers whether the bytes have
 // actually left the collector host, which is exactly the question the refused promise above makes
 // load-bearing.
+// NO WILDCARD ARMS HERE, AND THE REASON IS THIS BRANCH'S OWN CLASS. An earlier shape matched
+// DownstreamAccepted and sent EVERYTHING ELSE to one arm, so an ACTIVELY REFUSED forward -- carrying a
+// CapturePersistenceRefusal naming a corrupt read-back, an exhausted spool or an expired window --
+// arrived at the consumer as ordinary never-offered spool exposure, with its cause discarded. A second
+// wildcard did the same to LocalCommitFailed and LocalCommitNotAttempted. Both are
+// gunbc.recurring_failure_mode.bool_projection_over_a_typed_carrier in its general form: a projection
+// merging arms whose remedies differ. A refused forward is now its own arm carrying its cause, and
+// every arm of both carriers is named.
+//
 // WHAT THE REFUSED PROMISE MEANS FOR ONE ENVELOPE, and this is the roster's consumer rather than a
 // second statement of it. The roster above is the authority for WHICH promise is refused; this fold
 // reads that authority to answer, for a given envelope, whether its bytes are still inside the
@@ -265,6 +279,7 @@ data retention_promise_this_slice: List<RetentionPromise> = [
 // loss and carries the roster's own refusal text; once downstream has accepted, it is not.
 type RetentionExposure
   = RetainedBeyondCollectorHost
+  | ForwardRefused { cause: CapturePersistenceRefusal }
   | ExposedToCollectorHostLoss { refusal: NonEmptyStr }
   | NotYetRetained { standing: LocalCommitStanding }
 
@@ -284,29 +299,57 @@ fn collector_host_loss_refusal(promises: List<RetentionPromise>) -> NonEmptyStr 
 fn retention_exposure(envelope: ObservationEnvelope) -> RetentionExposure {
   match envelope.downstream {
     DownstreamAccepted { accepted_content: _ } => RetainedBeyondCollectorHost
-    _ => match envelope.local_commit {
-      LocallyCommitted { committed_content: _ } => ExposedToCollectorHostLoss {
-        refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
+    DownstreamRejected { cause: cause } => ForwardRefused { cause: cause }
+    DownstreamNotOffered =>
+      match envelope.local_commit {
+        LocallyCommitted { committed_content: _ } =>
+          ExposedToCollectorHostLoss {
+            refusal: collector_host_loss_refusal(promises: retention_promise_this_slice)
+          }
+        LocalCommitFailed { cause: cause } =>
+          NotYetRetained { standing: LocalCommitFailed { cause: cause } }
+        LocalCommitNotAttempted =>
+          NotYetRetained { standing: LocalCommitNotAttempted }
       }
-      standing => NotYetRetained { standing: standing }
-    }
   }
 }
 
-// EVERY PIECE OF EVIDENCE MUST NAME ONE SUBJECT. The recording owner's session, the chunk's own
-// occurrence, and the authenticated source-to-machine binding are three independently authored
-// facts, and an envelope can be assembled in which they disagree -- a commit receipt from one
-// collector carried beside a chunk from another, under a binding naming a third machine. Nothing in
-// the field types prevents that, so it is CHECKED here before any coverage question is answered.
-// Without this guard the fold would answer about a subject it was never handed.
-fn evidence_names_one_subject(
+// EVERY PIECE OF EVIDENCE MUST NAME ONE SUBJECT, AND THE ANSWER SAYS WHICH ONE DISAGREED.
+//
+// THIS RETURNED A Bool OVER FOUR INDEPENDENT AXES and the caller then minted a literal that named no
+// subject at all -- on the fold whose entire purpose is subject agreement. Four separately-authored
+// disagreements (collector session, enrolled machine, ownership generation, binding machine) arrived
+// as one bit plus a sentence, so a reader learned that something disagreed and nothing about what.
+// That is this branch's own filed class applied to a guard the branch added, and the diagnostic
+// requirement is DESIGN section 5's: typed and LOCATED, not prose.
+type SubjectAgreement
+  = EvidenceNamesOneSubject
+  | CollectorSessionDisagrees { owner: NonEmptyStr, chunk: NonEmptyStr }
+  | EnrolledMachineDisagrees { owner: NonEmptyStr, chunk: NonEmptyStr }
+  | OwnershipGenerationDisagrees { owner: Int, chunk: Int }
+  | BindingMachineDisagrees { binding: NonEmptyStr, owner: NonEmptyStr }
+
+fn subject_agreement(
   owner_session: CollectorSessionId,
   owner_generation: Int,
   chunk: CaptureChunk,
   binding: SourceMachineBinding,
-) -> Bool {
-  ((owner_session.collector_session as String) == (chunk.occurrence.session.collector_session as String))
-  && ((owner_session.enrolled_machine as String) == (chunk.occurrence.session.enrolled_machine as String))
-  && (owner_generation == chunk.occurrence.ownership_generation)
-  && ((binding.enrolled_machine as String) == (owner_session.enrolled_machine as String))
+) -> SubjectAgreement {
+  if (owner_session.collector_session as String) != (chunk.occurrence.session.collector_session as String) {
+    CollectorSessionDisagrees {
+      owner: owner_session.collector_session
+      chunk: chunk.occurrence.session.collector_session
+    }
+  } else if (owner_session.enrolled_machine as String) != (chunk.occurrence.session.enrolled_machine as String) {
+    EnrolledMachineDisagrees {
+      owner: owner_session.enrolled_machine
+      chunk: chunk.occurrence.session.enrolled_machine
+    }
+  } else if owner_generation != chunk.occurrence.ownership_generation {
+    OwnershipGenerationDisagrees { owner: owner_generation, chunk: chunk.occurrence.ownership_generation }
+  } else if (binding.enrolled_machine as String) != (owner_session.enrolled_machine as String) {
+    BindingMachineDisagrees { binding: binding.enrolled_machine, owner: owner_session.enrolled_machine }
+  } else {
+    EvidenceNamesOneSubject
+  }
 }

@@ -3,7 +3,7 @@ module gunbc.fleet_observation_capture_chunk
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.string_type { String }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
@@ -13,6 +13,11 @@ import std.content_hash {
   compare_content_hash,
 }
 import std.durable_compare_and_set {
+  CasExpectation,
+  CasGeneration,
+  CasReadableSlot,
+  CasReadableAbsent,
+  CasReadablePresent,
   CasOutcome,
   CasCommitted,
   CasPreconditionFailed,
@@ -81,6 +86,15 @@ fn chunk_occurrence_eq(a: ChunkOccurrence, b: ChunkOccurrence) -> Bool {
   && (a.receive_sequence == b.receive_sequence)
 }
 
+// DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). relate_chunks and chunk_occurrence_eq have
+// no non-witness caller in this slice. They are LOSSLESS -- ChunkRelation keeps every distinction its
+// inputs carry -- so they are not the erasure class, but an unconsumed declaration is red regardless
+// of how well modelled it is. CONSUMER: the interpretation lane's replay, which must decide whether
+// two received chunks are one occurrence or two, and which is the exact site where deduplicating on
+// digest would resurrect the seven-identical-captures defect. TRIGGER, STATED AS THE CAPABILITY: that
+// replay applying chunks idempotently BY OCCURRENCE, sufficient that two chunks with equal payloads
+// at different receive sequences are retained as two events rather than collapsed into one.
+
 // THE COMPARISON THAT REFUSES TO CONFLATE CONTENT WITH OCCURRENCE. Note the order: occurrence is
 // decided FIRST, so equal payloads can never promote two occurrences into one.
 fn relate_chunks(left: CaptureChunk, right: CaptureChunk) -> ChunkRelation {
@@ -121,12 +135,35 @@ fn relate_chunks(left: CaptureChunk, right: CaptureChunk) -> ChunkRelation {
 // gets rendered as the nearest arm that exists, and the nearest arm here is "committed". These exist
 // so the realization has somewhere honest to land, and an arm without a producer is a visible
 // frontier, whereas a missing arm is a silent widen.
+// WHAT THE SLOT HELD WHEN A COMPARE-AND-SET PRECONDITION FAILED, at the grain that selects the
+// remedy. std.durable_compare_and_set carries BOTH sides on CasPreconditionFailed precisely so a
+// caller can tell LOSING A RACE from ADDRESSING THE WRONG SLOT -- the first is retried against a
+// re-read head, the second is a bug in the key -- and an earlier version of the fold below dropped
+// both into one hardcoded sentence, which is the flattening its own upstream exists to prevent.
+//
+// This is a NON-GENERIC PROJECTION of CasReadableSlot and that is deliberate rather than careless:
+// the committed VALUE would drag a type parameter through LocalCommitStanding, ObservationEnvelope
+// and every consumer of the published interface, and the value is not what selects the remedy. What
+// selects it is whether the slot was absent or stood at some generation, and both are kept.
+type CasRaceObservation
+  = RaceSlotAbsent
+  | RaceSlotAtGeneration { generation: CasGeneration }
+
+fn cas_race_observation<T>(observed: CasReadableSlot<T>) -> CasRaceObservation {
+  match observed {
+    CasReadableAbsent => RaceSlotAbsent
+    CasReadablePresent { version: version } =>
+      RaceSlotAtGeneration { generation: version.generation }
+  }
+}
+
 type CapturePersistenceRefusal
   = SpoolDiskExhausted { attempted: ByteSize }
   | ChunkCorruptOnReadBack { expected: ContentHash, observed: ContentHash }
   | ChunkReferenceMissing { referenced: ContentHash }
   | ChunkRetentionExpired { artifact_ref: NonEmptyStr }
   | ChunkCommitRefused { detail: NonEmptyStr }
+  | ChunkCommitLostRace { expected: CasExpectation, observed: CasRaceObservation }
 
 // LOCAL DURABLE COMMIT AND DOWNSTREAM ACCEPTANCE ARE SEPARATE FACTS and are never folded into one
 // "saved" flag. A chunk can be durably on this machine's spool and unaccepted anywhere else, which
@@ -174,8 +211,13 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding {
   match outcome {
     CasCommitted { committed: committed } =>
       LocallyCommitted { committed_content: committed.content }
-    CasPreconditionFailed { expected: _, observed: _ } =>
-      LocalCommitFailed { cause: ChunkCommitRefused { detail: "durable commit lost a compare-and-set race; the chunk is not kept" } }
+    CasPreconditionFailed { expected: expected, observed: observed } =>
+      LocalCommitFailed {
+        cause: ChunkCommitLostRace {
+          expected: expected
+          observed: cas_race_observation(observed: observed)
+        }
+      }
     CasStoreRefused { cause: cause } =>
       match cause {
         CasUnreadableMalformed { detail: detail } =>
@@ -226,6 +268,54 @@ fn commit_attests_chunk(standing: LocalCommitStanding, chunk: CaptureChunk) -> C
 // gunbc.recurring_failure_mode.empty_capture_read_as_clean_result demands.
 fn chunk_byte_count(chunk: CaptureChunk) -> Nat {
   byte_size_count(b: chunk.range.length)
+}
+
+// THE ATTESTED ROUTE TO CONTINUITY, so `verified_through` can be DERIVED rather than authored.
+//
+// WHY THIS EXISTS. ContinuityEstablished carries a bare offset, and on the silence path that offset
+// is the ONLY evidence spanning the requested range -- an empty chunk has length zero, so the range
+// check cannot span anything. That made the most dangerous arm in the lane rest on a number a caller
+// could write directly onto the envelope, which is precisely the defect deleted one module over when
+// `attests_payload` stopped being a parameter: satisfiable by passing the right value while the
+// realization lies.
+//
+// This fold walks the COMMITTED chunks in receive order and answers how far the bytes themselves
+// account for, so the offset comes from the evidence. A chunk whose range does not begin where the
+// previous one ended is a GAP, named with the hole it leaves; the first chunk starting after the
+// requested origin is likewise a gap rather than a silent rebase.
+fn continuity_from_committed_chunks(chunks: List<CaptureChunk>, from: Nat) -> StreamContinuity {
+  if chunks.count() == 0 {
+    ContinuityUnknown { detail: "no committed chunk accounts for this range" }
+  } else {
+    let head = chunks.first()
+    if head.range.first_offset > from {
+      ContinuityGap {
+        gap: SourceStreamRange { first_offset: from, length: byte_size(count: head.range.first_offset - from) }
+        cause: RetainedLogRolledOver { lost_through: head.range.first_offset }
+      }
+    } else {
+      continuity_walk(chunks: chunks.skip(n: 1), verified_through: range_end(range: head.range))
+    }
+  }
+}
+
+fn continuity_walk(chunks: List<CaptureChunk>, verified_through: Nat) -> StreamContinuity {
+  if chunks.count() == 0 {
+    ContinuityEstablished { verified_through: verified_through }
+  } else {
+    let head = chunks.first()
+    if head.range.first_offset > verified_through {
+      ContinuityGap {
+        gap: SourceStreamRange {
+          first_offset: verified_through
+          length: byte_size(count: head.range.first_offset - verified_through)
+        }
+        cause: RetainedLogRolledOver { lost_through: head.range.first_offset }
+      }
+    } else {
+      continuity_walk(chunks: chunks.skip(n: 1), verified_through: range_end(range: head.range))
+    }
+  }
 }
 
 // WHETHER CONTINUITY ANSWERS FOR A RANGE, AS ONE TYPED RESULT rather than two Bool projections a

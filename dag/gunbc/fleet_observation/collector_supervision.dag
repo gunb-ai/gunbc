@@ -205,14 +205,3 @@ fn supervision_coverage(disposition: SupervisionDisposition) -> SupervisionCover
       WindowNotCoveredSupervision { disposition: SupervisionUndecidable { deadline_domain: a, observed_domain: b } }
   }
 }
-
-// HOW MANY BYTES THE SUPERVISOR ACTUALLY DRAINED WHILE THE CHILD RAN. An unobserved pipe answers
-// ZERO BYTES AND FALSE COVERAGE above, never zero bytes as a finding -- the two are separated so a
-// reader can never consume "nobody looked" as "nothing arrived".
-fn drained_byte_count(drained: DrainProgress) -> Nat {
-  match drained {
-    DrainedDuringOperation { bytes: bytes, last_progress_at: _ } => byte_size_count(b: bytes)
-    DrainObservedEmpty { watched_until: _ } => 0
-    DrainNotObserved => 0
-  }
-}
