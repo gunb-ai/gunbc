@@ -177,7 +177,6 @@ test fn w_unobserved_drain_is_not_coverage() -> Bool {
   is_closed_at_deadline(d: unwatched)
   && pipe_unread(c: supervision_coverage(disposition: unwatched))
   && covered(c: supervision_coverage(disposition: watched_empty))
-  && pipe_unread(c: supervision_coverage(disposition: unwatched))
 }
 
 // TWO CLOCKS WITH NO SHARED ORIGIN CANNOT BE ORDERED, so the disposition REFUSES rather than

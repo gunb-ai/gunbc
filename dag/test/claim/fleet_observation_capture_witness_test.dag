@@ -144,6 +144,7 @@ import gunbc.fleet_observation_observation_envelope {
   RetainedBeyondCollectorHost,
   ForwardRefused,
   ExposedToCollectorHostLoss,
+  RetentionPromiseUnrostered,
   NotYetRetained,
   retention_exposure,
   CoverageGapContinuityBroken,
@@ -737,6 +738,7 @@ test fn w_retention_exposure_reads_the_refused_promise() -> Bool {
 fn is_exposed(exposure: RetentionExposure) -> Bool {
   match exposure {
     ExposedToCollectorHostLoss { refusal: _ } => true
+    RetentionPromiseUnrostered => false
     RetainedBeyondCollectorHost => false
     ForwardRefused { cause: _ } => false
     NotYetRetained { standing: _ } => false
@@ -746,6 +748,7 @@ fn is_exposed(exposure: RetentionExposure) -> Bool {
 fn is_retained_beyond(exposure: RetentionExposure) -> Bool {
   match exposure {
     RetainedBeyondCollectorHost => true
+    RetentionPromiseUnrostered => false
     ForwardRefused { cause: _ } => false
     ExposedToCollectorHostLoss { refusal: _ } => false
     NotYetRetained { standing: _ } => false
@@ -755,6 +758,7 @@ fn is_retained_beyond(exposure: RetentionExposure) -> Bool {
 fn is_not_yet_retained(exposure: RetentionExposure) -> Bool {
   match exposure {
     NotYetRetained { standing: _ } => true
+    RetentionPromiseUnrostered => false
     RetainedBeyondCollectorHost => false
     ForwardRefused { cause: _ } => false
     ExposedToCollectorHostLoss { refusal: _ } => false
@@ -1075,6 +1079,7 @@ fn t_binding(machine: NonEmptyStr) -> SourceMachineBinding {
 fn forward_refused(exposure: RetentionExposure) -> Bool {
   match exposure {
     ForwardRefused { cause: _ } => true
+    RetentionPromiseUnrostered => false
     RetainedBeyondCollectorHost => false
     ExposedToCollectorHostLoss { refusal: _ } => false
     NotYetRetained { standing: _ } => false
