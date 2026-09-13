@@ -983,6 +983,8 @@ fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_staging_is_refused_before_subject", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_does_not_satisfy_expected_failure", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.dag_compile_clean_perturb_receipts.outside_workspace_root_invoke_is_cli_not_executed", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
   }
   }

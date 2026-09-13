@@ -7,6 +7,8 @@ import tools.dag_compile_clean_transport {
   dcc_cli_not_executed_phase,
   dcc_compile_staged_outside_workspace_root,
   dcc_fixture_perturb_compile_report,
+  dcc_outside_workspace_root_precheck,
+  dcc_root_admission_precheck_phase,
   dcc_staged_under_workspace,
   dcc_subject_expectation_holds,
   perturb_fixture_green_module_source,
@@ -37,12 +39,14 @@ test fn perturb_fixture_green_holds() -> Bool {
   run_perturb_fixture_green_receipt()
 }
 
-// Enrolled RED control: stage outside the workspace root on purpose. Must be
-// RefusedBeforeSubject, not SubjectGreen and not an expected-failure SubjectRed.
+// Primary RED: position_under outside, compiler not invoked. Host faults are instrument-phase
+// and cannot satisfy this. The invoke agreement control is
+// outside_workspace_root_invoke_is_cli_not_executed (NotExecuted only; earlier_phase is not
+// machine-readable on the CLI).
 
 test fn outside_workspace_root_staging_is_refused_before_subject() -> Bool {
-  match dcc_compile_staged_outside_workspace_root() {
-    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_not_executed_phase
+  match dcc_outside_workspace_root_precheck() {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_root_admission_precheck_phase
     SubjectGreen => false
     SubjectRed => false
   }
@@ -50,9 +54,17 @@ test fn outside_workspace_root_staging_is_refused_before_subject() -> Bool {
 
 test fn outside_workspace_root_does_not_satisfy_expected_failure() -> Bool {
   !dcc_subject_expectation_holds(
-    report: dcc_compile_staged_outside_workspace_root(),
+    report: dcc_outside_workspace_root_precheck(),
     expect_success: false
   )
+}
+
+test fn outside_workspace_root_invoke_is_cli_not_executed() -> Bool {
+  match dcc_compile_staged_outside_workspace_root() {
+    RefusedBeforeSubject { earlier_phase: p, cause: _ } => p == dcc_cli_not_executed_phase
+    SubjectGreen => false
+    SubjectRed => false
+  }
 }
 
 test fn under_workspace_root_green_fixture_reaches_subject() -> Bool {

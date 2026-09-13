@@ -34,6 +34,7 @@ data dcc_stage_template_suffix: String = "/target/dcc_stage_XXXXXX"
 data dcc_perturb_fixture_template_suffix: String = "/target/dcc_perturb_fixture_XXXXXX"
 data dcc_instrument_earlier_phase: String = "instrument"
 data dcc_cli_not_executed_phase: String = "not-executed"
+data dcc_root_admission_precheck_phase: String = "root-admission-precheck"
 
 fn dcc_compile_report_from_bin(exit_code: Int, stdout: String, stderr: String) -> DccCompileReport {
   if exit_code == compile_cli_exit_completed {
@@ -62,6 +63,10 @@ fn dcc_compile_report_arm(report: DccCompileReport) -> String {
 
 fn dcc_host_refused_before_subject(cause: String) -> DccCompileReport {
   RefusedBeforeSubject { earlier_phase: dcc_instrument_earlier_phase, cause: cause }
+}
+
+fn dcc_root_admission_precheck_refused(cause: String) -> DccCompileReport {
+  RefusedBeforeSubject { earlier_phase: dcc_root_admission_precheck_phase, cause: cause }
 }
 
 fn dcc_staged_under_workspace(root: String, staged: String) -> Bool {
@@ -301,13 +306,37 @@ fn dcc_fixture_perturb_compile_report(module_file: String, source: String) -> Dc
   }
 }
 
-// Enrolled RED (DESIGN §4b meta-obligation 4): stage OUTSIDE the workspace root on purpose
-// (shell.Mktemp.Dir). This control INVOKES the compiler — it is the agreement check between
-// dcc_staged_under_workspace and cli_run's root-admission (main.rs exits
-// gunbc.cli_dispatch_surface compile_cli_exit_not_executed). Production
-// transports must not invoke on this path. Host faults stay instrument-phase so they cannot
-// satisfy a witness that requires the CLI not-executed status. Must not satisfy
-// dcc_subject_expectation_holds as an expected failure.
+// Primary RED: position_under says outside, so the transport refuses and does not invoke.
+// earlier_phase is dcc_root_admission_precheck_phase so a host fault (mktemp, cleanup)
+// cannot satisfy the witness. Must not satisfy dcc_subject_expectation_holds.
+
+fn dcc_outside_workspace_root_precheck() -> DccCompileReport {
+  let root = git.Inspect.Toplevel()
+  let tmp = shell.Mktemp.Dir()
+  if tmp.success {
+    let under = dcc_staged_under_workspace(root: root.path, staged: tmp.path)
+    let cleaned = shell.Remove.RecursiveForce(path: tmp.path)
+    if !cleaned.success {
+      dcc_host_refused_before_subject(cause: "outside-root precheck stage cleanup failed")
+    } else if under {
+      SubjectRed
+    } else {
+      dcc_root_admission_precheck_refused(cause: concat(
+        "primary source root is outside the workspace root (instrument admission, compiler not invoked): ",
+        tmp.path
+      ))
+    }
+  } else {
+    dcc_host_refused_before_subject(cause: "outside-root mktemp failed")
+  }
+}
+
+// Agreement control: still INVOKES. compile_cli_exit_not_executed is shared by every
+// NotExecuted earlier_phase (root-admission, whole-corpus admission, …). This control
+// therefore asserts only NotExecuted. Frontier: the compile CLI carries earlier_phase
+// machine-readably (generated row / structured disposition, not a stderr parse). Until then
+// the primary RED is dcc_outside_workspace_root_precheck. Production transports must not
+// invoke on this path. Host faults stay instrument-phase. Must not satisfy ExpectFailure.
 
 fn dcc_compile_staged_outside_workspace_root() -> DccCompileReport {
   let root = git.Inspect.Toplevel()

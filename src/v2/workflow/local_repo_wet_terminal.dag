@@ -581,6 +581,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "outside_workspace_root_invoke_is_cli_not_executed" },
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      function: "outside_workspace_root_invoke_is_cli_not_executed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.dag_compile_clean_perturb_receipts", function: "under_workspace_root_green_fixture_reaches_subject" },
       entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
       function: "under_workspace_root_green_fixture_reaches_subject",

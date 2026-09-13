@@ -7,6 +7,7 @@ import tools.dag_compile_clean_transport {
   dcc_cli_not_executed_phase,
   dcc_compile_report_from_bin,
   dcc_instrument_earlier_phase,
+  dcc_root_admission_precheck_phase,
   dcc_staged_under_workspace,
   dcc_subject_expectation_holds,
 }
@@ -103,4 +104,9 @@ test fn completed_exit_is_subject_green() -> Bool {
     SubjectRed => false
     RefusedBeforeSubject { earlier_phase: _, cause: _ } => false
   }
+}
+
+test fn root_admission_precheck_phase_is_not_cli_not_executed() -> Bool {
+  !(dcc_root_admission_precheck_phase == dcc_cli_not_executed_phase)
+    && !(dcc_root_admission_precheck_phase == dcc_instrument_earlier_phase)
 }
