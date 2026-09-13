@@ -52,6 +52,12 @@ use crate::v1_interpreter::{self, str_value, Value};
 /// authority is now inside that closure, the binary judges its own receipt.
 const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
 
+/// Owner of `rust_target_model` / `rust_source_text_authority`. Hashed with
+/// `TARGET_MODEL_AUTHORITY_ENTRY` so `GenerationIdentity.target_model` tracks the
+/// target-model closure rather than the language nickname (review 65507).
+const RUST_TARGET_MODEL_ENTRY: &str = "src/v2/extdeps/languages/rust.dag";
+const TARGET_MODEL_AUTHORITY_ENTRY: &str = "src/v2/std/compilers/target_model.dag";
+
 /// Canonical rustc remap prefix so artifact bytes are not bound to the host crate path.
 const NATIVE_BUILD_CANONICAL_PREFIX: &str = "/gunbc/remap/build";
 
@@ -572,6 +578,39 @@ fn named_build_configuration_hash(
     )
 }
 
+fn observed_target_model_axis_hash(
+    ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
+) -> Result<Value, String> {
+    let rust_ctx = eval_entry_context(source_roots, RUST_TARGET_MODEL_ENTRY)?;
+    let authority = eval_named(
+        &rust_ctx,
+        "v2.extdeps.languages.rust.rust_source_text_authority",
+        &[],
+    )?;
+    let Value::Str(authority_text) = authority else {
+        return Err(
+            "rust_source_text_authority did not return a string — target_model axis unobserved"
+                .to_string(),
+        );
+    };
+    let workspace = super::process_workspace_root();
+    let rust_dag = workspace.join(RUST_TARGET_MODEL_ENTRY);
+    let target_model_dag = workspace.join(TARGET_MODEL_AUTHORITY_ENTRY);
+    let mut observed = String::from("v2.extdeps.languages.rust.rust_target_model\n");
+    observed.push_str(authority_text.as_str());
+    observed.push('\n');
+    observed.push_str(TARGET_MODEL_AUTHORITY_ENTRY);
+    observed.push(':');
+    observed.push_str(&sha512_file(&target_model_dag)?);
+    observed.push('\n');
+    observed.push_str(RUST_TARGET_MODEL_ENTRY);
+    observed.push(':');
+    observed.push_str(&sha512_file(&rust_dag)?);
+    observed.push('\n');
+    hash_of_observed_string(ctx, &observed)
+}
+
 fn native_generation_from_store(
     ctx: &v1_interpreter::InterpContext,
     source_roots: &[String],
@@ -672,7 +711,9 @@ fn native_generation_from_store(
             ),
             (
                 Some("target_model".to_string()),
-                hash_of_observed_string(ctx, "Rust")?,
+                observed_target_model_axis_hash(ctx, source_roots).map_err(|detail| {
+                    unverified(&format!("target_model axis unobserved: {detail}"))
+                })?,
             ),
             (
                 Some("toolchain".to_string()),
